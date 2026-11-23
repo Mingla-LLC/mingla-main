@@ -37,6 +37,9 @@ export const BUCKET_PREFIXES = Object.freeze({
 
 export const BUNDLE_MAGIC = Buffer.from("MINGLA-SITES-AES256GCM-V1\n", "utf8");
 export const PLAINTEXT_MAGIC = Buffer.from("MINGLA-SITES-BACKUP-V1\n", "utf8");
+// #4574: WRITE-time rule ("the evidence is a current daily provider backup"), equal to the
+// 26 h checks in brand_site_record_readiness_evidence and brand-site-cms-callback; it is not
+// the first-publish budget (public.brand_site_database_backup_budget(), 48 h), which it must stay under.
 export const MAX_BACKUP_AGE_MS = 26 * 60 * 60 * 1000;
 export const MAX_RESTORE_AGE_MS = 100 * 24 * 60 * 60 * 1000;
 export const REQUIRED_BACKUP_RETENTION_DAYS = 7;

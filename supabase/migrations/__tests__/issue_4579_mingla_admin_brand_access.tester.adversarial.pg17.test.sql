@@ -1,4 +1,4 @@
--- #4579 tester adversarial suite (20281128004579_issue_4579_mingla_admin_brand_access.sql).
+-- #4579 tester adversarial suite (20281201014579_issue_4579_mingla_admin_brand_access.sql).
 -- PostgreSQL 17, after the full replay, run as postgres/supabase_admin. Each block is one
 -- transaction that rolls back. Angles differ from the implementor suite: every re-add path is
 -- driven AFTER a removal and AFTER a host-invited admin was removed; restore is attacked by every

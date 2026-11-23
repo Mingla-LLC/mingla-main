@@ -2651,6 +2651,7 @@
     {
       "capability_key": "account-settings",
       "paths": [
+        "supabase/migrations/20281201003969_issue_3969_profile_access_step2.sql",
         "app-mobile/src/components/ProfilePage.tsx",
         "app-mobile/src/components/profile/ProfileInterestsSection.tsx",
         "app-mobile/src/components/profile/ProfileSectionSkeleton.tsx",
@@ -2940,6 +2941,8 @@
     {
       "capability_key": "staff-health",
       "paths": [
+        "supabase/functions/api-health-probe/sitesRecoveryWatch.ts",
+        "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
         "supabase/functions/api-health-probe/logic.ts",
         "supabase/functions/api-health-probe/index.ts",

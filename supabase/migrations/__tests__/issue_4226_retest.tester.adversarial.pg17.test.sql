@@ -177,6 +177,8 @@ BEGIN
        AND (pg_get_function_result(p.oid) ~* '(signup_source|onboarding_furthest|brand_setup_furthest|signup_surface)'
             OR p.prorettype IN ('public.profiles'::regtype, 'public.creator_accounts'::regtype, 'public.person_journey'::regtype)
             OR p.proname ~ '^admin_people_|^admin_person_|^admin_get_person')
+       -- #3969 step 2: get_my_profile returns only the caller's own row; checked below.
+       AND p.proname <> 'get_my_profile'
        AND has_function_privilege('authenticated', p.oid, 'execute') LOOP
     v_raised := false; v_msg := NULL;
     SET LOCAL ROLE authenticated; PERFORM pg_temp.t4226r_as(v_d);
@@ -193,6 +195,11 @@ BEGIN
     RESET ROLE;
     PERFORM pg_temp.t4226r_check(v_raised AND v_msg NOT LIKE 'SKIPPED%', 'R-02 non-admin refused by function ' || v_fn.proname || '(' || v_fn.args || ')', v_msg);
   END LOOP;
+  -- #3969 step 2: the own-profile read returns the caller's row only, with no journey key.
+  SET LOCAL ROLE authenticated; PERFORM pg_temp.t4226r_as(v_d);
+  PERFORM pg_temp.t4226r_check((SELECT COALESCE(bool_and(g.id = v_d AND NOT (to_jsonb(g) ?| ARRAY['signup_source','signup_source_detail','signup_surface','onboarding_furthest_step','onboarding_furthest_step_key','onboarding_furthest_step_at'])), true)
+       FROM public.get_my_profile() g), 'R-02 get_my_profile returns only the caller''s row and no journey key');
+  RESET ROLE;
 
   SELECT string_agg(label || COALESCE(' :: ' || detail, ''), E'\n') INTO v_msg FROM t4226r_result WHERE NOT ok;
   IF v_msg IS NOT NULL THEN RAISE EXCEPTION 'issue #4226 retest adversarial FAIL:%', E'\n' || v_msg; END IF;

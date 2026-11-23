@@ -31,11 +31,12 @@ import { fileURLToPath } from "node:url";
 import { fail, safeCliFailure } from "./lib/sites-ops.mjs";
 
 /**
- * MUST equal the `interval` the runtime resolver
- * (`public.brand_site_resolve_publication`) enforces against the completion
- * stamped readiness fields. If that interval ever changes, this constant changes
- * in the same commit — a watchdog measuring a different budget than the gate it
- * guards is worse than none, because it reports comfort that does not exist.
+ * MUST equal `public.brand_site_object_manifest_budget()` (#4574): the
+ * first-publish gate's budget for the completion-stamped manifest, which is the
+ * moment this watchdog measures. The database-backup budget is a different
+ * number (`public.brand_site_database_backup_budget()`, 48 h from the provider's
+ * backup time) and is watched off GitHub by api-health-probe `sites_recovery`.
+ * `issue_3606_recovery_freshness.implementor.test.mjs` fails if they drift.
  */
 export const RECOVERY_BUDGET_HOURS = 26;
 

@@ -646,9 +646,15 @@ export function phase3dContractDigest(manifest) {
 // #4549 tester retest: registered the tester report-bounds pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4549 merge of main after #4548 guest pack: kept main's #4548 rows and filtered-replay skip, re-added the #4549 migration and its three pg17 suites (with sidecars) in filename order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4573 form request safeupdate: registered 20281127004573 in the #1857, #1931 and #2117 inventories after 20281124004549 and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-// #4579 Mingla admin brand access: registered 20281128004579 in the #1857, #1931 and #2117 inventories after 20281127004573 and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4574 Sites backup budget: listed migration 20281128004574 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3969 step 2 profile access: listed migration 20281201003969 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 Mingla admin brand access: registered 20281201014579 in the #1857, #1931 and #2117 inventories after 20281127004573 and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4579 tester: registered the tester adversarial pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "7a6523571a880bc1958a337318eec9787d9e6adcde98500bb10076f655c238f4";
+// #4579 merge of main after #4574 and #3969 step 2: kept main's 20281128004574 and 20281201003969 rows and suites, renamed the #4579 migration to 20281201014579 (after the production ledger max) in the #1857, #1931 and #2117 lanes and filtered-replay skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "1561dc3bd934d15cd221d4b2cc948937fb24459562f11bc38af931a472a01d35";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

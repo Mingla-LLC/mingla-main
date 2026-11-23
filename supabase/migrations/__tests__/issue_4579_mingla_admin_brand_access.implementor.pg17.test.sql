@@ -1,6 +1,6 @@
 -- MINGLA-INVARIANT: I-4579-MINGLA-TEAM-ENTRY | issue #4579 | INVARIANT issue_4579: hosts see granted_via='mingla_admin' members only as one "Mingla Team" entry on Team & permissions (never name, email, handle, avatar, id or count); everywhere else an auto-admin is shown only by issue_4579_admin_public_name (never an email or handle) with an is_mingla_team flag; removing Mingla Team tombstones the brand and nothing automatic re-adds it; only the owner's restore re-grants; a removed invited Mingla admin is never re-added except by an accepted invite.
 --
--- #4579 (20281128004579_issue_4579_mingla_admin_brand_access.sql): PostgreSQL 17 proof after the
+-- #4579 (20281201014579_issue_4579_mingla_admin_brand_access.sql): PostgreSQL 17 proof after the
 -- full replay, run as supabase_admin. Every block runs in one transaction and rolls back.
 --
 -- T-1  backfill (SC-1): each qualifying admin gets an active brand_admin mingla_admin row on every
