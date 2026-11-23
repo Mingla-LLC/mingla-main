@@ -102,6 +102,21 @@ const SELLING_ROLES: ReadonlySet<string> = new Set(["event_manager", "brand_admi
  * with venue.sell at this venue, or a brand role of event manager and above.
  * An unknown role (no member row read) is no.
  */
+/**
+ * #4490 spec 08 O3 — the client mirror of `issue_4490_can_kitchen`: venue staff
+ * with venue.kitchen or restaurant.manage_orders at this venue, or a brand role
+ * of event manager and above (the same roles that may sell).
+ */
+export function venueAccessCanKitchen(input: {
+  scoped: boolean;
+  capabilities: readonly VenueCapability[];
+  role: string | null;
+}): boolean {
+  return input.scoped
+    ? input.capabilities.includes("venue.kitchen") || input.capabilities.includes("restaurant.manage_orders")
+    : input.role !== null && SELLING_ROLES.has(input.role);
+}
+
 export function venueAccessCanSell(input: {
   scoped: boolean;
   capabilities: readonly VenueCapability[];

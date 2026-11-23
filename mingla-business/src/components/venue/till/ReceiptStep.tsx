@@ -13,11 +13,13 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { color, space, type } from "../../../constants/designSystem";
 import { TillError } from "../../../services/venueTillService";
+import { StationError } from "../../../services/venueStationService";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { PhoneField, usePhoneEntry } from "../../ui/PhoneField";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
+import { STATION_COPY, stationErrorCopy } from "../station/stationCopy";
 import { receiptChannelsReady, receiptPhoneStartCountry, type ReceiptChannel } from "./tillModel";
 
 export interface ReceiptStepProps {
@@ -31,10 +33,29 @@ export interface ReceiptStepProps {
     email: string | null;
   }) => Promise<{ sendsLeft: number }>;
   onSkip?: () => void;
+  /**
+   * #4490 spec 08 O3: "Print receipt" — a server-made PDF the device prints
+   * (openFloorPdf). Absent: no print button. Throws a StationError on failure.
+   */
+  onPrint?: () => Promise<void>;
   testID?: string;
 }
 
-export function ReceiptStep({ currency, sendsUsed, onSend, onSkip, testID }: ReceiptStepProps): React.ReactElement {
+export function ReceiptStep({ currency, sendsUsed, onSend, onSkip, onPrint, testID }: ReceiptStepProps): React.ReactElement {
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const print = async (): Promise<void> => {
+    if (onPrint === undefined || printing) return;
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      await onPrint();
+    } catch (err) {
+      setPrintError(stationErrorCopy(err instanceof StationError ? err.code : "floor_pdf_failed"));
+    } finally {
+      setPrinting(false);
+    }
+  };
   const phone = usePhoneEntry({ startCountries: [receiptPhoneStartCountry(currency)] });
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState<ReceiptChannel | null>(null);
@@ -107,6 +128,13 @@ export function ReceiptStep({ currency, sendsUsed, onSend, onSkip, testID }: Rec
             <Button label={TILL_COPY.receiptBoth} variant="secondary" size="md" style={styles.grow}
               disabled={busy !== null || !ready.both} loading={busy === "both"} onPress={() => void send("both")} testID="till-receipt-both" />
           </View>
+        </>
+      ) : null}
+      {onPrint !== undefined ? (
+        <>
+          {printError !== null ? <Banner tone="danger" title={printError} testID="till-receipt-print-error" /> : null}
+          <Button label={STATION_COPY.printReceipt} variant="secondary" size="md" leadingIcon="receipt"
+            loading={printing} disabled={printing} onPress={() => void print()} testID="till-receipt-print" />
         </>
       ) : null}
       {onSkip !== undefined && sent === null ? (

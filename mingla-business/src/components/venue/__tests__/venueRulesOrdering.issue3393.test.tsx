@@ -134,6 +134,11 @@ jest.mock("../../../hooks/useVenueListings", () => ({
         : { id: "venue-3393", claimStatus: mockClaimStatus },
   }),
 }));
+// TEST-MOD-APPROVED #4490 (08-O3 part A): the Orders queue now asks whether to
+// show the "Kitchen and bar" entry (useStationsEntry reads auth, features and
+// access); this suite renders the module without those providers.
+let mockStationsEntry = false;
+jest.mock("../../../hooks/useStationsEntry", () => ({ __esModule: true, useStationsEntry: () => mockStationsEntry }));
 jest.mock("../../../hooks/useVenueOrderingSettings", () => ({
   __esModule: true,
   useVenueOrderingSettings: () => ({

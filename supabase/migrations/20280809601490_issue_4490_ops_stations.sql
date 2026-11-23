@@ -320,6 +320,7 @@ BEGIN
     'venueName', v_venue.name,
     'brandId', v_venue.brand_id,
     'station', p_station,
+    'timezone', public.issue_4490_venue_timezone(v_venue.id),
     'serverNow', now(),
     'settings', (SELECT jsonb_build_object(
         'targetMinutes', x->'targetMinutes', 'printPaper', x->'printPaper',

@@ -1,0 +1,110 @@
+/**
+ * #4490 spec 08 O3 — kitchen and bar stations (edge function venue-order-staff,
+ * actions station_board / station_accept / item_ready / ticket_ready / recall /
+ * picked_up) and floor PDFs (edge function venue-floor-pdf). Services throw a
+ * StationError carrying the server's code; screens turn codes into words.
+ */
+import { supabase } from "./supabase";
+import {
+  parseStationBoard,
+  parseStationTicket,
+  type StationBoard,
+  type StationChoice,
+  type StationName,
+  type StationTicket,
+} from "../components/venue/station/stationModel";
+
+export class StationError extends Error {
+  readonly code: string;
+  constructor(code: string) {
+    super(code);
+    this.name = "StationError";
+    this.code = code;
+  }
+}
+
+type Json = Record<string, unknown>;
+const obj = (v: unknown): Json => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {});
+
+/** The server's code from a functions error (`{ error }` or `{ code }`), else network / failed. */
+export async function stationErrorFrom(error: { message?: string; context?: unknown }): Promise<StationError> {
+  const context = error.context;
+  if (context !== null && context !== undefined && typeof (context as Response).json === "function") {
+    try {
+      const body = obj(await (context as Response).clone().json());
+      const code = typeof body.code === "string" ? body.code : typeof body.error === "string" ? body.error : "";
+      if (code.length > 0) return new StationError(code);
+    } catch {
+      // An unreadable body falls through to the network mapping below.
+    }
+  }
+  const raw = error.message ?? "";
+  return new StationError(/failed to fetch|network|load failed/i.test(raw) ? "network" : "station_failed");
+}
+
+async function staff(body: Json): Promise<Json> {
+  const { data, error } = await supabase.functions.invoke("venue-order-staff", { body });
+  if (error) throw await stationErrorFrom(error as { message?: string; context?: unknown });
+  return obj(data);
+}
+
+export async function fetchStationBoard(venueId: string, station: StationChoice): Promise<StationBoard> {
+  const data = await staff({ action: "station_board", venueId, station });
+  return parseStationBoard(data.board);
+}
+
+export interface StationActionResult {
+  ticket: StationTicket | null;
+  already: boolean;
+  alreadyBy: string | null;
+  orderReady: boolean;
+  delivered: boolean;
+}
+
+function actionResult(data: Json): StationActionResult {
+  const by = data.alreadyAcceptedBy ?? data.alreadyReadyBy ?? data.alreadyPickedUpBy;
+  return {
+    ticket: parseStationTicket(data.ticket),
+    already: data.already === true,
+    alreadyBy: typeof by === "string" ? by : null,
+    orderReady: data.orderReady === true,
+    delivered: data.delivered === true,
+  };
+}
+
+export type StationTicketAction = "station_accept" | "ticket_ready" | "recall" | "picked_up";
+
+export async function runStationAction(
+  action: StationTicketAction,
+  orderId: string,
+  station: StationName,
+): Promise<StationActionResult> {
+  return actionResult(await staff({ action, orderId, station }));
+}
+
+export async function markStationItemReady(orderItemId: string): Promise<StationActionResult> {
+  return actionResult(await staff({ action: "item_ready", orderItemId }));
+}
+
+export type FloorPdfRequest =
+  | { kind: "kitchen_ticket"; venueId: string; orderId: string; station: StationName }
+  | { kind: "test_ticket"; venueId: string; station: StationChoice }
+  | { kind: "receipt"; venueId: string; paymentId: string };
+
+export interface FloorPdfLink {
+  signedUrl: string;
+  expiresAt: string;
+  filename: string;
+}
+
+export async function requestFloorPdf(request: FloorPdfRequest): Promise<FloorPdfLink> {
+  const { data, error } = await supabase.functions.invoke("venue-floor-pdf", { body: request });
+  if (error) throw await stationErrorFrom(error as { message?: string; context?: unknown });
+  const body = obj(data);
+  if (typeof body.signedUrl !== "string" || body.signedUrl.length === 0) throw new StationError("floor_pdf_failed");
+  return {
+    signedUrl: body.signedUrl,
+    expiresAt: typeof body.expiresAt === "string" ? body.expiresAt : "",
+    filename: typeof body.filename === "string" ? body.filename : "ticket.pdf",
+  };
+}

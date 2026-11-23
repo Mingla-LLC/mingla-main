@@ -76,6 +76,9 @@ import {
 } from "./venueOrderingSwitch";
 import type { OrderPadTab } from "./orderPad/venueOrderPad";
 import { tillHref } from "./till/tillRoute";
+import { stationHref } from "./station/stationRoute";
+import { STATION_COPY } from "./station/stationCopy";
+import { useStationsEntry } from "../../hooks/useStationsEntry";
 import type { VenueOrderEntry } from "./venueModules";
 import {
   VENUE_ORDER_VIEWS,
@@ -138,6 +141,7 @@ export function VenueOrdersModule({
   const transition = useTransitionVenueOrder(scopedBrandId);
   const refundDecision = useDecideVenueOrderRefund(scopedBrandId);
   const setPaused = useSetVenueOrderingPaused(venueId);
+  const stationsEntry = useStationsEntry(scopedBrandId, venueId);
   const setEnabled = useSetVenueOrderingEnabled(venueId);
   // #3388 — ordering can only be switched on for a live (verified) venue.
   const venueQuery = useVenueListing(venueId);
@@ -275,6 +279,18 @@ export function VenueOrdersModule({
           />
         ) : null}
       </View>
+
+      {/* #4490 spec 08 O3 — the kitchen and bar screens for this venue. */}
+      {venueId !== null && stationsEntry ? (
+        <Button
+          label={STATION_COPY.openStations}
+          onPress={() => router.push(stationHref(venueId) as never)}
+          variant="secondary"
+          size="md"
+          leadingIcon="list"
+          testID="venue-orders-open-stations"
+        />
+      ) : null}
 
       {/* #4490 spec 08 O1 — open tabs live in the Till's Open checks. */}
       {venueId !== null && orderEntry === "till" ? (

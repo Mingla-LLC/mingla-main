@@ -39,6 +39,7 @@ import type { TillTapOffer } from "./tillTapAvailability";
 import { paidLabel, resumeLivePayment, scanPanelState } from "./tillPayModel";
 import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
 import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
+import { openFloorPdf } from "../../../utils/floorPdf";
 
 type Step = "choose" | "cash" | "own" | "scan" | "tap" | "paid" | "resuming";
 
@@ -493,6 +494,9 @@ export function PaymentSheet({
             currency={currency}
             sendsUsed={0}
             onSend={(input) => onSendReceipt({ paymentId: result.paymentId, ...input })}
+            onPrint={async () => {
+              await openFloorPdf({ kind: "receipt", venueId, paymentId: result.paymentId });
+            }}
             testID="till-pay-receipt"
           />
         ) : null}

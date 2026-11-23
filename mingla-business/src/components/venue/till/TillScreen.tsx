@@ -61,6 +61,10 @@ import { Toast } from "../../ui/Toast";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { useUnsavedChangesGuard } from "../../../hooks/useUnsavedChangesGuard";
 import { PaymentSheet } from "./PaymentSheet";
+import { useStationsEntry } from "../../../hooks/useStationsEntry";
+import { stationHref } from "../station/stationRoute";
+import { openFloorPdf } from "../../../utils/floorPdf";
+import { STATION_COPY } from "../station/stationCopy";
 import { ReceiptStep } from "./ReceiptStep";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
 import {
@@ -100,6 +104,8 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const layout = floorLayoutFor(width);
   const catalogQuery = useTillCatalog(venueId);
   const catalog = catalogQuery.data ?? null;
+  // #4490 spec 08 O3: the kitchen and bar screens, for those who may work them.
+  const stationsEntry = useStationsEntry(catalog?.brandId ?? null, venueId);
   const offersQuery = useVenueOffers(catalog?.brandId ?? null, venueId);
   const [saleId, setSaleId] = useState<string | null>(null);
   const saleQuery = useTillSale(venueId, saleId);
@@ -503,6 +509,15 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
       <View style={styles.header}>
         <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={requestClose} testID="till-back" />
         <Text style={styles.title} numberOfLines={1}>{catalog?.venueName ?? TILL_COPY.title}</Text>
+        {stationsEntry ? (
+          <Button
+            label={STATION_COPY.openStations}
+            variant="secondary"
+            size="sm"
+            onPress={() => router.push(stationHref(venueId) as never)}
+            testID="till-open-stations"
+          />
+        ) : null}
         <Button
           label={`${TILL_COPY.checks} · ${checksQuery.data?.open.length ?? 0}`}
           variant="secondary"
@@ -726,6 +741,9 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
                 currency={currency}
                 sendsUsed={receiptPayment.receiptSends}
                 onSend={({ channel: _channel, ...input }) => sendReceipt({ paymentId: receiptPayment.id, ...input })}
+                onPrint={async () => {
+                  await openFloorPdf({ kind: "receipt", venueId, paymentId: receiptPayment.id });
+                }}
                 testID="till-receipt-resend"
               />
             ) : null}

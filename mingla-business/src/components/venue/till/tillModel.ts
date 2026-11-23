@@ -7,14 +7,9 @@
 
 import type { TillCatalog, TillLine, TillMenuItem, TillSale, TillServer } from "../../../services/venueTillService";
 
-export type FloorLayout = "phone" | "tablet" | "desk";
-
-/** Spec 08 §2: phone < 600, tablet 600–1023, desk ≥ 1024, on every platform. */
-export function floorLayoutFor(width: number): FloorLayout {
-  if (width >= 1024) return "desk";
-  if (width >= 600) return "tablet";
-  return "phone";
-}
+// Spec 08 §2: phone < 600, tablet 600–1023, desk ≥ 1024, on every platform.
+// One owner since O3: src/utils/floorLayout.ts (also used by useFloorLayout).
+export { floorLayoutFor, type FloorLayout } from "../../../utils/floorLayout";
 
 /** A line not yet on the check: chosen on this device, priced by the server on add. */
 export interface DraftLine {

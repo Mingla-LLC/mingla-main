@@ -158,6 +158,12 @@ export const venueOrdersKeys = {
     venueId: string,
   ): readonly ["venueOrders", string, string] =>
     ["venueOrders", brandId, venueId] as const,
+  /** #4490 spec 08 O3: a kitchen or bar screen's board (useStationBoard). */
+  station: (
+    venueId: string,
+    station: string,
+  ): readonly ["venueOrders", "station", string, string] =>
+    ["venueOrders", "station", venueId, station] as const,
 };
 
 export const fetchVenueOrders = async (

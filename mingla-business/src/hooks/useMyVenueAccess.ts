@@ -3,7 +3,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import type { VenueCapability } from "../services/brandInvitationsService";
 import { supabase } from "../services/supabase";
-import { venueAccessCanSell } from "../components/venue/venueCapabilityGate";
+import { venueAccessCanKitchen, venueAccessCanSell } from "../components/venue/venueCapabilityGate";
 
 export interface MyVenueAccess {
   scoped: boolean;
@@ -14,6 +14,11 @@ export interface MyVenueAccess {
    * venue.sell. Absent (older cached reads, test doubles) reads as no.
    */
   canSell?: boolean;
+  /**
+   * #4490 spec 08 O3 — may work the kitchen and bar screens here
+   * (`issue_4490_can_kitchen`). Absent reads as no.
+   */
+  canKitchen?: boolean;
 }
 
 export function useMyVenueAccess(
@@ -31,7 +36,7 @@ export function useMyVenueAccess(
     enabled,
     staleTime: 30_000,
     queryFn: async () => {
-      if (venueId === null) return { scoped: false, capabilities: [], canSell: false };
+      if (venueId === null) return { scoped: false, capabilities: [], canSell: false, canKitchen: false };
       const { data, error } = await supabase.rpc(
         "issue_4188_my_venue_access",
         { p_venue_id: venueId },
@@ -57,7 +62,7 @@ export function useMyVenueAccess(
             .maybeSingle();
           role = (member.data as { role?: string } | null)?.role ?? null;
           if (role === "scanner") {
-            return { scoped: true, capabilities: ["venue.check_in"], canSell: false };
+            return { scoped: true, capabilities: ["venue.check_in"], canSell: false, canKitchen: false };
           }
         }
       }
@@ -72,6 +77,7 @@ export function useMyVenueAccess(
         scoped,
         capabilities,
         canSell: venueAccessCanSell({ scoped, capabilities, role }),
+        canKitchen: venueAccessCanKitchen({ scoped, capabilities, role }),
       };
     },
   });

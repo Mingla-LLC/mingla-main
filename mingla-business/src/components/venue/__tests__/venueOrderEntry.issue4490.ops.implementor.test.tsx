@@ -59,6 +59,11 @@ jest.mock("../../../hooks/useVenueOrderingSettings", () => ({
   useSetVenueOrderingPaused: () => ({ mutate: () => undefined, isPending: false }),
   useSetVenueOrderingEnabled: () => ({ mutate: () => undefined, isPending: false }),
 }));
+// TEST-MOD-APPROVED #4490 (08-O3 part A): the Orders queue now asks whether to
+// show the "Kitchen and bar" entry (useStationsEntry reads auth, features and
+// access); this suite renders the module without those providers.
+let mockStationsEntry = false;
+jest.mock("../../../hooks/useStationsEntry", () => ({ __esModule: true, useStationsEntry: () => mockStationsEntry }));
 jest.mock("../VenueOrderCard", () => ({ __esModule: true, VenueOrderCard: () => null }));
 jest.mock("../VenueOrderDetailSheet", () => ({ __esModule: true, VenueOrderDetailSheet: () => null }));
 jest.mock("../orderPad/VenueOrderPadSheet", () => ({ __esModule: true, VenueOrderPadSheet: mockHostEl("VenueOrderPadSheet") }));
@@ -140,5 +145,13 @@ describe("08-O1 the pad / Till switch", () => {
     expect(byTestId(root, "venue-orders-new-order")).toHaveLength(0);
     expect(byTestId(root, "venue-orders-new-order-till")).toHaveLength(0);
     expect(byTestId(root, "venue-orders-open-checks-till")).toHaveLength(0);
+  });
+
+  test("OE-5 (08-O3) the Kitchen and bar entry shows only when the station rule says so", () => {
+    mockStationsEntry = false;
+    expect(byTestId(mount("till"), "venue-orders-open-stations")).toHaveLength(0);
+    mockStationsEntry = true;
+    expect(byTestId(mount("none"), "venue-orders-open-stations")).toHaveLength(1);
+    mockStationsEntry = false;
   });
 });
