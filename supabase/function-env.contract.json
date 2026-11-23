@@ -1910,6 +1910,8 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
         "TWILIO_ACCOUNT_SID",
         "TWILIO_AUTH_TOKEN",
         "TWILIO_VERIFY_SERVICE_SID"

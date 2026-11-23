@@ -152,13 +152,13 @@ serve(async (req) => {
 
     if (!twilioResponse.ok) {
       if (twilioResponse.status === 404 || twilioData?.code === 60200) {
-        return new Response(JSON.stringify({ error: 'Code expired. Request a new one.' }), {
+        return new Response(JSON.stringify({ error: 'Code expired. Request a new one.', code: 'code_expired' }), {
           status: 410,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
       console.error('Twilio verify error:', twilioData)
-      return new Response(JSON.stringify({ error: 'Verification failed. Try again.' }), {
+      return new Response(JSON.stringify({ error: 'Verification failed. Try again.', code: 'verify_failed' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -186,7 +186,7 @@ serve(async (req) => {
       const conflicts = conflictingPhoneOwners(ownership.owners, user.id)
       for (const owner of conflicts) {
         if (!isProfileOnlyPhoneOwner(owner)) {
-          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.', code: 'phone_taken' }), {
             status: 409,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           })
@@ -194,7 +194,7 @@ serve(async (req) => {
         const { data: authCheck, error: authCheckError } =
           await serviceClient.auth.admin.getUserById(owner.userId)
         if (authCheck?.user) {
-          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.', code: 'phone_taken' }), {
             status: 409,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           })
@@ -243,7 +243,7 @@ serve(async (req) => {
         .eq('id', user.id)
       if (updateError) {
         if (updateError.code === '23505') {
-          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+          return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.', code: 'phone_taken' }), {
             status: 409,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           })
@@ -256,7 +256,7 @@ serve(async (req) => {
         })
         return new Response(JSON.stringify({
           error: 'Phone verified but save failed. Contact support.',
-          debug_code: updateError.code,
+          code: 'save_failed',
         }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -280,7 +280,7 @@ serve(async (req) => {
       const { ledgerError } = await recordVerifiedPhone(serviceClient, user.id, phone)
       if (ledgerError) {
         console.error('[verify-otp] Failed to record verified phone possession:', ledgerError)
-        return new Response(JSON.stringify({ error: 'Phone verified but save failed. Contact support.' }), {
+        return new Response(JSON.stringify({ error: 'Phone verified but save failed. Contact support.', code: 'save_failed' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -310,8 +310,9 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
+    // #4561: the exception text never reaches the client.
     console.error('verify-otp error:', err)
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: 'Verification failed. Try again.', code: 'verify_failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
