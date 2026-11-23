@@ -336,7 +336,9 @@ describe("#3281 — the trip cart offers each package's add-ons", () => {
     const tree = await mount(client);
     await act(async () => holdPackage(PACKAGE_ID, "Shared room"));
     await flushLazy();
-    expect(rpc).not.toHaveBeenCalled();
+    // The add-ons come from the cache; the one read is the server's add-on
+    // switches (#3281 G-9), which the page's cached payload does not carry.
+    expect(rpc).toHaveBeenCalledTimes(1);
     expect(
       tree.root.findAllByProps({ accessibilityLabel: "Add one Airport transfer to Shared room" }).length,
     ).toBeGreaterThan(0);
