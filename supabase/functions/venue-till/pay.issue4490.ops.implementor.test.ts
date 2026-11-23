@@ -20,6 +20,7 @@ import {
   createVenueTillHandler,
   TILL_UNKNOWN_CODE_LIMIT,
   type TillClient,
+  versionAfterRelease,
 } from "./index.ts";
 import { handleVenueOrderPaystackCharge } from "../_shared/venueOrderWebhook.ts";
 import { generateTillCode, TILL_CODE_RE } from "../_shared/venueTillCard.ts";
@@ -726,7 +727,9 @@ Deno.test("O2F1-E3 adding to a check a stale card payment held: the stale paymen
     rpcOverride: (name) => {
       if (name === "issue_4490_can_sell") return Promise.resolve({ data: true, error: null });
       if (name !== "issue_4490_till_release_stale") return undefined;
+      // Letting the stale payment go opens the check and moves its version.
       stale.tables.venue_till_sales[0].state = "open";
+      stale.tables.venue_till_sales[0].version = 4;
       return Promise.resolve({ data: 1, error: null });
     },
   });
@@ -743,6 +746,10 @@ Deno.test("O2F1-E3 adding to a check a stale card payment held: the stale paymen
   const ok = await stale.handler(post(body));
   assertEquals(ok.status, 200);
   assert(stale.calls.some((c) => c.name === "issue_4490_till_attach_round"));
+  // The caller's version was current until our own release moved it.
+  assertEquals(versionAfterRelease(3, 3, 4), 4);
+  assertEquals(versionAfterRelease(2, 3, 4), 2);
+  assertEquals(versionAfterRelease(null, 3, 4), null);
   // A live code (nothing to release) still refuses, in words.
   const live = world({
     rpcOverride: (name) =>

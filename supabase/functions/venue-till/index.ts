@@ -215,6 +215,19 @@ function ok(data: unknown): Response {
   return json(200, { kind: "success", data });
 }
 
+/**
+ * #4490 O2 fix 1 (O2-T4): releasing a stale card payment moves the check's
+ * version. A caller who sent the version from just before that release is
+ * still current; any other version is checked as sent (T10).
+ */
+export function versionAfterRelease(
+  expected: number | null,
+  before: number,
+  after: number,
+): number | null {
+  return expected !== null && expected === before ? after : expected;
+}
+
 export function tillSafeCode(error: RpcError | null | undefined): string {
   const message = error?.message ?? "";
   return (TILL_SAFE_CODES as readonly string[]).find((c) => message === c) ??
@@ -509,14 +522,19 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         if (allowed.error || allowed.data !== true) {
           return json(403, { code: "not_authorized" });
         }
+        // The version this request is checked against (T10).
+        let roundVersion = expectedVersion;
         if (sale.state === "paying") {
           // #4490 O2 fix 1 (O2-T4): a code past its time or a tap that never
-          // reached the reader no longer holds the check.
+          // reached the reader no longer holds the check. Letting it go moves
+          // the check's version; a caller who had the version from before that
+          // is still current (only our own release moved it).
           const released = await rpc("issue_4490_till_release_stale", { p_sale_id: saleId });
           if (released.error) return tillFailure(released.error);
           if (Number(released.data) > 0) {
             const fresh = await loadSale();
             if (!fresh) return json(404, { code: "till_sale_not_found" });
+            roundVersion = versionAfterRelease(expectedVersion, Number(sale.version), Number(fresh.version));
             sale.state = fresh.state;
           }
         }
@@ -685,7 +703,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_sale_id: saleId,
           p_order_id: orderId,
           p_actor: userId,
-          p_expected_version: existing ? null : expectedVersion,
+          p_expected_version: existing ? null : roundVersion,
         });
         if (attached.error) {
           if (!existing) {
