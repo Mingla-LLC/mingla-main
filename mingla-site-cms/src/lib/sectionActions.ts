@@ -645,11 +645,14 @@ export const ADDABLE_SECTION_TYPES: readonly BlockType[] = [
   "rich_text", "media_feature", "gallery", "feature_cards", "faq", "pull_quote", "testimonials", "offering_grid",
   "cta", "team", "facts_table", "marquee", "contact_form", "newsletter_signup", "destination_grid", "story_grid",
   "page_links", "divider", "spacer",
+  // #4572 item 8 (D4) — the home page's cover: only at the top of Home, only when it has none.
+  "hero",
 ];
 /** These start from one of the owner's own photos (`media_id` on add_section). */
-export const SECTION_TYPES_NEEDING_PHOTO: ReadonlySet<string> = new Set(["media_feature", "gallery"]);
+export const SECTION_TYPES_NEEDING_PHOTO: ReadonlySet<string> = new Set(["media_feature", "gallery", "hero"]);
 
 const ADD_DESCRIPTIONS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "A photo or video across the top of Home. Needs a photo.",
   rich_text: "A heading and a few paragraphs.",
   media_feature: "One of your photos beside a heading and a few words.",
   gallery: "A set of your photos.",
@@ -680,7 +683,7 @@ export function sectionCatalog(design: DesignKey, actor: SectionActor): AddableS
     .filter((type) => actor === "user" || ARI_BLOCK_TYPES.includes(type))
     .map((type) => ({
       type,
-      label: SECTION_WORDS[type],
+      label: type === "hero" ? "Cover" : SECTION_WORDS[type],
       description: ADD_DESCRIPTIONS[type] ?? BLOCK_CATALOG[type].description,
       needs_photo: SECTION_TYPES_NEEDING_PHOTO.has(type),
     }));
@@ -731,6 +734,8 @@ export function starterSection(type: BlockType, design: DesignKey, mediaId: stri
   if (type === "page_links") { block.mode = "teaser"; fills("items"); }
   if (type === "media_feature") { block.media = mediaId; block.alignment = "left"; }
   if (type === "gallery") block.images = [{ id: newRowId(), media: mediaId }];
+  // #4572 item 8 — a cover starts with the owner's photo and no buttons.
+  if (type === "hero") { fills("ctas"); block.ctas = []; block.media = mediaId; }
   return { block, starters };
 }
 
@@ -782,10 +787,16 @@ async function savePage(ctx: SectionContext, page: AnyDoc, data: AnyDoc): Promis
     })) as AnyDoc;
   } catch (error) {
     if (error instanceof Error && error.message === "MEDIA_REJECTED") refuse("MEDIA_PROCESSING");
-    if (error instanceof Error && error.message === "BOOKING_BLOCKS_OFF") refuse("SECTION_TYPE_NOT_AVAILABLE");
+    // #4572 item 10 — say what really happened (never "Your design doesn't have that kind of section").
+    if (error instanceof Error && error.message === "BOOKING_BLOCKS_OFF") {
+      refuse("VALIDATION_FAILED", { problems: [BOOKING_OFF_PROBLEM] });
+    }
     throw error;
   }
 }
+
+/** #4572 item 10 — the one sentence an owner sees when a change really adds a booking feature. */
+export const BOOKING_OFF_PROBLEM = "Booking features aren't switched on for this website yet, so that change wasn't saved.";
 
 const historyActor = (ctx: SectionContext): HistoryActor => (ctx.actor === "ari" ? "ari" : "user");
 
@@ -872,6 +883,26 @@ export async function removeSection(ctx: SectionContext, args: AnyDoc): Promise<
   return done(updated, null);
 }
 
+/**
+ * #4572 item 8 (D4) — Home's blocks with a cover at the top: it REPLACES a
+ * leading colour panel (`page_header`) and keeps its heading. Refused unless
+ * the page is Home, the cover goes first, and Home has no cover yet.
+ */
+export function blocksWithHomeCover(page: AnyDoc, blocks: readonly AnyDoc[], cover: AnyDoc, at: number): AnyDoc[] {
+  if (!isHome(page)) refuse("VALIDATION_FAILED", { problems: ["A cover can only go at the top of Home."] });
+  if (blocks.some((block) => block.blockType === "hero")) refuse("VALIDATION_FAILED", { problems: ["Home already has a cover. Change it in Design → Cover."] });
+  if (at !== 0) refuse("VALIDATION_FAILED", { problems: ["A cover can only go at the top of Home."] });
+  const next = [...blocks];
+  const lead = next[0];
+  if (lead && lead.blockType === "page_header") {
+    const heading = typeof lead.heading === "string" && lead.heading.trim() ? lead.heading : null;
+    next[0] = heading ? { ...cover, heading } : cover;
+  } else {
+    next.unshift(cover);
+  }
+  return next;
+}
+
 export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (block: AnyDoc, texts: string[]) => void): Promise<SectionWrite> {
   const { page } = await loadPage(ctx, args.page_id);
   checkPageRevision(page, args.expected_revision);
@@ -900,8 +931,8 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
     if (missing.length) refuse("VALIDATION_FAILED", { problems: missing.slice(0, 20).map((key) => `add_section needs words for ${key}`) });
   }
   check?.(block, texts);
-  blocks.splice(at, 0, block);
-  const updated = await savePage(ctx, page, { blocks });
+  const nextBlocks = type === "hero" ? blocksWithHomeCover(page, blocks, block, at) : (blocks.splice(at, 0, block), blocks);
+  const updated = await savePage(ctx, page, { blocks: nextBlocks });
   const stored = (Array.isArray(updated.blocks) ? updated.blocks as AnyDoc[] : [])[at];
   const sectionId = stored ? sectionIdOf(stored, at) : String(block.id);
   await recordPage(ctx, page, updated, `Add ${SECTION_WORDS[type]}`);

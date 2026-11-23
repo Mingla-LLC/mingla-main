@@ -77,6 +77,14 @@ function cut(value: string, max: number): { value: string; truncated?: true } {
 }
 
 /** The snapshot at one level of detail (0 is the fullest); each level drops what planning needs least. */
+/** #4572 item 9 — Home's cover as the workspace knows it: none (a colour panel), a photo, a photo and a video. */
+export function homeCoverFacts(pages: readonly AnyDoc[]): { available: boolean; has_photo: boolean; has_video: boolean } {
+  const home = pages.find((page) => !page.parent && (page.slug ?? "") === "");
+  const hero = (Array.isArray(home?.blocks) ? (home!.blocks as AnyDoc[]) : []).find((block) => block.blockType === "hero");
+  if (!hero) return { available: false, has_photo: false, has_video: false };
+  return { available: true, has_photo: Boolean(relationId(hero.media)), has_video: Boolean(relationId(hero.video)) };
+}
+
 function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loadDraftState>>; navigation: AnyDoc | null; ctx: AriActionContext }): AnyDoc {
   const { draft, navigation, ctx } = input;
   const settings = draft.settings ?? {};
@@ -126,6 +134,8 @@ function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loa
       readability_warnings: look.readability_warnings.map((warning) => ({ sentence: warning.sentence, nearest_readable: warning.suggestion })),
     },
     menu,
+    // #4572 item 9 — whether Home has a cover Ari may talk about (Design → Cover).
+    home_cover: homeCoverFacts(draft.pages),
     addable_sections: sectionCatalog(design, "ari").map((entry) => ({ type: entry.type, label: entry.label, needs_photo: entry.needs_photo })),
     media: draft.media.slice(0, mediaMax).map((item) => ({
       id: String(item.id),

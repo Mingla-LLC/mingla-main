@@ -196,6 +196,7 @@ export const SITE_WORKSPACE_PROMPT_RULES =
 - When part of the request cannot be done with these steps, do the part you can and list the rest in couldnt (what, and why in plain words).
 - When nothing here can do what the owner asked, say so plainly in one sentence and call propose_website_team_request so the Mingla team can build it. Never pretend, and never offer a workaround that links bookings off Mingla.
 - You never publish from here. Publishing is the owner's Publish button. Never invent facts, prices, dates or reviews.
+- Only describe a place in Mingla (a tab, a button) that the workspace lists; never name a screen you have not been given. Home's cover is in home_cover: when available is false, the owner adds one in Design → Cover (a photo first, then a video if they like).
 - Keep every reply to two sentences.`;
 
 // ---------------------------------------------------------------------------

@@ -122,6 +122,45 @@ export function sitesFailure(
 }
 
 /**
+ * #4572 item 15 — a NEW site's first Go live waits while Mingla's recovery
+ * evidence (backup, manifest, restore drill) is older than its budget. That is
+ * Mingla's routine, not the owner's website, so it is answered as
+ * SERVICE_TEMPORARILY_UNAVAILABLE (503, retryable) with
+ * `reason_code: "PUBLISHING_PAUSED"` and this sentence, never as a bare
+ * INVALID_STATE. The Host shows the same sentence (PublishPanel) from
+ * brand_site_publishing_paused(), the same SQL owner as the server's gate.
+ */
+export const PUBLISHING_PAUSED_MESSAGE =
+  "Mingla is finishing a routine safety backup. Your draft is saved and nothing is lost. Try again shortly.";
+
+export function sitesPublishingPaused(operationId: string | null = null): Response {
+  return sitesJson({
+    ok: false,
+    error: {
+      code: "SERVICE_TEMPORARILY_UNAVAILABLE",
+      message: PUBLISHING_PAUSED_MESSAGE,
+      retryable: true,
+      operation_id: operationId,
+      reason_code: "PUBLISHING_PAUSED",
+    },
+  }, 503);
+}
+
+/**
+ * #4572 item 15 — what a refusal from brand_site_authorize_operation means.
+ * `sites_readiness_blocked` is the publishing pause; `sites_validation_failed`
+ * a malformed request; idempotency and forbidden as before; INVALID_STATE only
+ * for a refusal nobody named.
+ */
+export function sitesAuthorizeRefusal(message: string, operationId: string | null = null): Response {
+  if (message.includes("sites_readiness_blocked")) return sitesPublishingPaused(operationId);
+  if (message.includes("idempotency")) return sitesFailure("IDEMPOTENCY_CONFLICT", 409, operationId);
+  if (message.includes("forbidden")) return sitesFailure("FORBIDDEN", 403, operationId);
+  if (message.includes("sites_validation_failed")) return sitesFailure("VALIDATION_FAILED", 409, operationId);
+  return sitesFailure("INVALID_STATE", 409, operationId);
+}
+
+/**
  * #2829 W2 — refusals the OWNER can fix, passed through from the CMS.
  *
  * Studio refuses a draft in which two things would answer one address

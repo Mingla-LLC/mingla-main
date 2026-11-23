@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- covers are served by the token-bound /om route (immutable, same origin). */
+import { Lines } from "../../shared/Lines";
 import { localDate, offeringTimeZone, selectGridOfferings, type OfferingGridConfig, type SiteOffering } from "../../../contracts/generated/offerings.ts";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
 import type { SiteEventContext } from "../../../lib/clientAnalytics";
@@ -86,7 +87,10 @@ export function PhotoCard({ card, offering, analytics, sizes }: { card: Offering
       <CardLink card={card} analytics={analytics}>
         <div className="v-card__media">
           <div className="media media--flush v-ratio-4-3">
-            {card.coverUrl ? <img src={card.coverUrl} srcSet={card.coverSrcSet ?? undefined} sizes={card.coverSrcSet ? sizes ?? gridSizes(3) : undefined} alt="" loading="lazy" decoding="async" className="v-card__img" /> : null}
+            {card.coverUrl
+              ? <img src={card.coverUrl} srcSet={card.coverSrcSet ?? undefined} sizes={card.coverSrcSet ? sizes ?? gridSizes(3) : undefined} alt="" loading="lazy" decoding="async" className="v-card__img" />
+              // #4572 item 2 — no usable picture: the shared title face, never an empty box.
+              : <span className="mg-ph-none" aria-hidden="true"><span className="mg-ph-none__t">{card.title}</span></span>}
             <span aria-hidden="true" className="v-card__shade" />
           </div>
           {card.destination ? <span className="chip-location"><PinIcon />{card.destination}</span> : null}
@@ -95,7 +99,7 @@ export function PhotoCard({ card, offering, analytics, sizes }: { card: Offering
         <div className="v-card__body">
           {card.dates ? <p className="meta v-card__dates"><CalendarGlyph /><span className="tnum">{card.dates}</span></p> : null}
           <h3 className="card__title v-clamp-2">{card.title}</h3>
-          {card.summary ? <p className="card__body v-clamp-2 v-card__summary">{card.summary}</p> : null}
+          {card.summary ? <p className="card__body v-clamp-2 v-card__summary"><Lines text={card.summary} /></p> : null}
           <div className="card__meta">
             {length ? <p className="meta v-card__length"><ClockIcon /><span>{length}</span></p> : <span />}
             {price ? (

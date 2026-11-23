@@ -7,6 +7,7 @@ import { verifyCoreRequest } from "../lib/gateway";
 import { PLAN_OFFERING_KEYS } from "../contracts/generated/sitePlan.ts";
 import { scopedRequest } from "./contentEndpoint";
 import { importBrandCover } from "../lib/brandCoverImport";
+import { defaultBrandLibraryDeps, importBrandLibrary, libraryHeroPicture, parseLibrarySources, type LibrarySource } from "../lib/brandLibrary";
 import { defaultHeroPictureDeps, heroPictureFromOfferings } from "../lib/heroPictureImport";
 import { storageCoverRenditionDeps } from "../lib/artifactBuilder";
 import { materializeSetupContent, parseStagedRows, type StagedSetupRow } from "../lib/setupContent";
@@ -83,6 +84,9 @@ export function parseComposeBody(
   // #2829 W11 (A17) — only a path in Mingla's public brand-cover storage.
   const coverPhotoPath = brand.cover_photo_path === undefined ? null : brand.cover_photo_path;
   if (coverPhotoPath !== null && !isBrandCoverPath(coverPhotoPath)) return null;
+  // #4572 item 3 — the brand's logo, cover still and flyers (one bad entry refuses the envelope).
+  const librarySources = parseLibrarySources(brand.library_sources);
+  if (librarySources === null) return null;
   return {
     siteId: envelopeSiteId,
     brandId: value.brand_id,
@@ -95,6 +99,7 @@ export function parseComposeBody(
       city: text(brand.city, 120),
     },
     coverPhotoPath: coverPhotoPath as string | null,
+    librarySources,
     userId: value.user_id,
     reviewDrafts: value.review_drafts === true || designPass !== null,
     setupContent,
@@ -182,7 +187,11 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
       })).docs[0] as unknown as AnyDoc | undefined;
       const design = siteDesignKey(settingsDoc, parsed.designPass.design_key);
       const scoped = scopedRequest(req, { action: "compose_from_plan", userId: parsed.userId, siteId: envelope.site_id, brandId: parsed.brandId, rank: 50, args: {} }, tenantId);
-      let coverMediaId = parsed.coverPhotoPath ? await importBrandCover(scoped, tenantId, parsed.coverPhotoPath, storageCoverRenditionDeps()) : null;
+      // #4572 item 3 — the brand's own pictures into the library first; the
+      // hero takes the cover still, then the first flyer still.
+      const library = await importBrandLibrary(scoped, tenantId, parsed.librarySources, defaultBrandLibraryDeps());
+      let coverMediaId = libraryHeroPicture(library) ??
+        (parsed.coverPhotoPath ? await importBrandCover(scoped, tenantId, parsed.coverPhotoPath, storageCoverRenditionDeps()) : null);
       const records = await loadStudioRecords(req, tenant.id);
       // #4453 booking-first Home — no brand cover and no photo in Media: the
       // hero takes the next offering's own Mingla picture (imported once).
@@ -417,7 +426,46 @@ function slugOf(key: string): string {
   return key === "home" ? "" : key;
 }
 
+/**
+ * #4572 item 3 — "Bring in my brand photos": the same library import Build
+ * runs, for a draft built before it (signed by Core, which checked the
+ * caller's rank). Idempotent by checksum: a second run adds nothing.
+ */
+export function parseLibraryImportBody(value: unknown, envelopeSiteId: string): { brandId: string; userId: string; sources: LibrarySource[] } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const body = value as Record<string, unknown>;
+  if (body.kind !== "library_import" || body.site_id !== envelopeSiteId) return null;
+  if (typeof body.brand_id !== "string" || typeof body.user_id !== "string") return null;
+  const sources = parseLibrarySources(body.sources);
+  return sources ? { brandId: body.brand_id, userId: body.user_id, sources } : null;
+}
+
+async function libraryImport(req: PayloadRequest): Promise<Response> {
+  try {
+    const raw = (await req.text?.()) || "";
+    const envelope = await verifyCoreRequest(req, raw, "/api/internal/library-import");
+    const parsed = parseLibraryImportBody(JSON.parse(raw), envelope.site_id);
+    if (!parsed) return failure("VALIDATION_FAILED", 400);
+    const tenant = (await req.payload.find({
+      collection: "tenants", overrideAccess: true, depth: 0, limit: 1, where: { core_site_id: { equals: envelope.site_id } },
+    })).docs[0];
+    if (!tenant || tenant.core_brand_id !== parsed.brandId) return failure("FORBIDDEN", 403);
+    const tenantId = String(tenant.id);
+    const scoped = scopedRequest(req, { action: "library_import", userId: parsed.userId, siteId: envelope.site_id, brandId: parsed.brandId, rank: 20, args: {} }, tenantId);
+    const imported = await importBrandLibrary(scoped, tenantId, parsed.sources, defaultBrandLibraryDeps());
+    return sitesJsonResponse({ ok: true, data: { imported: imported.length, offered: parsed.sources.length } }, 200);
+  } catch (error) {
+    if (error instanceof Error && ["FORBIDDEN", "SESSION_EXPIRED"].includes(error.message)) return failure(error.message, 403);
+    return failure("SERVICE_TEMPORARILY_UNAVAILABLE", 503);
+  }
+}
+
 export const composeEndpoints: Endpoint[] = [
+  {
+    path: "/internal/library-import",
+    method: "post",
+    handler: observeCmsEndpoint("/internal/library-import", "core_to_cms", libraryImport),
+  },
   {
     path: "/internal/compose-from-plan",
     method: "post",

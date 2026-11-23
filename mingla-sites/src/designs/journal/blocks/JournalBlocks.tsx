@@ -8,6 +8,7 @@ import { galleryImages, quotes, type Quote } from "../../shared/data";
 import { ActionButton, Blk, HeadlineLines, Label, MinglaNote, Photo, SecHead, sectionId, text, type SharedBlockProps } from "../../shared/parts";
 import { HeroButtons, TripSearch, heroParts } from "../../shared/blocks/Hero";
 import { Book, Cover, GridShell, Price, State, CardTitle } from "../../shared/blocks/Offerings";
+import { Lines } from "../../shared/Lines";
 
 /*
  * #4453 6b — Journal's five signature layouts (spec §3.2), drawn from the
@@ -70,9 +71,9 @@ export function OfferingGridJournalColumns(props: SharedBlockProps) {
           {items.map((item) => (
             <article key={item.card.id} className="jr-art" data-offering-kind={item.card.kind} data-mg-rise="">
               {item.card.destination || item.card.dates ? <p className="jr-dl">{[item.card.destination, item.card.dates].filter(Boolean).join(" · ")}</p> : null}
-              <div className="mg-ph"><Cover item={item} sizes="(min-width: 1000px) 33vw, 100vw" /></div>
+              <div className="mg-ph"><Cover item={item} face sizes="(min-width: 1000px) 33vw, 100vw" /></div>
               <h3><CardTitle card={item.card} /></h3>
-              {item.card.summary ? <p className="jr-blurb">{item.card.summary}</p> : null}
+              {item.card.summary ? <p className="jr-blurb"><Lines text={item.card.summary} /></p> : null}
               <p className="jr-meta"><State item={item} /></p>
               <div className="jr-buy">
                 <Price item={item} className="mg-price" />

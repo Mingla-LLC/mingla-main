@@ -32,6 +32,8 @@ export type SitePlanContext = {
   serviceRpc: (fn: string, args: JsonObject) => Promise<RpcResult>;
   /** Signed Core→Studio call (the same signer and receipts as every other route). */
   callCms: (args: { siteId: string; operationId: string; path: string; payload: JsonObject }) => Promise<Response>;
+  /** #4572 item 3 — the brand's own picture fields (service read; the caller's rank is checked first). */
+  brandPictures?: (brandId: string) => Promise<JsonObject | null>;
 };
 
 export type PlanFailureCode =
@@ -90,6 +92,88 @@ export function brandCoverPhotoPath(brand: Record<string, unknown>): string | nu
   const match = /^\/storage\/v1\/object\/public\/(brand_covers\/[A-Za-z0-9._/-]{1,400})$/.exec(pathname);
   if (!match || match[1].split("/").some((part) => part === "" || part === "." || part === "..")) return null;
   return match[1];
+}
+
+/*
+ * #4572 item 3 (D3) — the brand's own pictures for its website library:
+ * the logo, the cover (its still when it is a video) and up to 11 event
+ * flyers (their stills), newest first, at most 13 in all. Each is a path in
+ * Mingla's public storage (`brand_avatars|brand_covers|event_covers/…`) or a
+ * stream-CDN still ({host, video_id, file}); anything else is left out.
+ * Studio imports each ONCE (by checksum).
+ */
+export type LibrarySource = {
+  kind: "brand_logo" | "brand_cover" | "event_flyer";
+  label: string;
+  path?: string;
+  stream_poster?: { host: string; video_id: string; file: string };
+};
+
+const LIBRARY_PATH_RE = /^\/storage\/v1\/object\/public\/((?:brand_avatars|brand_covers|event_covers)\/[A-Za-z0-9._/-]{1,400})$/;
+const STREAM_STILL_RE = /^https:\/\/([a-z0-9-]{1,63}\.b-cdn\.net)\/([0-9a-f-]{36})\/(thumbnail(?:_[A-Za-z0-9]{1,16})?\.jpg)$/;
+export const MAX_LIBRARY_SOURCES = 13;
+const MAX_FLYERS = 11;
+
+function storagePath(url: unknown): string | null {
+  if (typeof url !== "string" || url.length > 1000) return null;
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+  const match = LIBRARY_PATH_RE.exec(pathname);
+  if (!match || match[1].split("/").some((part) => part === "" || part === "." || part === "..")) return null;
+  return match[1];
+}
+
+function streamStill(url: unknown): LibrarySource["stream_poster"] | null {
+  if (typeof url !== "string" || url.length > 1000 || url.includes("..")) return null;
+  const match = STREAM_STILL_RE.exec(url);
+  return match ? { host: match[1], video_id: match[2], file: match[3] } : null;
+}
+
+function picture(url: unknown): Pick<LibrarySource, "path" | "stream_poster"> | null {
+  const path = storagePath(url);
+  if (path) return { path };
+  const still = streamStill(url);
+  return still ? { stream_poster: still } : null;
+}
+
+export function brandLibrarySources(brand: JsonObject, offerings: readonly unknown[]): LibrarySource[] {
+  const name = typeof brand.name === "string" && brand.name.trim() ? brand.name.trim().slice(0, 100) : "Your brand";
+  const out: LibrarySource[] = [];
+  const logo = storagePath(brand.profile_photo_url);
+  if (logo) out.push({ kind: "brand_logo", label: `Logo - ${name}`, path: logo });
+  const type = brand.cover_media_type;
+  const cover = type === "image" ? picture(brand.cover_media_url) : type === "video" || type === "gif" ? picture(brand.cover_media_poster_url) : null;
+  if (cover) out.push({ kind: "brand_cover", label: `Cover - ${name}`, ...cover });
+  const flyers = offerings
+    .filter((row): row is JsonObject => Boolean(row) && typeof row === "object" && !Array.isArray(row))
+    .filter((row) => row.kind === "event" && row.status !== "cancelled" && typeof row.title === "string")
+    .sort((a, b) => String(b.start_at ?? "").localeCompare(String(a.start_at ?? "")));
+  for (const row of flyers) {
+    if (out.filter((source) => source.kind === "event_flyer").length >= MAX_FLYERS) break;
+    const coverRow = row.cover as JsonObject | null | undefined;
+    const path = coverRow && typeof coverRow.path === "string" && /^event_covers\/[A-Za-z0-9._/-]{1,400}$/.test(coverRow.path) && !coverRow.path.includes("..")
+      ? coverRow.path
+      : null;
+    const still = row.cover_stream_poster as LibrarySource["stream_poster"] | undefined;
+    const label = `Flyer - ${String(row.title).slice(0, 100)}`;
+    if (path) out.push({ kind: "event_flyer", label, path });
+    else if (still && typeof still.host === "string" && typeof still.video_id === "string" && typeof still.file === "string") {
+      const checked = streamStill(`https://${still.host}/${still.video_id}/${still.file}`);
+      if (checked) out.push({ kind: "event_flyer", label, stream_poster: checked });
+    }
+  }
+  return out.slice(0, MAX_LIBRARY_SOURCES);
+}
+
+/** The brand's offerings as the website feed reads them (one owner of the cover-still rule), or none. */
+async function libraryOfferings(ctx: SitePlanContext, brandId: string): Promise<unknown[]> {
+  const feed = await ctx.serviceRpc("brand_site_offerings_feed_for_brand", { p_brand_id: brandId });
+  const rows = !feed.error && feed.data && typeof feed.data === "object" ? (feed.data as JsonObject).offerings : null;
+  return Array.isArray(rows) ? rows : [];
 }
 
 export function planFailure(code: PlanFailureCode, status: number, operationId: string | null = null): Response {
@@ -177,9 +261,11 @@ export async function handleSitePlanRoute(
   const plan = path.match(/^\/v1\/brands\/([^/]+)\/site-plan(?:\/(heartbeat|take-over|design))?$/);
   const start = path.match(/^\/v1\/brands\/([^/]+)\/site-start-request$/);
   const compose = path.match(/^\/v1\/brands\/([^/]+)\/site\/compose-from-plan$/);
+  // #4572 item 3 — "Bring in my brand photos" for a draft built before the library import.
+  const libraryImport = path.match(/^\/v1\/brands\/([^/]+)\/site\/library-import$/);
   const setupContent = path.match(/^\/v1\/brands\/([^/]+)\/setup-content$/);
   const pastTrips = path.match(/^\/v1\/brands\/([^/]+)\/past-trips$/);
-  const brandId = (plan ?? start ?? compose ?? setupContent ?? pastTrips)?.[1];
+  const brandId = (plan ?? start ?? compose ?? setupContent ?? pastTrips ?? libraryImport)?.[1];
   if (brandId === undefined) return null;
   if (!UUID.test(brandId)) return planFailure("VALIDATION_FAILED", 400);
 
@@ -276,6 +362,24 @@ export async function handleSitePlanRoute(
     const { data, error } = await ctx.userRpc("brand_site_request_start", { p_brand_id: brandId });
     return error ? planFailureFromRpc(error.message) : sitesJson({ ok: true, data });
   }
+  if (libraryImport && method === "POST") {
+    const operationId = typeof input.operation_id === "string" && UUID.test(input.operation_id) ? input.operation_id : null;
+    if (!operationId) return planFailure("VALIDATION_FAILED", 400);
+    // The caller's own rank (content rank 20) is re-derived in Core by this read.
+    const { data, error } = await ctx.userRpc("brand_site_plan_preview_inputs", { p_brand_id: brandId });
+    if (error) return planFailureFromRpc(error.message, operationId);
+    const siteId = String((data as JsonObject | null)?.site_id ?? "");
+    if (!UUID.test(siteId)) return planFailure("NOT_FOUND", 404, operationId);
+    const brand = ctx.brandPictures ? await ctx.brandPictures(brandId) : null;
+    if (!brand) return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
+    const sources = brandLibrarySources(brand, await libraryOfferings(ctx, brandId));
+    return ctx.callCms({
+      siteId,
+      operationId,
+      path: "/api/internal/library-import",
+      payload: { kind: "library_import", site_id: siteId, brand_id: brandId, user_id: ctx.userId, sources },
+    });
+  }
   if (compose && method === "POST") {
     const operationId = typeof input.operation_id === "string" && UUID.test(input.operation_id)
       ? input.operation_id
@@ -328,7 +432,10 @@ export async function handleSitePlanRoute(
             ? brand.contact_email.slice(0, 254)
             : null,
           city: typeof brand.city === "string" && brand.city.trim() ? brand.city.trim().slice(0, 120) : null,
+          // Kept one release for a Studio that does not read library_sources yet.
           ...(brandCoverPhotoPath(brand) ? { cover_photo_path: brandCoverPhotoPath(brand) } : {}),
+          // #4572 item 3 — the logo, the cover still and the event flyers, imported once.
+          library_sources: brandLibrarySources(brand, await libraryOfferings(ctx, brandId)),
         },
         ...(proof.reviewDrafts || designPass ? { review_drafts: true } : {}),
         ...(proof.rows.length ? { setup_content: proof.rows } : {}),
