@@ -9,9 +9,13 @@
  *             balance_not_found, a 404): nothing, no error card.
  *   ERROR     any other failure: the labelled retry.
  *   HELD      money paid beyond the trip price: one plain line, never a vendor.
+ *   SMALL     rework 9 (T8-6): a balance below the provider's minimum shows the
+ *             amount owed and the balance screen's small-balance line, never
+ *             "Next $0.49 on <date>" nor "Pay toward balance".
  *
  * FAILS-ON-REVERT: drop the supportsBalancePayments check (V1 red) or the
- * isBalanceUnavailable check (UNAVAIL red) in TripBalanceCard.
+ * isBalanceUnavailable check (UNAVAIL red), or the below-minimum check
+ * (SMALL red) in TripBalanceCard.
  */
 import React from "react";
 
@@ -169,4 +173,27 @@ test("REFUNDED an overpayment already refunded is shown; whole amounts have no d
   expect(texts(paid)).toContain("more than was due. It was refunded to your original payment method.");
   expect(texts(paid)).not.toMatch(/\.00 more than was due/);
   paid.unmount();
+});
+
+test("SMALL a balance below the provider minimum stays owed: the small-balance line, no next payment, no pay action", async () => {
+  mockQuery.data = { state: "payable", balance: balance({ remainingMinor: 49, providerMinimumMinor: 50,
+    nextPayment: { installmentId: "r2", dueAt: "2027-01-13T09:00:00Z", amountMinor: 49 },
+    openRows: [{ installmentId: "r2", dueAt: "2027-01-13T09:00:00Z", amountMinor: 49 }] }) };
+  const tree = await render();
+  const all = texts(tree);
+  expect(all).toContain("left");
+  expect(all).toContain("A small balance of");
+  expect(all).toContain("We'll be in touch about it.");
+  expect(all).not.toMatch(/Next/);
+  expect(all).not.toMatch(/Paid in full|written off/i);
+  expect(tree.root.findAll((n) => n.props.accessibilityLabel === "Pay toward balance").length).toBe(0);
+  tree.unmount();
+  // At the minimum it is payable as before.
+  mockQuery.data = { state: "payable", balance: balance({ remainingMinor: 50, providerMinimumMinor: 50,
+    nextPayment: { installmentId: "r2", dueAt: "2027-01-13T09:00:00Z", amountMinor: 50 } }) };
+  const payable = await render();
+  expect(texts(payable)).toContain("Next");
+  expect(texts(payable)).not.toContain("A small balance of");
+  expect(payable.root.findAll((n) => n.props.accessibilityLabel === "Pay toward balance").length).toBeGreaterThan(0);
+  payable.unmount();
 });

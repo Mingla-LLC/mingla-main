@@ -484,6 +484,13 @@ export async function handleTripBalancePay(
         409,
       );
     }
+    // issue #4522 rework 9 (T8-6, I-4522-NEVER-WRITE-OFF) — a whole balance
+    // below the provider's minimum cannot be paid (the provider would refuse
+    // it): no balance link is issued, the same answer as "Pay it all".
+    const providerMinimum = Number(current.providerMinimumMinor ?? 0);
+    if (remaining > 0 && Number.isSafeInteger(providerMinimum) && remaining < providerMinimum) {
+      return jsonResponse({ error: "balance_below_provider_minimum" }, 409);
+    }
     if (amountMinor > remaining) {
       return jsonResponse({ error: "flex_amount_invalid" }, 422);
     }
