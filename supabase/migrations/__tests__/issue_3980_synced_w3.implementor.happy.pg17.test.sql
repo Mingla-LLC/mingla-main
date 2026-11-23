@@ -594,16 +594,15 @@ begin
   perform pg_temp.w3_check('W3-BRAND', 'one run links one, makes one card, and asks a person once',
     (v_res->'brand_autolink'->>'linked') || '/' || (v_res->'brand_autolink'->>'created') || '/' || (v_res->'brand_autolink'->>'pick'), '1/1/1');
   select * into v_rec from public.crm_records where id = '39830000-0000-4000-c200-000000000001';
-  perform pg_temp.w3_check('W3-BRAND', 'the one card with the same email is linked; #4571 W4: it stays at Contacted until a booked demo is linked',
-    coalesce(v_rec.brand_id::text, 'none') || '/' || v_rec.stage, '39830000-0000-4000-b400-000000000001/contacted');
-  perform pg_temp.w3_check('W3-BRAND', '#4571 W4: and its log says the stage waits for a linked demo',
-    (select count(*)::text from public.crm_activity where record_id = v_rec.id and kind = 'note' and via = 'system' and body like '%until a demo booked through the scheduler is linked%'), '1');
+  -- #4571 W7 (Seth's decision (d)): a linked brand counts, so the brand link moves the card again.
+  perform pg_temp.w3_check('W3-BRAND', 'the one card with the same email is linked and moves to Onboarded',
+    coalesce(v_rec.brand_id::text, 'none') || '/' || v_rec.stage, '39830000-0000-4000-b400-000000000001/onboarded');
   perform pg_temp.w3_check('W3-BRAND', 'its log says why, in words',
     (select body from public.crm_activity where record_id = v_rec.id and kind = 'note' and via = 'system' and body like 'Brand %' order by occurred_at desc limit 1),
     'Brand W33980 Email Brand linked by itself: same email as this card.');
-  perform pg_temp.w3_check('W3-BRAND', 'a brand nobody matches gets a host card, with no owner (#4571 W4: at Prospect until a booked demo is linked)',
+  perform pg_temp.w3_check('W3-BRAND', 'a brand nobody matches gets a host card in Onboarded, with no owner (#4571 W7: the brand counts)',
     (select c.name || '/' || c.stage || '/' || coalesce(c.source, '') || '/' || (select count(*) from public.crm_record_owners o where o.record_id = c.id)
-       from public.crm_records c where c.brand_id = '39830000-0000-4000-b400-000000000002'), 'W33980 New Rooftop/prospect/inbound/0');
+       from public.crm_records c where c.brand_id = '39830000-0000-4000-b400-000000000002'), 'W33980 New Rooftop/onboarded/inbound/0');
   perform pg_temp.w3_check('W3-BRAND', 'an ambiguous phone (two cards) links nothing',
     (select count(*) from public.crm_records where brand_id = '39830000-0000-4000-b400-000000000003')::text
       || '/' || (select count(*) from public.crm_records where id in ('39830000-0000-4000-c200-000000000002', '39830000-0000-4000-c200-000000000003') and brand_id is not null),

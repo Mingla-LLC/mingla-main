@@ -53,8 +53,9 @@ function request(id: number, method: string, params: Record<string, unknown>) {
   });
 }
 
-Deno.test("#3980 fourteen work tools, in order, beside the 26 shipped tools", () => {
-  assertEquals(TEAM_AGENT_TOOLS.length, 26);
+// #4571 W6b added log_emails: 27 shipped tools.
+Deno.test("#3980 fourteen work tools, in order, beside the 27 shipped tools", () => {
+  assertEquals(TEAM_AGENT_TOOLS.length, 27);
   assertEquals(TEAM_AGENT_WORK_TOOLS.map((t) => t.name), NAMES);
   assertEquals(workToolsForMe({ work: false }), []);
   assertEquals(workToolsForMe({}), []);
@@ -304,11 +305,12 @@ Deno.test("#3980 every ops_ function the admin screens call has an agent tool or
 });
 
 Deno.test("#3980 plan steps may name exactly the connector's tools, or person", () => {
+  // #4571 W7: the latest definition (log_emails added).
   const migration = read(
-    "supabase/migrations/20271116003980_issue_3980_wave1_work_board.sql",
+    "supabase/migrations/20281126104571_issue_4571_w7_brand_counts.sql",
   );
   const block = migration.slice(
-    migration.indexOf("CREATE FUNCTION public.ops_plan_tools()"),
+    migration.indexOf("CREATE OR REPLACE FUNCTION public.ops_plan_tools()"),
   );
   const listed = block.slice(0, block.indexOf("]::text[]")).match(
     /'([a-z_]+)'/g,

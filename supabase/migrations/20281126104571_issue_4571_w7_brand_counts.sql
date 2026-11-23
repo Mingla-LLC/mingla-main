@@ -31,6 +31,8 @@
 --      rule: Demo booked with no other demo, or Onboarded or Live with neither
 --      another demo nor a brand. crm_demo_inbox leaves brand-linked Onboarded
 --      and Live hosts out of Demos cancelled.
+--   7. ops_plan_tools names log_emails (the W6b connector tool), so a Work
+--      plan step may name it.
 --   Unlinking a brand is not refused (it is the brand flow's own write); a
 --   host left at Onboarded with neither link shows Needs linking.
 --
@@ -46,7 +48,8 @@
 -- crm_demo_stage_allowed, crm_4571_demo_stage_guard, crm_demo_gate,
 -- crm_apply_brand_link, crm_reconcile_live and crm_demo_unlink from
 -- 20281126044571, and crm_record_unmerge and crm_demo_inbox from
--- 20281126094571; then drop crm_4571_stage_move_ok.
+-- 20281126094571, and ops_plan_tools from 20271116003980; then drop
+-- crm_4571_stage_move_ok and crm_4571_stage_refusal.
 
 BEGIN;
 
@@ -506,6 +509,24 @@ BEGIN
 END;
 $$;
 
+
+-- ---------------------------------------------------------------------------
+-- 5. Found while verifying: W6b added the connector tool log_emails, but the
+--    list of tools a Work plan step may name was not told. A superset; every
+--    reader checks membership only.
+-- ---------------------------------------------------------------------------
+-- From 20271116003980_issue_3980_wave1_work_board.sql. #4571 W7: log_emails.
+CREATE OR REPLACE FUNCTION public.ops_plan_tools() RETURNS text[]
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $$ SELECT ARRAY[
+  'get_started','my_day','find_records','get_record','check_names','find_mingla_link','check_contactable',
+  'list_beta_leads','team_summary','add_records','upsert_record','update_records','move_stage','set_owners',
+  'log_activity','record_reply','save_drafts','update_draft','list_drafts','withdraw_drafts',
+  'list_content','add_content','update_content','assign_content','comment_content','move_content',
+  'log_emails',
+  'read_log','claim','release','plan_work','add_work','start_work','update_work','close_work','push_back',
+  'list_work','my_work','list_calendar','runway_report','set_expected_event',
+  'person']::text[] $$;
 
 COMMENT ON FUNCTION public.crm_4571_stage_move_ok(uuid, text, text, text, timestamptz, uuid) IS
   'Issue #4571 W7. The ONE host stage rule (INVARIANTS crm-demo-before-demo-booked, crm-demo-or-brand-before-onboarded): Demo booked needs a linked booked demo; Onboarded and Live need a linked booked demo or a linked Mingla brand (brand_id). Read by the trigger crm_4571_demo_stage_guard, crm_demo_stage_allowed and crm_demo_gate.';
