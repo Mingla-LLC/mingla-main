@@ -940,7 +940,39 @@
         "packages/offering-rendering/normalizeCityCountry.ts",
         "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
-        "supabase/migrations/20280723004420_issue_4420_discovery_coarse_points.sql"
+        "supabase/migrations/20280723004420_issue_4420_discovery_coarse_points.sql",
+        "app-mobile/src/components/discover/FilterDropdown.tsx",
+        "app-mobile/src/components/discover/eventTypeGroups.ts",
+        "app-mobile/src/constants/eventTaxonomy.ts",
+        "app-mobile/src/i18n/locales/ar/discover.json",
+        "app-mobile/src/i18n/locales/bin/discover.json",
+        "app-mobile/src/i18n/locales/bn/discover.json",
+        "app-mobile/src/i18n/locales/de/discover.json",
+        "app-mobile/src/i18n/locales/el/discover.json",
+        "app-mobile/src/i18n/locales/en/discover.json",
+        "app-mobile/src/i18n/locales/es/discover.json",
+        "app-mobile/src/i18n/locales/fr/discover.json",
+        "app-mobile/src/i18n/locales/ha/discover.json",
+        "app-mobile/src/i18n/locales/he/discover.json",
+        "app-mobile/src/i18n/locales/hi/discover.json",
+        "app-mobile/src/i18n/locales/id/discover.json",
+        "app-mobile/src/i18n/locales/ig/discover.json",
+        "app-mobile/src/i18n/locales/it/discover.json",
+        "app-mobile/src/i18n/locales/ja/discover.json",
+        "app-mobile/src/i18n/locales/ko/discover.json",
+        "app-mobile/src/i18n/locales/ms/discover.json",
+        "app-mobile/src/i18n/locales/nl/discover.json",
+        "app-mobile/src/i18n/locales/pl/discover.json",
+        "app-mobile/src/i18n/locales/pt/discover.json",
+        "app-mobile/src/i18n/locales/ro/discover.json",
+        "app-mobile/src/i18n/locales/ru/discover.json",
+        "app-mobile/src/i18n/locales/sv/discover.json",
+        "app-mobile/src/i18n/locales/th/discover.json",
+        "app-mobile/src/i18n/locales/tr/discover.json",
+        "app-mobile/src/i18n/locales/uk/discover.json",
+        "app-mobile/src/i18n/locales/vi/discover.json",
+        "app-mobile/src/i18n/locales/yo/discover.json",
+        "app-mobile/src/i18n/locales/zh/discover.json"
       ]
     },
     {
@@ -1708,7 +1740,8 @@
         "supabase/functions/_shared/payoutCountries.ts",
         "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
         "mingla-business/src/utils/paidPublishGuards.ts",
-        "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx"
+        "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx",
+        "mingla-business/src/utils/ticketDisplay.ts"
       ]
     },
     {
@@ -1727,7 +1760,8 @@
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
         "mingla-business/src/components/event/EditAfterPublishBanner.tsx",
         "mingla-business/src/components/event/LazyChangeSummaryModal.tsx",
-        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx"
+        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx",
+        "supabase/migrations/20281129604572_issue_4572_repair_joined_venue_names.sql"
       ]
     },
     {
@@ -2012,7 +2046,8 @@
         "mingla-business/src/services/postHogService.web.ts",
         "mingla-business/src/services/screenTracking.ts",
         "mingla-business/src/components/brandContact/PinnedBottomBar.tsx",
-        "mingla-business/src/components/brandContact/PinnedBottomBar.web.tsx"
+        "mingla-business/src/components/brandContact/PinnedBottomBar.web.tsx",
+        "packages/offering-rendering/priceFromLabel.ts"
       ]
     },
     {
@@ -3018,7 +3053,12 @@
         "mingla-business/src/utils/unsavedChangesGuard.ts",
         "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
         "mingla-business/src/wrappers/SmartScrollView.native.tsx",
-        "supabase/migrations/20280724004420_issue_4420_event_location_follows_address_rule.sql"
+        "supabase/migrations/20280724004420_issue_4420_event_location_follows_address_rule.sql",
+        "mingla-business/src/constants/eventTaxonomy.ts",
+        "supabase/functions/_shared/eventTaxonomy.ts",
+        "packages/offering-rendering/taxonomyLabels.ts",
+        "supabase/migrations/20281129504572_issue_4572_draft_payload_keeps_venue.sql",
+        "supabase/migrations/20281129704572_issue_4572_event_types.sql"
       ]
     },
     {
@@ -3041,7 +3081,8 @@
         "supabase/migrations/20280722004420_issue_4420_experience_stop_detail_visibility.sql",
         "mingla-business/src/components/experience/ExperiencePricingStep.tsx",
         "supabase/migrations/20280801003645_issue_3645_per_stop_paid_price.sql",
-        "supabase/migrations/20280806003645_issue_3645_paid_free_choice.sql"
+        "supabase/migrations/20280806003645_issue_3645_paid_free_choice.sql",
+        "mingla-business/src/hooks/useExperienceDraftAdapter.ts"
       ]
     },
     {
