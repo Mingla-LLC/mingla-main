@@ -387,7 +387,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4549 merge of main after #4548 guest pack: kept main's #4548 rows and filtered-replay skip, re-added the #4549 migration and its three pg17 suites (with sidecars) in filename order; re-sealed.
 // #4573 form request safeupdate: listed migration 20281127004573 after 20281124004549 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it replaces functions from the skipped 20281122014541); re-sealed.
 // #4579 Mingla admin brand access: listed migration 20281128004579 after 20281127004573 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it re-emits readers from skipped migrations behind a drift guard); re-sealed.
-export const BOOTSTRAP_SHA256 = "0b69c1758d8fdfc9ece67a1265561198a2a72f61fac43e2ea4dfed90eab44207";
+// #4579 tester: registered the tester adversarial pg17 suite (with sidecar) beside the implementor suite in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "b333c5f05eacd9b721203c3e3f152a1abf642786ddd8c13f941589d79be6dca4";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
