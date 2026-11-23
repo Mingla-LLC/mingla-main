@@ -71,6 +71,10 @@ export function filterVenueModulesForCapabilities(
   if (capabilities.includes("venue.sell")) {
     allowed.add("till");
   }
+  // #4490 spec 08 O3 — kitchen and bar (a Till device holds venue.kitchen too).
+  if (capabilities.includes("venue.kitchen") || capabilities.includes("restaurant.manage_orders")) {
+    allowed.add("stations");
+  }
   return modules.filter((module) => allowed.has(module));
 }
 
@@ -84,6 +88,17 @@ export function withTillAccess(
   canSell: boolean,
 ): readonly VenueModule[] {
   return canSell ? modules : modules.filter((module) => module !== "till");
+}
+
+/**
+ * #4490 spec 08 O3 — Kitchen and bar shows only to someone the server lets work
+ * a station here (`issue_4490_can_kitchen`), never to a role it would refuse.
+ */
+export function withStationsAccess(
+  modules: readonly VenueModule[],
+  canKitchen: boolean,
+): readonly VenueModule[] {
+  return canKitchen ? modules : modules.filter((module) => module !== "stations");
 }
 
 /** #4490 — scoped staff who may open the venue's offer/space/hours editors. */

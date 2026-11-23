@@ -111,14 +111,16 @@ export const BUILT_FEATURES: ReadonlySet<VenueFeatureKey> = new Set<VenueFeature
   "stays",
   // 08 O1: the Till (switchable only behind its release flag, see below).
   "till",
+  // 08 O3: kitchen and bar screens (same release flag).
+  "kitchen_screens",
 ]);
 
 /**
  * #4490 spec 08 O1 — switched on only once its release flag (`VENUE_TILL`) is
- * on, so no host turns on a Till that devices cannot run yet. Station screens
- * (`kitchen_screens`) arrive with O3 and are not switchable in this build.
+ * on, so no host turns on a Till that devices cannot run yet. O3: the kitchen
+ * and bar screens (`kitchen_screens`) sit behind the same flag.
  */
-export const RELEASE_GATED_FEATURES: readonly VenueFeatureKey[] = ["till"];
+export const RELEASE_GATED_FEATURES: readonly VenueFeatureKey[] = ["till", "kitchen_screens"];
 
 /** Features a host can switch in Settings in this build. */
 export const SWITCHABLE_FEATURES: readonly VenueFeatureKey[] = VENUE_FEATURE_KEYS.filter(

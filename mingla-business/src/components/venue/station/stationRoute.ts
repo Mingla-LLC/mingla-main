@@ -21,3 +21,10 @@ export function stationsEntryVisible(input: {
 }): boolean {
   return input.released && input.kitchenScreensOn && input.canKitchen;
 }
+
+/** The launcher a kitchen-only login lands on inside the workspace. */
+export const STATIONS_LAUNCHER_COPY = {
+  title: "Kitchen and bar",
+  body: "Open this venue's kitchen or bar screen. New orders ring and flash there.",
+  open: "Open the kitchen screen",
+} as const;

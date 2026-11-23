@@ -55,6 +55,7 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import { useTillReleased } from "../../hooks/useTillReleased";
 import { tillHref, TillLauncher } from "../venue/till/TillLauncher";
+import { stationHref, StationsLauncher } from "../venue/station/StationsLauncher";
 import { unsavedWork } from "../../hooks/useUnsavedChangesGuard";
 import { useMyVenueAccess } from "../../hooks/useMyVenueAccess";
 import { useVenueFeatures } from "../../hooks/useVenueFeatures";
@@ -113,6 +114,7 @@ import { VenueWaitlistModule } from "../venue/VenueWaitlistModule";
 import type { VenueAvailabilityLeaveHandle } from "../venue/VenueAvailabilityModule";
 import {
   filterVenueModulesForCapabilities,
+  withStationsAccess,
   withTillAccess,
   scopedStaffManagesOffers,
 } from "../venue/venueCapabilityGate";
@@ -161,6 +163,7 @@ export type StayFeatureModule =
       | "waitlist"
       | "members"
       | "till"
+      | "stations"
       | "checkin"
       | "menu"
       | "orders"
@@ -274,6 +277,9 @@ export const STAY_FEATURE_MODULE_ORDER: readonly StayFeatureModule[] = [
   // Till leads Operations, before Check-in, Menu and Orders). Selecting it
   // opens the full-screen Till route, as in the ordinary venue shell.
   "till",
+  // #4490 spec 08 O3 — Kitchen and bar, right after the Till (floor design
+  // rail: Till, Kitchen and bar, then Check-in, Menu and Orders).
+  "stations",
   "checkin",
   "menu",
   "orders",
@@ -297,6 +303,7 @@ export const STAY_FEATURE_VENUE_MODULE: Readonly<
   waitlist: "waitlist",
   members: "members",
   till: "till",
+  stations: "stations",
   checkin: "checkin",
   menu: "menu",
   orders: "orders",
@@ -319,6 +326,7 @@ const FEATURE_ICONS: Readonly<Record<StayFeatureModule, IconName>> = {
   waitlist: "clock",
   members: "users",
   till: "cash",
+  stations: "list",
   checkin: "scan",
   menu: "list",
   orders: "receipt",
@@ -1439,19 +1447,23 @@ export function StaySuiteShell({
       tillReleased,
     });
     return new Set(
-      withTillAccess(
-        filterVenueModulesForCapabilities(
-          derived,
-          venueAccess.scoped,
-          venueAccess.capabilities,
+      withStationsAccess(
+        withTillAccess(
+          filterVenueModulesForCapabilities(
+            derived,
+            venueAccess.scoped,
+            venueAccess.capabilities,
+          ),
+          venueAccess.canSell === true,
         ),
-        venueAccess.canSell === true,
+        venueAccess.canKitchen === true,
       ),
     );
   }, [
     featuresQuery.data,
     tillReleased,
     venueAccess.canSell,
+    venueAccess.canKitchen,
     spacesRequestedVenueId,
     venueAccess.capabilities,
     venueAccess.scoped,
@@ -1538,6 +1550,11 @@ export function StaySuiteShell({
         appRouter.push(tillHref(venueId) as never);
         return;
       }
+      // #4490 spec 08 O3 — Kitchen and bar is a full-screen route too.
+      if (next === "stations") {
+        appRouter.push(stationHref(venueId) as never);
+        return;
+      }
       if (next === activeModule) return;
       requestLeave(() => {
         setActiveModule(next);
@@ -1556,6 +1573,14 @@ export function StaySuiteShell({
     if (!visibleModules.some((module) => module.id === "till")) return;
     tillDeepLinkRef.current = false;
     appRouter.replace(tillHref(venueId) as never);
+  }, [venueId, visibleModules]);
+  // #4490 spec 08 O3 — `?module=stations` opens the station screen the same way.
+  const stationsDeepLinkRef = useRef(initialStayModule === "stations");
+  useEffect(() => {
+    if (!stationsDeepLinkRef.current) return;
+    if (!visibleModules.some((module) => module.id === "stations")) return;
+    stationsDeepLinkRef.current = false;
+    appRouter.replace(stationHref(venueId) as never);
   }, [venueId, visibleModules]);
   // "Edit floor" targets one space's tables once; Spaces opened later from the
   // rail starts on its list again.
@@ -1863,6 +1888,10 @@ export function StaySuiteShell({
     // #4490 spec 08 O1 — a Till-only login lands here (never a blank shell).
     if (activeModule === "till") {
       return featurePage("till", <TillLauncher venueId={venueId} />);
+    }
+    // #4490 spec 08 O3 — a kitchen-only login lands here (never a blank shell).
+    if (activeModule === "stations") {
+      return featurePage("stations", <StationsLauncher venueId={venueId} />);
     }
     if (activeModule === "checkin") {
       return featurePage(

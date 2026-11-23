@@ -185,6 +185,15 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     group: "operations",
     summary: "Sell anything you offer from one screen.",
   },
+  // #4490 spec 08 O3 — Kitchen and bar (floor design rail: after the Till).
+  // Selecting it opens the full-screen station route; see the shells.
+  stations: {
+    id: "stations",
+    label: "Kitchen and bar",
+    band: "command",
+    group: "operations",
+    summary: "Each station gets its own screen.",
+  },
   settings: {
     id: "settings",
     label: "Settings",
@@ -351,6 +360,8 @@ export const BUILT_MODULES: ReadonlySet<VenueModule> = new Set<VenueModule>([
   "checkin",
   // 08-O1: the Till (shown only when released, switched on and allowed).
   "till",
+  // 08-O3: Kitchen and bar (released, Kitchen and bar screens on, kitchen rights).
+  "stations",
   "tables",
   "availability",
   "reservations",
@@ -460,6 +471,8 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
   const usesSpaces = venueUsesSpaces(input);
   // 08-O1: the Till, first under Operations (floor design rail).
   const till = input.tillReleased === true && featureOn(features, "till");
+  // 08-O3: Kitchen and bar, right after the Till (same release switch).
+  const stations = input.tillReleased === true && featureOn(features, "kitchen_screens");
 
   const candidates: Array<[VenueModule, boolean]> = usesSpaces
     ? [
@@ -481,6 +494,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["waitlist", featureOn(features, "waitlist")],
         ["members", featureOn(features, "memberships")],
         ["till", till],
+        ["stations", stations],
         ["checkin", door],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
@@ -494,6 +508,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["reservations", tables],
         ["waitlist", featureOn(features, "waitlist")],
         ["till", till],
+        ["stations", stations],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
         ["orders", orders],

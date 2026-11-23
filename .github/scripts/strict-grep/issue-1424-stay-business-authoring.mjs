@@ -169,6 +169,9 @@ const STAY_FEATURE_MAP = {
   // [TEST-MOD-APPROVED #4490] spec 08 O1: the Till is the thirteenth feature
   // destination; it shows the venue `till` module (which opens the Till route).
   till: "till",
+  // [TEST-MOD-APPROVED #4490] spec 08 O3: Kitchen and bar shows the venue
+  // `stations` module (which opens the station route).
+  stations: "stations",
   checkin: "checkin",
   menu: "menu",
   orders: "orders",
@@ -188,6 +191,9 @@ const STAY_FEATURE_ORDER = [
   "waitlist",
   "members",
   "till",
+  // [TEST-MOD-APPROVED #4490] spec 08 O3: Kitchen and bar right after the Till
+  // (the floor design's Operations rail: Till, Kitchen and bar, …).
+  "stations",
   "checkin",
   "menu",
   "orders",
@@ -195,6 +201,8 @@ const STAY_FEATURE_ORDER = [
 ];
 const TILL_LAUNCHER_IMPORT = 'import { tillHref, TillLauncher } from "../venue/till/TillLauncher";';
 const TILL_LAUNCHER_VENUE_IMPORT = 'import { tillHref, TillLauncher } from "./till/TillLauncher";';
+const STATIONS_LAUNCHER_IMPORT = 'import { stationHref, StationsLauncher } from "../venue/station/StationsLauncher";';
+const STATIONS_LAUNCHER_VENUE_IMPORT = 'import { stationHref, StationsLauncher } from "./station/StationsLauncher";';
 const VENUE_SCREEN_SPEC = /["'](\.\.\/venue\/(?:[\w-]+\/)*Venue\w*Module)["']/;
 
 function objectBody(source, name) {
@@ -263,6 +271,19 @@ function checkStayFeatureScope(files, failures) {
     if (/import\(\s*["']\.\.\/venue\/till\/TillLauncher["']/.test(shell)) {
       failures.push(`${label}: TillLauncher must not be lazy-loaded in the Stay shell (VenueSuiteShell imports it statically)`);
     }
+  }
+  // [TEST-MOD-APPROVED #4490] spec 08 O3: the Kitchen and bar launcher is
+  // static in both shells too, and the station screen is its own route.
+  if (venueShellSource.includes(STATIONS_LAUNCHER_VENUE_IMPORT)) {
+    if (shell.split(STATIONS_LAUNCHER_IMPORT).length - 1 !== 1) {
+      failures.push(`${label}: the Stay shell imports StationsLauncher statically exactly once, like VenueSuiteShell`);
+    }
+    if (/import\(\s*["']\.\.\/venue\/station\/StationsLauncher["']/.test(shell)) {
+      failures.push(`${label}: StationsLauncher must not be lazy-loaded in the Stay shell (VenueSuiteShell imports it statically)`);
+    }
+  }
+  if (/import\(\s*["']\.\.\/venue\/station\/StationScreen["']|from\s+["']\.\.\/venue\/station\/StationScreen["']/.test(shell)) {
+    failures.push(`${label}: the station screen is its own route; the Stay shell must not load it`);
   }
   if (/import\(\s*["']\.\.\/venue\/till\/TillScreen["']|from\s+["']\.\.\/venue\/till\/TillScreen["']/.test(shell)) {
     failures.push(`${label}: the Till screen is its own route; the Stay shell must not load it`);
@@ -624,8 +645,9 @@ function selfTest() {
     ["shell", '  orders: "orders",', '  orders: "offers",', "must show its own venue module"],
     // [TEST-MOD-APPROVED #4490] spec 08 O1 reversions: the Till's map entry,
     // its place in the order, and the static launcher import.
-    ["shell", '  till: "till",\n  checkin: "checkin",', '  till: "checkin",\n  checkin: "checkin",', "must show its own venue module"],
-    ["shell", '  "till",\n  "checkin",\n  "menu",', '  "checkin",\n  "till",\n  "menu",', "STAY_FEATURE_MODULE_ORDER must be exactly"],
+    // [TEST-MOD-APPROVED #4490] spec 08 O3: Kitchen and bar now follows the Till in both lists.
+    ["shell", '  till: "till",\n  stations: "stations",', '  till: "checkin",\n  stations: "stations",', "must show its own venue module"],
+    ["shell", '  "till",\n  // #4490 spec 08 O3', '  // #4490 spec 08 O3', "STAY_FEATURE_MODULE_ORDER must be exactly"],
     ["shell", '  "members",\n  // #4490 spec 08 O1', '  // #4490 spec 08 O1', "STAY_FEATURE_MODULE_ORDER must be exactly"],
     [
       "shell",
@@ -638,6 +660,22 @@ function selfTest() {
       TILL_LAUNCHER_IMPORT,
       TILL_LAUNCHER_IMPORT + '\nimport { TillScreen } from "../venue/till/TillScreen";',
       "the Till screen is its own route",
+    ],
+    // [TEST-MOD-APPROVED #4490] spec 08 O3 reversions: the Kitchen and bar map
+    // entry, its place after the Till, and the static launcher import.
+    ["shell", '  stations: "stations",\n  checkin: "checkin",', '  stations: "orders",\n  checkin: "checkin",', "must show its own venue module"],
+    ["shell", '  "stations",\n  "checkin",\n  "menu",', '  "checkin",\n  "stations",\n  "menu",', "STAY_FEATURE_MODULE_ORDER must be exactly"],
+    [
+      "shell",
+      STATIONS_LAUNCHER_IMPORT,
+      'const LazyStationsLauncher = React.lazy(() => import("../venue/station/StationsLauncher").then((m) => ({ default: m.StationsLauncher })));',
+      "StationsLauncher must not be lazy-loaded",
+    ],
+    [
+      "shell",
+      STATIONS_LAUNCHER_IMPORT,
+      STATIONS_LAUNCHER_IMPORT + '\nimport { StationScreen } from "../venue/station/StationScreen";',
+      "the station screen is its own route",
     ],
     [
       "shell",

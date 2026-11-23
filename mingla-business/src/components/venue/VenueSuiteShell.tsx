@@ -79,6 +79,7 @@ import { featureSetupNeeds, type SetupRefusal, type SetupTarget } from "./featur
 import {
   filterVenueModulesForCapabilities,
   scopedStaffManagesOffers,
+  withStationsAccess,
   withTillAccess,
 } from "./venueCapabilityGate";
 import { venueWriteErrorCopy } from "./features/venueFeaturesCopy";
@@ -114,6 +115,7 @@ import {
 import { deriveVenueRailModules } from "./venueRail";
 import { useTillReleased } from "../../hooks/useTillReleased";
 import { tillHref, TillLauncher } from "./till/TillLauncher";
+import { stationHref, StationsLauncher } from "./station/StationsLauncher";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueNav,
@@ -393,17 +395,20 @@ export function VenueSuiteShell({
   const hasReviews = reviewsPanel !== null && reviewsPanel !== undefined;
   const visibleModules = useMemo(
     () => withVenueReviewsModule(
-      withTillAccess(
-        filterVenueModulesForCapabilities(
-          deriveVenueNav(navInput),
-          venueAccess.scoped,
-          venueAccess.capabilities,
+      withStationsAccess(
+        withTillAccess(
+          filterVenueModulesForCapabilities(
+            deriveVenueNav(navInput),
+            venueAccess.scoped,
+            venueAccess.capabilities,
+          ),
+          venueAccess.canSell === true,
         ),
-        venueAccess.canSell === true,
+        venueAccess.canKitchen === true,
       ),
       hasReviews,
     ),
-    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities, venueAccess.canSell],
+    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities, venueAccess.canSell, venueAccess.canKitchen],
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
@@ -470,6 +475,11 @@ export function VenueSuiteShell({
         router.push(tillHref(venueId) as never);
         return;
       }
+      // #4490 spec 08 O3 — Kitchen and bar is a full-screen route too.
+      if (nextModule === "stations" && venueId !== null) {
+        router.push(stationHref(venueId) as never);
+        return;
+      }
       if (nextModule === activeModule) return;
 
       if (activeModule === "availability" && availabilityRef.current !== null) {
@@ -506,6 +516,14 @@ export function VenueSuiteShell({
     if (!visibleModules.includes("till")) return;
     tillDeepLinkRef.current = false;
     router.replace(tillHref(venueId) as never);
+  }, [venueId, visibleModules]);
+  // #4490 spec 08 O3 — `?module=stations` opens the station screen the same way.
+  const stationsDeepLinkRef = useRef(initialModule === "stations");
+  useEffect(() => {
+    if (!stationsDeepLinkRef.current || venueId === null) return;
+    if (!visibleModules.includes("stations")) return;
+    stationsDeepLinkRef.current = false;
+    router.replace(stationHref(venueId) as never);
   }, [venueId, visibleModules]);
 
   const leaveSection =
@@ -773,6 +791,10 @@ export function VenueSuiteShell({
     // #4490 spec 08 O1 — a Till-only login lands here (never a blank shell).
     if (activeModule === "till" && venueId !== null) {
       return <TillLauncher venueId={venueId} />;
+    }
+    // #4490 spec 08 O3 — a kitchen-only login lands here (never a blank shell).
+    if (activeModule === "stations" && venueId !== null) {
+      return <StationsLauncher venueId={venueId} />;
     }
     if (activeModule === "overview") {
       // ORCH-1186-B — the Overview slot is now the venue INTELLIGENCE dashboard

@@ -1054,7 +1054,8 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
 
   // TEST-MOD-APPROVED #4490 (spec 08 O1): the Till joins the decided twelve,
   // first of the floor tools (before Check-in, Menu and Orders).
-  it("T-1i — the order constant is the decided twelve plus the Till", () => {
+  // TEST-MOD-APPROVED #4490 (spec 08 O3 part A2): Kitchen and bar follows the Till.
+  it("T-1i — the order constant is the decided twelve plus the Till and Kitchen and bar", () => {
     expect(STAY_FEATURE_MODULE_ORDER).toEqual([
       "offers",
       "spaces",
@@ -1065,6 +1066,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
       "waitlist",
       "members",
       "till",
+      "stations",
       "checkin",
       "menu",
       "orders",
