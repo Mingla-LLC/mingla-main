@@ -18,7 +18,7 @@
  *                 about an offering that HAS one would invent data (rule 9).
  *
  * The shape check mirrors `validate_refund_policy` (migration 20260612000000,
- * extended by 20281125024522 for issue #4522's two optional keys):
+ * extended by 20281129024522 for issue #4522's two optional keys):
  * kind is one of four, 1–8 tiers, each tier an integer `days_before_start >= 0`
  * and an integer `refund_pct` 0–100, days strictly descending and percentages
  * non-increasing. A value the database could never have stored is treated as

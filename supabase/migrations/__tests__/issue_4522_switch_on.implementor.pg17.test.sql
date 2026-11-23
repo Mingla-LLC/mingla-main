@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-11 | issue #4522 | After M5 the server switch issue_4522_plan_v2_enabled() returns true with its M1 attributes and service-role-only grants, and a kill switch that returns false brings back payment_plan_v2_unavailable on every save path.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 13 (M5, 20281125084522, switch on). Runs after the full chain, M5 last.
+-- Issue #4522 slice 13 (M5, 20281129084522, switch on). Runs after the full chain, M5 last.
 -- Fails if M5 is reverted to `SELECT false`. The kill-switch proof and the
 -- drift-guard proof redefine the switch only inside this transaction
 -- (rolled back).
@@ -114,7 +114,7 @@ BEGIN
   END IF;
 END $$;
 
--- T-5: the M5 drift guard, copied verbatim from 20281125084522 (the file wraps
+-- T-5: the M5 drift guard, copied verbatim from 20281129084522 (the file wraps
 -- itself in BEGIN/COMMIT, so it cannot be \ir'd inside this transaction),
 -- passes only over the M1 `SELECT false` body and refuses the shipped (true) body.
 CREATE FUNCTION pg_temp.m5_guard() RETURNS text

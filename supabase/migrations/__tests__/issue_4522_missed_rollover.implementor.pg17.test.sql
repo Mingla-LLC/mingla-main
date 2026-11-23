@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-8 | issue #4522 | A superseded instalment row is never money: rollover moves its amount onto later rows and it is never charged, retried, noticed or counted as due.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 6 (M3b, 20281125054522): the missed-payment rollover
+-- Issue #4522 slice 6 (M3b, 20281129054522): the missed-payment rollover
 -- (D-7, after the last retry), the host money screen and Admin balance reads.
 
 BEGIN;

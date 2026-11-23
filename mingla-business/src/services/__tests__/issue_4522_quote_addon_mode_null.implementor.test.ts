@@ -1,7 +1,7 @@
 /**
  * issue #4522 S-1 — every plan-v2 trip checkout showed "Couldn't get your
  * price" because the quote body carries `"addonPaymentMode": null` (the SQL in
- * 20281125034522 emits `v_plan->'addonPaymentMode'`, JSON null, whenever the
+ * 20281129034522 emits `v_plan->'addonPaymentMode'`, JSON null, whenever the
  * cart has no add-on choice) and the reader treated null as an invalid choice.
  *
  * These tests feed the real wire shape of `issue_3281_quote_cart` for a v2

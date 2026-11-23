@@ -1,7 +1,7 @@
 -- issue #3281 S6 (checkpoint 15, gap E) — a guest's free RSVP add-on picks
 -- outlive their add-on.
 --
--- 20281125123281 created event_rsvp_add_ons.add_on_id with ON DELETE CASCADE,
+-- 20281129123281 created event_rsvp_add_ons.add_on_id with ON DELETE CASCADE,
 -- so deleting an add-on silently dropped every guest's pick of it (and the door
 -- line with it). The spec's rule for an add-on that has been sold or picked is
 -- that it stops selling ("Stop selling" / an unlisted add-on is deactivated by
@@ -11,7 +11,7 @@
 -- too (deleting the RSVP, or an offering through its cascades) still works.
 --
 -- No function, grant or data changes. The guard below refuses to run unless the
--- constraint is exactly the one 20281125123281 created.
+-- constraint is exactly the one 20281129123281 created.
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 
@@ -26,7 +26,7 @@ BEGIN
        AND c.confrelid = 'public.ticket_add_ons'::regclass
        AND c.confdeltype = 'c'
   ) THEN
-    RAISE EXCEPTION 'issue #3281 gap E drift: event_rsvp_add_ons_add_on_id_fkey is not the ON DELETE CASCADE key 20281125123281 created';
+    RAISE EXCEPTION 'issue #3281 gap E drift: event_rsvp_add_ons_add_on_id_fkey is not the ON DELETE CASCADE key 20281129123281 created';
   END IF;
 END;
 $guard$;

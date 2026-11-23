@@ -2,7 +2,7 @@
 -- MINGLA-INVARIANT: I-4522-4 | issue #4522 | An order has at most one open flexible payment; none starts while a planned row has an open charge attempt, and no planned row is claimed while one is open.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 5 (M3, 20281125044522): flexible payments, rebalancing,
+-- Issue #4522 slice 5 (M3, 20281129044522): flexible payments, rebalancing,
 -- claim guards and balance links. The server switch goes on only inside this
 -- transaction (rolled back).
 

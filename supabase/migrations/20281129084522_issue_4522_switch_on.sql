@@ -15,7 +15,7 @@
 -- the switch), and open flexible rows finish through webhooks.
 --
 -- Drift guard: refuses to run unless the function's current body is exactly
--- the M1 (20281125024522) `SELECT false` body, so it can never silently
+-- the M1 (20281129024522) `SELECT false` body, so it can never silently
 -- overwrite a kill switch or any other later change.
 -- Static SQL only. Conflicts would raise PT409, never 40001 (none raised here).
 

@@ -4,7 +4,7 @@
 -- deferrals that must land before multi_link_enabled can be switched on.
 --
 -- Behind add_on_rollout.plan_enabled (false). The quote, create-session and
--- finalize halves of the choice shipped with #4522 M2 (20281125034522): the
+-- finalize halves of the choice shipped with #4522 M2 (20281129034522): the
 -- choice rides cart lines as addonPaymentMode (review decision 1). This file
 -- adds what was still missing:
 --   * the #3859 contract path (buyer web checkout v2): issue_4522_checkout_v2_plan
@@ -40,8 +40,8 @@
 --     With one link per add-on (every add-on today), each result is unchanged.
 --
 -- Re-emitted from the replayed database's current bodies (md5 drift-guarded):
---   issue_4522_checkout_v2_plan (20281125034522), issue_3859_bind_checkout_contract
---   (20280313003281), issue_1930_ticket_checkout_finalize_base (20281125034522),
+--   issue_4522_checkout_v2_plan (20281129034522), issue_3859_bind_checkout_contract
+--   (20280313003281), issue_1930_ticket_checkout_finalize_base (20281129034522),
 --   issue_1930_ticket_session_authorized, issue_3281_strip_removed_days,
 --   issue_3281_publish_tier_extras, business_update_live_event_atomic (their
 --   latest #3281 bodies), issue_3281_extras_refund_cents,
@@ -49,7 +49,7 @@
 --   issue_3281_add_ons_all_returned, issue_3281_add_on_refund_lines,
 --   issue_3281_add_on_refund_cents, issue_3281_record_add_on_refund,
 --   refund_preview, biz_refund_order, admin_refund_order,
---   admin_order_add_on_lines (20281125093281), issue_3281_door_order_extras
+--   admin_order_add_on_lines (20281129093281), issue_3281_door_order_extras
 --   (20280404003281). Signatures, grants and comments are unchanged.
 -- New: order_add_on_plan_removals (service_role only), issue_3281_add_on_removed_qty,
 --   issue_3281_add_on_removed_cents, issue_3281_order_has_open_spread,
