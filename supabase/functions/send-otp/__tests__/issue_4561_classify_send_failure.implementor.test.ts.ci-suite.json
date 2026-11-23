@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/send-otp/__tests__/issue_4561_classify_send_failure.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4561-classify-send-failure",
+  "profile": "deno-2-unit"
+}
