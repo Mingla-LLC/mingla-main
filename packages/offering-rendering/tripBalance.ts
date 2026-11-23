@@ -4,7 +4,46 @@
  * The database remains authoritative for the per-ticket-line rebalance. This
  * module only previews the aggregate schedule the buyer can already see; a
  * successful payment always refreshes the server-owned schedule.
+ *
+ * Shared by buyer web (`/pay/balance/[token]`) and the Explorer balance
+ * screen, so a display rule fixed here is fixed on both. Imports only the
+ * package's own pure display leaves.
  */
+
+import { withCurrencyGlyph } from "./currencyGlyph.ts";
+import { priceDecimals, priceFallbackDecimals } from "./priceDecimals.ts";
+
+/**
+ * issue #4522 S-16 — a balance amount as the buyer reads it: the package's
+ * price rule (#3645, a whole amount shows no decimals: "₦900,000", "$300";
+ * anything else the currency's full decimals: "$0.49") and the naira glyph
+ * rule (#3341). Amounts are minor units of a 2-decimal currency (the only
+ * currencies trips are sold in).
+ */
+export function formatTripBalanceMoney(
+  amountMinor: number,
+  currency: string,
+  locale?: string,
+): string {
+  const code = currency.trim().toUpperCase();
+  const major = amountMinor / 100;
+  try {
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(locale, {
+        style: "currency",
+        currency: code,
+        ...priceDecimals(major),
+      }).format(major),
+      code,
+    );
+  } catch {
+    return `${code} ${major.toFixed(priceFallbackDecimals(major))}`;
+  }
+}
+
+/** issue #4522 S-15 (spec §7) — the plan takes set payments only. */
+export const TRIP_BALANCE_SET_DATES_COPY =
+  "The host has set payment dates, so you can pay the next payment or everything.";
 
 export interface TripBalanceScheduleRow {
   installmentId: string;
@@ -258,7 +297,30 @@ export function tripBalanceAmountAllowed(
     amountMinor >= (balance.minPaymentMinor ?? 0);
 }
 
+/**
+ * The buyer's options. issue #4522 S-16: one card per distinct amount — when
+ * the balance is at or below the minimum, "Minimum" and "Next payment" are the
+ * same money as "Pay it all" and only "Pay it all" shows; a next payment equal
+ * to the minimum shows once, as "Next payment".
+ */
 export function tripBalanceOptions(balance: TripBalance): TripBalanceOption[] {
+  const raw = tripBalanceRawOptions(balance);
+  return raw.filter((option, index) => {
+    if (option.amountMinor === null) return true;
+    if (option.key !== "full" && option.amountMinor === balance.remainingMinor) {
+      return false;
+    }
+    if (option.key === "minimum") {
+      return !raw.some((other, j) =>
+        j !== index && other.key === "next" &&
+        other.amountMinor === option.amountMinor
+      );
+    }
+    return true;
+  });
+}
+
+function tripBalanceRawOptions(balance: TripBalance): TripBalanceOption[] {
   const options: TripBalanceOption[] = [];
   if (
     balance.canPayAnyAmount && balance.minPaymentMinor !== null &&
@@ -356,6 +418,56 @@ export function unpayableRemainderCopy(
       money(balance.maxPartialMinor)
     }, or the full ${whole}.`
     : `That would leave too little to pay later. Pay the full ${whole}.`;
+}
+
+/**
+ * issue #4522 S-3 (spec §7) — the inline reason for an "Other amount" the
+ * server would refuse, with the amounts the traveler can pay: below the
+ * minimum names the smallest payment, above the balance names the balance,
+ * and one that leaves too little for later names both limits. `live`: while
+ * the traveler is typing, an empty field says nothing yet.
+ */
+export function tripBalanceAmountErrorCopy(
+  result: TripBalanceAmountResult,
+  balance: Pick<TripBalance, "remainingMinor" | "minPaymentMinor" | "maxPartialMinor">,
+  money: (minor: number) => string,
+  options: { live?: boolean } = {},
+): string | null {
+  if (result.ok) return null;
+  switch (result.error) {
+    case "empty":
+      return options.live === true ? null : "Enter an amount.";
+    case "over_balance":
+      return `That's more than your balance of ${money(balance.remainingMinor)}.`;
+    case "below_minimum":
+      return `The smallest payment is ${money(balance.minPaymentMinor ?? 0)}.`;
+    case "leaves_unpayable_remainder":
+      return unpayableRemainderCopy(balance, money);
+    default:
+      return "Enter a valid amount.";
+  }
+}
+
+/**
+ * issue #4522 S-5 — money paid beyond what the trip cost: being refunded, and
+ * already refunded. Never counted in paid or left. [] when there is none.
+ */
+export function tripBalanceOverpaymentLines(
+  balance: Pick<TripBalance, "heldCreditMinor" | "overpaymentRefundedMinor">,
+  money: (minor: number) => string,
+): string[] {
+  const lines: string[] = [];
+  if (balance.heldCreditMinor > 0) {
+    lines.push(
+      `You paid ${money(balance.heldCreditMinor)} more than was due. We’re refunding it to your original payment method.`,
+    );
+  }
+  if (balance.overpaymentRefundedMinor > 0) {
+    lines.push(
+      `You paid ${money(balance.overpaymentRefundedMinor)} more than was due. It was refunded to your original payment method.`,
+    );
+  }
+  return lines;
 }
 
 const floorToUnit = (value: number, unit: number): number =>

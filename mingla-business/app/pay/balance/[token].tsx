@@ -20,6 +20,7 @@ import {
   supportsBalancePayments,
   parseTripBalanceAmount,
   type TripBalanceChoice,
+  tripBalanceAmountErrorCopy,
   tripBalanceOptions,
   unpayableRemainderCopy,
   type TripBalanceView,
@@ -28,6 +29,7 @@ import {
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import {
   balanceMoney,
+  TripBalanceOverpayment,
   TripBalancePanel,
 } from "../../../src/components/trip/TripBalancePanel";
 import { radius, space, type } from "../../../src/constants/designSystem";
@@ -47,6 +49,10 @@ const StripePayment = React.lazy(() =>
 );
 const POLL_INTERVAL_MS = 2_000;
 const POLL_BUDGET_MS = 30_000;
+
+/** issue #4522 S-4 — the server cleared a balance too small to charge. */
+const BALANCE_SETTLED_COPY =
+  "Nothing more is owed on this trip. The last amount was too small to charge, so it has been cleared.";
 
 const first = (value: string | string[] | undefined): string =>
   typeof value === "string" ? value : "";
@@ -86,7 +92,7 @@ const paymentErrorCopy = (
         ? unpayableRemainderCopy(balance, (minor) => balanceMoney(minor, balance.currency))
         : "Enter a valid amount.";
     case "balance_settled":
-      return "Nothing more is owed on this trip. The last amount was too small to charge, so it has been cleared.";
+      return BALANCE_SETTLED_COPY;
     case "plan_not_flexible":
       return "This trip takes set payments. You can pay your next payment or the full balance.";
     case "deposit_not_paid":
@@ -103,7 +109,7 @@ const paymentErrorCopy = (
 
 type Page =
   | { kind: "loading" }
-  | { kind: "ready"; view: TripBalanceView }
+  | { kind: "ready"; view: TripBalanceView; notice?: string }
   | {
     kind: "stripe";
     view: TripBalanceView;
@@ -112,6 +118,8 @@ type Page =
   | { kind: "checking"; view: TripBalanceView | null }
   | { kind: "pending"; view: TripBalanceView | null }
   | { kind: "expired" }
+  // issue #4522 S-14 — an unknown or mistyped link.
+  | { kind: "invalid" }
   | { kind: "error"; view: TripBalanceView | null; message: string };
 
 export default function TripBalancePayPage(): React.ReactElement {
@@ -146,6 +154,11 @@ export default function TripBalancePayPage(): React.ReactElement {
     } catch (error) {
       if (error instanceof TripBalancePayError && error.status === 410) {
         setPage({ kind: "expired" });
+      } else if (
+        error instanceof TripBalancePayError &&
+        error.code === "balance_link_invalid"
+      ) {
+        setPage({ kind: "invalid" });
       } else if (
         error instanceof TripBalancePayError &&
         error.code === "balance_not_found"
@@ -233,6 +246,31 @@ export default function TripBalancePayPage(): React.ReactElement {
     return options.find((option) => option.key === choice)?.amountMinor ?? null;
   }, [balance, choice, customAmount, options]);
 
+  // issue #4522 S-3 — say why an Other amount can't be paid while it is typed,
+  // with the amounts that can be (the button alone only greyed out).
+  const liveCustomError = useMemo((): string | null => {
+    if (!balance || choice !== "other") return null;
+    return tripBalanceAmountErrorCopy(
+      parseTripBalanceAmount(customAmount, balance),
+      balance,
+      (minor) => balanceMoney(minor, balance.currency),
+      { live: true },
+    );
+  }, [balance, choice, customAmount]);
+
+  /**
+   * issue #4522 S-4 / S-6 — the server says there is nothing left to charge
+   * (it cleared a balance too small to charge, or the balance was settled
+   * elsewhere): read the link again and show what is true now.
+   */
+  const refreshAfterSettled = async (notice?: string): Promise<boolean> => {
+    const fresh = await viewTripBalanceLink(token).catch(() => null);
+    if (fresh === null) return false;
+    last.current = fresh;
+    setPage({ kind: "ready", view: fresh, ...(notice ? { notice } : {}) });
+    return true;
+  };
+
   const choose = (next: TripBalanceChoice): void => {
     setChoice(next);
     setCustomError(null);
@@ -244,19 +282,11 @@ export default function TripBalancePayPage(): React.ReactElement {
       const parsed = parseTripBalanceAmount(customAmount, balance);
       if (!parsed.ok) {
         setCustomError(
-          parsed.error === "empty"
-            ? "Enter an amount."
-            : parsed.error === "over_balance"
-            ? `That's more than your balance of ${
-              balanceMoney(balance.remainingMinor, balance.currency)
-            }.`
-            : parsed.error === "below_minimum"
-            ? `The smallest payment is ${
-              balanceMoney(balance.minPaymentMinor ?? 0, balance.currency)
-            }.`
-            : parsed.error === "leaves_unpayable_remainder"
-            ? unpayableRemainderCopy(balance, (minor) => balanceMoney(minor, balance.currency))
-            : "Enter a valid amount.",
+          tripBalanceAmountErrorCopy(
+            parsed,
+            balance,
+            (minor) => balanceMoney(minor, balance.currency),
+          ),
         );
         return;
       }
@@ -294,6 +324,18 @@ export default function TripBalancePayPage(): React.ReactElement {
         setCustomError(
           "Your balance just changed. Check the new amount and try again.",
         );
+      } else if (
+        error instanceof TripBalancePayError &&
+        error.code === "balance_settled" &&
+        (await refreshAfterSettled(BALANCE_SETTLED_COPY))
+      ) {
+        // S-4: shown as paid in full, with why.
+      } else if (
+        error instanceof TripBalancePayError &&
+        error.code === "balance_not_found" &&
+        (await refreshAfterSettled())
+      ) {
+        // S-6: the link still works; the balance was cleared elsewhere.
       } else if (error instanceof TripBalancePayError) {
         setPage({
           kind: "error",
@@ -320,6 +362,13 @@ export default function TripBalancePayPage(): React.ReactElement {
       <State
         title="This balance link has expired"
         body="Open the newest link from your email, or visit your purchase in Mingla."
+      />
+    );
+  } else if (page.kind === "invalid") {
+    content = (
+      <State
+        title="This link isn't valid"
+        body="It may have expired or been replaced by a newer link. Check your latest email from Mingla."
       />
     );
   } else if (page.kind === "checking") {
@@ -354,8 +403,13 @@ export default function TripBalancePayPage(): React.ReactElement {
     content = (
       <State
         title="Paid in full"
-        body={`You're all set for ${page.view.tripTitle ?? "your trip"}.`}
-      />
+        body={page.kind === "ready" && page.notice
+          ? page.notice
+          : `You're all set for ${page.view.tripTitle ?? "your trip"}.`}
+      >
+        {/* issue #4522 S-5 — an overpayment refunded (or being refunded). */}
+        {page.view.balance ? <TripBalanceOverpayment balance={page.view.balance} /> : null}
+      </State>
     );
   } else if (page.view.state === "no_longer_due") {
     content = (
@@ -410,7 +464,7 @@ export default function TripBalancePayPage(): React.ReactElement {
         busy={busy}
         choice={choice}
         customAmount={customAmount}
-        customError={customError}
+        customError={customError ?? liveCustomError}
         onChoice={choose}
         onCustomAmount={(value) => {
           setCustomAmount(value);
@@ -433,12 +487,13 @@ export default function TripBalancePayPage(): React.ReactElement {
 }
 
 function State(
-  { title, body, action, onAction, busy }: {
+  { title, body, action, onAction, busy, children }: {
     title: string;
     body?: string;
     action?: string;
     onAction?: () => void;
     busy?: boolean;
+    children?: React.ReactNode;
   },
 ): React.ReactElement {
   const styles = balancePageStyles;
@@ -447,6 +502,7 @@ function State(
       {busy ? <ActivityIndicator color={color.accent} /> : null}
       <Text style={styles.stateTitle}>{title}</Text>
       {body ? <Text style={styles.stateBody}>{body}</Text> : null}
+      {children}
       {action && onAction
         ? (
           <Text

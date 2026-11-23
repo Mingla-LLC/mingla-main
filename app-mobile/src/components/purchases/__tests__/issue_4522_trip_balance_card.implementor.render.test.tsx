@@ -157,3 +157,16 @@ test("HELD money paid beyond the price is one plain line, naming no payment vend
   expect(texts(none)).not.toContain("more than was due");
   none.unmount();
 });
+
+// #4522 first screen test S-5 / S-16 — a refunded overpayment is shown (not
+// only one being refunded), and whole amounts carry no ".00".
+// FAILS-ON-REVERT: OverpaymentLine ignores overpaymentRefundedMinor; "£…​.00".
+test("REFUNDED an overpayment already refunded is shown; whole amounts have no decimals", async () => {
+  mockQuery.data = { state: "paid", balance: balance({ remainingMinor: 0, openRows: [], nextPayment: null,
+    paidMinor: 120000, overpaymentRefundedMinor: 30000 }) };
+  const paid = await render();
+  expect(texts(paid)).toContain("Paid in full");
+  expect(texts(paid)).toContain("more than was due. It was refunded to your original payment method.");
+  expect(texts(paid)).not.toMatch(/\.00 more than was due/);
+  paid.unmount();
+});

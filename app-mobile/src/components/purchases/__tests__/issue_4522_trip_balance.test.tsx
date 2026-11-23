@@ -107,10 +107,14 @@ test("#4522 one query-key factory invalidates both balance and purchase truth", 
 });
 
 test("#4522 T4-3 / T4-8 both balance screens: a forbidden amount names the two payable amounts; a long block never says a few minutes", () => {
+  const shared = readFileSync(resolve(root, "../packages/offering-rendering/tripBalance.ts"), "utf8");
+  assert.match(shared, /case "leaves_unpayable_remainder":\s*return unpayableRemainderCopy\(balance, money\);/);
   const buyerWeb = readFileSync(resolve(root, "../mingla-business/app/pay/balance/[token].tsx"), "utf8");
   for (const [name, screen] of [["Explorer", route], ["buyer web", buyerWeb]] as const) {
     assert.ok(screen.includes("flex_amount_leaves_unpayable_remainder"), `${name}: server refusal`);
-    assert.ok(screen.includes('"leaves_unpayable_remainder"'), `${name}: refused before any request`);
+    // S-3: the client-side refusal copy is the shared one (it maps
+    // "leaves_unpayable_remainder" to unpayableRemainderCopy), shown live.
+    assert.ok(screen.includes("tripBalanceAmountErrorCopy("), `${name}: refused before any request`);
     assert.ok(screen.includes("unpayableRemainderCopy("), `${name}: shared copy naming both amounts`);
     assert.ok(screen.includes('"balance_settled"'), `${name}: a waived balance`);
     assert.doesNotMatch(screen, /already processing\. Try again in a few minutes/, `${name}: T4-8 copy`);

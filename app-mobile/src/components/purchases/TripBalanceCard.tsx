@@ -8,14 +8,22 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 
-import { supportsBalancePayments } from "@mingla/offering-rendering/tripBalance";
+import {
+  formatTripBalanceMoney,
+  supportsBalancePayments,
+  tripBalanceOverpaymentLines,
+} from "@mingla/offering-rendering/tripBalance";
 
 import { useTripBalance } from "../../hooks/useTripBalance";
 import { TripBalancePayError } from "../../services/tripBalancePayService";
-import { formatPurchaseMoney } from "../../utils/purchasePresentation";
 
-const money = (minor: number, currency: string): string =>
-  formatPurchaseMoney(minor, currency) ?? `${minor} ${currency}`;
+/**
+ * issue #4522 S-16 — the shared balance money rule (a whole amount has no
+ * decimals), in the locale Explorer's purchase money uses.
+ */
+export const balanceMoney = (minor: number, currency: string): string =>
+  formatTripBalanceMoney(minor, currency, "en-GB");
+const money = balanceMoney;
 
 const date = (value: string): string => {
   const parsed = new Date(value);
@@ -71,6 +79,7 @@ export function TripBalanceCard(
               ? (
                 <OverpaymentLine
                   heldMinor={balance.heldCreditMinor}
+                  refundedMinor={balance.overpaymentRefundedMinor}
                   currency={balance.currency}
                 />
               )
@@ -84,6 +93,7 @@ export function TripBalanceCard(
             </Text>
             <OverpaymentLine
               heldMinor={balance.heldCreditMinor}
+              refundedMinor={balance.overpaymentRefundedMinor}
               currency={balance.currency}
             />
             {balance.nextPayment
@@ -123,19 +133,28 @@ export function isBalanceUnavailable(error: unknown): boolean {
 }
 
 /**
- * issue #4522 (N5) — money paid beyond what the trip costs is shown once, in
- * plain words, and never counted in what is paid or left.
+ * issue #4522 (N5, S-5) — money paid beyond what the trip costs is shown once,
+ * in plain words (being refunded, and already refunded), and never counted
+ * in what is paid or left. Copy is the shared one buyer web shows.
  */
 export function OverpaymentLine(
-  { heldMinor, currency }: { heldMinor: number; currency: string },
+  { heldMinor, refundedMinor = 0, currency }: {
+    heldMinor: number;
+    refundedMinor?: number;
+    currency: string;
+  },
 ): React.ReactElement | null {
-  if (heldMinor <= 0) return null;
+  const lines = tripBalanceOverpaymentLines(
+    { heldCreditMinor: heldMinor, overpaymentRefundedMinor: refundedMinor },
+    (minor) => money(minor, currency),
+  );
+  if (lines.length === 0) return null;
   return (
-    <Text style={styles.overpaid}>
-      You paid {money(heldMinor, currency)}{" "}
-      more than was due. We’re refunding it to your original payment
-      method.
-    </Text>
+    <>
+      {lines.map((line) => (
+        <Text key={line} style={styles.overpaid}>{line}</Text>
+      ))}
+    </>
   );
 }
 

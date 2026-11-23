@@ -283,3 +283,72 @@ Deno.test("T4-3 the preview, like the re-spread, never shows a row below the pro
   assertEquals(before.reduce((n, r) => n + r.amountMinor, 0), 5_060);
   assertEquals(before.filter((r) => r.amountMinor < 50).length, 2);
 });
+
+// ---------------------------------------------------------------------------
+// First screen test (S-3, S-5, S-15, S-16) — shared by buyer web and Explorer.
+// FAILS ON REVERT: three identical option cards at or below the minimum,
+// "₦900,000.00", no inline reason while typing, no refunded-overpayment line.
+import {
+  formatTripBalanceMoney,
+  TRIP_BALANCE_SET_DATES_COPY,
+  tripBalanceAmountErrorCopy,
+  tripBalanceOverpaymentLines,
+} from "../tripBalance.ts";
+
+Deno.test("#4522 S-16 one card per amount when the balance is at or below the minimum", () => {
+  const atMin = decodeTripBalance({
+    ...balance,
+    paidMinor: 120_000,
+    remainingMinor: 10_000,
+    maxPartialMinor: null,
+    nextPayment: { installmentId: "i3", dueAt: "2027-05-01T00:00:00Z", amountMinor: 10_000 },
+    openRows: [{ installmentId: "i3", dueAt: "2027-05-01T00:00:00Z", amountMinor: 10_000 }],
+  });
+  if (atMin === null) throw new Error("decode");
+  assertEquals(tripBalanceOptions(atMin).map((o) => [o.key, o.amountMinor]), [["full", 10_000]]);
+  // a next payment equal to the minimum shows once, as Next payment
+  const nextIsMin = decodeTripBalance({ ...balance, minPaymentMinor: 30_000 });
+  if (nextIsMin === null) throw new Error("decode");
+  assertEquals(tripBalanceOptions(nextIsMin).map((o) => o.key), ["next", "full", "other"]);
+});
+
+Deno.test("#4522 S-16 a whole amount shows no decimals, in naira and dollars", () => {
+  assertEquals(formatTripBalanceMoney(90_000_000, "NGN", "en-NG"), "₦900,000");
+  assertEquals(formatTripBalanceMoney(90_000_000, "ngn", "en-GB"), "₦900,000");
+  assertEquals(formatTripBalanceMoney(30_000, "USD", "en-US"), "$300");
+  assertEquals(formatTripBalanceMoney(49, "USD", "en-US"), "$0.49");
+  assertEquals(formatTripBalanceMoney(9_999, "NGN", "en-NG"), "₦99.99");
+});
+
+Deno.test("#4522 S-3 the inline reason names the amounts the traveler can pay", () => {
+  const b = decodeTripBalance({ ...balance, maxPartialMinor: 80_000 });
+  if (b === null) throw new Error("decode");
+  const fmt = (minor: number) => formatTripBalanceMoney(minor, "USD", "en-US");
+  const copy = (input: string, live = true) =>
+    tripBalanceAmountErrorCopy(parseTripBalanceAmount(input, b), b, fmt, { live });
+  assertEquals(copy(""), null);
+  assertEquals(copy("", false), "Enter an amount.");
+  assertEquals(copy("50"), "The smallest payment is $100.");
+  assertEquals(copy("901"), "That's more than your balance of $900.");
+  assertEquals(copy("850"), "That would leave too little to pay later. Pay up to $800, or the full $900.");
+  assertEquals(copy("abc"), "Enter a valid amount.");
+  assertEquals(copy("250"), null);
+});
+
+Deno.test("#4522 S-5 a refunded overpayment is shown, as well as one being refunded", () => {
+  const fmt = (minor: number) => formatTripBalanceMoney(minor, "USD", "en-US");
+  assertEquals(tripBalanceOverpaymentLines({ heldCreditMinor: 0, overpaymentRefundedMinor: 0 }, fmt), []);
+  assertEquals(tripBalanceOverpaymentLines({ heldCreditMinor: 0, overpaymentRefundedMinor: 30_000 }, fmt), [
+    "You paid $300 more than was due. It was refunded to your original payment method.",
+  ]);
+  assertEquals(tripBalanceOverpaymentLines({ heldCreditMinor: 5_000, overpaymentRefundedMinor: 0 }, fmt), [
+    "You paid $50 more than was due. We’re refunding it to your original payment method.",
+  ]);
+});
+
+Deno.test("#4522 S-15 the set-dates line is the spec's copy", () => {
+  assertEquals(
+    TRIP_BALANCE_SET_DATES_COPY,
+    "The host has set payment dates, so you can pay the next payment or everything.",
+  );
+});

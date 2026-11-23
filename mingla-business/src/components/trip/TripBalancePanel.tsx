@@ -2,24 +2,24 @@ import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   aggregateTripBalanceSchedule,
+  formatTripBalanceMoney,
   rebalanceTripPlan,
+  TRIP_BALANCE_SET_DATES_COPY,
   type TripBalance,
   type TripBalanceChoice,
   tripBalanceOptions,
+  tripBalanceOverpaymentLines,
 } from "@mingla/offering-rendering/tripBalance";
 
 import { radius, space, type } from "../../constants/designSystem";
 import { color, themedStyles } from "../../theme/surfaceTokens";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
-import { formatCurrency } from "../../utils/currency";
-import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { localeForCurrency } from "../../utils/currency";
 
+/** issue #4522 S-16 — the shared balance money rule ("₦900,000", "$0.49"). */
 export function balanceMoney(amountMinor: number, currency: string): string {
-  return withCurrencyGlyph(
-    formatCurrency(amountMinor, currency, true),
-    currency,
-  );
+  return formatTripBalanceMoney(amountMinor, currency, localeForCurrency(currency));
 }
 
 const due = (value: string): string => {
@@ -101,20 +101,20 @@ export function TripBalancePanel({
           {balanceMoney(balance.paidMinor, balance.currency)} paid of{" "}
           {balanceMoney(balance.totalMinor, balance.currency)}
         </Text>
-        {balance.heldCreditMinor > 0
-          ? (
-            // issue #4522 (N5) — money paid beyond the trip price, returned.
-            <Text style={styles.muted}>
-              You paid {balanceMoney(balance.heldCreditMinor, balance.currency)}{" "}
-              more than was due. We’re refunding it to your original payment
-              method.
-            </Text>
-          )
-          : null}
+        {/* issue #4522 (N5, S-5) — money paid beyond the trip price, returned. */}
+        <TripBalanceOverpayment balance={balance} />
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Choose what to pay</Text>
+        {!balance.canPayAnyAmount
+          ? (
+            // issue #4522 S-15 (spec §7) — flexible payments are off.
+            <Text style={styles.muted} testID="trip-balance-set-dates">
+              {TRIP_BALANCE_SET_DATES_COPY}
+            </Text>
+          )
+          : null}
         <View style={styles.options}>
           {options.map((option) => {
             const selected = choice === option.key;
@@ -235,6 +235,25 @@ export function TripBalancePanel({
   );
 }
 
+/** issue #4522 (N5, S-5) — being refunded, and already refunded. */
+export function TripBalanceOverpayment(
+  { balance }: { balance: Pick<TripBalance, "heldCreditMinor" | "overpaymentRefundedMinor" | "currency"> },
+): React.ReactElement | null {
+  const styles = balanceStyles;
+  const lines = tripBalanceOverpaymentLines(
+    balance,
+    (minor) => balanceMoney(minor, balance.currency),
+  );
+  if (lines.length === 0) return null;
+  return (
+    <View style={styles.overpayment} testID="trip-balance-overpayment">
+      {lines.map((line) => (
+        <Text key={line} style={styles.muted}>{line}</Text>
+      ))}
+    </View>
+  );
+}
+
 function Schedule(
   { title, rows, currency }: {
     title: string;
@@ -339,6 +358,7 @@ const balanceStyles = themedStyles(() =>
     scheduleRow: { gap: 2 },
     scheduleAmount: { ...type.body, color: color.text1, fontWeight: "800" },
     muted: { ...type.small, color: color.text3 },
+    overpayment: { gap: space[1], marginTop: space[3] },
     paidFull: { ...type.body, color: color.successText, fontWeight: "800" },
     historyRow: {
       flexDirection: "row",

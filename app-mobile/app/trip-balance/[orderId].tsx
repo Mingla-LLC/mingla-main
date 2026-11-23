@@ -27,6 +27,8 @@ import {
   type TripBalance,
   type TripBalanceChoice,
   supportsBalancePayments,
+  TRIP_BALANCE_SET_DATES_COPY,
+  tripBalanceAmountErrorCopy,
   tripBalanceOptions,
   unpayableRemainderCopy,
 } from "@mingla/offering-rendering/tripBalance";
@@ -41,19 +43,19 @@ import {
   TripBalancePayError,
 } from "../../src/services/tripBalancePayService";
 import {
+  balanceMoney,
   isBalanceUnavailable,
   OverpaymentLine,
 } from "../../src/components/purchases/TripBalanceCard";
 import { toastManager } from "../../src/components/ui/Toast";
-import { formatPurchaseMoney } from "../../src/utils/purchasePresentation";
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_BUDGET_MS = 30_000;
 
 const first = (value: string | string[] | undefined): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
-const money = (minor: number, currency: string): string =>
-  formatPurchaseMoney(minor, currency) ?? `${minor} ${currency}`;
+// issue #4522 S-16 — one balance money rule with buyer web.
+const money = balanceMoney;
 const due = (value: string): string => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
@@ -65,6 +67,10 @@ const clientKey = (): string =>
   `balance-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 const amountString = (minor: number): string =>
   `${Math.floor(minor / 100)}.${String(minor % 100).padStart(2, "0")}`;
+
+/** issue #4522 S-4 — the server cleared a balance too small to charge. */
+const BALANCE_SETTLED_COPY =
+  "Nothing more is owed on this trip. The last amount was too small to charge, so it has been cleared.";
 
 const paymentErrorCopy = (
   code: string,
@@ -93,7 +99,7 @@ const paymentErrorCopy = (
         ? unpayableRemainderCopy(balance, (minor) => money(minor, balance.currency))
         : "Enter a valid amount.";
     case "balance_settled":
-      return "Nothing more is owed on this trip. The last amount was too small to charge, so it has been cleared.";
+      return BALANCE_SETTLED_COPY;
     case "plan_not_flexible":
       return "This trip takes set payments. You can pay your next payment or the full balance.";
     case "deposit_not_paid":
@@ -209,24 +215,25 @@ export default function TripBalanceRoute(): React.ReactElement {
     await refreshBoth();
   }, [balance?.currency, orderId, queryClient, refreshBoth]);
 
+  // issue #4522 S-3 — the reason (and the amounts that can be paid) shows
+  // while the traveler types, not only after a disabled button.
+  const liveCustomError = useMemo((): string | null => {
+    if (!balance || choice !== "other") return null;
+    return tripBalanceAmountErrorCopy(
+      parseTripBalanceAmount(customAmount, balance),
+      balance,
+      (minor) => money(minor, balance.currency),
+      { live: true },
+    );
+  }, [balance, choice, customAmount]);
+
   const validateOther = (): number | null => {
     if (!balance || choice !== "other") return amountMinor;
     const parsed = parseTripBalanceAmount(customAmount, balance);
     if (parsed.ok) return parsed.amountMinor;
     setCustomError(
-      parsed.error === "empty"
-        ? "Enter an amount."
-        : parsed.error === "over_balance"
-        ? `That's more than your balance of ${
-          money(balance.remainingMinor, balance.currency)
-        }.`
-        : parsed.error === "below_minimum"
-        ? `The smallest payment is ${
-          money(balance.minPaymentMinor ?? 0, balance.currency)
-        }.`
-        : parsed.error === "leaves_unpayable_remainder"
-        ? unpayableRemainderCopy(balance, (minor) => money(minor, balance.currency))
-        : "Enter a valid amount.",
+      tripBalanceAmountErrorCopy(parsed, balance, (minor) =>
+        money(minor, balance.currency)),
     );
     return null;
   };
@@ -316,6 +323,19 @@ export default function TripBalanceRoute(): React.ReactElement {
       ) {
         toastManager.info(paymentErrorCopy(error.code, balance), 5000);
         await query.refetch();
+      } else if (
+        error instanceof TripBalancePayError && error.code === "balance_settled"
+      ) {
+        // issue #4522 S-4 — the server cleared the last, too-small amount:
+        // nothing is owed. Show the paid state, not an error.
+        await refreshBoth();
+        toastManager.success(BALANCE_SETTLED_COPY, 5000);
+      } else if (
+        error instanceof TripBalancePayError &&
+        error.code === "balance_not_found"
+      ) {
+        // issue #4522 S-6 — settled elsewhere: read what is true now.
+        await refreshBoth();
       } else if (error instanceof TripBalancePayError) {
         toastManager.error(paymentErrorCopy(error.code, balance), 5000);
       } else {
@@ -384,6 +404,7 @@ export default function TripBalanceRoute(): React.ReactElement {
           ? (
             <OverpaymentLine
               heldMinor={balance.heldCreditMinor}
+              refundedMinor={balance.overpaymentRefundedMinor}
               currency={balance.currency}
             />
           )
@@ -404,7 +425,7 @@ export default function TripBalanceRoute(): React.ReactElement {
         busy={busy || confirming}
         choice={choice}
         customAmount={customAmount}
-        customError={customError}
+        customError={customError ?? liveCustomError}
         paystackLast4={query.data.provider === "paystack"
           ? query.data.savedCardLast4
           : undefined}
@@ -507,6 +528,7 @@ function BalanceContent(
         </Text>
         <OverpaymentLine
           heldMinor={balance.heldCreditMinor}
+          refundedMinor={balance.overpaymentRefundedMinor}
           currency={balance.currency}
         />
         <View
@@ -527,6 +549,14 @@ function BalanceContent(
       </View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Choose what to pay</Text>
+        {!balance.canPayAnyAmount
+          ? (
+            // issue #4522 S-15 (spec §7) — flexible payments are off.
+            <Text style={styles.muted} testID="trip-balance-set-dates">
+              {TRIP_BALANCE_SET_DATES_COPY}
+            </Text>
+          )
+          : null}
         <View style={styles.options}>
           {options.map((option) => (
             <Pressable

@@ -80,6 +80,18 @@ describe("#4522 anonymous trip balance client", () => {
     warn.mockRestore();
   });
 
+  // #4522 S-14 — an unknown or mistyped link (404 { state: "invalid" }) is a
+  // link problem, not a connection problem. FAILS ON REVERT: request_failed.
+  test("an unknown link is balance_link_invalid", async () => {
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: { context: { status: 404, json: async () => ({ state: "invalid" }) } },
+    });
+    const failure = await viewTripBalanceLink("garbage").catch((e: unknown) => e);
+    expect((failure as TripBalancePayError).code).toBe("balance_link_invalid");
+    expect((failure as TripBalancePayError).status).toBe(404);
+  });
+
   test("accepts a Paystack checkout redirect and refuses any other host", async () => {
     mockInvoke.mockResolvedValueOnce({
       data: { kind: "redirect", url: "https://checkout.paystack.com/abc" },

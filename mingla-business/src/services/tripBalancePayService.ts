@@ -48,6 +48,11 @@ async function invokeError(error: unknown): Promise<TripBalancePayError> {
   if (isRecord(context) && typeof context.json === "function") {
     try {
       const body = await (context.json as () => Promise<unknown>)();
+      // issue #4522 S-14 — an unknown or mistyped link answers 404
+      // { state: "invalid" } (no error key): it is not a connection problem.
+      if (isRecord(body) && body.state === "invalid" && body.error === undefined) {
+        return new TripBalancePayError("balance_link_invalid", status);
+      }
       if (isRecord(body) && typeof body.error === "string") {
         return new TripBalancePayError(
           body.error,
