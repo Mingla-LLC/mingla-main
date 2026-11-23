@@ -22,12 +22,13 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import { useFormRequestPreview, useSendFormRequest, useSetFormAutoRemind } from "../../hooks/useBrandForms";
-import type {
-  FormRequestAudience,
-  FormRequestChannel,
-  FormRequestInput,
-  FormRequestKind,
-  FormRequestSubject,
+import {
+  shouldRefetchPreviewAfter,
+  type FormRequestAudience,
+  type FormRequestChannel,
+  type FormRequestInput,
+  type FormRequestKind,
+  type FormRequestSubject,
 } from "../../services/brandFormRequestService";
 import { Button } from "../ui/Button";
 import { Chip } from "../ui/Pill";
@@ -102,6 +103,7 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
     [formId, eventId, kind, audience, channels, subjects],
   );
   const preview = useFormRequestPreview(visible ? input : null);
+  const refetchPreview = preview.refetch;
 
   // #4541 R3.1: Push follows the server's switch, learnt from the preview.
   // The first time it is on, Push is ticked (it is free); off, it is never sent.
@@ -152,10 +154,12 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
         onError: (error) => {
           setConfirming(false);
           notify("error", errorSentence(error, COPY.sendFailed));
+          // #4573 §5: something changed since the preview; show the new reason and numbers.
+          if (shouldRefetchPreviewAfter(error)) void refetchPreview();
         },
       },
     );
-  }, [input, preview.data, send, notify, onClose, confirmUnpriced]);
+  }, [input, preview.data, refetchPreview, send, notify, onClose, confirmUnpriced]);
 
   const handleAutoRemind = useCallback(
     (on: boolean): void => {
