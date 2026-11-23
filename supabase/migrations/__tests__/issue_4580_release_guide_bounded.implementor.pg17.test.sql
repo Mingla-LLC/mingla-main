@@ -1,6 +1,6 @@
 -- MINGLA-INVARIANT: I-4580-RELEASE-GUIDE-BOUNDED | issue #4580 | ops_release_guide_apply checks Support membership at most once per call and stops taking new Feature Guide keys once public.ops_release_guide_budget() has passed, so no release can push the ingest past its statement timeout.
 -- Issue #4580 -- implementor suite for
--- 20281129004580_issue_4580_release_guide_bounded.sql, on the fully replayed
+-- 20281202004580_issue_4580_release_guide_bounded.sql, on the fully replayed
 -- PG17 schema. Everything is rolled back.
 --
 --   SC-2   ops_release_guide_watchers() returns exactly what the old inline
@@ -36,7 +36,8 @@
 --
 -- Run from the repository root as supabase_admin.
 --
--- FAILS-ON-REVERT: on origin/main's definitions (71c219c91b) the new
+-- FAILS-ON-REVERT (proved on 71c219c91b; the replaced bodies are unchanged at
+-- 8b971e1ba0): on origin/main's definitions the new
 -- functions do not exist; SC-1 counts ~30,000 is_support_staff calls, SC-3
 -- takes every key under a 0 s budget, SC-4 writes 3 notices and SC-5
 -- retries the recent key.

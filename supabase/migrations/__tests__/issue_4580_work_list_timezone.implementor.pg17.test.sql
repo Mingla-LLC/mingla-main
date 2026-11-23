@@ -1,6 +1,6 @@
 -- MINGLA-INVARIANT: I-4580-WORK-LIST-TIMEZONE-CACHED | issue #4580 | ops_work_list validates tz through public.ops_timezone_valid, whose answer equals a pg_timezone_names lookup for every input.
 -- Issue #4580 -- implementor suite for
--- 20281129014580_issue_4580_work_list_timezone_cache.sql, on the fully
+-- 20281202014580_issue_4580_work_list_timezone_cache.sql, on the fully
 -- replayed PG17 schema. Everything is rolled back.
 --
 --   SC-8   ops_work_list no longer reads pg_timezone_names and calls
@@ -18,7 +18,8 @@
 --
 -- Run from the repository root as supabase_admin.
 --
--- FAILS-ON-REVERT: on origin/main's definitions (71c219c91b) ops_work_list
+-- FAILS-ON-REVERT (proved on 71c219c91b; the replaced bodies are unchanged at
+-- 8b971e1ba0): on origin/main's definitions ops_work_list
 -- still searches pg_timezone_names, and ops_timezone_valid and
 -- ops_timezone_names do not exist.
 
