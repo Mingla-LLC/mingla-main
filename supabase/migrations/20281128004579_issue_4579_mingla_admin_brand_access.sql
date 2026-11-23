@@ -70,12 +70,15 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'brand_team_members_granted_admin_user_id_fkey') THEN
     ALTER TABLE public.brand_team_members
       ADD CONSTRAINT brand_team_members_granted_admin_user_id_fkey
-      FOREIGN KEY (granted_admin_user_id) REFERENCES public.admin_users(id) ON DELETE RESTRICT;
+      FOREIGN KEY (granted_admin_user_id) REFERENCES public.admin_users(id) ON DELETE SET NULL;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'brand_team_members_granted_admin_shape') THEN
     ALTER TABLE public.brand_team_members
       ADD CONSTRAINT brand_team_members_granted_admin_shape
-      CHECK ((granted_via = 'mingla_admin') = (granted_admin_user_id IS NOT NULL));
+      -- An invite row never names an admin; an automatic row names one while it is
+      -- active (a deleted admin_users row is revoked first, then SET NULL).
+      CHECK ((granted_via = 'mingla_admin' OR granted_admin_user_id IS NULL)
+             AND (granted_via <> 'mingla_admin' OR removed_at IS NOT NULL OR granted_admin_user_id IS NOT NULL));
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'brand_team_members_removal_reason_check') THEN
     ALTER TABLE public.brand_team_members
@@ -296,6 +299,8 @@ BEGIN
     FROM public.brands b
    WHERE b.deleted_at IS NULL
      AND b.account_id IS DISTINCT FROM v_uid
+     -- A brand whose account has no sign-in identity has no brand group to join.
+     AND EXISTS (SELECT 1 FROM auth.users owner_identity WHERE owner_identity.id = b.account_id)
      AND NOT EXISTS (SELECT 1 FROM public.brand_mingla_team_optouts t WHERE t.brand_id = b.id)
      AND NOT EXISTS (SELECT 1 FROM public.brand_mingla_admin_optouts o
                       WHERE o.brand_id = b.id AND o.user_id = v_uid)
@@ -384,6 +389,7 @@ BEGIN
    WHERE b.id = p_brand_id
      AND b.deleted_at IS NULL
      AND b.account_id IS DISTINCT FROM q.uid
+     AND EXISTS (SELECT 1 FROM auth.users owner_identity WHERE owner_identity.id = b.account_id)
      AND NOT EXISTS (SELECT 1 FROM public.brand_mingla_admin_optouts o
                       WHERE o.brand_id = b.id AND o.user_id = q.uid)
      AND NOT EXISTS (SELECT 1 FROM public.brand_team_members m
@@ -582,6 +588,23 @@ BEGIN
   RETURN NULL;
 END;
 $function$;
+-- Deleting an admin_users row revokes its automatic rows first (the foreign key
+-- then sets granted_admin_user_id to NULL on the removed rows).
+CREATE OR REPLACE FUNCTION public.issue_4579_tg_admin_delete()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  PERFORM public.issue_4579_revoke_admin(OLD.id);
+  RETURN OLD;
+END;
+$function$;
+DROP TRIGGER IF EXISTS issue_4579_admin_delete ON public.admin_users;
+CREATE TRIGGER issue_4579_admin_delete
+  BEFORE DELETE ON public.admin_users
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4579_tg_admin_delete();
+
 DROP TRIGGER IF EXISTS issue_4579_admin_status_sync ON public.admin_users;
 CREATE TRIGGER issue_4579_admin_status_sync
   AFTER INSERT OR UPDATE OF status, role, email ON public.admin_users

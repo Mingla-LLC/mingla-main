@@ -286,7 +286,8 @@ begin
       where t.tgrelid in ('public.admin_users'::regclass, 'public.admin_team_members'::regclass)
         and not t.tgisinternal),
     -- #4255: plus the owner-row protection (row and TRUNCATE).
-    'admin_team_members.admin_team_members_guard_exclusive/O,admin_users.admin_users_guard_exclusive/O,admin_users.admin_users_protect_owner/O,admin_users.admin_users_protect_owner_truncate/O');
+    -- #4579: plus the brand access sync (status/role/email) and the revoke-before-delete.
+    'admin_team_members.admin_team_members_guard_exclusive/O,admin_users.admin_users_guard_exclusive/O,admin_users.admin_users_protect_owner/O,admin_users.admin_users_protect_owner_truncate/O,admin_users.issue_4579_admin_delete/O,admin_users.issue_4579_admin_status_sync/O');
   perform pg_temp.t3802x_check('X-1', 'no rewrite rule on either table',
     (select count(*)::text from pg_rules where schemaname = 'public'
        and tablename in ('admin_users', 'admin_team_members')), '0');
