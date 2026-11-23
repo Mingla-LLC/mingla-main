@@ -396,9 +396,10 @@ BEGIN
       AND p.valid_local_date = public.issue_4490_venue_local_date(v_sale.venue_id)) THEN
     PERFORM public.issue_4490_admit_pass(v_venue, v_pass, NULL, true, p_actor, 'gate_sale');
   END IF;
-  v_label := left(CASE WHEN p_extends_line_id IS NULL
-                       THEN v_offer.name || COALESCE(' · ' || v_place, '')
-                       ELSE v_offer.name || ' · +' || v_qline.booked_minutes || ' min' END, 120);
+  v_label := left(CASE WHEN p_extends_line_id IS NOT NULL
+                       THEN v_offer.name || ' · +' || v_qline.booked_minutes || ' min'
+                       WHEN v_place IS NULL OR v_place = v_offer.name THEN v_offer.name
+                       ELSE v_offer.name || ' · ' || v_place END, 120);
   INSERT INTO public.venue_till_lines (
     sale_id, kind, stay_group_id, amount_minor, label_snapshot, state, idempotency_key, extends_line_id
   ) VALUES (
@@ -680,13 +681,14 @@ BEGIN
   SELECT * INTO v_spot FROM public.qr_spots WHERE id = p_spot_id;
 
   IF v_res.id IS NOT NULL THEN
+    -- T12: two devices seating the same booking: its deposit is on one check.
+    IF v_res.deposit_applied_sale_id IS NOT NULL THEN
+      RAISE EXCEPTION 'deposit_already_used' USING ERRCODE = 'PT409';
+    END IF;
     IF v_res.table_id IS NOT NULL AND v_spot.venue_table_id IS NOT NULL
        AND v_res.table_id <> v_spot.venue_table_id
        AND NOT (v_spot.venue_table_id = ANY(v_res.joined_table_ids)) THEN
       RAISE EXCEPTION 'till_booking_other_table' USING ERRCODE = 'PT409';
-    END IF;
-    IF v_res.deposit_applied_sale_id IS NOT NULL THEN
-      RAISE EXCEPTION 'deposit_already_used' USING ERRCODE = 'PT409';
     END IF;
     v_from := v_res.status;
     IF v_from <> 'seated' AND NOT public.pg_reservation_transition_is_legal(v_from, 'seated') THEN

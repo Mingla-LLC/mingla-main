@@ -12,7 +12,7 @@
 -- stale share is still payable after an item is added); with the share
 -- version rule reverted to the exact check version, S-5 fails (the second
 -- device's share is refused); with take_payment's split guard removed, S-6
--- fails; with keep_late's share check removed, S-12 fails.
+-- fails; with keep_late's share check removed, S-11d fails.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -532,6 +532,40 @@ BEGIN
     'S-12 late money for a share that is still unpaid can be kept: the share becomes paid, the other share is still what is left');
 END
 $late2$;
+SELECT public.t4490s_reset();
+
+-- Late money for a share someone paid in cash meanwhile, on a check still
+-- being paid: refunded, never kept (the share would count twice).
+SELECT public.t4490s_service();
+DO $late3$
+DECLARE
+  v jsonb;
+  v_sale uuid := public.t4490s_check('s-late-paid-open', '[{"qty":2,"unit":50000}]'::jsonb, 0);
+  v_s1 uuid;
+  v_scan uuid;
+BEGIN
+  PERFORM public.issue_4490_till_set_split(v_sale, 'even', '{"count":2}'::jsonb,
+    '44900606-0000-4000-8000-000000000002', public.t4490s_v(v_sale));
+  v_s1 := public.t4490s_share(v_sale, 1);
+  v := public.issue_4490_till_card_prepare_share(v_sale, v_s1, '44900606-0000-4000-8000-000000000002', public.t4490s_v(v_sale));
+  v := public.issue_4490_till_card_start_share(v_sale, v_s1, 'scan', 0, '44900606-0000-4000-8000-000000000002', NULL,
+    gen_random_uuid(), (v->>'version')::integer,
+    jsonb_build_object('provider', 'paystack', 'totalCents', 50000, 'subtotalCents', 50000, 'serviceChargeCents', 0,
+      'tipCents', 0, 'currency', 'NGN', 'effectiveTakeRateBps', 0, 'serviceFeeBps', 0, 'minglaFeeCents', 0,
+      'platformServiceFeeCents', 0, 'buyerSubtotalCents', 50000, 'taxAmountCents', 0), 'S6CCCCCC');
+  v_scan := (v->>'paymentId')::uuid;
+  PERFORM public.issue_4490_till_card_close(v_scan);
+  PERFORM public.t4490s_pay(v_sale, v_s1, public.t4490s_v(v_sale), NULL);
+  PERFORM public.issue_4490_till_apply_payment(v_scan);
+  PERFORM public.t4490s_expect(format($q$SELECT public.issue_4490_till_keep_late_payment(%L,
+      '44900606-0000-4000-8000-000000000002', %s)$q$, v_scan, public.t4490s_v(v_sale)),
+    'PT409', 'till_late_nothing_to_keep',
+    'S-11d late money for a share paid in cash meanwhile, while the other share is still to pay: "Keep it" is refused (refund it)');
+  PERFORM public.t4490s_ok((SELECT state FROM public.venue_till_sales WHERE id = v_sale) = 'open'
+      AND public.t4490s_open_shares(v_sale) = public.t4490s_left(v_sale) AND public.t4490s_left(v_sale) = 50000,
+    'S-11e ... and the check still owes exactly share 2');
+END
+$late3$;
 SELECT public.t4490s_reset();
 
 -- -------------------------------------------------------------------------

@@ -10,9 +10,9 @@
 -- FAILS-ON-REVERT: without 20280809607490 every block fails at once. With
 -- the reprice credit patch reverted D-1 fails (the deposit does not come off);
 -- with the deposit_once index dropped D-3 fails; with the source_refunds
--- guard dropped D-4 fails; with extend's claim reverted to "money only"
--- (no claim) H-6 fails (the next booking is not refused) and H-5's span
--- check fails.
+-- guard dropped D-4 fails; with the session claim skipped when the unit is
+-- taken (A10's "money only" version) H-4b fails first (a taken unit is not
+-- refused), then H-6.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
