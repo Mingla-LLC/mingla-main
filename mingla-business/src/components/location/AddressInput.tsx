@@ -178,7 +178,7 @@ const BUSINESS_TOKENS: LocationInputTokens = {
   // muted styling → byte-identical consumer render.
   action: {
     text: dsColor.accentText, // readable brand orange on dark (#4522 W-11); the pill keeps the warm tint
-    bg: dsColor.accentLine, // subtle warm pill fill
+    bg: dsColor.accentTint, // subtle warm pill fill, light enough for the text on it to read
     border: dsColor.accentLine, // warm pill border
   },
 };
