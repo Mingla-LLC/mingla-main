@@ -95,5 +95,5 @@ Deno.test("#3980 W3 rework 2 44PX: Add host, Search, Clear filters and Move to a
   assertMatch(page, /icon=\{Plus\} className="min-h-11" disabled=\{addDisabled\} onClick=\{\(\) => openCard\(NEW_CARD\)\}>\s*Add \{singular\}/);
   assertMatch(page, /<Button variant="secondary" className="min-h-11" onClick=\{clearFilters\}>\s*Clear filters/);
   assertMatch(code("components/crm/RecordCard.jsx"), /className="min-h-11 max-sm:h-11"\s+iconRight=\{ArrowRight\}[\s\S]*?title=\{`Move to \$\{next\.label\}`\}/);
-  assertMatch(code("components/crm/RecordDrawer.jsx"), /className="min-h-11 max-sm:h-11"\s+iconRight=\{ArrowRight\}\s+disabled=\{locked \|\| pending\}[\s\S]*?Move to \{next\.label\}/);
+  assertMatch(code("components/crm/RecordPanel.jsx"), /className="min-h-11 max-sm:h-11"\s+iconRight=\{ArrowRight\}\s+disabled=\{locked \|\| pending\}[\s\S]*?Move to \{next\.label\}/);
 });

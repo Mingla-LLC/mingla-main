@@ -360,6 +360,8 @@ export const AGENT_ABILITIES = [
   { tool: "set_owners", group: "Add and change", title: "Sets owners", detail: "Who on the team owns each card." },
   { tool: "log_activity", group: "Log", title: "Logs notes and touches", detail: "A note, a reply, or the first message to someone never contacted." },
   { tool: "record_reply", group: "Log", title: "Records replies", detail: "Word for word, and moves the card to Replied." },
+  // #4571 W6b: mail it read with its own Gmail access; Mingla keeps no mail key.
+  { tool: "log_emails", group: "Log", title: "Logs emails", detail: "Headers and the first 300 characters only, matched to cards by address, so the weekly numbers and the cadence count them." },
   { tool: "save_drafts", group: "Drafts", title: "Writes drafts for you", detail: "Messages for your review. It never sends." },
   { tool: "update_draft", group: "Drafts", title: "Updates its waiting drafts", detail: "Until you edit one yourself." },
   { tool: "list_drafts", group: "Drafts", title: "Reads your drafts", detail: "Only your own waiting, sent or discarded drafts." },

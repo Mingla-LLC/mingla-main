@@ -96,7 +96,7 @@ describe("Q-1 Add work item at the edges", () => {
     for (const owners of [[], null, "kemi@test.local", undefined]) {
       const p = quickAddProblems({ ...ok, owners }, today);
       assert.deepEqual(fields(p), ["owners"], String(owners));
-      assert.equal(p[0].message, "A card has one owner. Pick one person.");  // #4398: one owner
+      assert.equal(p[0].message, "A card needs at least one owner.");  // #4571: at least one owner
     }
   });
   it("Files link: http, javascript and a bare word are refused; https passes", () => {

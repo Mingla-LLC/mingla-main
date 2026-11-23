@@ -22,6 +22,17 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
+-- #4571 W4: this suite proves brand linking, which predates the Demo booked
+-- rule; the rule (tested in issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql
+-- and, for the brand path, issue_3980_synced_w3.implementor.happy.pg17.test.sql)
+-- is answered yes inside this rolled-back transaction only.
+create or replace function public.crm_4571_demo_move_ok(p_record_id uuid, p_pipeline text, p_from text, p_to text, p_exempt_at timestamptz) returns boolean
+language sql stable set search_path = '' as $ov$ select true $ov$;
 
 -- [TEST-MOD-APPROVED #4398] cards this suite closes by writing the table straight away (fixtures for past
 -- decisions) count as confirmed by their watcher; every close through a function still goes through review.
@@ -48,8 +59,8 @@ BEGIN
 END
 $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards DEFERRED;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;

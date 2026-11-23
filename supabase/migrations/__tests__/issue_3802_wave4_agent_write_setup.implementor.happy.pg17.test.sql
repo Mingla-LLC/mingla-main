@@ -40,15 +40,23 @@
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below
 -- check growth only for admin areas and accept the team_manage gate.
-\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W3: the pr3 self-check also checks the four new client functions, the three new internal helpers and crm_record_watchers.
+\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/" | sed -e "s/^    'public.crm_contact_check(text,jsonb)'$/    'public.crm_contact_check(text,jsonb)', 'public.crm_record_set_people(uuid,text\\[\\],text\\[\\],timestamp with time zone)', 'public.crm_record_work(uuid)', 'public.crm_calls_queue(date)', 'public.crm_identifier_set_followers(uuid,integer)', 'public.crm_demo_suggestions(uuid)', 'public.crm_demo_link(uuid,uuid,text)', 'public.crm_demo_create_record(uuid)', 'public.crm_demo_not_a_host(uuid)', 'public.crm_demo_unlink(uuid)', 'public.crm_demo_inbox()', 'public.crm_demo_inbox_count()', 'public.crm_records_archived_list(text)', 'public.crm_record_archive(uuid,text)', 'public.crm_record_unarchive(uuid)', 'public.crm_record_merge(uuid,uuid,text)', 'public.crm_record_unmerge(uuid)', 'public.crm_record_merges_json(uuid)', 'public.crm_duplicate_pairs(text)', 'public.crm_email_log_ingest(text,jsonb)', 'public.crm_outreach_numbers(date,date)', 'public.crm_cadence_state(uuid)', 'public.crm_cadence_sweep_status(uuid)', 'public.crm_cadence_sweep_preview()', 'public.crm_cadence_sweep_configure(text,uuid,text\\[\\],date)'/" -e "s/^    'public.admin_team_directory()',$/    'public.admin_team_directory()', 'public.crm_4571_people_overlap(uuid,text\\[\\],text\\[\\])', 'public.crm_notify_watchers(uuid,uuid,text,text,text)', 'public.crm_record_work_ids(uuid)', 'public.crm_record_has_demo(uuid)', 'public.crm_4571_demo_move_ok(uuid,text,text,text,timestamp with time zone)', 'public.crm_demo_stage_allowed(uuid,text)', 'public.crm_4571_demo_stage_guard()', 'public.crm_record_demos_json(uuid)', 'public.crm_demo_gate(public.crm_records)', 'public.crm_demo_needs_linking(uuid)', 'public.crm_demo_calendar_bits(uuid)', 'public.crm_4571_demo_candidates(uuid,text)', 'public.crm_4571_demo_link_core(public.book_call_leads,public.crm_records,text,text,text)', 'public.crm_demo_link_from_token(text,uuid)', 'public.crm_4571_demo_booking(uuid)', 'public.crm_4571_booking_icp(text)', 'public.crm_4571_w6_json(public.crm_records)', 'public.crm_4571_person_ctx()', 'public.crm_4571_email_of(text)', 'public.crm_4571_stage_at(uuid,timestamp with time zone)', 'public.crm_4571_suggest_replied(public.crm_records)', 'public.crm_4571_numbers_row(integer,integer,integer,integer,integer,integer)', 'public.crm_4571_cadence_config()', 'public.crm_4571_working_days_after(date,integer)', 'public.crm_4571_cadence(public.crm_records,date)', 'public.crm_4571_system_move(uuid,text,text,text)', 'public.crm_cadence_sweep(boolean,text)', 'public.crm_cadence_sweep_cron()', 'public.crm_4571_sweep_reader()', 'public.crm_4571_stage_move_ok(uuid,text,text,text,timestamp with time zone,uuid)', 'public.crm_4571_stage_refusal(text)',/" -e "s/^    'public.crm_import_receipts'$/    'public.crm_import_receipts', 'public.crm_record_watchers', 'public.crm_record_demos', 'public.crm_record_merges', 'public.crm_email_log', 'public.crm_cadence_sweep_runs', 'public.crm_cadence_sweep_actions'/"`
 -- [TEST-MOD-APPROVED #3980] The work gateway (ops_agent_call) writes request rows and the key's last-used marker on the same rail.
-\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W2: crm_record_log marks a wrong number bad, so it is one of the functions that write identifiers.
+-- #4571 W3: crm_identifier_set_followers writes a handle's follower count.
+\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "s/'crm_record_create_core,crm_record_update'/'crm_identifier_set_followers,crm_record_create_core,crm_record_log,crm_record_merge,crm_record_unmerge,crm_record_update'/" -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 \set t3802b_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 
 -- ===========================================================================
 -- PART 1 -- one transaction, rolled back.
 -- ===========================================================================
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -318,9 +326,9 @@ begin
   -- adds the closed crm_record_sources_json helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader and does not broaden the agent write surface.
-  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 53 crm_ functions',
+  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 108 crm_ functions (#4571 W3 adds seven, W4 twenty, W6 twenty-six, W7 two)',
     (select count(*) filter (where p.proname like 'team\_agent\_%')::text || '/' || count(*) filter (where p.proname like 'crm\_%')
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '18/53');
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '18/108');
   perform pg_temp.t3802b_check('B-1', 'no agent function takes a person from its caller',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'
@@ -870,8 +878,10 @@ begin
     'b4-create-0001')::text$q$);
   v_a := (v::jsonb #>> '{record,id}')::uuid;
   perform pg_temp.t3802b_check('B-4', 'a record is created with its three identifiers, as typed and in their normal form',
-    pg_temp.t3802b_get(v, 'status') || '/' || (v::jsonb #> '{record,identifiers}')::text,
-    'created/[{"key": "hello@palmcourt.example", "kind": "email", "value": "hello@palmcourt.example", "platform": null}, {"key": "palm.court", "kind": "handle", "value": "@Palm.Court", "platform": "instagram"}, {"key": "+2348035550101", "kind": "phone", "value": "+234 803 555 0101", "platform": null}]');
+    -- #4571 W2: each identifier also carries its id (random here, so left out) and its ok/bad status.
+    pg_temp.t3802b_get(v, 'status') || '/' || (select jsonb_agg(i - 'id' order by o) from jsonb_array_elements(v::jsonb #> '{record,identifiers}') with ordinality x(i, o))::text,
+    -- #4571 W3: and when it went bad and its follower count (none yet).
+    'created/[{"key": "hello@palmcourt.example", "kind": "email", "value": "hello@palmcourt.example", "bad_at": null, "status": "ok", "platform": null, "followers": null, "bad_reason": null, "followers_at": null}, {"key": "palm.court", "kind": "handle", "value": "@Palm.Court", "bad_at": null, "status": "ok", "platform": "instagram", "followers": null, "bad_reason": null, "followers_at": null}, {"key": "+2348035550101", "kind": "phone", "value": "+234 803 555 0101", "bad_at": null, "status": "ok", "platform": null, "followers": null, "bad_reason": null, "followers_at": null}]');
   perform pg_temp.t3802b_check('B-4', 'the audit row counts the identifiers and holds none of them',
     (select (a.metadata ->> 'identifiers') || '/' || (a.metadata::text !~* 'palm\.court|5550101|hello@')::text
        from public.admin_audit_log a where a.action = 'crm.record_create' and a.target_id = v_a::text), '3/true');
@@ -1345,7 +1355,7 @@ begin
     'logged/replied/replied/inbound/Sure, call me Friday/claude');
   perform pg_temp.t3802b_check('B-8', 'record_reply: a Meeting host is logged and stays, saying why',
     (v::jsonb #>> '{result,results,1,status}') || '/' || coalesce(v::jsonb #>> '{result,results,1,moved_to}', 'null') || '/' || (v::jsonb #>> '{result,results,1,move_note}'),
-    'logged/null/Already in Meeting, so the card stayed where it is.');
+    'logged/null/Already in Demo booked (Google Meet), so the card stayed where it is.');  -- #4571 W4: the meeting stage's label
   perform pg_temp.t3802b_check('B-8', 'record_reply: a Lost host is logged and stays, saying why',
     (v::jsonb #>> '{result,results,2,status}') || '/' || coalesce(v::jsonb #>> '{result,results,2,moved_to}', 'null') || '/' || (v::jsonb #>> '{result,results,2,move_note}'),
     'logged/null/This card is in Lost, so it stayed there. Move it yourself if they are back.');
@@ -1756,6 +1766,11 @@ from generate_series(1, 2) g,
                      || left(translate(encode(sha256(convert_to(gen_random_uuid()::text || g, 'UTF8')), 'base64'), '+/=', '-_a'), 43) as key) k;
 
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 -- Records first, with their log lines and identifiers.
 delete from public.crm_records where created_by like 'issue3802b-race-%';
 set local session_replication_role = replica;
@@ -1778,6 +1793,7 @@ select 'issue3802b-race-' || n || '@test.local', case n when 1 then 'claude' els
 from t3802b_race.keys;
 insert into public.crm_records (id, pipeline, name, stage, created_by, updated_by) values
   ('38020000-0000-4000-b910-000000000001', 'hosts', 'Issue3802b Race Host', 'prospect', 'issue3802b-race-1@test.local', 'issue3802b-race-1@test.local');
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 
 do $race$
@@ -2049,6 +2065,11 @@ select count(*) as t3802b_race_total,
 
 -- Remove the committed rows, whatever the verdict.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 -- Records first, with their log lines and identifiers.
 delete from public.crm_records where created_by like 'issue3802b-race-%';
 set local session_replication_role = replica;
@@ -2059,6 +2080,7 @@ delete from public.team_agent_keys where owner_email like 'issue3802b-race-%';
 delete from public.admin_audit_log where admin_email like 'issue3802b-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802b-race-%';
 delete from auth.users where email like 'issue3802b-race-%';
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 reset search_path;
 \if :t3802b_made_column

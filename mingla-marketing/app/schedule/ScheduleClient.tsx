@@ -36,7 +36,7 @@ import { ArrowRight, Check, Mail } from 'lucide-react'
 import { captureMarketing, captureSearchMeasurement } from '@/components/marketing/marketing-capture'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
-import { bookCall, fetchBookingSlots, type BookingSlot } from '@/lib/booking-call'
+import { bookCall, fetchBookingSlots, scheduleTokenFrom, type BookingSlot } from '@/lib/booking-call'
 import { marketingAdContext } from '@/lib/marketing-ad-context'
 import { sessionUtm } from '@/lib/forms/utm'
 import {
@@ -125,6 +125,8 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
   const cityFallback = !cities.some((c) => c !== SOMEWHERE_ELSE)
   const reportUrl = (params.get('report_url') ?? '').slice(0, 500)
   const source = (params.get('source') ?? 'direct').slice(0, 40)
+  // #4571 W4: a host card's own scheduler link carries `for`; nothing on the page changes.
+  const scheduleFor = isHost ? scheduleTokenFrom(params.get('for')) : undefined
   const presetIcp = icpFromParam(params.get('icp'))
   const ids = useId()
 
@@ -257,6 +259,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
             venue: venue.trim() || undefined,
             website: website.trim() || undefined,
             report_url: reportUrl || undefined,
+            ...(scheduleFor ? { for: scheduleFor } : {}),
             // #4238 W3-3: the host lead's ad context (ads-gated inside).
             ...(adContext ? { ad: adContext } : {}),
           }

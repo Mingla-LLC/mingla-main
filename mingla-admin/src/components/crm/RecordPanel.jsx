@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ArrowRight, ExternalLink, FileText } from "lucide-react";
+import { ArrowRight, Calendar, ExternalLink, FileText, Lock, MessageSquare, Phone, Plus } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { SideLink } from "../ui/PanelStack";
 import { Button } from "../ui/Button";
@@ -10,7 +10,6 @@ import { CONTROL_CLASS, Field, MISSING_CITY, MISSING_CITY_LABEL, Select } from "
 import { IdentifiersField } from "./IdentifiersField";
 import { ContactRuleField } from "./ContactRuleField";
 import { MissingCityLayer } from "./MissingCityLayer";
-import { OwnersField } from "./OwnersField";
 import { MinglaLinkField } from "./MinglaLinkField";
 import { LogForm } from "./LogForm";
 import { RecentTouchNotice } from "./RecentTouchNotice";
@@ -19,12 +18,27 @@ import { useHostOnMingla } from "../../hooks/useHostOnMingla";
 import { HostToDoSection } from "./HostToDoSection";
 import { HostTeamSection } from "./HostTeamSection";
 import { HostPlanSection } from "./HostPlanSection";
+import { RecordHygiene } from "./RecordHygiene";
 import { hostMissing } from "../../lib/opsModel";
 import { ActivityLog } from "./ActivityLog";
+import { CardFiles } from "../ops/CardFiles";
+import { useCardUploads } from "../../hooks/useCardFiles";
+import { QuickLinks } from "./RecordCard";
+import { PropChip, PeopleChip } from "../ops/WorkDetail";
+import { PeopleField } from "../people/PeopleField";
+import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords } from "../../lib/peopleField";
+import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
+import { dayLabel, localWhen } from "../../lib/opsModel";
 import {
   MOVE_BLOCK_COPY,
   TEXT_FIELDS,
+
+  callOutcomeLabel,
   clockTime,
+  demoLocked,
+  demoLockWords,
+  needsLinkingWords,
+  dueChoices,
   channelsUsed,
   contactRuleView,
   editsToSend,
@@ -33,6 +47,8 @@ import {
   hasUnsavedEdits,
   identifiersToSend,
   loadErrorWords,
+  localToday,
+  moveBlocker,
   nextStage,
   normalizeTyped,
   relativeTime,
@@ -42,7 +58,8 @@ import {
   terminalStage,
 } from "../../lib/crmModel";
 import { buildCrmHash } from "../../lib/crmUrl";
-import { getRecord } from "../../services/crmService";
+import { demoUnlink, getRecord, newRequestKey, recordWork, setFollowers, setRecordPeople } from "../../services/crmService";
+import { demoStatusWords, linkSourceWords, schedulerLink } from "../leads/demoLinkModel";
 import { useRecordDraftCount } from "../../hooks/useDrafts";
 
 // What someone typed on a card that could not be sent before the card went
@@ -71,6 +88,7 @@ function restoreLeftUnsent(recordId) {
  * "Details" row; a creator card shows it open, as before.
  */
 function DetailsFold({ isHosts, detailsRef, fid, children }) {
+  // #4571 W3: hosts and creators both fold the rest under Details.
   if (!isHosts) return <>{children}</>;
   return (
     <details ref={detailsRef} data-host-section="details" className="group min-w-0 border-t border-[var(--gray-200)] pt-3">
@@ -80,6 +98,162 @@ function DetailsFold({ isHosts, detailsRef, fid, children }) {
       </summary>
       <div className="mt-3 flex min-w-0 flex-col gap-5">{children}</div>
     </details>
+  );
+}
+
+const SECTION = "flex min-w-0 flex-col gap-2 border-t border-[var(--gray-200)] pt-3";
+const H3 = "flex min-w-0 flex-wrap items-center justify-between gap-2 text-[14px] font-semibold text-[var(--color-text-primary)]";
+const ACTIVITY_FILTERS = [["all", "All"], ["call", "Calls"], ["touch", "Touches"], ["stage", "Stage"], ["note", "Notes"]];
+
+/** #4571 W3: which activity filter an entry falls under. */
+export function activityFilterKind(a) {
+  if (!a) return "";
+  if (a.kind === "touch" && a.channel === "phone") return "call";
+  if (a.kind === "touch") return "touch";
+  if (a.kind === "stage_move") return "stage";
+  if (a.kind === "note") return "note";
+  return "";
+}
+
+/** #4571 W3: the record's Work (crm_record_work), loaded with the card. */
+function useRecordWork(recordId, tick) {
+  const [state, setState] = useState({ id: null, loading: true, error: null, data: null });
+  const [again, setAgain] = useState(0);
+  useEffect(() => {
+    if (!recordId) return undefined;
+    let live = true;
+    setState((st) => (st.id === recordId ? { ...st, loading: !st.data } : { id: recordId, loading: true, error: null, data: null }));
+    recordWork(recordId).then(
+      (data) => { if (live) setState({ id: recordId, loading: false, error: null, data }); },
+      (error) => { if (live) setState((st) => ({ ...st, id: recordId, loading: false, error })); },
+    );
+    return () => { live = false; };
+  }, [recordId, tick, again]);
+  return { ...state, retry: () => setAgain((n) => n + 1) };
+}
+
+/** #4571 W3: calls on this card: outcome, when, who, length, PressOne. */
+function CallsSection({ activity, onLogCall, disabled }) {
+  const calls = (Array.isArray(activity) ? activity : []).filter((a) => activityFilterKind(a) === "call");
+  return (
+    <section aria-label="Calls" data-record-section="calls" className={SECTION}>
+      <h3 className={H3}>
+        <span>Calls <span className="font-medium text-[var(--color-text-tertiary)]">· {calls.length}</span></span>
+        <Button variant="ghost" size="sm" className="min-h-11" icon={Phone} disabled={disabled} onClick={onLogCall}>Log call</Button>
+      </h3>
+      {calls.length === 0 ? <p className="text-[13px] text-[var(--color-text-tertiary)]">No calls logged yet.</p> : (
+        <ul className="flex min-w-0 flex-col gap-1.5">
+          {calls.map((a) => (
+            <li key={a.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-[12.5px]">
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded-full bg-[var(--gray-100)] px-2 py-px font-semibold text-[var(--color-text-primary)]">{callOutcomeLabel(a.outcome) || "Logged"}</span>
+                  <span className="text-[var(--color-text-tertiary)]">{[localWhen(a.occurred_at), a.actor_name, a.direction === "inbound" ? "Inbound" : "Outbound",
+                    Number(a.duration_seconds) > 0 ? `${Math.round(Number(a.duration_seconds) / 60)} min` : ""].filter(Boolean).join(" · ")}</span>
+                </span>
+                {a.body ? <span className="break-words text-[var(--color-text-secondary)]">{a.body}</span> : null}
+              </span>
+              {a.message_ref && /^https?:\/\//i.test(a.message_ref) && (
+                <a href={a.message_ref} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]">
+                  Open in PressOne <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * #4571 W3/W4: Demos (Google Meet), design tab 3. The card's linked demos (from
+ * crm_record_get), the Demo booked lock with its reason (demo_gate), and the
+ * card's own scheduler link: Book a demo opens it in a new tab so the rep books
+ * during the call; Copy scheduler link copies it. A booking made with it links
+ * itself. Staff book only through this link (Mingla does not read personal
+ * calendars). Unlinking is refused while the card stands on that demo alone.
+ */
+function DemosSection({ record, demos, scheduleToken, disabled, onChanged }) {
+  const { addToast } = useToast();
+  const [busy, setBusy] = useState("");
+  const list = Array.isArray(demos) ? demos : [];
+  const link = schedulerLink(scheduleToken);
+  const gate = record.demo_gate || null;
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      addToast({ variant: "success", title: "Scheduler link copied. A demo booked with it links to this card." });
+    } catch (err) {
+      console.error("[crm] copy scheduler link failed:", err?.message || err);
+      addToast({ variant: "error", title: "Couldn't copy the link", description: link });
+    }
+  };
+  const unlink = async (bookingId) => {
+    setBusy(bookingId);
+    try {
+      await demoUnlink(bookingId);
+      addToast({ variant: "success", title: "Demo unlinked. It is back on Demos to link." });
+      onChanged();
+    } catch (err) {
+      addToast({ variant: "error", title: "Couldn't unlink the demo", description: errorWords(err) });
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <section aria-label="Demos" data-record-section="demos" className={SECTION}>
+      <h3 className={H3}><span>Demos (Google Meet) <span className="font-medium text-[var(--color-text-tertiary)]">· {list.length}</span></span></h3>
+      {list.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-tertiary)]">No demo booked through the scheduler is linked yet.</p>
+      ) : (
+        <ul className="flex min-w-0 flex-col gap-1.5">
+          {list.map((d) => (
+            <li key={d.booking_id || d.id} data-demo={d.status} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-[12.5px] text-[var(--color-text-secondary)]">
+              <span className="min-w-0 break-words">
+                <b className="text-[var(--color-text-primary)]">{demoStatusWords(d.status)}</b> · {localWhen(d.call_at)}
+                {d.status === "moved" && d.original_call_at ? <span> (was {localWhen(d.original_call_at)})</span> : null}
+                {linkSourceWords(d.link_source) ? <span className="text-[var(--color-text-tertiary)]"> · {linkSourceWords(d.link_source)}{d.linked_by_name ? ` by ${d.linked_by_name}` : ""}</span> : null}
+              </span>
+              <span className="flex flex-wrap gap-1">
+                {d.meet_url && d.status !== "cancelled" && d.status !== "declined" && (
+                  <a href={d.meet_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg px-2 font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]">Join <ExternalLink aria-hidden="true" className="ml-1 h-3.5 w-3.5" /></a>
+                )}
+                <Button variant="ghost" size="sm" className="min-h-11" disabled={disabled || busy === d.booking_id} loading={busy === d.booking_id} onClick={() => unlink(d.booking_id)}>Unlink</Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {gate?.demo_cancelled && (
+        <p role="note" data-demo-cancelled="" className="rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-[12.5px] text-[var(--color-warning-700)]">
+          <b>Demo cancelled.</b> The card stays where it is. Book a new demo, or move the card back.
+        </p>
+      )}
+      {gate?.needs_linking && !gate?.demo_cancelled && (
+        <p role="note" data-demo-needs-linking="" className="rounded-lg bg-[var(--a-sched-bg)] px-3 py-2 text-[12.5px] text-[var(--a-sched-ink)]">
+          <b>Needs linking.</b> {needsLinkingWords(record)}
+        </p>
+      )}
+      {gate?.locked && (
+        <p role="note" data-demo-lock="" className="rounded-lg bg-[var(--color-error-50)] px-3 py-2 text-[12.5px] text-[var(--color-error-700)]">
+          <b>Demo booked is locked.</b> {gate.reason || "It needs a Google Meet booked through the scheduler and linked to this card."}
+        </p>
+      )}
+      {link ? (
+        <div className="flex min-w-0 flex-wrap gap-2">
+          <a href={link} target="_blank" rel="noopener noreferrer" data-book-demo=""
+            className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-[var(--color-brand-800)] px-3 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)]">
+            <Phone aria-hidden="true" className="h-3.5 w-3.5" />Book a demo
+          </a>
+          <Button variant="secondary" size="sm" className="min-h-11" onClick={copy} data-copy-scheduler="">Copy scheduler link</Button>
+          <a href="#/inbound" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--gray-200)] px-3 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)]">Link a booked demo</a>
+        </div>
+      ) : (
+        <p className="text-[12.5px] text-[var(--color-text-tertiary)]">The card&apos;s scheduler link shows once the card has loaded.</p>
+      )}
+    </section>
   );
 }
 
@@ -96,7 +270,7 @@ function DetailsFold({ isHosts, detailsRef, fid, children }) {
  *   - If the page itself goes away, the text is kept and a message offers the
  *     card back.
  */
-export function RecordDrawer({
+export function RecordPanel({
   pipeline,
   def,
   config,
@@ -120,6 +294,8 @@ export function RecordDrawer({
   // #4270 W7 rework (D-1): set inside the Brand group panel; links then open
   // in that panel (or show as plain words) and the page never changes.
   onOpenSide = null,
+  // #4571 rework: archive, merge or undo changed the board's lists (Duplicate pairs, Show archived).
+  onHygieneChanged = null,
 }) {
   const { addToast } = useToast();
   const uid = useId();
@@ -190,6 +366,38 @@ export function RecordDrawer({
   // Brand and team. Details folds the rest; a deep link to a field opens it.
   const hostRead = useHostOnMingla(pipeline === "hosts" ? record?.id || null : null, record?.brand_id || "");
   const detailsRef = useRef(null);
+  // #4571 W3: the Work section (hosts and creators), the people chips, the activity filter.
+  const [workTick, setWorkTick] = useState(0);
+  const work = useRecordWork(record?.id || null, `${activityTick}:${workTick}`);
+  const directory = usePeopleDirectory();
+  const [activityFilter, setActivityFilter] = useState("all");
+  const [peopleBusy, setPeopleBusy] = useState(false);
+  const logRef = useRef(null);
+  const demosRef = useRef(null);
+  // #4571 rework: each "Log call" opens the log form as a call, on its outcomes.
+  const [callTick, setCallTick] = useState(0);
+  const openLogCall = () => {
+    setCallTick((n) => n + 1);
+    const box = logRef.current;
+    const fold = box?.closest?.("details");
+    if (fold && !fold.open) fold.open = true;
+    box?.scrollIntoView?.({ block: "center" });
+  };
+  // #4571 W3: the record's files, the Work card's files model (same bucket and limits).
+  const fileUploads = useCardUploads(record?.id || null, () => setReloadTick((n) => n + 1), { record: true });
+  // #4571 W3: the notes composer at the top of the timeline; Thread focuses it.
+  const noteRef = useRef(null);
+  const [note, setNote] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
+  const noteKey = useRef({ key: null, value: "" });
+  const focusNote = () => {
+    const box = noteRef.current;
+    const fold = box?.closest?.("details");
+    if (fold && !fold.open) fold.open = true;
+    setActivityFilter("all");
+    box?.scrollIntoView?.({ block: "center" });
+    box?.focus?.();
+  };
 
   // The latest values, for code that runs later (a close, an unmount).
   const live = useRef({ drafts, unsent, record, discarded: false });
@@ -500,6 +708,49 @@ export function RecordDrawer({
   });
   const fieldError = (key) => (Object.hasOwn(unsent, key) ? unsent[key].message : "");
 
+  /** #4571 W3: a note from the timeline's composer; the same request key until it is sent. */
+  const addNote = async () => {
+    const body = note.trim();
+    if (!body || noteBusy || !record) return;
+    if (noteKey.current.value !== body) noteKey.current = { key: newRequestKey(), value: body };
+    setNoteBusy(true);
+    const res = await submitLog({ kind: "note", body }, noteKey.current.key);
+    if (mounted.current) {
+      setNoteBusy(false);
+      if (res.ok) { setNote(""); noteKey.current = { key: null, value: "" }; }
+      else addToast({ variant: "error", title: "Note not added", description: res.message });
+    }
+  };
+
+  /** #4571 W3: owners and watchers in one step (crm_record_set_people). */
+  const savePeople = async (owners, watchers, words) => {
+    if (!record || peopleBusy) return;
+    setPeopleBusy(true);
+    try {
+      const res = await setRecordPeople(record.id, owners, watchers, record.updated_at || null);
+      if (res?.record) applyRecord(res.record);
+      if (mounted.current) { setSavedAt(clockTime()); addToast({ variant: "success", title: words }); }
+    } catch (err) {
+      if (err?.token === "not_found") markMissing();
+      else addToast({ variant: "error", title: "People not changed", description: errorWords(err) });
+    } finally {
+      if (mounted.current) setPeopleBusy(false);
+    }
+  };
+
+  /** #4571 W3: a handle's follower count, as a person read it. */
+  const saveFollowers = async (item, typed) => {
+    const t = String(typed || "").trim();
+    if (t !== "" && !/^\d{1,9}$/.test(t)) { addToast({ variant: "error", title: "Followers must be a whole number, 0 or more." }); return; }
+    try {
+      const res = await setFollowers(item.id, t === "" ? null : Number(t));
+      if (res?.record) applyRecord(res.record);
+      addToast({ variant: "success", title: t === "" ? "Follower count cleared" : "Follower count saved" });
+    } catch (err) {
+      addToast({ variant: "error", title: "Follower count not saved", description: errorWords(err) });
+    }
+  };
+
   const submitLog = async (entry, requestKey) => {
     try {
       const res = await pipe.log(record.id, entry, requestKey);
@@ -510,8 +761,10 @@ export function RecordDrawer({
             : d
         );
         addToast({ variant: "success", title: "Added to the log" });
+        setWorkTick((n) => n + 1);
       }
-      return { ok: true };
+      // #4571 W2: the answer goes back to the form (a call's suggested next step).
+      return { ok: true, result: res };
     } catch (err) {
       if (err?.token === "not_found") markMissing();
       return { ok: false, message: errorWords(err), retryable: err?.token === "network" || err?.token === "unknown" };
@@ -631,8 +884,11 @@ export function RecordDrawer({
   const stageOptions = def.stages.map((s) => ({
     value: s.id,
     label: s.label,
-    disabled: s.id !== record.stage && (!!s.auto || (!!here?.auto && !s.terminal)),
+    disabled: s.id !== record.stage && (!!s.auto || (!!here?.auto && !s.terminal) || demoLocked(def, record, s.id)),
+    locked: s.id !== record.stage && demoLocked(def, record, s.id),
   }));
+  // #4571 rework: the next stage needs a linked demo first; offer the gate action instead.
+  const nextLocked = !!next && moveBlocker(def, record, next.id)?.token === "demo_required";
   let stageHelp = "";
   if (here?.auto) stageHelp = MOVE_BLOCK_COPY.stage_is_live;
   else if (isHosts) stageHelp = "Live sets itself when the linked brand has a public listing.";
@@ -785,10 +1041,125 @@ export function RecordDrawer({
             <ArrowRight aria-hidden="true" className="ml-auto h-4 w-4 shrink-0" />
           </SideLink>
         )}
+        {/* #4571 W3: the WorkDetail anatomy. Region and type, quick links,
+            a stage pill with one next action, then people and follow-up chips. */}
+        <div className="flex min-w-0 flex-col gap-2" data-record-section="top">
+          <p className="text-[12.5px] text-[var(--color-text-tertiary)]">{[plural, here?.label].filter(Boolean).join(" › ")} · {[(config.regions || []).find((r) => r.id === record.region_id)?.name, (def.icps || []).find((i) => i.id === record.icp)?.label].filter(Boolean).join(" · ") || "No region or type yet"}</p>
+          <QuickLinks record={record} big>
+            <Button variant="ghost" size="sm" className="min-h-9" icon={Plus} disabled={locked} onClick={() => fillIn("contact")}>Website</Button>
+            <Button variant="ghost" size="sm" className="min-h-9" icon={Plus} disabled={locked} onClick={() => fillIn("contact")}>Email</Button>
+            <Button variant="ghost" size="sm" className="min-h-9" icon={Plus} disabled={locked} onClick={() => fillIn("contact")}>Social</Button>
+          </QuickLinks>
+          {(record.identifiers || []).filter((i) => i.kind === "handle" && i.id).length > 0 && (
+            <details className="text-[12px] text-[var(--color-text-tertiary)]">
+              <summary className="min-h-9 cursor-pointer">Follower counts</summary>
+              <div className="mt-1 flex flex-col gap-1">
+                {(record.identifiers || []).filter((i) => i.kind === "handle" && i.id).map((i) => (
+                  <label key={i.id} className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">{i.value}</span>
+                    <input type="text" inputMode="numeric" maxLength={9} defaultValue={i.followers ?? ""} disabled={locked} aria-label={`Followers of ${i.value}`}
+                      onBlur={(e) => { if (String(i.followers ?? "") !== e.target.value.trim()) saveFollowers(i, e.target.value); }}
+                      className={`${CONTROL_CLASS} h-9 w-28`} />
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+        <section aria-label="Stage" data-record-section="stage" className="flex min-w-0 flex-wrap items-center gap-2">
+          <PropChip label="Stage" value={here?.label || record.stage} disabled={locked || pending} width="w-60">
+            {(closeIt) => stageOptions.map((o) => (
+              <button key={o.value} type="button" disabled={o.disabled || o.value === record.stage} aria-pressed={o.value === record.stage}
+                onClick={() => { closeIt(); onRequestMove(record, o.value); }}
+                className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)] disabled:opacity-50">{o.label}{o.locked ? ` · ${demoLockWords(o.value)}` : ""}</button>
+            ))}
+          </PropChip>
+          {next && !nextLocked && (
+            <Button size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight} disabled={locked || pending} onClick={() => onRequestMove(record, next.id)}>
+              Move to {next.label}
+            </Button>
+          )}
+          {nextLocked && (
+            <>
+              <span data-next-locked="" className="inline-flex min-h-11 items-center gap-1 text-[12.5px] font-semibold text-[var(--color-error-700)]">
+                <Lock aria-hidden="true" className="h-3.5 w-3.5" />{next.label} locked
+              </span>
+              <Button size="sm" className="min-h-11 max-sm:h-11" icon={Calendar} data-gate-action="" disabled={locked}
+                onClick={() => { const box = demosRef.current; box?.scrollIntoView?.({ block: "center" }); box?.querySelector?.("a, button")?.focus?.(); }}>
+                Book a demo
+              </Button>
+            </>
+          )}
+          <Button variant="secondary" size="sm" className="min-h-11" icon={Phone} disabled={locked} data-log-call="" onClick={openLogCall}>
+            Log call
+          </Button>
+          <Button variant="ghost" size="sm" className="min-h-11" icon={MessageSquare} data-thread-button="" onClick={focusNote}>Thread</Button>
+          {(record.stage_reason || stageHelp) && <p className="w-full text-[12px] text-[var(--color-text-tertiary)]">{record.stage_reason ? `Reason: ${record.stage_reason}. ` : ""}{stageHelp}</p>}
+        </section>
+        {/* #4571 W6: archive state, merge, a reply that suggests Replied, the cadence round. */}
+        <RecordHygiene record={record} pipeline={pipeline} disabled={locked || pending}
+          onChanged={() => { setReloadTick((n) => n + 1); pipe.refetch({ quiet: true }); onHygieneChanged?.(); }}
+          onRequestMove={onRequestMove} onOpenCard={onOpenCard} />
+        <section aria-label="People and details" data-record-section="people" className="flex min-w-0 flex-wrap items-center gap-1">
+          <PeopleChip id={fid("owners-pop")} label="Owners" people={(record.owners || []).map((e) => (config.team || []).find((p) => p.email === e) || { email: e, name: e })} field={
+            <PeopleField id={fid("owners")} label="Owners" value={record.owners || []} team={directory.people || config.team} me={directory.me}
+              exclude={record.watchers || []} min={(record.owners || []).length ? 1 : 0} max={10} minWords={lastOwnerWords} hint={OWNERS_HINT}
+              disabled={locked} busy={peopleBusy}
+              onChange={(nextOwners) => savePeople(nextOwners, record.watchers || [], "Owners changed")} />
+          } />
+          <PeopleChip id={fid("watchers-pop")} label="Watching" people={(record.watchers || []).map((e) => (config.team || []).find((p) => p.email === e) || { email: e, name: e })} field={
+            <PeopleField id={fid("watchers")} label="Watching" value={record.watchers || []} team={directory.people || config.team} me={directory.me}
+              exclude={record.owners || []} min={0} max={10} minWords={lastWatcherWords} hint={WATCHERS_HINT}
+              disabled={locked} busy={peopleBusy}
+              onChange={(nextWatchers) => savePeople(record.owners || [], nextWatchers, "Watchers changed. They hear about stage moves and see calls.")} />
+          } />
+          <PropChip label="Next follow-up" value={record.next_action || ""} empty="Next follow-up" disabled={locked} width="w-72">
+            {(closeIt) => (
+              <input type="text" autoFocus maxLength={200} placeholder="What happens next" aria-label="Next action" defaultValue={record.next_action || ""}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                onBlur={(e) => { const t = normalizeTyped("next_action", e.target.value); closeIt(); if (t !== (record.next_action || "")) save("next_action", t); }}
+                className={CONTROL_CLASS} />
+            )}
+          </PropChip>
+          <PropChip label="Due" value={record.due_on ? dayLabel(record.due_on) : ""} disabled={locked} width="w-56">
+            {(closeIt) => (
+              <>
+                {dueChoices(localToday()).map((c) => (
+                  <button key={c.label} type="button" onClick={() => { closeIt(); save("due_on", c.value); }}
+                    className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)]">{c.label} <span className="text-[var(--color-text-tertiary)]">{dayLabel(c.value)}</span></button>
+                ))}
+                {record.due_on && <button type="button" onClick={() => { closeIt(); save("due_on", ""); }} className="min-h-9 rounded-md px-2 text-left text-[13px] text-[var(--color-error-700)] hover:bg-[var(--gray-50)]">Clear the date</button>}
+              </>
+            )}
+          </PropChip>
+          {fieldError("next_action") && <p role="alert" className="w-full text-xs text-[var(--color-error-700)]">{fieldError("next_action")}</p>}
+          {fieldError("due_on") && <p role="alert" className="w-full text-xs text-[var(--color-error-700)]">{fieldError("due_on")}</p>}
+          {fieldError("owners") && <p role="alert" className="w-full text-xs text-[var(--color-error-700)]">{fieldError("owners")}</p>}
+        </section>
+        {isHosts && (!(record.owners || []).length || hostMissing(record).length > 0) && (
+          <div data-needs-attention="" className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-[var(--color-error-50)] px-3 py-2.5 text-[13px]">
+            <b className="text-[var(--color-error-700)]">Needs attention</b>
+            {!(record.owners || []).length && (
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span className="text-[var(--color-text-primary)]">No owner</span>
+                {config.me?.email && <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => { const mine = String(config.me?.email || "").toLowerCase(); if (mine) save("owners", [...new Set([...(record.owners || []), mine])].sort()); }}>Assign to me</Button>}
+              </div>
+            )}
+            {hostMissing(record).length > 0 && (
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 break-words text-[var(--color-text-primary)]">Missing {hostMissing(record).join(", ")}</span>
+                <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => fillIn(hostMissing(record)[0])}>Fill in</Button>
+              </div>
+            )}
+          </div>
+        )}
+        {/* #4571 W3: Work for hosts and creators (crm_record_work); its Add work item keeps #4270's form. */}
+        <HostToDoSection key={`record-work-${record.id}`} record={record} read={work} online={online && !locked} onAdded={() => { work.retry(); if (isHosts) hostRead.retry(); }} />
+        {isHosts && <div ref={demosRef} className="min-w-0"><DemosSection record={record} demos={current.data?.demos} scheduleToken={current.data?.schedule_token} disabled={locked || !online} onChanged={() => setReloadTick((n) => n + 1)} /></div>}
+        <CallsSection activity={current.data?.activity} disabled={locked} onLogCall={openLogCall} />
         {isHosts && (
           <>
-            {/* #4270: To do first, then the plan (W3), On Mingla, Brand and team, Status, Details. */}
-            <HostToDoSection key={`host-todo-${record.id}`} record={record} read={hostRead} online={online && !locked} onAdded={() => hostRead.retry()} />
+            {/* #4270: the plan (W3), On Mingla, Brand and team stay on the host card. */}
             <HostPlanSection key={`host-plan-${record.id}`} record={record} online={online && !locked} onChanged={() => hostRead.retry()} />
             <div className="border-t border-[var(--gray-200)] pt-3">
               <OnMinglaSection key={`on-mingla-${record.id}`} record={record} read={hostRead} online={online && !locked} />
@@ -796,116 +1167,10 @@ export function RecordDrawer({
             <HostTeamSection record={record} read={hostRead} onOpenSide={onOpenSide} />
           </>
         )}
-        {!isHosts && next && (
-          <div>
-            <Button
-              size="sm"
-              className="min-h-11 max-sm:h-11"
-              iconRight={ArrowRight}
-              disabled={locked || pending}
-              onClick={() => onRequestMove(record, next.id)}
-            >
-              Move to {next.label}
-            </Button>
-          </div>
-        )}
-
-        {isHosts && (
-          <section aria-labelledby={fid("status")} data-host-section="status" className="flex min-w-0 flex-col gap-3 border-t border-[var(--gray-200)] pt-3">
-            <h3 id={fid("status")} className="text-[14px] font-semibold text-[var(--color-text-primary)]">Status</h3>
-            {(!(record.owners || []).length || hostMissing(record).length > 0) && (
-              <div data-needs-attention="" className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-[var(--color-error-50)] px-3 py-2.5 text-[13px]">
-                <b className="text-[var(--color-error-700)]">Needs attention</b>
-                {!(record.owners || []).length && (
-                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <span className="text-[var(--color-text-primary)]">No owner</span>
-                    {config.me?.email && <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => { const mine = String(config.me?.email || "").toLowerCase(); if (mine) save("owners", [...new Set([...(record.owners || []), mine])].sort()); }}>Assign to me</Button>}
-                  </div>
-                )}
-                {hostMissing(record).length > 0 && (
-                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                    <span className="min-w-0 break-words text-[var(--color-text-primary)]">Missing {hostMissing(record).join(", ")}</span>
-                    <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => fillIn(hostMissing(record)[0])}>Fill in</Button>
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field
-                label="Stage"
-                htmlFor={fid("stage")}
-                full
-                helper={
-                  record.stage_reason ? (
-                    <>
-                      <span className="block text-[var(--color-text-secondary)]">Reason: {record.stage_reason}</span>
-                      {stageHelp}
-                    </>
-                  ) : (
-                    stageHelp
-                  )
-                }
-              >
-                <Select
-                  id={fid("stage")}
-                  value={record.stage}
-                  disabled={locked || pending}
-                  options={stageOptions}
-                  onChange={(e) => onRequestMove(record, e.target.value)}
-                />
-              </Field>
-              <Field label="Next action" htmlFor={fid("next_action")} error={fieldError("next_action")}>
-                <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
-              </Field>
-              <Field label="Due" htmlFor={fid("due_on")} error={fieldError("due_on")}>
-                <input
-                  type="date"
-                  id={fid("due_on")}
-                  value={val("due_on")}
-                  disabled={locked}
-                  onChange={(e) => save("due_on", e.target.value)}
-                  className={CONTROL_CLASS}
-                />
-              </Field>
-            </div>
-            {next && (
-              <div>
-                <Button size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight} disabled={locked || pending} onClick={() => onRequestMove(record, next.id)}>
-                  Move to {next.label}
-                </Button>
-              </div>
-            )}
-          </section>
-        )}
         {/* #4270 W2: hosts fold contact, ICP, region, channels, contact rule,
             imports, the log form and activity under one Details row. */}
-        <DetailsFold isHosts={isHosts} detailsRef={detailsRef} fid={fid}>
+        <DetailsFold isHosts detailsRef={detailsRef} fid={fid}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {!isHosts && (
-            <Field
-              label="Stage"
-              htmlFor={fid("stage")}
-              full
-              helper={
-                record.stage_reason ? (
-                  <>
-                    <span className="block text-[var(--color-text-secondary)]">Reason: {record.stage_reason}</span>
-                    {stageHelp}
-                  </>
-                ) : (
-                  stageHelp
-                )
-              }
-            >
-              <Select
-                id={fid("stage")}
-                value={record.stage}
-                disabled={locked || pending}
-                options={stageOptions}
-                onChange={(e) => onRequestMove(record, e.target.value)}
-              />
-            </Field>
-          )}
           <Field label="ICP" htmlFor={fid("icp")} error={fieldError("icp")}>
             <Select {...selectProps("icp")} placeholder="None yet" options={opt(def.icps)} />
           </Field>
@@ -930,19 +1195,6 @@ export function RecordDrawer({
                 regionRef.current?.focus();
               }}
             />
-          )}
-          <OwnersField
-            labelId={fid("owners")}
-            team={config.team}
-            value={Object.hasOwn(drafts, "owners") ? drafts.owners : record.owners}
-            disabled={locked}
-            min={(record.owners || []).length ? 1 : 0}
-            onChange={(owners) => save("owners", owners)}
-          />
-          {fieldError("owners") && (
-            <p role="alert" className="text-xs text-[var(--color-error-700)] sm:col-span-2">
-              {fieldError("owners")}
-            </p>
           )}
           <Field label={isHosts ? "Contact" : "Handle and reach"} htmlFor={fid("contact")} full error={fieldError("contact")}>
             <input type="text" maxLength={300} placeholder="Who to talk to" {...textProps("contact")} />
@@ -978,23 +1230,6 @@ export function RecordDrawer({
               </div>
             ) : <p className="text-xs text-[var(--color-text-tertiary)]">No contact logged yet.</p>}
           </div>
-          {!isHosts && (
-            <>
-              <Field label="Next action" htmlFor={fid("next_action")} error={fieldError("next_action")}>
-                <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
-              </Field>
-              <Field label="Due" htmlFor={fid("due_on")} error={fieldError("due_on")}>
-                <input
-                  type="date"
-                  id={fid("due_on")}
-                  value={val("due_on")}
-                  disabled={locked}
-                  onChange={(e) => save("due_on", e.target.value)}
-                  className={CONTROL_CLASS}
-                />
-              </Field>
-            </>
-          )}
           {isHosts ? (
             <MinglaLinkField
               record={record}
@@ -1095,12 +1330,29 @@ export function RecordDrawer({
 
         <RecentTouchNotice key={`signals-${record.id}`} record={record} online={online} />
 
-        <div className="border-t border-[var(--gray-200)] pt-4">
-          <LogForm key={record.id} record={record} config={config} disabled={locked} onSubmit={submitLog} />
+        <div ref={logRef} data-record-section="log" className="border-t border-[var(--gray-200)] pt-4">
+          <LogForm key={record.id} record={record} config={config} def={def} disabled={locked} onSubmit={submitLog} callTick={callTick} />
         </div>
 
+        <div data-record-section="note" className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-[var(--gray-200)] p-2">
+          <label htmlFor={fid("note")} className="sr-only">Add a note</label>
+          <textarea ref={noteRef} id={fid("note")} rows={2} maxLength={2000} value={note} disabled={locked || noteBusy}
+            placeholder="Add a note for the team" onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addNote(); } }}
+            className={`${CONTROL_CLASS} min-h-[44px] py-2`} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" className="min-h-11" loading={noteBusy} disabled={locked || noteBusy || !note.trim()} onClick={addNote}>Add note</Button>
+            <span className="text-[12px] text-[var(--color-text-tertiary)]">Touches, stage moves, calls and notes in one list.</span>
+          </div>
+        </div>
+        <div role="group" aria-label="Filter activity" className="flex flex-wrap gap-1">
+          {ACTIVITY_FILTERS.map(([k, l]) => (
+            <button key={k} type="button" aria-pressed={activityFilter === k} onClick={() => setActivityFilter(k)}
+              className={`min-h-9 rounded-full border px-2.5 text-[12px] font-semibold ${activityFilter === k ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)]"}`}>{l}</button>
+          ))}
+        </div>
         <ActivityLog
-          activity={current.data?.activity}
+          activity={(current.data?.activity || []).filter((a) => activityFilter === "all" || activityFilterKind(a) === activityFilter)}
           def={def}
           config={config}
           loading={current.status === "loading"}
@@ -1114,6 +1366,10 @@ export function RecordDrawer({
           </div>
         )}
         </DetailsFold>
+        {/* #4571 W3: Files, the Work card's files section on a host or creator. */}
+        <div data-record-section="files" className="border-t border-[var(--gray-200)] pt-3">
+          <CardFiles card={record} record files={current.data?.files || []} disabled={locked} uploads={fileUploads} onChanged={() => setReloadTick((n) => n + 1)} />
+        </div>
         {footerExtra}
       </div>
     </Drawer>

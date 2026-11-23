@@ -54,6 +54,12 @@ export type BookCallInput = {
       website?: string
       report_url?: string
       /**
+       * #4571 W4 — the host card's scheduler token (`/schedule?for=<token>`), so
+       * the booking links itself to that card in Admin. Only a UUID is sent
+       * (scheduleTokenFrom); the booker is never told either way.
+       */
+      for?: string
+      /**
        * #4238 W3-3 — the page's ad context (lib/marketing-ad-context.ts). A
        * Host call only: the server records the host lead and answers its
        * `lead_event_id` for the browser Lead twin.
@@ -79,6 +85,14 @@ export interface BookCallExtras {
   marketing_consent?: boolean
   consent_text?: string
   ad?: MarketingAdContext
+}
+
+const SCHEDULE_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** #4571 W4 — the `for` token from the page URL when it is a UUID, else undefined. */
+export function scheduleTokenFrom(value: string | null | undefined): string | undefined {
+  const v = typeof value === 'string' ? value.trim() : ''
+  return SCHEDULE_TOKEN_RE.test(v) ? v.toLowerCase() : undefined
 }
 
 export async function bookCall(input: BookCallInput & BookCallExtras): Promise<

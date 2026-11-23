@@ -66,7 +66,7 @@ const TEAM = read("pages/TeamDashboardPage.jsx");
 const BETA = read("pages/BetaLeadsPage.jsx");
 const ADMIN_PAGE = read("pages/AdminPage.jsx");
 const ACCEPT = read("components/InviteAcceptScreen.jsx");
-const DRAWER = read("components/crm/RecordDrawer.jsx");
+const DRAWER = read("components/crm/RecordPanel.jsx");
 const BOARD = read("components/crm/PipelineBoard.jsx");
 const TOAST = read("components/ui/Toast.jsx");
 const SERVICE = read("services/crmService.js");
@@ -551,19 +551,19 @@ describe("#3802 M-10: the five re-test items", () => {
 
 describe("#3802 M-11: the three smoke-test items", () => {
   it("a card let go over a column that will not take it is answered in plain words", () => {
-    assert.match(BOARD, /onDragEnd=\{handleDragEnd\}/);
-    assert.match(BOARD, /const handleDragEnd = \(e\) => \{/);
-    assert.match(BOARD, /if \(!record \|\| wasDropped \|\| disabled\) return;/);
-    assert.match(BOARD, /document\.elementsFromPoint\(e\.clientX, e\.clientY\)/);
-    assert.match(BOARD, /if \(block && \(block\.token === "stage_sets_itself" \|\| block\.token === "stage_is_live"\)\) onMove\(record, stageId\);/);
+    // #4571 W3: dnd-kit. A drop on any stage column asks for the move, even one
+    // that will refuse it, so letting go is never silent; the page answers.
+    assert.match(BOARD, /onDragStart=\{onDragStart\} onDragEnd=\{onDragEnd\} onDragCancel=\{\(\) => setDragged\(null\)\}/);
+    assert.match(BOARD, /if \(!record \|\| disabled \|\| !over \|\| over\.data\.current\?\.type !== "column"\) return;/);
+    assert.match(BOARD, /if \(stageId && stageId !== record\.stage\) onMove\(record, stageId\);/);
     // The page answers that move with the reason and moves nothing.
     assert.match(PAGE, /addToast\(\{ variant: "warning", title: BLOCK_TITLES\[block\.token\] \|\| "That move isn't possible", description: block\.message \}\);/);
     assert.match(PAGE, /stage_sets_itself: "Live sets itself",/);
   });
   it("and that column still never looks like a place to drop", () => {
-    assert.match(BOARD, /const isOver = over && !refused;/);
-    assert.match(BOARD, /if \(refusal\(stageId\)\) \{\s*e\.dataTransfer\.dropEffect = "none";\s*return;\s*\}\s*e\.preventDefault\(\);/);
-    assert.match(BOARD, /dropped\.current = true;/);
+    // #4571 W3: the refusing column is outlined as refused, never as a drop target.
+    assert.match(BOARD, /isOver: over && !refused, refused/);
+    assert.match(BOARD, /block\.token === "stage_sets_itself" \|\| block\.token === "stage_is_live"/);
   });
   it("a card panel is drawn outside the page's own box, so its first paint is full height", () => {
     // Both card panels go through the one layer component, which draws at the
@@ -573,7 +573,7 @@ describe("#3802 M-11: the three smoke-test items", () => {
     // #4255: the card panels are the first of the two side panels, drawn by the
     // PanelStack inside the same layer.
     assert.match(PAGE, /<PipelineOverlays\s+card=\{\s*<PanelLinksContext\.Provider value=\{stack\.links\}>\s*<PanelStack\s+stack=\{stack\}\s+first=\{\s*ready && state\.card === NEW_CARD && !holding \? \(\s*<Drawer open/);
-    assert.match(PAGE, /\) : ready && openId \? \(\s*<RecordDrawer/);
+    assert.match(PAGE, /\) : ready && openId \? \(\s*<Suspense[\s\S]*?<RecordPanel/);
     assert.ok(!/createPortal/.test(PAGE), "the page draws an overlay outside the layer component");
   });
   it("with a card open on a wide screen the toasts sit beside it; on a phone they stay above its footer", () => {
