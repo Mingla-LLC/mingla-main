@@ -4,8 +4,11 @@
 --
 -- MINGLA-INVARIANT: I-4490-TILL-ONE-REQUEST-ONE-ACTION | issue #4490 | a Till client_request_id names one money action on its check: the same id with the same money facts (payment: method, amount, tip, cash given; card start: method, tip; refund: payment, amount, tip; line refund: the line) answers the original action's facts, and the same id with any other facts raises PT409 till_request_reused and moves no money (issue_4490_till_take_payment, issue_4490_till_card_start, issue_4490_till_refund, issue_4490_till_mint_carrier_refund, issue_4490_till_refund_line).
 --
--- FAILS-ON-REVERT: without 20280809605490 F5-P2 fails (the ₦1,750 payment with
--- the ₦1,000 payment's id is answered as a replay and writes nothing).
+-- FAILS-ON-REVERT: without 20280809605490 F5-P1 fails (the answer carries no
+-- recorded amount); with only take_payment's refusal removed F5-P2 fails (the
+-- 1,750.00 payment sent with the 1,000.00 payment's id is answered as a replay
+-- and writes nothing); with till_refund's removed F5-R2; with refund_line's
+-- removed F5-L2.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
