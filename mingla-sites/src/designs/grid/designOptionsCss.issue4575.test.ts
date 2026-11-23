@@ -150,4 +150,12 @@ describe("#4575 grid/options-1.css", () => {
     for (const [alpha, at] of stops) if (at >= 55) expect(alpha, `${at}%`).toBeGreaterThanOrEqual(0.7);
     expect(stops.some(([alpha, at]) => at === 55 && alpha >= 0.7)).toBe(true);
   });
+  it("the consent banner stays above the grid lines (it lives inside the footer's own layer)", () => {
+    const lift = all.find((rule) => rule.selector === `${COVER} > .mg-foot:has(.consent)`);
+    expect(lift?.body).toMatch(/z-index: 41/);
+  });
+
+  it("phones keep the accent RSVP cell in the black bar (the shared bar hides it at 400px and below)", () => {
+    expect(css).toMatch(/@media \(max-width: 400px\) \{\s*\[data-design="grid"\] \.mg-page\[data-mg-cover="full"\] \.mg-hd--grid-bar \.mg-hd__end > \.mg-hd__cta \{ display: inline-flex;/);
+  });
 });
