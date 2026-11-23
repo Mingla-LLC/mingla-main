@@ -5,12 +5,10 @@
 -- non-owner kind (invited brand admin, auto-admin, event manager, a Mingla admin who is not on
 -- the brand); a host forges the new columns by INSERT (not only UPDATE); the backfill re-run is
 -- checked against every pre-existing role, a pending invite row and a removed row; the name rule
--- is probed at its edges; and X-LEAK proves whether a host can turn a chat roster user id into
--- an admin email through profiles.
+-- is probed at its edges; and X-LEAK proves that no #4579 reader or RPC hands a host an
+-- auto-admin's email, username or email handle.
 --
--- X-LEAK is EXPECTED TO FAIL on tip 5c95aec243 (tester finding P0-1 on #4579): the roster hands
--- hosts the auto-admin's user id and public.profiles lets any authenticated user read email.
--- It must pass before merge. Not registered in CI (no sidecar) until that fix lands.
+-- X-LEAK scope (Seth, 2026-11-23 fix plan): the platform-wide profiles read is out of scope here; #3969's final step closes it for everyone.
 --
 -- fails-on-revert: X-3 fails when the brand tombstone check is deleted from
 -- issue_4579_grant_admin; X-5 fails when the per-person opt-out check is deleted from
@@ -254,11 +252,75 @@ SELECT pg_temp.ok(NOT public.biz_can_mutate_payouts_for_brand(pg_temp.u('b1'), p
 SELECT pg_temp.ok(pg_temp.try_as(pg_temp.u('k1'), format('INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id) VALUES (%L, ''acct_t4579'')', pg_temp.u('b1'))) LIKE '42501%', 'X-8 auto-admin cannot insert a connect account');
 ROLLBACK;
 
--- X-LEAK  a host turns the roster's auto-admin user id into an email. EXPECTED TO FAIL until
---         P0-1 is fixed (see header).
+-- X-LEAK  no #4579 surface returns an auto-admin's email, username or email handle, to an
+--         invited brand admin, an event manager or the owner. The generic profiles read is
+--         #3969's (see header).
 BEGIN;
 SELECT pg_temp.fixture();
-SELECT pg_temp.ok(pg_temp.val_as(pg_temp.u('evm'), format(
-  'SELECT count(*)::text FROM public.profiles WHERE id = %L AND email IS NOT NULL', pg_temp.u('k1'))) = '0',
-  'X-LEAK host cannot read an auto-admin''s email from profiles by user id');
+CREATE TEMP TABLE xleak(k text PRIMARY KEY, id uuid) ON COMMIT DROP;
+GRANT ALL ON xleak TO authenticated;
+DO $xleak_seed$
+DECLARE v_conv uuid; v_guest uuid;
+BEGIN
+  SELECT id INTO v_conv FROM public.conversations WHERE linked_entity_type = 'brand' AND brand_id = pg_temp.u('b1');
+  SELECT id INTO v_guest FROM public.conversations WHERE linked_entity_type = 'brand_guests' AND brand_id = pg_temp.u('b1');
+  PERFORM pg_temp.ok(v_conv IS NOT NULL, 'X-LEAK seed: the brand group exists');
+  INSERT INTO xleak VALUES ('conv', v_conv), ('guest', v_guest);
+  -- The auto-admin speaks in the group (a handle snapshot on purpose) and reads it.
+  INSERT INTO public.messages(id, conversation_id, sender_id, content, message_type, sender_display_name_snapshot)
+  VALUES (pg_temp.u('xm1'), v_conv, pg_temp.u('k1'), 'from mingla', 'text', 't4579_k1');
+  INSERT INTO public.messages(id, conversation_id, sender_id, content, message_type, reply_to_id, sender_display_name_snapshot)
+  VALUES (pg_temp.u('xm2'), v_conv, pg_temp.u('hadmin'), 'reply', 'text', pg_temp.u('xm1'), 'T hadmin');
+  INSERT INTO public.brand_group_reads(conversation_id, user_id, last_read_at)
+  VALUES (v_conv, pg_temp.u('k1'), now()) ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_read_at = now();
+  IF v_guest IS NOT NULL THEN
+    INSERT INTO public.messages(id, conversation_id, sender_id, content, message_type, sender_kind, sender_display_name_snapshot, sender_role_snapshot)
+    VALUES (pg_temp.u('xgm'), v_guest, NULL, 'welcome', 'text', 'brand', 'T4579 One', 'brand');
+    INSERT INTO public.brand_guest_post_authors(message_id, conversation_id, author_id) VALUES (pg_temp.u('xgm'), v_guest, pg_temp.u('k1'));
+  END IF;
+  INSERT INTO public.community_posts(id, author_user_id, kind, title, body, review_state)
+  VALUES (pg_temp.u('xpost'), pg_temp.u('k1'), 'question', 'From Mingla', 'hello hosts', 'published');
+END;
+$xleak_seed$;
+DO $xleak$
+DECLARE
+  r record; q text; v text; v_all text := '';
+  v_conv uuid := (SELECT id FROM xleak WHERE k = 'conv');
+  v_guest uuid := (SELECT id FROM xleak WHERE k = 'guest');
+  v_calls text[] := ARRAY[
+    format($q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.biz_brand_team_members(%L) r$q$, pg_temp.u('b1')),
+    format($q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_4173_list_brand_group_members(%L) r$q$, v_conv),
+    format($q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_3988_list_brand_group_mention_candidates(%L, '', 50) r$q$, v_conv),
+    format($q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_3988_list_brand_group_mention_candidates(%L, 't4579', 50) r$q$, v_conv),
+    format($q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_3720_list_brand_group_messages(%L, 80, NULL) r$q$, v_conv),
+    format($q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_4304_list_brand_group_read_state(%L) r$q$, v_conv),
+    $q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_3720_list_brand_groups() r$q$,
+    $q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_3720_list_team_mentions(50, NULL) r$q$,
+    format($q$SELECT coalesce(public.issue_4579_mingla_team_state(%L)::text, '')$q$, pg_temp.u('b1')),
+    $q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_3720_community_feed_v2(NULL) r$q$
+  ];
+BEGIN
+  IF v_guest IS NOT NULL THEN
+    v_calls := v_calls || format($q$SELECT coalesce(jsonb_agg(to_jsonb(r))::text, '') FROM public.issue_4579_brand_guest_post_authors(%L, ARRAY[%L]::uuid[]) r$q$, v_guest, pg_temp.u('xgm'));
+  END IF;
+  FOR r IN SELECT * FROM unnest(ARRAY['hadmin', 'evm', 'owner']) AS t(who) LOOP
+    FOREACH q IN ARRAY v_calls LOOP
+      BEGIN
+        v := pg_temp.val_as(pg_temp.u(r.who), q);
+      EXCEPTION WHEN insufficient_privilege OR raise_exception THEN
+        EXECUTE 'RESET ROLE';
+        v := '';  -- a caller the reader refuses sees nothing at all
+      END;
+      v := lower(coalesce(v, ''));
+      v_all := v_all || v;
+      PERFORM pg_temp.ok(position('t4579-k1@' IN v) = 0 AND position('t4579-k2@' IN v) = 0
+                         AND position('t4579_k1' IN v) = 0 AND position('t4579_k2' IN v) = 0
+                         AND position('"t4579-k1"' IN v) = 0,
+        format('X-LEAK %s: %s returns no auto-admin email, username or handle', r.who, left(q, 110)));
+    END LOOP;
+  END LOOP;
+  -- The probe is live: the readers did return the auto-admin, by public name.
+  PERFORM pg_temp.ok(position('t k1' IN v_all) > 0, 'X-LEAK the readers do show the auto-admin, by public name');
+END;
+$xleak$;
 ROLLBACK;

@@ -29,6 +29,9 @@
 --      row is unchanged with is_mingla_team false.
 -- T-7  parity (SC-8, SC-10, SC-11): auto-admins are brand group participants and brand-role
 --      recipients; their terms acceptance records brand_terms_acceptances; payouts stay owner-only.
+-- T-9  payout settings (fix pass): every payout field on the brand row is owner-only by any
+--      client path; service-role and no-user server paths are unchanged.
+-- T-10 Host Community (fix pass): a Mingla admin's post shows Mingla Team and the public name.
 -- T-8  catalog: every host-facing reader in spec v3 section 3 calls issue_4579_; the helpers that
 --      grant or revoke are not executable by authenticated.
 --
@@ -72,6 +75,25 @@ BEGIN
     v := SQLSTATE || ':' || SQLERRM;
   END;
   EXECUTE 'RESET ROLE';
+  RETURN v;
+END;
+$fn$;
+
+-- T-9: run p_sql the way PostgREST does (session authenticator, role authenticated).
+CREATE OR REPLACE FUNCTION pg_temp.try_api(p_user uuid, p_sql text)
+RETURNS text LANGUAGE plpgsql AS $fn$
+DECLARE v text := '';
+BEGIN
+  PERFORM pg_temp.as_user(p_user);
+  EXECUTE 'SET LOCAL SESSION AUTHORIZATION authenticator';
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN
+    EXECUTE p_sql;
+  EXCEPTION WHEN OTHERS THEN
+    v := SQLSTATE || ':' || SQLERRM;
+  END;
+  EXECUTE 'RESET ROLE';
+  EXECUTE 'RESET SESSION AUTHORIZATION';
   RETURN v;
 END;
 $fn$;
@@ -454,7 +476,10 @@ BEGIN
       ('i4579-a5@example.test', 'Mingla Team'), ('I4579-A5@EXAMPLE.TEST', 'Mingla Team'),
       ('someone@else', 'Mingla Team'), ('i4579-a5', 'Mingla Team'), ('i4579a5', 'Mingla Team'),
       (repeat('a', 41), 'Mingla Team'), (E'Kun\tle', 'Mingla Team'),
-      ('Kunle', 'Kunle'), ('Abimbola A.', 'Abimbola A.'), ('  Ray  ', 'Ray')
+      ('Kunle', 'Kunle'), ('Abimbola A.', 'Abimbola A.'), ('  Ray  ', 'Ray'),
+      -- fix pass: the username (profiles.username is i4579_a5_handle) and the email handle, any case
+      ('i4579_a5_handle', 'Mingla Team'), ('I4579_A5_HANDLE', 'Mingla Team'), ('  i4579_A5_handle ', 'Mingla Team'),
+      ('I4579-A5', 'Mingla Team')
     ) AS v(display_name, expected)
   LOOP
     UPDATE public.profiles SET display_name = r.display_name WHERE id = pg_temp.u('a5');
@@ -668,3 +693,112 @@ BEGIN
     'T-8 both opt-out tables have RLS on');
 END;
 $t8$;
+
+-- ═══ T-9 payout settings are owner-only (fix pass) ═══════════════════════════════
+-- Every payout or payment-routing field on the brand row, by a direct table update
+-- or an RPC, needs the owner. An invited Brand admin and an auto-added Mingla admin
+-- (who is also a Mingla console admin) are refused; service-role and no-user server
+-- paths are unchanged.
+-- FAILS-ON-REVERT: dropping trigger zz_issue_4579_payout_settings_owner_only fails
+-- every "refused" line below.
+BEGIN;
+SELECT pg_temp.fixture();
+SELECT pg_temp.backfill();
+DO $t9$
+DECLARE r record; v_err text; v_who text;
+BEGIN
+  PERFORM pg_temp.ok(pg_temp.auto_active('b1', 'a1'), 'T-9 a1 is an auto-added Brand admin on b1');
+  FOR r IN SELECT * FROM (VALUES
+      ('paystack_subaccount_code = ''ACCT_t4579x'''),
+      ('stripe_connect_id = ''acct_t4579x'''),
+      ('stripe_payouts_enabled = true'),
+      ('stripe_charges_enabled = true'),
+      ('payment_provider = ''paystack'''),
+      ('payment_country = ''NG'''),
+      ('payout_country = ''NG'''),
+      ('payout_hold_cutover_at = now()'),
+      ('payments_setup_started_at = now()')
+    ) AS v(set_clause)
+  LOOP
+    FOR v_who IN SELECT unnest(ARRAY['host', 'a1']) LOOP
+      PERFORM pg_temp.ok(pg_temp.try_api(pg_temp.u(v_who), format(
+          'UPDATE public.brands SET %s WHERE id = %L', r.set_clause, pg_temp.u('b1'))) LIKE '42501:payout_settings_owner_only%',
+        format('T-9 %s is refused: SET %s', v_who, r.set_clause));
+    END LOOP;
+  END LOOP;
+  PERFORM pg_temp.ok((SELECT paystack_subaccount_code IS NULL AND stripe_connect_id IS NULL AND payout_country IS NULL
+                        FROM public.brands WHERE id = pg_temp.u('b1')),
+    'T-9 nothing a Brand admin tried was written');
+  -- The RPC path is refused too (it allowed Brand admins before).
+  PERFORM pg_temp.ok(pg_temp.try_api(pg_temp.u('host'), format(
+      'SELECT public.biz_set_brand_payout_country(%L, ''NG'')', pg_temp.u('b1'))) LIKE '42501:%',
+    'T-9 a Brand admin cannot set the payout country through the RPC');
+  PERFORM pg_temp.ok(pg_temp.try_api(pg_temp.u('a1'), format(
+      'SELECT public.biz_set_brand_payout_country(%L, ''GB'')', pg_temp.u('b1'))) LIKE '42501:%',
+    'T-9 an auto-added Mingla admin cannot set the payout country through the RPC');
+  -- Everything else a Brand admin edits still saves.
+  v_err := pg_temp.try_api(pg_temp.u('host'), format(
+      'UPDATE public.brands SET description = ''new words'' WHERE id = %L', pg_temp.u('b1')));
+  PERFORM pg_temp.ok(v_err = ''
+    AND (SELECT description FROM public.brands WHERE id = pg_temp.u('b1')) = 'new words',
+    'T-9 a Brand admin still edits the brand profile');
+  -- The owner: the RPC and a direct update both work.
+  v_err := pg_temp.try_api(pg_temp.u('owner'), format(
+      'SELECT public.biz_set_brand_payout_country(%L, ''GB'')', pg_temp.u('b1')));
+  PERFORM pg_temp.ok(v_err = ''
+    AND (SELECT payout_country FROM public.brands WHERE id = pg_temp.u('b1')) = 'GB',
+    'T-9 the owner sets the payout country');
+  v_err := pg_temp.try_api(pg_temp.u('owner'), format(
+      'UPDATE public.brands SET stripe_connect_id = ''acct_owner'' WHERE id = %L', pg_temp.u('b1')));
+  PERFORM pg_temp.ok(v_err = ''
+    AND (SELECT stripe_connect_id FROM public.brands WHERE id = pg_temp.u('b1')) = 'acct_owner',
+    'T-9 the owner changes a payout field directly');
+  -- Server paths: the service role (onboarding edge functions, webhooks) and no-user sessions.
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  EXECUTE 'SET LOCAL SESSION AUTHORIZATION authenticator';
+  EXECUTE 'SET LOCAL ROLE service_role';
+  UPDATE public.brands SET paystack_subaccount_code = 'ACCT_server', payment_provider = 'paystack'
+   WHERE id = pg_temp.u('b2');
+  EXECUTE 'RESET ROLE';
+  EXECUTE 'RESET SESSION AUTHORIZATION';
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM pg_temp.ok((SELECT paystack_subaccount_code FROM public.brands WHERE id = pg_temp.u('b2')) = 'ACCT_server',
+    'T-9 the service role (Stripe and Paystack onboarding) still writes payout fields');
+  -- A direct database session that still carries a signed-in user's claims
+  -- (an operator or a fixture) is a server path too.
+  PERFORM pg_temp.as_user(pg_temp.u('host'));
+  UPDATE public.brands SET stripe_payouts_enabled = true WHERE id = pg_temp.u('b2');
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM pg_temp.ok((SELECT stripe_payouts_enabled FROM public.brands WHERE id = pg_temp.u('b2')),
+    'T-9 a no-user server session (cron, migration) still writes payout fields');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'zz_issue_4579_payout_settings_owner_only'
+                              AND tgrelid = 'public.brands'::regclass AND tgenabled = 'O'),
+    'T-9 the owner-only trigger is installed and enabled');
+END;
+$t9$;
+ROLLBACK;
+
+-- ═══ T-10 Host Community: a Mingla admin's post shows Mingla Team (fix pass) ═════
+BEGIN;
+SELECT pg_temp.fixture();
+SELECT pg_temp.backfill();
+INSERT INTO public.community_posts(id, author_user_id, kind, title, body, review_state) VALUES
+  (pg_temp.u('p_admin'), pg_temp.u('a2'), 'question', 'From Mingla', 'hello', 'published'),
+  (pg_temp.u('p_host'), pg_temp.u('host'), 'question', 'From a host', 'hi there', 'published');
+DO $t10$
+DECLARE v jsonb;
+BEGIN
+  v := pg_temp.json_as(pg_temp.u('owner'), 'SELECT jsonb_agg(to_jsonb(r)) FROM public.issue_3720_community_feed_v2(NULL) r');
+  PERFORM pg_temp.ok((SELECT e->>'brand_label' = 'Mingla Team' AND e->>'author_label' = 'Mingla Team'
+                        FROM jsonb_array_elements(v) e WHERE e->>'id' = pg_temp.u('p_admin')::text),
+    'T-10 a Mingla admin''s post: brand Mingla Team, public name (a handle-like name falls back), never a host brand');
+  PERFORM pg_temp.ok((SELECT e->>'brand_label' = 'I4579 One' AND e->>'author_label' = 'Hana Host'
+                        FROM jsonb_array_elements(v) e WHERE e->>'id' = pg_temp.u('p_host')::text),
+    'T-10 a host''s post keeps their own brand and name');
+  PERFORM pg_temp.ok(position('i4579-a2' IN v::text) = 0 AND position('i4579_a2' IN v::text) = 0,
+    'T-10 the feed never carries the admin''s email, handle or username');
+END;
+$t10$;
+ROLLBACK;

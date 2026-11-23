@@ -17,7 +17,8 @@
 --
 -- Parity: auto rows are ordinary brand_admin rows. Pushes, chats, terms, Till and
 -- every recipient path treat them exactly as invited Brand admins; nothing here
--- filters recipients. Payouts stay owner-only (rank 60; auto rows are 50).
+-- filters recipients. Payouts stay owner-only (rank 60; auto rows are 50), and
+-- section 5b makes every payout setting on the brand row owner-only at the table.
 --
 -- No staff names are written by this migration.
 
@@ -38,7 +39,8 @@ BEGIN
       ('public.issue_3988_list_brand_group_media(uuid,text,timestamp with time zone,uuid,integer)', '631cfd2afe6809d8174f3593aea6bfad'),
       ('public.issue_3720_list_team_mentions(integer,timestamp with time zone)', 'eaccb77a3a6890ae19b73a978107f8df'),
       ('public.biz_brand_form_door_reads(uuid,integer,timestamp with time zone)', 'dff56f95e5041c10280927bfc957a73b'),
-      ('public.issue_3720_send_brand_group_message(uuid,text,uuid,uuid[],text,uuid[])', '713247e1b9ae56d3b95825be9cfd6318')
+      ('public.issue_3720_send_brand_group_message(uuid,text,uuid,uuid[],text,uuid[])', '713247e1b9ae56d3b95825be9cfd6318'),
+      ('public.issue_3720_community_feed_v2(text)', '01a5512fe127e59d2539ce324dc74b4d')
     ) AS v(sig, expected_md5)
   LOOP
     SELECT p.prosrc INTO v_src FROM pg_proc p WHERE p.oid = to_regprocedure(r.sig);
@@ -209,8 +211,10 @@ AS $function$
 $function$;
 
 -- The only name hosts ever see for an auto-admin (spec v3 section 2). Reads
--- profiles.display_name, and the auth email only to refuse a handle. Falls back to
--- "Mingla Team"; never returns an email, handle or username.
+-- profiles.display_name, and the auth email and profiles.username only to refuse
+-- a handle. Falls back to "Mingla Team"; never returns an email, handle or
+-- username. Fix pass (Seth, 2026-11-23): a display name equal to the username,
+-- or to the email handle, in any letter case, is refused too.
 CREATE OR REPLACE FUNCTION public.issue_4579_admin_public_name(p_user_id uuid)
 RETURNS text
 LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -220,9 +224,10 @@ DECLARE
   v_d text;
   v_e text;
   v_h text;
+  v_u text;
 BEGIN
-  SELECT btrim(p.display_name), lower(btrim(u.email::text))
-    INTO v_d, v_e
+  SELECT btrim(p.display_name), lower(btrim(u.email::text)), lower(btrim(p.username))
+    INTO v_d, v_e, v_u
     FROM auth.users u
     LEFT JOIN public.profiles p ON p.id = u.id
    WHERE u.id = p_user_id;
@@ -233,7 +238,8 @@ BEGIN
      OR v_d ~ '[[:cntrl:]]'
      OR position('@' IN v_d) > 0
      OR lower(v_d) = coalesce(v_e, '')
-     OR v_d = v_h
+     OR lower(v_d) = v_h
+     OR (v_u IS NOT NULL AND v_u <> '' AND lower(v_d) = v_u)
      OR (position(' ' IN v_d) = 0
          AND v_d = lower(v_d)
          AND regexp_replace(lower(v_d), '[^a-z0-9]', '', 'g') = regexp_replace(v_h, '[^a-z0-9]', '', 'g'))
@@ -1570,6 +1576,151 @@ BEGIN
   RETURN v_message_id;
 END;
 $function$;
+
+-- Host Community feed (latest 20271108073720). Only change (fix pass, tester P2-2):
+-- a post by an active Mingla admin is labelled "Mingla Team" with the public name,
+-- never a host brand picked from their automatic memberships, and never a handle.
+-- Other authors keep their first invited brand (automatic rows are skipped).
+CREATE OR REPLACE FUNCTION public.issue_4579_is_active_mingla_admin_uid(p_user_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+  SELECT p_user_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM auth.users u
+      JOIN public.admin_users au ON lower(btrim(au.email)) = lower(btrim(u.email::text))
+     WHERE u.id = p_user_id
+       AND au.role IN ('admin', 'owner') AND au.status = 'active'
+  );
+$function$;
+
+CREATE OR REPLACE FUNCTION public.issue_3720_community_feed_v2(p_kind text DEFAULT NULL)
+RETURNS TABLE(
+  id uuid,kind text,title text,body text,author_label text,brand_label text,
+  review_state text,created_at timestamptz,vote_count bigint,comment_count bigint,
+  voted_by_me boolean,is_mine boolean,accepted_comment_id uuid,workflow_status text,
+  public_response text,pinned boolean,locked boolean,staff_answered boolean
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+  SELECT p.id,p.kind,p.title,p.body,
+    CASE WHEN mt.is_admin THEN public.issue_4579_admin_public_name(p.author_user_id)
+      ELSE COALESCE(NULLIF(btrim(pr.display_name),''),'Host') END AS author_label,
+    CASE WHEN mt.is_admin THEN 'Mingla Team'
+      ELSE COALESCE(author_brand.name,'Independent Host') END AS brand_label,
+    p.review_state,p.created_at,
+    (SELECT count(*) FROM public.community_post_votes v WHERE v.post_id=p.id),
+    (SELECT count(*) FROM public.community_post_comments c
+      WHERE c.post_id=p.id AND c.review_state='published'),
+    EXISTS(SELECT 1 FROM public.community_post_votes v
+      WHERE v.post_id=p.id AND v.user_id=auth.uid()),
+    p.author_user_id=auth.uid(),p.accepted_comment_id,
+    CASE WHEN p.kind='idea' THEN p.idea_status
+      WHEN p.locked_at IS NOT NULL THEN 'locked'
+      WHEN EXISTS(SELECT 1 FROM public.community_post_comments c
+        WHERE c.post_id=p.id AND c.staff_answer AND c.review_state='published') THEN 'answered'
+      ELSE 'unanswered' END,
+    p.public_response,p.pinned_at IS NOT NULL,p.locked_at IS NOT NULL,
+    EXISTS(SELECT 1 FROM public.community_post_comments c
+      WHERE c.post_id=p.id AND c.staff_answer AND c.review_state='published')
+  FROM public.community_posts p
+  LEFT JOIN public.profiles pr ON pr.id=p.author_user_id
+  CROSS JOIN LATERAL (
+    SELECT public.issue_4579_is_active_mingla_admin_uid(p.author_user_id) AS is_admin
+  ) mt
+  LEFT JOIN LATERAL (
+    SELECT b.name
+    FROM public.brand_team_members btm
+    JOIN public.brands b ON b.id=btm.brand_id AND b.deleted_at IS NULL
+    WHERE btm.user_id=p.author_user_id AND btm.accepted_at IS NOT NULL AND btm.removed_at IS NULL
+      AND btm.granted_via <> 'mingla_admin'
+    ORDER BY btm.accepted_at,b.id
+    LIMIT 1
+  ) author_brand ON true
+  WHERE public.issue_3720_is_host_community_member(auth.uid())
+    AND (p_kind IS NULL OR p.kind=p_kind)
+    AND (p.review_state='published' OR p.author_user_id=auth.uid())
+    AND NOT EXISTS(
+      SELECT 1 FROM public.blocked_users b
+      WHERE (b.blocker_id=auth.uid() AND b.blocked_id=p.author_user_id)
+         OR (b.blocker_id=p.author_user_id AND b.blocked_id=auth.uid())
+    )
+  ORDER BY (p.pinned_at IS NOT NULL) DESC,
+    (SELECT count(*) FROM public.community_post_votes v WHERE v.post_id=p.id) DESC,
+    p.created_at DESC,p.id;
+$$;
+REVOKE ALL ON FUNCTION public.issue_3720_community_feed_v2(text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.issue_3720_community_feed_v2(text) TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5b. Payout settings are owner-only (fix pass, Seth 2026-11-23). Any change to a
+--     brand's payout or payment-routing fields, by any path (a direct table
+--     update, an RPC or a trigger running in a signed-in request), needs the
+--     brand owner. Brand admins, auto-added Mingla admins included, are refused.
+--     Server paths (service-role edge functions and webhooks through the API, and
+--     direct database sessions: cron, migrations) are unchanged; brand and account deletion clear these
+--     fields only through service-role functions.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_4579_tg_payout_settings_owner_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_role text;
+BEGIN
+  IF NEW.stripe_connect_id IS NOT DISTINCT FROM OLD.stripe_connect_id
+     AND NEW.stripe_payouts_enabled IS NOT DISTINCT FROM OLD.stripe_payouts_enabled
+     AND NEW.stripe_charges_enabled IS NOT DISTINCT FROM OLD.stripe_charges_enabled
+     AND NEW.paystack_subaccount_code IS NOT DISTINCT FROM OLD.paystack_subaccount_code
+     AND NEW.payment_provider IS NOT DISTINCT FROM OLD.payment_provider
+     AND NEW.payment_country IS NOT DISTINCT FROM OLD.payment_country
+     AND NEW.payout_country IS NOT DISTINCT FROM OLD.payout_country
+     AND NEW.payout_hold_cutover_at IS NOT DISTINCT FROM OLD.payout_hold_cutover_at
+     AND NEW.payments_setup_started_at IS NOT DISTINCT FROM OLD.payments_setup_started_at
+  THEN
+    RETURN NEW;
+  END IF;
+
+  -- Only API requests (PostgREST connects as authenticator) are client paths.
+  -- Direct database sessions (cron, migrations, operators) are server paths.
+  IF session_user IS DISTINCT FROM 'authenticator' THEN
+    RETURN NEW;
+  END IF;
+
+  BEGIN
+    v_role := coalesce(
+      nullif(current_setting('request.jwt.claim.role', true), ''),
+      nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role'
+    );
+  EXCEPTION WHEN others THEN
+    v_role := NULL;
+  END;
+
+  -- Server paths through the API: the service role (onboarding edge functions,
+  -- webhooks). A request with no role or user is refused.
+  IF v_role = 'service_role' OR current_user = 'service_role' THEN
+    RETURN NEW;
+  END IF;
+
+  IF v_uid IS NOT NULL
+     AND (OLD.account_id = v_uid
+          OR coalesce(public.biz_can_mutate_payouts_for_brand(OLD.id, v_uid), false)) THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'payout_settings_owner_only' USING ERRCODE = '42501',
+    HINT = 'Only the brand owner can change payout settings.';
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS zz_issue_4579_payout_settings_owner_only ON public.brands;
+-- zz_: fires after every other BEFORE UPDATE trigger, so it sees the derived
+-- columns (issue_4389_brand_country_derive) as they will be written.
+CREATE TRIGGER zz_issue_4579_payout_settings_owner_only
+  BEFORE UPDATE ON public.brands
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4579_tg_payout_settings_owner_only();
 
 -- ---------------------------------------------------------------------------
 -- 6. Grants. Internal helpers are not callable by clients.
