@@ -126,6 +126,10 @@ VALUES ('44900500-0000-4000-9000-0000000000a1', '44900500-0000-4000-9000-0000000
 ON CONFLICT (venue_id) DO UPDATE SET service_charge_bps = 1000;
 SELECT public.t4490f2_as('44900500-0000-4000-8000-000000000001');
 SELECT public.issue_4490_set_venue_feature('44900500-0000-4000-9000-0000000000a1', 'till', true, NULL, NULL, NULL, 'f2-till-on');
+-- TEST-MOD-APPROVED #4490 (08-O3 part A, T8): the venue has kitchen screens, so a sent round waits for
+-- the kitchen (placed) as these assertions expect; without a screen it is delivered at send.
+SELECT public.issue_4490_set_venue_feature('44900500-0000-4000-9000-0000000000a1', 'menu', true, NULL, NULL, NULL, 'f2-menu-on-a');
+SELECT public.issue_4490_set_venue_feature('44900500-0000-4000-9000-0000000000a1', 'kitchen_screens', true, NULL, NULL, NULL, 'f2-screens-on-a');
 SELECT public.issue_4490_set_venue_feature('44900500-0000-4000-9000-0000000000a1', 'entry', true, NULL, NULL, NULL, 'f2-entry-on');
 SELECT public.issue_4490_set_venue_feature('44900500-0000-4000-9000-0000000000a1', 'guest_list', true, NULL, NULL, NULL, 'f2-gl-on');
 SELECT public.t4490f2_reset();

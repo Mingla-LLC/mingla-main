@@ -46,6 +46,9 @@
 -- TEST-MOD-APPROVED #4490 (08-O2 fix 1): 20280809600490 adds four functions (stale payment release, the
 -- pay-code lookup without the switch, the pay-link text limits, the unknown-code guess budget) and
 -- re-emits the pay-code status and text reads, all internal (service role only).
+-- TEST-MOD-APPROVED #4490 (08-O3 part A): 20280809601490 adds nineteen functions (the station gate,
+-- board, ticket actions, the station trigger and the floor PDF source and ledger) and re-emits the
+-- Till's send, all internal (service role only).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -507,6 +510,26 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_pay_code_lookup(text,uuid,uuid)', 'internal'),
   ('issue_4490_till_text_limits()', 'internal'),
   ('issue_4490_till_code_guess_budget(boolean,integer)', 'internal'),
+  -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
+  ('issue_4490_stations_enabled(uuid)', 'internal'),
+  ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),
+  ('issue_4490_item_station(uuid,uuid)', 'internal'),
+  ('issue_4490_order_item_station()', 'internal'),
+  ('issue_4490_station_order_visible(venue_orders)', 'internal'),
+  ('issue_4490_station_ticket_projection(uuid,text)', 'internal'),
+  ('issue_4490_station_board(uuid,text,uuid)', 'internal'),
+  ('issue_4490_station_lock(uuid,text,uuid,boolean)', 'internal'),
+  ('issue_4490_station_sync_order(uuid)', 'internal'),
+  ('issue_4490_station_accept(uuid,text,uuid)', 'internal'),
+  ('issue_4490_station_ticket_ready(uuid,text,uuid)', 'internal'),
+  ('issue_4490_station_item_ready(uuid,uuid)', 'internal'),
+  ('issue_4490_station_recall(uuid,text,uuid)', 'internal'),
+  ('issue_4490_order_picked_up(uuid,text,uuid)', 'internal'),
+  ('issue_4490_station_mark_printed(uuid,text,uuid)', 'internal'),
+  ('issue_4490_floor_pdf_source(text,uuid,uuid,text,uuid,uuid)', 'internal'),
+  ('issue_4490_floor_pdf_record(uuid,text,text,uuid)', 'internal'),
+  ('issue_4490_floor_pdf_due(integer)', 'internal'),
+  ('issue_4490_floor_pdf_forget(text[])', 'internal'),
   ('biz_venue_tab_open(uuid)', 'signed_in'),
   ('biz_venue_tab_close(uuid,text)', 'signed_in'),
   ('biz_venue_order_transition(uuid,text,text)', 'signed_in'),

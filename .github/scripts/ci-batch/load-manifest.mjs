@@ -415,7 +415,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 ops O1 fix 2: money-and-door migration 20280809589490 + its pg17 suite registered; re-sealed.
 // issue #4490 ops O2: till-pay migration 20280809599490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 ops O2 fix 1: o2-fix1 migration 20280809600490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "75ede543571c6f643d4bacc492a55f16644c38f6c2ac6bf63e03f1ee771756ea";
+// issue #4490 ops O3 part A: stations migration 20280809601490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "659810ae8329209c1026c060fc3d8f822e812079543b55c8770a006b835b6e08";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

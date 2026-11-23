@@ -157,6 +157,10 @@ BEGIN
       AND NOT ('till' = ANY(public.issue_4490_feature_preset('event_space'))),
     'O1-F2 starting presets carry the Till per spec');
   PERFORM public.issue_4490_set_venue_feature('44900100-0000-4000-9000-0000000000a1', 'till', true, NULL, NULL, NULL, 'o1-till-on');
+  -- TEST-MOD-APPROVED #4490 (08-O3 part A, T8): venue A has kitchen screens, so a sent round waits
+  -- for the kitchen (placed) as these assertions expect; without a screen it is delivered at send.
+  PERFORM public.issue_4490_set_venue_feature('44900100-0000-4000-9000-0000000000a1', 'menu', true, NULL, NULL, NULL, 'o1-menu-on-a');
+  PERFORM public.issue_4490_set_venue_feature('44900100-0000-4000-9000-0000000000a1', 'kitchen_screens', true, NULL, NULL, NULL, 'o1-screens-on-a');
   PERFORM public.issue_4490_set_venue_feature('44900100-0000-4000-9000-0000000000a1', 'entry', true, NULL, NULL, NULL, 'o1-entry-on');
   PERFORM public.issue_4490_set_venue_feature('44900100-0000-4000-9000-0000000000b1', 'till', true, NULL, NULL, NULL, 'o1-till-on-b');
 END
