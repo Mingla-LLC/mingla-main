@@ -56,6 +56,7 @@ import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import { useTillReleased } from "../../hooks/useTillReleased";
 import { tillHref, TillLauncher } from "../venue/till/TillLauncher";
 import { stationHref, StationsLauncher } from "../venue/station/StationsLauncher";
+import { closeHref, DayCloseLauncher } from "../venue/close/DayCloseLauncher";
 import { unsavedWork } from "../../hooks/useUnsavedChangesGuard";
 import { useMyVenueAccess } from "../../hooks/useMyVenueAccess";
 import { useVenueFeatures } from "../../hooks/useVenueFeatures";
@@ -114,6 +115,7 @@ import { VenueWaitlistModule } from "../venue/VenueWaitlistModule";
 import type { VenueAvailabilityLeaveHandle } from "../venue/VenueAvailabilityModule";
 import {
   filterVenueModulesForCapabilities,
+  withCloseAccess,
   withStationsAccess,
   withTillAccess,
   scopedStaffManagesOffers,
@@ -164,6 +166,7 @@ export type StayFeatureModule =
       | "members"
       | "till"
       | "stations"
+      | "close"
       | "checkin"
       | "menu"
       | "orders"
@@ -280,6 +283,8 @@ export const STAY_FEATURE_MODULE_ORDER: readonly StayFeatureModule[] = [
   // #4490 spec 08 O3 — Kitchen and bar, right after the Till (floor design
   // rail: Till, Kitchen and bar, then Check-in, Menu and Orders).
   "stations",
+  // #4490 spec 08 O5 part B — Close the day, right after Kitchen and bar.
+  "close",
   "checkin",
   "menu",
   "orders",
@@ -304,6 +309,7 @@ export const STAY_FEATURE_VENUE_MODULE: Readonly<
   members: "members",
   till: "till",
   stations: "stations",
+  close: "close",
   checkin: "checkin",
   menu: "menu",
   orders: "orders",
@@ -327,6 +333,7 @@ const FEATURE_ICONS: Readonly<Record<StayFeatureModule, IconName>> = {
   members: "users",
   till: "cash",
   stations: "list",
+  close: "cash",
   checkin: "scan",
   menu: "list",
   orders: "receipt",
@@ -1447,16 +1454,19 @@ export function StaySuiteShell({
       tillReleased,
     });
     return new Set(
-      withStationsAccess(
-        withTillAccess(
-          filterVenueModulesForCapabilities(
-            derived,
-            venueAccess.scoped,
-            venueAccess.capabilities,
+      withCloseAccess(
+        withStationsAccess(
+          withTillAccess(
+            filterVenueModulesForCapabilities(
+              derived,
+              venueAccess.scoped,
+              venueAccess.capabilities,
+            ),
+            venueAccess.canSell === true,
           ),
-          venueAccess.canSell === true,
+          venueAccess.canKitchen === true,
         ),
-        venueAccess.canKitchen === true,
+        venueAccess.canManageMoney === true,
       ),
     );
   }, [
@@ -1464,6 +1474,7 @@ export function StaySuiteShell({
     tillReleased,
     venueAccess.canSell,
     venueAccess.canKitchen,
+    venueAccess.canManageMoney,
     spacesRequestedVenueId,
     venueAccess.capabilities,
     venueAccess.scoped,
@@ -1555,6 +1566,11 @@ export function StaySuiteShell({
         appRouter.push(stationHref(venueId) as never);
         return;
       }
+      // #4490 spec 08 O5 part B — Close the day is a full-screen route too.
+      if (next === "close") {
+        appRouter.push(closeHref(venueId) as never);
+        return;
+      }
       if (next === activeModule) return;
       requestLeave(() => {
         setActiveModule(next);
@@ -1581,6 +1597,14 @@ export function StaySuiteShell({
     if (!visibleModules.some((module) => module.id === "stations")) return;
     stationsDeepLinkRef.current = false;
     appRouter.replace(stationHref(venueId) as never);
+  }, [venueId, visibleModules]);
+  // #4490 spec 08 O5 part B — `?module=close` opens Close the day the same way.
+  const closeDeepLinkRef = useRef(initialStayModule === "close");
+  useEffect(() => {
+    if (!closeDeepLinkRef.current) return;
+    if (!visibleModules.some((module) => module.id === "close")) return;
+    closeDeepLinkRef.current = false;
+    appRouter.replace(closeHref(venueId) as never);
   }, [venueId, visibleModules]);
   // "Edit floor" targets one space's tables once; Spaces opened later from the
   // rail starts on its list again.
@@ -1892,6 +1916,10 @@ export function StaySuiteShell({
     // #4490 spec 08 O3 — a kitchen-only login lands here (never a blank shell).
     if (activeModule === "stations") {
       return featurePage("stations", <StationsLauncher venueId={venueId} />);
+    }
+    // #4490 spec 08 O5 part B — never a blank shell for Close the day.
+    if (activeModule === "close") {
+      return featurePage("close", <DayCloseLauncher venueId={venueId} />);
     }
     if (activeModule === "checkin") {
       return featurePage(

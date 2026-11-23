@@ -17,17 +17,23 @@ import { tillHref, TILL_LAUNCHER_COPY } from "../till/tillRoute";
 const featureLayout = featureSetFrom({ entry: true, menu: true, till: true });
 const classic = featureSetFrom({ menu: true, till: true });
 
+// TEST-MOD-APPROVED #4490 (08-O5 part B): Close the day (same release switch and feature as the Till)
+// sits right after the Till; the Till still leads Operations and only the Till's own release modules
+// (Kitchen and bar, Close the day) sit between it and Check-in / Menu.
+const TILL_RELEASE = new Set(["stations", "close"]);
+const withoutRelease = (nav: readonly string[]): string[] => nav.filter((m) => !TILL_RELEASE.has(m));
+
 describe("08-O1 the Till in the venue rail", () => {
   it("TN-1 released + feature on: Till leads Operations, right before Check-in (feature layout)", () => {
     const nav = deriveVenueNav({ features: featureLayout, activeSpaceCount: 1, tillReleased: true });
-    expect(nav.indexOf("till")).toBe(nav.indexOf("checkin") - 1);
+    expect(withoutRelease(nav).indexOf("till")).toBe(withoutRelease(nav).indexOf("checkin") - 1);
     const operations = deriveVenueRailModules(nav).filter((row) => row.group === "Operations");
     expect(operations[0]).toEqual(expect.objectContaining({ key: "till", label: "Till" }));
   });
 
   it("TN-2 classic layout (no spaces): Till sits before Menu, still first under Operations", () => {
     const nav = deriveVenueNav({ features: classic, activeSpaceCount: 0, tillReleased: true });
-    expect(nav.indexOf("till")).toBe(nav.indexOf("menu") - 1);
+    expect(withoutRelease(nav).indexOf("till")).toBe(withoutRelease(nav).indexOf("menu") - 1);
     const operations = deriveVenueRailModules(nav).filter((row) => row.group === "Operations");
     expect(operations[0]?.key).toBe("till");
   });
@@ -42,7 +48,7 @@ describe("08-O1 the Till in the venue rail", () => {
     });
     expect(notReleased).not.toContain("till");
     expect(off).not.toContain("till");
-    expect(released.filter((m) => m !== "till")).toEqual(notReleased);
+    expect(released.filter((m) => m !== "till" && m !== "close")).toEqual(notReleased);
   });
 
   it("TN-4 venue staff: venue.sell (also a Till device) keeps the Till; check-in or kitchen alone does not", () => {

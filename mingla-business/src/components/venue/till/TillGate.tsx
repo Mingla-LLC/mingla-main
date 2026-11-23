@@ -44,8 +44,8 @@ export const tillPinKeys = {
   staff: (venueId: string) => ["venueTill", venueId, "pinStaff"] as const,
 };
 
-export function TillGate(props: TillScreenProps): React.ReactElement {
-  const { venueId } = props;
+export function TillGate(props: TillScreenProps & { startSigningOut?: boolean }): React.ReactElement {
+  const { venueId, startSigningOut = false, ...screenProps } = props;
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isAuthReady } = useAuth();
@@ -112,9 +112,12 @@ export function TillGate(props: TillScreenProps): React.ReactElement {
       </View>
     );
   }
-  if (!staff.gated) return <TillScreen {...props} />;
-  if (session === null) {
-    return <WhoIsSelling venueId={venueId} staff={staff} ended={tillSessionEndedReason(venueId)} onClose={close} />;
+  if (!staff.gated) return <TillScreen venueId={venueId} {...screenProps} />;
+  // #4490 O5 part B: Account › Sign out on a Till device lands here on the
+  // same "Who's signing this Till out?" step (one sign-out flow).
+  if (session === null || startSigningOut) {
+    return <WhoIsSelling venueId={venueId} staff={staff} ended={tillSessionEndedReason(venueId)} onClose={close}
+      startSigningOut={startSigningOut} />;
   }
   return (
     <View
@@ -127,7 +130,8 @@ export function TillGate(props: TillScreenProps): React.ReactElement {
     >
       <TillScreen
         key={session.token}
-        {...props}
+        venueId={venueId}
+        {...screenProps}
         sellerSlot={
           <View style={styles.chip} testID="till-seller-chip">
             <Text style={styles.chipText} numberOfLines={1}>{PIN_COPY.sellerChip(session.name)}</Text>

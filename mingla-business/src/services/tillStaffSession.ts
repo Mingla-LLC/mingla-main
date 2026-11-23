@@ -38,7 +38,8 @@ export interface StepUpAnswer {
 export interface StepUpRequest {
   id: number;
   venueId: string;
-  purpose: "refund" | "void_sent";
+  /** #4490 O5 part B: reopening a day and exporting it ask for a PIN too. */
+  purpose: "refund" | "void_sent" | "reopen" | "export";
   /** Shown after a wrong or refused PIN ("Wrong PIN. 2 tries left"). */
   error: string | null;
 }

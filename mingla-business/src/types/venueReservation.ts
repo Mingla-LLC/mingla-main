@@ -63,7 +63,10 @@ export type VenueModule =
   // #4490 spec 08 O3 — Kitchen and bar. Opens the full-screen station route
   // (`/venue/[venueId]/station/[station]`); inside the shell it is only the
   // launcher a kitchen-only login lands on.
-  | "stations";
+  | "stations"
+  // #4490 spec 08 O5 part B — Close the day. Opens the full-screen close route
+  // (`/venue/[venueId]/close`); inside the shell it is only the launcher.
+  | "close";
 
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
 export type VenueBookingModule = Extract<

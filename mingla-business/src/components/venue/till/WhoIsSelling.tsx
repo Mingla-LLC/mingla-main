@@ -49,6 +49,12 @@ export interface WhoIsSellingProps {
   /** Why the last session ended (banner), if it did. */
   ended: "auto_lock" | "server" | null;
   onClose: () => void;
+  /**
+   * #4490 O5 part B: opened from Account › Sign out on a Till device login —
+   * start on "Who's signing this Till out?" (the one sign-out flow, both
+   * entry points).
+   */
+  startSigningOut?: boolean;
 }
 
 type SignOutStep =
@@ -57,13 +63,14 @@ type SignOutStep =
   | { kind: "pin"; memberId: string; error: string | null }
   | { kind: "email"; sent: boolean; error: string | null };
 
-export function WhoIsSelling({ venueId, staff, ended, onClose }: WhoIsSellingProps): React.ReactElement {
+export function WhoIsSelling({ venueId, staff, ended, onClose, startSigningOut = false }: WhoIsSellingProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 600;
   const auth = useAuth();
   const [state, setState] = useState<WhoState>({ kind: "faces" });
-  const [signOut, setSignOut] = useState<SignOutStep>({ kind: "none" });
+  const [signOut, setSignOut] = useState<SignOutStep>(() =>
+    !startSigningOut ? { kind: "none" } : staff.managerHasPin ? { kind: "pick" } : { kind: "email", sent: false, error: null });
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState("");
   const faces = sellerFaces(staff.people);

@@ -69,7 +69,8 @@ afterEach(async () => { await Renderer.act(async () => { mounted.splice(0).forEa
 // [TEST-MOD-APPROVED #4490] spec 08 O1: the Till shows only when released (VENUE_TILL), switched on
 // and allowed to sell; none of that holds here, so a till link also lands on Overview.
 // [TEST-MOD-APPROVED #4490] spec 08 O3: Kitchen and bar likewise (released, feature on, kitchen rights).
-const HIDDEN_FOR_CLASSIC_VENUE: VenueModule[] = ["offers", "spaces", "today", "calendar", "requests", "members", "checkin", "guestlist", "till", "stations"];
+// [TEST-MOD-APPROVED #4490] spec 08 O5 part B: Close the day likewise (released, Sell in person on, money rights).
+const HIDDEN_FOR_CLASSIC_VENUE: VenueModule[] = ["offers", "spaces", "today", "calendar", "requests", "members", "checkin", "guestlist", "till", "stations", "close"];
 test.each(HIDDEN_FOR_CLASSIC_VENUE)("%s link to a venue that does not show it lands on Overview", async module => {
   mockSettings = { data: { reservationsEnabled: true }, isError: false };
   await mount(parseVenueModuleParam(module)!);

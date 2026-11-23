@@ -79,6 +79,7 @@ import { featureSetupNeeds, type SetupRefusal, type SetupTarget } from "./featur
 import {
   filterVenueModulesForCapabilities,
   scopedStaffManagesOffers,
+  withCloseAccess,
   withStationsAccess,
   withTillAccess,
 } from "./venueCapabilityGate";
@@ -116,6 +117,7 @@ import { deriveVenueRailModules } from "./venueRail";
 import { useTillReleased } from "../../hooks/useTillReleased";
 import { tillHref, TillLauncher } from "./till/TillLauncher";
 import { stationHref, StationsLauncher } from "./station/StationsLauncher";
+import { closeHref, DayCloseLauncher } from "./close/DayCloseLauncher";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueNav,
@@ -395,20 +397,24 @@ export function VenueSuiteShell({
   const hasReviews = reviewsPanel !== null && reviewsPanel !== undefined;
   const visibleModules = useMemo(
     () => withVenueReviewsModule(
-      withStationsAccess(
-        withTillAccess(
-          filterVenueModulesForCapabilities(
-            deriveVenueNav(navInput),
-            venueAccess.scoped,
-            venueAccess.capabilities,
+      withCloseAccess(
+        withStationsAccess(
+          withTillAccess(
+            filterVenueModulesForCapabilities(
+              deriveVenueNav(navInput),
+              venueAccess.scoped,
+              venueAccess.capabilities,
+            ),
+            venueAccess.canSell === true,
           ),
-          venueAccess.canSell === true,
+          venueAccess.canKitchen === true,
         ),
-        venueAccess.canKitchen === true,
+        venueAccess.canManageMoney === true,
       ),
       hasReviews,
     ),
-    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities, venueAccess.canSell, venueAccess.canKitchen],
+    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities, venueAccess.canSell, venueAccess.canKitchen,
+      venueAccess.canManageMoney],
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
@@ -480,6 +486,11 @@ export function VenueSuiteShell({
         router.push(stationHref(venueId) as never);
         return;
       }
+      // #4490 spec 08 O5 part B — Close the day is a full-screen route too.
+      if (nextModule === "close" && venueId !== null) {
+        router.push(closeHref(venueId) as never);
+        return;
+      }
       if (nextModule === activeModule) return;
 
       if (activeModule === "availability" && availabilityRef.current !== null) {
@@ -524,6 +535,14 @@ export function VenueSuiteShell({
     if (!visibleModules.includes("stations")) return;
     stationsDeepLinkRef.current = false;
     router.replace(stationHref(venueId) as never);
+  }, [venueId, visibleModules]);
+  // #4490 spec 08 O5 part B — `?module=close` opens Close the day the same way.
+  const closeDeepLinkRef = useRef(initialModule === "close");
+  useEffect(() => {
+    if (!closeDeepLinkRef.current || venueId === null) return;
+    if (!visibleModules.includes("close")) return;
+    closeDeepLinkRef.current = false;
+    router.replace(closeHref(venueId) as never);
   }, [venueId, visibleModules]);
 
   const leaveSection =
@@ -795,6 +814,10 @@ export function VenueSuiteShell({
     // #4490 spec 08 O3 — a kitchen-only login lands here (never a blank shell).
     if (activeModule === "stations" && venueId !== null) {
       return <StationsLauncher venueId={venueId} />;
+    }
+    // #4490 spec 08 O5 part B — never a blank shell for Close the day.
+    if (activeModule === "close" && venueId !== null) {
+      return <DayCloseLauncher venueId={venueId} />;
     }
     if (activeModule === "overview") {
       // ORCH-1186-B — the Overview slot is now the venue INTELLIGENCE dashboard

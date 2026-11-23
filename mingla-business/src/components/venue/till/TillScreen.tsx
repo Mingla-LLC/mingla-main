@@ -54,6 +54,8 @@ import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { currentTapToPayDevice } from "../../../services/terminal/tapToPayDevice";
 import { setTapToPayScope } from "../../../services/terminal/tapToPaySession";
 import { tillTapOffer } from "./tillTapAvailability";
+import { closeHref } from "../close/closeRoute";
+import { CLOSE_COPY } from "../close/dayCloseCopy";
 import { latePayments, paidLabel, tillAttemptFor, tillAttemptKeepsId, tillAttemptKey, type TillAttempt } from "./tillPayModel";
 import type { VenueOffer } from "../../../types/venueOffers";
 import { formatCurrency } from "../../../utils/currency";
@@ -1049,6 +1051,16 @@ export function TillScreen({
             size="sm"
             onPress={() => router.push(stationHref(venueId) as never)}
             testID="till-open-stations"
+          />
+        ) : null}
+        {/* #4490 spec 08 O5 part B — Close the day (money rights; the floor design's Till rail). */}
+        {catalog?.canManageMoney === true ? (
+          <Button
+            label={CLOSE_COPY.title}
+            variant="secondary"
+            size="sm"
+            onPress={() => router.push(closeHref(venueId) as never)}
+            testID="till-open-close"
           />
         ) : null}
         <Button

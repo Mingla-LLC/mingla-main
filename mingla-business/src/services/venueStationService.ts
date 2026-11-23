@@ -90,7 +90,9 @@ export async function markStationItemReady(orderItemId: string): Promise<Station
 export type FloorPdfRequest =
   | { kind: "kitchen_ticket"; venueId: string; orderId: string; station: StationName }
   | { kind: "test_ticket"; venueId: string; station: StationChoice }
-  | { kind: "receipt"; venueId: string; paymentId: string };
+  | { kind: "receipt"; venueId: string; paymentId: string }
+  // #4490 O5 part B: the day close (money rights; a PIN session on a Till device).
+  | { kind: "day_close"; venueId: string; date: string };
 
 export interface FloorPdfLink {
   signedUrl: string;
@@ -101,7 +103,7 @@ export interface FloorPdfLink {
 export async function requestFloorPdf(request: FloorPdfRequest): Promise<FloorPdfLink> {
   // #4490 O5: a receipt is a Till action; on a Till device it carries the PIN
   // session (memory only). Kitchen and test tickets run as the device.
-  const session = request.kind === "receipt" ? getTillStaffSession(request.venueId) : null;
+  const session = request.kind === "receipt" || request.kind === "day_close" ? getTillStaffSession(request.venueId) : null;
   const requestBody = session !== null ? { ...request, staffSession: session.token } : request;
   const { data, error } = await supabase.functions.invoke("venue-floor-pdf", { body: requestBody });
   if (error) throw await stationErrorFrom(error as { message?: string; context?: unknown });

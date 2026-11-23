@@ -572,6 +572,58 @@ const PINS = [
     absent: ["<Sheet", "<Modal", "ConfirmDialog"],
     why: "Who's selling and its PIN pad are full-screen content of the Till route, never a native sheet",
   },
+  // #4490 08-O5 part B: Close the day has ONE sheet (count, drawer and reopen
+  // are its modes); the reopen PIN shows inside it; the parts it renders
+  // open no sheet of their own; the route opens through the PIN gate; a close
+  // and a drawer save keep one request id while retried; Account's sign-out
+  // on a Till device goes through the Till's own sign-out step.
+  {
+    id: "day-close-one-sheet",
+    file: `${BIZ}/src/components/venue/close/DayCloseScreen.tsx`,
+    contains: ['testID="day-close-sheet"', 'sheet?.kind === "count"', 'sheet?.kind === "drawer"', 'sheet?.kind === "reopen"'],
+    absentMatches: [/<Sheet[\s>][\s\S]*<Sheet[\s>]/, /<Modal\b/, /ConfirmDialog/],
+    why: "iOS refuses a second native modal from one presenter (08-O3 fix 3): count, drawer and reopen are modes of one Sheet",
+  },
+  {
+    id: "day-close-reopen-pin-inside-its-sheet",
+    file: `${BIZ}/src/components/venue/close/DayCloseReopen.tsx`,
+    contains: ["<TillStepUpHost venueId={venueId} approvers={approvers}>{form}</TillStepUpHost>"],
+    absentMatches: [/<Sheet[\s>]/, /<Modal\b/, /ConfirmDialog/],
+    why: "the fresh PIN for a reopen shows inside the reopen sheet, never as a second sheet",
+  },
+  ...["DayCloseCount", "DayCloseDrawer", "DayCloseDone", "DayCloseChecks", "DayCloseTotals", "DayCloseLate"].map((name) => ({
+    id: `day-close-part-${name}-has-no-sheet`,
+    file: `${BIZ}/src/components/venue/close/${name}.tsx`,
+    contains: [`export function ${name}(`],
+    absentMatches: [/<Sheet[\s>]/, /<Modal\b/, /ConfirmDialog/],
+    why: "a part of Close the day renders inside the screen or its one sheet and opens no native modal of its own",
+  })),
+  {
+    id: "close-route-opens-through-the-pin-gate",
+    file: `${BIZ}/app/venue/[venueId]/close.tsx`,
+    contains: ["<DayCloseGate venueId={venueId} />"],
+    absent: ["<DayCloseScreen "],
+    why: "on a Till device login Close the day acts only as the person switched in with a PIN (spec 08 §3 O5)",
+  },
+  {
+    id: "day-close-request-ids",
+    file: `${BIZ}/src/components/venue/close/DayCloseScreen.tsx`,
+    contains: ["closeAttempt.current = { key, id: newTillRequestId() };", "clientRequestId: closeAttempt.current.id"],
+    why: "a retried close carries the same request id, so the server answers the close it already made",
+  },
+  {
+    id: "day-close-drawer-request-ids",
+    file: `${BIZ}/src/components/venue/close/DayCloseDrawer.tsx`,
+    contains: ["attempt.current = { key, id: newTillRequestId() };"],
+    why: "a retried float or paid out records nothing twice",
+  },
+  {
+    id: "account-sign-out-till-device",
+    file: `${BIZ}/app/(tabs)/account.tsx`,
+    contains: ['await import("../../src/services/tillDeviceSignOut")', "router.push(tillSignOut as never);"],
+    absentMatches: [/^import [^\n]*tillDeviceSignOut/m],
+    why: "a shared Till login signs out only with a manager's PIN or its own email code (spec 08 §12 item 5), loaded on use",
+  },
 ];
 
 /**

@@ -626,7 +626,12 @@ async function till<T>(body: Record<string, unknown>): Promise<T> {
       clearTillStaffSession(venueId, "server");
       throw err;
     }
-    const purpose = body.action === "refund" ? "refund" : body.action === "void" ? "void_sent" : null;
+    const purpose = body.action === "refund" ? "refund"
+      : body.action === "void" ? "void_sent"
+      // #4490 O5 part B: reopening a closed day and exporting a day.
+      : body.action === "day_reopen" ? "reopen"
+      : body.action === "day_export" ? "export"
+      : null;
     if (err.code !== "pin_step_up_required" || purpose === null) throw err;
     let message: string | null = null;
     for (;;) {
@@ -646,6 +651,15 @@ async function till<T>(body: Record<string, unknown>): Promise<T> {
       }
     }
   }
+}
+
+/**
+ * #4490 O5 part B: the same transport for the daily close and the Till
+ * settings (venueDayCloseService): the PIN session rides along, a lost
+ * session ends here, and reopen / export ask the open screen for a fresh PIN.
+ */
+export function tillAction<T>(body: Record<string, unknown>): Promise<T> {
+  return till<T>(body);
 }
 
 export async function fetchTillCatalog(venueId: string): Promise<TillCatalog> {

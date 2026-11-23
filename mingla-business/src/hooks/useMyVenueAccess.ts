@@ -3,7 +3,11 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import type { VenueCapability } from "../services/brandInvitationsService";
 import { supabase } from "../services/supabase";
-import { venueAccessCanKitchen, venueAccessCanSell } from "../components/venue/venueCapabilityGate";
+import {
+  venueAccessCanKitchen,
+  venueAccessCanManageMoney,
+  venueAccessCanSell,
+} from "../components/venue/venueCapabilityGate";
 
 export interface MyVenueAccess {
   scoped: boolean;
@@ -19,6 +23,11 @@ export interface MyVenueAccess {
    * (`issue_4490_can_kitchen`). Absent reads as no.
    */
   canKitchen?: boolean;
+  /**
+   * #4490 spec 08 O5 part B — may close the day and handle money here
+   * (`issue_4490_can_manage_money`). Absent reads as no.
+   */
+  canManageMoney?: boolean;
 }
 
 export function useMyVenueAccess(
@@ -36,7 +45,7 @@ export function useMyVenueAccess(
     enabled,
     staleTime: 30_000,
     queryFn: async () => {
-      if (venueId === null) return { scoped: false, capabilities: [], canSell: false, canKitchen: false };
+      if (venueId === null) return { scoped: false, capabilities: [], canSell: false, canKitchen: false, canManageMoney: false };
       const { data, error } = await supabase.rpc(
         "issue_4188_my_venue_access",
         { p_venue_id: venueId },
@@ -62,7 +71,7 @@ export function useMyVenueAccess(
             .maybeSingle();
           role = (member.data as { role?: string } | null)?.role ?? null;
           if (role === "scanner") {
-            return { scoped: true, capabilities: ["venue.check_in"], canSell: false, canKitchen: false };
+            return { scoped: true, capabilities: ["venue.check_in"], canSell: false, canKitchen: false, canManageMoney: false };
           }
         }
       }
@@ -78,6 +87,7 @@ export function useMyVenueAccess(
         capabilities,
         canSell: venueAccessCanSell({ scoped, capabilities, role }),
         canKitchen: venueAccessCanKitchen({ scoped, capabilities, role }),
+        canManageMoney: venueAccessCanManageMoney({ scoped, capabilities, role }),
       };
     },
   });

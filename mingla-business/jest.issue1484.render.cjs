@@ -63,6 +63,8 @@ module.exports = {
     "**/__tests__/tillTips.issue4490.o4fix2.render.test.tsx",
     // #4490 spec 08 O4 fix 3 (spec 08 §15): a deposit larger than the bill.
     "**/__tests__/tillDepositExcess.issue4490.o4fix3.render.test.tsx",
+    // #4490 spec 08 O5 part B: Close the day (one sheet at a time; the reopen PIN inside it).
+    "**/__tests__/dayClose.issue4490.o5b.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",

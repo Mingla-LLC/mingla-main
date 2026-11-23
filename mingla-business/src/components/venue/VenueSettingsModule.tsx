@@ -47,6 +47,9 @@ import {
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useVenueListing } from "../../hooks/useVenueListings";
+import { useTillReleased } from "../../hooks/useTillReleased";
+import { useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { tillSettingsHref } from "./close/closeRoute";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrandHours, useUpsertBrandHours } from "../../hooks/useBrandHours";
 import { useBrandPlaceAuthoringContext } from "../../hooks/useBrandPlacePipelineState";
@@ -170,6 +173,12 @@ export const VenueSettingsModule = forwardRef<
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
+  // #4490 spec 08 O5 part B — Settings › Selling in person (brand admins and
+  // above, with the Till released and Sell in person on at this venue).
+  const tillReleased = useTillReleased();
+  const venueFeatures = useVenueFeatures(brandId, venueId);
+  const sellingInPerson = tillReleased && venueId !== null && rank >= BRAND_ROLE_RANK.brand_admin
+    && venueFeatures.data?.features.till.enabled === true;
   const setDirtyModule = useVenueSuiteStore((s) => s.setDirtyModule);
   // META-ORCH-1255 — the place pointer lives on the VENUE row (one owner per
   // truth); brands.place_pool_id is legacy-inert.
@@ -538,6 +547,21 @@ export const VenueSettingsModule = forwardRef<
         <React.Suspense fallback={<ActivityIndicator color={color.accent} />}>
           <LazyVenueTypeAndFeaturesPanel brandId={brandId} venueId={venueId} />
         </React.Suspense>
+      ) : null}
+      {tab === "type" && sellingInPerson && venueId !== null ? (
+        <Section title="Selling in person">
+          <Text style={styles.rowSub}>
+            Tips, paper for printing, station screens and target times, auto-lock and the receipt footer for the Till.
+          </Text>
+          <Button
+            label="Open Selling in person"
+            onPress={() => router.push(tillSettingsHref(venueId) as never)}
+            variant="secondary"
+            size="sm"
+            style={styles.inlineBtn}
+            testID="venue-settings-selling-in-person"
+          />
+        </Section>
       ) : null}
 
       {/* #4490 P2-4 — venue-level terms every offer uses (VAT, hold, horizon, pause). */}

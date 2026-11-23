@@ -194,6 +194,15 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     group: "operations",
     summary: "Each station gets its own screen.",
   },
+  // #4490 spec 08 O5 part B — Close the day (floor design rail: after Kitchen
+  // and bar). Selecting it opens the full-screen close route; see the shells.
+  close: {
+    id: "close",
+    label: "Close the day",
+    band: "command",
+    group: "operations",
+    summary: "Count the cash and close the day.",
+  },
   settings: {
     id: "settings",
     label: "Settings",
@@ -362,6 +371,8 @@ export const BUILT_MODULES: ReadonlySet<VenueModule> = new Set<VenueModule>([
   "till",
   // 08-O3: Kitchen and bar (released, Kitchen and bar screens on, kitchen rights).
   "stations",
+  // 08-O5B: Close the day (released, Sell in person on, money rights).
+  "close",
   "tables",
   "availability",
   "reservations",
@@ -473,6 +484,8 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
   const till = input.tillReleased === true && featureOn(features, "till");
   // 08-O3: Kitchen and bar, right after the Till (same release switch).
   const stations = input.tillReleased === true && featureOn(features, "kitchen_screens");
+  // 08-O5B: Close the day, right after Kitchen and bar (same release switch as the Till).
+  const close = till;
 
   const candidates: Array<[VenueModule, boolean]> = usesSpaces
     ? [
@@ -495,6 +508,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["members", featureOn(features, "memberships")],
         ["till", till],
         ["stations", stations],
+        ["close", close],
         ["checkin", door],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
@@ -509,6 +523,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["waitlist", featureOn(features, "waitlist")],
         ["till", till],
         ["stations", stations],
+        ["close", close],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
         ["orders", orders],
