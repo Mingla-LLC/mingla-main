@@ -1154,7 +1154,6 @@ DECLARE
   v_rel public.brand_payout_releases%ROWTYPE;
   v_p record;
   v_target bigint;
-  v_adj bigint;
   v_room integer;
   v_debt public.organiser_payout_debts%ROWTYPE;
 BEGIN
@@ -1175,25 +1174,14 @@ BEGIN
      WHERE r.brand_id = v_rel.brand_id AND r.currency = v_rel.currency AND r.status = 'released'
        AND (v_rel.event_id IS NULL OR r.event_id IS NOT DISTINCT FROM v_rel.event_id)
      ORDER BY r.id FOR UPDATE;
+    -- What the host was paid for sales since refunded. The debt is set to
+    -- at least this (never added to): record_paystack_refund_outcome grows
+    -- the same debt from its own per-refund adjustments the same way, so
+    -- whichever records a refund first, it is counted once.
     v_target := public.issue_4522_release_refund_liability(p_release_id);
-    -- The release's post_release_refund adjustments are the debt's ledger
-    -- (record_paystack_refund_outcome books one per provider refund): book
-    -- only what they do not already cover, so no refund is counted twice.
-    SELECT coalesce(sum(a.amount_cents), 0) INTO v_adj
-      FROM public.payout_ledger_adjustments a
-     WHERE a.release_id = p_release_id AND a.kind = 'post_release_refund';
-    IF v_target > v_adj THEN
-      INSERT INTO public.payout_ledger_adjustments(
-        release_id, brand_id, currency, kind, amount_cents, idempotency_key, created_at)
-      VALUES (p_release_id, v_rel.brand_id, v_rel.currency, 'post_release_refund',
-        least(v_target - v_adj, 2147483647)::integer,
-        'issue-4522-refund-liability:' || p_release_id::text || ':' || v_target::text, p_now)
-      ON CONFLICT (idempotency_key) DO NOTHING;
-      v_adj := v_target;
-    END IF;
     v_room := public.organiser_refund_debt_room_cents(
       v_rel.brand_id, v_rel.currency, v_rel.event_id, p_release_id);
-    v_target := least(v_adj, v_room::bigint);
+    v_target := least(v_target, v_room::bigint);
     IF v_target <= 0 THEN RETURN 'released'; END IF;
     SELECT * INTO v_debt FROM public.organiser_payout_debts
      WHERE origin_release_id = p_release_id AND kind = 'post_release_refund' FOR UPDATE;
