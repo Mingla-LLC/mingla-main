@@ -844,6 +844,8 @@ AS $fn$
            SELECT sum((e->>'amount_minor')::bigint)
              FROM jsonb_array_elements(COALESCE(o.detail->'over_refunded', '[]'::jsonb)) e
             WHERE COALESCE(e->>'status', 'succeeded') = 'succeeded'
+              -- T7-1: once it is one of the attempts, that attempt alone counts it.
+              AND NOT (e ? 'adopted_attempt_no')
               AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
                                WHERE a.overpayment_id = o.id AND a.state = 'succeeded'
                                  AND a.provider_refund_id = e->>'provider_refund_id')), 0)::bigint
@@ -1069,6 +1071,8 @@ DECLARE
   v_key text;
   v_alert boolean := false;
   v_kind text;
+  v_extra jsonb;
+  v_att_id uuid;
 BEGIN
   SELECT * INTO v_op FROM public.order_overpayments WHERE id = p_overpayment_id;
   IF NOT FOUND OR public.issue_4522_lock_order_graph(v_op.order_id) IS NULL THEN
@@ -1149,6 +1153,45 @@ BEGIN
     RETURN v_base || jsonb_build_object('action', 'reconcile');
   END IF;
   IF v_remaining <= 0 THEN
+    -- T7-1: an extra refund that returned the money instead of the recorded
+    -- one becomes one of its attempts (whole, within the amount), so the row,
+    -- the cancel refund and the payout count it exactly as a recorded refund.
+    FOR v_extra IN SELECT e FROM jsonb_array_elements(COALESCE(v_op.detail->'over_refunded', '[]'::jsonb)) e
+                    WHERE e->>'status' = 'succeeded' AND COALESCE(e->>'provider_refund_id', '') <> ''
+                      AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                                       WHERE a.overpayment_id = v_op.id AND a.provider_refund_id = e->>'provider_refund_id') LOOP
+      v_part := (v_extra->>'amount_minor')::bigint;
+      CONTINUE WHEN v_part > least(v_op.refund_minor - public.issue_4522_overpayment_committed_minor(v_op.id),
+                                   public.issue_4522_overpayment_max_refund_part());
+      SELECT COALESCE(max(attempt_no), 0) + 1 INTO v_attempt_no
+        FROM public.order_overpayment_refund_attempts WHERE overpayment_id = v_op.id;
+      INSERT INTO public.refunds (order_id, amount_cents, reason, status, currency,
+        stripe_payment_intent_id, stripe_charge_id, metadata, order_installment_id, buyer_refund_status)
+      VALUES (v_op.order_id, v_part::integer, 'Overpayment returned by an extra refund at the provider', 'pending',
+        v_op.currency, CASE WHEN v_op.provider = 'stripe' THEN v_row.stripe_payment_intent_id END,
+        CASE WHEN v_op.provider = 'stripe' THEN v_row.stripe_charge_id END,
+        jsonb_build_object('source', 'issue_4522_overpayment', 'overpayment_id', v_op.id, 'attempt_no', v_attempt_no,
+          'reason', v_op.reason, 'origin', 'provider_match', 'provider_refund_id', v_extra->>'provider_refund_id'),
+        v_op.installment_id, 'provider_pending')
+      RETURNING id INTO v_refund_id;
+      INSERT INTO public.order_overpayment_refund_attempts (overpayment_id, attempt_no, origin, amount_minor,
+        state, refund_id, provider_refund_id, created_at, updated_at)
+      VALUES (v_op.id, v_attempt_no, 'provider_match', v_part, 'pending', v_refund_id, v_extra->>'provider_refund_id',
+        p_now, p_now)
+      RETURNING id INTO v_att_id;
+      UPDATE public.order_overpayments
+         SET detail = jsonb_set(detail, '{over_refunded}', (
+               SELECT jsonb_agg(CASE WHEN x->>'provider_refund_id' = v_extra->>'provider_refund_id'
+                                     THEN x || jsonb_build_object('adopted_attempt_no', v_attempt_no) ELSE x END ORDER BY n)
+                 FROM jsonb_array_elements(detail->'over_refunded') WITH ORDINALITY y(x, n))),
+             refund_attempt_no = v_attempt_no, refund_id = v_refund_id
+       WHERE id = v_op.id;
+      PERFORM public.issue_4522_apply_overpayment_attempt_outcome(v_att_id, 'succeeded', v_extra->>'provider_refund_id',
+        NULL, p_now);
+    END LOOP;
+    IF (SELECT state FROM public.order_overpayments WHERE id = v_op.id) = 'refunded' THEN
+      RETURN jsonb_build_object('ok', true, 'done', true, 'state', 'refunded');
+    END IF;
     UPDATE public.order_overpayments
        SET state = 'refunded', resolved_at = p_now, updated_at = p_now, needs_ops_reason = NULL
      WHERE id = v_op.id;
