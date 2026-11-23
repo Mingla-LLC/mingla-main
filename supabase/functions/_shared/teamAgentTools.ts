@@ -1023,6 +1023,89 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     peopleText: true,
     group: "Log",
   },
+  // #4571 W6b: email an agent read with its own Gmail access, logged against
+  // cards by address. Mingla stores no mail key (Seth, decision Q2).
+  {
+    name: "log_emails",
+    title: "Log emails",
+    description:
+      "Log 1 to 50 emails from a mailbox you read with your own Gmail access (for example info@usemingla.com) against the cards they belong to. Send each message's Gmail id, direction (outbound: sent from the mailbox; inbound: received), from, to and cc addresses, the time it was sent, its subject and the first 300 characters of its snippet. Never send bodies or attachments. Outbound mail is matched by its To and Cc addresses, inbound mail by its From address, to the email addresses on live cards; mail that matches no card is not stored (no_card). The same message logs once per card however often it is sent (already_logged). An inbound email on a card in Prospect or Contacted makes the card suggest Replied; it never moves the card. These emails are counted on the Team dashboard and by the nightly cadence. Send a request_key: the same request with the same key changes nothing; the same key with anything else is refused whole (request_key_reused). " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      mailbox: {
+        type: "string",
+        minLength: 3,
+        maxLength: 254,
+        hint: "Send the address of the mailbox you read, such as info@usemingla.com",
+      },
+      messages: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              minLength: 1,
+              maxLength: 200,
+              hint: "Send the Gmail message id",
+            },
+            direction: {
+              type: "string",
+              maxLength: 10,
+              enum: ["outbound", "inbound"],
+              hint: "Use outbound (sent from the mailbox) or inbound (received)",
+            },
+            from: {
+              type: "string",
+              maxLength: 320,
+              hint: "Send the From header, such as Ada <ada@example.com>",
+            },
+            to: {
+              type: "array",
+              items: { type: "string", maxLength: 320, hint: "Send one address" },
+              minItems: 0,
+              maxItems: 100,
+              hint: "Send the To addresses as a list",
+            },
+            cc: {
+              type: "array",
+              items: { type: "string", maxLength: 320, hint: "Send one address" },
+              minItems: 0,
+              maxItems: 100,
+              hint: "Send the Cc addresses as a list",
+            },
+            at: {
+              type: "string",
+              maxLength: 40,
+              hint: "Send when it was sent, such as 2026-11-23T09:00:00Z",
+            },
+            subject: {
+              type: "string",
+              maxLength: 500,
+              hint: "Send the subject, at most 500 characters",
+            },
+            snippet: {
+              type: "string",
+              maxLength: 300,
+              hint: "Send the first 300 characters of the snippet, never the body",
+            },
+          },
+          required: ["id", "direction", "from", "at"],
+          hint: "Send an object with id, direction, from and at",
+        },
+        minItems: 1,
+        maxItems: MAX_ITEMS,
+        hint: "Send a list of 1 to 50 messages, each with id, direction, from and at",
+      },
+      request_key: REQUEST_KEY,
+    }, ["mailbox", "messages", "request_key"]),
+    annotations: WRITE,
+    reaches: ["crm_email_log_ingest"],
+    writes: true,
+    adminOnly: false,
+    peopleText: true,
+    group: "Log",
+  },
   {
     name: "save_drafts",
     title: "Save drafts",
@@ -1494,6 +1577,11 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
       "follower counts are read by a person, never guessed by an agent",
   },
   crm_record_log: { tools: ["log_activity", "record_reply"] },
+  // #4571 W6b: the Team dashboard's weekly numbers are read by people; agents use team_summary.
+  crm_outreach_numbers: {
+    excluded:
+      "the Team dashboard's weekly numbers are for people; an agent reads team numbers with team_summary",
+  },
   crm_home_summary: { tools: ["my_day"] },
   crm_team_summary: { tools: ["team_summary"] },
   // #4130: the Team dashboard's KPI row and pipeline charts.

@@ -733,6 +733,7 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "set_owners",
     "log_activity",
     "record_reply",
+    "log_emails", // #4571 W6b
     "save_drafts",
     "update_draft",
     "list_drafts",
@@ -763,6 +764,7 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "set_owners",
     "log_activity",
     "record_reply",
+    "log_emails", // #4571 W6b
     "save_drafts",
     "update_draft",
     "list_drafts",
@@ -805,6 +807,7 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
         set_owners: false,
         log_activity: false,
         record_reply: false,
+        log_emails: false, // #4571 W6b
         save_drafts: false,
         update_draft: false,
         list_drafts: true,
@@ -839,6 +842,7 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "set_owners",
     "log_activity",
     "record_reply",
+    "log_emails", // #4571 W6b
     "save_drafts",
     "update_draft",
     "withdraw_drafts",
@@ -1699,13 +1703,23 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
   );
   assert(list, "the gateway's tool list was found");
   assert(contentList, "the content gateway's tool list was found");
-  const inGateway = [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
+  // #4571 W6b: the latest gateway body (20281126074571) is the 3802 list with
+  // log_emails after record_reply, and its one new branch.
+  const w6bFile = Deno.readTextFileSync(new URL("../../../migrations/20281126074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url));
+  const w6bGateway = w6bFile.slice(w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), w6bFile.indexOf("\n$function$", w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
+  assert(w6bGateway.length > 1000, "the W6b gateway body was found");
+  const w6bList = /c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(w6bGateway);
+  assert(w6bList, "the W6b gateway's tool list was found");
+  const names3802 = [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  assertEquals([...w6bList[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+    [...names3802.slice(0, names3802.indexOf("record_reply") + 1), "log_emails", ...names3802.slice(names3802.indexOf("record_reply") + 1)]);
+  const inGateway = [...w6bList[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
     .concat(
       [...contentList[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
     );
   assertEquals(inGateway, TEAM_AGENT_TOOLS.map((t) => t.name));
   const branches = [
-    ...MIGRATION.matchAll(/^\s+WHEN ((?:'[a-z_]+'(?:, )?)+) THEN$/gm),
+    ...w6bGateway.matchAll(/^\s+WHEN ((?:'[a-z_]+'(?:, )?)+) THEN$/gm),
     ...CONTENT_MIGRATION.matchAll(/^\s+WHEN ((?:'[a-z_]+'(?:, )?)+) THEN$/gm),
   ].flatMap((m) => [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]));
   assertEquals([...branches].sort(), [...inGateway].sort());
@@ -1746,6 +1760,7 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
       assert(
         gateway[0].includes(`public.${fn}(`) ||
           latestGateway.includes(`public.${fn}(`) ||
+          w6bGateway.includes(`public.${fn}(`) ||
           contentGateway[0].includes(`public.${fn}(`),
         `the gateway never calls ${fn}`,
       );

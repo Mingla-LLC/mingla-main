@@ -5,7 +5,7 @@
 //        the address, and the merge words come from the server's counts
 //   N-1  the weekly numbers: rates the server sent as null show "--" (never
 //        0%), rows keep the server's order, weeks run Monday to Sunday
-//   C-1  the cadence round on a card: "Round 3 of 6 · call done · email to send"
+//   C-1  the cadence round on a card: "Round 3 of 6 · call done · email to send" (crmModel, W3)
 //   S-1  the nightly sweep panel: mode words, action words, owner-only switch
 //
 // FAILS-ON-REVERT: before W6 lib/sopTools.js, RecordHygiene.jsx and
@@ -18,10 +18,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  OUTREACH_COLUMNS, SWEEP_ACTION_WORDS, SWEEP_MODES, addDays, cadenceWords, mergeMovedWords, outreachRows,
+  OUTREACH_COLUMNS, SWEEP_ACTION_WORDS, SWEEP_MODES, addDays, mergeMovedWords, outreachRows,
   pairReasonWords, rateWords, sweepModeWords, weekStart,
 } from "../lib/sopTools.js";
 import { CRM_VIEWS, buildCrmSearch, parseCrmSearch } from "../lib/crmUrl.js";
+import { cadenceWords } from "../lib/crmModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -100,16 +101,16 @@ describe("N-1 weekly numbers", () => {
   });
 });
 
-describe("C-1 cadence round", () => {
-  it("an open round says what is done and what is left", () => {
-    assert.equal(cadenceWords({ round: 3, has_phone: true, call_done: true, email_done: false, finished: false }), "Round 3 of 6 · call done · email to send");
-    assert.equal(cadenceWords({ round: 2, has_phone: false, call_done: false, email_done: false, finished: false }), "Round 2 of 6 · email to send · no phone yet");
+describe("C-1 cadence round (the W3 tile reads the server's cadence)", () => {
+  it("an open round says what is done and what is left, in the server's words", () => {
+    assert.equal(cadenceWords({ cadence: { round: 3, of: 6, steps: ["call done", "email to send"] } }), "Round 3 of 6 \u00b7 call done \u00b7 email to send");
+    assert.equal(cadenceWords({ cadence: { round: 2, of: 6, steps: ["no phone yet", "email to send"] } }), "Round 2 of 6 \u00b7 no phone yet \u00b7 email to send");
+    assert.equal(cadenceWords({ cadence: null }), "");
+    assert.equal(cadenceWords({}), "");
   });
-  it("a finished cadence and a paused one", () => {
-    assert.equal(cadenceWords({ finished: true, has_phone: true, calls: 6, emails: 6 }), "Cadence finished: 6 calls and 6 emails");
-    assert.equal(cadenceWords({ finished: true, has_phone: false, emails: 6 }), "Cadence finished: 6 emails, no phone");
-    assert.equal(cadenceWords({ counts: false, paused_reason: "Replied: the cadence waits" }), "Replied: the cadence waits");
-    assert.equal(cadenceWords(null), "");
+  it("the card panel and the tile both use the one helper", () => {
+    assert.match(read("components/crm/RecordHygiene.jsx"), /cadenceWords\(record\)/);
+    assert.match(read("components/crm/RecordCard.jsx"), /const round = cadenceWords\(record\);/);
   });
 });
 
@@ -119,5 +120,23 @@ describe("S-1 sweep words", () => {
     assert.equal(sweepModeWords("dry_run"), "Dry run");
     assert.equal(sweepModeWords("nonsense"), "Off");
     assert.equal(SWEEP_ACTION_WORDS.lost, "To Lost");
+  });
+});
+
+describe("N-2 the Team dashboard shows the weekly numbers from the server", () => {
+  it("the page shows OutreachNumbers, which reads crm_outreach_numbers through crmService", () => {
+    assert.match(read("pages/TeamDashboardPage.jsx"), /<OutreachNumbers viewerKey=/);
+    const box = read("components/crm/home/OutreachNumbers.jsx");
+    assert.match(box, /fetchOutreachNumbers\(from, to\)/);
+    assert.match(box, /outreachRows\(numbers\.data\)/);
+    assert.doesNotMatch(box, /type="date"/);
+    assert.doesNotMatch(box, /\.reduce\(|Math\.round/, "the page counts and divides nothing itself");
+    assert.match(read("services/crmService.js"), /supabase\.rpc\("crm_outreach_numbers", \{ p_from: from, p_to: to \}\)/);
+  });
+  it("the tile shows the round and a reply that suggests Replied", () => {
+    const tile = read("components/crm/RecordCard.jsx");
+    assert.match(tile, /record\.suggest_replied/);
+    const hygiene = read("components/crm/RecordHygiene.jsx");
+    assert.match(hygiene, /onRequestMove\(record, "replied"\)/, "one click moves it through the normal move");
   });
 });

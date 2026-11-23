@@ -280,3 +280,8 @@ export function recordMerges(id) {
 export function duplicatePairs(pipeline) {
   return call(() => supabase.rpc("crm_duplicate_pairs", { p_pipeline: pipeline }));
 }
+
+// #4571 W6b: the Team dashboard's weekly numbers (Lagos days), from the data.
+export function fetchOutreachNumbers(from, to) {
+  return call(() => supabase.rpc("crm_outreach_numbers", { p_from: from, p_to: to }));
+}

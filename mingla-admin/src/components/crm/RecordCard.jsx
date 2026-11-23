@@ -196,6 +196,8 @@ export function RecordCard({
       )}
       {record.next_action && <p className="truncate text-xs text-[var(--color-text-tertiary)]" title={record.next_action}>{record.next_action}</p>}
       <NextEventLine record={record} />
+      {/* #4571 W6b: a reply that suggests Replied (server-computed, never applied). */}
+      {record.suggest_replied && <p className="text-xs font-semibold text-[var(--color-info-700)]" data-tile-replied="">Replied by email? Open to move it.</p>}
       {(record.due_on || next) && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>

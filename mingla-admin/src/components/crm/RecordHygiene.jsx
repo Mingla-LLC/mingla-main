@@ -11,8 +11,8 @@ import { CONTROL_CLASS } from "./fields";
 import {
   archiveRecord, duplicateCheck, mergeRecords, newRequestKey, recordMerges, unarchiveRecord, unmergeRecords,
 } from "../../services/crmService";
-import { errorWords, loadErrorWords } from "../../lib/crmModel";
-import { cadenceWords, mergeMovedWords } from "../../lib/sopTools";
+import { cadenceWords, errorWords, loadErrorWords } from "../../lib/crmModel";
+import { mergeMovedWords } from "../../lib/sopTools";
 import { localWhen } from "../../lib/opsModel";
 
 const BOX = "flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-3";
@@ -43,7 +43,7 @@ export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequest
   const merges = useMerges(record.id, tick);
   const archived = Boolean(record.archived_at);
   const merged = record.merged_into || null;
-  const cadence = cadenceWords(record.cadence);
+  const cadence = cadenceWords(record);
   const reply = record.suggest_replied || null;
   const changed = () => { setTick((n) => n + 1); onChanged(); };
 

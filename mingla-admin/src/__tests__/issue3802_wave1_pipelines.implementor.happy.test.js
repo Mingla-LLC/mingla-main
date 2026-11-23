@@ -498,6 +498,15 @@ describe("#3802 P-8: source contracts", () => {
       "crm_record_work",
       "crm_calls_queue",
       "crm_identifier_set_followers",
+      // #4571 W6: archive and merge, the duplicate pairs, the weekly numbers, the nightly sweep panel.
+      "crm_record_archive",
+      "crm_record_unarchive",
+      "crm_records_archived_list",
+      "crm_record_merge",
+      "crm_record_unmerge",
+      "crm_record_merges_json",
+      "crm_duplicate_pairs",
+      "crm_outreach_numbers",
     ].sort());
     // Bulk add is for the agent connector (a later wave); the screen never calls it.
     assert.ok(!SERVICE.includes("crm_records_bulk_create"));

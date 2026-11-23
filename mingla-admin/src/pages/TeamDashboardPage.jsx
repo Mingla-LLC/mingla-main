@@ -37,6 +37,7 @@ import { DueList, LINK_BUTTON_CLASS } from "../components/crm/home/DueList";
 import { GONE_REGION, TargetsCard } from "../components/crm/home/TargetsCard";
 import { TargetAddForm, TargetRowControls } from "../components/crm/home/TargetEditor";
 import { RunwayPanel } from "../components/ops/TeamOpsPanels";
+import { OutreachNumbers } from "../components/crm/home/OutreachNumbers";
 import { useOpsPoll, useOpsTeamOverview } from "../hooks/useOpsWork";
 import * as ops from "../services/opsService";
 import { opsErrorWords, todayIso } from "../lib/opsModel";
@@ -277,6 +278,9 @@ export function TeamDashboardPage() {
               <MovesChart title="Creators pipeline" pipeline="creators" rows={stageMoves(config, "creators", pulse.data.now?.moves?.creators)} periodWords={periodWords} />
             </div>
           ) : null}
+
+          {/* #4571 W6b: the weekly outreach numbers, counted from the logs. */}
+          <OutreachNumbers viewerKey={access?.email || ""} />
 
           <section ref={dueRef} tabIndex={-1} aria-label="Due and overdue, whole team" className="flex scroll-mt-20 flex-col gap-3 outline-none">
             <div className="flex flex-wrap items-center gap-2">

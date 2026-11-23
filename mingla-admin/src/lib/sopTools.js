@@ -1,6 +1,6 @@
 // Issue #4571 W6 — the SOP tooling's words and shapes, pure so node tests pin
 // them: the weekly outreach numbers (rates shown as -- when the server says
-// null, never 0%), the cadence round on a card, merge counts, duplicate pair
+// null, never 0%), merge counts, duplicate pair
 // reasons and the nightly sweep's report. Every number comes from the server
 // (crm_outreach_numbers, crm_cadence_state, crm_record_merge,
 // crm_cadence_sweep_runs); nothing here counts or guesses.
@@ -53,22 +53,6 @@ export function outreachRows(data) {
       demoRate: rateWords(d.demo_rate),
     })),
   }));
-}
-
-/** "Round 3 of 6 · call done · email to send", or a finished / paused line. */
-export function cadenceWords(cadence) {
-  if (!cadence || typeof cadence !== "object") return "";
-  if (cadence.counts === false) return cadence.paused_reason || "";
-  if (cadence.finished) {
-    return cadence.has_phone
-      ? `Cadence finished: ${cadence.calls} calls and ${cadence.emails} emails`
-      : `Cadence finished: ${cadence.emails} emails, no phone`;
-  }
-  const parts = [`Round ${cadence.round} of 6`];
-  if (cadence.has_phone) parts.push(cadence.call_done ? "call done" : "call to make");
-  parts.push(cadence.email_done ? "email done" : "email to send");
-  if (!cadence.has_phone) parts.push("no phone yet");
-  return parts.join(" · ");
 }
 
 const MOVED_WORDS = [
