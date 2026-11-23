@@ -302,7 +302,7 @@ const balanceStyles = themedStyles(() =>
     },
     eyebrow: {
       ...type.small,
-      color: color.accent,
+      color: color.accentText,
       fontWeight: "800",
       letterSpacing: 1.2,
       textTransform: "uppercase",

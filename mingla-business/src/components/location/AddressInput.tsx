@@ -177,7 +177,7 @@ const BUSINESS_TOKENS: LocationInputTokens = {
   // rows. Consumer bundles omit `action` → the shared field falls back to the
   // muted styling → byte-identical consumer render.
   action: {
-    text: dsColor.accent, // #eb7825 brand action
+    text: dsColor.accentText, // readable brand orange on dark (#4522 W-11); the pill keeps the warm tint
     bg: dsColor.accentLine, // subtle warm pill fill
     border: dsColor.accentLine, // warm pill border
   },

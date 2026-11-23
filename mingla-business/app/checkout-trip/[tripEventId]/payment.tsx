@@ -1349,10 +1349,10 @@ const styles = checkoutStyles(() => StyleSheet.create({
     alignItems: "baseline",
     marginBottom: space[2],
   },
-  dueTodayLabel: { fontSize: 13, color: color.accent, fontWeight: "600" },
+  dueTodayLabel: { fontSize: 13, color: color.accentText, fontWeight: "600" },
   dueTodayValue: {
     fontSize: 16,
-    color: color.accent,
+    color: color.accentText,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
