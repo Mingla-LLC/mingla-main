@@ -568,6 +568,9 @@ function loadCompiledCreator(relative: string, exportName: string): React.Compon
     const key = specifier.split("/").pop() as string;
     const supply = BOUNDARY[specifier] ?? BOUNDARY[key];
     if (supply !== undefined) return supply();
+    if (key === "LazyCreatorStep1Basics") {
+      return { CreatorStep1Basics: leaf("CreatorStep1Basics") };
+    } // #4572 route-only lazy boundary; same inert step leaf
     if (key === "LazyCreatorStep2When") {
       return { CreatorStep2When: leaf("CreatorStep2When") };
     } // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf

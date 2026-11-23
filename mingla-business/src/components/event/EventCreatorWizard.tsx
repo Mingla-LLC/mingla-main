@@ -154,7 +154,7 @@ import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
  * The mobile Stepper/chromeRow path must remain mobile/narrow-web only.
  */
 
-import { CreatorStep1Basics } from "./CreatorStep1Basics";
+import { CreatorStep1Basics } from "./LazyCreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import {

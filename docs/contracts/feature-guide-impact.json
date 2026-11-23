@@ -3729,6 +3729,7 @@
         "mingla-business/app/event/[id]/preview.tsx",
         "mingla-business/src/components/event/ActionTile.tsx",
         "mingla-business/src/components/event/CreatorStep1Basics.tsx",
+        "mingla-business/src/components/event/LazyCreatorStep1Basics.tsx",
         "mingla-business/src/components/event/CreatorStep2WhenRepeatPickerSheet.tsx",
         "mingla-business/src/components/event/EndSalesSheet.tsx",
         "mingla-business/src/components/event/EventDetailActivityRow.tsx",

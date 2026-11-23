@@ -129,7 +129,7 @@ import type { TurnoutInputSource } from "../../utils/turnoutInput";
  * The mobile Stepper/chromeRow path must remain mobile/narrow-web only.
  */
 
-import { CreatorStep1Basics } from "../event/CreatorStep1Basics";
+import { CreatorStep1Basics } from "../event/LazyCreatorStep1Basics";
 import { CreatorStep2When } from "../event/LazyCreatorStep2When";
 import { CreatorStep3Where } from "../event/CreatorStep3Where";
 import {

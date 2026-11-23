@@ -121,7 +121,7 @@ import { Toast } from "../ui/Toast";
 
 // #4420 — lazy: the sheet is mounted hidden and opens on intent.
 import { ChangeSummaryModal } from "./LazyChangeSummaryModal";
-import { CreatorStep1Basics } from "./CreatorStep1Basics";
+import { CreatorStep1Basics } from "./LazyCreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import {
