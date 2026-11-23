@@ -3,7 +3,7 @@
 -- MINGLA-INVARIANT: I-4522-6 | issue #4522 | A legacy v1 trip quote is byte-identical to the fixture recorded before #4522 and keeps its refusal codes.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 2 (M2, 20281129034522): the per-traveler schedule, the v2
+-- Issue #4522 slice 2 (M2, 20281202034522): the per-traveler schedule, the v2
 -- branch of quote / create-session / finalize, the add-on payment choice and
 -- the #3859 contract-path planner. The server switch and #3281's plan switch
 -- are turned on only inside this transaction (rolled back).

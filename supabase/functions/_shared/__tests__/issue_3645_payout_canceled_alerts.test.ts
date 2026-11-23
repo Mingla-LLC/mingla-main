@@ -208,7 +208,7 @@ Deno.test("#3645 the sweep's alert sender words every outbox row through the can
 });
 
 // Issue #4522 — the refund alerts the database files under existing outbox
-// kinds (20281129064522 section 8) are worded by their message prefix, on
+// kinds (20281202064522 section 8) are worded by their message prefix, on
 // any kind, and never read as an attempt cap or a Paystack plan.
 Deno.test("#4522 refund payout alerts get their own words on any kind", () => {
   const cases: Array<[string, string, string]> = [

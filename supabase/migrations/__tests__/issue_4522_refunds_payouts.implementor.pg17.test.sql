@@ -4,7 +4,7 @@
 -- MINGLA-INVARIANT: I-4522-TRIP-CALENDAR-DAYS | issue #4522 | Trip refund tiers count calendar days from the cancel date in the trip's zone to the stored departure date, and a trip stops taking bookings when its departure day begins in its zone.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 8 (M4, 20281129064522): refunds and payouts for v2
+-- Issue #4522 slice 8 (M4, 20281202064522): refunds and payouts for v2
 -- orders — flexible and superseded rows, "Deposit is non-refundable" (D-9),
 -- and add-ons paid today or spread.
 

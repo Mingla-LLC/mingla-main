@@ -1,6 +1,6 @@
 /**
  * issue #4522 slice 2 — the display mirror `tripPlanV2Math.ts` agrees with
- * `issue_4522_plan_v2_schedule` (migration 20281129034522).
+ * `issue_4522_plan_v2_schedule` (migration 20281202034522).
  *
  * 1. The spec §6.2 vectors give exactly the listed dates (09:00 Africa/Lagos)
  *    and amounts (SC-2), and the late / window / full-only answers (SC-3).

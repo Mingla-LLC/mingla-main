@@ -111,7 +111,7 @@ Deno.test("#3645 2d every caller that writes a release's net settles first", () 
   }
 });
 
-// issue #4522 section 8 — the payout functions 20281129064522 re-emits (this
+// issue #4522 section 8 — the payout functions 20281202064522 re-emits (this
 // target's projection among them) differ from their latest earlier
 // definitions by the declared hunks only.
 for (const reemit of PAYOUT_REFUND_REEMITS) {
