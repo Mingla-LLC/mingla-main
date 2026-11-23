@@ -2683,6 +2683,7 @@
     {
       "capability_key": "account-settings",
       "paths": [
+        "supabase/migrations/20281201003969_issue_3969_profile_access_step2.sql",
         "app-mobile/src/components/ProfilePage.tsx",
         "app-mobile/src/components/profile/ProfileInterestsSection.tsx",
         "app-mobile/src/components/profile/ProfileSectionSkeleton.tsx",

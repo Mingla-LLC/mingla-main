@@ -399,7 +399,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed.
 // #4571 merge of main after #4573 and #4574: kept main's 20281127004573 and 20281128004574 rows and suites, renumbered the twelve #4571 migrations to 20281130014571 to 20281130124571 (same order) and listed them after 20281128004574 in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4571 pre-#1931 replay fix: skipped 20281130044571 (W4, reads book_call_leads.phone_e164 that only the skipped 20280712034452 adds) and the seven later #4571 migrations that build on it or on W6a (20281130064571 to 20281130124571, every one after W5) by exact filename in the #1931 SC-47 filtered replay; W1, W2, W3 and W5 still apply; re-sealed.
-export const BOOTSTRAP_SHA256 = "81cc946954ca93d62843d9392d8d03ec8e56878a0a70d88385e387c83d626178";
+// #3969 step 2 profile access: listed migration 20281201003969 after 20281128004574 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed.
+// #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows and suites after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed.
+export const BOOTSTRAP_SHA256 = "96eef3ffe9eae4640806f28c0f80a769dfc1d663204cd7cf105ef91f8f98e382";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
