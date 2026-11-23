@@ -145,6 +145,7 @@ interface Plan {
   alertKind?: string;
   minRefundMinor?: number;
   overRefundedMinor?: number;
+  refundedMinor?: number;
 }
 
 interface Recorded {
@@ -154,6 +155,8 @@ interface Recorded {
   alertKind?: string | null;
   remainingMinor?: number;
   overRefundedMinor?: number;
+  refundMinor?: number;
+  refundedMinor?: number;
   reason?: string;
 }
 
@@ -247,6 +250,7 @@ export function overpaymentAlert(
         paragraphs: [
           `The provider shows a refund of a traveler's overpayment that Mingla had not counted, so the traveler was refunded ${String(plan.overRefundedMinor ?? "?")} (${plan.currency ?? "?"} minor units) more than this overpayment. Mingla recorded it and stopped automatic refunding for this overpayment.`,
           ...where.slice(0, 3),
+          `Owed back to the traveler for this overpayment: ${String(plan.refundMinor ?? "?")} (${plan.currency ?? "?"} minor units). Refunded to the traveler on the charge for it: ${String(plan.refundedMinor ?? "?")} (${plan.currency ?? "?"} minor units).`,
           "Nothing more will be refunded for it automatically. Decide whether to recover the extra amount, then record the outcome; the host's payout for this charge stays held until then.",
         ],
       };
@@ -296,7 +300,12 @@ async function record(
   });
   if (rpcError !== null) throw new Error(`overpayment_finish_failed:${rpcError.message ?? "unknown"}`);
   const recorded = (data ?? {}) as Recorded;
-  await alertFor(deps, { ...plan, overRefundedMinor: recorded.overRefundedMinor }, recorded, error);
+  await alertFor(deps, {
+    ...plan,
+    overRefundedMinor: recorded.overRefundedMinor,
+    refundMinor: recorded.refundMinor ?? plan.refundMinor,
+    refundedMinor: recorded.refundedMinor,
+  }, recorded, error);
   return recorded;
 }
 
@@ -803,6 +812,8 @@ export async function applyOverpaymentRefundEvent(
         currency: r.currency,
         remainingMinor: r.remainingMinor,
         overRefundedMinor: r.overRefundedMinor,
+        refundMinor: r.refundMinor,
+        refundedMinor: r.refundedMinor,
       }, null);
       if (alert !== null) await alertOps(alert.subject, alert.paragraphs);
     }

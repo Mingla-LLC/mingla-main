@@ -24,6 +24,10 @@
 --         a refund Mingla already recorded is never adopted as a dashboard one.
 --   T4-4  a refund the provider reverses stops counting on its row, so an ops
 --         retry's refund is counted once.
+--   T5-1  a second refund for one attempt (a late create answer, or an
+--         unmatched webhook / listed refund for a known overpayment) is
+--         recorded once and alerts ops once with what was owed back and what
+--         was refunded; the recorded refund completing keeps it with ops.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
@@ -32,7 +36,8 @@
 -- issue_3872_refund_share_trigger, drop issue_4522_record_short_collection's
 -- update, drop the begin's reconcile or busy step, let a refund without its id
 -- reverse a succeeded one, drop the over-amount adoption, or drop the known
--- refund check, or keep a reversed refund counted on its row -> red.
+-- refund check, keep a reversed refund counted on its row, or drop the
+-- unmatched-refund record (issue_4522_overpayment_extra_refund) -> red.
 
 BEGIN;
 
@@ -413,6 +418,56 @@ BEGIN
   v := public.issue_4522_overpayment_refund_event('paystack', 'rfd_dash_small', 'mingla-inst-4522c300-0000-4000-8000-0000000000b3-l1',
          3000, 'succeeded', NULL, NULL, false);
   PERFORM pg_temp.check('T3-7 a refund made at the provider for it closes it', (pg_temp.op(op)).state = 'refunded', v::text);
+END
+$t$;
+
+-- ── T5-1: a second refund for one attempt (the second provider created our
+--    request late, or a re-send after a lost answer made another) is never
+--    silent: one alert naming the owed and refunded amounts, once ─────────
+DO $t$
+DECLARE
+  op uuid; v jsonb; v_note_ref text := 'mingla-inst-4522c300-0000-4000-8000-0000000000b4-l1';
+BEGIN
+  -- (a) worker B's re-send stored refund 1; worker A's late answer names refund 2.
+  op := pg_temp.ng_overpayment('4522c300-0000-4000-8000-0000000000b4', 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9001');
+  v := public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9002');
+  PERFORM pg_temp.check('T5-1 a late create answer naming a second refund alerts ops once with owed and refunded',
+    (v->>'alertOps')::boolean AND v->>'alertKind' = 'provider_refunded_more'
+    AND (v->>'refundMinor')::bigint = 500000 AND (v->>'refundedMinor')::bigint = 1000000
+    AND (v->>'overRefundedMinor')::bigint = 500000 AND v->>'reason' = 'provider_refund_id_mismatch'
+    AND (pg_temp.op(op)).state = 'needs_ops' AND (pg_temp.op(op)).needs_ops_reason = 'provider_refunded_more'
+    AND (SELECT provider_refund_id FROM public.order_overpayment_refund_attempts WHERE overpayment_id = op) = '9001', v::text);
+  v := public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9002');
+  PERFORM pg_temp.check('T5-1 ... the same late answer again: no second alert', v->>'alertOps' IS NULL
+    AND jsonb_array_length((pg_temp.op(op)).detail->'over_refunded') = 1, v::text);
+  v := public.issue_4522_overpayment_refund_event('paystack', '9002', v_note_ref, 500000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T5-1 ... its webhook (and a reconcile listing it) is acknowledged without a second alert',
+    (v->>'handled')::boolean AND v->>'matchedBy' = 'none' AND jsonb_array_length(v->'results') = 0, v::text);
+  v := public.issue_4522_overpayment_refund_event('paystack', '9001', v_note_ref, 500000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T5-1 ... the recorded refund completing keeps it with ops (payout held), no alert',
+    v->'results'->0->>'alertOps' IS DISTINCT FROM 'true' AND (pg_temp.op(op)).state = 'needs_ops'
+    AND public.issue_4522_overpayment_returned_minor(op) = 500000
+    AND jsonb_array_length(public.issue_4522_overpayments_due('4522c300-0000-4000-8000-0000000000b4', now(), 5)) = 0, v::text);
+
+  -- (b) a lost answer, a re-send recorded refund 2; refund 1's webhook arrives later.
+  op := pg_temp.ng_overpayment('4522c300-0000-4000-8000-0000000000b5', 500000);
+  v_note_ref := 'mingla-inst-4522c300-0000-4000-8000-0000000000b5-l1';
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9005');
+  v := public.issue_4522_overpayment_refund_event('paystack', '9004', v_note_ref, 500000, 'failed', op, 1, true);
+  PERFORM pg_temp.check('T5-1 a refused second refund moved no money: not recorded, no alert',
+    jsonb_array_length(v->'results') = 0 AND (pg_temp.op(op)).detail->'over_refunded' IS NULL, v::text);
+  v := public.issue_4522_overpayment_refund_event('paystack', '9004', v_note_ref, 500000, 'pending', op, 1, true);
+  PERFORM pg_temp.check('T5-1 an unmatched refund webhook for a known overpayment alerts ops once',
+    (v->>'handled')::boolean AND (v->'results'->0->>'alertOps')::boolean
+    AND v->'results'->0->>'alertKind' = 'provider_refunded_more'
+    AND (v->'results'->0->>'refundedMinor')::bigint = 1000000 AND (v->'results'->0->>'refundMinor')::bigint = 500000
+    AND v->'results'->0->>'providerRef' = v_note_ref AND (pg_temp.op(op)).state = 'needs_ops', v::text);
+  v := public.issue_4522_overpayment_refund_event('paystack', '9004', v_note_ref, 500000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T5-1 ... its later and duplicate webhooks: no second alert',
+    jsonb_array_length(v->'results') = 0 AND jsonb_array_length((pg_temp.op(op)).detail->'over_refunded') = 1, v::text);
 END
 $t$;
 

@@ -499,6 +499,41 @@ Deno.test("T4-1 a late refund that went past the amount: one alert with the exac
   assert(alerts[0].p[0].includes("refunded 30000 (USD minor units) more than this overpayment"), alerts[0].p[0]);
 });
 
+Deno.test("T5-1 a second Paystack refund for one attempt is never silent: one alert naming the charge, owed and refunded", async () => {
+  const extra = { alertOps: true, alertKind: "provider_refunded_more", overRefundedMinor: 500000, refundMinor: 500000,
+    refundedMinor: 1000000, state: "needs_ops" };
+  // (a) worker A's create answer arrives late, naming a refund other than the one recorded.
+  const db = scripted({
+    issue_4522_begin_overpayment_refund: [{ ...create(1, 500000), provider: "paystack", providerRef: "ps_ref_1",
+      currency: "NGN", refundMinor: 500000, remainingMinor: 500000 }],
+    issue_4522_finish_overpayment_refund: [{ ok: false, reason: "provider_refund_id_mismatch", attemptNo: 1, ...extra }],
+  });
+  const alerts: Array<{ s: string; p: string[] }> = [];
+  const outcome = await returnOverpayment(deps(db, stripe(newLog()), [], {
+    createPaystackRefund: () => Promise.resolve({ id: "9002", status: "pending" } as never),
+    alertOps: (s, p) => { alerts.push({ s, p }); return Promise.resolve(); },
+  }), "op-1");
+  assertEquals(outcome, "needs_ops");
+  assertEquals(alerts.length, 1);
+  const copy = alerts[0].p.join(" ");
+  assert(copy.includes("Charge (paystack): ps_ref_1"), copy);
+  assert(copy.includes("Owed back to the traveler for this overpayment: 500000 (NGN minor units)"), copy);
+  assert(copy.includes("Refunded to the traveler on the charge for it: 1000000 (NGN minor units)"), copy);
+  // (b) the duplicate's webhook: alerted when the database records it, silent on its replay.
+  const hook = scripted({ issue_4522_overpayment_refund_event: [
+    { handled: true, matchedBy: "none", results: [{ ...extra, overpaymentId: OPU, orderId: "order-1", currency: "NGN",
+      providerRef: "ps_ref_1" }] },
+    { handled: true, matchedBy: "none", results: [] },
+  ] });
+  const hooked: string[] = [];
+  const event = paystackOverpaymentRefundEvent("refund.processed", "9004", `mingla_overpay_refund:${OPU}:1`, "ps_ref_1", 500000);
+  const push = (s: string, p: string[]) => { hooked.push(`${s} | ${p.join(" ")}`); return Promise.resolve(); };
+  assertEquals(await applyOverpaymentRefundEvent(hook.client, event, push), true);
+  assertEquals(await applyOverpaymentRefundEvent(hook.client, event, push), true);
+  assertEquals(hooked.length, 1);
+  assert(hooked[0].includes("Refunded to the traveler on the charge for it: 1000000 (NGN minor units)"), hooked[0]);
+});
+
 Deno.test("T3-8 a schema probe that keeps failing is answered by reading the table, every time", async () => {
   const probe = (rpcError: { code: string; message: string }, tableError: { code: string; message: string } | null) => ({
     rpc: () => Promise.resolve({ data: null, error: rpcError }),
