@@ -572,9 +572,11 @@ begin
     (select count(*)::text from public.ops_sprint_goals where sprint_id = v_sprint and archived_at is null and title like 'V4255 goal %') || '/' ||
     (select owner_email from public.ops_sprint_goals where id = v_goal), '5/gem.v4255@test.local');
   v := pg_temp.person('growth', format('select public.ops_sprint_goal_add(%L, %L)::text', v_sprint, 'V4255 goal six'));
-  perform pg_temp.lk('C-GOAL', 'a sixth goal is refused', v, 'ERR:22023:too_many_goals:%');
+  -- #4571: no five-goal cap. The sixth is added, then archived so the rest of this block sees five.
+  perform pg_temp.lk('C-GOAL', 'a sixth goal is added (#4571)', v, '{"goal":%');
+  v := pg_temp.person('growth', format('select public.ops_sprint_goal_archive(%L, %s)::text', (v::jsonb)->'goal'->>'id', (v::jsonb)->'goal'->>'revision'));
   v := pg_temp.person('growth', format('select public.ops_sprint_goal_add(%L, %L)::text', v_next, 'ab'));
-  perform pg_temp.lk('C-GOAL', 'a goal is 3 to 80 characters', v, 'ERR:22023:invalid_goal:%');
+  perform pg_temp.lk('C-GOAL', 'a goal is 3 to 120 characters', v, 'ERR:22023:invalid_goal:%');
   v := pg_temp.agent('growth', format('select public.ops_sprint_goal_add(%L, %L)::text', v_next, 'Agent goal'));
   perform pg_temp.lk('C-GOAL', 'an agent does not plan the sprint', v, 'ERR:42501:people_only:%');
   v := pg_temp.add('GC', 'growth', pg_temp.item('V4255 Goal card') || jsonb_build_object('goal', v_goal, 'estimate_minutes', 600));

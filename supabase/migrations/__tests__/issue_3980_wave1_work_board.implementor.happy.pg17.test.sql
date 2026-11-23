@@ -59,8 +59,8 @@ BEGIN
 END
 $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards DEFERRED;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -305,7 +305,7 @@ begin
   -- [TEST-MOD-APPROVED #4398] the approved one-owner fix text.
   perform pg_temp.t3980_like('W1-ADD', 'no owner: the exact fix',
     (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'owners'),
-    'A card has one owner. Pick one person.');
+    'A card needs at least one owner.');
   perform pg_temp.t3980_check('W1-ADD', 'no due date: the exact fix',
     (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'due_on'),
     'No due date. Add one, or link an event and it is counted back from the start.');

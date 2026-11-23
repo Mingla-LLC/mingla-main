@@ -726,7 +726,8 @@ create function pg_temp.board_of(k text, v jsonb) returns jsonb language sql imm
       (select coalesce(jsonb_agg(case when jsonb_typeof(e) = 'object' then jsonb_build_object('kind', e->'kind', 'id', e->'id') else e end order by o), '[]'::jsonb)
          from jsonb_array_elements(v) with ordinality x(e, o))
     when k = 'working' then jsonb_build_object('name', v->'name', 'quiet', v->'quiet', 'last_update_at', v->'last_update_at')
-    when k = 'review' then jsonb_build_object('requested_at', v->'requested_at', 'waiting_on', v->'waiting_on')
+    -- #4571: the board also reads waiting_on_all ("Waiting on any of: A, B").
+    when k = 'review' then jsonb_build_object('requested_at', v->'requested_at', 'waiting_on', v->'waiting_on', 'waiting_on_all', v->'waiting_on_all')
     when k = 'sent_back' then jsonb_build_object('reason', v->'reason')
     when k = 'parent' then v - 'parent_id'
     when k = 'goal' then v - 'state'
