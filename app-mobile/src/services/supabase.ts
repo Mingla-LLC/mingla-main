@@ -2,7 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
 import { getNativeAppVersionHeaders } from './appVersionIdentity';
-import { buildExplorerProfileAuthRestRequest } from '../utils/explorerProfileAuthRest';
+import {
+  buildExplorerProfileAuthRestRequest,
+  type ExplorerProfileAuthRestRequest,
+} from '../utils/explorerProfileAuthRest';
 import {
   reactivateExplorerProfileForExplicitSession,
   type DeletedExplorerProfile,
@@ -129,7 +132,7 @@ export async function requestOwnExplorerProfileForAuthEvent<T>(input: {
   userId: string;
   reactivate: boolean;
 }): Promise<ExplorerProfileAuthResult<T>> {
-  const request = buildExplorerProfileAuthRestRequest({
+  const plan = buildExplorerProfileAuthRestRequest({
     supabaseUrl,
     anonKey: supabaseAnonKey,
     accessToken: input.accessToken,
@@ -137,7 +140,7 @@ export async function requestOwnExplorerProfileForAuthEvent<T>(input: {
     reactivate: input.reactivate,
   });
 
-  try {
+  const send = async (request: ExplorerProfileAuthRestRequest) => {
     const response = await fetchWithTimeout(request.url, {
       ...request.init,
       headers: {
@@ -149,17 +152,31 @@ export async function requestOwnExplorerProfileForAuthEvent<T>(input: {
       | T[]
       | { message?: string; code?: string }
       | null;
+    return { response, payload };
+  };
 
-    if (!response.ok) {
-      const failure = !Array.isArray(payload) && payload !== null ? payload : null;
-      return {
-        data: null,
-        error: {
-          message: failure?.message ?? `Profile request failed (${response.status})`,
-          ...(failure?.code ? { code: failure.code } : {}),
-        },
-      };
+  const failureOf = (
+    response: Response,
+    payload: T[] | { message?: string; code?: string } | null,
+  ): ExplorerProfileAuthResult<T> => {
+    const failure = !Array.isArray(payload) && payload !== null ? payload : null;
+    return {
+      data: null,
+      error: {
+        message: failure?.message ?? `Profile request failed (${response.status})`,
+        ...(failure?.code ? { code: failure.code } : {}),
+      },
+    };
+  };
+
+  try {
+    if (plan.write) {
+      const written = await send(plan.write);
+      if (!written.response.ok) return failureOf(written.response, written.payload);
     }
+
+    const { response, payload } = await send(plan.read);
+    if (!response.ok) return failureOf(response, payload);
 
     return {
       data: Array.isArray(payload) ? payload[0] ?? null : null,

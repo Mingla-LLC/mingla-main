@@ -228,7 +228,7 @@ Deno.test("#4202 a failed auth attempt cannot leave reactivation intent armed", 
 });
 
 Deno.test("#4202 post-auth profile reads use the captured bearer, never the anon key", () => {
-  const request = buildExplorerProfileAuthRestRequest({
+  const { write, read: request } = buildExplorerProfileAuthRestRequest({
     supabaseUrl: "https://project.supabase.co/",
     anonKey: "anon-key",
     accessToken: "verified-user-token",
@@ -236,19 +236,22 @@ Deno.test("#4202 post-auth profile reads use the captured bearer, never the anon
     reactivate: false,
   });
 
-  assertEquals(request.init.method, "GET");
-  assertEquals(request.init.body, undefined);
+  assertEquals(write, null);
+  // Issue #3969: the own row comes from the own-profile read, not the table.
+  assertEquals(request.init.method, "POST");
+  assertEquals(request.init.body, "{}");
   assertEquals(
     (request.init.headers as Record<string, string>).Authorization,
     "Bearer verified-user-token",
   );
   assertEquals((request.init.headers as Record<string, string>).apikey, "anon-key");
-  assert(request.url.startsWith("https://project.supabase.co/rest/v1/profiles?"));
+  assert(request.url.startsWith("https://project.supabase.co/rest/v1/rpc/get_my_profile?"));
   assert(request.url.includes(`id=eq.${deletedProfile.id}`));
+  assert(!request.url.includes("select="));
 });
 
 Deno.test("#4202 reactivation PATCH changes only the Explorer marker and onboarding", () => {
-  const request = buildExplorerProfileAuthRestRequest({
+  const { write: request, read } = buildExplorerProfileAuthRestRequest({
     supabaseUrl: "https://project.supabase.co",
     anonKey: "anon-key",
     accessToken: "verified-user-token",
@@ -256,17 +259,24 @@ Deno.test("#4202 reactivation PATCH changes only the Explorer marker and onboard
     reactivate: true,
   });
 
+  assert(request);
   assertEquals(request.init.method, "PATCH");
   assertEquals(
     JSON.parse(String(request.init.body)),
     { explorer_deleted_at: null, has_completed_onboarding: false },
   );
+  // Issue #3969: the write returns nothing; the row is re-read through the RPC.
   assertEquals(
     (request.init.headers as Record<string, string>).Prefer,
-    "return=representation",
+    "return=minimal",
   );
   assertEquals(
     (request.init.headers as Record<string, string>).Authorization,
+    "Bearer verified-user-token",
+  );
+  assert(read.url.includes("/rest/v1/rpc/get_my_profile?"));
+  assertEquals(
+    (read.init.headers as Record<string, string>).Authorization,
     "Bearer verified-user-token",
   );
 });
@@ -301,6 +311,7 @@ Deno.test("#4202 the auth callback clears only the Explorer marker and restarts 
   assert(hookSource.includes("accessToken: session.access_token"));
   assert(supabaseSource.includes("buildExplorerProfileAuthRestRequest"));
   assert(supabaseSource.includes("fetchWithTimeout(request.url"));
+  assert(supabaseSource.includes("if (plan.write)"));
   assert(supabaseSource.includes("reactivateExplorerForVerifiedSession"));
   assert(hookSource.includes('resolution.kind === "deleted_session"'));
   assert(hookSource.includes('resolution.kind === "reactivation_failed"'));

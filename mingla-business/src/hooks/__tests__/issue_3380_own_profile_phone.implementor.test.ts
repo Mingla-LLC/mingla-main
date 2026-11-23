@@ -11,13 +11,13 @@ import * as path from "path";
 const maybeSingle = jest.fn();
 const eq = jest.fn(() => ({ maybeSingle }));
 const select = jest.fn(() => ({ eq }));
-const from = jest.fn(() => ({ select }));
+const rpc = jest.fn(() => ({ select }));
 
 jest.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ isAuthReady: true }),
 }));
 jest.mock("../../services/supabase", () => ({
-  supabase: { from: (...args: unknown[]) => from(...(args as [])) },
+  supabase: { rpc: (...args: unknown[]) => rpc(...(args as [])) },
 }));
 
 import {
@@ -30,7 +30,7 @@ beforeEach(() => {
   maybeSingle.mockReset();
   eq.mockClear();
   select.mockClear();
-  from.mockClear();
+  rpc.mockClear();
 });
 
 describe("#3380 own profile phone", () => {
@@ -40,7 +40,8 @@ describe("#3380 own profile phone", () => {
       error: null,
     });
     await expect(fetchOwnProfilePhoneOnFile("user-1")).resolves.toBe(true);
-    expect(from).toHaveBeenCalledWith("profiles");
+    // #3969 — through the own-profile read, never a direct table read.
+    expect(rpc).toHaveBeenCalledWith("get_my_profile");
     expect(select).toHaveBeenCalledWith("phone");
     expect(eq).toHaveBeenCalledWith("id", "user-1");
   });

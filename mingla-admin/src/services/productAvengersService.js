@@ -131,7 +131,10 @@ export async function listReporterTickets(ticketIds) {
   const userIds = [...new Set(rows.map((row) => row.requester_user_id).filter(Boolean))];
   const brandIds = [...new Set(rows.map((row) => row.brand_id).filter(Boolean))];
   const [profiles, brands] = await Promise.all([
-    userIds.length ? supabase.from("profiles").select("id,display_name,username,email").in("id", userIds) : Promise.resolve({ data: [], error: null }),
+    // #3969 — reporters' names and emails through the admin contacts read.
+    userIds.length
+      ? supabase.rpc("issue_3969_admin_profile_contacts", { p_user_ids: userIds, p_email: null })
+      : Promise.resolve({ data: [], error: null }),
     brandIds.length ? supabase.from("brands").select("id,name").in("id", brandIds) : Promise.resolve({ data: [], error: null }),
   ]);
   const profileById = oneBy(unwrap(profiles, "Couldn't load reporters"), "id");

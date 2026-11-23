@@ -105,6 +105,29 @@ async function getCurrentUserId(): Promise<string> {
   return user.id;
 }
 
+interface PairPartnerDetails {
+  id: string;
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+  birthday: string | null;
+  gender: string | null;
+}
+
+/**
+ * Issue #3969 — names, avatars, and (only for people paired with the caller
+ * or in a pending pair request with them) birthday and gender.
+ */
+async function fetchPairPartnerDetails(userIds: string[]): Promise<PairPartnerDetails[]> {
+  if (userIds.length === 0) return [];
+  const { data, error } = await supabase.rpc("issue_3969_pair_partner_details", {
+    p_user_ids: userIds,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PairPartnerDetails[];
+}
+
 // ── Service Functions ───────────────────────────────────────────────────────
 
 /**
@@ -135,15 +158,10 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
     );
 
     // Batch-fetch partner profiles
-    const { data: partnerProfiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, display_name, first_name, last_name, avatar_url, birthday, gender")
-      .in("id", partnerIds);
-
-    if (profilesError) throw new Error(profilesError.message);
+    const partnerProfiles = await fetchPairPartnerDetails(partnerIds);
 
     const profileMap = new Map(
-      (partnerProfiles || []).map((p) => [p.id, p])
+      partnerProfiles.map((p) => [p.id, p])
     );
 
     for (const pairing of pairings) {
@@ -192,15 +210,10 @@ export async function fetchPairingPills(userId: string): Promise<PairingPill[]> 
   if (outgoingRequests && outgoingRequests.length > 0) {
     // Batch-fetch receiver profiles
     const receiverIds = outgoingRequests.map((r) => r.receiver_id);
-    const { data: receiverProfiles, error: recProfilesError } = await supabase
-      .from("profiles")
-      .select("id, display_name, first_name, last_name, avatar_url, birthday, gender")
-      .in("id", receiverIds);
-
-    if (recProfilesError) throw new Error(recProfilesError.message);
+    const receiverProfiles = await fetchPairPartnerDetails(receiverIds);
 
     const recProfileMap = new Map(
-      (receiverProfiles || []).map((p) => [p.id, p])
+      receiverProfiles.map((p) => [p.id, p])
     );
 
     // For hidden_until_friend requests, check gated friend_request status

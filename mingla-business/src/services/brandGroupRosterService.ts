@@ -4,7 +4,8 @@ import type { BrandGroupMentionCandidate } from "../utils/brandGroupMentions";
 export interface BrandGroupMember {
   user_id: string;
   display_name: string;
-  email: string;
+  /** #3969 — may be empty or null for anyone but the viewer. */
+  email: string | null;
   role: string;
 }
 

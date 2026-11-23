@@ -90,13 +90,6 @@ export async function addFriendsToSessions(
   const { data: { user } } = await supabase.auth.getUser();
   const inviterId = user?.id;
 
-  // Resolve invitee email once for the push edge function
-  const { data: inviteeProfile } = await supabase
-    .from('profiles')
-    .select('email')
-    .eq('id', friendUserId)
-    .maybeSingle();
-
   for (const sessionId of sessionIds) {
     try {
       const { data, error } = await supabase.rpc('add_friend_to_session', {
@@ -131,14 +124,14 @@ export async function addFriendsToSessions(
 
       // Fire push only on fresh `invited` outcome (NOT on `already_invited` —
       // we already pushed the first time and don't want to spam the friend).
-      if (result.outcome === 'invited' && result.invite_id && inviterId && inviteeProfile?.email) {
+      // Issue #3969: the edge function resolves the invitee from the user id.
+      if (result.outcome === 'invited' && result.invite_id && inviterId) {
         const sessionName = sessionNames?.[sessionId] ?? 'Session';
         try {
           await supabase.functions.invoke('send-collaboration-invite', {
             body: {
               inviterId,
               invitedUserId: friendUserId,
-              invitedUserEmail: inviteeProfile.email,
               sessionId,
               sessionName,
               inviteId: result.invite_id,
