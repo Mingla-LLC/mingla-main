@@ -66,7 +66,7 @@ const TEAM = read("pages/TeamDashboardPage.jsx");
 const BETA = read("pages/BetaLeadsPage.jsx");
 const ADMIN_PAGE = read("pages/AdminPage.jsx");
 const ACCEPT = read("components/InviteAcceptScreen.jsx");
-const DRAWER = read("components/crm/RecordDrawer.jsx");
+const DRAWER = read("components/crm/RecordPanel.jsx");
 const BOARD = read("components/crm/PipelineBoard.jsx");
 const TOAST = read("components/ui/Toast.jsx");
 const SERVICE = read("services/crmService.js");
@@ -573,7 +573,7 @@ describe("#3802 M-11: the three smoke-test items", () => {
     // #4255: the card panels are the first of the two side panels, drawn by the
     // PanelStack inside the same layer.
     assert.match(PAGE, /<PipelineOverlays\s+card=\{\s*<PanelLinksContext\.Provider value=\{stack\.links\}>\s*<PanelStack\s+stack=\{stack\}\s+first=\{\s*ready && state\.card === NEW_CARD && !holding \? \(\s*<Drawer open/);
-    assert.match(PAGE, /\) : ready && openId \? \(\s*<RecordDrawer/);
+    assert.match(PAGE, /\) : ready && openId \? \(\s*<Suspense[\s\S]*?<RecordPanel/);
     assert.ok(!/createPortal/.test(PAGE), "the page draws an overlay outside the layer component");
   });
   it("with a card open on a wide screen the toasts sit beside it; on a phone they stay above its footer", () => {

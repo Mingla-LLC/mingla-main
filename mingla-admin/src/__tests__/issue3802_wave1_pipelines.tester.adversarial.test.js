@@ -757,7 +757,7 @@ describe("#3802 B-4: whatever arrives beside a token, the screen shows a sentenc
 
 const PAGE_NOW = read("pages/PipelinePage.jsx");
 const HOOK_NOW = read("hooks/useCrmPipeline.js");
-const DRAWER_NOW = read("components/crm/RecordDrawer.jsx");
+const DRAWER_NOW = read("components/crm/RecordPanel.jsx");
 const SHELL_NOW = read("components/ui/Drawer.jsx");
 const TOAST_NOW = read("components/ui/Toast.jsx");
 const BOARD_NOW = read("components/crm/PipelineBoard.jsx");

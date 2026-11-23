@@ -147,7 +147,7 @@ Deno.test("#3980 W2 the host card's On Mingla section: hosts only, its words, no
   for (const banned of ["Drafts to send", "Draft, not sent", "@mention", "mention", "will get an email", "Getting started"]) {
     assert(!section.includes(banned), banned);
   }
-  const drawer = read("components/crm/RecordDrawer.jsx");
+  const drawer = read("components/crm/RecordPanel.jsx");
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (artifact hostCard()): On Mingla now opens the host card,
   // above its fields, with Assign to me and Fill in; hosts only.
   // #4270 W2: To do comes first, then On Mingla (hosts only).

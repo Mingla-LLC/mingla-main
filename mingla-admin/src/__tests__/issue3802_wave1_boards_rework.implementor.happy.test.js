@@ -51,7 +51,7 @@ const SRC = path.resolve(__dirname, "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 
 const PAGE = read("pages/PipelinePage.jsx");
-const DRAWER = read("components/crm/RecordDrawer.jsx");
+const DRAWER = read("components/crm/RecordPanel.jsx");
 const UI_DRAWER = read("components/ui/Drawer.jsx");
 const TOAST = read("components/ui/Toast.jsx");
 const TOAST_CONTEXT = read("context/ToastContext.jsx");

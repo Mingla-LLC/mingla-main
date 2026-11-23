@@ -1,6 +1,6 @@
 // Who owns a host or creator card: the one people field (issue #3980, R9),
 // with chips, type to find, me and the current owners suggested first, and
-// invited teammates greyed. A thin wrapper so RecordDrawer and AddRecordForm
+// invited teammates greyed. A thin wrapper so AddRecordForm
 // keep their props; owners are still saved as addresses through the same
 // crm_record_set_owners path.
 // #3980 proof fix P2-5: a card that has owners keeps at least one (min 1),

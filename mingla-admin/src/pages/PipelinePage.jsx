@@ -17,7 +17,7 @@
 // functions through the hooks below; this file never talks to the database
 // itself. The view, the filters and the open card live in the address, so a
 // reload or a pasted link shows exactly the same thing.
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Plus } from "lucide-react";
 import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -48,7 +48,8 @@ import {
 import { NEW_CARD, buildCrmSearch, cleanCrmState, parseCrmSearch, sameCrmState } from "../lib/crmUrl";
 import { PipelineToolbar } from "../components/crm/PipelineToolbar";
 import { PipelineBoard, PipelineBoardSkeleton } from "../components/crm/PipelineBoard";
-import { RecordDrawer } from "../components/crm/RecordDrawer";
+// #4571 W3: My calls today.
+import { CallsQueue } from "../components/crm/CallsQueue";
 import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
 import { PipelineOverlays } from "../components/crm/CrmLayer";
@@ -62,6 +63,8 @@ import { OutreachContext } from "../components/outreach/OutreachContext";
 import { FunnelStrip } from "../components/outreach/FunnelStrip";
 import { ResetDueModal } from "../components/outreach/ResetDueModal";
 import { resetStaleDue } from "../services/dashboardService";
+// #4571 W3: the host and creator card loads on first open.
+const RecordPanel = lazy(() => import("../components/crm/RecordPanel").then((m) => ({ default: m.RecordPanel })));
 
 const UNDO_MS = 8000;
 const BLOCK_TITLES = {
@@ -96,7 +99,7 @@ function PipelinePage({ pipeline, onTabChange }) {
   const handleDirtyChange = useCallback((id, dirty) => {
     setDirtyCard((prev) => (dirty ? id : prev === id ? "" : prev));
   }, []);
-  // What the open card can be asked before it is let go (RecordDrawer fills it).
+  // What the open card can be asked before it is let go (RecordPanel fills it).
   const guardRef = useRef(null);
   const addButtonRef = useRef(null);
   const me = config?.me?.email || "";
@@ -614,8 +617,18 @@ function PipelinePage({ pipeline, onTabChange }) {
             <AlertCard variant="info">Showing the 5,000 most recently changed. Use search to find older ones.</AlertCard>
           )}
 
+          {pipeline === "hosts" && (
+            <div role="group" aria-label="View" className="flex flex-wrap gap-1">
+              {[["", "Board"], ["calls", "My calls today"]].map(([v, l]) => (
+                <button key={l} type="button" aria-pressed={(state.view || "") === v} onClick={() => patch({ view: v })}
+                  className={`min-h-11 rounded-full border px-3 text-[13px] font-semibold ${(state.view || "") === v ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)]"}`}>{l}</button>
+              ))}
+            </div>
+          )}
           <HostNextContext.Provider value={isHostBoard ? hostNext.byId : null}>
-          {loading ? (
+          {pipeline === "hosts" && state.view === "calls" ? (
+            <CallsQueue def={def} today={today} tick={activityTick} onOpen={(id) => openCard(id)} />
+          ) : loading ? (
             <PipelineBoardSkeleton />
           ) : pipe.records.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--gray-300)] bg-[var(--color-background-primary)] px-4 py-12 text-center">
@@ -691,7 +704,8 @@ function PipelinePage({ pipeline, onTabChange }) {
                     </div>
                   </Drawer>
                 ) : ready && openId ? (
-                  <RecordDrawer
+                  <Suspense fallback={<Drawer open onClose={closeCard} title={`Opening ${singular}`}><p role="status" aria-busy="true" className="text-sm text-[var(--color-text-secondary)]">Loading…</p></Drawer>}>
+                  <RecordPanel
                     key={openId}
                     pipeline={pipeline}
                     def={def}
@@ -713,6 +727,7 @@ function PipelinePage({ pipeline, onTabChange }) {
                     onOpenCard={(id) => openCard(id, { replace: true })}
                     onRefreshRegions={cfg.retry}
                   />
+                  </Suspense>
                 ) : null
               }
               second={stack.side ? <SidePanel side={stack.side} onClose={stack.closeSide} onChanged={() => pipe.refetch({ quiet: true })} /> : null}

@@ -217,5 +217,5 @@ Deno.test("#3980 host and creator card notices carry none of the banned words", 
   }
   assertMatch(notice, /Allow one more message/);
   assertMatch(notice, /Allowed for 24 hours\./);
-  assertMatch(read("components/crm/RecordDrawer.jsx"), /<RecentTouchNotice /);
+  assertMatch(read("components/crm/RecordPanel.jsx"), /<RecentTouchNotice /);
 });

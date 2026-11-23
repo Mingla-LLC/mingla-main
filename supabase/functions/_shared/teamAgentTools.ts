@@ -1463,6 +1463,23 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   crm_record_update: { tools: ["update_records"] },
   crm_record_move_stage: { tools: ["move_stage"] },
   crm_record_set_owners: { tools: ["set_owners"] },
+  // #4571 W3: the host and creator card.
+  crm_record_set_people: {
+    excluded:
+      "watchers are picked by people on the card; an agent sets owners with set_owners (it refuses an owner who is watching)",
+  },
+  crm_record_work: {
+    excluded:
+      "the card's Work list is for people; an agent reads Work cards with list_work and my_work",
+  },
+  crm_calls_queue: {
+    excluded:
+      "My calls today is a person's own list; an agent reads due hosts with my_day and find_records",
+  },
+  crm_identifier_set_followers: {
+    excluded:
+      "follower counts are read by a person, never guessed by an agent",
+  },
   crm_record_log: { tools: ["log_activity", "record_reply"] },
   crm_home_summary: { tools: ["my_day"] },
   crm_team_summary: { tools: ["team_summary"] },

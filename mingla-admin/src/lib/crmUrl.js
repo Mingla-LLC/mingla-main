@@ -38,6 +38,8 @@ export const EMPTY_CRM_STATE = Object.freeze({
   owner: "",
   // #4255: the item open in the second panel ("host:<id>").
   side: "",
+  // #4571 W3: "calls" is My calls today (Hosts); "" is the board.
+  view: "",
 });
 // #3980's two host toggles, read from old links into Due.
 const OLD_HOST_FILTERS = ["nonext", "soon"];
@@ -89,6 +91,7 @@ export function parseCrmSearch(search) {
   if (state.owner) state.mine = false;
   const side = sideValue(parseSideValue(params.get("side") || ""));
   if (side) state.side = side;
+  if (params.get("view") === "calls") state.view = "calls";
   return state;
 }
 
@@ -111,6 +114,7 @@ export function buildCrmSearch(state) {
   if (s.due && DUE_VALUES.includes(s.due)) params.set("due", s.due);
   const side = sideValue(parseSideValue(s.side || ""));
   if (side) params.set("side", side);
+  if (s.view === "calls") params.set("view", "calls");
   return params.toString();
 }
 

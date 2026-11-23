@@ -178,7 +178,7 @@ describe("S-1 the side panels", () => {
       // #4255 W3 (D6): the card's "Message to send" block is gone; the drafts open from the Drafts page.
       ["components/drafts/DraftCard.jsx", "kind: draft.record.pipeline"],
       ["components/ops/WorkDetail.jsx", "side={linkSide(l)}"],
-      ["components/crm/RecordDrawer.jsx", 'kind: "drafts"'],
+      ["components/crm/RecordPanel.jsx", 'kind: "drafts"'],
       // #4270 W2: the host card's cards moved from On Mingla to To do.
       ["components/crm/HostToDoSection.jsx", 'kind: "card"'],
       ["components/crm/OnMinglaSection.jsx", "kind: u.kind"],

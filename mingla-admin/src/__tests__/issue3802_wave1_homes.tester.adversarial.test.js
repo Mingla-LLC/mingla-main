@@ -609,7 +609,7 @@ describe("#3802 TA-8: every way a card moves ends in the one call that names the
     const perform = PAGE.slice(PAGE.indexOf("const performMove = useCallback("), PAGE.indexOf("const requestMove = useCallback("));
     assert.ok(perform.includes("pipe.moveStage("));
     // The board (drag and the arrow), the list and the open card all hand the move to the page.
-    for (const rel of ["components/crm/PipelineBoard.jsx", "components/crm/RecordDrawer.jsx"]) {
+    for (const rel of ["components/crm/PipelineBoard.jsx", "components/crm/RecordPanel.jsx"]) {
       const text = read(rel);
       assert.ok(!/moveStage\(|supabase|crm_record_move_stage/.test(text), `${rel} moves nothing by itself`);
     }
@@ -720,14 +720,14 @@ describe("#3802 TA-10: one stacking order for everything that opens over a board
     const overlays = PAGE.slice(PAGE.indexOf("<PipelineOverlays"));
     const cardSlot = overlays.slice(overlays.indexOf("card={"), overlays.indexOf("dialog={"));
     const dialogSlot = overlays.slice(overlays.indexOf("dialog={"));
-    assert.ok(cardSlot.includes("<RecordDrawer") && cardSlot.includes("<AddRecordForm"));
+    assert.ok(cardSlot.includes("<RecordPanel") && cardSlot.includes("<AddRecordForm"));
     assert.ok(!cardSlot.includes("<ReasonPrompt"), "the question is never in the card's layer");
     // The question goes into the dialog slot itself, not into some other prop.
     assert.match(overlays, /\n\s+dialog=\{\s*reasonFor \? \(\s*<ReasonPrompt/);
     assert.equal((overlays.match(/\n\s+[a-zA-Z]+=\{/g) || []).filter((m) => /^\n {8}[a-zA-Z]+=\{$/.test(m)).map((m) => m.trim()).join(" "), "card={ dialog={");
-    assert.ok(dialogSlot.includes("<ReasonPrompt") && !dialogSlot.includes("<RecordDrawer") && !dialogSlot.includes("<Drawer"));
+    assert.ok(dialogSlot.includes("<ReasonPrompt") && !dialogSlot.includes("<RecordPanel") && !dialogSlot.includes("<Drawer"));
     // Each is drawn exactly once in the page, and only inside the layers.
-    for (const tag of ["<ReasonPrompt", "<RecordDrawer", "<AddRecordForm"]) {
+    for (const tag of ["<ReasonPrompt", "<RecordPanel", "<AddRecordForm"]) {
       assert.equal(PAGE.split(tag).length - 1, 1, tag);
       assert.ok(PAGE.indexOf(tag) > PAGE.indexOf("<PipelineOverlays"), tag);
     }
@@ -792,7 +792,7 @@ describe("#3802 TA-11: where messages sit beside an open card", () => {
   });
 
   it("an open card on a phone leaves room after its last field for a message shown over it", () => {
-    const DRAWER = read("components/crm/RecordDrawer.jsx");
+    const DRAWER = read("components/crm/RecordPanel.jsx");
     const TOAST = read("components/ui/Toast.jsx");
     const PAGE = read("pages/PipelinePage.jsx");
     assert.match(DRAWER, /paddingBottom: "var\(--toast-clear, 0px\)"/);

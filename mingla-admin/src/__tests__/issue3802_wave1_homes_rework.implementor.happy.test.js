@@ -40,7 +40,7 @@ const TOAST = read("components/ui/Toast.jsx");
 const BETA = read("pages/BetaLeadsPage.jsx");
 const TEAM = read("pages/TeamDashboardPage.jsx");
 const EDITOR = read("components/crm/home/TargetEditor.jsx");
-const DRAWER = read("components/crm/RecordDrawer.jsx");
+const DRAWER = read("components/crm/RecordPanel.jsx");
 const CSS = read("globals.css");
 const MIGRATION = fs.readFileSync(
   path.resolve(SRC, "../../supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql"),
@@ -73,7 +73,7 @@ describe("#3802 W-1 (D-1): one stacking order, in one place", () => {
     assert.match(code, /<PipelineOverlays\s+card=\{/);
     assert.match(code, /dialog=\{\s*reasonFor \? \(\s*<ReasonPrompt/);
     const overlays = code.slice(code.indexOf("<PipelineOverlays"));
-    for (const tag of ["<Drawer ", "<RecordDrawer", "<ReasonPrompt"]) {
+    for (const tag of ["<Drawer ", "<RecordPanel", "<ReasonPrompt"]) {
       assert.equal(code.split(tag).length - 1, 1, `${tag} is drawn once`);
       assert.ok(overlays.includes(tag), `${tag} is drawn outside the layers`);
     }
@@ -236,7 +236,7 @@ describe("#3802 W-6 (P3c): the rollback note is accurate", () => {
 
 describe("#3802 W-7 (P3d): touch targets are 44px on the screens this work adds or changes", () => {
   it("no control on those screens is 40px tall on a phone any more", () => {
-    const files = ["pages/RoleHomePage.jsx", "pages/TeamDashboardPage.jsx", "pages/BetaLeadsPage.jsx", "pages/PipelinePage.jsx", "components/crm/RecordDrawer.jsx",
+    const files = ["pages/RoleHomePage.jsx", "pages/TeamDashboardPage.jsx", "pages/BetaLeadsPage.jsx", "pages/PipelinePage.jsx", "components/crm/RecordPanel.jsx",
       ...fs.readdirSync(path.join(SRC, "components/crm/home")).map((f) => `components/crm/home/${f}`)];
     for (const f of files) assert.ok(!/max-sm:h-10\b/.test(read(f)), `${f} still has a 40px phone control`);
   });

@@ -66,7 +66,7 @@ export function avatar(props) { return renderToStaticMarkup(<HostAvatarButton on
 });
 
 describe("C-1 the host card's order", () => {
-  const drawer = code("components/crm/RecordDrawer.jsx");
+  const drawer = code("components/crm/RecordPanel.jsx");
   it("To do, Plan, On Mingla, Brand and team, Status, then Details", () => {
     const at = (needle) => { const i = drawer.indexOf(needle); assert.ok(i > 0, `missing ${needle}`); return i; };
     const order = [
