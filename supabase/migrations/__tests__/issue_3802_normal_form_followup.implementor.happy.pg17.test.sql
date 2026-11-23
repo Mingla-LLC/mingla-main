@@ -29,6 +29,8 @@
 
 \set ON_ERROR_STOP on
 \set t3802c_new_file `cat supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql`
+-- #4571 W3 replaces crm_ident_key with the same body plus the website kind.
+\set t3802c_w3_file `cat supabase/migrations/20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql`
 \set t3802c_body `sed '/^BEGIN;$/d; /^COMMIT;$/d' supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql`
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below
@@ -42,7 +44,7 @@ begin;
 
 create temp table t3802c_results (seq serial primary key, test text, label text, ok boolean, detail text) on commit drop;
 create temp table t3802c_src (k text primary key, sql text) on commit drop;
-insert into t3802c_src values ('new_file', :'t3802c_new_file'), ('check', :'t3802c_check'),
+insert into t3802c_src values ('new_file', :'t3802c_new_file'), ('w3_file', :'t3802c_w3_file'), ('check', :'t3802c_check'),
   ('old_fn', :'t3802c_old_fn'), ('old_file', :'t3802c_old_file'), ('old_hits', :'t3802c_old_hits');
 
 create function pg_temp.t3802c_check(p_test text, p_label text, p_got text, p_want text) returns void
@@ -70,8 +72,12 @@ $fn$;
 -- ---------------------------------------------------------------------------
 do $n1$
 begin
-  perform pg_temp.t3802c_check('N-1', 'crm_ident_key() is the function the follow-up file writes',
+  perform pg_temp.t3802c_check('N-1', 'crm_ident_key() is the function the follow-up file writes, with #4571 W3''s website kind added',
     ((select prosrc from pg_proc where oid = 'public.crm_ident_key(text,text)'::regprocedure)
+       = pg_temp.t3802c_body_of((select sql from t3802c_src where k = 'w3_file'), 'CREATE OR REPLACE FUNCTION public.crm_ident_key('))::text, 'true');
+  perform pg_temp.t3802c_check('N-1', '#4571 W3 changed only the website branch of the follow-up body',
+    (replace(pg_temp.t3802c_body_of((select sql from t3802c_src where k = 'w3_file'), 'CREATE OR REPLACE FUNCTION public.crm_ident_key('),
+             substring((select sql from t3802c_src where k = 'w3_file') from '(  -- #4571 W3: a website is an http.*?    RETURN v_key;\n  END IF;\n)'), '')
        = pg_temp.t3802c_body_of((select sql from t3802c_src where k = 'new_file'), 'CREATE OR REPLACE FUNCTION public.crm_ident_key('))::text, 'true');
   perform pg_temp.t3802c_check('N-1', 'crm_phone_national() is still the function the Wave 4 file wrote',
     ((select prosrc from pg_proc where oid = 'public.crm_phone_national(text)'::regprocedure)
@@ -119,8 +125,8 @@ begin
   -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader without changing identifier normalization.
-  perform pg_temp.t3802c_check('N-1', '#4130 leaves exactly 53 crm_ functions',
-    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '53');
+  perform pg_temp.t3802c_check('N-1', '#4130 leaves 53 crm_ functions; #4571 W3 adds seven, so 60',
+    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '60');
   perform pg_temp.t3802c_check('N-1', 'is_admin_user() has the source it had before Wave 4',
     (select md5(prosrc) from pg_proc where oid = 'public.is_admin_user()'::regprocedure), 'dc5465a20a4246c6921be0469e261a8b');
 end;

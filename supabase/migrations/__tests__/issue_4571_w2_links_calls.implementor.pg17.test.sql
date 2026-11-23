@@ -187,7 +187,7 @@ begin
     (v_lbl ~ '@' or v_lbl ~ '555' or v_lbl ~ '0101')::text, 'false');
   perform pg_temp.chk('KINDS', 'an email touch is not a call', public.ops_link_label('call', v_mail), null);
   v_lbl := public.ops_link_label('booking', '45710000-0000-4000-f000-000000000001');
-  perform pg_temp.chk('KINDS', 'a host booking is labelled by venue and time', v_lbl, 'Demo · Island Vinyl Bar · 24 Nov 14:30');
+  perform pg_temp.chk('KINDS', 'a host booking is labelled by venue and time', v_lbl, 'Demo · Island Vinyl Bar · 2026-11-24T14:30Z');
   perform pg_temp.chk('KINDS', 'a booking label holds no email', (v_lbl ~ '@')::text, 'false');
   v := public.ops_links_check(jsonb_build_array(jsonb_build_object('kind', 'call', 'id', v_call),
          jsonb_build_object('kind', 'booking', 'id', '45710000-0000-4000-f000-000000000001')))::text;
@@ -204,7 +204,7 @@ begin
   v := pg_temp.person('tao', 'select public.ops_link_search(''booking'', ''vinyl'')::text');
   perform pg_temp.chk('KINDS', 'search finds host bookings by venue, without the email',
     (select string_agg(r->>'label', '|') || '/' || (r::text ~ '@')::text from jsonb_array_elements((v::jsonb)->'results') r group by r),
-    'Demo · Island Vinyl Bar · 24 Nov 14:30/false');
+    'Demo · Island Vinyl Bar · 2026-11-24T14:30Z/false');
 end;
 $t$;
 
@@ -229,7 +229,7 @@ begin
   perform pg_temp.chk('INHERIT', 'a subtask sent no links starts with the parent''s, not the support conversation', pg_temp.links('sub1'), 'booking,host');
   perform pg_temp.chk('INHERIT', 'the inherited links keep their labels',
     (select string_agg(l.label, '|' order by l.kind) from public.ops_work_links l where l.card_id = pg_temp.id('sub1')),
-    'Demo · Island Vinyl Bar · 24 Nov 14:30|Island Vinyl');
+    'Demo · Island Vinyl Bar · 2026-11-24T14:30Z|Island Vinyl');
   v := pg_temp.add('sub2', 'W2 subtask with no links', 'parent', '[]'::jsonb);
   perform pg_temp.chk('INHERIT', 'links: [] means none', pg_temp.links('sub2'), '<none>');
   v := pg_temp.add('top', 'W2 top level card with no links');
@@ -240,7 +240,7 @@ begin
   v := public.ops_cards_json(ARRAY[pg_temp.id('sub1')], (now() at time zone 'UTC')::date, 'board')::text;
   perform pg_temp.chk('INHERIT', 'the board shape carries each link''s label',
     (select string_agg(l->>'label', '|' order by l->>'kind') from jsonb_array_elements((v::jsonb)->0->'links') l),
-    'Demo · Island Vinyl Bar · 24 Nov 14:30|Island Vinyl');
+    'Demo · Island Vinyl Bar · 2026-11-24T14:30Z|Island Vinyl');
 end;
 $t$;
 

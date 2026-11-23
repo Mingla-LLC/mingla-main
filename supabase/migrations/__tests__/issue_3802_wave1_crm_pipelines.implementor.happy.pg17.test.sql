@@ -55,7 +55,8 @@
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below
 -- check growth only for admin areas and accept the team_manage gate.
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W3: the pr3 self-check also checks the four new client functions, the three new internal helpers and crm_record_watchers.
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/" | sed -e "s/^    'public.crm_contact_check(text,jsonb)'$/    'public.crm_contact_check(text,jsonb)', 'public.crm_record_set_people(uuid,text\\[\\],text\\[\\],timestamp with time zone)', 'public.crm_record_work(uuid)', 'public.crm_calls_queue(date)', 'public.crm_identifier_set_followers(uuid,integer)'/" -e "s/^    'public.admin_team_directory()',$/    'public.admin_team_directory()', 'public.crm_4571_people_overlap(uuid,text\\[\\],text\\[\\])', 'public.crm_notify_watchers(uuid,uuid,text,text,text)', 'public.crm_record_work_ids(uuid)',/" -e "s/^    'public.crm_import_receipts'$/    'public.crm_import_receipts', 'public.crm_record_watchers'/"`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
@@ -468,7 +469,8 @@ begin
     'pipeline,records,truncated');
   perform pg_temp.t3802w_check('W1-1', 'record: exactly the documented keys',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, pg_temp.t3802w_id('base')))) -> 'record') k),
-    'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at');
+    -- #4571 W3: the card carries its watchers, last touch and open Work count.
+    'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch,last_touch_at,name,next_action,open_work,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,watchers,went_live_at');
 end;
 $w1$;
 
@@ -1519,7 +1521,10 @@ declare
     'crm_record_set_owners(uuid,text[])', 'crm_record_undo_stage_move(uuid)', 'crm_record_update(uuid,jsonb)',
     'crm_records_bulk_create(text,jsonb,text)', 'crm_records_list(text)',
     'crm_beta_lead_to_host(uuid)', 'crm_beta_leads_list()', 'crm_home_summary(date)',
-    'crm_target_set(uuid,text,integer)', 'crm_team_summary(date)', 'crm_contact_check(text,jsonb)'];
+    'crm_target_set(uuid,text,integer)', 'crm_team_summary(date)', 'crm_contact_check(text,jsonb)',
+    -- #4571 W3: people on a record, its Work, My calls today, follower counts.
+    'crm_record_set_people(uuid,text[],text[],timestamp with time zone)', 'crm_record_work(uuid)', 'crm_calls_queue(date)',
+    'crm_identifier_set_followers(uuid,integer)'];
   c_internal constant text[] := array[
     'admin_team_directory()', 'crm_activity_json(crm_activity)', 'crm_apply_brand_link(uuid)',
     'crm_audit(text,text,text,text,jsonb)', 'crm_brand_is_live(uuid)', 'crm_clean_owners(jsonb)', 'crm_ctx()',
@@ -1531,7 +1536,9 @@ declare
     'crm_stage_counts_json()', 'crm_targets_json(date)',
     'crm_ident_key(text,text)', 'crm_clean_identifiers(jsonb)', 'crm_identifier_matches(text,jsonb,uuid)',
     'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)',
-    'crm_phone_national(text)', 'crm_record_sources_json(uuid)'];
+    'crm_phone_national(text)', 'crm_record_sources_json(uuid)',
+    -- #4571 W3
+    'crm_4571_people_overlap(uuid,text[],text[])', 'crm_notify_watchers(uuid,uuid,text,text,text)', 'crm_record_work_ids(uuid)'];
   -- #4130: this owner-only Team dashboard aggregate deliberately uses the
   -- public, pg_temp path required by its aggregate RPC contract. Keep it in
   -- the exact function inventory without pretending it is a pipeline command.
@@ -1585,7 +1592,7 @@ begin
   end loop;
 
   foreach v_tbl in array array['public.crm_records', 'public.crm_record_owners', 'public.crm_activity', 'public.crm_request_keys',
-    'public.crm_record_sources', 'public.crm_import_receipts'] loop
+    'public.crm_record_sources', 'public.crm_import_receipts', 'public.crm_record_watchers'] loop  -- #4571 W3: watchers
     foreach v_role in array array['anon', 'authenticated'] loop
       foreach v_priv in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] loop
         perform pg_temp.t3802w_check('W1-12', v_role || ' ' || v_priv || ' on ' || v_tbl,
@@ -1615,10 +1622,13 @@ begin
       -- #4452: forms routing (a submission makes or updates a card and logs it) and the
       -- automation "move stage" step are the approved new writers; all three are
       -- service-role only and log every change to crm_activity.
-      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.forms_move_stage,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
-      ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
+      -- #4571 W3: setting people or a follower count stamps the record's updated_at.
+      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_identifier_set_followers,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_set_people,public.crm_record_undo_stage_move,public.crm_record_update,public.forms_move_stage,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
+      ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners,public.crm_record_set_people'),  -- #4571 W3
+      ('crm_record_watchers', 'public.crm_record_set_people'),  -- #4571 W3
       -- #4571 W2: crm_record_log marks a wrong number bad.
-      ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_log,public.crm_record_update'),
+      -- #4571 W3: crm_identifier_set_followers writes a handle's follower count.
+      ('crm_record_identifiers', 'public.crm_identifier_set_followers,public.crm_record_create_core,public.crm_record_log,public.crm_record_update'),
       ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.forms_move_stage,public.forms_route_submission,public.forms_submit_core,public.ops_brand_autolink_one,public.team_draft_unsend'),
       ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)

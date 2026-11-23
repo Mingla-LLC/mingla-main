@@ -40,10 +40,12 @@
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below
 -- check growth only for admin areas and accept the team_manage gate.
-\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W3: the pr3 self-check also checks the four new client functions, the three new internal helpers and crm_record_watchers.
+\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/" | sed -e "s/^    'public.crm_contact_check(text,jsonb)'$/    'public.crm_contact_check(text,jsonb)', 'public.crm_record_set_people(uuid,text\\[\\],text\\[\\],timestamp with time zone)', 'public.crm_record_work(uuid)', 'public.crm_calls_queue(date)', 'public.crm_identifier_set_followers(uuid,integer)'/" -e "s/^    'public.admin_team_directory()',$/    'public.admin_team_directory()', 'public.crm_4571_people_overlap(uuid,text\\[\\],text\\[\\])', 'public.crm_notify_watchers(uuid,uuid,text,text,text)', 'public.crm_record_work_ids(uuid)',/" -e "s/^    'public.crm_import_receipts'$/    'public.crm_import_receipts', 'public.crm_record_watchers'/"`
 -- [TEST-MOD-APPROVED #3980] The work gateway (ops_agent_call) writes request rows and the key's last-used marker on the same rail.
 -- #4571 W2: crm_record_log marks a wrong number bad, so it is one of the functions that write identifiers.
-\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "s/'crm_record_create_core,crm_record_update'/'crm_record_create_core,crm_record_log,crm_record_update'/" -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W3: crm_identifier_set_followers writes a handle's follower count.
+\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "s/'crm_record_create_core,crm_record_update'/'crm_identifier_set_followers,crm_record_create_core,crm_record_log,crm_record_update'/" -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 \set t3802b_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 
 -- ===========================================================================
@@ -319,9 +321,9 @@ begin
   -- adds the closed crm_record_sources_json helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader and does not broaden the agent write surface.
-  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 53 crm_ functions',
+  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 60 crm_ functions (#4571 W3 adds seven)',
     (select count(*) filter (where p.proname like 'team\_agent\_%')::text || '/' || count(*) filter (where p.proname like 'crm\_%')
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '18/53');
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '18/60');
   perform pg_temp.t3802b_check('B-1', 'no agent function takes a person from its caller',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'
@@ -873,7 +875,8 @@ begin
   perform pg_temp.t3802b_check('B-4', 'a record is created with its three identifiers, as typed and in their normal form',
     -- #4571 W2: each identifier also carries its id (random here, so left out) and its ok/bad status.
     pg_temp.t3802b_get(v, 'status') || '/' || (select jsonb_agg(i - 'id' order by o) from jsonb_array_elements(v::jsonb #> '{record,identifiers}') with ordinality x(i, o))::text,
-    'created/[{"key": "hello@palmcourt.example", "kind": "email", "value": "hello@palmcourt.example", "status": "ok", "platform": null, "bad_reason": null}, {"key": "palm.court", "kind": "handle", "value": "@Palm.Court", "status": "ok", "platform": "instagram", "bad_reason": null}, {"key": "+2348035550101", "kind": "phone", "value": "+234 803 555 0101", "status": "ok", "platform": null, "bad_reason": null}]');
+    -- #4571 W3: and when it went bad and its follower count (none yet).
+    'created/[{"key": "hello@palmcourt.example", "kind": "email", "value": "hello@palmcourt.example", "bad_at": null, "status": "ok", "platform": null, "followers": null, "bad_reason": null, "followers_at": null}, {"key": "palm.court", "kind": "handle", "value": "@Palm.Court", "bad_at": null, "status": "ok", "platform": "instagram", "followers": null, "bad_reason": null, "followers_at": null}, {"key": "+2348035550101", "kind": "phone", "value": "+234 803 555 0101", "bad_at": null, "status": "ok", "platform": null, "followers": null, "bad_reason": null, "followers_at": null}]');
   perform pg_temp.t3802b_check('B-4', 'the audit row counts the identifiers and holds none of them',
     (select (a.metadata ->> 'identifiers') || '/' || (a.metadata::text !~* 'palm\.court|5550101|hello@')::text
        from public.admin_audit_log a where a.action = 'crm.record_create' and a.target_id = v_a::text), '3/true');

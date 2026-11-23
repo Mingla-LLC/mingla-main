@@ -318,7 +318,9 @@ declare
     'crm_link_search','crm_record_create','crm_records_bulk_create','crm_record_update','crm_record_move_stage',
     'crm_record_undo_stage_move','crm_record_set_owners','crm_record_log','crm_record_delete','crm_record_restore',
     'crm_home_summary','crm_team_summary','crm_target_set','crm_beta_leads_list','crm_beta_lead_to_host',
-    'crm_contact_check'];
+    'crm_contact_check',
+    -- #4571 W3
+    'crm_record_set_people','crm_record_work','crm_calls_queue','crm_identifier_set_followers'];
   -- #4130: the Team dashboard reader is a separately guarded aggregate RPC,
   -- with the public, pg_temp path from the approved admin contract.
   c_later_readers constant text[] := array['crm_team_pulse'];
@@ -351,10 +353,10 @@ begin
   end loop;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'crm\_%';
-  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '53');
+  perform pg_temp.x_eq('XA-1', 'number of crm_ functions (#4571 W3 adds seven)', v_n::text, '60');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = any (c_client || c_later_readers) and p.prosecdef;
-  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights', v_n::text, '21');
+  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights (#4571 W3 adds four)', v_n::text, '25');
 
   -- Every other function with owner rights in this migration is pinned too.
   perform pg_temp.x_ok('XA-1', 'admin_beta_leads_list keeps a pinned search path',
@@ -373,7 +375,9 @@ begin
     perform pg_temp.x_eq('XA-1', r.relname || ': policies', (select count(*)::text from pg_policy where polrelid = r.oid), '0');
     perform pg_temp.x_eq('XA-1', r.relname || ': column-level grants',
       (select count(*)::text from pg_attribute a where a.attrelid = r.oid and a.attacl is not null), '0');
-    perform pg_temp.x_eq('XA-1', r.relname || ': triggers', (select count(*)::text from pg_trigger where tgrelid = r.oid and not tgisinternal), '0');
+    -- #4571 W2: the one stage_at trigger on crm_activity (INVARIANT crm-activity-stage-at-written) is expected.
+    perform pg_temp.x_eq('XA-1', r.relname || ': triggers', (select count(*)::text from pg_trigger where tgrelid = r.oid and not tgisinternal
+        and not (r.relname = 'crm_activity' and tgname = 'ops_4571_activity_stage_at')), '0');
     perform pg_temp.x_ok('XA-1', r.relname || ': no client role holds anything',
       not exists (select 1 from unnest(array['anon','authenticated','authenticator']) ro,
                     unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']) pv
@@ -381,7 +385,7 @@ begin
   end loop;
   perform pg_temp.x_eq('XA-1', 'number of crm_ tables',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '8');
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '9');  -- #4571 W3: crm_record_watchers
   perform pg_temp.x_eq('XA-1', 'no view, sequence or materialised view named crm_',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind in ('v','m','S') and c.relname like 'crm\_%'), '0');
@@ -1315,7 +1319,8 @@ $t$;
 -- ---------------------------------------------------------------------------
 do $t$
 declare
-  c_record_keys constant text := 'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at';
+  -- #4571 W3: watchers, last_touch and open_work.
+  c_record_keys constant text := 'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch,last_touch_at,name,next_action,open_work,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,watchers,went_live_at';
   v_got jsonb;
   v_txt text;
   v_q text;
