@@ -29,7 +29,7 @@
 --         function is SECURITY DEFINER with a pinned search_path and no
 --         PUBLIC / anon EXECUTE.
 --
--- FAILS-ON-REVERT (replay the chain without 20281129003969): S-01 fails on its
+-- FAILS-ON-REVERT (replay the chain without 20281201003969): S-01 fails on its
 -- first call (anon may execute the resolver), S-02 on the username lookup
 -- (email comes back), S-03 on its first update (it succeeds), S-06 / S-07 /
 -- S-08 / S-09 (functions missing), S-10 (privileges still granted).
