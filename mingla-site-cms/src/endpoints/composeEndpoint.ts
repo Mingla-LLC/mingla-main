@@ -43,7 +43,7 @@ function text(value: unknown, max: number): string | null {
 export function parseComposeBody(
   body: unknown,
   envelopeSiteId: string,
-): { siteId: string; brandId: string; plan: ComposePlan; brand: ComposeBrand; coverPhotoPath: string | null; userId: string; reviewDrafts: boolean; setupContent: StagedSetupRow[]; designPass: SignedDesignPass | null; bookingBlocks: boolean } | null {
+): { siteId: string; brandId: string; plan: ComposePlan; brand: ComposeBrand; coverPhotoPath: string | null; librarySources: LibrarySource[]; userId: string; reviewDrafts: boolean; setupContent: StagedSetupRow[]; designPass: SignedDesignPass | null; bookingBlocks: boolean } | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const value = body as AnyDoc;
   // #4453 — `review_drafts` (SITES_PROOF_PART on: composed sections start Draft)

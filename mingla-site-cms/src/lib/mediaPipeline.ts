@@ -551,7 +551,7 @@ async function processApprovedVideo(
  * Host selects the photo the owner already has. Rows stored before checksums
  * existed are never matched. Another tenant's identical file is never reused.
  */
-async function existingReadyCopy(
+export async function existingReadyCopy(
   req: PayloadRequest,
   media: { id: string | number; tenant?: unknown; declared_mime?: unknown; quarantine_key?: unknown },
   checksum: string,
