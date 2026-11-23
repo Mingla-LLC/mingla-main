@@ -38,6 +38,7 @@ import { resolveRuntimeConfigValue } from "../_shared/runtimeConfig.ts";
 import { runChatMediaStorageCheck } from "./chatMediaStorage.ts";
 // Issue #4423 Wave 3 — database pool check (its own 5-minute tick).
 import { type PublicRpcTiming, readSnapshot, runDbHealthCheck } from "./dbHealth.ts";
+import { runSitesRecoveryWatch } from "./sitesRecoveryWatch.ts";
 import {
   bodyVerdict,
   GOOGLE_PROBE_URLS,
@@ -146,12 +147,14 @@ interface CheckRow {
 // Issue #4423 Wave 3: the cron's body says which check to run. {"mode":"db"}
 // runs only the database check; anything else (the hourly tick sends {}) runs
 // the full vendor tick as before.
-async function requestedMode(req: Request): Promise<string | null> {
+// Issue #4574: the 15-minute Sites recovery watch sends {"mode":"sites_recovery"}
+// and may add {"dry_run":true,"as_of":"<iso>"}, so the body is read once.
+async function requestedBody(req: Request): Promise<Record<string, unknown>> {
   try {
     const body = await req.json();
-    return body && typeof body === "object" && typeof body.mode === "string" ? body.mode : null;
+    return body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
@@ -208,6 +211,56 @@ async function handleDbHealth(nowMs: number): Promise<Response> {
     logError("api_health db check failed", err, { fn: "api-health-probe" });
     // 200 so pg_cron does not retry-storm, as the hourly tick does.
     return jsonResponse({ ok: false, mode: "db", error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+// Issue #4574: the Sites recovery watch. The budget lives only in SQL
+// (brand_site_recovery_watch_snapshot reads the gate's own helpers).
+async function handleSitesRecovery(nowMs: number, body: Record<string, unknown>): Promise<Response> {
+  const dryRun = body.dry_run === true;
+  let asOfMs = nowMs;
+  if (body.as_of !== undefined) {
+    if (!dryRun) return jsonResponse({ ok: false, mode: "sites_recovery", error: "as_of_requires_dry_run" }, 400);
+    const parsed = typeof body.as_of === "string" ? Date.parse(body.as_of) : NaN;
+    if (!Number.isFinite(parsed)) return jsonResponse({ ok: false, mode: "sites_recovery", error: "as_of_invalid" }, 400);
+    asOfMs = parsed;
+  }
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+  const serviceClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  try {
+    const outcome = await runSitesRecoveryWatch({
+      async snapshot() {
+        const { data, error } = await serviceClient.rpc("brand_site_recovery_watch_snapshot");
+        return { data: error ? null : data, error: error ? error.message : null };
+      },
+      async record(entry) {
+        const { error } = await serviceClient.rpc("brand_site_recovery_watch_record", {
+          p_level: entry.level,
+          p_incident_closes_at: entry.incident_closes_at,
+          p_sent_level: entry.sent_level,
+          p_heartbeat_for: entry.heartbeat_for,
+          p_unproven_sent: entry.unproven_sent,
+        });
+        if (error) logError("sites recovery record failed", error, { fn: "api-health-probe" });
+        return { error: error ? error.message : null };
+      },
+      async send(alert) {
+        const result = await sendOpsAlertEmail({
+          subject: alert.subject,
+          paragraphs: alert.paragraphs,
+          recipients: alertRecipients(),
+          cta: { label: "Open API Health hub", url: `${adminUrl()}/#/api-health` },
+        });
+        return { succeeded: result.succeeded };
+      },
+      nowMs: () => asOfMs,
+    }, { dryRun });
+    structuredLog(outcome.level === "ok" || outcome.level === "watch" ? "info" : "warn", "api_health sites recovery watch", { fn: "api-health-probe", outcome });
+    return jsonResponse({ ok: true, mode: "sites_recovery", outcome, timestamp: new Date(nowMs).toISOString() });
+  } catch (err) {
+    logError("api_health sites recovery watch failed", err, { fn: "api-health-probe" });
+    // 200 so pg_cron does not retry-storm, as the other lanes do.
+    return jsonResponse({ ok: false, mode: "sites_recovery", error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -1003,9 +1056,14 @@ serve(async (req) => {
   }
 
   const nowMs = Date.now();
+  const body = await requestedBody(req);
   // #4423 Wave 3: the 5-minute database check runs alone.
-  if ((await requestedMode(req)) === "db") {
+  if (body.mode === "db") {
     return await handleDbHealth(nowMs);
+  }
+  // #4574: the 15-minute Sites recovery watch runs alone.
+  if (body.mode === "sites_recovery") {
+    return await handleSitesRecovery(nowMs, body);
   }
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1021,6 +1079,13 @@ serve(async (req) => {
       .from("issue_4423_db_health_state")
       .upsert({ id: true }, { onConflict: "id", ignoreDuplicates: true });
     if (readyError) logError("db health ready mark failed", readyError, { fn: "api-health-probe" });
+    // #4574: the same ready mark for the 15-minute Sites recovery watch, whose
+    // cron posts only once this row exists (so an older deploy never runs this
+    // full vendor tick every 15 minutes).
+    const { error: sitesReadyError } = await serviceClient
+      .from("brand_site_recovery_watch_state")
+      .upsert({ id: true }, { onConflict: "id", ignoreDuplicates: true });
+    if (sitesReadyError) logError("sites recovery ready mark failed", sitesReadyError, { fn: "api-health-probe" });
 
     const checkRows: CheckRow[] = [];
 
