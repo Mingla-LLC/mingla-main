@@ -74,6 +74,16 @@ export function paidCancelNote(
   };
 }
 
+/**
+ * #4490 08-O4 fix 1 (O4-T1): a plain move (seat, no-show, cancel of a seated
+ * booking) refused because the booking's deposit is on a bill at the Till.
+ * Any other refusal keeps the module's existing behaviour (null).
+ */
+export function transitionErrorMessage(error: unknown): string | null {
+  const message = (error as { message?: unknown } | null)?.message;
+  return message === "reservation_deposit_used" ? paidCancelErrorMessage("reservation_deposit_used") : null;
+}
+
 /** A sentence for each refusal the host-cancel edge action can return. */
 export function paidCancelErrorMessage(code: string | null): string {
   switch (code) {

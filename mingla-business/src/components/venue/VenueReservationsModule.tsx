@@ -64,6 +64,7 @@ import { ReservationDetailSheet } from "./ReservationDetailSheet";
 import {
   cancelRefundsGuest,
   paidCancelErrorMessage,
+  transitionErrorMessage,
 } from "./reservationPaidCancelNote";
 import { ReservationMonthView } from "./ReservationMonthView";
 import { ReservationWeekView } from "./ReservationWeekView";
@@ -384,7 +385,11 @@ export function VenueReservationsModule({
             closeDetail();
           },
           onError: (error) => {
-            if (!refundsGuest) return;
+            if (!refundsGuest) {
+              const refused = transitionErrorMessage(error);
+              if (refused !== null) setActionError(refused);
+              return;
+            }
             const code =
               (error as { code?: unknown } | null)?.code ?? null;
             setActionError(
