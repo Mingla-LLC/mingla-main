@@ -543,6 +543,31 @@ BEGIN
   END IF;
 END;
 $t6c$;
+DO $t6push$
+DECLARE v jsonb; v_conv uuid := (SELECT id FROM i4579_ids WHERE k = 'conv');
+BEGIN
+  -- The brand group push title is built from the outbox payload's sender_name.
+  v := pg_temp.json_as(pg_temp.u('a1'), format(
+    'SELECT to_jsonb(public.issue_3720_send_brand_group_message(%L, %L, NULL, ''{}''::uuid[], %L, ''{}''::uuid[]))',
+    v_conv, 'from the Mingla side', 'brand'));
+  PERFORM pg_temp.ok((SELECT sender_display_name_snapshot = 'Kunle' FROM public.messages WHERE id = (v #>> '{}')::uuid),
+    'T-6 SC-9 a sent message stores the public name, not the handle');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.notification_outbox o
+                              WHERE o.category_key = 'business.brand_group_message'
+                                AND o.payload->>'message_id' = (v #>> '{}')
+                                AND o.user_id = pg_temp.u('host')
+                                AND o.payload->>'sender_name' = 'Kunle')
+    AND NOT EXISTS (SELECT 1 FROM public.notification_outbox o
+                     WHERE o.payload->>'message_id' = (v #>> '{}')
+                       AND (o.payload::text LIKE '%i4579_a1_handle%' OR o.payload::text LIKE '%i4579-a1@%')),
+    'T-6 SC-9 the push payload (title source) carries the public name, never the email or handle');
+  v := pg_temp.json_as(pg_temp.u('host'), format(
+    'SELECT to_jsonb(public.issue_3720_send_brand_group_message(%L, %L, NULL, ''{}''::uuid[], %L, ''{}''::uuid[]))',
+    v_conv, 'from the host', 'brand'));
+  PERFORM pg_temp.ok((SELECT sender_display_name_snapshot = 'Hana Host' FROM public.messages WHERE id = (v #>> '{}')::uuid),
+    'T-6 SC-15 a host''s message keeps their own name');
+END;
+$t6push$;
 DO $t6d$
 DECLARE v jsonb; v_conv uuid := (SELECT id FROM i4579_ids WHERE k = 'conv');
 BEGIN
@@ -599,7 +624,8 @@ BEGIN
       'public.issue_3988_list_brand_group_media(uuid,text,timestamp with time zone,uuid,integer)',
       'public.issue_3720_list_team_mentions(integer,timestamp with time zone)',
       'public.biz_brand_form_door_reads(uuid,integer,timestamp with time zone)',
-      'public.issue_4579_brand_guest_post_authors(uuid,uuid[])'
+      'public.issue_4579_brand_guest_post_authors(uuid,uuid[])',
+      'public.issue_3720_send_brand_group_message(uuid,text,uuid,uuid[],text,uuid[])'
     ]) AS sig
   LOOP
     PERFORM pg_temp.ok((SELECT prosrc ~ 'issue_4579_|mingla_admin' FROM pg_proc WHERE oid = r.sig::regprocedure),

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-message/__tests__/issue_4579_mingla_team_title.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4579-mingla-team-title-implementor",
+  "profile": "deno-2-unit",
+  "permissions": []
+}

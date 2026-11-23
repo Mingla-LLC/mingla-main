@@ -37,7 +37,8 @@ BEGIN
       ('public.issue_3720_list_brand_groups()', 'fe2d4c8c367870daf5f2f2dce1d2708e'),
       ('public.issue_3988_list_brand_group_media(uuid,text,timestamp with time zone,uuid,integer)', '631cfd2afe6809d8174f3593aea6bfad'),
       ('public.issue_3720_list_team_mentions(integer,timestamp with time zone)', 'eaccb77a3a6890ae19b73a978107f8df'),
-      ('public.biz_brand_form_door_reads(uuid,integer,timestamp with time zone)', 'dff56f95e5041c10280927bfc957a73b')
+      ('public.biz_brand_form_door_reads(uuid,integer,timestamp with time zone)', 'dff56f95e5041c10280927bfc957a73b'),
+      ('public.issue_3720_send_brand_group_message(uuid,text,uuid,uuid[],text,uuid[])', '713247e1b9ae56d3b95825be9cfd6318')
     ) AS v(sig, expected_md5)
   LOOP
     SELECT p.prosrc INTO v_src FROM pg_proc p WHERE p.oid = to_regprocedure(r.sig);
@@ -1311,6 +1312,240 @@ AS $function$
      WHERE lower(btrim(au.email)) = lower(btrim(p_email))
        AND au.role IN ('admin', 'owner') AND au.status = 'active'
   );
+$function$;
+
+-- Brand group send (latest 20271218013988). Only change: for a Mingla Team member
+-- outside support mode, the stored sender name and the push payload's sender_name
+-- (the brand group push title, business.brand_group_message) are the public name.
+CREATE OR REPLACE FUNCTION public.issue_3720_send_brand_group_message(p_conversation_id uuid, p_content text, p_reply_to_id uuid DEFAULT NULL::uuid, p_related_message_ids uuid[] DEFAULT '{}'::uuid[], p_actor_mode text DEFAULT NULL::text, p_mentioned_user_ids uuid[] DEFAULT '{}'::uuid[])
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_conversation public.conversations%ROWTYPE;
+  v_is_member boolean;
+  v_is_support boolean;
+  v_mode text;
+  v_message_id uuid;
+  v_display_name text;
+  v_role text;
+  v_brand_name text;
+  v_related uuid[] := COALESCE(p_related_message_ids, '{}'::uuid[]);
+  v_mentions uuid[];
+BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'authentication_required' USING ERRCODE = '42501';
+  END IF;
+  IF char_length(btrim(COALESCE(p_content, ''))) NOT BETWEEN 1 AND 8000 THEN
+    RAISE EXCEPTION 'invalid_message' USING ERRCODE = '22023';
+  END IF;
+  IF cardinality(COALESCE(p_mentioned_user_ids, '{}'::uuid[])) > 10 THEN
+    RAISE EXCEPTION 'too_many_mentions' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT COALESCE(array_agg(mention_id ORDER BY mention_id), '{}'::uuid[])
+  INTO v_mentions
+  FROM (
+    SELECT DISTINCT mention_id
+    FROM unnest(COALESCE(p_mentioned_user_ids, '{}'::uuid[])) AS mention_id
+  ) unique_mentions;
+
+  SELECT * INTO v_conversation
+  FROM public.conversations
+  WHERE id = p_conversation_id
+    AND linked_entity_type = 'brand'
+    AND is_enabled IS TRUE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'conversation_unavailable' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT name INTO v_brand_name
+  FROM public.brands
+  WHERE id = v_conversation.brand_id AND deleted_at IS NULL;
+  IF v_brand_name IS NULL THEN
+    RAISE EXCEPTION 'conversation_unavailable' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT EXISTS(
+    SELECT 1 FROM public.brand_team_members member
+    WHERE member.brand_id = v_conversation.brand_id
+      AND member.user_id = v_actor
+      AND member.accepted_at IS NOT NULL
+      AND member.removed_at IS NULL
+  ) INTO v_is_member;
+  v_is_support := public.is_support_staff(v_actor) OR public.is_admin_user();
+  IF NOT v_is_member AND NOT v_is_support THEN
+    RAISE EXCEPTION 'conversation_unavailable' USING ERRCODE = '42501';
+  END IF;
+
+  v_mode := COALESCE(p_actor_mode, CASE WHEN v_is_member THEN 'brand' ELSE 'support' END);
+  IF v_mode NOT IN ('brand', 'support')
+     OR (v_mode = 'brand' AND NOT v_is_member)
+     OR (v_mode = 'support' AND NOT v_is_support) THEN
+    RAISE EXCEPTION 'invalid_actor_mode' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_reply_to_id IS NOT NULL AND NOT EXISTS(
+    SELECT 1 FROM public.messages
+    WHERE id = p_reply_to_id
+      AND conversation_id = p_conversation_id
+      AND deleted_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'invalid_reply' USING ERRCODE = '22023';
+  END IF;
+
+  IF cardinality(v_related) > 20 OR EXISTS(
+    SELECT 1 FROM unnest(v_related) related_id
+    WHERE NOT EXISTS(
+      SELECT 1 FROM public.messages message
+      WHERE message.id = related_id
+        AND message.conversation_id = p_conversation_id
+        AND message.deleted_at IS NULL
+    )
+  ) THEN
+    RAISE EXCEPTION 'invalid_related_messages' USING ERRCODE = '22023';
+  END IF;
+
+  IF v_actor = ANY(v_mentions) OR EXISTS(
+    SELECT 1 FROM unnest(v_mentions) mention_id
+    WHERE NOT EXISTS(
+      SELECT 1 FROM public.brand_team_members member
+      WHERE member.brand_id = v_conversation.brand_id
+        AND member.user_id = mention_id
+        AND member.accepted_at IS NOT NULL
+        AND member.removed_at IS NULL
+    )
+  ) THEN
+    RAISE EXCEPTION 'invalid_mention' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT COALESCE(
+    NULLIF(btrim(CASE WHEN v_mode = 'support' THEN staff.display_name END), ''),
+    NULLIF(btrim(profile.display_name), ''),
+    NULLIF(btrim(concat_ws(' ', profile.first_name, profile.last_name)), ''),
+    NULLIF(btrim(profile.username), ''),
+    NULLIF(btrim(identity.raw_user_meta_data->>'full_name'), ''),
+    NULLIF(btrim(identity.raw_user_meta_data->>'name'), ''),
+    NULLIF(btrim(identity.raw_user_meta_data->>'display_name'), ''),
+    'Mingla teammate'
+  )
+  INTO v_display_name
+  FROM auth.users identity
+  LEFT JOIN public.profiles profile ON profile.id = identity.id
+  LEFT JOIN public.support_staff staff ON staff.user_id = identity.id
+  WHERE identity.id = v_actor;
+  v_display_name := COALESCE(v_display_name, 'Mingla teammate');
+  -- issue_4579_: a Mingla Team member's message (snapshot and push payload)
+  -- carries the public name, never a handle. Support replies are unchanged.
+  IF v_mode IS DISTINCT FROM 'support'
+     AND public.issue_4579_is_mingla_team_member(v_conversation.brand_id, v_actor) THEN
+    v_display_name := public.issue_4579_admin_public_name(v_actor);
+  END IF;
+  v_role := CASE WHEN v_mode = 'support' THEN 'Mingla Support' ELSE NULL END;
+
+  INSERT INTO public.messages(
+    conversation_id, sender_id, content, message_type, reply_to_id,
+    related_message_ids, mentions, sender_display_name_snapshot,
+    sender_role_snapshot
+  ) VALUES (
+    p_conversation_id, v_actor, btrim(p_content), 'text', p_reply_to_id,
+    v_related, to_jsonb(v_mentions), v_display_name, v_role
+  ) RETURNING id INTO v_message_id;
+
+  UPDATE public.conversations
+  SET last_message_at = now(), updated_at = now()
+  WHERE id = p_conversation_id;
+
+  INSERT INTO public.brand_group_reads(conversation_id, user_id, last_read_at, updated_at)
+  VALUES(p_conversation_id, v_actor, now(), now())
+  ON CONFLICT(conversation_id, user_id) DO UPDATE
+  SET last_read_at = now(), updated_at = now();
+
+  INSERT INTO public.brand_group_audit_log(
+    conversation_id, brand_id, actor_user_id, action, message_id, metadata
+  ) VALUES (
+    p_conversation_id, v_conversation.brand_id, v_actor, 'message_sent', v_message_id,
+    jsonb_build_object(
+      'actor_mode', v_mode,
+      'reply_to_id', p_reply_to_id,
+      'related_count', cardinality(v_related),
+      'mention_count', cardinality(v_mentions)
+    )
+  );
+
+  WITH roster AS (
+    SELECT participant.user_id
+    FROM public.conversation_participants participant
+    JOIN public.brand_team_members member
+      ON member.brand_id = v_conversation.brand_id
+     AND member.user_id = participant.user_id
+     AND member.accepted_at IS NOT NULL
+     AND member.removed_at IS NULL
+    WHERE participant.conversation_id = p_conversation_id
+  ), enabled_support AS (
+    SELECT staff.user_id
+    FROM public.support_staff staff
+    WHERE public.is_support_staff(staff.user_id)
+  ), active_admins AS (
+    SELECT identity.id AS user_id
+    FROM public.admin_users admin_user
+    JOIN auth.users identity ON lower(admin_user.email) = lower(identity.email)
+    WHERE admin_user.status = 'active'
+  ), reply_recipient AS (
+    SELECT sender_id AS user_id
+    FROM public.messages
+    WHERE id = p_reply_to_id
+  ), mentioned_recipients AS (
+    SELECT mention_id AS user_id
+    FROM unnest(v_mentions) mention_id
+  ), candidates AS (
+    SELECT user_id FROM roster
+    UNION ALL SELECT user_id FROM enabled_support
+    UNION ALL SELECT user_id FROM active_admins
+    UNION ALL SELECT user_id FROM reply_recipient
+    UNION ALL SELECT user_id FROM mentioned_recipients
+  ), recipients AS (
+    SELECT DISTINCT candidate.user_id
+    FROM candidates candidate
+    LEFT JOIN public.brand_group_reads reads
+      ON reads.conversation_id = p_conversation_id
+     AND reads.user_id = candidate.user_id
+    WHERE candidate.user_id IS NOT NULL
+      AND candidate.user_id IS DISTINCT FROM v_actor
+      AND (
+        COALESCE(reads.muted, false) IS NOT TRUE
+        OR candidate.user_id = ANY(v_mentions)
+      )
+      AND public.issue_3720_brand_group_can_access(p_conversation_id, candidate.user_id)
+  )
+  INSERT INTO public.notification_outbox(
+    category_key, user_id, brand_id, country_code, payload, idempotency_key, status
+  )
+  SELECT
+    'business.brand_group_message',
+    recipient.user_id,
+    v_conversation.brand_id,
+    NULL,
+    jsonb_build_object(
+      'message_id', v_message_id,
+      'conversation_id', p_conversation_id,
+      'brand_id', v_conversation.brand_id,
+      'brand_name', v_brand_name,
+      'sender_name', v_display_name,
+      'body', left(btrim(p_content), 180),
+      'mentioned', recipient.user_id = ANY(v_mentions),
+      'deep_link', 'mingla-business://messages/' || p_conversation_id::text
+    ),
+    'business.brand_group_message:' || v_message_id::text || ':' || recipient.user_id::text,
+    'pending'
+  FROM recipients recipient
+  ON CONFLICT(idempotency_key) DO NOTHING;
+
+  RETURN v_message_id;
+END;
 $function$;
 
 -- ---------------------------------------------------------------------------
