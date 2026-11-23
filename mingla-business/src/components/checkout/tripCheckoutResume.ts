@@ -182,3 +182,31 @@ export async function tripResumeDecision(
   }
   return { kind: "create", forget: true };
 }
+
+/**
+ * issue #4522 E-3 — the checkout to close before a new one is opened: the one
+ * this cart was handed (in memory, or restored after a reload) when the cart
+ * has CHANGED since. An unchanged cart re-follows or replays it instead.
+ */
+export function checkoutToSupersede(
+  held: {
+    fingerprint: string;
+    handoff: { checkoutSessionId: string; buyerStatusToken: string };
+  } | null,
+  resumed: ResumedTripCheckout | null,
+  cartFingerprint: string,
+): { checkoutSessionId: string; buyerStatusToken: string } | null {
+  if (held !== null && held.fingerprint !== cartFingerprint) {
+    return {
+      checkoutSessionId: held.handoff.checkoutSessionId,
+      buyerStatusToken: held.handoff.buyerStatusToken,
+    };
+  }
+  if (resumed !== null && resumed.fingerprint !== cartFingerprint) {
+    return {
+      checkoutSessionId: resumed.checkoutSessionId,
+      buyerStatusToken: resumed.buyerStatusToken,
+    };
+  }
+  return null;
+}

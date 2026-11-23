@@ -82,7 +82,15 @@ import {
   paystackChannelsForCountry,
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
-import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+import {
+  paystackInitializeTransaction,
+  paystackVerifyTransaction,
+} from "../_shared/paystack.ts";
+import { resolvePaystackTicketReturn } from "../_shared/paystackTicketReturnVerify.ts";
+import {
+  parseSupersedeRequest,
+  supersedeHeldCheckout,
+} from "./supersedeCheckout.ts";
 // Issue #3872 — explicit order totals written from the breakdown whose total is
 // the provider amount, on every path (hosted, native, Paystack, free).
 import {
@@ -2293,6 +2301,76 @@ export const createTicketCheckoutCreateHandler = (
         },
       )
       : { data: null, error: null };
+    // issue #4522 E-3 — one cart, one payable checkout. A buyer back from the
+    // provider page with a CHANGED cart names the checkout they were handed;
+    // it is closed (a card page expired at the provider first) before this
+    // one is opened. Already paid → that checkout's confirmation, nothing new.
+    // A replay of the same attempt (resolvedAttempt.data) is never closed.
+    const supersedeRequest = parseSupersedeRequest(body.supersedesCheckout);
+    if (
+      supersedeRequest !== null && resolvedAttempt.error === null &&
+      resolvedAttempt.data === null
+    ) {
+      const superseded = await supersedeHeldCheckout(
+        supabase,
+        eventId,
+        supersedeRequest,
+        {
+          sha256Hex,
+          expireStripeCheckout: async (input) => {
+            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+            await stripeTicketCheckout().checkout.sessions.expire(
+              input.checkoutSessionId,
+              {},
+              {
+                stripeAccount: input.stripeAccountId,
+                idempotencyKey: input.idempotencyKey,
+              },
+            );
+          },
+          retrieveStripeCheckout: async (input) => {
+            // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+            const read = await stripeTicketCheckout().checkout.sessions.retrieve(
+              input.checkoutSessionId,
+              {},
+              { stripeAccount: input.stripeAccountId },
+            );
+            return {
+              status: typeof read?.status === "string" ? read.status : null,
+              paymentStatus: typeof read?.payment_status === "string"
+                ? read.payment_status
+                : null,
+            };
+          },
+          resolvePaystackReturn: (session) =>
+            resolvePaystackTicketReturn(
+              supabase,
+              session,
+              paystackVerifyTransaction,
+            ),
+        },
+      );
+      if (superseded.kind === "paid") {
+        return jsonResponse(
+          {
+            error: "checkout_already_paid",
+            checkoutSessionId: superseded.checkoutSessionId,
+          },
+          409,
+        );
+      }
+      if (superseded.kind === "unavailable") {
+        console.error(
+          "[ticket-checkout-create] held checkout not closed",
+          superseded.reason,
+        );
+        return jsonResponse(
+          { error: "checkout_replace_unavailable", detail: superseded.reason },
+          503,
+        );
+      }
+    }
     const ticketLinkSessionCall = resolvedAttempt.error === null &&
         resolvedAttempt.data === null && ticketLinkHash !== null
       ? await supabase.rpc(

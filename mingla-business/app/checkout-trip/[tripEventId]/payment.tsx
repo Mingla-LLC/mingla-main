@@ -90,6 +90,7 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import {
+  checkoutToSupersede,
   restoreTripCheckout,
   tripResumeDecision,
   type ResumedTripCheckout,
@@ -542,6 +543,13 @@ function CheckoutTripPaymentScreenContent({
           // create for a cart with a live provider attempt is never what the
           // guest wants. Re-following the URL we were already given is.
           const held = providerHandoffRef.current;
+          // issue #4522 E-3 — the checkout this cart was handed, when the cart
+          // changed since: the server closes it before opening the new one.
+          const supersedesCheckout = checkoutToSupersede(
+            held,
+            resumedCheckoutRef.current,
+            cartFingerprint,
+          );
           if (held !== null && held.fingerprint === cartFingerprint) {
             if (assignLocation(globalThis, held.handoff.redirectUrl)) return;
             setProcessing(false);
@@ -589,6 +597,7 @@ function CheckoutTripPaymentScreenContent({
               eventId: tripEventId,
               surface,
             }),
+            ...(supersedesCheckout !== null ? { supersedesCheckout } : {}),
             // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers
             // gathered by /checkout-trip/[tripEventId]/intake.tsx and stored
             // in CartContext. Edge fn gates HTTP 400 intake_form_required +
@@ -649,6 +658,13 @@ function CheckoutTripPaymentScreenContent({
           setProcessing(false);
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
         } catch (error) {
+          // issue #4522 E-3 — the checkout this cart was handed was paid
+          // before the change: that booking stands, so show its confirmation
+          // (the saved resume payload is that checkout) and open nothing new.
+          if ((error as { code?: unknown } | null)?.code === "checkout_already_paid") {
+            router.replace(`/checkout-trip/${tripEventId}/confirm` as never);
+            return;
+          }
           setProcessing(false);
           const review =
             await import("../../../src/services/ticketCheckoutReview").then(

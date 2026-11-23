@@ -102,6 +102,7 @@ import {
 } from "../../../../src/components/checkout/checkoutPersistence";
 // eslint-disable-next-line import/first
 import {
+  checkoutToSupersede,
   restoreTripCheckout,
   tripResumeDecision,
 } from "../../../../src/components/checkout/tripCheckoutResume";
@@ -393,5 +394,64 @@ describe("#4522 E-2 / E-3 — Back from the provider page", () => {
     );
     expect(resumed?.redirectUrl).toBeNull();
     expect(resumed?.fingerprint).toBe("cart-A");
+  });
+});
+
+// issue #4522 E-3 remainder — Back, then a CHANGED choice, then Pay. FAILS ON
+// REVERT: the replacement was created with no word about the first checkout,
+// whose provider page stayed payable (two charges, two orders).
+describe("#4522 E-3 — Back, change the choice, Pay", () => {
+  test("a changed cart names the checkout it was handed so the server closes it first", async () => {
+    const storage = memoryStorage();
+    const first = await mountCart();
+    const { fingerprint } = await payOverTime(storage, V1_TT);
+    await TestRenderer.act(async () => first.unmount());
+    const second = await mountCart();
+    let resumed: ReturnType<typeof restoreTripCheckout> = null;
+    await TestRenderer.act(async () => {
+      resumed = restoreTripCheckout(readCheckoutResumePayload(storage, EVENT), cart!, true);
+    });
+    // Unchanged: nothing to close (the held page is followed or replayed).
+    expect(checkoutToSupersede(null, resumed, screenFingerprint(cart!))).toBeNull();
+    // The buyer changes "Pay over time" to "Pay in full".
+    await TestRenderer.act(async () => {
+      cart!.setLinePaymentPlanChoice(V1_TT, "full");
+    });
+    expect(screenFingerprint(cart!)).not.toBe(fingerprint);
+    const supersedesCheckout = checkoutToSupersede(null, resumed, screenFingerprint(cart!));
+    expect(supersedesCheckout).toEqual({ checkoutSessionId: "session-1", buyerStatusToken: "token-1" });
+    invokeBodies.length = 0;
+    await createTicketCheckout({
+      eventId: EVENT,
+      buyer: cart!.buyer,
+      lines: cart!.lines,
+      quoteDigest: "0123456789abcdef0123456789abcdef",
+      surface: "web",
+      checkoutContractVersion: 2,
+      checkoutAttemptId: cart!.checkoutAttemptIdFor({ eventId: EVENT, surface: "web" }),
+      supersedesCheckout: supersedesCheckout!,
+    });
+    const body = invokeBodies.find((entry) => entry.name === "ticket-checkout-create")!.body;
+    expect(body.supersedesCheckout).toEqual({ checkoutSessionId: "session-1", buyerStatusToken: "token-1" });
+    expect(body.lines).toEqual([expect.objectContaining({ ticketTypeId: V1_TT, paymentPlanChoice: "full" })]);
+    // A first Pay (nothing held) sends no such field.
+    expect((await createBody(cart!)).supersedesCheckout).toBeUndefined();
+    await TestRenderer.act(async () => second.unmount());
+  });
+
+  test("a page kept in memory (back-forward cache) is named too; the screen sends it and goes to confirmation if it was paid", () => {
+    const held = { fingerprint: "cart-A", handoff: { checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" } };
+    expect(checkoutToSupersede(held, null, "cart-A")).toBeNull();
+    expect(checkoutToSupersede(held, null, "cart-B")).toEqual({ checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as { readFileSync: (p: string, e: string) => string };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path") as { join: (...p: string[]) => string };
+    const screen = fs.readFileSync(path.join(__dirname, "..", "payment.tsx"), "utf8");
+    expect(screen).toContain("const supersedesCheckout = checkoutToSupersede(");
+    expect(screen).toContain("...(supersedesCheckout !== null ? { supersedesCheckout } : {}),");
+    const paid = screen.indexOf('=== "checkout_already_paid"');
+    expect(paid).toBeGreaterThan(0);
+    expect(screen.slice(paid, paid + 200)).toContain("router.replace(`/checkout-trip/${tripEventId}/confirm` as never);");
   });
 });

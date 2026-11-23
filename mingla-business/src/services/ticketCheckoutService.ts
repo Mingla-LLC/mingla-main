@@ -126,6 +126,13 @@ export interface TicketCheckoutCreateInput {
   /** One UUID retained by the cart across one logical create/retry. */
   checkoutAttemptId?: string;
   /**
+   * issue #4522 E-3 — the checkout this cart was already handed, when the cart
+   * changed since (Back from the provider page, then a different choice). The
+   * server closes it before it opens the replacement, or answers
+   * `checkout_already_paid` when it was paid. Omitted otherwise.
+   */
+  supersedesCheckout?: { checkoutSessionId: string; buyerStatusToken: string };
+  /**
    * #2879 / #2947 slice 3 — waiting-room opt-in. WEB ONLY.
    * Absent ⇒ today's behaviour exactly (never receive kind queued / waitlist_offered).
    */
@@ -905,6 +912,10 @@ export const createTicketCheckout = async (
             checkoutAttemptId: input.checkoutAttemptId,
             purchaseTermsAccepted: true,
           }
+        : {}),
+      // issue #4522 E-3 — only when the cart changed after a provider hand-off.
+      ...(input.supersedesCheckout !== undefined
+        ? { supersedesCheckout: input.supersedesCheckout }
         : {}),
       // #4514 wave 5 (C1) — `brandFormStep: 1` is the capability marker (this
       // client shows the Questions step; mirrors BRAND_FORM_CHECKOUT_STEP in

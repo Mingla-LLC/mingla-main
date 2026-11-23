@@ -2078,4 +2078,87 @@ BEGIN
 END;
 $function$;
 
+-- ---------------------------------------------------------------------------
+-- E-3 — one cart, one payable checkout. When a buyer comes back from the
+-- provider page and changes the cart (plan choice, quantity, add-on choice),
+-- ticket-checkout-create closes the checkout it was handed before it opens the
+-- replacement (a card provider page is expired at the provider first). The
+-- old session is revoked exactly as issue_1930_revoke_event_checkout_admissions
+-- and issue_4271_door_revoke_code_sessions revoke theirs: the revocation
+-- worker neutralizes its provider page, and a payment that still lands on it
+-- finalizes into the existing reversal (paid_reversal_pending → queued
+-- late-payment refund), never a second order. The caller proves it holds the
+-- session by its buyer status token. One audit row per superseded session.
+-- Answers: superseded | paid (an order exists: go to its confirmation) |
+-- closed (nothing payable left) | not_found.
+-- ---------------------------------------------------------------------------
+CREATE FUNCTION public.issue_4522_supersede_checkout_session(
+  p_checkout_session_id uuid,
+  p_event_id uuid,
+  p_buyer_status_token_hash text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_session public.ticket_checkout_sessions%ROWTYPE;
+  v_brand_id uuid;
+BEGIN
+  -- Finalize's lock order: event → brand → session.
+  SELECT brand_id INTO v_brand_id FROM public.events WHERE id = p_event_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('outcome', 'not_found');
+  END IF;
+  PERFORM 1 FROM public.brands WHERE id = v_brand_id FOR UPDATE;
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions
+   WHERE id = p_checkout_session_id FOR UPDATE;
+  IF NOT FOUND OR v_session.event_id IS DISTINCT FROM p_event_id
+     OR p_buyer_status_token_hash IS NULL
+     OR v_session.buyer_status_token_hash IS DISTINCT FROM p_buyer_status_token_hash THEN
+    RETURN jsonb_build_object('outcome', 'not_found');
+  END IF;
+  IF v_session.order_id IS NOT NULL THEN
+    RETURN jsonb_build_object('outcome', 'paid', 'orderId', v_session.order_id);
+  END IF;
+  IF v_session.revoked_at IS NOT NULL
+     OR v_session.status NOT IN ('pending_free', 'requires_payment', 'processing_payment', 'awaiting_web_redirect') THEN
+    RETURN jsonb_build_object('outcome', 'closed', 'status', v_session.status);
+  END IF;
+  UPDATE public.ticket_checkout_sessions
+     SET revoked_at = now(),
+         revoked_reason = 'superseded_by_new_checkout',
+         reversal_state = CASE WHEN reversal_state = 'none'
+           THEN 'neutralization_pending' ELSE reversal_state END,
+         status = 'failed',
+         failed_at = COALESCE(failed_at, now()),
+         updated_at = now(),
+         idempotency_key = idempotency_key || ':revoked:' || id::text
+   WHERE id = v_session.id AND order_id IS NULL AND revoked_at IS NULL;
+  INSERT INTO public.checkout_sale_revocation_outbox (
+    subject_type, subject_id, event_id, provider_attempt_id, target_epoch, reason
+  )
+  SELECT 'ticket_checkout_session', v_session.id, v_session.event_id, v_session.provider_attempt_id,
+         COALESCE(a.claimed_epoch, v_session.admission_epoch, 1), 'superseded_by_new_checkout'
+    FROM (SELECT 1) one
+    LEFT JOIN public.ticket_checkout_provider_attempts a ON a.id = v_session.provider_attempt_id
+  ON CONFLICT (subject_type, subject_id, target_epoch) DO NOTHING;
+  UPDATE public.ticket_checkout_provider_attempts
+     SET state = 'neutralization_pending', updated_at = now()
+   WHERE id = v_session.provider_attempt_id
+     AND state IN ('claimed', 'provider_unknown', 'ready');
+  INSERT INTO public.audit_log (user_id, brand_id, event_id, action, target_type, target_id, before, after)
+  VALUES (NULL, v_session.brand_id, v_session.event_id, 'ticket_checkout.superseded',
+    'ticket_checkout_session', v_session.id::text,
+    jsonb_build_object('status', v_session.status, 'totalCents', v_session.total_cents,
+      'currency', trim(v_session.currency), 'providerFlow', v_session.provider_flow),
+    jsonb_build_object('status', 'failed', 'revokedReason', 'superseded_by_new_checkout'));
+  RETURN jsonb_build_object('outcome', 'superseded');
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_supersede_checkout_session(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_supersede_checkout_session(uuid, uuid, text) TO service_role;
+COMMENT ON FUNCTION public.issue_4522_supersede_checkout_session(uuid, uuid, text) IS
+  'Issue #4522 E-3: closes the checkout a buyer was handed before a changed cart opens its replacement (same revoke + revocation outbox as the door and event revokes; a late payment is reversed, never a second order). Token-proved; service_role only.';
+
 COMMIT;

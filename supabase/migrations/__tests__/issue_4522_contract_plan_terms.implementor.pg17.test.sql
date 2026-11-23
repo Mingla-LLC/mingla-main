@@ -286,4 +286,68 @@ BEGIN
   END IF;
 END $$;
 
+-- D. E-3: a changed cart closes the checkout it was handed. The old session is
+--    revoked under finalize's locks, queued for the revocation worker and
+--    audited once; a payment that still lands on it finalizes into the
+--    existing reversal, never a second order. Token-proved; a paid one stays.
+DO $$
+DECLARE
+  v_event uuid := '45220000-0000-4000-8c02-000000000001';
+  v_lines jsonb := pg_temp.lines(1, NULL);
+  v_session uuid;
+  v_paid uuid;
+  v_r jsonb;
+  v_orders_before bigint;
+BEGIN
+  v_session := (public.biz_ticket_checkout_create_session(v_event, NULL, 'Buyer D', 'd@example.test',
+    '+15555550978', false, v_lines, 'ticket_checkout:v2:e3:' || gen_random_uuid()::text,
+    now() + interval '15 minutes', 0, 'full', NULL, NULL, NULL, NULL, NULL, NULL)->>'checkoutSessionId')::uuid;
+  UPDATE public.ticket_checkout_sessions
+     SET buyer_status_token_hash = encode(sha256('tok-d'::bytea), 'hex'), status = 'awaiting_web_redirect'
+   WHERE id = v_session;
+  -- Someone else's token changes nothing.
+  v_r := public.issue_4522_supersede_checkout_session(v_session, v_event, encode(sha256('other'::bytea), 'hex'));
+  IF v_r->>'outcome' <> 'not_found'
+     OR (SELECT revoked_at FROM public.ticket_checkout_sessions WHERE id = v_session) IS NOT NULL THEN
+    RAISE EXCEPTION 'D-1 a wrong token must change nothing: %', v_r;
+  END IF;
+  v_r := public.issue_4522_supersede_checkout_session(v_session, v_event, encode(sha256('tok-d'::bytea), 'hex'));
+  IF v_r->>'outcome' <> 'superseded'
+     OR NOT EXISTS (SELECT 1 FROM public.ticket_checkout_sessions WHERE id = v_session
+                     AND revoked_at IS NOT NULL AND revoked_reason = 'superseded_by_new_checkout'
+                     AND status = 'failed' AND reversal_state = 'neutralization_pending'
+                     AND idempotency_key LIKE '%:revoked:' || v_session::text)
+     OR (SELECT count(*) FROM public.checkout_sale_revocation_outbox
+          WHERE subject_id = v_session AND reason = 'superseded_by_new_checkout' AND state = 'queued') <> 1
+     OR (SELECT count(*) FROM public.audit_log
+          WHERE target_id = v_session::text AND action = 'ticket_checkout.superseded') <> 1 THEN
+    RAISE EXCEPTION 'D-2 the held session must be revoked, queued and audited once: %', v_r;
+  END IF;
+  -- Again: nothing more (one audit, one outbox row).
+  v_r := public.issue_4522_supersede_checkout_session(v_session, v_event, encode(sha256('tok-d'::bytea), 'hex'));
+  IF v_r->>'outcome' <> 'closed'
+     OR (SELECT count(*) FROM public.audit_log WHERE target_id = v_session::text AND action = 'ticket_checkout.superseded') <> 1 THEN
+    RAISE EXCEPTION 'D-3 a second close changes nothing: %', v_r;
+  END IF;
+  -- The old page is paid anyway: the real finalize reverses it, no order.
+  SELECT count(*) INTO v_orders_before FROM public.orders WHERE event_id = v_event;
+  v_r := public.biz_ticket_checkout_finalize(v_session, 'pi_e3late', 'ch_e3late', 'card',
+    'x2-test-pepper-0123456789abcdef0123456789ab', 'cus_e3', 'pm_e3', false);
+  IF v_r->>'outcome' <> 'paid_reversal_pending'
+     OR (SELECT order_id FROM public.ticket_checkout_sessions WHERE id = v_session) IS NOT NULL
+     OR (SELECT count(*) FROM public.orders WHERE event_id = v_event) <> v_orders_before THEN
+    RAISE EXCEPTION 'D-4 a late payment on a superseded checkout is reversed, never an order: %', v_r;
+  END IF;
+  -- A checkout that was already paid is never closed.
+  v_paid := (regexp_replace(pg_temp.buy(1, NULL, 'd2'), '^order:', ''))::uuid;
+  SELECT id INTO v_session FROM public.ticket_checkout_sessions WHERE order_id = v_paid;
+  UPDATE public.ticket_checkout_sessions SET buyer_status_token_hash = encode(sha256('tok-d2'::bytea), 'hex')
+   WHERE id = v_session;
+  v_r := public.issue_4522_supersede_checkout_session(v_session, v_event, encode(sha256('tok-d2'::bytea), 'hex'));
+  IF v_r->>'outcome' <> 'paid' OR (v_r->>'orderId')::uuid <> v_paid
+     OR (SELECT revoked_at FROM public.ticket_checkout_sessions WHERE id = v_session) IS NOT NULL THEN
+    RAISE EXCEPTION 'D-5 a paid checkout answers paid and stays: %', v_r;
+  END IF;
+END $$;
+
 ROLLBACK;

@@ -23,6 +23,8 @@ import {
   tierRowsCarryPlanV2,
   TripPlanV2ContractError,
 } from "../tripPlanV2Contract.ts";
+import { parseSupersedeRequest, supersedeHeldCheckout } from "../supersedeCheckout.ts";
+import { fakeSupabase } from "../../_shared/installments/__tests__/issue_3645_fake_supabase.ts";
 
 const source = await Deno.readTextFile(
   new URL("../index.ts", import.meta.url),
@@ -188,4 +190,153 @@ Deno.test("W-4 / S-1: a v2 create's review quote prices the lines' own plan choi
     2,
   );
   assert(!loader.includes("p_payment_plan_choice: paymentPlanChoice,"));
+});
+
+// ── issue #4522 E-3: a changed cart closes the checkout it was handed first ──
+//
+// FAILS ON REVERT: with no supersede step the replacement is opened while the
+// first provider page stays payable (two charges, two orders).
+
+
+const OLD = "4522e300-0000-4000-8000-000000000001";
+const EVENT = "4522e300-0000-4000-8000-0000000000e1";
+const TOKEN = "t".repeat(64);
+
+function supersedeWorld(opts: {
+  provider: "stripe" | "paystack";
+  orderId?: string | null;
+  status?: string;
+  tokenHash?: string;
+}) {
+  const steps: string[] = [];
+  const fake = fakeSupabase({
+    table: (op) => {
+      if (op.table === "ticket_checkout_sessions") {
+        return {
+          data: {
+            id: OLD, event_id: EVENT, buyer_status_token_hash: opts.tokenHash ?? `h:${TOKEN}`,
+            order_id: opts.orderId ?? null, status: opts.status ?? "awaiting_web_redirect", revoked_at: null,
+            stripe_account_id: opts.provider === "stripe" ? "acct_1" : null,
+            stripe_payment_intent_id: opts.provider === "paystack" ? `mingla_${OLD}` : null,
+          },
+          error: null,
+        };
+      }
+      if (op.table === "ticket_checkout_provider_attempts") {
+        return {
+          data: opts.provider === "stripe"
+            ? { provider: "stripe", flow: "stripe_checkout", provider_checkout_id: "cs_old", provider_idempotency_key: `ticket_checkout:${OLD}:stripe_checkout` }
+            : { provider: "paystack", flow: "paystack_redirect", provider_checkout_id: null, provider_idempotency_key: `ticket_checkout:${OLD}:paystack_redirect` },
+          error: null,
+        };
+      }
+      return { data: null, error: null };
+    },
+    rpc: (name) => {
+      steps.push(`rpc:${name}`);
+      return { data: { outcome: "superseded" }, error: null };
+    },
+  });
+  return { fake, steps };
+}
+
+const deps = (steps: string[], o: {
+  expire?: () => Promise<void>;
+  retrieve?: { status: string | null; paymentStatus: string | null };
+  paystack?: { kind: string; reason?: string };
+}) => ({
+  sha256Hex: (v: string) => Promise.resolve(`h:${v}`),
+  expireStripeCheckout: (input: { checkoutSessionId: string; idempotencyKey: string; stripeAccountId: string }) => {
+    steps.push(`expire:${input.checkoutSessionId}:${input.idempotencyKey}:${input.stripeAccountId}`);
+    return o.expire ? o.expire() : Promise.resolve();
+  },
+  retrieveStripeCheckout: () => {
+    steps.push("retrieve");
+    return Promise.resolve(o.retrieve ?? { status: "open", paymentStatus: "unpaid" });
+  },
+  resolvePaystackReturn: () => {
+    steps.push("paystack_verify");
+    return Promise.resolve(o.paystack ?? { kind: "failed" });
+  },
+});
+
+Deno.test("E-3 card provider: the old page is expired at the provider, then revoked, before a new one", async () => {
+  const w = supersedeWorld({ provider: "stripe" });
+  const out = await supersedeHeldCheckout(w.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, {}));
+  assertEquals(out, { kind: "superseded" });
+  assertEquals(w.steps, [
+    `expire:cs_old:ticket_checkout:${OLD}:stripe_checkout:expire:acct_1`,
+    "rpc:issue_4522_supersede_checkout_session",
+  ]);
+  assertEquals(w.fake.rpcCalls[0].args, {
+    p_checkout_session_id: OLD, p_event_id: EVENT, p_buyer_status_token_hash: `h:${TOKEN}`,
+  });
+});
+
+Deno.test("E-3 card provider: an old page already paid is never closed; the buyer goes to its confirmation", async () => {
+  const w = supersedeWorld({ provider: "stripe" });
+  const out = await supersedeHeldCheckout(w.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
+    deps(w.steps, { expire: () => Promise.reject(new Error("session complete")), retrieve: { status: "complete", paymentStatus: "paid" } }));
+  assertEquals(out, { kind: "paid", checkoutSessionId: OLD });
+  assertEquals(w.fake.rpcCalls.length, 0);
+});
+
+Deno.test("E-3 card provider: an old page that cannot be expired blocks the replacement", async () => {
+  const w = supersedeWorld({ provider: "stripe" });
+  const out = await supersedeHeldCheckout(w.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
+    deps(w.steps, { expire: () => Promise.reject(new Error("network")) }));
+  assertEquals(out.kind, "unavailable");
+  assertEquals(w.fake.rpcCalls.length, 0);
+  // an already-expired page counts as closed
+  const w2 = supersedeWorld({ provider: "stripe" });
+  assertEquals((await supersedeHeldCheckout(w2.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
+    deps(w2.steps, { expire: () => Promise.reject(new Error("expired")), retrieve: { status: "expired", paymentStatus: "unpaid" } }))).kind,
+    "superseded");
+});
+
+Deno.test("E-3 second provider: verified unpaid → superseded on our side; verified paid → its confirmation", async () => {
+  const w = supersedeWorld({ provider: "paystack" });
+  assertEquals((await supersedeHeldCheckout(w.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, { paystack: { kind: "failed" } }))).kind, "superseded");
+  assertEquals(w.steps, ["paystack_verify", "rpc:issue_4522_supersede_checkout_session"]);
+  const paid = supersedeWorld({ provider: "paystack" });
+  assertEquals(await supersedeHeldCheckout(paid.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(paid.steps, { paystack: { kind: "finalized" } })),
+    { kind: "paid", checkoutSessionId: OLD });
+  assertEquals(paid.fake.rpcCalls.length, 0);
+  // paid at the provider but not finalized yet: never closed on a guess
+  const racing = supersedeWorld({ provider: "paystack" });
+  assertEquals((await supersedeHeldCheckout(racing.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
+    deps(racing.steps, { paystack: { kind: "pending", reason: "finalize_retryable" } }))).kind, "unavailable");
+  assertEquals(racing.fake.rpcCalls.length, 0);
+});
+
+Deno.test("E-3: someone else's token, or a session already paid, closes nothing at the provider", async () => {
+  const w = supersedeWorld({ provider: "stripe", tokenHash: "h:other" });
+  assertEquals((await supersedeHeldCheckout(w.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, {}))).kind, "not_found");
+  assertEquals(w.steps, []);
+  const paid = supersedeWorld({ provider: "stripe", orderId: "4522e300-0000-4000-8000-0000000000aa" });
+  assertEquals((await supersedeHeldCheckout(paid.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(paid.steps, {}))).kind, "paid");
+  assertEquals(paid.steps, []);
+  assertEquals(parseSupersedeRequest({ checkoutSessionId: "nope", buyerStatusToken: TOKEN }), null);
+  assertEquals(parseSupersedeRequest(undefined), null);
+});
+
+Deno.test("E-3: the create path closes the held checkout before any session or provider call, never on a replay", () => {
+  const close = source.indexOf("const superseded = await supersedeHeldCheckout(");
+  const guard = source.lastIndexOf("resolvedAttempt.data === null", close);
+  const replayStart = source.indexOf("\"issue_3859_resolve_checkout_attempt\"");
+  const create = source.indexOf("\"biz_ticket_checkout_create_session\",", close);
+  const stripeCreate = source.indexOf("stripeWeb.checkout.sessions.create(");
+  const paystackInit = source.indexOf("paystackInitializeTransaction(", close);
+  assert(close > replayStart && guard > replayStart && guard < close, "only a fresh attempt closes the held checkout");
+  assert(create > close && stripeCreate > close && paystackInit > close, "closed before any new session");
+  assertStringIncludes(source.slice(close, create), 'error: "checkout_already_paid"');
 });
