@@ -7,6 +7,8 @@
  *        owner and watcher, in the words every language already has
  *   P-3  "—" stands for nobody (never made-up names)
  *   P-4  the English words exist; other languages fall back to them
+ *   Z-1  (#4571 W3) a demo booking's UTC instant in a notice is shown in the
+ *        person's own time zone (Lagos, UTC+1); other text is left alone
  *
  * FAILS-ON-REVERT: on origin/main cardPeopleWords does not exist and the
  * sheet reads only card.owner / card.watcher.
@@ -14,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { cardPeopleWords } from "../workUpdates";
+import { cardPeopleWords, localizeInstants } from "../workUpdates";
 
 const root = path.resolve(__dirname, "../../../i18n/locales");
 const en = JSON.parse(fs.readFileSync(path.join(root, "en/teamChat.json"), "utf8")).team as Record<string, string>;
@@ -62,5 +64,22 @@ describe("P-4 the words", () => {
     const screen = fs.readFileSync(path.resolve(__dirname, "../TeamScreens.tsx"), "utf8");
     expect(screen).toContain("{cardPeopleWords(card, t)}");
     expect(screen).not.toContain('t("team.card_people", { owner: card.owner');
+  });
+});
+
+describe("Z-1 (#4571 W3) booking times in the person's own time zone", () => {
+  it("a Lagos reader sees 23:30 UTC as 00:30 the next day", () => {
+    expect(localizeInstants("Linked Demo · Island Vinyl Bar · 2026-11-24T23:30Z", "en-GB", "Africa/Lagos"))
+      .toBe("Linked Demo · Island Vinyl Bar · 25 Nov, 00:30");
+  });
+  it("a UTC reader sees it as it is; text without an instant is unchanged", () => {
+    expect(localizeInstants("Demo · X · 2026-11-24T14:30Z", "en-GB", "UTC")).toBe("Demo · X · 24 Nov, 14:30");
+    expect(localizeInstants("Call · Island Vinyl · No answer · 20 Nov")).toBe("Call · Island Vinyl · No answer · 20 Nov");
+    expect(localizeInstants(null)).toBe("");
+  });
+  it("every notice the Work updates screen shows goes through it", () => {
+    const screen = fs.readFileSync(path.resolve(__dirname, "../TeamScreens.tsx"), "utf8");
+    expect(screen.match(/localizeInstants\((mention|update)\.body_excerpt, language\)/g)?.length).toBe(3);
+    expect(screen).not.toMatch(/>\{(mention|update)\.body_excerpt( \?\? "")?\}</);
   });
 });

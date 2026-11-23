@@ -21,3 +21,15 @@ Deno.test("#4571 W3: with no record name the title still says a watched card mov
   const out = renderTeamMessage("business.team_mention", { source_kind: "crm_record", team_sender: "Kunle" });
   assertEquals(out.push.title, "Kunle moved a card you watch");
 });
+
+// #4571 W3: booking labels carry a UTC instant; the connector says to give it
+// in the person's own time zone and to name the zone.
+import { TEAM_AGENT_WORK_TOOLS } from "../teamAgentWorkTools.ts";
+Deno.test("#4571 W3: the Work tools say a booking's time is UTC and to give it in the person's zone", () => {
+  for (const name of ["list_work", "my_work", "add_work", "update_work"]) {
+    const t = TEAM_AGENT_WORK_TOOLS.find((x) => x.name === name);
+    if (!t) throw new Error(`${name} is not a tool`);
+    assertEquals(t.description.includes("start time in UTC (for example 2026-11-24T14:30Z)"), true, name);
+    assertEquals(t.description.includes("say which zone it is"), true, name);
+  }
+});

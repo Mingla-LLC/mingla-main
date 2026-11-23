@@ -38,7 +38,7 @@ import { Toast } from "../ui/Toast";
 import { teamTime, useTeamText, type TeamT } from "./teamText";
 import { PersonAvatar, TeamAccessGate, TeamAvatar, TeamHeader, useBack } from "./TeamCommon";
 import { useTeamMentions, useTeamPeople, useTeamRealtime, useTeamThreads } from "./useTeamChat";
-import { cardPeopleWords, filterWorkUpdates, localDay, needsYou, workDueLabel, workUpdateCounts, type DueTone, type WorkUpdate, type WorkUpdateFilter } from "./workUpdates";
+import { cardPeopleWords, filterWorkUpdates, localDay, localizeInstants, needsYou, workDueLabel, workUpdateCounts, type DueTone, type WorkUpdate, type WorkUpdateFilter } from "./workUpdates";
 
 import { TeamThreadScreen } from "./TeamThreadScreen";
 export { TeamLockedScreen } from "./TeamCommon";
@@ -135,7 +135,7 @@ function MentionCard({ mention, highlighted, onOpen }: { mention: WorkUpdate; hi
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${mentionKindLabel(mention, t)}: ${mention.body_excerpt ?? ""}`}
+      accessibilityLabel={`${mentionKindLabel(mention, t)}: ${localizeInstants(mention.body_excerpt, language)}`}
       onPress={onOpen}
       style={({ pressed }) => [styles.mentionCard, highlighted && styles.mentionCardHighlighted, needsYou(mention) && unread && styles.mentionCardNeeds, pressed && styles.pressed]}
       testID={`team-mention-${mention.id}`}
@@ -145,7 +145,7 @@ function MentionCard({ mention, highlighted, onOpen }: { mention: WorkUpdate; hi
         <Text style={styles.kindLabel}>{mentionKindLabel(mention, t)}</Text>
         <Text style={styles.mentionWho} numberOfLines={1}>{`${mention.actor_name} · ${teamTime(mention.created_at, language)}`}</Text>
       </View>
-      {mention.body_excerpt ? <Text style={[styles.mentionQuote, unread && styles.bold]}>{mention.body_excerpt}</Text> : null}
+      {mention.body_excerpt ? <Text style={[styles.mentionQuote, unread && styles.bold]}>{localizeInstants(mention.body_excerpt, language)}</Text> : null}
       <DuePill update={mention} />
     </Pressable>
   );
@@ -153,7 +153,7 @@ function MentionCard({ mention, highlighted, onOpen }: { mention: WorkUpdate; hi
 
 /** #4398 (Q1 default): the card, read-only, with what changed and a way to Admin. */
 function WorkCardSheet({ update, onClose, onOpenAdmin }: { update: WorkUpdate | null; onClose: () => void; onOpenAdmin: (u: WorkUpdate) => void }): React.ReactElement {
-  const { t } = useTeamText();
+  const { t, language } = useTeamText();
   const card = update?.card ?? null;
   return (
     <Sheet visible={update !== null} onClose={onClose} snapPoint="half" testID="team-card-sheet">
@@ -176,7 +176,7 @@ function WorkCardSheet({ update, onClose, onOpenAdmin }: { update: WorkUpdate | 
           ) : null}
           <View style={styles.sheetChanged}>
             <Text style={styles.sheetChangedLabel}>{t("team.what_changed")}</Text>
-            <Text style={styles.mentionQuote}>{update.body_excerpt ?? ""}</Text>
+            <Text style={styles.mentionQuote}>{localizeInstants(update.body_excerpt, language)}</Text>
           </View>
           <Pressable accessibilityRole="link" accessibilityLabel={t("team.open_admin")} onPress={() => onOpenAdmin(update)}
             style={({ pressed }) => [styles.openAdmin, pressed && styles.pressed]} testID="team-card-sheet-admin">
