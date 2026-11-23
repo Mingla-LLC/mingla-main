@@ -828,11 +828,40 @@ AS $fn$
    WHERE overpayment_id = p_overpayment_id AND state IN ('creating', 'pending', 'succeeded')
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_overpayment_committed_minor(uuid) FROM PUBLIC, anon, authenticated, service_role;
+-- T6-2: what actually went back to the traveler on the charge for an
+-- overpayment: its succeeded attempts plus each succeeded refund past the
+-- amount recorded in detail.over_refunded (a failed one moved no money; one
+-- an attempt also names is counted once). A new refund never exceeds
+-- refund_minor minus this.
+CREATE FUNCTION public.issue_4522_overpayment_back_minor(p_overpayment_id uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT public.issue_4522_overpayment_returned_minor(o.id) + COALESCE((
+           SELECT sum((e->>'amount_minor')::bigint)
+             FROM jsonb_array_elements(COALESCE(o.detail->'over_refunded', '[]'::jsonb)) e
+            WHERE COALESCE(e->>'status', 'succeeded') = 'succeeded'
+              -- T7-1: once it is one of the attempts, that attempt alone counts it.
+              AND NOT (e ? 'adopted_attempt_no')
+              AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                               WHERE a.overpayment_id = o.id AND a.state = 'succeeded'
+                                 AND a.provider_refund_id = e->>'provider_refund_id')), 0)::bigint
+    FROM public.order_overpayments o WHERE o.id = p_overpayment_id
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_overpayment_back_minor(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- The overpayments that need the edge's attention now: new ones, failed
 -- ones whose retry is due, and ones with a refund at the provider whose
 -- answer is older than a few minutes (checked by its refund id). needs_ops
--- is never listed: only an ops action or a matched provider refund moves it.
+-- is never listed (only an ops action or a matched provider refund moves
+-- it), except T6-1: one stopped for 'provider_refunded_more' whose recorded
+-- refund is still open at the provider is checked by that refund's id as
+-- when refund_pending (no new refund, no new alert), so ops can act once it
+-- resolves; rework 7: likewise 'provider_refund_unconfirmed', and on the
+-- second provider an open attempt without an id (looked for in the list).
 CREATE FUNCTION public.issue_4522_overpayments_due(
   p_order_id uuid DEFAULT NULL,
   p_now timestamptz DEFAULT now(),
@@ -849,7 +878,17 @@ AS $fn$
            WHERE (p_order_id IS NULL OR order_id = p_order_id)
              AND (state = 'held'
                   OR (state = 'refund_failed' AND COALESCE(next_attempt_at, p_now) <= p_now)
-                  OR (state = 'refund_pending' AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')))
+                  OR (state = 'refund_pending' AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes'))
+                  OR (state = 'needs_ops' AND needs_ops_reason IN ('provider_refunded_more', 'provider_refund_unconfirmed')
+                      AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')
+                      AND ((EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                                     WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending'))
+                            -- rework 7: a second-provider attempt without an id is only looked for, never re-sent
+                            AND (provider = 'paystack' OR NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                                       WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending')
+                                         AND a.provider_refund_id IS NULL)))
+                           -- T7-2: an extra refund still pending is re-read on the charge
+                           OR detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb)))
            ORDER BY created_at, id
            LIMIT greatest(COALESCE(p_limit, 100), 1)) op
 $fn$;
@@ -909,8 +948,9 @@ REVOKE ALL ON FUNCTION public.issue_4522_overpayment_to_needs_ops(uuid, text, ti
 -- amount: recorded once per provider refund (detail.over_refunded),
 -- automatic refunding stops (needs_ops 'provider_refunded_more') and ops is
 -- told once what was owed back and what was refunded. A failed refund moved
--- no money and is not recorded. NULL when nothing new was recorded. The
--- caller holds the order graph.
+-- no money and is not recorded; T6-4: a recorded one's later final answer
+-- updates its status (a failed one stops counting), never a second alert.
+-- NULL when nothing new was recorded. The caller holds the order graph.
 CREATE FUNCTION public.issue_4522_overpayment_extra_refund(
   p_overpayment_id uuid,
   p_attempt_no integer,
@@ -926,12 +966,25 @@ AS $fn$
 DECLARE
   v_op public.order_overpayments;
   v_refunded bigint;
+  v_pending bigint;
   v_returned bigint;
   v_alert boolean;
+  v_status text := CASE WHEN p_status IN ('failed', 'not_found') THEN 'failed' ELSE p_status END;
 BEGIN
   SELECT * INTO v_op FROM public.order_overpayments WHERE id = p_overpayment_id FOR UPDATE;
-  IF NOT FOUND OR p_status IS NULL OR p_status NOT IN ('pending', 'succeeded')
+  IF NOT FOUND OR v_status IS NULL OR v_status NOT IN ('pending', 'succeeded', 'failed')
      OR COALESCE(p_provider_refund_id, '') = '' OR COALESCE(p_amount_minor, 0) <= 0 THEN
+    RETURN NULL;
+  END IF;
+  IF v_status <> 'pending' THEN
+    UPDATE public.order_overpayments
+       SET detail = jsonb_set(detail, '{over_refunded}', (
+             SELECT jsonb_agg(CASE WHEN e ? 'status' AND e->>'provider_refund_id' = p_provider_refund_id
+                                   THEN e || jsonb_build_object('status', v_status) ELSE e END ORDER BY n)
+               FROM jsonb_array_elements(detail->'over_refunded') WITH ORDINALITY x(e, n)))
+     WHERE id = v_op.id AND detail->'over_refunded' @> jsonb_build_array(jsonb_build_object('provider_refund_id', p_provider_refund_id));
+  END IF;
+  IF v_status = 'failed' THEN
     RETURN NULL;
   END IF;
   UPDATE public.order_overpayments
@@ -944,10 +997,15 @@ BEGIN
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;
-  v_refunded := public.issue_4522_overpayment_committed_minor(v_op.id)
-    + (SELECT COALESCE(sum((e->>'amount_minor')::bigint), 0)
-         FROM public.order_overpayments o, jsonb_array_elements(o.detail->'over_refunded') e
-        WHERE o.id = v_op.id);
+  -- T6-2: a failed refund is not counted; what is still pending is named.
+  SELECT public.issue_4522_overpayment_committed_minor(v_op.id)
+           + COALESCE(sum((e->>'amount_minor')::bigint) FILTER (WHERE COALESCE(e->>'status', '') <> 'failed'), 0),
+         COALESCE((SELECT sum(amount_minor) FROM public.order_overpayment_refund_attempts
+                    WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')), 0)
+           + COALESCE(sum((e->>'amount_minor')::bigint) FILTER (WHERE e->>'status' = 'pending'), 0)
+    INTO v_refunded, v_pending
+    FROM public.order_overpayments o, jsonb_array_elements(o.detail->'over_refunded') e
+   WHERE o.id = v_op.id;
   PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_over_refunded',
     jsonb_build_object('overpayment_id', v_op.id, 'unmatched_attempt_no', p_attempt_no,
       'provider_refund_id', p_provider_refund_id, 'amount_minor', p_amount_minor,
@@ -957,7 +1015,8 @@ BEGIN
   v_returned := public.issue_4522_overpayment_returned_minor(v_op.id);
   RETURN jsonb_build_object('ok', true, 'changed', true, 'state', 'needs_ops', 'attemptNo', p_attempt_no,
     'alertOps', v_alert, 'alertKind', 'provider_refunded_more', 'overRefundedMinor', v_refunded - v_op.refund_minor,
-    'refundMinor', v_op.refund_minor, 'refundedMinor', v_refunded, 'extraProviderRefundId', p_provider_refund_id,
+    'refundMinor', v_op.refund_minor, 'refundedMinor', v_refunded, 'pendingMinor', v_pending,
+    'extraProviderRefundId', p_provider_refund_id,
     'returnedMinor', v_returned, 'remainingMinor', v_op.refund_minor - v_returned);
 END
 $fn$;
@@ -1011,6 +1070,9 @@ DECLARE
   v_refund_id uuid;
   v_key text;
   v_alert boolean := false;
+  v_kind text;
+  v_extra jsonb;
+  v_att_id uuid;
 BEGIN
   SELECT * INTO v_op FROM public.order_overpayments WHERE id = p_overpayment_id;
   IF NOT FOUND OR public.issue_4522_lock_order_graph(v_op.order_id) IS NULL THEN
@@ -1027,7 +1089,8 @@ BEGIN
   SELECT e.brand_id INTO v_brand FROM public.orders o JOIN public.events e ON e.id = o.event_id
    WHERE o.id = v_op.order_id;
   v_returned := public.issue_4522_overpayment_returned_minor(v_op.id);
-  v_remaining := v_op.refund_minor - v_returned;
+  -- T6-2: a succeeded refund past the amount also went back to the traveler.
+  v_remaining := v_op.refund_minor - public.issue_4522_overpayment_back_minor(v_op.id);
   v_base := jsonb_build_object('ok', true, 'done', false,
     'overpaymentId', v_op.id, 'orderId', v_op.order_id, 'installmentId', v_op.installment_id,
     'brandId', v_brand, 'provider', v_op.provider, 'providerRef', v_op.provider_ref,
@@ -1045,7 +1108,21 @@ BEGIN
   -- 1. Anything still open at the provider is checked first; never replaced.
   IF EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
               WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')) THEN
-    IF v_op.ops_alerted_at IS NULL AND EXISTS (
+    -- Rework 7: a second-provider create is sent once and only looked for
+    -- after (no idempotency key there). Still unseen past the in-flight
+    -- ceiling: ops is told once (provider_refund_unconfirmed); checking goes on.
+    IF v_op.provider = 'paystack' AND NOT (v_op.detail ? 'unconfirmed_alerted_at')
+       AND EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
+                    WHERE overpayment_id = v_op.id AND state = 'creating' AND provider_refund_id IS NULL
+                      AND created_at <= p_now - public.issue_4522_flex_in_flight_ceiling()) THEN
+      UPDATE public.order_overpayments SET detail = detail || jsonb_build_object('unconfirmed_alerted_at', p_now)
+       WHERE id = v_op.id;
+      IF v_op.state <> 'needs_ops' THEN
+        PERFORM public.issue_4522_overpayment_to_needs_ops(v_op.id, 'provider_refund_unconfirmed', p_now);
+      END IF;
+      v_alert := true;
+      v_kind := 'provider_refund_unconfirmed';
+    ELSIF v_op.ops_alerted_at IS NULL AND EXISTS (
          SELECT 1 FROM public.order_overpayment_refund_attempts
           WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')
             AND created_at <= p_now - public.issue_4522_overpayment_pending_ceiling()) THEN
@@ -1053,17 +1130,68 @@ BEGIN
       PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_refund_pending_long',
         jsonb_build_object('overpayment_id', v_op.id));
       v_alert := true;
+      v_kind := 'refund_pending_too_long';
     END IF;
-    RETURN v_base || jsonb_build_object('action', 'verify', 'alertOps', v_alert,
-      'alertKind', CASE WHEN v_alert THEN 'refund_pending_too_long' END,
+    RETURN v_base || jsonb_build_object('action', 'verify', 'alertOps', v_alert, 'alertKind', v_kind,
       'attempts', (SELECT jsonb_agg(public.issue_4522_overpayment_attempt_json(a, p_now) ORDER BY a.attempt_no)
                      FROM public.order_overpayment_refund_attempts a
                     WHERE a.overpayment_id = v_op.id AND a.state IN ('creating', 'pending')));
   END IF;
   IF v_op.state = 'needs_ops' THEN
+    -- T7-2: an extra refund still pending is re-read on the charge (every 5
+    -- minutes), so ops can act once it ends even if its webhook is lost.
+    IF NOT COALESCE(p_reconciled, false) AND v_op.detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb THEN
+      UPDATE public.order_overpayments SET updated_at = p_now WHERE id = v_op.id;
+      RETURN v_base || jsonb_build_object('action', 'reconcile');
+    END IF;
     RETURN jsonb_build_object('ok', false, 'reason', 'needs_ops', 'needsOpsReason', v_op.needs_ops_reason);
   END IF;
+  -- T7-4: a total that counts extra refunds is trusted only after the
+  -- provider was asked again (one may have been reversed, its webhook lost).
+  IF v_remaining <= 0 AND NOT COALESCE(p_reconciled, false) AND v_op.provider_ref IS NOT NULL
+     AND public.issue_4522_overpayment_back_minor(v_op.id) <> v_returned THEN
+    RETURN v_base || jsonb_build_object('action', 'reconcile');
+  END IF;
   IF v_remaining <= 0 THEN
+    -- T7-1: an extra refund that returned the money instead of the recorded
+    -- one becomes one of its attempts (whole, within the amount), so the row,
+    -- the cancel refund and the payout count it exactly as a recorded refund.
+    FOR v_extra IN SELECT e FROM jsonb_array_elements(COALESCE(v_op.detail->'over_refunded', '[]'::jsonb)) e
+                    WHERE e->>'status' = 'succeeded' AND COALESCE(e->>'provider_refund_id', '') <> ''
+                      AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                                       WHERE a.overpayment_id = v_op.id AND a.provider_refund_id = e->>'provider_refund_id') LOOP
+      v_part := (v_extra->>'amount_minor')::bigint;
+      CONTINUE WHEN v_part > least(v_op.refund_minor - public.issue_4522_overpayment_committed_minor(v_op.id),
+                                   public.issue_4522_overpayment_max_refund_part());
+      SELECT COALESCE(max(attempt_no), 0) + 1 INTO v_attempt_no
+        FROM public.order_overpayment_refund_attempts WHERE overpayment_id = v_op.id;
+      INSERT INTO public.refunds (order_id, amount_cents, reason, status, currency,
+        stripe_payment_intent_id, stripe_charge_id, metadata, order_installment_id, buyer_refund_status)
+      VALUES (v_op.order_id, v_part::integer, 'Overpayment returned by an extra refund at the provider', 'pending',
+        v_op.currency, CASE WHEN v_op.provider = 'stripe' THEN v_row.stripe_payment_intent_id END,
+        CASE WHEN v_op.provider = 'stripe' THEN v_row.stripe_charge_id END,
+        jsonb_build_object('source', 'issue_4522_overpayment', 'overpayment_id', v_op.id, 'attempt_no', v_attempt_no,
+          'reason', v_op.reason, 'origin', 'provider_match', 'provider_refund_id', v_extra->>'provider_refund_id'),
+        v_op.installment_id, 'provider_pending')
+      RETURNING id INTO v_refund_id;
+      INSERT INTO public.order_overpayment_refund_attempts (overpayment_id, attempt_no, origin, amount_minor,
+        state, refund_id, provider_refund_id, created_at, updated_at)
+      VALUES (v_op.id, v_attempt_no, 'provider_match', v_part, 'pending', v_refund_id, v_extra->>'provider_refund_id',
+        p_now, p_now)
+      RETURNING id INTO v_att_id;
+      UPDATE public.order_overpayments
+         SET detail = jsonb_set(detail, '{over_refunded}', (
+               SELECT jsonb_agg(CASE WHEN x->>'provider_refund_id' = v_extra->>'provider_refund_id'
+                                     THEN x || jsonb_build_object('adopted_attempt_no', v_attempt_no) ELSE x END ORDER BY n)
+                 FROM jsonb_array_elements(detail->'over_refunded') WITH ORDINALITY y(x, n))),
+             refund_attempt_no = v_attempt_no, refund_id = v_refund_id
+       WHERE id = v_op.id;
+      PERFORM public.issue_4522_apply_overpayment_attempt_outcome(v_att_id, 'succeeded', v_extra->>'provider_refund_id',
+        NULL, p_now);
+    END LOOP;
+    IF (SELECT state FROM public.order_overpayments WHERE id = v_op.id) = 'refunded' THEN
+      RETURN jsonb_build_object('ok', true, 'done', true, 'state', 'refunded');
+    END IF;
     UPDATE public.order_overpayments
        SET state = 'refunded', resolved_at = p_now, updated_at = p_now, needs_ops_reason = NULL
      WHERE id = v_op.id;
@@ -1212,9 +1340,20 @@ BEGIN
                              THEN left(COALESCE(p_error, p_outcome), 300) ELSE last_error END,
            updated_at = p_now
      WHERE id = v_att.id;
-    UPDATE public.order_overpayments SET updated_at = p_now WHERE id = v_op.id AND state = 'refund_pending';
+    UPDATE public.order_overpayments SET updated_at = p_now
+     WHERE id = v_op.id AND (state = 'refund_pending'
+                             OR needs_ops_reason IN ('provider_refunded_more', 'provider_refund_unconfirmed'));
     RETURN jsonb_build_object('ok', true, 'changed', false, 'state', v_op.state, 'attemptNo', v_att.attempt_no,
       'attemptState', v_prev);
+  END IF;
+  -- Rework 7: the provider answered an unconfirmed refund: it is back with the
+  -- automatic lane (settled below as for any answer) and may alert ops again.
+  IF v_op.needs_ops_reason = 'provider_refund_unconfirmed' THEN
+    UPDATE public.order_overpayments
+       SET state = 'refund_pending', needs_ops_reason = NULL, ops_alerted_at = NULL,
+           detail = detail - 'unconfirmed_alerted_at', updated_at = p_now
+     WHERE id = v_op.id;
+    SELECT * INTO v_op FROM public.order_overpayments WHERE id = v_op.id;
   END IF;
 
   -- T4-1: a refund the provider has that was counted failed would take the
@@ -1554,6 +1693,9 @@ GRANT EXECUTE ON FUNCTION public.issue_4522_overpayment_refund_event(text, text,
 -- the ops alert names them). Refused while a refund is open at the provider.
 --   retry            — automatic refunding starts again (needs_ops or
 --                      refund_failed → held; the failure count restarts).
+--                      Rework 7: the ONLY way a second-provider overpayment
+--                      gets another create after an unanswered one (ops
+--                      checked the dashboard: provider_refund_unconfirmed).
 --   refunded_by_hand — ops returned the remaining money outside the lane
 --                      (p_provider_refund_id names that refund): recorded
 --                      as returned, in parts that fit a refund row.
@@ -1590,8 +1732,27 @@ BEGIN
   IF v_op.state IN ('refunded', 'applied') THEN
     RETURN jsonb_build_object('ok', true, 'done', true, 'state', v_op.state);
   END IF;
+  -- Rework 7: ops found no refund at the provider for a second-provider
+  -- refund it was told is unconfirmed: that attempt is closed as never
+  -- created, so the lane (which re-reads the charge's refunds first) may send
+  -- again. Only when every open attempt is such an unconfirmed one.
+  IF p_action = 'retry' AND v_op.state = 'needs_ops' AND v_op.provider = 'paystack'
+     AND v_op.detail ? 'unconfirmed_alerted_at'
+     AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
+                      WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')
+                        AND NOT (state = 'creating' AND provider_refund_id IS NULL
+                                 AND created_at <= p_now - public.issue_4522_flex_in_flight_ceiling())) THEN
+    FOR v_att_id IN SELECT id FROM public.order_overpayment_refund_attempts
+                     WHERE overpayment_id = v_op.id AND state = 'creating' ORDER BY attempt_no LOOP
+      PERFORM public.issue_4522_apply_overpayment_attempt_outcome(v_att_id, 'not_found', NULL,
+        'ops_retry: no refund at the provider', p_now);
+    END LOOP;
+  END IF;
   IF EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
-              WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')) THEN
+              WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending'))
+     -- T7-2: an extra refund still pending at the provider may yet complete.
+     OR EXISTS (SELECT 1 FROM public.order_overpayments
+                 WHERE id = v_op.id AND detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb) THEN
     RAISE EXCEPTION 'overpayment_refund_open_at_provider' USING ERRCODE = 'PT409';
   END IF;
   IF p_action = 'retry' THEN
@@ -1601,7 +1762,7 @@ BEGIN
     UPDATE public.order_overpayments
        SET state = 'held', needs_ops_reason = NULL, consecutive_failures = 0, next_attempt_at = NULL,
            ops_alerted_at = NULL, updated_at = p_now,
-           detail = detail || jsonb_build_object('ops_retry_at', p_now, 'ops_retry_by', p_actor)
+           detail = (detail - 'unconfirmed_alerted_at') || jsonb_build_object('ops_retry_at', p_now, 'ops_retry_by', p_actor)
      WHERE id = v_op.id;
     PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_ops_retry',
       jsonb_build_object('overpayment_id', v_op.id, 'actor', p_actor, 'note', left(COALESCE(p_note, ''), 300)));
