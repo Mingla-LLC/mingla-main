@@ -200,6 +200,26 @@ async function notifyFailure(
   const nextRetryAt = typeof resolved.next_retry_at === "string"
     ? resolved.next_retry_at
     : null;
+  // issue #4522 (D-7) — the missed payment was moved onto the later payments:
+  // nothing is owed on this row and the booking is not at risk. The buyer
+  // gets exactly one notice, the email the dispatcher renders for a
+  // rolled-over row ("Missed payment moved to later payments"): no pay link
+  // for a closed row and no "didn't go through" push.
+  if (resolved.rolled_over === true) {
+    await deps.dispatchBuyerEmail("installment_dunning", {
+      orderId: ctx.orderId,
+      installmentId: ctx.installmentId,
+      installmentOrdinal: ctx.ordinal,
+      failureReason: String(resolved.failure_reason ?? "card_declined"),
+      retryCount,
+      nextRetryAt,
+      provider: "paystack",
+      actionUrl: null,
+      actionLabel: null,
+    });
+    await notifyHostFailure(ctx, resolved, deps);
+    return;
+  }
   // Fresh pay link for the dunning email's button (the buyer can pay any way).
   const link = await sendInstallmentPayLink(supabase, {
     installmentId: ctx.installmentId,

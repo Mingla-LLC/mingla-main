@@ -34,7 +34,7 @@ import {
   installmentFeeCents,
   resolveInstallmentFeeRate,
 } from "./installments/installmentFeeRate.ts";
-import { rollOverMissedPayment } from "./installments/missedRollover.ts";
+import { orderHasPlanV2Terms, rollOverMissedPayment } from "./installments/missedRollover.ts";
 import { planV2SchemaAvailable } from "./installments/planV2Schema.ts";
 import { claimPaidInFullNotice } from "./installments/paidInFullNotice.ts";
 import { returnOrderOverpaymentsBestEffort } from "./installments/overpaymentLane.ts";
@@ -673,19 +673,54 @@ export async function handleInstallmentPaymentFailed(
     ? null
     : nextRetryAtAfterFailure(String(existingRow.due_at), nextRetryCount);
 
-  await supabase
-    .from("order_installments")
-    .update({
-      status: "failed",
-      stripe_payment_intent_id: piId,
-      failed_at: new Date().toISOString(),
-      failure_reason: failureReason,
-      retry_count: nextRetryCount,
-      next_retry_at: nextRetryAt,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", installmentId)
-    .in("status", ["scheduled", "failed"]);
+  // issue #4522 (D-7) — on a v2 order the cron (whose confirm threw) sees this
+  // same decline. Only the path whose "scheduled → failed" write lands counts
+  // it, moves it on or flags it, and emails the buyer: a row the cron already
+  // marked failed, or a write the cron won, ends here with an audit only.
+  // Legacy orders keep their behaviour exactly.
+  const planV2Order = planV2 &&
+    await orderHasPlanV2Terms(supabase, String(existingRow.order_id));
+  const failedPatch = {
+    status: "failed",
+    stripe_payment_intent_id: piId,
+    failed_at: new Date().toISOString(),
+    failure_reason: failureReason,
+    retry_count: nextRetryCount,
+    next_retry_at: nextRetryAt,
+    updated_at: new Date().toISOString(),
+  };
+  const counted = planV2Order && shouldIncrement
+    ? await supabase.from("order_installments").update(failedPatch)
+      .eq("id", installmentId).eq("status", "scheduled").select("id")
+    : null;
+  if (
+    planV2Order &&
+    (!shouldIncrement || !Array.isArray(counted?.data) || counted.data.length === 0)
+  ) {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: brandId,
+      event_id: null,
+      action: "tr3.installment_failed_webhook",
+      target_type: "order_installment",
+      target_id: installmentId,
+      after: {
+        ordinal: existingRow.ordinal,
+        retry_count: currentRetryCount,
+        failure_reason: failureReason,
+        already_counted: true,
+        at_risk_flipped: false,
+      },
+    });
+    return brandId;
+  }
+  if (!planV2Order) {
+    await supabase
+      .from("order_installments")
+      .update(failedPatch)
+      .eq("id", installmentId)
+      .in("status", ["scheduled", "failed"]);
+  }
 
   // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
   // its later rows; otherwise the booking is flagged at risk as before.

@@ -19,6 +19,7 @@ import { fakeSupabase } from "./issue_3645_fake_supabase.ts";
 import { createInstallmentPI } from "../createInstallmentPI.ts";
 import { resetPlanV2SchemaProbeForTests } from "../planV2Schema.ts";
 import { handleInstallmentPaymentFailed } from "../../installmentWebhookHandlers.ts";
+import { notifyPaystackInstallmentFailure } from "../chargePaystackInstallment.ts";
 
 const read = (path: string) =>
   Deno.readTextFile(new URL(path, import.meta.url));
@@ -213,12 +214,13 @@ type Row = Record<string, unknown>;
  * behaves like `issue_4522_missed_rollover` (a failed row at its last retry
  * with a later open row is superseded and its amount moves to that row).
  */
-function lifeWorld(opts: { planV2: boolean; laterRow?: boolean }) {
+function lifeWorld(opts: { planV2: boolean; laterRow?: boolean; v2Terms?: boolean }) {
   const tables: Record<string, Row[]> = {
     orders: [{
       id: "o1", event_id: "e1", stripe_customer_id_on_connected_account: "cus_1",
       saved_payment_method_id: "pm_1", buyer_user_id: null, buyer_email: "b@example.test",
       at_risk: false, cancelled_at: null,
+      ...(opts.v2Terms === true ? { payment_plan_terms: { v: 2, auto_adjust: true } } : {}),
     }],
     order_installments: [
       { id: "r2", order_id: "o1", ordinal: 2, amount_cents: 60_000, referral_share_minor: 0, currency: "USD",
@@ -413,4 +415,187 @@ Deno.test("E-1: a legacy (pre-#4522 schema) order keeps main's at-risk behaviour
   await handleInstallmentPaymentFailed(w.client as any, w.failedEvent as any);
   assertEquals(w.tables.orders[0].at_risk, true);
   resetPlanV2SchemaProbeForTests();
+});
+
+// ── issue #4522 (D-7): one buyer email per missed payment on a v2 order ──
+
+/** Every ticket-confirmation-dispatch call the code makes, in order. */
+async function withDispatchLog<T>(run: (sent: Row[]) => Promise<T>): Promise<T> {
+  const sent: Row[] = [];
+  const realFetch = globalThis.fetch;
+  const prevUrl = Deno.env.get("SUPABASE_URL");
+  const prevKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  Deno.env.set("SUPABASE_URL", "http://dispatch.test");
+  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "service-test");
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.endsWith("/functions/v1/ticket-confirmation-dispatch")) {
+      sent.push(JSON.parse(String(init?.body ?? "{}")));
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    return await run(sent);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevUrl === undefined) Deno.env.delete("SUPABASE_URL"); else Deno.env.set("SUPABASE_URL", prevUrl);
+    if (prevKey === undefined) Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+    else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", prevKey);
+  }
+}
+
+const dunningFor = (sent: Row[], id: string) =>
+  sent.filter((b) => b.kind === "installment_dunning" && b.installmentId === id);
+
+Deno.test("D-7: cron first, then payment_failed twice: one email for the rolled-over row, not at risk", async () => {
+  resetPlanV2SchemaProbeForTests();
+  const w = lifeWorld({ planV2: true, v2Terms: true });
+  await withDispatchLog(async (sent) => {
+    assertEquals((await cronCharge(w, "r2", true)).outcome, "failed");
+    // deno-lint-ignore no-explicit-any
+    await handleInstallmentPaymentFailed(w.client as any, w.failedEvent as any);
+    // deno-lint-ignore no-explicit-any
+    await handleInstallmentPaymentFailed(w.client as any, w.failedEvent as any);
+    assertEquals(w.row("r2").status, "superseded");
+    assertEquals(w.row("r3").amount_cents, 120_000);
+    assertEquals(w.tables.orders[0].at_risk, false);
+    assertEquals(dunningFor(sent, "r2").length, 1);
+  });
+  resetPlanV2SchemaProbeForTests();
+});
+
+// FAILS ON REVERT (this and the next): the cron and the webhook each sent a
+// dunning email for the same decline — 2 emails, both rendered "at risk" for a
+// rolled-over row (the dispatcher read retry_count 3 with no next retry).
+Deno.test("D-7: webhook first while the cron waits on its confirm: one email, sent by the webhook", async () => {
+  resetPlanV2SchemaProbeForTests();
+  const w = lifeWorld({ planV2: true, v2Terms: true });
+  await withDispatchLog(async (sent) => {
+    const declined = await cronCharge(w, "r2", true, async () => {
+      // deno-lint-ignore no-explicit-any
+      await handleInstallmentPaymentFailed(w.client as any, w.failedEvent as any);
+      assertEquals(w.row("r2").status, "superseded");
+      assertEquals(dunningFor(sent, "r2").length, 1);
+    });
+    assertEquals(declined.outcome, "failed");
+    // a duplicate delivery afterwards changes nothing
+    // deno-lint-ignore no-explicit-any
+    await handleInstallmentPaymentFailed(w.client as any, w.failedEvent as any);
+    assertEquals(w.tables.orders[0].at_risk, false);
+    assertEquals(w.row("r3").amount_cents, 120_000);
+    assertEquals(dunningFor(sent, "r2").length, 1);
+    const counted = w.tables.audit_log.filter((a) => (a.after as Row).already_counted === true);
+    assertEquals(counted.length, 1);
+  });
+  resetPlanV2SchemaProbeForTests();
+});
+
+Deno.test("D-7: a v2 booking truly at risk (no later row) gets the at-risk email exactly once", async () => {
+  resetPlanV2SchemaProbeForTests();
+  const w = lifeWorld({ planV2: true, v2Terms: true, laterRow: false });
+  await withDispatchLog(async (sent) => {
+    assertEquals((await cronCharge(w, "r2", true)).outcome, "at_risk_flagged");
+    // deno-lint-ignore no-explicit-any
+    await handleInstallmentPaymentFailed(w.client as any, w.failedEvent as any);
+    assertEquals(w.tables.orders[0].at_risk, true);
+    assertEquals(w.row("r2").status, "failed");
+    assertEquals(w.row("r2").retry_count, 3);
+    assertEquals(dunningFor(sent, "r2").length, 1);
+  });
+  resetPlanV2SchemaProbeForTests();
+});
+
+Deno.test("D-7: an older-plan order keeps main's behaviour exactly (cron and webhook each email)", async () => {
+  resetPlanV2SchemaProbeForTests();
+  const w = lifeWorld({ planV2: true, laterRow: false });
+  await withDispatchLog(async (sent) => {
+    assertEquals((await cronCharge(w, "r2", true)).outcome, "at_risk_flagged");
+    // deno-lint-ignore no-explicit-any
+    await handleInstallmentPaymentFailed(w.client as any, w.failedEvent as any);
+    assertEquals(w.tables.orders[0].at_risk, true);
+    assertEquals(dunningFor(sent, "r2").length, 2);
+  });
+  resetPlanV2SchemaProbeForTests();
+});
+
+Deno.test("D-7: a rolled-over row's dunning is the 'moved to later payments' notice, never at risk", async () => {
+  const source = await read("../../../ticket-confirmation-dispatch/index.ts");
+  const start = source.indexOf("async function handleInstallmentDunning(");
+  const superseded = source.indexOf('if (inst.status === "superseded") {', start);
+  const render = source.indexOf("renderInstallmentDunningEmail({", start);
+  assert(start > 0 && superseded > start && render > superseded,
+    "a superseded row is routed before the dunning email is rendered");
+  assertStringIncludes(source.slice(superseded, render),
+    "return await handleMissedRolloverNotice(supabase, orderId, order, inst);");
+  const { renderInstallmentMissedRolloverEmail } = await import("../../email/installmentMissedRolloverEmail.ts");
+  const notice = renderInstallmentMissedRolloverEmail({
+    buyerName: "Ada",
+    tripTitle: "Lisbon",
+    brandName: "Brand",
+    ordinal: 2,
+    amountCents: 60_000,
+    currency: "USD",
+    nextPayment: { amountCents: 120_000, dueAt: "2027-02-10T14:00:00Z" },
+    timezone: "America/New_York",
+    balanceUrl: null,
+  });
+  assertEquals(notice.subject, "Payment 2 for Lisbon moved to your later payments");
+  assertStringIncludes(notice.text, "We couldn't collect $600.00 for payment 2 of Lisbon");
+  assertStringIncludes(notice.text, "Your next payment is $1,200.00, due on");
+  for (const part of [notice.subject, notice.html, notice.text]) {
+    assertEquals(/at risk/i.test(part), false);
+  }
+});
+
+// FAILS ON REVERT: the second provider sent its dunning email with a fresh pay
+// link for a closed row and a "didn't go through" push — two notices, and the
+// email rendered "at risk".
+Deno.test("D-7 second provider: a rolled-over failure sends one email, no pay link, no push", async () => {
+  const emails: Array<{ kind: string; payload: Record<string, unknown> }> = [];
+  const pushes: unknown[] = [];
+  const hosts: unknown[] = [];
+  const fake = fakeSupabase({
+    table: (op) => op.table === "order_installments" && op.kind === "select"
+      ? {
+        data: {
+          id: "r2", order_id: "o1", ordinal: 2, currency: "NGN", buyer_total_cents: 30_600_000,
+          amount_cents: 30_000_000, planned_application_fee_cents: 0, referral_share_minor: 0,
+          orders: { id: "o1", event_id: "e1", buyer_user_id: "u1", buyer_name: "Ada Buyer",
+            events: { id: "e1", title: "Lagos", brand_id: "b1",
+              brands: { id: "b1", name: "Brand", paystack_subaccount_code: null, payout_hold_cutover_at: null } } },
+        },
+        error: null,
+      }
+      : { data: null, error: null },
+    rpc: () => ({ data: null, error: { message: "no pay link for a closed row" } }),
+  });
+  const deps = {
+    dispatchBuyerEmail: (kind: string, payload: Record<string, unknown>) => {
+      emails.push({ kind, payload });
+      return Promise.resolve(true);
+    },
+    sendBuyerPush: (p: unknown) => {
+      pushes.push(p);
+      return Promise.resolve(true);
+    },
+    notifyHost: (p: unknown) => {
+      hosts.push(p);
+      return Promise.resolve();
+    },
+  };
+  await notifyPaystackInstallmentFailure(fake.client as never, "r2",
+    { outcome: "failed", retry_count: 3, next_retry_at: null, rolled_over: true, failure_reason: "card_declined" },
+    deps as never);
+  assertEquals(emails.map((e) => e.kind), ["installment_dunning"]);
+  assertEquals(emails[0].payload.installmentId, "r2");
+  assertEquals(emails[0].payload.actionUrl, null);
+  assertEquals(pushes.length, 0);
+  assertEquals(fake.rpcCalls.length, 0);
+  // a failure that did not roll over is unchanged: email + push
+  await notifyPaystackInstallmentFailure(fake.client as never, "r2",
+    { outcome: "failed", retry_count: 1, next_retry_at: "2027-01-16T08:00:00Z", failure_reason: "card_declined" },
+    deps as never);
+  assertEquals(emails.length, 2);
+  assertEquals(pushes.length, 1);
 });

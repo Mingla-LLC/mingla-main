@@ -15,7 +15,7 @@ import {
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
 import { installmentKeyVersionSuffix } from "./installmentIdempotencyKey.ts";
-import { rollOverMissedPayment } from "./missedRollover.ts";
+import { orderHasPlanV2Terms, rollOverMissedPayment } from "./missedRollover.ts";
 import { planV2SchemaAvailable } from "./planV2Schema.ts";
 import { alertUnchargeableRemainder } from "./installmentOpsAlert.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
@@ -127,13 +127,16 @@ async function fireDunningEmail(
   failureReason: string,
 ): Promise<void> {
   try {
-    if (SUPABASE_URL === undefined || SUPABASE_SERVICE_ROLE_KEY === undefined) {
+    // Read when sent (as the webhook does), so a test can observe the send.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl === undefined || serviceKey === undefined) {
       return;
     }
-    await fetch(`${SUPABASE_URL}/functions/v1/ticket-confirmation-dispatch`, {
+    await fetch(`${supabaseUrl}/functions/v1/ticket-confirmation-dispatch`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        authorization: `Bearer ${serviceKey}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -587,7 +590,11 @@ export async function createInstallmentPI(
       ? null
       : nextRetryAtAfterFailure(installment.due_at, nextRetryCount);
 
-    await supabase
+    // issue #4522 (D-7) — on a v2 order the payment_failed webhook sees this
+    // same decline; only the path whose "scheduled → failed" write lands
+    // counts it, moves it on or flags it, and emails the buyer (once).
+    const planV2Order = markInFlight && await orderHasPlanV2Terms(supabase, order.id);
+    const failedWrite = supabase
       .from("order_installments")
       .update({
         status: "failed",
@@ -599,6 +606,28 @@ export async function createInstallmentPI(
       })
       .eq("id", installment.id)
       .eq("status", "scheduled");
+    if (planV2Order) {
+      const { data: counted } = await failedWrite.select("id");
+      if (!Array.isArray(counted) || counted.length === 0) {
+        await writeAudit(supabase, {
+          user_id: null,
+          brand_id: brand.id,
+          event_id: order.event_id,
+          action: "tr3.installment_pi_failed",
+          target_type: "order_installment",
+          target_id: installment.id,
+          after: {
+            ordinal: installment.ordinal,
+            failure_reason: reason,
+            already_counted: true,
+            at_risk_flipped: false,
+          },
+        });
+        return { ok: false, error: reason, outcome: "failed", reason };
+      }
+    } else {
+      await failedWrite;
+    }
 
     // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
     // its later rows; otherwise the booking is flagged at risk as before.

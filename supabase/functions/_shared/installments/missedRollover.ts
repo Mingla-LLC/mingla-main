@@ -43,3 +43,30 @@ export async function rollOverMissedPayment(
   }
   return (row as { status?: string } | null)?.status === "superseded";
 }
+
+/**
+ * issue #4522 (D-7) — whether a Stripe failure path should act on a decline
+ * for a v2 order. The cron (its confirm threw) and the payment_failed webhook
+ * both see the same decline; on a v2 order exactly one of them counts it,
+ * moves it on or flags it, and sends the one buyer email: the one whose
+ * "scheduled → failed" write landed. Asked only with the #4522 schema; any
+ * read error answers false (the caller then behaves exactly as main).
+ */
+export async function orderHasPlanV2Terms(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("payment_plan_terms")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error !== null || data === null) return false;
+    const terms = (data as { payment_plan_terms?: unknown }).payment_plan_terms;
+    return typeof terms === "object" && terms !== null &&
+      (terms as Record<string, unknown>).v === 2;
+  } catch {
+    return false;
+  }
+}
