@@ -63,6 +63,8 @@
 -- owner trigger, the deposit's part on a booking, a check's line funding, the offer part of a payment
 -- refund, the covered-check close) and re-emits the refund guard, finalize, the Till offer payment
 -- record, the money day and start session (same signatures); all internal (service role only).
+-- TEST-MOD-APPROVED #4490 (08-O4 fix 3): 20280809610490 adds the deposit excess refund (internal) and
+-- re-emits the refund guard, finalize and the sale extras (same signatures).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -548,6 +550,8 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_line_funding(uuid)', 'internal'),
   ('issue_4490_till_refund_offer_parts(uuid)', 'internal'),
   ('issue_4490_till_close_covered(uuid,uuid,integer)', 'internal'),
+  -- 08-O4 fix 3 (20280809610490): the deposit excess refund, internal.
+  ('issue_4490_till_refund_deposit_excess(uuid,uuid)', 'internal'),
   -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),

@@ -840,8 +840,10 @@ BEGIN
            WHERE l.sale_id = v_sale) = 'paid'
       AND (public.t4490x_res(public.t4490x_id('x2_res'))).deposit_applied_sale_id = v_sale,
     'X2-2 Close check: the check is paid with no payment row, its round is paid, the deposit is used (credit committed)');
-  PERFORM public.t4490x_ok(public.t4490x_delta(b0, public.t4490x_day()) = '{"online":0,"atVenue":0,"tableDeposits":0,"refunded":0,"paidIn":0}'::jsonb,
-    'X2-2c today''s takings for it are 0 (no money moved) ' || public.t4490x_delta(b0, public.t4490x_day())::text);
+  -- TEST-MOD-APPROVED #4490 (08-O4 fix 3, spec 08 §15): the 9,000.00 the bill does not need now goes
+  -- back to the guest as a deposit refund on its day; takings stay 0.
+  PERFORM public.t4490x_ok(public.t4490x_delta(b0, public.t4490x_day()) = '{"online":0,"atVenue":0,"tableDeposits":0,"refunded":900000,"paidIn":-900000}'::jsonb,
+    'X2-2c today''s takings for it are 0 (no money moved at the Till); the unused 9,000.00 of the deposit is refunded ' || public.t4490x_delta(b0, public.t4490x_day())::text);
   -- The same tap again (a lost answer, or a second device that saw the old
   -- version) answers the close; nothing else happens.
   v := public.issue_4490_till_close_covered(v_sale, '44900608-0000-4000-8000-000000000002', v_version);
@@ -858,7 +860,11 @@ SELECT public.t4490x_as('44900608-0000-4000-8000-000000000003');
 SELECT public.t4490x_expect(format($q$SELECT public.biz_venue_cancel_paid_reservation(%L, 'x')$q$, public.t4490x_id('x2_res')),
   'P0001', NULL, 'X2-4b ... and the booking''s deposit is not refunded (seated, used on the bill)');
 SELECT public.t4490x_reset();
-SELECT public.t4490x_ok(public.t4490x_refunds(public.t4490x_id('x2_res')) = 0, 'X2-4c no refund row for that deposit');
+-- TEST-MOD-APPROVED #4490 (08-O4 fix 3, spec 08 §15): one row, the excess, and nothing more.
+SELECT public.t4490x_ok(public.t4490x_refunds(public.t4490x_id('x2_res')) = 1
+    AND (SELECT refund_kind || ':' || buyer_refund_requested_cents FROM public.source_refunds
+         WHERE subject_id = public.t4490x_id('x2_res')) = 'venue_deposit_excess:900000',
+  'X2-4c only the unused 9,000.00 of that deposit was refunded (one row); the used part never');
 
 -- Never a write-off: anything due, or nothing bought, is refused.
 SELECT public.t4490x_service();

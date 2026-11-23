@@ -191,6 +191,8 @@ export interface TillSale {
   /** 08-O4 (T12): the booking's paid deposit on this check, and how much of it the bill uses. */
   creditMinor?: number;
   creditUsedMinor?: number;
+  /** 08-O4 fix 3 (spec 08 §15): the part of the deposit refunded to the guest when the check finished (null: none). */
+  depositRefundMinor?: number | null;
   reservation?: { id: string; name: string | null; partySize: number; reservedFor: string | null; source: string | null } | null;
   /** The table's minimum spend (null when there is none). */
   minimumSpend?: { minimumMinor: number; spentMinor: number; shortMinor: number } | null;
@@ -416,6 +418,7 @@ export function mapTillSale(v: unknown): TillSale {
     })(),
     creditMinor: num(s.creditMinor),
     creditUsedMinor: num(s.creditUsedMinor),
+    depositRefundMinor: numOrNull(s.depositRefundMinor),
     reservation: s.reservation !== null && typeof s.reservation === "object"
       ? (() => {
         const r = obj(s.reservation);

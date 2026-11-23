@@ -253,6 +253,10 @@ export const TILL_COPY = {
   // #4490 08-O4 fix 1 (O4-T2): the deposit pays the whole bill.
   closeCheck: "Close check",
   checkClosed: "Check closed. The deposit paid for it.",
+  // #4490 08-O4 fix 3 (spec 08 §15): a deposit larger than the bill.
+  checkClosedRefund: (amount: string): string => `Check closed. ${amount} of the deposit goes back to the guest.`,
+  depositExcessOnClose: (amount: string): string => `${amount} of the deposit goes back to the guest when the check is finished.`,
+  depositUsedRefunded: (used: string, refunded: string): string => `Deposit used ${used} · ${refunded} refunded to the guest`,
   endAndPay: "End and pay",
   sessionEnds: (time: string): string => `Ends ${time}`,
 } as const;

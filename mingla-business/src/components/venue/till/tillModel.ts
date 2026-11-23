@@ -292,6 +292,15 @@ export function coveredByCredit(sale: TillSale | null): boolean {
     && sale.paidMinor === 0 && (sale.creditMinor ?? 0) > 0 && sale.subtotalMinor + sale.serviceChargeMinor > 0;
 }
 
+/**
+ * #4490 08-O4 fix 3 (spec 08 §15): the part of the deposit the bill does not
+ * need (it goes back to the guest when the check is finished). Display only.
+ */
+export function depositExcessMinor(sale: TillSale | null): number {
+  if (sale === null) return 0;
+  return Math.max((sale.creditMinor ?? 0) - (sale.creditUsedMinor ?? 0), 0);
+}
+
 /** What Pay can take now: the server's remaining amount. */
 export function amountDue(sale: TillSale | null): number | null {
   if (sale === null) return null;

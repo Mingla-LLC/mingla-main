@@ -111,6 +111,7 @@ import {
   serverName,
   setDraftQuantity,
   coveredByCredit,
+  depositExcessMinor,
   totalsReady,
   type BasketRow,
   type DraftLine,
@@ -708,6 +709,15 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         {sale !== null && (sale.creditUsedMinor ?? 0) > 0 ? (
           <Row label={TILL_COPY.depositPaidOnline} value={ready ? money(-(sale.creditUsedMinor ?? 0)) : "--"} />
         ) : null}
+        {/* 08-O4 fix 3 (spec 08 §15): what of a larger deposit goes back to the guest. */}
+        {ready && sale !== null && sale.state === "open" && depositExcessMinor(sale) > 0 ? (
+          <Text style={styles.muted} testID="till-deposit-excess">{TILL_COPY.depositExcessOnClose(money(depositExcessMinor(sale)))}</Text>
+        ) : null}
+        {sale !== null && sale.state !== "open" && (sale.depositRefundMinor ?? 0) > 0 ? (
+          <Text style={styles.muted} testID="till-deposit-refunded">
+            {TILL_COPY.depositUsedRefunded(money(sale.creditUsedMinor ?? 0), money(sale.depositRefundMinor ?? 0))}
+          </Text>
+        ) : null}
         {sale !== null && sale.minimumSpend != null ? (
           <Text style={sale.minimumSpend.shortMinor > 0 ? styles.warnText : styles.muted} testID="till-min-spend">
             {sale.minimumSpend.shortMinor > 0
@@ -744,13 +754,15 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
             if (priced === null) return;
             if (coveredByCredit(priced)) {
               // No money moves: the server closes it with no payment (version-checked).
+              let closed: TillSale;
               try {
-                await actions.closeCovered.mutateAsync({ saleId: priced.id, expectedVersion: priced.version });
+                closed = await actions.closeCovered.mutateAsync({ saleId: priced.id, expectedVersion: priced.version });
               } catch (err) {
                 fail(err);
                 return;
               }
-              setToast({ kind: "success", message: TILL_COPY.checkClosed });
+              const refunded = closed.depositRefundMinor ?? 0;
+              setToast({ kind: "success", message: refunded > 0 ? TILL_COPY.checkClosedRefund(money(refunded)) : TILL_COPY.checkClosed });
               setBasketSheet(false);
               newSale();
               return;
