@@ -5,10 +5,10 @@ import { Card, CardTitle, Chip, Hint, Segmented, SectionHead, Skeleton, Toggle, 
 import { WebsiteIcon } from "../WebsiteIcon";
 import { PhotoChooser } from "../PhotoField";
 import { useFontSpecimens } from "../fontPreview";
-import { useBrandSiteLook, useSaveBrandSiteLook } from "../../../../hooks/useBrandSite";
+import { useBrandSiteLook, useSaveBrandSiteLogo, useSaveBrandSiteLook } from "../../../../hooks/useBrandSite";
 import { useBrand, useUpdateBrand } from "../../../../hooks/useBrands";
 import { joinBrandDescription } from "../../../../services/brandMapping";
-import { useFontSearch, useSetSiteCover, useSiteCover } from "../../../../sites/contentApi";
+import { useFontSearch, useMediaLibrary, useSetSiteCover, useSiteCover } from "../../../../sites/contentApi";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 import { useQueryClient } from "@tanstack/react-query";
@@ -224,6 +224,7 @@ export function DesignSection(): React.ReactElement {
       <DesignCard design={design} onChoose={chooseDesign} disabled={readOnly} />
       <DesignOptionsCard design={design} options={currentOptions} onOptions={setDesignOptions} disabled={readOnly} />
       <CoverCard disabled={readOnly} />
+      <LogoCard brandId={brandId} siteId={siteId} logoMediaId={stored.logoMediaId} revision={stored.revision} disabled={readOnly} />
       <ColoursCard
         design={design}
         resolved={resolved}
@@ -376,6 +377,56 @@ export function CoverCard({ disabled }: { disabled: boolean }): React.ReactEleme
           setChoosing(null);
           if (kind === "video") apply({ videoMediaId: picked.id }, "Cover video saved to your draft.");
           else apply({ photoMediaId: picked.id }, data?.available === false ? "Cover added to the top of your home page." : "Cover photo saved to your draft.");
+        }}
+      />
+    </Card>
+  );
+}
+
+/**
+ * #4572 item 16 — the site's logo: one of its photos in the header, or the
+ * site's name when there is none. Saved to the draft; the preview reads it again.
+ */
+export function LogoCard({ brandId, siteId, logoMediaId, revision, disabled }: {
+  brandId: string;
+  siteId: string | null;
+  logoMediaId: string | null;
+  revision: string;
+  disabled: boolean;
+}): React.ReactElement {
+  const ctx = useWebsite();
+  const save = useSaveBrandSiteLogo(brandId, siteId);
+  const library = useMediaLibrary(siteId, logoMediaId !== null);
+  const [choosing, setChoosing] = useState(false);
+  const current = logoMediaId ? library.data?.find((item) => item.id === logoMediaId) ?? null : null;
+  const apply = (next: string | null) => {
+    save.mutate({ revision, logoMediaId: next }, {
+      onSuccess: () => ctx.toast(next ? "Logo saved to your draft." : "Logo removed. Your header shows your site’s name.", "success"),
+      onError: (error) => ctx.toast(error instanceof BrandSitesError ? error.message : "Your logo didn’t save. Try again.", "error"),
+    });
+  };
+  return (
+    <Card testID="design-logo">
+      <CardTitle>Logo</CardTitle>
+      <Hint style={styles.cardHint}>Shown in your website’s header. Without one, the header shows your site’s name. Check it on light and dark parts of the preview.</Hint>
+      <View style={styles.coverRow}>
+        <View style={[styles.coverSlot, styles.logoSlot]} testID={logoMediaId ? "design-logo-set" : "design-logo-none"}>
+          {current?.thumb_url ? <Image source={{ uri: current.thumb_url }} style={StyleSheet.absoluteFill} resizeMode="contain" accessibilityLabel="Your logo" /> : null}
+          {logoMediaId ? null : <><WebsiteIcon name="image" size={24} color={ui.t3} /><Text style={styles.coverEmpty}>No logo · your site’s name is shown</Text></>}
+        </View>
+        <View style={styles.coverActions}>
+          <WButton label={logoMediaId ? "Replace logo" : "Choose a logo"} icon="image" size="sm" variant={logoMediaId ? "secondary" : "primary"} onPress={() => setChoosing(true)} disabled={disabled || save.isPending} testID="logo-choose" />
+          {logoMediaId ? (
+            <WButton label="Remove logo" variant="ghost" size="sm" onPress={() => apply(null)} disabled={disabled} loading={save.isPending} testID="logo-remove" />
+          ) : null}
+        </View>
+      </View>
+      <PhotoChooser
+        visible={choosing}
+        onClose={() => setChoosing(false)}
+        onPick={(picked) => {
+          setChoosing(false);
+          apply(picked.id);
         }}
       />
     </Card>
@@ -773,6 +824,7 @@ const styles = StyleSheet.create({
   coverChipText: { color: color.text1, fontSize: 12, fontWeight: "600" },
   coverEmpty: { color: ui.t3, fontSize: 13 },
   coverActions: { minWidth: 200, gap: 8 },
+  logoSlot: { minHeight: 96, justifyContent: "center", alignItems: "center" },
   groupName: { marginTop: 16, marginBottom: 4, fontSize: 12, fontWeight: "600", color: ui.t3 },
   swatchRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
   swatch: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: color.lineStrong, overflow: "hidden" },

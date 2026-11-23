@@ -229,9 +229,11 @@ export function useWorkspace(input: {
         // #4572 item 11 — typed words are never wiped: they stay on screen,
         // marked "Not saved", with Try again (also after a teammate's change).
         if (job.kind === "edit") keepUnsaved(job.pageId, job.sectionId, job.edits, reason);
-        if (kind === "refused") {
-          // The draft did not move: only this job's own change is undone (a
-          // typing job keeps its words above); the rest of the queue goes on.
+        // The draft did not move: the rest of the queue goes on. A typing job keeps
+        // its words above; any other change is taken off the screen. With nothing
+        // else waiting that is the page as it was before (even when the page can't
+        // be read again); otherwise the page is read again.
+        if (kind === "refused" && (job.kind === "edit" || (writerRef.current?.pending() ?? 0) > 0)) {
           if (job.kind !== "edit") void client.invalidateQueries({ queryKey: sectionsKey(job.pageId) });
           live.current.notify({ message: `${reason} (${job.label} wasn’t saved.)`, kind: "error" });
           return;
@@ -502,14 +504,17 @@ export function useWorkspace(input: {
   // address; for any other page the frame would be "not found", with nothing to click.
   const pagePreviewable = page ? previewablePage(page) : false;
   const frameUrl = grant.data && page && pagePreviewable ? previewFrameSource(grant.data.preview_url, siteId, page.path ?? "", origin) : null;
-  const previewState: LoadState = grant.data ? "ready" : grant.isError ? "error" : "loading";
+  // #4572 item 1 — past the two automatic refreshes the stage shows its error card with Try again.
+  const previewRefresh = controller.previewRefresh;
+  const previewState: LoadState = previewRefresh.phase === "failed" ? "error" : grant.data ? "ready" : grant.isError ? "error" : "loading";
 
   const retry = useCallback(() => {
     void workspace.refetch();
     void sectionsQuery.refetch();
-    void grant.refetch();
+    // A fresh grant and a fresh refresh budget.
+    previewRefresh.retry();
     void review.refetch();
-  }, [grant, review, sectionsQuery, workspace]);
+  }, [previewRefresh, review, sectionsQuery, workspace]);
 
   return {
     siteId,
@@ -577,6 +582,7 @@ export function useWorkspace(input: {
     /** False when the page on screen is off (or has no address): there is no draft page to show for it. */
     pagePreviewable,
     previewState,
+    previewRefresh,
     retry,
     notify,
   };

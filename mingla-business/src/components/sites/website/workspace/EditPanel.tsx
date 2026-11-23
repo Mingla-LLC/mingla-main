@@ -5,7 +5,7 @@ import { Sheet } from "../../../ui/Sheet";
 import { Banner, Chip, Field, MiniButton, Skeleton, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
 import { PhotoChooser } from "../PhotoField";
-import { useSectionCatalog, type SectionField, type WorkspacePage, type WorkspaceSection } from "../../../../sites/contentApi";
+import { offeredSections, useSectionCatalog, type SectionField, type WorkspacePage, type WorkspaceSection } from "../../../../sites/contentApi";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { markByOf, markLabel } from "../../../../sites/previewBridge";
 import { addRowBlocked, feedNote, moveBlocked, removeBlocked, removeRowBlocked, splitRows } from "../../../../sites/sectionEdits";
@@ -360,7 +360,8 @@ function SectionEditor({ ws, section, onAskAri, madeByTeam }: { ws: Workspace; s
 }
 
 function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boolean; onClose: () => void }): React.ReactElement {
-  const catalog = useSectionCatalog(ws.siteId, visible);
+  const catalog = useSectionCatalog(ws.siteId, ws.page?.id ?? null, visible);
+  const offered = catalog.data ? offeredSections(catalog.data, ws.sections) : null;
   const after = ws.selected ?? ws.sections[ws.sections.length - 1] ?? null;
   // A section that starts from a photo: choose the photo, then it is added.
   const [photoFor, setPhotoFor] = useState<{ type: string; label: string } | null>(null);
@@ -376,8 +377,8 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
               <WButton label="Try again" size="sm" onPress={() => { void catalog.refetch(); }} />
             </Banner>
           ) : null}
-          {catalog.data && catalog.data.length === 0 ? <Text style={parts.body}>This design has no more sections to add. Ask Ari or the Mingla team for something custom.</Text> : null}
-          {(catalog.data ?? []).map((entry) => (
+          {offered && offered.types.length === 0 ? <Text style={parts.body}>This design has no more sections to add. Ask Ari or the Mingla team for something custom.</Text> : null}
+          {(offered?.types ?? []).map((entry) => (
             <Pressable
               key={entry.type}
               onPress={() => {
@@ -398,6 +399,7 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
               <WebsiteIcon name={entry.needs_photo ? "image" : "plus"} size={18} color={ui.t1} />
             </Pressable>
           ))}
+          {offered?.coverNote ? <Text style={parts.small} testID="add-section-cover-note">{offered.coverNote}</Text> : null}
           <WButton label="Cancel" variant="ghost" onPress={onClose} testID="add-section-cancel" />
         </View>
       </Sheet>
@@ -407,7 +409,8 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
         onPick={(picked) => {
           const wanted = photoFor;
           setPhotoFor(null);
-          if (wanted) ws.add(wanted.type, wanted.label, after?.id ?? null, picked.id);
+          // A cover only ever goes first on Home (it replaces the colour panel there).
+          if (wanted) ws.add(wanted.type, wanted.label, wanted.type === "hero" ? null : after?.id ?? null, picked.id);
         }}
       />
     </>

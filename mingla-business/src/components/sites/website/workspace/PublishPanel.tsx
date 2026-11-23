@@ -9,9 +9,8 @@ import { Banner, CheckCircle, Chip, Spinner, WButton, ui } from "../ui";
 import { CHECK_COPY, failureReason, publishStep, STEPS } from "../sections/PublishSection";
 import { sectionName } from "../sections/DraftReviewCard";
 import { useDesignChecks, useDraftChanges, type ReviewStatus } from "../../../../sites/contentApi";
-import { useQuery } from "@tanstack/react-query";
-import { BrandSitesError, getBrandSitePublishingPaused } from "../../../../services/brandSitesService";
-import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
+import { BrandSitesError } from "../../../../services/brandSitesService";
+import { usePublishingPaused } from "../../../../sites/usePublishingPaused";
 import { publishGate, PUBLISH_PROMISE } from "../../../../sites/workspaceStatus";
 import type { Workspace } from "./useWorkspace";
 import { IconButton, parts } from "./parts";
@@ -88,13 +87,8 @@ export function PublishPanel({ ws, visible, onClose, unreadablePairs, onOpenDesi
   const unread = Math.max(ws.unread, rows.length);
 
   // #4572 item 15 — the server's own first-publish readiness (one owner, Core).
-  const paused = useQuery({
-    queryKey: brandSiteKeys.siteData(siteId, "publishing-paused"),
-    queryFn: () => getBrandSitePublishingPaused(siteId as string),
-    enabled: visible && firstPublish && typeof siteId === "string",
-    staleTime: 30_000,
-  });
-  const publishingPaused = firstPublish && paused.data === true;
+  const paused = usePublishingPaused(siteId, firstPublish, visible);
+  const publishingPaused = paused.paused;
   const gate = publishGate({
     canPublish: controller.capabilities.canPublish,
     publishingPaused,

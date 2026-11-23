@@ -653,6 +653,8 @@ export interface BrandSiteLook {
   fonts: unknown;
   /** #4575 — Grid's cover and photos options (empty when none are set). */
   designOptions: DesignOptions;
+  /** #4572 item 16 — the site's logo (one of its own READY photos), or null when the header shows the name. */
+  logoMediaId: string | null;
   revision: string;
 }
 
@@ -672,8 +674,31 @@ export async function getBrandSiteLook(input: { brandId: string; siteId: string 
     tokens: settings.tokens ?? null,
     fonts: settings.fonts ?? null,
     designOptions: safeDesignOptions(settings.design_options),
+    logoMediaId: relationIdOf(settings.logo),
     revision: settings.updatedAt,
   };
+}
+
+function relationIdOf(value: unknown): string | null {
+  if (typeof value === "string" && value) return value;
+  if (value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string") return (value as { id: string }).id;
+  return null;
+}
+
+/** #4572 item 16 — the site's logo on the draft: one of its photos, or null to show the site's name (never published here). */
+export async function saveBrandSiteLogo(input: { brandId: string; siteId: string; revision: string; logoMediaId: string | null }): Promise<{ revision: string }> {
+  const data = await invoke<{ revision?: unknown }>(`/v1/sites/${input.siteId}/ari`, "POST", {
+    operation_id: operationId(),
+    action: "propose_site_settings_update",
+    brand_id: input.brandId,
+    args: {
+      brand_id: input.brandId,
+      site_id: input.siteId,
+      expected_revision: input.revision,
+      changes: { logo: input.logoMediaId },
+    },
+  });
+  return { revision: typeof data?.revision === "string" ? data.revision : input.revision };
 }
 
 /** #2829 W3 — saves the owner's exact colours and fonts to the draft (never published here). */

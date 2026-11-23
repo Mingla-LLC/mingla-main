@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } 
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { color, scrim } from "../../../../constants/designSystem";
 import { previewDimensions, PREVIEW_DEVICE_LABELS } from "../../../../sites/previewDevice";
+import { usePreviewRefusalListener } from "../../../../sites/previewRefusalListener";
 import { ariCardPosition, messageFromFrame, scaleRect, sectionViewportRect, stageFrame, viewportRect } from "../../../../sites/previewBridge";
 import { NO_PICK_LINE, STALE_LINE, usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
 import type { LivePreviewProps } from "./LivePreview.types";
@@ -48,6 +49,9 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
     onReady,
   });
   useImperativeHandle(ref, () => preview.commands, [preview.commands]);
+
+  // #4572 item 1 — a refusal page in one of this preview's own frames.
+  usePreviewRefusalListener(() => [...frames.current.values()].map((node) => node.contentWindow), props.onStale, props.onFailed);
 
   const handlers = useRef(preview);
   handlers.current = preview;

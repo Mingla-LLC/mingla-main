@@ -22,6 +22,9 @@ export const PREVIEW_MARKS = "mingla:preview-marks";
 export const PREVIEW_SCROLL_TO = "mingla:preview-scroll-to";
 export const PREVIEW_TEXT = "mingla:preview-text";
 export const PREVIEW_RESTORE_SCROLL = "mingla:preview-restore-scroll";
+/** #4572 item 1 — the frame's page says the grant is for an older draft (refresh it), or it couldn't load. */
+export const PREVIEW_STALE = "mingla:preview-stale";
+export const PREVIEW_FAILED = "mingla:preview-failed";
 
 export type FrameSection = { id: string; type: string | null; top: number; height: number };
 export type FrameRect = { top: number; left: number; width: number; height: number };

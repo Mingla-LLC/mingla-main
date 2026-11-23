@@ -40,7 +40,7 @@ describe("#4575 safeDesignOptions / designOptionsPayload", () => {
 describe("#4575 the look read and the Website design save (propose_site_settings_update)", () => {
   it("reads the stored options", async () => {
     mockInvoke.mockResolvedValueOnce({ data: { ok: true, data: { settings: { design: "grid", tokens: {}, fonts: {}, design_options: { cover: "full", photos: null }, updatedAt: "r1" } } }, error: null });
-    expect(await getBrandSiteLook({ brandId: "b", siteId: "s" })).toEqual({ design: "grid", tokens: {}, fonts: {}, designOptions: { cover: "full" }, revision: "r1" });
+    expect(await getBrandSiteLook({ brandId: "b", siteId: "s" })).toEqual({ design: "grid", tokens: {}, fonts: {}, designOptions: { cover: "full" }, logoMediaId: null, revision: "r1" });
     mockInvoke.mockResolvedValueOnce({ data: { ok: true, data: { settings: { design: "grid", tokens: {}, fonts: {}, updatedAt: "r1" } } }, error: null });
     expect((await getBrandSiteLook({ brandId: "b", siteId: "s" })).designOptions).toEqual({});
   });

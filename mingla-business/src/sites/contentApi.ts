@@ -512,8 +512,10 @@ export function useOverviewCounts(siteId: string | null, enabled = true) {
   });
 }
 
-export function useMediaLibrary(siteId: string | null, enabled: boolean) {
+export function useMediaLibrary(siteId: string | null, enabled: boolean, refetchInterval: number | false = false) {
   return useQuery({
+    // #4572 item 3 — while the brand's photos come in, the list is read again so they appear as they land.
+    refetchInterval,
     queryKey: brandSiteKeys.siteData(siteId, "media"),
     queryFn: () => contentCall<{ media: MediaItem[] }>(siteId!, "media_library").then((result) => result.media),
     enabled: siteId !== null && enabled,
@@ -1007,12 +1009,28 @@ export function usePageSections(siteId: string | null, pageId: string | null, en
   });
 }
 
-export function useSectionCatalog(siteId: string | null, enabled = true) {
+/** #4572 item 8 — one page's Add section list: Cover only where the server accepts one, and why not when it doesn't. */
+export type PageSectionCatalog = { types: SectionCatalogType[]; coverNote: string | null };
+
+/** The list the sheet shows. A Cover the server would refuse is never offered, even from an older Studio that lists it everywhere. */
+export function offeredSections(catalog: PageSectionCatalog, sections: readonly { type: string }[]): PageSectionCatalog {
+  if (!sections.some((section) => section.type === "hero")) return catalog;
+  const hasCover = catalog.types.some((entry) => entry.type === "hero");
+  return {
+    types: catalog.types.filter((entry) => entry.type !== "hero"),
+    coverNote: catalog.coverNote ?? (hasCover ? "Home already has a cover. Change it in Design → Cover." : null),
+  };
+}
+
+export function useSectionCatalog(siteId: string | null, pageId: string | null, enabled = true) {
   return useQuery({
-    queryKey: brandSiteKeys.siteData(siteId, "section-catalog"),
-    queryFn: () => contentCall<{ types: SectionCatalogType[] }>(siteId!, "section_catalog").then((result) => result.types),
-    enabled: siteId !== null && enabled,
-    staleTime: 5 * 60_000,
+    queryKey: [...brandSiteKeys.siteData(siteId, "section-catalog"), pageId] as const,
+    queryFn: () =>
+      contentCall<{ types: SectionCatalogType[]; cover_note?: string | null }>(siteId!, "section_catalog", { page_id: pageId })
+        .then((result): PageSectionCatalog => ({ types: result.types, coverNote: typeof result.cover_note === "string" ? result.cover_note : null })),
+    enabled: siteId !== null && pageId !== null && enabled,
+    // Read fresh each time the sheet opens: adding a cover changes what this page can take.
+    staleTime: 0,
   });
 }
 

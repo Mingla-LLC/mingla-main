@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePreviewRefresh } from "../../../sites/previewRefresh";
 import { Platform } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
@@ -179,6 +180,8 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
     staleTime: 60_000,
     retry: false,
   });
+  // #4572 item 1 — one owner for "Updating preview…" and the two-refresh limit, shared by every preview frame.
+  const previewRefresh = usePreviewRefresh({ siteId, isFetching: previewGrant.isFetching, refetch: previewGrant.refetch });
   const refreshPreview = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
   }, [queryClient, siteId]);
@@ -556,6 +559,7 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
     versions,
     validation,
     previewGrant,
+    previewRefresh,
     refreshPreview,
     isTogglingOffline: offlineToggle.isPending,
     isExporting: siteExport.isPending,
