@@ -49,6 +49,8 @@
 -- TEST-MOD-APPROVED #4490 (08-O3 part A): 20280809601490 adds nineteen functions (the station gate,
 -- board, ticket actions, the station trigger and the floor PDF source and ledger) and re-emits the
 -- Till's send, all internal (service role only).
+-- TEST-MOD-APPROVED #4490 (08-O3 part A2): 20280809603490 adds the floor staff list and re-emits
+-- pg_venue_order_escalation_scan (still service role only), both internal.
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -530,6 +532,9 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_floor_pdf_record(uuid,text,text,uuid)', 'internal'),
   ('issue_4490_floor_pdf_due(integer)', 'internal'),
   ('issue_4490_floor_pdf_forget(text[])', 'internal'),
+  -- 08-O3 part A2 (20280809603490): floor staff list (T4), and the escalation scan it re-emits (T7), both internal.
+  ('issue_4490_venue_floor_user_ids(uuid,uuid,text[])', 'internal'),
+  ('pg_venue_order_escalation_scan(timestamp with time zone,integer)', 'internal'),
   ('biz_venue_tab_open(uuid)', 'signed_in'),
   ('biz_venue_tab_close(uuid,text)', 'signed_in'),
   ('biz_venue_order_transition(uuid,text,text)', 'signed_in'),

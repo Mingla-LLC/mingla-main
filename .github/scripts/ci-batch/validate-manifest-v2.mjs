@@ -675,7 +675,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 ops O3 part A: stations migration 20280809601490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O3 part A: #2099 repin 20280809602490 (pin owner) registered, the 1931 baseline skips it by exact filename, the #2099 path scope lists 600490 and 602490; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O3 part A: the #2117 phase-1 lane skips the #2099 repin 20280809602490 by exact filename; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b953194d476b0156a153610bbb6811179d70c3050c6f5ee95dd5b958772a1550";
+// issue #4490 ops O3 part A2: floor-alerts migration 20280809603490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ee028f094305d1ce037cc79c7346d7582d2347a9a8ebc4899b91eb9b15859923";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
