@@ -335,7 +335,7 @@ export async function getBrandDetail(brandId) {
   if (error) throw new Error(error.message || "Failed to load brand.");
   if (!brand) throw new Error("not_found");
 
-  const [ownerRes, teamRes, invitesRes, partnerRes, ticketsRes] = await Promise.all([
+  const [ownerRes, teamRes, invitesRes, partnerRes, ticketsRes, minglaTeamRes] = await Promise.all([
     brand.account_id
       ? supabase
           .from("creator_accounts")
@@ -345,7 +345,8 @@ export async function getBrandDetail(brandId) {
       : Promise.resolve({ data: null, error: null }),
     supabase
       .from("brand_team_members")
-      .select("id,user_id,role,invited_at,accepted_at,removed_at,permissions_override")
+      // #4579: granted_via / removal_reason mark Mingla admins added automatically.
+      .select("id,user_id,role,invited_at,accepted_at,removed_at,permissions_override,granted_via,removal_reason")
       .eq("brand_id", brandId)
       .order("accepted_at", { ascending: true }),
     supabase
@@ -363,16 +364,23 @@ export async function getBrandDetail(brandId) {
       .select("id,subject,status,priority,created_at,last_message_at")
       .eq("brand_id", brandId)
       .order("last_message_at", { ascending: false }),
+    // #4579: the brand removed Mingla Team (no automatic path re-adds it).
+    supabase
+      .from("brand_mingla_team_optouts")
+      .select("brand_id,removed_at,removed_by")
+      .eq("brand_id", brandId)
+      .maybeSingle(),
   ]);
 
   const team = pickList(teamRes, "brand_team_members");
   const invites = pickList(invitesRes, "brand_invitations");
   const partnerLinks = pickList(partnerRes, "partner_brand_links");
   const tickets = pickList(ticketsRes, "support_tickets");
+  const minglaTeamOptout = pickOne(minglaTeamRes, "brand_mingla_team_optouts");
 
   // Resolve member identities (brand_team_members.user_id has NO FK → explicit
   // in()-reads, not a PostgREST embed). Orphan user_ids render as the raw uuid.
-  const memberIds = team.map((m) => m.user_id).filter(Boolean);
+  const memberIds = [...team.map((m) => m.user_id), minglaTeamOptout?.removed_by].filter(Boolean);
   const [memberProfiles, memberAccounts] = await Promise.all([
     resolveProfiles(memberIds),
     resolveAccountNames(memberIds),
@@ -399,7 +407,35 @@ export async function getBrandDetail(brandId) {
     invites,
     partnerLinks: partnerLinksResolved,
     tickets,
+    minglaTeam: minglaTeamSummary(team, minglaTeamOptout, memberProfiles, memberAccounts),
   };
+}
+
+/** #4579: why an automatic Mingla admin row ended. Pure; exported for tests. */
+export function minglaRemovalLabel(reason) {
+  if (reason === "mingla_team_removed") return "brand removed Mingla Team";
+  if (reason === "mingla_admin_revoked") return "admin access revoked";
+  return "";
+}
+
+/**
+ * #4579 — the brand's Mingla Team state for the admin console: on (automatic
+ * Mingla admins are active), off (the brand removed it: when and by whom) or
+ * none. Pure; exported for tests.
+ */
+export function minglaTeamSummary(team, optout, profiles = {}, accounts = {}) {
+  const autoActive = (team || []).filter((m) => m.granted_via === "mingla_admin" && m.accepted_at && !m.removed_at);
+  if (optout) {
+    const by = optout.removed_by || null;
+    return {
+      status: "removed",
+      removedAt: optout.removed_at || null,
+      removedBy: by,
+      removedByName: by ? profiles[by]?.display_name || accounts[by] || null : null,
+      activeCount: autoActive.length,
+    };
+  }
+  return { status: autoActive.length > 0 ? "active" : "none", removedAt: null, removedBy: null, removedByName: null, activeCount: autoActive.length };
 }
 
 // ── Resolve helpers (secondary enrichment; best-effort, logged on failure) ─────
