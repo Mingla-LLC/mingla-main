@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing, the Till's client request ids made as UUIDs that venue-till accepts) keeps its load-bearing lines.
+// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing, the Till's client request ids made as UUIDs that venue-till accepts, one per payment or refund attempt, with the paid step showing the server's recorded amount) keeps its load-bearing lines.
 /**
  * #4490 W3 fix 1 — the structural pins of eight #4490 mingla-business jest
  * suites, moved here as the additive strict-grep gate that
@@ -414,17 +414,56 @@ const PINS = [
   {
     id: "till-pay-sheet-request-id",
     file: `${BIZ}/src/components/venue/till/PaymentSheet.tsx`,
-    contains: ["const requestId = useRef<string>(newTillRequestId());"],
+    // TEST-MOD-APPROVED #4490 (08-O3 fix 5): the sheet's one id per opening became
+    // one id per attempt (tillAttemptFor, whose maker is newTillRequestId).
+    contains: [
+      "const attempt = useRef<TillAttempt | null>(null);",
+      "clientRequestId: current.id,",
+    ],
     absent: ['from "../../../utils/randomId"'],
-    absentMatches: [/requestId\.current = randomId\(/],
-    why: "pay_cash, pay_own_machine, pay_code_create and pay_tap_start send a UUID clientRequestId (O3-S2)",
+    absentMatches: [/clientRequestId: randomId\(/, /requestId\.current/],
+    why: "pay_cash, pay_own_machine, pay_code_create and pay_tap_start send a UUID clientRequestId (O3-S2), one per attempt (O3-S3)",
   },
   {
     id: "till-screen-refund-request-ids",
     file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
-    contains: ["reason, clientRequestId: newTillRequestId() });", "clientRequestId: newTillRequestId(),"],
+    // TEST-MOD-APPROVED #4490 (08-O3 fix 5): one id per refund attempt.
+    contains: [
+      "reason, clientRequestId: current.id });",
+      "clientRequestId: current.id,",
+      "const refundAttempt = useRef<TillAttempt | null>(null);",
+    ],
     absentMatches: [/clientRequestId: randomId\(/],
-    why: "both refund forms send a UUID clientRequestId (O3-S2)",
+    why: "both refund forms send a UUID clientRequestId (O3-S2), one per refund attempt (O3-S3)",
+  },
+  // 08-O3 fix 5 (O3-S3): a part payment's id never pays the rest; the attempt id
+  // comes from the one UUID maker; the paid step shows the server's amount.
+  {
+    id: "till-attempt-ids",
+    file: `${BIZ}/src/components/venue/till/tillPayModel.ts`,
+    contains: [
+      "makeId: () => string = newTillRequestId",
+      'export const tillAttemptKeepsId = (code: string): boolean => code === "network" || code === "till_failed";',
+    ],
+    why: "every Till payment and refund attempt gets its own UUID; only an unclear failure keeps it for the retry",
+  },
+  {
+    id: "till-pay-rest-new-attempt",
+    file: `${BIZ}/src/components/venue/till/PaymentSheet.tsx`,
+    contains: [
+      "onPress={payRest} testID=\"till-pay-rest\"",
+      "const payRest = (): void => {",
+      "amountMinor: recordedPaidMinor(paid)",
+    ],
+    matches: [/const payRest = \(\): void => \{\s*attempt\.current = null;\s*setAmountMinor\(null\);/],
+    absentMatches: [/amountMinor: payAmount, changeMinor/],
+    why: "\"Pay <rest>\" is a new payment with a new request id, and the paid step shows what the server recorded (O3-S3)",
+  },
+  {
+    id: "venue-till-recorded-payment",
+    file: "supabase/functions/venue-till/index.ts",
+    contains: ['"till_request_reused",', "amountMinor: facts.amountMinor,"],
+    why: "venue-till answers a payment with the amount the server recorded and maps a reused request id to its own words (O3-S3)",
   },
   {
     id: "till-tap-request-ids",

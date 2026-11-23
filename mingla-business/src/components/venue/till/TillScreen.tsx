@@ -41,7 +41,7 @@ import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { currentTapToPayDevice } from "../../../services/terminal/tapToPayDevice";
 import { setTapToPayScope } from "../../../services/terminal/tapToPaySession";
 import { tillTapOffer } from "./tillTapAvailability";
-import { latePayments, newTillRequestId, paidLabel } from "./tillPayModel";
+import { latePayments, paidLabel, tillAttemptFor, tillAttemptKeepsId, tillAttemptKey, type TillAttempt } from "./tillPayModel";
 import type { VenueOffer } from "../../../types/venueOffers";
 import { formatCurrency } from "../../../utils/currency";
 import { randomId } from "../../../utils/randomId";
@@ -159,6 +159,10 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     if (step.shown !== null) setCheckSheet(step.shown);
   }, []);
   const [lineRefund, setLineRefund] = useState<BasketRow | null>(null);
+  // 08-O3 fix 5: one request id per refund attempt (same payment or line,
+  // amount and tip): an unclear failure keeps it so "Try again" refunds once;
+  // a server answer (done or refused) ends the attempt.
+  const refundAttempt = useRef<TillAttempt | null>(null);
   const serversQuery = useTillServers(venueId, checkSheet === "actions" || checkSheet === "handover");
 
   const currency = sale?.currency ?? catalog?.currency ?? "NGN";
@@ -773,11 +777,15 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         onRefund={(reason) =>
           void run(async () => {
             if (lineRefund === null || lineRefund.lineId === null) return;
+            const current = tillAttemptFor(refundAttempt.current, tillAttemptKey({ kind: "line", lineId: lineRefund.lineId }));
+            refundAttempt.current = current;
             try {
-              await actions.refundLine.mutateAsync({ lineId: lineRefund.lineId, reason, clientRequestId: newTillRequestId() });
+              await actions.refundLine.mutateAsync({ lineId: lineRefund.lineId, reason, clientRequestId: current.id });
+              refundAttempt.current = null;
               setLineRefund(null);
               setToast({ kind: "success", message: TILL_COPY.refunded });
             } catch (err) {
+              if (!tillAttemptKeepsId(err instanceof TillError ? err.code : "till_failed")) refundAttempt.current = null;
               fail(err);
             }
           })
@@ -797,19 +805,28 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         void run(async () => {
           const payment = paidPayments.find((p) => p.id === refundFor);
           if (payment === undefined) return;
+          const left = payment.amountMinor - Math.min(payment.refundedMinor, payment.amountMinor);
+          const refundMinor = Math.min(amountMinor, left);
+          const refundTipMinor = amountMinor > left ? amountMinor - left : 0;
+          const current = tillAttemptFor(
+            refundAttempt.current,
+            tillAttemptKey({ kind: "payment", paymentId: payment.id, amountMinor: refundMinor, tipMinor: refundTipMinor }),
+          );
+          refundAttempt.current = current;
           try {
-            const left = payment.amountMinor - Math.min(payment.refundedMinor, payment.amountMinor);
             await actions.refund.mutateAsync({
               paymentId: payment.id,
-              amountMinor: Math.min(amountMinor, left),
-              tipMinor: amountMinor > left ? amountMinor - left : 0,
+              amountMinor: refundMinor,
+              tipMinor: refundTipMinor,
               reason,
               restock: false,
-              clientRequestId: newTillRequestId(),
+              clientRequestId: current.id,
             });
+            refundAttempt.current = null;
             setRefundFor(null);
             setToast({ kind: "success", message: TILL_COPY.refunded });
           } catch (err) {
+            if (!tillAttemptKeepsId(err instanceof TillError ? err.code : "till_failed")) refundAttempt.current = null;
             fail(err);
           }
         })

@@ -49,6 +49,10 @@ module.exports = {
     // #4490 spec 08 O3 fix 4 (O3-S2): with no globalThis.crypto (Hermes) every Till
     // payment and refund sends a clientRequestId venue-till accepts (a UUID).
     "**/__tests__/tillRequestIds.issue4490.o3fix4.render.test.tsx",
+    // #4490 spec 08 O3 fix 5 (O3-S3): one request id per payment / refund attempt;
+    // "Pay <rest>" after a part payment is a new payment; the paid step shows the
+    // amount the server recorded.
+    "**/__tests__/tillAttempts.issue4490.o3fix5.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",

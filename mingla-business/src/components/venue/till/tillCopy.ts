@@ -223,6 +223,9 @@ export const TILL_ERROR_COPY = {
   till_not_enabled: "Selling in person is off at this venue.",
   till_sale_not_found: "We couldn't find that check. It may have been closed on another device.",
   till_idempotency_conflict: "That was already sent with different details. Start the sale again.",
+  // 08-O3 fix 5 (O3-S3): a payment or refund request id already used on this
+  // check for something else. The server moved no money.
+  till_request_reused: "That was already sent with different details, so nothing was paid or refunded. Look at the check and try again.",
   till_invalid_payload: "Check the details and try again.",
   till_settings_invalid: "Check the settings and try again.",
   till_settings_changed: "These settings were changed on another device. Open them again.",

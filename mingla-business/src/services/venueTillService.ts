@@ -459,6 +459,13 @@ export function sendTill(input: { venueId: string; saleId: string }): Promise<Ti
 export interface TillPaymentResult {
   sale: TillSale;
   paymentId: string;
+  /**
+   * 08-O3 fix 5: what the server RECORDED for this payment (on a replay, the
+   * original payment), never what was sent. Null only from a server that
+   * predates the fix; the sheet then reads the check's own payment row.
+   */
+  amountMinor: number | null;
+  tipMinor: number | null;
   changeMinor: number | null;
   replayed: boolean;
 }
@@ -482,6 +489,8 @@ export async function payTill(input: {
   return {
     sale: mapTillSale(data.sale),
     paymentId: str(data.paymentId),
+    amountMinor: numOrNull(data.amountMinor),
+    tipMinor: numOrNull(data.tipMinor),
     changeMinor: numOrNull(data.changeMinor),
     replayed: data.replayed === true,
   };

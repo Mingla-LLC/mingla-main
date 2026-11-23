@@ -8,7 +8,10 @@
  * everything that is left (the server prices it; the sheet only sends a tip).
  *
  * Every payment carries the check version it was taken against (T10) and one
- * client request id per tap, so a retry never charges twice.
+ * client request id per ATTEMPT (08-O3 fix 5, tillAttemptFor): a retry of the
+ * same attempt reuses it, so it never charges twice; any other payment (the
+ * rest after a part payment, another way, another amount or tip) gets its own.
+ * The paid step shows what the server recorded, never the typed amount.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -35,7 +38,16 @@ import { ReceiptStep } from "./ReceiptStep";
 import { TillScanPanel } from "./TillScanPanel";
 import { TillTapPanel } from "./TillTapPanel";
 import type { TillTapOffer } from "./tillTapAvailability";
-import { newTillRequestId, paidLabel, resumeLivePayment, scanPanelState } from "./tillPayModel";
+import {
+  paidLabel,
+  recordedPaidMinor,
+  resumeLivePayment,
+  scanPanelState,
+  tillAttemptFor,
+  tillAttemptKeepsId,
+  tillAttemptKey,
+  type TillAttempt,
+} from "./tillPayModel";
 import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
 import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 import { openFloorPdf } from "../../../utils/floorPdf";
@@ -111,7 +123,8 @@ export function PaymentSheet({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     method: PaidMethod;
-    amountMinor: number;
+    /** What the server recorded (amount + tip); null if it did not say. */
+    amountMinor: number | null;
     changeMinor: number | null;
     paymentId: string;
     label?: string;
@@ -122,8 +135,10 @@ export function PaymentSheet({
   const [tapResumed, setTapResumed] = useState(false);
   const [resumeTry, setResumeTry] = useState(0);
   const resumeDone = useRef(false);
-  // One id per payment attempt: a retry of the same tap reuses it.
-  const requestId = useRef<string>(newTillRequestId());
+  // 08-O3 fix 5: the attempt in flight (its request id and money facts). A
+  // retry of the same facts reuses the id; it is dropped once the server has
+  // answered, and on every way back to the methods.
+  const attempt = useRef<TillAttempt | null>(null);
 
   const currency = sale?.currency ?? "NGN";
   const due = sale?.remainingMinor ?? 0;
@@ -141,7 +156,7 @@ export function PaymentSheet({
     setTapBusy(false);
     setTapResumed(false);
     resumeDone.current = false;
-    requestId.current = newTillRequestId();
+    attempt.current = null;
   }, [visible]);
 
   // O2-B1: a check that already has a live card payment opens on that payment's
@@ -222,28 +237,37 @@ export function PaymentSheet({
     if (sale === null || busy) return;
     setBusy(true);
     setError(null);
+    const cashGivenMinor = method === "cash" ? cashGiven : null;
+    const current = tillAttemptFor(
+      attempt.current,
+      tillAttemptKey({ method, amountMinor: payAmount, tipMinor, cashGivenMinor }),
+    );
+    attempt.current = current;
     try {
       const paid = await onPay({
         method,
         amountMinor: payAmount,
         tipMinor,
-        cashGivenMinor: method === "cash" ? cashGiven : null,
-        clientRequestId: requestId.current,
+        cashGivenMinor,
+        clientRequestId: current.id,
         expectedVersion: sale.version,
       });
-      setResult({ method, amountMinor: payAmount, changeMinor: paid.changeMinor, paymentId: paid.paymentId });
+      // Taken (or the first try's answer replayed): this attempt is over.
+      attempt.current = null;
+      setResult({ method, amountMinor: recordedPaidMinor(paid), changeMinor: paid.changeMinor, paymentId: paid.paymentId });
       setStep("paid");
     } catch (err) {
       const code = err instanceof TillError ? err.code : "till_failed";
-      if (code === "till_check_changed" || code === "till_amount_over_due" || code === "till_nothing_to_pay") {
-        // Nothing moved: refresh the check and start a fresh attempt. The typed
-        // amount stays as typed; the field says if it is now more than is left.
-        requestId.current = newTillRequestId();
+      // A failure that may have reached the server keeps the id, so "Try
+      // again" with the same facts can never take the money twice. Any answer
+      // from the server means nothing moved: the next try is a new attempt.
+      if (!tillAttemptKeepsId(code)) attempt.current = null;
+      if (code === "till_check_changed" || code === "till_amount_over_due" || code === "till_nothing_to_pay" || code === "till_request_reused") {
+        // Nothing moved: refresh the check. The typed amount stays as typed;
+        // the field says if it is now more than is left.
         onRefreshSale();
         setStep("choose");
       }
-      // A network failure may have landed: keep the same request id so
-      // "Try again" can never take the money twice.
       setError(tillErrorCopy(code));
     } finally {
       setBusy(false);
@@ -259,19 +283,24 @@ export function PaymentSheet({
     if (sale === null || busy) return;
     setBusy(true);
     setError(null);
+    const current = tillAttemptFor(attempt.current, tillAttemptKey({ method, tipMinor }));
+    attempt.current = current;
     try {
       const started = await onStartCard({
         method,
         tipMinor,
-        clientRequestId: requestId.current,
+        clientRequestId: current.id,
         expectedVersion: sale.version,
       });
+      // The card payment exists on the server now; its panel follows it by
+      // payment id. Whatever happens to it, the next start is a new attempt.
+      attempt.current = null;
       setCard(started);
       setStep(method);
     } catch (err) {
       const code = err instanceof TillError ? err.code : "till_failed";
-      if (code === "till_check_changed" || code === "till_nothing_to_pay") {
-        requestId.current = newTillRequestId();
+      if (!tillAttemptKeepsId(code)) attempt.current = null;
+      if (code === "till_check_changed" || code === "till_nothing_to_pay" || code === "till_request_reused") {
         onRefreshSale();
       }
       setError(tillErrorCopy(code));
@@ -289,10 +318,23 @@ export function PaymentSheet({
 
   // A new attempt (a fresh code, or another way) never reuses the old request.
   const backToChoose = (): void => {
-    requestId.current = newTillRequestId();
+    attempt.current = null;
     setCard(null);
     setStep("choose");
     onRefreshSale();
+  };
+
+  // 08-O3 fix 5 (O3-S3): "Pay <rest>" after a part payment is a NEW payment:
+  // a new request id, and the amount is what is left now (not the part just
+  // typed); tip and cash given start again.
+  const payRest = (): void => {
+    attempt.current = null;
+    setAmountMinor(null);
+    setTipMinor(0);
+    setCashGiven(null);
+    setError(null);
+    setResult(null);
+    setStep("choose");
   };
 
   const title =
@@ -474,7 +516,9 @@ export function PaymentSheet({
     const left = sale.remainingMinor;
     body = (
       <View style={styles.body}>
-        <Text style={styles.big} testID="till-paid-amount">{money(result?.amountMinor ?? 0)}</Text>
+        {result !== null && result.amountMinor !== null ? (
+          <Text style={styles.big} testID="till-paid-amount">{money(result.amountMinor)}</Text>
+        ) : null}
         <Text style={styles.muted}>
           {[
             result?.label ?? (result?.method === "cash" ? TILL_COPY.cash : TILL_COPY.ownMachine),
@@ -503,7 +547,7 @@ export function PaymentSheet({
     );
     footer =
       left > 0 ? (
-        <Button label={TILL_COPY.pay(money(left))} variant="primary" size="lg" fullWidth onPress={() => setStep("choose")} testID="till-pay-rest" />
+        <Button label={TILL_COPY.pay(money(left))} variant="primary" size="lg" fullWidth onPress={payRest} testID="till-pay-rest" />
       ) : (
         <Button label={TILL_COPY.newSale} variant="primary" size="lg" fullWidth onPress={onNewSale} testID="till-new-sale" />
       );

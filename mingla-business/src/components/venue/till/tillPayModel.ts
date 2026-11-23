@@ -16,6 +16,58 @@ import { TILL_COPY } from "./tillCopy";
  */
 export const newTillRequestId = (): string => randomUuid();
 
+/**
+ * 08-O3 fix 5 (O3-S3): one request id per payment or refund ATTEMPT.
+ *
+ * An attempt is named by the money facts it sends (`tillAttemptKey`): for a
+ * payment the method, amount, tip and cash given (tap / scan: the method and
+ * tip; the server takes what is left); for a refund the payment (or line), the
+ * amount and the tip. The same facts again, after a network failure or a
+ * timeout, reuse the id, so the server answers the first try instead of taking
+ * the money twice. Any other facts get a fresh id.
+ *
+ * The check version is NOT part of the key on purpose: when a first try did
+ * land and only its answer was lost, the check's version has moved (that
+ * payment moved it); keying on the version would mint a new id and take the
+ * money a second time. Every call still sends the version it saw (T10), so a
+ * new attempt against a check changed elsewhere is refused, not taken.
+ *
+ * The id is dropped (`null`) once the server has answered: after a payment or
+ * refund is taken, after a definite refusal (nothing moved), and whenever the
+ * sheet goes back to the methods after a card payment was started, cancelled or
+ * declined. Only an unclear failure (`tillAttemptKeepsId`) keeps it.
+ */
+export interface TillAttempt {
+  readonly id: string;
+  readonly key: string;
+}
+
+export const tillAttemptKey = (facts: Readonly<Record<string, string | number | null>>): string =>
+  JSON.stringify(Object.keys(facts).sort().map((k) => [k, facts[k]]));
+
+export const tillAttemptFor = (current: TillAttempt | null, key: string, makeId: () => string = newTillRequestId): TillAttempt =>
+  current !== null && current.key === key ? current : { id: makeId(), key };
+
+/** Only these failures may have reached the server: the retry keeps the id. */
+export const tillAttemptKeepsId = (code: string): boolean => code === "network" || code === "till_failed";
+
+/**
+ * The amount the server RECORDED for a payment it answered (cash / own
+ * machine: amount + tip, as the button said it), never the amount the sheet
+ * typed: from the answer, else from the check's own payment row, else null
+ * (the sheet then shows no figure rather than a guessed one).
+ */
+export const recordedPaidMinor = (paid: {
+  paymentId: string;
+  amountMinor: number | null;
+  tipMinor: number | null;
+  sale: Pick<TillSale, "payments"> | null;
+}): number | null => {
+  if (paid.amountMinor !== null) return paid.amountMinor + (paid.tipMinor ?? 0);
+  const row = paid.sale?.payments.find((p) => p.id === paid.paymentId);
+  return row !== undefined ? row.amountMinor + row.tipMinor : null;
+};
+
 const TILL_PAY_URL = /^https?:\/\/[^/\s#?]+\/pay\/till\/[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
 export const TILL_CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
 
