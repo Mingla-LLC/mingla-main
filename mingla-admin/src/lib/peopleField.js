@@ -214,3 +214,14 @@ export function toldWords(emails, team) {
   });
   return names.length ? `Will tell: ${names.join(", ")}` : "Nobody will be told. Type @ and a name.";
 }
+
+// #4571: a card's owners and watchers are lists (1 to 10 of each). The
+// words when someone tries to remove the last one (design tab 1).
+export function lastOwnerWords(person) {
+  return `${person?.name || person?.email || "This person"} is the last owner. A card needs at least one, so add someone else first.`;
+}
+export function lastWatcherWords(person) {
+  return `${person?.name || person?.email || "This person"} is the last watcher. Someone has to confirm the work, so add another watcher first.`;
+}
+export const OWNERS_HINT = "At least one owner.";
+export const WATCHERS_HINT = "At least one watcher. Any one of them can confirm.";

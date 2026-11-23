@@ -349,7 +349,8 @@ test("#3802 S-6: keys that poison an object in careless code are refused, and po
   assert.equal(({} as Record<string, unknown>).adminOnly, undefined);
   const after = await s.rpc(s.keys["growth.claude"], "tools/list");
   // [TEST-MOD-APPROVED #3802] Growth now receives the four approved draft tools.
-  assert.equal(after.json.result.tools.length, 25);
+  // #4571 W6b: and the log_emails connector tool, so 25 becomes 26.
+  assert.equal(after.json.result.tools.length, 26);
 });
 
 test("#3802 S-7: a web page cannot call this from a visitor's browser", async () => {

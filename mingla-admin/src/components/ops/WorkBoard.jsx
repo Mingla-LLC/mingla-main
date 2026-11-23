@@ -30,6 +30,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dn
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarDays, GripVertical, MessageSquare, MoreHorizontal, Paperclip, Plus } from "lucide-react";
 import { Avatars } from "./OpsChip";
+import { peopleLine } from "../../lib/workReview";
 import { MenuItem, Popover } from "./Popover";
 import { cardReasons, isTagged, personReasonLabel, sortColumn } from "../../lib/opsModel";
 import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
@@ -46,6 +47,7 @@ import {
 import { draftItemTitle } from "../../lib/workViews";
 import { isTicketCard } from "../../lib/ticketModel";
 import { TicketChip } from "./TicketChip";
+import { LinkChips } from "./CardSubtasks";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:anywhere] hyphens-none";
@@ -89,6 +91,8 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
     <span className="flex min-w-0 flex-col gap-1.5">
       {card.parent && <span className={`text-[11px] text-[var(--color-text-tertiary)] ${WORDS}`}>↳ #{card.parent.number} {card.parent.title}</span>}
       <span className={`line-clamp-2 text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
+      {/* #4571 W2: what the card is about, at most two links then +N (the tile opens the card). */}
+      <LinkChips links={card.links} />
       <DuePill card={card} today={today} />
       {(isTagged(card) || card.goal || left !== null || card.auto || isTicketCard(card)) && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">
@@ -103,7 +107,10 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
       )}
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-[var(--color-text-tertiary)]">
         {(card.owners || []).length
-          ? <Avatars people={card.owners} />
+          ? <span className="inline-flex shrink-0 items-center">{/* #4571: two faces, then +N */}
+              <Avatars people={card.owners.slice(0, 2)} />
+              {card.owners.length > 2 && <span data-owners-more="" aria-label={`and ${card.owners.length - 2} more`} className="-ml-1.5 inline-grid h-6 min-w-6 place-items-center rounded-full bg-[var(--gray-100)] px-1 text-[10px] font-semibold text-[var(--color-text-secondary)] ring-2 ring-[var(--color-background-primary)]">+{card.owners.length - 2}</span>}
+            </span>
           : <span aria-label={reasons.length ? "No owner" : "Nobody yet"} className="inline-grid h-6 w-6 place-items-center rounded-full border border-dashed border-[var(--color-error-500)] text-[10px] text-[var(--color-error-700)]">?</span>}
         {sub.total > 0 && <span className="inline-flex items-center gap-1 tabular-nums" aria-label={`${sub.done} of ${sub.total} subtasks done`}><Ring done={sub.done} total={sub.total} />{sub.done}/{sub.total}</span>}
         {Number(card.thread_count) > 0 && <span className="inline-flex items-center gap-0.5 tabular-nums" aria-label={`${card.thread_count} messages`}><MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />{card.thread_count}</span>}
@@ -112,7 +119,7 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
         {card.working && card.status !== "done" && <span className="font-semibold text-[var(--color-brand-700)]"><span aria-hidden="true">● </span>{card.working.name || "An agent"} on it</span>}
       </span>
       {(card.owners?.[0] || card.watchers?.[0]) && (
-        <span className={`text-[11.5px] text-[var(--color-text-secondary)] ${WORDS}`}>{card.owners?.[0]?.name || "Nobody"} owns · {card.watchers?.[0]?.name || "nobody"} watches</span>
+        <span data-people-words="" className={`text-[11.5px] text-[var(--color-text-secondary)] ${WORDS}`}>{peopleLine(card)}</span>
       )}
       <ReviewLine card={card} />
       {showPill && onMove && (
@@ -369,7 +376,7 @@ function useIsPhone() {
  * Keyboard: the arrow keys take a picked-up card to the next or previous
  * column (by their place on screen), rather than 25 pixels at a time.
  */
-function columnKeyboardCoordinates(event, { context }) {
+export function columnKeyboardCoordinates(event, { context }) {
   const { active, collisionRect, droppableRects, droppableContainers } = context;
   if (!active || !collisionRect) return undefined;
   const dir = event.code === "ArrowRight" ? 1 : event.code === "ArrowLeft" ? -1 : 0;
@@ -386,7 +393,7 @@ function columnKeyboardCoordinates(event, { context }) {
   return { x: target.left + target.width / 2 - collisionRect.width / 2, y: target.top + 60 };
 }
 
-function collisions(args) {
+export function collisions(args) {
   const within = pointerWithin(args).filter((c) => c.data?.droppableContainer?.data?.current?.type === "column");
   return within.length ? within : closestCenter({ ...args, droppableContainers: args.droppableContainers.filter((c) => c.data.current?.type === "column") });
 }

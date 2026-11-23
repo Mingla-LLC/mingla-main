@@ -108,6 +108,12 @@
     "due_on": "Due {{date}}",
     "done_on": "Done {{date}}",
     "card_people": "{{owner}} owns · {{watcher}} watches",
+    "card_people_list": "{{owners}} · {{watchers}}",
+    "card_owners_one": "{{names}} owns",
+    "card_owners_other": "{{names}} own",
+    "card_watchers_one": "{{names}} watches",
+    "card_watchers_other": "{{names}} watch",
+    "names_and": "{{list}} and {{last}}",
     "what_changed": "What changed",
     "sheet_read_only": "Read-only here. Confirm and send back in Mingla Admin.",
     "empty_filter": "Nothing here."

@@ -53,8 +53,9 @@ function request(id: number, method: string, params: Record<string, unknown>) {
   });
 }
 
-Deno.test("#3980 fourteen work tools, in order, beside the 26 shipped tools", () => {
-  assertEquals(TEAM_AGENT_TOOLS.length, 26);
+// #4571 W6b added log_emails: 27 shipped tools.
+Deno.test("#3980 fourteen work tools, in order, beside the 27 shipped tools", () => {
+  assertEquals(TEAM_AGENT_TOOLS.length, 27);
   assertEquals(TEAM_AGENT_WORK_TOOLS.map((t) => t.name), NAMES);
   assertEquals(workToolsForMe({ work: false }), []);
   assertEquals(workToolsForMe({}), []);
@@ -109,8 +110,8 @@ Deno.test("#3980 each work tool says what it is for, treats other people's text 
   );
   assertMatch(
     findWorkTool("add_work")!.description,
-    // #4398: one owner and one watcher on every card (a subtask takes its parent's).
-    /Each card is checked by the server: title, instructions, done-means line, one current teammate as owner and one other as watcher \(a card under a parent takes the parent's when you send none\), a due date \(or a linked event\), real links\. A refused card comes back with the fixes\. The same request_key repeats safely\./,
+    // #4571: one or more owners and one or more watchers, nobody in both (a subtask takes its parent's).
+    /Each card is checked by the server: title, instructions, done-means line, one or more current teammates as owners and one or more others as watchers \(nobody in both; a card under a parent takes the parent's when you send none\), a due date \(or a linked event\), real links\. A refused card comes back with the fixes\. The same request_key repeats safely\./,
   );
   assertMatch(
     findWorkTool("close_work")!.description,
@@ -250,9 +251,9 @@ Deno.test("#3980 the edge routes the work tools to the ops gateway and keeps the
 });
 
 Deno.test("#3980 the gateway names exactly these tools, and every function a tool reaches exists", () => {
-  const migrations = [
-    ...Deno.readDirSync(new URL("supabase/migrations/", ROOT)),
-  ]
+  const files = [...Deno.readDirSync(new URL("supabase/migrations/", ROOT))]
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const migrations = files
     .filter((e) => /3980.*\.sql$/.test(e.name))
     .map((e) => read(`supabase/migrations/${e.name}`))
     .join("\n");
@@ -268,10 +269,15 @@ Deno.test("#3980 the gateway names exactly these tools, and every function a too
     /c_tools constant text\[\] := ARRAY\[([^\]]*)\]/,
   )![1].match(/'([a-z_]+)'/g)!.map((s) => s.slice(1, -1));
   assertEquals(tools, NAMES);
+  // #4571 W5: the Calendar's call-back and Work due functions live in a #4571 migration.
+  const functions = files
+    .filter((e) => /(3980|4571).*\.sql$/.test(e.name))
+    .map((e) => read(`supabase/migrations/${e.name}`))
+    .join("\n");
   for (const t of TEAM_AGENT_WORK_TOOLS) {
     for (const fn of t.reaches) {
       assert(
-        new RegExp(`CREATE FUNCTION public\\.${fn}\\(`).test(migrations),
+        new RegExp(`CREATE FUNCTION public\\.${fn}\\(`).test(functions),
         `${t.name} reaches ${fn}`,
       );
     }
@@ -299,11 +305,12 @@ Deno.test("#3980 every ops_ function the admin screens call has an agent tool or
 });
 
 Deno.test("#3980 plan steps may name exactly the connector's tools, or person", () => {
+  // #4571 W7: the latest definition (log_emails added).
   const migration = read(
-    "supabase/migrations/20271116003980_issue_3980_wave1_work_board.sql",
+    "supabase/migrations/20281130104571_issue_4571_w7_brand_counts.sql",
   );
   const block = migration.slice(
-    migration.indexOf("CREATE FUNCTION public.ops_plan_tools()"),
+    migration.indexOf("CREATE OR REPLACE FUNCTION public.ops_plan_tools()"),
   );
   const listed = block.slice(0, block.indexOf("]::text[]")).match(
     /'([a-z_]+)'/g,

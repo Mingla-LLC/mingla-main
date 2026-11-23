@@ -45,7 +45,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   FILE_MAX_BYTES,
-  GOAL_LIMIT,
   MOVE_CONFLICT_WORDS,
   activeFilterCount,
   archiveTargets,
@@ -257,20 +256,19 @@ describe("V-4 the header is one line", () => {
   });
 });
 
-describe("V-5 sprint goals: five at most", () => {
+// #4571: the five-goal cap is gone (any number of goals; SprintBar folds after three).
+describe("V-5 sprint goals", () => {
   const goals = (n) => Array.from({ length: n }, (_, i) => ({ id: `g${i}`, title: `Goal ${i + 1}`, state: i === 1 ? "at_risk" : "on_track", cards: 4, done: i }));
-  it("a sixth goal cannot be added", () => {
-    assert.equal(GOAL_LIMIT, 5);
-    assert.equal(canAddGoal(goals(4)), true);
-    assert.equal(canAddGoal(goals(5)), false);
-    assert.equal(canAddGoal([...goals(4), { id: "x", archived: true }]), true, "an archived goal does not count");
+  it("a sixth goal can be added (#4571)", () => {
+    assert.equal(canAddGoal(goals(6)), true);
     const planner = code("components/ops/SprintPlanner.jsx");
-    assert.match(planner, /\{canAddGoal\(goals\) \? \(/);
-    assert.match(planner, /A sprint has at most five goals\. Archive one to add another\./);
+    assert.doesNotMatch(planner, /A sprint has at most five goals/);
   });
   it("the bar shows each goal as a pill that filters the board, and the numbers", () => {
     const html = h.bar({ sprint: { starts_on: "2026-11-09" }, plan: { goals: goals(5), in_sprint: [{ status: "done" }, { status: "todo" }], capacity: [{ planned_minutes: 600, hours: 8 }] }, goalId: "g1", late: 2 });
-    assert.equal((html.match(/data-goal-pill="/g) || []).length, 5);
+    // #4571: three pills, the other two fold into "+2 more".
+    assert.equal((html.match(/data-goal-pill="/g) || []).length, 3);
+    assert.match(html, /data-goals-more=""[^>]*>\+2 more/);
     assert.match(html, /data-goal-pill="g1" aria-pressed="true"/);
     assert.match(html, /data-goal-pill="g0" aria-pressed="false"/);
     assert.match(html, /1 of 2 done/);
@@ -393,7 +391,7 @@ describe("F-2 the Work page fits a 390px phone (fix-up, 10 Nov)", () => {
   it("the sprint bar is the containing block of its goals, so their screen-reader text cannot widen the page", () => {
     const html = h.bar({ sprint: { starts_on: "2026-11-09" }, plan: { goals } });
     assert.match(html, /data-sprint-bar="" class="relative flex h-11 min-w-0 [^"]*max-sm:overflow-x-auto/);
-    assert.equal((html.match(/class="sr-only"/g) || []).length, 5, "each goal pill carries absolutely positioned sr-only text");
+    assert.equal((html.match(/class="sr-only"/g) || []).length, Math.min(goals.length, 3), "each goal pill shown carries absolutely positioned sr-only text (#4571: three, then +N more)");
   });
   it("the header row and the page header are not overflow-hidden, so their menus are never clipped", () => {
     for (const fit of ["full", "folded", "compact"]) {

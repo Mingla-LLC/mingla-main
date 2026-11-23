@@ -124,7 +124,8 @@ Deno.test("#3802 Wave 2: Admin defaults to Calendar, with the six-stage Board an
   assertEquals(monthWindow("2026-10").days.length, 42);
   // #4255: Month is the default and the only other view is the posts Board;
   // the runway table and posts list are gone.
-  assertMatch(PAGE, /view: p\.get\("view"\) === "board" \? "board" : "calendar"/);
+  // #4571 W5 adds the Week view; Month stays the default.
+  assertMatch(PAGE, /view: p\.get\("view"\) === "board" \? "board" : p\.get\("view"\) === "week" \? "week" : "calendar"/);
   assertMatch(PAGE, /<MonthGrid [\s\S]*<BoardView /);
   assert(!PAGE.includes("<RunwayTable"));
 });

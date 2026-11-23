@@ -78,7 +78,8 @@ export function PendingChips({ pending, onRetry, onDrop }) {
   );
 }
 
-export function CardFiles({ card, files = [], disabled, onChanged, uploads }) {
+// #4571 W3: `record` shows the same section on a host or creator card (ops_record_file_add).
+export function CardFiles({ card, files = [], disabled, onChanged, uploads, record = false }) {
   const { addToast } = useToast();
   const inputRef = useRef(null);
   const [over, setOver] = useState(false);
@@ -95,7 +96,7 @@ export function CardFiles({ card, files = [], disabled, onChanged, uploads }) {
     const p = linkProblem(v);
     if (p) { setLinkError(p); return; }
     try {
-      await ops.addCardLink(card.id, v, linkFriendlyName(v), requestKey("web_link"));
+      await ops.addCardLink(card.id, v, linkFriendlyName(v), requestKey("web_link"), { record });
       setUrl(""); setLinking(false); setLinkError("");
       addToast({ variant: "success", title: "Link added" });
       onChanged?.();

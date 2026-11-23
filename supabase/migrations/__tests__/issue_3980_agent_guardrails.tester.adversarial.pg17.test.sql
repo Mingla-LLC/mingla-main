@@ -59,8 +59,8 @@ BEGIN
 END
 $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards DEFERRED;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -565,7 +565,6 @@ begin
       || CASE WHEN pg_temp.tx_person(w, 'select public.ops_config()::text') like 'ERR:%' THEN 'n' ELSE 'y' END
       || CASE WHEN pg_temp.tx_person(w, format('select public.ops_calendar(%L, %L)::text', current_date, current_date + 30)) like 'ERR:%' THEN 'n' ELSE 'y' END
       || CASE WHEN pg_temp.tx_person(w, format($q$select public.ops_work_archive(%L, 'Removed by the role test')::text$q$, v_card)) like 'ERR:%' THEN 'n' ELSE 'y' END
-      || CASE WHEN pg_temp.tx_person(w, format($q$select public.ops_sprint_set_goal(%L, 'Role test goal')::text$q$, v_week)) like 'ERR:%' THEN 'n' ELSE 'y' END
       || CASE WHEN pg_temp.tx_person(w, format($q$select public.ops_gate_override(%L, 'The host is a founding partner of Mingla')::text$q$, v_promo)) like 'ERR:%' THEN 'n' ELSE 'y' END
       || CASE WHEN pg_temp.tx_person(w, 'select public.ops_team_overview()::text') like 'ERR:%' THEN 'n' ELSE 'y' END
       || CASE WHEN pg_temp.tx_person(w, 'select public.ops_next_action_preview()::text') like 'ERR:%' THEN 'n' ELSE 'y' END
@@ -573,9 +572,10 @@ begin
       || ' ';
   end loop;
   -- #4255 (D3): a Founding partner holds a full-admin seat, so it matches admin.
-  -- columns: config, calendar, archive, sprint goal, gate override, team overview, conversion preview, forced release
+  -- columns: config, calendar, archive, gate override, team overview, conversion preview, forced release
+  -- (#4571: the single sprint goal column is gone with ops_sprint_set_goal)
   perform pg_temp.tx_check('X-ROLES', 'who may do what, by role',
-    btrim(v_out), 'owner:yyyyyyyy admin:yyyyyyny growth:yynnnnnn partner:yyyyyyny leaver:nnnnnnnn nobody:nnnnnnnn');
+    btrim(v_out), 'owner:yyyyyyy admin:yyyyyny growth:yynnnnn partner:yyyyyny leaver:nnnnnnn nobody:nnnnnnn');
   perform pg_temp.tx_like('X-ROLES', 'an admin is told the conversion is the owner''s',
     pg_temp.tx_person('admin', 'select public.ops_next_action_preview()::text'), 'ERR:42501:owner_only:%');
   perform pg_temp.tx_like('X-ROLES', 'and so is the owner''s own agent',

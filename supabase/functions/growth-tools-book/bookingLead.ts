@@ -218,3 +218,89 @@ export async function recordBookingLead(
     return "failed";
   }
 }
+
+// #4571 W4 — a booking made from a host card's own scheduler link
+// (usemingla.com/schedule?for=<token>) links itself to that card. The page
+// passes the token as `for`; anything that is not a UUID is ignored, so a
+// forged or garbled link simply books (and waits on Needs linking in Admin).
+
+const SCHEDULE_TOKEN_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The card's scheduler token from the request body, or null. Host calls only. */
+export function parseScheduleToken(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  return SCHEDULE_TOKEN_RE.test(v) ? v.toLowerCase() : null;
+}
+
+export type DemoLinkResult =
+  | "linked"
+  | "not_linked"
+  | "unconfigured"
+  | "failed";
+
+/**
+ * Links the booking to the card whose token it carries, through the
+ * service-role-only crm_demo_link_from_token. Never throws and never fails the
+ * booking: a failure is logged with the booking key only (no email, no token)
+ * and the booking waits on Needs linking, where a person links it.
+ */
+/**
+ * #4571 rework: the booking answer waits on the link call at most this long.
+ * A slow link is abandoned (logged, the booking waits on Needs linking).
+ */
+export const DEMO_LINK_TIMEOUT_MS = 2500;
+
+export async function linkDemoFromToken(
+  bookingKeyValue: string,
+  scheduleToken: string,
+  config: LeadWriteConfig,
+  timeoutMs: number = DEMO_LINK_TIMEOUT_MS,
+): Promise<DemoLinkResult> {
+  const base = (config.supabaseUrl ?? "").replace(/\/+$/, "");
+  const key = config.serviceKey ?? "";
+  if (base === "" || key === "") {
+    console.error(
+      "[growth-tools-book] DEMO LINK FAILED: no service credentials; 1 booking",
+      bookingKeyValue,
+      "waits on Needs linking",
+    );
+    return "unconfigured";
+  }
+  try {
+    const res = await fetch(`${base}/rest/v1/rpc/crm_demo_link_from_token`, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        p_booking_key: bookingKeyValue,
+        p_token: scheduleToken,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      console.error(
+        "[growth-tools-book] DEMO LINK FAILED: status",
+        res.status,
+        "1 booking",
+        bookingKeyValue,
+        "waits on Needs linking",
+      );
+      return "failed";
+    }
+    const linked = await res.json().catch(() => null);
+    return linked === true ? "linked" : "not_linked";
+  } catch (err) {
+    console.error(
+      "[growth-tools-book] DEMO LINK FAILED: threw; 1 booking",
+      bookingKeyValue,
+      "waits on Needs linking",
+      err instanceof Error ? err.name : "error",
+    );
+    return "failed";
+  }
+}

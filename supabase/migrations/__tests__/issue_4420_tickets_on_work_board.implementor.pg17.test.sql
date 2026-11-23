@@ -76,12 +76,12 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'email', v_email, 'role', 'authenticated')::text, true);
     perform set_config('request.jwt.claim.role', '', true);
     execute p_sql into v_out;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards immediate;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     return v_out;
   exception when others then
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     return 'ERR:' || sqlstate || ':' || sqlerrm;
   end;
@@ -163,7 +163,7 @@ BEGIN
     'on_brand_plan', c.on_brand_plan, 'brand_plan_source', c.brand_plan_source, 'kind', c.kind, 'kit_step', c.kit_step,
     'anchor', public.ops_card_anchor(c.anchor_kind, c.anchor_id, p_today),
     'due_on', c.due_on, 'due_source', c.due_source, 'overdue', (c.due_on < p_today AND c.status <> 'done'),
-    'sprint', jsonb_build_object('id', v_sprint.id, 'starts_on', v_sprint.starts_on, 'ends_on', v_sprint.ends_on, 'goal', v_sprint.goal),
+    'sprint', jsonb_build_object('id', v_sprint.id, 'starts_on', v_sprint.starts_on, 'ends_on', v_sprint.ends_on),  -- #4571: ops_sprints.goal is gone
     'carried_count', c.carried_count,
     'owners', COALESCE((SELECT jsonb_agg(jsonb_build_object('email', p.email, 'name', public.ops_name(p.email)) ORDER BY p.added_at, p.email)
                           FROM public.ops_work_people p WHERE p.card_id = c.id AND p.role = 'owner'), '[]'::jsonb),
@@ -314,7 +314,7 @@ BEGIN
            c.description_md, c.plan_step, c.goal_id, c.in_backlog, c.review_requested_at, c.review_requested_by,
            c.review_requested_via, c.review_kind, c.review_reason, c.sent_back_at, c.sent_back_by, c.sent_back_reason,
            c.confirmed_by, c.confirmed_at,
-           sp.id AS sp_id, sp.starts_on AS sp_starts_on, sp.ends_on AS sp_ends_on, sp.goal AS sp_goal,
+           sp.id AS sp_id, sp.starts_on AS sp_starts_on, sp.ends_on AS sp_ends_on,  -- #4571: no sprint goal
            st.id AS st_id, st.name AS st_name, st.color AS st_color, st.grp AS st_grp,
            pc.id AS pc_id, pc.number AS pc_number, pc.title AS pc_title, pc.parent_id AS pc_parent_id,
            gl.id AS gl_id, gl.title AS gl_title, gl.state AS gl_state,
@@ -417,7 +417,7 @@ BEGIN
             'ends_at', COALESCE(p.working_seen_at, p.started_at) + interval '24 hours') END)
         || jsonb_build_object(
           'sprint', jsonb_build_object('id', p.sp_id, 'starts_on', p.sp_starts_on,
-                                       'ends_on', p.sp_ends_on, 'goal', p.sp_goal),
+                                       'ends_on', p.sp_ends_on),
           'column', CASE WHEN p.st_id IS NOT NULL THEN jsonb_build_object('id', p.st_id, 'name', p.st_name,
                                                                           'color', p.st_color, 'grp', p.st_grp) END,
           'updated_at', p.updated_at,
@@ -536,7 +536,7 @@ begin
       'product_area', 'Home', 'owners', jsonb_build_array(pg_temp.email('abi'))), 'T4420-create-0002'));
   perform pg_temp.chk('T-CREATE', 'a ticket needs a watcher, as any card', (v::jsonb->>'status') || '/' || (v::jsonb->'fixes' @> '[{"field":"watchers"}]')::text, 'refused/true');
   perform pg_temp.chk('T-CREATE', 'the refusal says the card rule in its words',
-    (v::jsonb->'fixes' @> '[{"field":"watchers","message":"A card has one watcher, who is not the owner."}]')::text, 'true');
+    (v::jsonb->'fixes' @> '[{"field":"watchers","message":"A card needs at least one watcher, who is not an owner."}]')::text, 'true');  -- #4571 words
   -- Rework 2 (P1-A): the form's default is the creator as owner; with the
   -- watcher picked in the form's Watcher field the ticket is made.
   v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
@@ -551,7 +551,8 @@ begin
     jsonb_build_object('type', 'bug', 'title', 'T4420 Owner watches own ticket', 'what_is_wrong', 'The owner was also named as the watcher.',
       'product_area', 'Home', 'owners', jsonb_build_array(pg_temp.email('abi')), 'watchers', jsonb_build_array(pg_temp.email('abi'))), 'T4420-create-0013'));
   perform pg_temp.chk('T-CREATE', 'watcher = owner is refused like any card',
-    (v::jsonb->>'status') || '/' || (v::jsonb->'fixes' @> '[{"field":"watchers","message":"A card has one watcher, who is not the owner."}]')::text
+    -- #4571: the owner named as a watcher is refused by name (it was dropped without a word).
+    (v::jsonb->>'status') || '/' || (v::jsonb->'fixes' @> jsonb_build_array(jsonb_build_object('field', 'watchers', 'message', public.ops_name(pg_temp.email('abi')) || ' owns this card, so they cannot also watch it.')))::text
       || '/' || (select count(*)::text from public.ops_work_cards where title = 'T4420 Owner watches own ticket'), 'refused/true/0');
   -- Creator not the owner, no watcher sent: the creator watches.
   v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',

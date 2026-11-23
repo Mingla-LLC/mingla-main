@@ -162,9 +162,9 @@ describe("S stay on page", () => {
     }
     assert.deepEqual(offenders, []);
     // The record's failed-save toast: inside the panel it reopens the card there.
-    const rd = code("components/crm/RecordDrawer.jsx");
+    const rd = code("components/crm/RecordPanel.jsx");
     for (const m of rd.matchAll(/window\.location\.hash\s*=/g)) {
-      assert.match(rd.slice(Math.max(0, m.index - 160), m.index), /if \(typeof onOpenSide === "function"\)[^\n]*\n\s*else $/, "RecordDrawer writes the address only without the panel's opener");
+      assert.match(rd.slice(Math.max(0, m.index - 160), m.index), /if \(typeof onOpenSide === "function"\)[^\n]*\n\s*else $/, "RecordPanel writes the address only without the panel's opener");
     }
     // Rendered: inside the panel the host card's team block links nowhere else.
     const read = { data: { brand: { id: U1, name: "Harmattan Club", slug: "harmattan" }, team: { owners: [], brand_members: [] } } };
