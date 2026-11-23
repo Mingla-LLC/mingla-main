@@ -701,8 +701,10 @@ export const invokeTicketCheckoutRequest = <T>(
  * had. The access tokens are matched through it (not re-listed here) so the
  * #2101 contract keeps exactly one owner.
  */
+// issue #4522 W-10 — an unfinished payment holds the order for up to 15
+// minutes (the session's expiry), so the guest is told that, not "a minute".
 export const PAID_CHECKOUT_IN_PROGRESS_MESSAGE =
-  "You already have a payment in progress for this order. Finish it in the payment window, or wait about a minute and try again — you have not been charged twice.";
+  "You already have a payment in progress for this order. Finish it in the payment window, or try again in up to 15 minutes — you have not been charged twice.";
 
 export const PAID_CHECKOUT_UNAVAILABLE_MESSAGE =
   "This sale is no longer available — the organizer may have paused or changed this event. You have not been charged.";
