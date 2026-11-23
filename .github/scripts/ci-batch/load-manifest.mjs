@@ -392,8 +392,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4571 W5 Calendar week: listed migration 20281126054571 after 20281126044571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4571 rework: listed migration 20281126094571 after 20281126084571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4571 W7: listed migration 20281126104571 after 20281126094571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 final gate: listed migration 20281126114571 after 20281126104571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "71391495abf48ab285fc7c47f8fd1332c33efffc3dae5fe89a149d83a37f46f1";
+// #4571 leftovers: also listed migration 20281126124571 and its pg17 suite and sidecar. #4571 final gate: listed migration 20281126114571 after 20281126104571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "c6dbd0cdc2c226190d11cda5f1fb04604d7ebf0ff7da924e186b669e1b71a63e";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

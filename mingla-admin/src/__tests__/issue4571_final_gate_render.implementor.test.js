@@ -124,3 +124,18 @@ describe("F-5 a brand conflict says why", () => {
     assert.equal(errorWords({ token: "brand_conflict", message: msg }), msg);
   });
 });
+
+describe("F-6 the other merge and unmerge refusals say why", () => {
+  const words = {
+    invalid_merge: "Pick two different cards: the one to keep and the duplicate.",
+    archived_card: "Unarchive the card first; only cards on the board are merged.",
+    cannot_undo: "One of the two cards changed since (deleted, or no longer merged), so the merge cannot be undone.",
+    too_late: "A merge can be undone for 7 days. Move what you need by hand; the merge log lists every row it moved.",
+    already_undone: "This merge was already undone.",
+  };
+  for (const [token, msg] of Object.entries(words)) {
+    it(`${token} shows the server's sentence`, () => {
+      assert.equal(errorWords({ token, message: msg }), msg);
+    });
+  }
+});
