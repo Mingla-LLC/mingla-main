@@ -9,6 +9,8 @@ const STRUCTURAL_SHARED = new Set([
   "plan.by_mingla", "plan.more",
   // #4420: the brand name and the side tags read the same in every language.
   "messages.people_mingla",
+  // #4571: the Work card's people line joins two translated phrases.
+  "team.card_people_list",
 ]);
 const VALID_COGNATES = new Set([
   "id:chat.media", "id:media.title", "it:chat.media", "it:media.title",

@@ -116,9 +116,60 @@ export const MOVE_BLOCK_COPY = {
  * Why a move cannot happen, decided before the server is asked.
  * Returns null (go ahead), or { token, message, needsReason }.
  */
+/**
+ * #4571 rework: Demo booked needs a linked booked demo; Onboarded and Live need
+ * a linked demo or a linked Mingla brand (W4, W7). True when the server's
+ * demo_gate lists the target in locked_stages, so no screen offers a move the
+ * server always refuses. A gate without locked_stages (before W7) locks the
+ * whole band.
+ */
+export const DEMO_BAND = ["meeting", "onboarded", "live"];
+export function demoLocked(def, record, toStageId) {
+  if (def?.id !== "hosts" || !DEMO_BAND.includes(toStageId)) return false;
+  const gate = record?.demo_gate;
+  if (Array.isArray(gate?.locked_stages)) return gate.locked_stages.includes(toStageId);
+  return !!gate?.locked;
+}
+
+/** The short words beside a locked stage (W7: a brand opens Onboarded and Live). */
+export function demoLockWords(toStageId) {
+  return toStageId === "meeting" ? "locked, needs a linked demo" : "locked, needs a linked demo or brand";
+}
+
+/**
+ * The Needs linking note on a card past the gate with nothing that lets it
+ * stand there (demo_gate.needs_linking). Demo booked needs a demo; Onboarded
+ * and Live need a demo or the brand.
+ */
+export function needsLinkingWords(record) {
+  const stage = record?.stage;
+  if (stage === "onboarded" || stage === "live") {
+    const label = stage === "live" ? "Live" : "Onboarded";
+    return `This card is in ${label} with no booked demo or Mingla brand linked. Link its booking on Demos to link, link the brand, or book a demo with the link below.`;
+  }
+  return "This card is in Demo booked with no booked demo linked. Link its booking on Demos to link, or book one with the link below.";
+}
+
+/** The server's sentence for a locked band stage, from demo_gate. */
+export function demoLockReason(record, toStageId) {
+  const gate = record?.demo_gate || {};
+  const own = gate.reasons && typeof gate.reasons === "object" ? gate.reasons[toStageId] : null;
+  if (typeof own === "string" && own) return own;
+  if (gate.reason) return gate.reason;
+  return toStageId === "meeting"
+    ? "Demo booked needs a Google Meet booked through the scheduler and linked to this card."
+    : "This stage needs a demo booked through the scheduler and linked to this card, or the host's Mingla brand linked.";
+}
+
 export function moveBlocker(def, record, toStageId) {
   const to = stageDef(def, toStageId);
   if (!to || !record || record.stage === toStageId) return { token: "same", message: "" };
+  if (demoLocked(def, record, toStageId)) {
+    return {
+      token: "demo_required",
+      message: demoLockReason(record, toStageId),
+    };
+  }
   if (to.auto) return { token: "stage_sets_itself", message: MOVE_BLOCK_COPY.stage_sets_itself };
   if (stageDef(def, record.stage)?.auto && !to.terminal) {
     return { token: "stage_is_live", message: MOVE_BLOCK_COPY.stage_is_live };
@@ -303,6 +354,24 @@ const SERVER_WORDS = new Set([
   "contact_rule_locked",
   "duplicate_identifier",
   "invalid_identifier",
+  // #4571 W3: people on a card. W4: Demo booked needs a linked demo (the server's sentence says how).
+  "owner_and_watcher",
+  "unknown_watcher",
+  "too_many_watchers",
+  "demo_required",
+  // #4571 W4: linking a booked demo to a host card.
+  "booking_linked",
+  "demo_in_use",
+  "not_a_host_call",
+  "not_a_host",
+  // #4571 final gate: a merge, or its undo, between two different Mingla brands.
+  "brand_conflict",
+  // #4571: the other merge and unmerge refusals, each with a plain sentence from the server.
+  "invalid_merge",
+  "archived_card",
+  "cannot_undo",
+  "too_late",
+  "already_undone",
 ]);
 
 // Tokens whose server message is written for a caller of the function (it
@@ -610,14 +679,81 @@ export function activityLine(entry, def, vocab) {
   if (entry?.kind === "touch") {
     const channel = channels.find((c) => c.id === entry.channel)?.label || "Message";
     const way = entry.direction === "inbound" ? "they replied" : "reached out";
+    // #4571 W2: a call shows its outcome and length (stored in their own fields).
+    const outcome = callOutcomeLabel(entry.outcome);
+    const length = callLengthLabel(entry.duration_seconds);
     return {
-      headline: `${channel} · ${way}`,
+      headline: [`${channel} · ${way}`, outcome, length].filter(Boolean).join(" · "),
       body: entry.body || "",
       badge: replies.find((c) => c.id === entry.reply_class)?.label || "",
       ref: entry.message_ref || "",
     };
   }
   return { headline: entry?.body || "", body: "", badge: "" };
+}
+
+/**
+ * #4571 W2: the six call outcomes, in the SOP's order. Keys 1 to 6 pick them
+ * in the log form. The server's twin is ops_4571_call_outcome_label
+ * (20281130024571); the slugs are the stored values.
+ */
+export const CALL_OUTCOMES = Object.freeze([
+  Object.freeze({ value: "demo_booked", label: "Demo booked", key: "1" }),
+  Object.freeze({ value: "spoke_follow_up", label: "Spoke – follow up", key: "2" }),
+  Object.freeze({ value: "call_back", label: "Call back", key: "3" }),
+  Object.freeze({ value: "no_answer", label: "No answer", key: "4" }),
+  Object.freeze({ value: "not_interested", label: "Not interested", key: "5" }),
+  Object.freeze({ value: "wrong_number", label: "Wrong number", key: "6" }),
+]);
+
+/** The words for a stored call outcome, or "" when there is none. */
+export function callOutcomeLabel(value) {
+  return CALL_OUTCOMES.find((o) => o.value === value)?.label || "";
+}
+
+/** The outcome a key press picks ("1" to "6"), or null. */
+export function callOutcomeForKey(key) {
+  return CALL_OUTCOMES.find((o) => o.key === String(key))?.value || null;
+}
+
+/** True when this touch is a call the rep made (it may carry an outcome). */
+export function isOutboundCall(entry) {
+  return entry?.kind === "touch" && entry?.channel === "phone" && entry?.direction === "outbound";
+}
+
+/**
+ * A call's length as typed: "4:05", "245" (seconds) or "" (none). Returns
+ * { seconds } (null when empty) or { error } in words. 0 to 4 hours.
+ */
+export function parseCallLength(text) {
+  const raw = String(text ?? "").trim();
+  if (!raw) return { seconds: null };
+  let seconds = null;
+  const mmss = /^(\d{1,3}):([0-5]\d)$/.exec(raw);
+  if (mmss) seconds = Number(mmss[1]) * 60 + Number(mmss[2]);
+  else if (/^\d{1,5}$/.test(raw)) seconds = Number(raw);
+  if (seconds === null || seconds > 14400) return { error: "Write the length as minutes:seconds, like 4:05, up to 4 hours." };
+  return { seconds };
+}
+
+/** "4:05" for 245 seconds; "" when there is no length. */
+export function callLengthLabel(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** A record's phone numbers that are still usable (not marked bad). */
+export function usablePhones(record) {
+  return (Array.isArray(record?.identifiers) ? record.identifiers : [])
+    .filter((i) => i && i.kind === "phone" && i.status !== "bad" && i.id);
+}
+
+/** The suggestion a logged call came back with, in words, or "". Never applied. */
+export function callSuggestionWords(result, def) {
+  const s = result?.suggest_stage;
+  if (!s || typeof s !== "object") return "";
+  if (s.stage) return `${s.note || ""} Suggested: ${stageLabel(def, s.stage)}.`.trim();
+  return s.note || "";
 }
 
 /**
@@ -846,6 +982,7 @@ export const IDENT_KINDS = [
   { id: "email", label: "Email" },
   { id: "phone", label: "Phone" },
   { id: "handle", label: "Handle" },
+  { id: "website", label: "Website" },  // #4571 W3
 ];
 export const IDENT_PLATFORMS = [
   { id: "instagram", label: "Instagram" },
@@ -950,6 +1087,11 @@ export function identKey(kind, value) {
   let t = asciiLower(o);
   if ([...t].length > 200) return null;
   if (kind === "email") return /^[^@ ]+@[^@ ]+[.][^@ ]+$/u.test(t) ? t : null;
+  // #4571 W3: the server's website branch (crm_ident_key, 20281130034571).
+  if (kind === "website") {
+    if (!/^https?:\/\/[a-z0-9-]+([.][a-z0-9-]+)+(:[0-9]{1,5})?([/?#][^ ]*)?$/u.test(t)) return null;
+    return t.replace(/^https?:\/\//, "").replace(/[?#].*$/, "").replace(/\/+$/, "");
+  }
   if (kind === "phone") {
     const wa =
       /(?:^|[/.])wa[.]me\/[+]?([0-9]{7,15})(?:[/?#]|$)/.exec(t) ||
@@ -1149,7 +1291,9 @@ export function addIdentifier(list, { kind, value, platform = "" }) {
           ? "An email needs a name, an @ and a domain."
           : k === "phone"
             ? "A phone number needs 7 to 15 digits."
-            : "A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile. A site on its own, a post, a search or a share link names no one.",
+            : k === "website"
+              ? "A website is a link that starts with http:// or https://, like https://example.com."
+              : "A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile. A site on its own, a post, a search or a share link names no one.",
     };
   }
   if (
@@ -1330,4 +1474,112 @@ export function missingCityWords(canAddRegion) {
       secondary: "",
       refresh: "",
     };
+}
+
+// ── #4571 W3: the board tile and the card's quick links ─────────────────────
+
+const SOCIAL_URL = {
+  instagram: (h) => `https://instagram.com/${h}`,
+  tiktok: (h) => `https://www.tiktok.com/@${h}`,
+  x: (h) => `https://x.com/${h}`,
+  facebook: (h) => `https://facebook.com/${h}`,
+  youtube: (h) => `https://youtube.com/@${h}`,
+  linkedin: (h) => `https://linkedin.com/in/${h}`,
+};
+const SOCIAL_SHORT = { instagram: "IG", tiktok: "TT", x: "X", facebook: "FB", youtube: "YT", linkedin: "in", other: "@" };
+
+/** "12.4k" for a follower count; "" when it is not known (never guessed). */
+export function followersShort(n) {
+  if (n === null || n === undefined || n === "" || !Number.isFinite(Number(n))) return "";
+  const v = Number(n);
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}m`;
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 100_000 ? 0 : 1).replace(/\.0$/, "")}k`;
+  return String(v);
+}
+
+/** The address a stored identifier opens, or "" when it opens nothing. */
+export function identifierHref(item) {
+  if (!item || typeof item.value !== "string") return "";
+  const key = item.key || "";
+  if (item.kind === "website") return /^https?:\/\//i.test(item.value) ? item.value : "";
+  if (item.kind === "email") return `mailto:${item.value}`;
+  if (item.kind !== "handle") return "";
+  if (/^https?:\/\//i.test(item.value)) return item.value;
+  if (key.includes("/")) return `https://${key}`;
+  const make = SOCIAL_URL[item.platform];
+  return make ? make(key.replace(/^@/, "")) : "";
+}
+
+/**
+ * The tile's and the card's quick links, from the stored routes only: socials
+ * (with followers when known), the website, the first usable phone (copies) and
+ * the first usable email (a new message). A number marked wrong and a bounced
+ * email are kept, struck through, and never offered as the one to use.
+ */
+export function quickLinks(record) {
+  const ids = Array.isArray(record?.identifiers) ? record.identifiers : [];
+  const out = [];
+  for (const i of ids) {
+    if (i.kind === "handle") {
+      const href = identifierHref(i);
+      if (!href) continue;
+      out.push({ type: "social", id: i.id || i.key, platform: i.platform || "other", short: SOCIAL_SHORT[i.platform] || "@",
+        label: IDENT_PLATFORMS.find((p) => p.id === i.platform)?.label || "Profile", handle: String(i.key || i.value).replace(/^@/, ""),
+        followers: followersShort(i.followers), href, bad: i.status === "bad" });
+    }
+  }
+  for (const i of ids) {
+    if (i.kind === "website" && identifierHref(i)) out.push({ type: "website", id: i.id || i.key, label: "Website", value: i.value, href: identifierHref(i), bad: i.status === "bad" });
+  }
+  for (const kind of ["phone", "email"]) {
+    const list = ids.filter((i) => i.kind === kind);
+    for (const i of list) {
+      out.push({ type: kind, id: i.id || i.key, label: kind === "phone" ? "Phone" : "Email", value: i.value,
+        href: kind === "email" ? `mailto:${i.value}` : "", bad: i.status === "bad",
+        badWords: i.status === "bad" ? badRouteWords(i) : "" });
+    }
+  }
+  return out;
+}
+
+/** "Wrong number" / "Bounced" for a contact route marked bad. */
+export function badRouteWords(item) {
+  if (!item || item.status !== "bad") return "";
+  return item.bad_reason === "wrong_number" ? "Wrong number" : item.bad_reason === "bounced" ? "Bounced" : "Marked bad";
+}
+
+/** Two initials for the tile's badge: "Island Vinyl Bar" -> "IV". */
+export function recordInitials(name) {
+  return String(name || "").split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
+}
+
+/** "Kunle · phone · 2h ago" from the server's last_touch, or "" with no touch (never invented). */
+export function lastTouchWords(record, now = Date.now()) {
+  const t = record?.last_touch;
+  if (!t || !t.at) return "";
+  const channel = t.channel === "phone" ? "phone" : (t.channel || "").replace(/_/g, " ");
+  return [t.actor_name, channel, relativeTime(t.at, now)].filter(Boolean).join(" · ");
+}
+
+/**
+ * Quick due choices instead of a typed date (#4523 bans typed date fields):
+ * today, tomorrow, in 2 days, next Monday, in a week, in 2 weeks.
+ */
+export function dueChoices(today) {
+  const base = new Date(`${String(today).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(base.getTime())) return [];
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const add = (n) => { const d = new Date(base); d.setUTCDate(d.getUTCDate() + n); return d; };
+  const monday = (() => { const n = ((8 - base.getUTCDay()) % 7) || 7; return add(n); })();
+  return [
+    { label: "Today", value: iso(base) }, { label: "Tomorrow", value: iso(add(1)) }, { label: "In 2 days", value: iso(add(2)) },
+    { label: "Next Monday", value: iso(monday) }, { label: "In a week", value: iso(add(7)) }, { label: "In 2 weeks", value: iso(add(14)) },
+  ];
+}
+
+/** "Round 3 of 6 · call done · email to send" when the server sends a cadence (W6); "" otherwise. */
+export function cadenceWords(record) {
+  const c = record?.cadence;
+  if (!c || !Number.isFinite(Number(c.round)) || !Number.isFinite(Number(c.of))) return "";
+  return [`Round ${c.round} of ${c.of}`, ...(Array.isArray(c.steps) ? c.steps : [])].filter(Boolean).join(" · ");
 }

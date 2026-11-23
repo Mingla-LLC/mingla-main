@@ -31,6 +31,14 @@
 // (the panel names the booked time); a cancelled or declined call stays,
 // struck through, with a "Cancelled" / "Declined" badge and a hollow phone
 // dot. The panel names the status and when it changed.
+//
+// Issue #4571 W5 (Seth approved): a Week view beside Month and Board
+// (?view=week&week=YYYY-MM-DD, any day of the week works). Monday to Sunday in
+// the viewer's zone, four layers you switch on and off (?layers=events,demos,
+// callbacks,work; none named means all four): Events, Demos (booked calls with
+// their linked host card or "Needs linking"), Call-backs (a host or creator
+// card's next phone follow-up) and Work due. Every chip opens its card or record
+// in the second panel. See lib/calendarWeek.js and components/contentCalendar/WeekView.jsx.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList, Plus, Search, X } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -45,6 +53,7 @@ import { WorkAddForm } from "../components/ops/WorkAddForm";
 import { Segmented, CONTROL_CLASS } from "../components/crm/fields";
 import { ContentCard } from "../components/contentCalendar/ContentCard";
 import { ContentDrawer } from "../components/contentCalendar/ContentDrawer";
+import { WeekView } from "../components/contentCalendar/WeekView";
 import { PeopleField } from "../components/people/PeopleField";
 import { useHashQuery } from "../hooks/useHashQuery";
 import { usePanelStack } from "../hooks/usePanelStack";
@@ -72,8 +81,9 @@ import {
 import * as service from "../services/contentCalendarService";
 import { EventPanel } from "../components/ops/EventPanel";
 import { StateDot, StatePill } from "../components/ops/StateDot";
-import { useCalendarCalls, useOpsCalendar } from "../hooks/useOpsCalendar";
+import { useCalendarCalls, useCalendarCallbacks, useCalendarWorkDue, useOpsCalendar } from "../hooks/useOpsCalendar";
 import { CALL_LABELS, calendarZoneNote, callEntriesOn, callRange, callView, viewerTimeZone } from "../lib/calendarCalls";
+import { addDaysKey, itemsByDay, layersParam, parseLayers, toggleLayer, todayKeyIn, weekDayKeys, weekFromParam, weekItems, weekRange } from "../lib/calendarWeek";
 import { useServerRead } from "../hooks/useServerRead";
 import { getCalendarRunway } from "../services/dashboardService";
 import { runwayAction, runwayCardItem, runwayPostTitle, testAnchorIds, visibleRunwayRows } from "../lib/calendarRunway";
@@ -86,6 +96,7 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // #4255: Month and Board only. An old list address opens Month.
 const VIEW_OPTIONS = [
   { value: "calendar", label: "Month" },
+  { value: "week", label: "Week" },
   { value: "board", label: "Board" },
 ];
 const SHOW_OPTIONS = [
@@ -164,7 +175,7 @@ function CallStatusBadge({ status, label }) {
 
 /** A call's chip on the month: time first, then its badge, then the name. A cancelled or declined call is struck through. */
 function CallChip({ e, past, current, onOpen }) {
-  const words = [e.time, e.badge, e.statusLabel, e.title].filter(Boolean);
+  const words = [e.time, e.badge, e.statusLabel, e.needsLinking ? "Needs linking" : "", e.title].filter(Boolean);
   return (
     <button
       type="button"
@@ -181,6 +192,8 @@ function CallChip({ e, past, current, onOpen }) {
         <b className={`whitespace-nowrap tabular-nums ${e.off ? "line-through" : ""}`} data-call-time="">{e.time}</b>
         <span className="whitespace-nowrap rounded-full bg-[var(--color-brand-50)] px-1.5 text-[10.5px] font-semibold text-[var(--color-brand-700)]" data-call-badge="">{e.badge}</span>
         <CallStatusBadge status={e.status} label={e.statusLabel} />
+        {/* #4571 W4: a booked demo not linked to a host card yet. */}
+        {e.needsLinking && <span className="whitespace-nowrap rounded-full bg-[var(--a-sched-bg)] px-1.5 text-[10.5px] font-semibold text-[var(--a-sched-ink)]" data-call-needs-linking="">Needs linking</span>}
       </span>
       <span className={`block font-semibold ${e.off ? "line-through" : ""}`} data-call-title=""><ChipWords text={e.title} /></span>
     </button>
@@ -378,6 +391,8 @@ function CallPanel({ call, zone, loading, onClose }) {
             {row("Booked for", v.originalWhen ? <span className="line-through" data-call-original="">{v.originalWhen}</span> : null)}
             {row("Their time", v.bookerWhen)}
             {row(v.badge === CALL_LABELS.host ? "What they run" : v.badge === CALL_LABELS.creator ? "What they make" : "First place", v.what ? v.what.replace(/^[^:]+: /, "") : null)}
+            {row("Host card", v.record ? <a href={`#/hosts?card=${encodeURIComponent(v.record.id)}`} className={link} data-call-record="">{v.record.name}</a>
+              : v.needsLinking ? <a href="#/inbound" className={link} data-call-needs-linking="">Needs linking: review in Demos to link</a> : null)}
             {row("Place or brand", v.venue)}
             {row("City", v.city)}
             {row("Social", v.socialUrl ? <a href={v.socialUrl} target="_blank" rel="noopener noreferrer" className={link} data-call-social="">{v.socialLabel}: {v.socialHandle || v.socialUrl}</a> : null)}
@@ -428,7 +443,10 @@ export function ContentCalendarPage() {
     const show = SHOW_VALUES.includes(rawShow) ? rawShow : "";
     const state = Object.hasOwn(STATE_FILTERS, p.get("state") || "") ? p.get("state") : "";
     return {
-      view: p.get("view") === "board" ? "board" : "calendar",
+      view: p.get("view") === "board" ? "board" : p.get("view") === "week" ? "week" : "calendar",
+      // #4571 W5: the week (its Monday; any day of it works) and the layers on.
+      week: p.get("week"),
+      layers: parseLayers(p.get("layers")),
       show,
       state,
       test: p.get("test") === "1",
@@ -467,18 +485,28 @@ export function ContentCalendarPage() {
   const createFlight = useRef(createSingleFlight());
   const detailGate = useRef(createLatestOnlyGate());
   const days = monthDays(route.month);
-  const opsCal = useOpsCalendar(localDateKey(days[0]), localDateKey(days[days.length - 1]));
+  // #4571 W5: in the Week view every read is for the week on screen (Monday to
+  // Sunday in the viewer's zone); in Month and Board, the month.
+  const zone = viewerTimeZone() || undefined;
+  const isWeek = route.view === "week";
+  const monday = weekFromParam(route.week, todayKeyIn(zone));
+  const weekDays = weekDayKeys(monday);
+  const week = weekRange(monday, zone);
+  const rangeFrom = isWeek && week ? week.from : localDateKey(days[0]);
+  const rangeTo = isWeek && week ? week.to : localDateKey(days[days.length - 1]);
+  const opsCal = useOpsCalendar(rangeFrom, rangeTo);
   // #4130: the runway in each event's own time, test brands marked. #4255:
   // read for the month on screen in both views (the tiles, the test toggle
   // and the event panel's actions use it).
-  const runwayFrom = localDateKey(days[0]);
-  const runwayTo = localDateKey(days[days.length - 1]);
+  const runwayFrom = rangeFrom;
+  const runwayTo = rangeTo;
   const loadRunway = useCallback(() => getCalendarRunway(runwayFrom, runwayTo, todayIso()), [runwayFrom, runwayTo]);
   const runwayRead = useServerRead(loadRunway);
   // #4339: the booked calls for the days on screen, in the viewer's own zone.
-  const zone = viewerTimeZone() || undefined;
-  const callSpan = callRange(days[0], days[days.length - 1]);
+  const callSpan = isWeek && week ? { from: week.fromIso, to: week.toIso } : callRange(days[0], days[days.length - 1]);
   const callsRead = useCalendarCalls(callSpan.from, callSpan.to, route.test);
+  const callbacksRead = useCalendarCallbacks(rangeFrom, rangeTo, isWeek);
+  const workDueRead = useCalendarWorkDue(rangeFrom, rangeTo, isWeek);
   const runway = { data: runwayRead.data, error: runwayRead.status === "error" ? runwayRead.error : null, refetch: runwayRead.retry };
   const attention = useOpsAttention();
   const today = todayIso();
@@ -502,6 +530,10 @@ export function ContentCalendarPage() {
   };
   const openDay = (key) => openFirst("day", key);
   const openCall = (id) => openFirst("call", id);
+  // #4571 W5: the Week view. Its week and its layers live in the address.
+  const shiftWeek = (by) => setParam("week", addDaysKey(monday, 7 * by));
+  const setLayers = (next) => { const p = new URLSearchParams(search); const value = layersParam(next); if (value) p.set("layers", value); else p.delete("layers"); setSearch(p.toString(), { replace: true }); };
+  const openWeekItem = (item) => { if (item.open.call) openCall(item.open.call); else if (item.open.side) stack.openSide(item.open.side); };
   const openUndated = () => openFirst("undated", "1");
   const closeFirst = () => openFirst("card", null);
 
@@ -659,6 +691,21 @@ export function ContentCalendarPage() {
   const monthShow = route.state ? "events" : route.show;
   const callRows = Array.isArray(callsRead.data?.rows) ? callsRead.data.rows.filter((c) => !route.q || String(c.name || "").toLowerCase().includes(route.q.toLowerCase())) : [];
   const openCallRow = route.call ? (Array.isArray(callsRead.data?.rows) ? callsRead.data.rows.find((c) => c.id === route.call) : null) : null;
+  // #4571 W5: every item of the week, for every layer; the layers on pick what shows.
+  const allCallRows = Array.isArray(callsRead.data?.rows) ? callsRead.data.rows : [];
+  const weekAll = isWeek ? weekItems({ days: weekDays, events: monthData, calls: allCallRows, callbacks: callbacksRead.data?.rows, work: workDueRead.data?.cards, zone, q: route.q }) : [];
+  const weekByDay = itemsByDay(weekAll, route.layers, weekDays);
+  const weekLoading = isWeek && ((route.layers.has("events") && !opsCal.data && !opsCal.error) || (route.layers.has("demos") && !callsRead.data && !callsRead.error)
+    || (route.layers.has("callbacks") && !callbacksRead.data && !callbacksRead.error) || (route.layers.has("work") && !workDueRead.data && !workDueRead.error));
+  // A layer that could not load says so and keeps the others (a failed quiet refresh keeps what is on screen).
+  const weekErrors = !isWeek ? [] : [
+    route.layers.has("events") && opsCal.error && !opsCal.data ? { key: "events", title: "Couldn’t load events on Mingla", error: opsCal.error } : null,
+    route.layers.has("demos") && callsRead.error && !callsRead.data ? { key: "demos", title: "Couldn’t load booked demos", error: callsRead.error } : null,
+    route.layers.has("callbacks") && callbacksRead.error && !callbacksRead.data ? { key: "callbacks", title: "Couldn’t load call-backs", error: callbacksRead.error } : null,
+    route.layers.has("work") && workDueRead.error && !workDueRead.data ? { key: "work", title: "Couldn’t load Work due", error: workDueRead.error } : null,
+  ].filter(Boolean);
+  const retryWeek = (key) => ({ events: opsCal, demos: callsRead, callbacks: callbacksRead, work: workDueRead })[key]?.refetch?.();
+  const weekCurrent = stack.side ? weekAll.find((i) => i.open.side && i.open.side.kind === stack.side.kind && i.open.side.id === stack.side.id)?.id : route.call ? `call-${route.call}` : null;
   const nonext = attention.data?.counts?.nonext;
   const monthName = monthWindow(route.month).first.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
   const dayItems = route.day ? dayEntries(route.day, monthData, calendar.items, monthShow, callRows, zone) : [];
@@ -706,6 +753,12 @@ export function ContentCalendarPage() {
     </div>
   );
 
+  const weekBox = (
+    <WeekView monday={monday} days={weekDays} today={todayKeyIn(zone)} zone={zone} items={weekAll} byDay={weekByDay} layers={route.layers}
+      onToggleLayer={(key) => setLayers(toggleLayer(route.layers, key))} onPrev={() => shiftWeek(-1)} onNext={() => shiftWeek(1)} onThisWeek={() => setParam("week", null)}
+      onOpen={openWeekItem} currentKey={weekCurrent} loading={weekLoading} errors={weekErrors} onRetry={retryWeek} />
+  );
+
   const tile = (key, value, words, tone) => (
     <button type="button" data-state-tile={key} aria-pressed={route.state === key} onClick={() => { const p = new URLSearchParams(search); p.delete("view"); if (route.state === key) p.delete("state"); else p.set("state", key); setSearch(p.toString(), { replace: true }); }}
       className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${route.state === key ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]" : "border-[var(--gray-200)] bg-[var(--color-background-primary)]"} ${FOCUS}`}>
@@ -723,7 +776,7 @@ export function ContentCalendarPage() {
       } />
       {!online && <AlertCard variant="warning" title="You’re offline">You can read what is already here. Adding, saving, moving, commenting, deleting and Undo need a connection.</AlertCard>}
       {calendar.stale && <AlertCard variant="warning" title="Content may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>} />}
-      {(route.show === "" || route.show === "events") && <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-3">
+      {!isWeek && (route.show === "" || route.show === "events") && <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-3">
         {tile("notlive", states.notlive ?? "–", "need to go live", "text-[var(--color-info-700)]")}
         {tile("promote", states.ready === undefined ? "–" : Number(states.ready || 0) + Number(states.short || 0), "can be promoted", "text-[var(--color-success-700)]")}
         <a href="#/outreach?tab=hosts&due=nonext" className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{nonext ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">hosts with no next event</span></a>
@@ -731,7 +784,8 @@ export function ContentCalendarPage() {
       <div data-calendar-filters="" className="flex min-w-0 flex-wrap items-center gap-2">
         <Segmented label="View" options={VIEW_OPTIONS} value={route.view} onChange={(v) => setParam("view", v)} fullWidth className="sm:!w-fit" />
         <label className="relative block min-w-0 flex-1 basis-[220px] sm:max-w-sm"><span className="sr-only">Search events and posts</span><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[var(--color-text-tertiary)]" aria-hidden="true" /><input className={`${CONTROL_CLASS} min-h-11 pl-9`} value={route.q} onChange={(event) => setParam("q", event.target.value, true)} placeholder="Search events and posts" /></label>
-        <FilterSelect name="show" label="Show" value={route.show} options={SHOW_OPTIONS} onChange={(v) => setParam("show", v, true)} />
+        {/* #4571 W5: the Week view's layers replace Show. */}
+        {!isWeek && <FilterSelect name="show" label="Show" value={route.show} options={SHOW_OPTIONS} onChange={(v) => setParam("show", v, true)} />}
         {testHidden > 0 && (
           <label className="inline-flex min-h-11 items-center gap-2 text-[12.5px] text-[var(--color-text-secondary)]">
             <input type="checkbox" checked={route.test} onChange={(e) => setParam("test", e.target.checked ? "1" : null, true)} />
@@ -752,7 +806,7 @@ export function ContentCalendarPage() {
               {(route.show === "events" || route.show === "calls") && <AlertCard variant="info" title="The board lists posts">Pick Everything or Posts in Show to see them here. Events and calls are on the Month view.</AlertCard>}
               <BoardView items={boardItems} open={open} move={beginMove} coarse={coarse} />
             </>)
-        : <div className="flex min-w-0 flex-col gap-4">{box}</div>}
+        : <div className="flex min-w-0 flex-col gap-4">{isWeek ? weekBox : box}</div>}
 
       <PanelLinksContext.Provider value={stack.links}>
         <PanelStack stack={stack} first={first} second={second} />

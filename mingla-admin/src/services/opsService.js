@@ -88,10 +88,10 @@ export const pushBackWork = (id, kind, reason, proof, revision) =>
 export const confirmWork = (id, revision) => call(() => supabase.rpc("ops_work_confirm", { p_id: id, p_expected_revision: revision }));
 export const sendBackWork = (id, reason, revision) =>
   call(() => supabase.rpc("ops_work_send_back", { p_id: id, p_reason: reason, p_expected_revision: revision }));
-// #4398: a card reopens with one owner and one watcher; when it has neither, the person picks them here.
+// #4571: a card reopens with its owners and watchers (lists); when it has none, the person picks them here.
 export const reopenWork = (id, reason, revision, people = {}) =>
   call(() => supabase.rpc("ops_work_reopen", { p_id: id, p_reason: reason || null, p_expected_revision: revision,
-    ...(people.owner ? { p_owner: people.owner } : {}), ...(people.watcher ? { p_watcher: people.watcher } : {}) }));
+    ...(people.owners?.length ? { p_owners: people.owners } : {}), ...(people.watchers?.length ? { p_watchers: people.watchers } : {}) }));
 export const noteWork = (id, body, mentionEmails, requestKey) =>
   call(() => supabase.rpc("ops_work_note", { p_id: id, p_body: body, p_mention_emails: mentionEmails || [], p_request_key: requestKey || null }));
 export const personAction = (id, action, note, revision) =>
@@ -118,12 +118,15 @@ export const searchConversations = (query) => call(() => supabase.rpc("issue_442
 export const ensureTicketSignal = (cardId) => call(() => supabase.rpc("issue_4420_ticket_signal_ensure", { p_card_id: cardId }));
 export const mirrorTicketGithub = (cardId) => call(() => supabase.rpc("issue_4420_ticket_github_mirror", { p_card_id: cardId }));
 export const searchLinks = (kind, query) => call(() => supabase.rpc("ops_link_search", { p_kind: kind, p_query: query }));
+// #4571 W2: one link off a card; with fromSubtasks, also off its open subtasks, in one step.
+export const removeLink = (cardId, link, fromSubtasks, revision) => call(() => supabase.rpc("ops_work_link_remove", {
+  p_card_id: cardId, p_kind: link.kind, p_target_id: link.id, p_from_subtasks: !!fromSubtasks, p_expected_revision: revision,
+}));
 export const fetchRecordSignals = (recordId) => call(() => supabase.rpc("ops_record_signals", { p_record_id: recordId }));
 export const allowOneMore = (recordId, reason) => call(() => supabase.rpc("ops_contact_override", { p_record_id: recordId, p_reason: reason }));
 export const listLog = (query = {}) => call(() => supabase.rpc("ops_log_list", { p_query: query }));
 export const releaseClaims = (cardId, claimIds) =>
   call(() => supabase.rpc("ops_release", { p_card_id: cardId || null, p_claim_ids: claimIds || null }));
-export const setSprintGoal = (week, goal) => call(() => supabase.rpc("ops_sprint_set_goal", { p_week: week, p_goal: goal }));
 
 // Wave 2 — the Calendar, runway and host sync.
 export const fetchCalendar = (from, to, today) =>
@@ -132,6 +135,12 @@ export const fetchCalendar = (from, to, today) =>
 // [from, to) instants, read beside ops_calendar (which it does not change).
 export const fetchCalendarCalls = (fromIso, toIso, showTest) =>
   call(() => supabase.rpc("admin_calendar_calls", { p_from: fromIso, p_to: toIso, p_show_test: !!showTest }));
+// #4571 W5 (the Week view): a host or creator card's next phone follow-up, and the
+// open Work cards due, for the same days. Both take at most 100 days.
+export const fetchCalendarCallbacks = (from, to) =>
+  call(() => supabase.rpc("ops_calendar_callbacks", { p_from: from, p_to: to }));
+export const fetchCalendarWorkDue = (from, to) =>
+  call(() => supabase.rpc("ops_calendar_work_due", { p_from: from, p_to: to }));
 export const fetchRunwayReport = (from, to, today) =>
   call(() => supabase.rpc("ops_runway_report", { p_from: from || null, p_to: to || null, p_today: today || null }));
 export const fetchAnchorDetail = (kind, id, today) =>
@@ -235,6 +244,8 @@ export const moveWork = (id, statusId, revision, { proof = null, result = null, 
 export const addSubtask = (parentId, item, key) => call(() => supabase.rpc("ops_subtask_add", { p_parent_id: parentId, p_item: item, p_request_key: key }));
 export const reorderSubtasks = (parentId, ids, revision) => call(() => supabase.rpc("ops_subtask_reorder", { p_parent_id: parentId, p_ids: ids, p_expected_revision: revision }));
 export const addFile = (cardId, file, key) => call(() => supabase.rpc("ops_file_add", { p_card_id: cardId, p_file: file, p_request_key: key || null }));
+// #4571 W3: the same files on a host or creator card (same bucket, limits and signed links).
+export const addRecordFile = (recordId, file, key) => call(() => supabase.rpc("ops_record_file_add", { p_record_id: recordId, p_file: file, p_request_key: key || null }));
 export const archiveFile = (fileId) => call(() => supabase.rpc("ops_file_archive", { p_file_id: fileId }));
 export const signFile = (fileId) => call(() => supabase.rpc("ops_file_sign", { p_file_id: fileId }));
 // #4255 rework (P3): my read marker on a card's thread (the Thread badge).
@@ -246,7 +257,8 @@ export const editMessage = (id, body, revision) => call(() => supabase.rpc("ops_
 export const deleteMessage = (id, revision) => call(() => supabase.rpc("ops_message_delete", { p_message_id: id, p_expected_revision: revision }));
 export const reactMessage = (id, emoji, on) => call(() => supabase.rpc("ops_message_react", { p_message_id: id, p_emoji: emoji, p_on: on !== false }));
 export const fetchSprintPlan = (sprintId, today) => call(() => supabase.rpc("ops_sprint_plan_get", { p_sprint_id: sprintId || null, p_today: today || null }));
-export const addSprintGoal = (sprintId, title, owner) => call(() => supabase.rpc("ops_sprint_goal_add", { p_sprint_id: sprintId, p_title: title, p_owner_email: owner || null }));
+// #4571: any number of goals, 3 to 120 characters, an optional note.
+export const addSprintGoal = (sprintId, title, owner, note) => call(() => supabase.rpc("ops_sprint_goal_add", { p_sprint_id: sprintId, p_title: title, p_owner_email: owner || null, p_note: note || null }));
 export const updateSprintGoal = (goalId, changes, revision) => call(() => supabase.rpc("ops_sprint_goal_update", { p_goal_id: goalId, p_changes: changes, p_expected_revision: revision }));
 export const archiveSprintGoal = (goalId, revision) => call(() => supabase.rpc("ops_sprint_goal_archive", { p_goal_id: goalId, p_expected_revision: revision }));
 export const setSprintCapacity = (sprintId, email, hours) => call(() => supabase.rpc("ops_sprint_capacity_set", { p_sprint_id: sprintId, p_email: email, p_hours: hours }));
@@ -290,14 +302,17 @@ export const signedFileUrls = async (bucket, paths, seconds = 300) => {
  * file goes), then the upload to that path. Returns the file row. A failed
  * upload leaves a row that never shows (it lists only uploaded files).
  */
-export async function uploadCardFile(cardId, file, { kind, mime, key } = {}) {
-  const added = await addFile(cardId, { kind, name: String(file?.name || "file").slice(0, 200), mime, size_bytes: Number(file?.size) || 0 }, key);
+export async function uploadCardFile(cardId, file, { kind, mime, key, record = false } = {}) {
+  const meta = { kind, name: String(file?.name || "file").slice(0, 200), mime, size_bytes: Number(file?.size) || 0 };
+  // #4571 W3: `record` puts it on a host or creator card instead of a Work card.
+  const added = await (record ? addRecordFile(cardId, meta, key) : addFile(cardId, meta, key));
   if (added?.upload?.path) await uploadFileObject(added.upload.bucket || "ops-work-files", added.upload.path, file, mime);
   return added?.file || null;
 }
 
 /** A link onto a card (no page is fetched). */
-export const addCardLink = (cardId, url, name, key) => addFile(cardId, { kind: "link", url, ...(name ? { name } : {}) }, key).then((r) => r?.file || null);
+export const addCardLink = (cardId, url, name, key, { record = false } = {}) =>
+  (record ? addRecordFile : addFile)(cardId, { kind: "link", url, ...(name ? { name } : {}) }, key).then((r) => r?.file || null);
 
 /** A short-lived address to open a file: a link's own, or a 5-minute signed one. */
 export async function openableFileUrl(fileId) {

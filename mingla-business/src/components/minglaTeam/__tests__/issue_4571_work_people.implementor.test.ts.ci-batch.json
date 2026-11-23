@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4571",
+  "suite": {
+    "id": "issue-4571-host-work-people",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/jest.config.cjs"
+    ],
+    "steps": [
+      {
+        "name": "Host app Work updates: the card sheet names every owner and watcher",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/components/minglaTeam/__tests__/jest.issue4571.cjs --runInBand",
+        "commandId": "assert:issue-4571-host-work-people:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/components/minglaTeam/__tests__/jest.issue4571.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4571",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/minglaTeam/__tests__/issue_4571_work_people.implementor.test.ts",
+      "mingla-business/src/components/minglaTeam/__tests__/jest.issue4571.cjs"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 20,
+      "p95": 90,
+      "evidence": "Local targeted run 2026-11-23"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 300
+  }
+}

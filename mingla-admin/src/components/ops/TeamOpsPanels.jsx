@@ -1,28 +1,24 @@
 // Issue #3980 — the Team dashboard's work panels, above the pipeline numbers:
 // Runway (what is public in time, what is at risk), this week's Sprint by
-// person, and the host cards nobody owns. The owner also gets the one-time
+// person, and the host cards nobody owns. #4571: the sprint panel and
+// TeamOpsPanels (unused) are removed; the sprint goals live on the Work board. The owner also gets the one-time
 // "Turn next steps into cards": a preview first, then a convert of only the
 // rows the owner ticks and confirms. Nothing is converted without that.
-import { Fragment, useState } from "react";
-import { Copy } from "lucide-react";
-import { AlertCard, SectionCard } from "../ui/Card";
+import { useState } from "react";
+import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { useToast } from "../../context/ToastContext";
 import { useOpsConfig } from "../../hooks/useOpsConfig";
-import { useOpsTeamOverview } from "../../hooks/useOpsWork";
 import * as ops from "../../services/opsService";
 import {
-  HOSTS_WITHOUT_OWNER_PROMPT,
   bandShort,
   bandTone,
   conversionIssue,
   conversionResultWords,
   conversionSelectable,
   dayLabel,
-  hostsWithoutOwnerWords,
   opsErrorWords,
   requestKey,
-  sprintLabel,
 } from "../../lib/opsModel";
 import { OpsChip } from "./OpsChip";
 
@@ -34,18 +30,6 @@ function sameName(person, list) {
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const LINK = `inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`;
-
-function Skeleton({ label }) {
-  return (
-    <SectionCard>
-      <div role="status" className="flex flex-col gap-2">
-        <span className="sr-only">{label}</span>
-        <div className="h-4 w-1/2 animate-pulse rounded bg-[var(--gray-100)]" />
-        <div className="h-3 w-3/4 animate-pulse rounded bg-[var(--gray-100)]" />
-      </div>
-    </SectionCard>
-  );
-}
 
 // #4130: the Team dashboard shows it collapsed at the bottom.
 export function RunwayPanel({ runway }) {
@@ -78,67 +62,6 @@ export function RunwayPanel({ runway }) {
               </li>
             ))}
           </ul>
-        )}
-      </div>
-    </SectionCard>
-  );
-}
-
-function SprintPanel({ sprint, hostsWithoutOwner }) {
-  const { addToast } = useToast();
-  const people = Array.isArray(sprint?.by_person) ? sprint.by_person : [];
-  const ownerless = hostsWithoutOwnerWords(hostsWithoutOwner);
-  return (
-    <SectionCard title={sprintLabel(sprint?.week || "")} action={<a href="#/work-board" className={LINK}>Open board</a>}>
-      <div className="flex min-w-0 flex-col gap-3">
-        <p className="break-words text-[13px] text-[var(--color-text-secondary)]">{sprint?.goal || "No goal set"}</p>
-        {people.length === 0 ? (
-          <p className="text-[13px] text-[var(--color-text-secondary)]">Nobody is on the team yet.</p>
-        ) : (
-          <table className="w-full table-fixed text-left text-[13px]">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wide text-[var(--color-text-tertiary)]">
-                <th scope="col" className="w-[34%] py-1 font-semibold">Person</th>
-                <th scope="col" className="py-1 font-semibold">Open</th>
-                <th scope="col" className="py-1 font-semibold">Needs your OK</th>
-                <th scope="col" className="py-1 font-semibold">Overdue</th>
-                <th scope="col" className="py-1 font-semibold">Agent closed</th>
-                <th scope="col" className="py-1 font-semibold">Carried</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--gray-100)]">
-              {people.map((p) => (
-                <Fragment key={p.email}>
-                <tr>
-                  <th scope="row" className="break-words py-1.5 font-medium text-[var(--color-text-primary)]">{p.name}{sameName(p, people) && <span className="sr-only"> ({p.email})</span>}</th>
-                  <td className="py-1.5 tabular-nums">{p.open}</td>
-                  <td className="py-1.5 tabular-nums">{p.needs_ok ?? p.needs_person}</td>
-                  <td className="py-1.5 tabular-nums">{p.overdue ?? "—"}</td>
-                  <td className="py-1.5 tabular-nums">{p.closed_by_agent}</td>
-                  <td className="py-1.5 tabular-nums">{p.carried}</td>
-                </tr>
-                {/* Two teammates with one name: the address on its own line, the whole table wide, so it never breaks mid-word. */}
-                {sameName(p, people) && <tr aria-hidden="true" className="!border-t-0"><td colSpan={5} className="pb-1.5 pt-0 text-[11.5px] text-[var(--color-text-tertiary)]">{p.email}</td></tr>}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {ownerless && (
-          <div className="flex min-w-0 flex-col gap-2 rounded-lg bg-[var(--color-warning-50)] p-3">
-            <p className="break-words text-[13px] text-[var(--color-warning-700)]">{ownerless}</p>
-            <p className="break-words font-mono text-[12px] text-[var(--color-text-secondary)]">{HOSTS_WITHOUT_OWNER_PROMPT}</p>
-            <button
-              type="button"
-              onClick={async () => {
-                try { await navigator.clipboard.writeText(HOSTS_WITHOUT_OWNER_PROMPT); addToast({ variant: "success", title: "Prompt copied." }); }
-                catch { addToast({ variant: "error", title: "Couldn’t copy", description: "Select the text and copy it yourself." }); }
-              }}
-              className={`inline-flex min-h-11 items-center gap-1 self-start rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}
-            >
-              <Copy aria-hidden="true" className="h-3.5 w-3.5" /> Copy prompt
-            </button>
-          </div>
         )}
       </div>
     </SectionCard>
@@ -252,38 +175,6 @@ export function NextStepConversion({ online, team }) {
         )}
       </div>
     </SectionCard>
-  );
-}
-
-export function TeamOpsPanels({ online }) {
-  const overview = useOpsTeamOverview();
-  const config = useOpsConfig();
-  const canConvert = !!config.data?.me?.can_convert;
-  const team = Array.isArray(config.data?.team) ? config.data.team : [];
-  if (overview.loading) {
-    return (
-      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
-        <Skeleton label="Loading the runway…" />
-        <Skeleton label="Loading the sprint…" />
-      </div>
-    );
-  }
-  if (overview.error && !overview.data) {
-    return (
-      <AlertCard variant="error" title="Couldn’t load the runway and the sprint" action={<Button variant="secondary" className="min-h-11" onClick={() => overview.refetch()}>Try again</Button>}>
-        {opsErrorWords(overview.error)}
-      </AlertCard>
-    );
-  }
-  const data = overview.data || {};
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
-        <RunwayPanel runway={data.runway} />
-        <SprintPanel sprint={data.sprint} hostsWithoutOwner={data.hosts_without_owner} />
-      </div>
-      {canConvert && <NextStepConversion online={online} team={team} />}
-    </div>
   );
 }
 

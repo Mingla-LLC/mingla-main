@@ -75,10 +75,11 @@ Deno.test("#3980 W3 rework D6: a name match comes before an address match, so ku
 
 Deno.test("#3980 W3 rework D5: the last owner is kept once there is one, on automatic cards too", () => {
   const detail = code("components/ops/WorkDetail.jsx");
-  assertMatch(detail, /label="Owner" single[\s\S]{0,240}?min=\{1\}/  /* #4398: one owner, always kept */);
+  assertMatch(detail, /label="Owners" value=\{ownerEmails\}[\s\S]{0,240}?min=\{1\} max=\{10\}/  /* #4571 W1: 1 to 10 owners, the last one always kept */);
   assertNotMatch(detail, /min=\{card\.auto \? 0 : 1\}/);
-  // #4398: the owner field is single (Change, never empty), so the old words are gone.
-  assertMatch(detail, /label="Owner" single/);
+  // #4571 W1: owners are several again (no single field); the last owner is refused with its words.
+  assertNotMatch(detail, /label="Owner" single/);
+  assertMatch(detail, /min=\{1\} max=\{10\}[\s\S]{0,80}?minWords=\{lastOwnerWords\}/);
   const r = fieldKey({ open: false, hi: 0 }, "Backspace", { options: [], value: ["seth@usemingla.com"], query: "", min: 1, minWords: "keep" });
   assertEquals(r.refused, "keep");
 });
@@ -142,7 +143,8 @@ Deno.test("#3980 W3 rework D9: nothing sits under the month, every list follows 
   const page = code("pages/ContentCalendarPage.jsx");
   const panel = code("components/ops/EventPanel.jsx");
   // With nothing open, only the calendar box: no right column, no runway list.
-  assertMatch(page, /: <div className="flex min-w-0 flex-col gap-4">\{box\}<\/div>\}/);
+  // [TEST-MOD-APPROVED #4571] W5: the Week view takes the same place as the month box.
+  assertMatch(page, /: <div className="flex min-w-0 flex-col gap-4">\{isWeek \? weekBox : box\}<\/div>\}/);
   assertNotMatch(page, /TwoColumn/);
   assertNotMatch(panel, /RunwayList|useOpsRunway/);
   assertMatch(panel, /: null;/);
@@ -209,8 +211,10 @@ Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names
   assertNotMatch(dash, /type="checkbox" role="switch"/);
   assertMatch(dash, /Engineering follow-through \(merged but not live, release records, live checks\) starts from the moment you first switch on automatic steps/);
   const panels = code("components/ops/TeamOpsPanels.jsx");
-  assertMatch(panels, /\{p\.name\}\{sameName\(p, people\) && <span className="sr-only"> \(\{p\.email\}\)<\/span>\}/);
-  assertMatch(panels, /\{sameName\(p, people\) && <tr aria-hidden="true" className="!border-t-0"><td colSpan=\{5\}[^>]*>\{p\.email\}<\/td><\/tr>\}/);
+  // #4571 W1 removed the dead sprint table (SprintPanel); two teammates who share a
+  // name are still told apart by address, now in the conversion's assignee list.
+  assertNotMatch(panels, /export function SprintPanel|export function TeamOpsPanels/);
+  assertMatch(panels, /\{team\.map\(\(p\) => <option key=\{p\.email\} value=\{p\.email\}>\{sameName\(p, team\) \? `\$\{p\.name\} \(\$\{p\.email\}\)` : p\.name\}<\/option>\)\}/);
   // #4255 W2 (rev2): the sprint bar is one line that never wraps; its goals scroll inside it.
   // #4255 fix-up: it is `relative`, so its goals' hidden text cannot widen a phone page.
   assertMatch(code("components/ops/SprintBar.jsx"), /data-sprint-bar="" className="relative flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden rounded-xl border/);

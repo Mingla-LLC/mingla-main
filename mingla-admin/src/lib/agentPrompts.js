@@ -75,6 +75,7 @@ function successLine(call) {
   if (tool === "set_owners") return counted("Updated owners on", countFor(call, "updated"), "card");
   if (tool === "log_activity") return counted("Logged", countFor(call, "logged"), "activity item", "activity items");
   if (tool === "record_reply") return counted("Recorded", countFor(call, "logged"), "reply", "replies");
+  if (tool === "log_emails") return counted("Logged", countFor(call, "logged"), "email");
   if (tool === "save_drafts") return counted("Wrote", countFor(call, "saved"), "draft");
   if (tool === "withdraw_drafts") return counted("Withdrew", countFor(call, "discarded"), "draft");
   if (tool === "add_content") return counted("Added", countFor(call, "created"), "content card");

@@ -44,6 +44,11 @@
 -- ops_release_items do not exist there, and ops_auto_card_upsert writes no
 -- parent there (ROUTE 1 reads parent_id IS NULL).
 --
+-- #4571: the exactly-one rule this suite pinned is replaced. INVARIANT
+-- ops-card-owners-and-watchers (gate ops_4571_card_people_check) is declared
+-- in issue_4571_w1_people_and_goals.implementor.pg17.test.sql, the current
+-- gate's test. The PEOPLE block below now pins 1 to 10 of each.
+--
 -- Run from the repository root as supabase_admin.
 
 \set ON_ERROR_STOP on
@@ -81,12 +86,12 @@ begin
     execute p_sql into v_out;
     -- #4398 (P0 retest): fire the deferred people check here, still as role authenticated, the way
     -- PostgREST commits a request (Admin and the Host app); a refusal rolls this call back.
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards immediate;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     return v_out;
   exception when others then
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     return 'ERR:' || sqlstate || ':' || sqlerrm;
   end;
@@ -121,11 +126,11 @@ language plpgsql as $fn$
 begin
   begin
     execute p_sql;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards immediate;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     raise exception 'ok_rollback' using errcode = 'P0001';
   exception when others then
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     return case when sqlerrm = 'ok_rollback' then 'OK' else 'ERR:' || sqlstate || ':' || sqlerrm end;
   end;
 end;
@@ -309,7 +314,7 @@ begin
   v := pg_temp.person('abi', format('select public.ops_setting_set(%L, %L::jsonb)::text', 'auto_card_routes',
          jsonb_build_object('routes', jsonb_build_object('ask', pg_temp.id('K'), 'golive', pg_temp.id('H')), 'fallback', pg_temp.id('K'))));
   perform pg_temp.chk('ROUTE', 'an admin can, and Settings shows the route open with its people',
-    (select r->>'state' || '/' || (r->'card'->>'owner') from jsonb_array_elements((v::jsonb)->'settings'->'auto_card_routes'->'routes') r where r->>'kind' = 'ask'),
+    (select r->>'state' || '/' || (r->'card'->'owners'->>0) from jsonb_array_elements((v::jsonb)->'settings'->'auto_card_routes'->'routes') r where r->>'kind' = 'ask'),  -- #4571: owners list
     'open/' || public.ops_name(pg_temp.email('kun')));
   perform pg_temp.chk('ROUTE', 'the change is in the log',
     (select (count(*) >= 1)::text from public.ops_agent_log where action = 'setting_changed' and detail->>'key' = 'auto_card_routes'), 'true');
@@ -324,20 +329,22 @@ begin
     'title', 'V34398 Two owners', 'instructions', 'Do the work carefully and say what changed.', 'done_means', 'It is done.',
     'owners', jsonb_build_array(pg_temp.email('tao'), pg_temp.email('kun')), 'watchers', jsonb_build_array(pg_temp.email('seth')),
     'due_on', (now() at time zone 'UTC')::date + 3)), pg_temp.rk()));
-  perform pg_temp.chk('PEOPLE', 'two owners are refused with the fix', (v::jsonb)->'results'->0->'fixes'->0->>'message', 'A card has one owner. Pick one person.');
+  perform pg_temp.chk('PEOPLE', 'two owners are accepted (#4571)', (v::jsonb)->'results'->0->>'status', 'added');
   v := pg_temp.add('NW', 'V34398 No watcher', 'tao', null);
   perform pg_temp.chk('PEOPLE', 'no watcher is refused with the fix',
-    (select f->>'message' from jsonb_array_elements((v::jsonb)->'results'->0->'fixes') f where f->>'field' = 'watchers'), 'A card has one watcher, who is not the owner.');
+    (select f->>'message' from jsonb_array_elements((v::jsonb)->'results'->0->'fixes') f where f->>'field' = 'watchers'), 'A card needs at least one watcher, who is not an owner.');
   v := pg_temp.add('SW', 'V34398 Owner as watcher', 'tao', 'tao');
   perform pg_temp.chk('PEOPLE', 'the owner as watcher is refused', (v::jsonb)->'results'->0->>'status', 'refused');
   v := pg_temp.add('P', 'V34398 People card', 'tao', 'seth');
   perform pg_temp.chk('PEOPLE', 'control: one owner and one watcher is added', (v::jsonb)->'results'->0->>'status', 'added');
   v := pg_temp.person('seth', format('select public.ops_work_update(%L, %L::jsonb, %s)::text', pg_temp.id('P'),
          jsonb_build_object('owners', jsonb_build_array(pg_temp.email('tao'), pg_temp.email('kun'))), pg_temp.rev('P')));
-  perform pg_temp.lk('PEOPLE', 'an update that leaves two owners is refused', v, 'ERR:22023:invalid_card: A card has one owner. Pick one person.%');
+  perform pg_temp.chk('PEOPLE', 'an update that leaves two owners is accepted (#4571)', pg_temp.people(pg_temp.id('P')), 'kun:owner,tao:owner,seth:watcher');
+  v := pg_temp.person('seth', format('select public.ops_work_update(%L, %L::jsonb, %s)::text', pg_temp.id('P'),
+         jsonb_build_object('owners', jsonb_build_array(pg_temp.email('tao'))), pg_temp.rev('P')));
   v := pg_temp.person('seth', format('select public.ops_work_update(%L, %L::jsonb, %s)::text', pg_temp.id('P'),
          jsonb_build_object('watchers', '[]'::jsonb), pg_temp.rev('P')));
-  perform pg_temp.lk('PEOPLE', 'an update that leaves no watcher is refused', v, 'ERR:22023:invalid_card: A card has one watcher, who is not the owner.%');
+  perform pg_temp.lk('PEOPLE', 'an update that leaves no watcher is refused', v, 'ERR:22023:invalid_card: A card needs at least one watcher, who is not an owner.%');
 
   -- The invariant at commit, whoever writes.
   insert into public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
@@ -349,12 +356,12 @@ begin
   insert into public.ops_work_people (card_id, email, role, added_by) values
     (v_id, pg_temp.email('tao'), 'owner', 'system@usemingla.com'), (v_id, pg_temp.email('kun'), 'owner', 'system@usemingla.com'),
     (v_id, pg_temp.email('seth'), 'watcher', 'system@usemingla.com');
-  perform pg_temp.lk('PEOPLE', 'two owners are refused at commit', pg_temp.commit_check('select 1'), 'ERR:23514:card_people:%');
+  perform pg_temp.chk('PEOPLE', 'two owners commit (#4571)', pg_temp.commit_check('select 1'), 'OK');
   delete from public.ops_work_people where card_id = v_id and email = pg_temp.email('kun');
   perform pg_temp.chk('PEOPLE', 'one owner and one watcher passes', pg_temp.commit_check('select 1'), 'OK');
-  perform pg_temp.lk('PEOPLE', 'two watchers are refused at commit',
+  perform pg_temp.chk('PEOPLE', 'two watchers commit (#4571)',
     pg_temp.commit_check(format($q$insert into public.ops_work_people (card_id, email, role, added_by) values (%L, %L, 'watcher', 'system@usemingla.com')$q$, v_id, pg_temp.email('abi'))),
-    'ERR:23514:card_people:%');
+    'OK');
   perform pg_temp.lk('PEOPLE', 'deleting the only watcher is refused at commit',
     pg_temp.commit_check(format($q$delete from public.ops_work_people where card_id = %L and role = 'watcher'$q$, v_id)), 'ERR:23514:card_people:%');
   perform pg_temp.chk('PEOPLE', 'swapping the owner and the watcher in one transaction is allowed',
@@ -372,8 +379,8 @@ begin
     'ERR:23514:card_people:%');
   v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s)::text', v_id, (select revision from public.ops_work_cards where id = v_id)));
   perform pg_temp.chk('PEOPLE', 'ops_work_reopen with no parent says exactly who to add', v,
-    'ERR:23514:card_people: This card has no watcher. Pick one watcher (not ' || public.ops_name(pg_temp.email('tao')) || ', the owner), then reopen it.');
-  v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s, null, %L)::text', v_id, (select revision from public.ops_work_cards where id = v_id), pg_temp.email('seth')));
+    'ERR:23514:card_people: A card needs at least one watcher, who is not an owner. Pick the people, then reopen it.');  -- #4571 words
+  v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s, null, %L::jsonb)::text', v_id, (select revision from public.ops_work_cards where id = v_id), jsonb_build_array(pg_temp.email('seth'))));  -- #4571: lists
   perform pg_temp.chk('PEOPLE', 'and reopens with the watcher the person picked',
     (select status from public.ops_work_cards where id = v_id) || '/' || pg_temp.people(v_id), 'todo/tao:owner,seth:watcher');
   -- A closed subtask with nobody takes its parent's owner and watcher on reopen.
@@ -694,11 +701,11 @@ begin
 
   perform pg_temp.chk('SECURITY', 'the people check and the review guards run as their owner',
     (select string_agg(proname || ':' || prosecdef, ',' order by proname) from pg_proc
-      where pronamespace = 'public'::regnamespace and proname in ('ops_4398_card_people_check', 'ops_4398_review_guard', 'ops_4398_review_column_guard')),
-    'ops_4398_card_people_check:true,ops_4398_review_column_guard:true,ops_4398_review_guard:true');
+      where pronamespace = 'public'::regnamespace and proname in ('ops_4571_card_people_check', 'ops_4398_review_guard', 'ops_4398_review_column_guard')),
+    'ops_4398_review_column_guard:true,ops_4398_review_guard:true,ops_4571_card_people_check:true');  -- #4571: the people gate is ops_4571_card_people_check
   perform pg_temp.chk('SECURITY', 'no client role can call them',
     (select bool_or(has_function_privilege(r, f, 'EXECUTE'))::text from unnest(array['anon', 'authenticated']) r,
-      unnest(array['public.ops_4398_card_people_check()', 'public.ops_4398_review_guard()', 'public.ops_4398_review_column_guard()',
+      unnest(array['public.ops_4571_card_people_check()', 'public.ops_4398_review_guard()', 'public.ops_4398_review_column_guard()',
                    'public.ops_default_watcher(text,text[])']) f), 'false');
 end;
 $t$;

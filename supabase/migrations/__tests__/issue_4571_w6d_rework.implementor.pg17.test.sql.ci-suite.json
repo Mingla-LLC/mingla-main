@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4571_w6d_rework.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4571-w6d-rework",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

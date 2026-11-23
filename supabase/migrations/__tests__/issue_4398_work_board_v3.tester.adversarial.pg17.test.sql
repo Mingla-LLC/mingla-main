@@ -133,11 +133,11 @@ language plpgsql as $fn$
 begin
   begin
     execute p_sql;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards immediate;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     raise exception 'ok_rollback' using errcode = 'P0001';
   exception when others then
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     return case when sqlerrm = 'ok_rollback' then 'OK' else 'ERR:' || sqlstate || ':' || sqlerrm end;
   end;
 end;
@@ -159,12 +159,12 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'email', v_email, 'role', 'authenticated')::text, true);
     perform set_config('request.jwt.claim.role', '', true);
     execute p_sql into v_out;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards immediate;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     raise exception 'ok_rollback' using errcode = 'P0001';
   exception when others then
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     return case when sqlerrm = 'ok_rollback' then 'OK' else 'ERR:' || sqlstate || ':' || sqlerrm end;
   end;
@@ -389,9 +389,13 @@ declare v text; v_id uuid; v_q uuid; v_ev uuid;
 begin
   v := pg_temp.add('P', 'ADV4398 People target', 'tao', 'seth');
   -- P1. ops_people_set straight from a SECURITY DEFINER caller with two owners.
-  perform pg_temp.lk('PEOPLE', 'P1 ops_people_set with two owners is refused at commit',
+  -- #4571: two owners are allowed now (1 to 10 of each); the gate is ops_4571_card_people_check.
+  perform pg_temp.chk('PEOPLE', 'P1 ops_people_set with two owners commits (#4571)',
     pg_temp.commit_check(format($q$select public.ops_people_set(%L, array[%L, %L], array[%L], 'system@usemingla.com', null)$q$,
-      pg_temp.id('P'), pg_temp.email('tao'), pg_temp.email('kun'), pg_temp.email('seth'))), 'ERR:23514:card_people:%');
+      pg_temp.id('P'), pg_temp.email('tao'), pg_temp.email('kun'), pg_temp.email('seth'))), 'OK');
+  perform pg_temp.lk('PEOPLE', 'P1 ops_people_set with no watcher is refused at commit',
+    pg_temp.commit_check(format($q$select public.ops_people_set(%L, array[%L], array[]::text[], 'system@usemingla.com', null)$q$,
+      pg_temp.id('P'), pg_temp.email('tao'))), 'ERR:23514:card_people:%');
   -- P2. Moving P's owner row onto a CLOSED card: P (the old card) is checked.
   insert into public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, status, close_kind, closed_at, closed_by, closed_via, created_by, updated_by)
   values ('ADV4398 Closed target', 'Written straight into the table.', 'It is done.', current_date + 2, 'explicit',
@@ -428,8 +432,8 @@ begin
   update public.ops_work_events set before = jsonb_set(before, '{people}', (before->'people') || jsonb_build_array(jsonb_build_object(
       'email', pg_temp.email('kun'), 'role', 'watcher', 'added_by', 'system@usemingla.com', 'added_via', null, 'added_at', now())))
    where id = v_ev;
-  perform pg_temp.lk('PEOPLE', 'P6 an undo that would put back two watchers is refused at commit',
-    pg_temp.commit_check(format($q$select pg_temp.person('seth', %L)$q$, format('select public.ops_work_undo(%L)::text', v_ev))), 'ERR:23514:card_people:%');
+  perform pg_temp.chk('PEOPLE', 'P6 an undo that puts back two watchers commits (#4571)',
+    pg_temp.commit_check(format($q$select pg_temp.person('seth', %L)$q$, format('select public.ops_work_undo(%L)::text', v_ev))), 'OK');
 end;
 $t$;
 
@@ -444,9 +448,9 @@ begin
   insert into public.ops_work_people (card_id, email, role, added_by) values
     (v_id, pg_temp.email('tao'), 'owner', 'system@usemingla.com'), (v_id, pg_temp.email('kun'), 'owner', 'system@usemingla.com');
   v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s)::text', v_id, (select revision from public.ops_work_cards where id = v_id)));
-  perform pg_temp.lk('PEOPLE', 'P7 reopening a legacy two-owner card with no parent is refused, naming the problem', v, 'ERR:23514:card_people: This card has 2 owners and no watcher.%');
-  v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s, %L, %L)::text', v_id, (select revision from public.ops_work_cards where id = v_id),
-         pg_temp.email('kun'), pg_temp.email('seth')));
+  perform pg_temp.lk('PEOPLE', 'P7 reopening a legacy two-owner card with no parent is refused, naming the problem', v, 'ERR:23514:card_people: A card needs at least one watcher, who is not an owner.%');  -- #4571 words
+  v := pg_temp.person('seth', format('select public.ops_work_reopen(%L, null, %s, %L::jsonb, %L::jsonb)::text', v_id, (select revision from public.ops_work_cards where id = v_id),
+         jsonb_build_array(pg_temp.email('kun')), jsonb_build_array(pg_temp.email('seth'))));  -- #4571: lists
   perform pg_temp.chk('PEOPLE', 'P7 with an owner and watcher picked it reopens with exactly those two',
     (select status from public.ops_work_cards where id = v_id) || '/' || pg_temp.people(v_id), 'todo/kun:owner,seth:watcher');
   -- P8. A legacy closed subtask owned by its parent's watcher, no watcher.
@@ -476,15 +480,15 @@ begin
   -- P10. subtask_add with two owners; an add with nobody.
   v := pg_temp.person('seth', format('select public.ops_subtask_add(%L, %L::jsonb, %L)::text', pg_temp.id('P2'),
          jsonb_build_object('title', 'ADV4398 Two-owner subtask', 'owners', jsonb_build_array(pg_temp.email('tao'), pg_temp.email('kun'))), pg_temp.rk()));
-  perform pg_temp.lk('PEOPLE', 'P10 a two-owner subtask is refused', v, '%A card has one owner. Pick one person.%');
+  perform pg_temp.lk('PEOPLE', 'P10 a two-owner subtask is added (#4571)', v, '%"status": "added"%');
   v := pg_temp.add('NOBODY', 'ADV4398 Card for nobody', null, null);
   perform pg_temp.chk('PEOPLE', 'P10 an add with neither owner nor watcher is refused with both fixes, never guessed',
     (v::jsonb)->'results'->0->>'status' || '/' ||
     (select string_agg(f->>'message', ' | ' order by f->>'field') from jsonb_array_elements((v::jsonb)->'results'->0->'fixes') f where f->>'field' in ('owners','watchers')),
-    'refused/A card has one owner. Pick one person. | A card has one watcher, who is not the owner.');
+    'refused/A card needs at least one owner. | A card needs at least one watcher, who is not an owner.');  -- #4571 words
   perform pg_temp.chk('PEOPLE', 'every open card of this suite passes the invariant now',
     (select count(*)::text from public.ops_work_cards w where w.status <> 'done' and w.archived_at is null
-       and (cardinality(public.ops_card_people(w.id, 'owner')) <> 1 or cardinality(public.ops_card_people(w.id, 'watcher')) <> 1)), '0');
+       and (cardinality(public.ops_card_people(w.id, 'owner')) not between 1 and 10 or cardinality(public.ops_card_people(w.id, 'watcher')) not between 1 and 10)), '0');  -- #4571
 end;
 $t$;
 

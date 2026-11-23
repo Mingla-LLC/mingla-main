@@ -653,7 +653,6 @@ insert into w5_called values
   ('ops_setting_set', false, true),
   ('ops_settings_get', false, true),
   ('ops_sprint_plan_get', false, true),
-  ('ops_sprint_set_goal', false, true),
   ('ops_status_add', false, true),
   ('ops_status_list', false, true),
   ('ops_subtask_add', false, true),

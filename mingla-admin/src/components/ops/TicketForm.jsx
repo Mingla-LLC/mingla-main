@@ -30,6 +30,7 @@ import {
 } from "../../lib/ticketModel";
 import { PRODUCT_AREAS } from "../support/supportOptions";
 import { PeopleField } from "../people/PeopleField";
+import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords } from "../../lib/peopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 
@@ -239,12 +240,13 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-1">
-          <PeopleField id="new-ticket-owner" label="Owner" single fitMenu value={owners} team={team} me={directory.me || me}
-            suggested={[directory.me || me].filter(Boolean)} exclude={watchers} min={1} onChange={changeOwners} />
+          {/* #4571: 1 to 10 owners and 1 to 10 watchers, nobody in both. */}
+          <PeopleField id="new-ticket-owner" label="Owners" max={10} fitMenu value={owners} team={team} me={directory.me || me}
+            suggested={[directory.me || me].filter(Boolean)} exclude={watchers} min={1} minWords={lastOwnerWords} hint={OWNERS_HINT} onChange={changeOwners} />
           <FieldError id="ticket-owner-error" words={wordsFor("owner") || wordsFor("owners")} />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <PeopleField id="new-ticket-watcher" label="Watcher" single fitMenu min={0} hint="One watcher, who is not the owner. They confirm the card is done."
+          <PeopleField id="new-ticket-watcher" label="Watching" max={10} fitMenu min={0} hint={WATCHERS_HINT} minWords={lastWatcherWords}
             value={watchers} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={owners} onChange={(next) => setWatchers(next)} />
           <FieldError id="ticket-watcher-error" words={wordsFor("watchers")} />
         </div>

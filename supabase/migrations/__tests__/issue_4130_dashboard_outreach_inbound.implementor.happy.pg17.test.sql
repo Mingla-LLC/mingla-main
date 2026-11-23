@@ -59,6 +59,11 @@ END
 $a$;
 
 BEGIN;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 DO $c01$
 DECLARE
   v_fn text;
@@ -97,6 +102,11 @@ $c01$;
 ROLLBACK;
 
 BEGIN;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 -- The replayed schema's auth.users may lack the confirmation column the team
 -- gate reads (other suites add it the same way).
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;

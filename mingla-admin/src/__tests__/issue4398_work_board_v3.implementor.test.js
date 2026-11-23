@@ -211,13 +211,16 @@ describe("P-1 one owner and one watcher in the picker", () => {
     assert.match(html, /aria-label="Change the owner"/);
     assert.match(html, /<button[^>]*aria-label="Remove Taofeek"[^>]*disabled=""/);
   });
-  it("the card's and the new card form's owner and watcher are single", () => {
+  // #4571: owners and watchers are lists now (1 to 10 each); the single
+  // mode stays in PeopleField for other callers.
+  it("the card's and the new card form's owners and watchers are lists (#4571)", () => {
     const detail = code("components/ops/WorkDetail.jsx");
-    assert.match(detail, /label="Owner" single/);
-    assert.match(detail, /label="Watcher" single/);
+    assert.match(detail, /label="Owners" value=\{ownerEmails\}/);
+    assert.match(detail, /label="Watching" value=\{watcherEmails\}/);
     const add = code("components/ops/WorkAddForm.jsx");
-    assert.match(add, /label="Owner" single/);
-    assert.match(add, /label="Watcher" single/);
+    assert.match(add, /label="Owners" max=\{10\}/);
+    assert.match(add, /label="Watching" max=\{10\}/);
+    assert.doesNotMatch(detail + add, /label="(Owner|Watcher)" single/);
   });
 });
 
@@ -259,22 +262,22 @@ describe("A-1 Messages > Mingla activity", () => {
 });
 
 describe("R-3 reopening is never a dead end", () => {
-  it("a card without one owner and one watcher shows the server's words and the single pickers, then reopens with them", () => {
+  it("a card without its people shows the server's words and the pickers (lists since #4571), then reopens with them", () => {
     const src = code("components/ops/WorkDetail.jsx");
     assert.match(src, /error\?\.token === "card_people"/);
     assert.match(src, /setReopenNeed\(opsErrorWords\(error\)\)/);
     assert.match(src, /data-reopen-people=""[\s\S]{0,400}role="alert"[\s\S]{0,200}\{reopenNeed\}/);
-    assert.match(src, /reopen-owner`\} label="Owner" single/);
-    assert.match(src, /reopen-watcher`\} label="Watcher" single/);
-    assert.match(src, /reopenOwner\.length !== 1 \|\| reopenWatcher\.length !== 1/);
+    assert.match(src, /reopen-owner`\} label="Owners" min=\{0\}/);
+    assert.match(src, /reopen-watcher`\} label="Watching" min=\{0\}/);
+    assert.match(src, /\(!reopenOwner\.length && !card\.parent_id\) \|\| \(!reopenWatcher\.length && !card\.parent_id\)/);
   });
   it("reopenWork sends the picked people only when there are some", async () => {
     reset(() => ({ data: { card: {} }, error: null }));
     await h.ops.reopenWork("c1", null, 5);
-    await h.ops.reopenWork("c1", null, 6, { owner: "tao@x.test", watcher: "seth@x.test" });
+    await h.ops.reopenWork("c1", null, 6, { owners: ["tao@x.test"], watchers: ["seth@x.test"] });
     assert.deepEqual(globalThis.__calls.map((c) => c.params), [
       { p_id: "c1", p_reason: null, p_expected_revision: 5 },
-      { p_id: "c1", p_reason: null, p_expected_revision: 6, p_owner: "tao@x.test", p_watcher: "seth@x.test" },
+      { p_id: "c1", p_reason: null, p_expected_revision: 6, p_owners: ["tao@x.test"], p_watchers: ["seth@x.test"] },
     ]);
   });
 });

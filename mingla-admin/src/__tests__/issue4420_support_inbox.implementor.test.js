@@ -252,7 +252,7 @@ describe("S-5 Create ticket", () => {
     assert.deepEqual(Object.keys(prefill).sort(), ["productArea", "source", "title", "type", "whatIsWrong"]);
     // The step 4 form is reused, not forked: one form, one place that builds the payload.
     assert.match(panel, /import \{ TicketForm \} from "\.\.\/ops\/TicketForm"/);
-    assert.match(read("components/ops/TicketForm.jsx"), /PeopleField id="new-ticket-owner" label="Owner"/);
+    assert.match(read("components/ops/TicketForm.jsx"), /PeopleField id="new-ticket-owner" label="Owners"/);  // #4571: a list
     assert.doesNotMatch(read("components/ops/TicketForm.jsx"), /default_owner/);
   });
   it("shows the ticket number, that it is on the Work board, and the line for the customer; sends nothing", () => {

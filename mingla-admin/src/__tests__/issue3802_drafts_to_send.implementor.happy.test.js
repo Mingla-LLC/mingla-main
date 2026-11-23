@@ -154,7 +154,7 @@ describe("#3802 C admin queue: one caller, one count source, every role with CRM
     // #4130: the menu count sits on Work and counts only your own waiting cards.
     assert.match(read("components/layout/Sidebar.jsx"), /item\.id === "work-board" \? reviewCount\.cards/);
     assert.match(read("pages/RoleHomePage.jsx"), /label="Drafts waiting"/);
-    assert.match(read("components/crm/RecordDrawer.jsx"), /#\/drafts\?record=/);
+    assert.match(read("components/crm/RecordPanel.jsx"), /#\/drafts\?record=/);
   });
 
   it("renders waiting, sent, discarded, deep-link and retry states at desktop and 375px", () => {
