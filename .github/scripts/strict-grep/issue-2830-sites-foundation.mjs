@@ -28,6 +28,10 @@ const PATHS = {
   // detaching window, every address of the site); its definitions are now the
   // live ones, so the host-binding pins below hold for it too.
   customDomainsMigration: "supabase/migrations/20280119082829_issue_2829_custom_domains.sql",
+  // #4574 — the first-publish backup budgets moved into SQL helpers (48 h
+  // database backup, 26 h manifest); this migration re-emits the live gate.
+  backupBudgetMigration:
+    "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
   deployWrapper: "scripts/ops/deploy-sites-edge-functions.sh",
   deployWrapperTest: "scripts/ops/__tests__/issue_2893_sites_edge_deploy_wrapper.test.mjs",
   security: "supabase/functions/_shared/sitesSecurity.ts",
@@ -483,6 +487,39 @@ export function violations(files) {
     "AND v_config.restore_drill_verified_at > clock_timestamp() - interval '100 days'",
     "OR (v_config.environment = 'local' AND v_latest_source = 'local_synthetic')",
   ]) need(authorizeBody, token, "Core multi-brand first-publish readiness", failures);
+  // #4574 — the LIVE gate is now the re-emitted one: it reads each budget from
+  // its one owner, and neither budget is a literal in the gate any more.
+  const backupBudgetMigration = files.backupBudgetMigration ?? "";
+  const liveAuthorizeBody = sqlFunctionBody(backupBudgetMigration, "brand_site_authorize_operation");
+  for (const token of [
+    "OR (p_kind IN ('publish','rollback') AND v_rank < 50)",
+    "OR NOT public.brand_site_entitled(v_site.brand_id) THEN",
+    "IF p_kind = 'publish' AND v_site.last_successful_publication_id IS NULL THEN",
+    "AND v_config.database_backup_verified_at > clock_timestamp() - public.brand_site_database_backup_budget()",
+    "AND v_config.object_manifest_verified_at > clock_timestamp() - public.brand_site_object_manifest_budget()",
+    "AND v_config.restore_drill_verified_at > clock_timestamp() - interval '100 days'",
+    "OR (v_config.environment = 'local' AND v_latest_source = 'local_synthetic')",
+  ]) need(liveAuthorizeBody, token, "Core #4574 first-publish readiness", failures);
+  for (const token of [
+    "database_backup_verified_at > clock_timestamp() - interval",
+    "object_manifest_verified_at > clock_timestamp() - interval",
+  ]) forbid(liveAuthorizeBody, token, "Core #4574 first-publish readiness", failures);
+  need(sqlFunctionBody(backupBudgetMigration, "brand_site_database_backup_budget"),
+    "SELECT interval '48 hours'", "Core #4574 backup budget owner", failures);
+  need(sqlFunctionBody(backupBudgetMigration, "brand_site_object_manifest_budget"),
+    "SELECT interval '26 hours'", "Core #4574 backup budget owner", failures);
+  for (const token of [
+    "config.database_backup_verified_at + public.brand_site_database_backup_budget()",
+    "config.object_manifest_verified_at + public.brand_site_object_manifest_budget()",
+  ]) need(sqlFunctionBody(backupBudgetMigration, "brand_site_recovery_watch_snapshot"), token,
+    "Core #4574 alert reads the gate budget", failures);
+  for (const token of [
+    "IS DISTINCT FROM '06956f65c9d27612919a982340f16681' THEN",
+    "'issue_4574_sites_recovery_watch',",
+    "body := '{\"mode\":\"sites_recovery\"}'::jsonb,",
+    "WHERE EXISTS (SELECT 1 FROM public.brand_site_recovery_watch_state)",
+    "REVOKE ALL ON FUNCTION public.brand_site_recovery_watch_snapshot() FROM PUBLIC, anon, authenticated;",
+  ]) need(backupBudgetMigration, token, "Core #4574 recovery watch", failures);
   const evidenceBody = sqlFunctionBody(multiBrandMigration, "brand_site_record_readiness_evidence");
   for (const token of [
     "OR v_database_at <= v_accepted_at - interval '26 hours'",
