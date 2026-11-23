@@ -507,6 +507,9 @@ describe("#3802 P-8: source contracts", () => {
       "crm_record_merges_json",
       "crm_duplicate_pairs",
       "crm_outreach_numbers",
+      "crm_cadence_sweep_status",
+      "crm_cadence_sweep_preview",
+      "crm_cadence_sweep_configure",
     ].sort());
     // Bulk add is for the agent connector (a later wave); the screen never calls it.
     assert.ok(!SERVICE.includes("crm_records_bulk_create"));

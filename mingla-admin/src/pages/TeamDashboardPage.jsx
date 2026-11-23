@@ -38,6 +38,7 @@ import { GONE_REGION, TargetsCard } from "../components/crm/home/TargetsCard";
 import { TargetAddForm, TargetRowControls } from "../components/crm/home/TargetEditor";
 import { RunwayPanel } from "../components/ops/TeamOpsPanels";
 import { OutreachNumbers } from "../components/crm/home/OutreachNumbers";
+import { CadenceSweepPanel } from "../components/crm/home/CadenceSweepPanel";
 import { useOpsPoll, useOpsTeamOverview } from "../hooks/useOpsWork";
 import * as ops from "../services/opsService";
 import { opsErrorWords, todayIso } from "../lib/opsModel";
@@ -281,6 +282,8 @@ export function TeamDashboardPage() {
 
           {/* #4571 W6b: the weekly outreach numbers, counted from the logs. */}
           <OutreachNumbers viewerKey={access?.email || ""} />
+          {/* #4571 W6c: the nightly cadence sweep (switch owner only). */}
+          <CadenceSweepPanel viewerKey={access?.email || ""} isOwner={access?.role === "owner"} />
 
           <section ref={dueRef} tabIndex={-1} aria-label="Due and overdue, whole team" className="flex scroll-mt-20 flex-col gap-3 outline-none">
             <div className="flex flex-wrap items-center gap-2">

@@ -355,9 +355,11 @@ REVOKE ALL ON FUNCTION public.crm_4571_person_ctx() FROM PUBLIC, anon, authentic
 CREATE FUNCTION public.crm_record_archive(p_id uuid, p_reason text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
-DECLARE v_actor text := public.crm_4571_person_ctx(); v_rec public.crm_records; v_reason text;
+DECLARE v record; v_actor text; v_rec public.crm_records; v_reason text;
         v_now timestamptz := clock_timestamp(); v_act uuid;
 BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  v_actor := public.crm_4571_person_ctx();
   v_reason := regexp_replace(btrim(COALESCE(p_reason, '')), '\s+', ' ', 'g');
   IF char_length(v_reason) NOT BETWEEN 1 AND 300 THEN
     RAISE EXCEPTION 'reason_required: Say why this card is archived, in 1 to 300 characters.' USING ERRCODE = '22023';
@@ -387,8 +389,10 @@ GRANT EXECUTE ON FUNCTION public.crm_record_archive(uuid, text) TO authenticated
 CREATE FUNCTION public.crm_record_unarchive(p_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
-DECLARE v_actor text := public.crm_4571_person_ctx(); v_rec public.crm_records; v_now timestamptz := clock_timestamp(); v_act uuid;
+DECLARE v record; v_actor text; v_rec public.crm_records; v_now timestamptz := clock_timestamp(); v_act uuid;
 BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  v_actor := public.crm_4571_person_ctx();
   SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = p_id AND c.deleted_at IS NULL FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'not_found: That record is no longer here. It may have been deleted.' USING ERRCODE = 'P0002';
@@ -420,7 +424,8 @@ CREATE FUNCTION public.crm_record_merge(p_keep uuid, p_drop uuid, p_request_key 
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-  v_actor text := public.crm_4571_person_ctx();
+  v record;
+  v_actor text;
   v_now timestamptz := clock_timestamp();
   v_keep public.crm_records; v_drop public.crm_records; v_prev public.crm_record_merges;
   v_link_kind text; v_ids uuid[]; v_emails text[]; v_keys jsonb; v_links jsonb := '[]'::jsonb;
@@ -428,6 +433,8 @@ DECLARE
   v_stage_note text; v_stage_to text; v_move jsonb; l record; n public.ops_work_cards; v_merge uuid;
   v_room integer;
 BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  v_actor := public.crm_4571_person_ctx();
   IF p_request_key IS NULL OR p_request_key !~ '^[A-Za-z0-9_-]{8,70}$' THEN
     RAISE EXCEPTION 'request_key_required: Send a request_key (8 to 70 letters, digits, - or _).' USING ERRCODE = '22023';
   END IF;
@@ -589,9 +596,11 @@ CREATE FUNCTION public.crm_record_unmerge(p_merge_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
 DECLARE
-  v_actor text := public.crm_4571_person_ctx(); v_now timestamptz := clock_timestamp();
+  v record; v_actor text; v_now timestamptz := clock_timestamp();
   m public.crm_record_merges; v_keep public.crm_records; v_drop public.crm_records; v_kind text; l jsonb; n public.ops_work_cards;
 BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  v_actor := public.crm_4571_person_ctx();
   SELECT * INTO m FROM public.crm_record_merges x WHERE x.id = p_merge_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That merge is not here.' USING ERRCODE = 'P0002'; END IF;
   IF m.unmerged_at IS NOT NULL THEN

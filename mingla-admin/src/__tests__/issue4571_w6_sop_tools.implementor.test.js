@@ -140,3 +140,16 @@ describe("N-2 the Team dashboard shows the weekly numbers from the server", () =
     assert.match(hygiene, /onRequestMove\(record, "replied"\)/, "one click moves it through the normal move");
   });
 });
+
+describe("S-2 the nightly sweep panel", () => {
+  it("the dashboard shows it; only the owner switches it; a dry run is on demand", () => {
+    assert.match(read("pages/TeamDashboardPage.jsx"), /<CadenceSweepPanel viewerKey=\{access\?\.email \|\| ""\} isOwner=\{access\?\.role === "owner"\} \/>/);
+    const panel = read("components/crm/home/CadenceSweepPanel.jsx");
+    assert.match(panel, /disabled=\{!isOwner \|\| mode === m\.value\}/);
+    assert.match(panel, /runSweepDryRun\(\)/);
+    assert.match(panel, /fetchSweepStatus\(runId\)/);
+    const svc = read("services/crmService.js");
+    for (const fn of ["crm_cadence_sweep_status", "crm_cadence_sweep_preview", "crm_cadence_sweep_configure"]) assert.ok(svc.includes(`"${fn}"`), fn);
+    assert.doesNotMatch(svc, /"crm_cadence_sweep"[,)]/, "the sweep itself is never called from a screen");
+  });
+});

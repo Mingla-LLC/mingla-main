@@ -1578,6 +1578,11 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   },
   crm_record_log: { tools: ["log_activity", "record_reply"] },
   // #4571 W6b: the Team dashboard's weekly numbers are read by people; agents use team_summary.
+  // #4571 W6c: the nightly cadence sweep runs on the server; its panel and
+  // switch are the owner's and admins'.
+  crm_cadence_sweep_status: { excluded: "the nightly sweep's panel is for the owner and admins" },
+  crm_cadence_sweep_preview: { excluded: "a person asks for a dry run of the nightly sweep" },
+  crm_cadence_sweep_configure: { excluded: "the owner switches the nightly sweep" },
   crm_outreach_numbers: {
     excluded:
       "the Team dashboard's weekly numbers are for people; an agent reads team numbers with team_summary",

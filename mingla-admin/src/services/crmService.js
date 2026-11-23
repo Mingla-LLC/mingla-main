@@ -285,3 +285,14 @@ export function duplicatePairs(pipeline) {
 export function fetchOutreachNumbers(from, to) {
   return call(() => supabase.rpc("crm_outreach_numbers", { p_from: from, p_to: to }));
 }
+
+// #4571 W6c: the nightly cadence sweep (owner or admin to read; owner to switch).
+export function fetchSweepStatus(runId = null) {
+  return call(() => supabase.rpc("crm_cadence_sweep_status", { p_run_id: runId }));
+}
+export function runSweepDryRun() {
+  return call(() => supabase.rpc("crm_cadence_sweep_preview"));
+}
+export function configureSweep(mode, reportCardId = null) {
+  return call(() => supabase.rpc("crm_cadence_sweep_configure", { p_mode: mode, p_report_card_id: reportCardId }));
+}

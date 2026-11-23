@@ -719,6 +719,10 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
       "content_calendar_duplicate_check",
       "content_calendar_undo",
       "crm_beta_lead_to_host",
+      // #4571 W6c: the nightly sweep's panel, dry run and switch are people's.
+      "crm_cadence_sweep_configure",
+      "crm_cadence_sweep_preview",
+      "crm_cadence_sweep_status",
       // #4571 W4: linking a booked demo is a person's decision (excluded in SCREEN_FUNCTION_PARITY).
       "crm_demo_create_record",
       "crm_demo_inbox",

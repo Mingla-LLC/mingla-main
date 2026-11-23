@@ -334,7 +334,11 @@ declare
     'crm_record_set_people','crm_record_work','crm_calls_queue','crm_identifier_set_followers',
     -- #4571 W4: Needs linking and a person's link decisions
     'crm_demo_suggestions','crm_demo_link','crm_demo_create_record','crm_demo_not_a_host','crm_demo_unlink',
-    'crm_demo_inbox','crm_demo_inbox_count'];
+    'crm_demo_inbox','crm_demo_inbox_count',
+    -- #4571 W6: archive and merge, the email log, the weekly numbers, the cadence
+    'crm_records_archived_list','crm_record_archive','crm_record_unarchive','crm_record_merge','crm_record_unmerge',
+    'crm_record_merges_json','crm_duplicate_pairs','crm_email_log_ingest','crm_outreach_numbers','crm_cadence_state',
+    'crm_cadence_sweep_status','crm_cadence_sweep_preview','crm_cadence_sweep_configure'];
   -- #4130: the Team dashboard reader is a separately guarded aggregate RPC,
   -- with the public, pg_temp path from the approved admin contract.
   c_later_readers constant text[] := array['crm_team_pulse'];
@@ -367,10 +371,10 @@ begin
   end loop;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'crm\_%';
-  perform pg_temp.x_eq('XA-1', 'number of crm_ functions (#4571 W3 adds seven, W4 twenty)', v_n::text, '80');
+  perform pg_temp.x_eq('XA-1', 'number of crm_ functions (#4571 W3 adds seven, W4 twenty, W6 twenty-six)', v_n::text, '106');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = any (c_client || c_later_readers) and p.prosecdef;
-  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights (#4571 W3 adds four, W4 seven)', v_n::text, '32');
+  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights (#4571 W3 adds four, W4 seven, W6 thirteen)', v_n::text, '45');
 
   -- Every other function with owner rights in this migration is pinned too.
   perform pg_temp.x_ok('XA-1', 'admin_beta_leads_list keeps a pinned search path',
@@ -401,7 +405,7 @@ begin
   end loop;
   perform pg_temp.x_eq('XA-1', 'number of crm_ tables',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '10');  -- #4571 W3: crm_record_watchers; W4: crm_record_demos
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '14');  -- #4571 W3: crm_record_watchers; W4: crm_record_demos; W6: merges, email log, sweep runs and actions
   perform pg_temp.x_eq('XA-1', 'no view, sequence or materialised view named crm_',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind in ('v','m','S') and c.relname like 'crm\_%'), '0');
@@ -414,7 +418,8 @@ begin
       (select string_agg(j.schedule || '|' || j.command || '|' || j.active::text, ';') from cron.job j where j.jobname = 'crm_reconcile_live'),
       '6,16,26,36,46,56 * * * *|SELECT public.crm_reconcile_live()|true');
     perform pg_temp.x_eq('XA-1', 'no other schedule entry calls a crm_ function',
-      (select count(*)::text from cron.job j where j.command ~* 'crm_' and j.jobname <> 'crm_reconcile_live'), '0');
+      (select count(*)::text from cron.job j where j.command ~* 'crm_' and j.jobname <> 'crm_reconcile_live'
+          and j.jobname <> 'issue_4571_crm_cadence_sweep'), '0');  -- #4571 W6c: the nightly sweep (its own suite pins it)
     perform pg_temp.x_ok('XA-1', 'the schedule owner can run the job',
       (select has_function_privilege(j.username, 'public.crm_reconcile_live(uuid)', 'EXECUTE') from cron.job j where j.jobname = 'crm_reconcile_live'));
   end if;
@@ -1337,7 +1342,8 @@ do $t$
 declare
   -- #4571 W3: watchers, last_touch and open_work.
   -- #4571 W4: a host carries demo_gate and next_demo.
-  c_record_keys constant text := 'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,demo_gate,due_on,followers,icp,id,identifiers,last_touch,last_touch_at,name,next_action,next_demo,open_work,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,watchers,went_live_at';
+  -- #4571 W6: archive state, merged_into, suggest_replied and cadence.
+  c_record_keys constant text := 'agreement,archived_at,archived_by,archived_reason,beta_lead_id,brand_id,brand_name,cadence,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,demo_gate,due_on,followers,icp,id,identifiers,last_touch,last_touch_at,merged_into,name,next_action,next_demo,open_work,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,suggest_replied,touch_count,updated_at,watchers,went_live_at';
   v_got jsonb;
   v_txt text;
   v_q text;
