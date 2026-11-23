@@ -260,6 +260,17 @@ export function totalsReady(sale: TillSale | null, draft: DraftLine[]): boolean 
   return sale !== null && draft.length === 0;
 }
 
+/**
+ * #4490 08-O4 fix 1 (O4-T2): the table deposit pays the whole bill, so there
+ * is nothing to take: the check only needs closing (the server closes it with
+ * no payment and refuses if anything is due). Display rule only; the server
+ * decides.
+ */
+export function coveredByCredit(sale: TillSale | null): boolean {
+  return sale !== null && sale.state === "open" && !sale.pendingPayment && sale.totalDueMinor === 0
+    && sale.paidMinor === 0 && (sale.creditMinor ?? 0) > 0 && sale.subtotalMinor + sale.serviceChargeMinor > 0;
+}
+
 /** What Pay can take now: the server's remaining amount. */
 export function amountDue(sale: TillSale | null): number | null {
   if (sale === null) return null;

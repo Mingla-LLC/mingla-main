@@ -715,6 +715,70 @@ BEGIN
 END;
 $function$;
 
+-- ===========================================================================
+-- O4-T2: a check the table deposit fully pays can be closed.
+-- ===========================================================================
+-- Nothing is left to pay (due exactly 0) and something was bought: staff
+-- with sell rights close it. No payment is recorded and no money moves; the
+-- check is paid, its rounds are paid, the deposit is used (its credit line is
+-- committed and can no longer be voided) and today's takings for it are 0.
+-- Carries the check version (T10); a retry of a close that went through
+-- answers it (replayed). Never a write-off: refused while anything is due.
+CREATE FUNCTION public.issue_4490_till_close_covered(p_sale_id uuid, p_actor uuid, p_expected_version integer)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_sale public.venue_till_sales%ROWTYPE;
+BEGIN
+  IF p_sale_id IS NULL OR p_expected_version IS NULL THEN
+    RAISE EXCEPTION 'till_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+  v_sale := public.issue_4490_till_lock(p_sale_id, p_actor, NULL);
+  -- A close that already went through: nothing more happens.
+  IF v_sale.state = 'paid' AND v_sale.paid_minor = 0 AND v_sale.total_due_minor = 0 AND v_sale.credit_minor > 0
+     AND NOT EXISTS (SELECT 1 FROM public.venue_till_payments p
+                     WHERE p.sale_id = v_sale.id AND p.state IN ('paid', 'partially_refunded', 'refunded', 'pending')) THEN
+    RETURN public.issue_4490_till_sale_projection(v_sale.id) || jsonb_build_object('replayed', true, 'closed', true);
+  END IF;
+  IF p_expected_version <> v_sale.version THEN
+    RAISE EXCEPTION 'till_check_changed' USING ERRCODE = 'PT409';
+  END IF;
+  IF public.issue_4490_till_release_stale(v_sale.id) > 0 THEN
+    SELECT * INTO v_sale FROM public.venue_till_sales WHERE id = v_sale.id FOR UPDATE;
+  END IF;
+  IF v_sale.state = 'paying'
+     OR EXISTS (SELECT 1 FROM public.venue_till_payments p WHERE p.sale_id = v_sale.id AND p.state = 'pending') THEN
+    RAISE EXCEPTION 'till_payment_in_progress' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_sale.state <> 'open' THEN
+    RAISE EXCEPTION 'till_check_closed' USING ERRCODE = 'PT409';
+  END IF;
+  -- As a payment would (T8): an unsent round is sent first; a round another
+  -- path settled is never closed here; the check is priced from its children.
+  PERFORM public.issue_4490_till_send(v_sale.id, p_actor);
+  IF EXISTS (
+    SELECT 1 FROM public.venue_till_lines l
+    JOIN public.venue_orders o ON o.id = l.venue_order_id
+    WHERE l.sale_id = v_sale.id AND l.kind = 'menu_round' AND l.state <> 'voided'
+      AND (o.payment_status NOT IN ('pending', 'cancelled') OR o.money_path <> 'venue_collected')) THEN
+    RAISE EXCEPTION 'till_round_settled_elsewhere' USING ERRCODE = 'PT409';
+  END IF;
+  PERFORM public.issue_4490_till_reprice(v_sale.id);
+  SELECT * INTO v_sale FROM public.venue_till_sales WHERE id = v_sale.id FOR UPDATE;
+  IF v_sale.total_due_minor <> 0 OR v_sale.paid_minor <> 0 OR v_sale.credit_minor <= 0
+     OR v_sale.subtotal_minor + v_sale.service_charge_minor <= 0
+     OR NOT EXISTS (SELECT 1 FROM public.venue_till_lines l
+                    WHERE l.sale_id = v_sale.id AND l.kind = 'deposit_credit' AND l.state = 'held') THEN
+    RAISE EXCEPTION 'till_close_not_covered' USING ERRCODE = 'PT409';
+  END IF;
+  PERFORM public.issue_4490_till_finalize_paid(v_sale.id, NULL, p_actor);
+  RETURN public.issue_4490_till_sale_projection(v_sale.id) || jsonb_build_object('replayed', false, 'closed', true);
+END;
+$$;
+
 -- @@NEXT@@
 
 -- ---------------------------------------------------------------------------
@@ -724,12 +788,14 @@ REVOKE ALL ON FUNCTION
   public.issue_4490_reservation_deposit_owned(),
   public.issue_4490_record_till_credit(uuid, bigint, uuid, uuid, text),
   public.issue_4490_till_line_funding(uuid),
-  public.issue_4490_till_refund_offer_parts(uuid)
+  public.issue_4490_till_refund_offer_parts(uuid),
+  public.issue_4490_till_close_covered(uuid, uuid, integer)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.issue_4490_record_till_credit(uuid, bigint, uuid, uuid, text),
   public.issue_4490_till_line_funding(uuid),
-  public.issue_4490_till_refund_offer_parts(uuid)
+  public.issue_4490_till_refund_offer_parts(uuid),
+  public.issue_4490_till_close_covered(uuid, uuid, integer)
 TO service_role;
 
 COMMIT;

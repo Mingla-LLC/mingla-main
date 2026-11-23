@@ -26,11 +26,13 @@ export class TillError extends Error {
   /** 08-O4 (T13): who has the unit next and when (offer_space_taken). */
   readonly unitName: string | null;
   readonly nextAt: string | null;
+  /** 08-O4 fix 1 (O4-T4): when the unit in use frees up (offer_space_taken). */
+  readonly freeAt: string | null;
   constructor(
     code: string,
     item: string | null = null,
     remainingMinor: number | null = null,
-    next: { unitName: string | null; nextAt: string | null } | null = null,
+    next: { unitName: string | null; nextAt: string | null; freeAt?: string | null } | null = null,
   ) {
     super(code);
     this.name = "TillError";
@@ -39,6 +41,7 @@ export class TillError extends Error {
     this.remainingMinor = remainingMinor;
     this.unitName = next?.unitName ?? null;
     this.nextAt = next?.nextAt ?? null;
+    this.freeAt = next?.freeAt ?? null;
   }
 }
 
@@ -568,7 +571,7 @@ async function tillError(error: { message?: string; context?: unknown }): Promis
       const body = obj(await (context as Response).json());
       if (typeof body.code === "string" && body.code.length > 0) {
         return new TillError(body.code, strOrNull(body.item), numOrNull(body.remainingMinor),
-          { unitName: strOrNull(body.unitName), nextAt: strOrNull(body.nextAt) });
+          { unitName: strOrNull(body.unitName), nextAt: strOrNull(body.nextAt), freeAt: strOrNull(body.freeAt) });
       }
     } catch {
       // An unreadable body falls through to the network mapping below.
@@ -946,6 +949,11 @@ export function startTillSession(input: {
   expectedVersion: number;
 }): Promise<TillSale> {
   return saleAction({ action: "start_session", ...input });
+}
+
+/** #4490 08-O4 fix 1 (O4-T2): close a check the deposit fully pays (no money moves). */
+export function closeTillCovered(input: { venueId: string; saleId: string; expectedVersion: number }): Promise<TillSale> {
+  return saleAction({ action: "close_covered", ...input });
 }
 
 export function extendTillSession(input: {

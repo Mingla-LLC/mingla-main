@@ -43,6 +43,8 @@
 // every share, every price and every claim):
 //   set_split      { saleId, mode: "by_item"|"even"|"none", shares?|count?, expectedVersion }
 //                  by_item shares = [{ items:[{ orderItemId, units } | { lineId, units:1 }] }]
+//   close_covered  { saleId, expectedVersion } — 08-O4 fix 1 (O4-T2): a check the table
+//                  deposit fully pays is closed with no payment (no money moves)
 //   pay_cash / pay_own_machine / pay_tap_start / pay_code_create take an
 //                  optional shareId: the share pays exactly its amount (the
 //                  body's amountMinor must equal it) through the same path.
@@ -132,6 +134,7 @@ export const TILL_SAFE_CODES = [
   "till_void_needs_money_rights",
   "till_payment_in_progress",
   "till_nothing_to_pay",
+  "till_close_not_covered",
   "till_amount_over_due",
   "till_payment_too_large",
   "till_tip_invalid",
@@ -311,7 +314,8 @@ export function tillFailure(error: RpcError): Response {
         if (typeof detail?.[key] === "number") body[key] = detail[key];
       }
       // 08-O4 (T13): who has the unit next, and when.
-      for (const key of ["unitName", "nextAt"] as const) {
+      // 08-O4 fix 1 (O4-T4): when a unit in use frees up.
+      for (const key of ["unitName", "nextAt", "freeAt"] as const) {
         if (typeof detail?.[key] === "string") body[key] = detail[key];
       }
     } catch {
@@ -1037,6 +1041,19 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_sale_id: saleId,
           p_mode: mode,
           p_shares: shares,
+          p_actor: userId,
+          p_expected_version: expectedVersion,
+        });
+        return r.error ? tillFailure(r.error) : ok({ sale: r.data });
+      }
+
+      case "close_covered": {
+        if (!UUID.test(saleId) || expectedVersion === null) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
+        const r = await rpc("issue_4490_till_close_covered", {
+          p_sale_id: saleId,
           p_actor: userId,
           p_expected_version: expectedVersion,
         });

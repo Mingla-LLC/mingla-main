@@ -110,6 +110,7 @@ import {
   sendLabel,
   serverName,
   setDraftQuantity,
+  coveredByCredit,
   totalsReady,
   type BasketRow,
   type DraftLine,
@@ -211,11 +212,16 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
       const code = err instanceof TillError ? err.code : "till_failed";
       const item = err instanceof TillError ? err.item : null;
       const refresh = ["till_check_changed", "till_hold_lapsed", "till_tab_settled_on_pad", "till_round_settled_elsewhere",
-        "till_line_not_paid", "till_refund_line_invalid", "till_share_paid", "till_share_paying"];
+        "till_line_not_paid", "till_refund_line_invalid", "till_share_paid", "till_share_paying", "till_close_not_covered"];
       if (refresh.includes(code) && saleId !== null) actions.refreshSale(saleId);
       // T13: "The next booking for {unit} is at {time}."
       if (code === "offer_space_taken" && err instanceof TillError && err.nextAt !== null && err.unitName !== null) {
         setToast({ kind: "error", message: TILL_COPY.nextBookingAt(err.unitName, clockTime(err.nextAt)) });
+        return;
+      }
+      // 08-O4 fix 1 (O4-T4): the unit is still in use; when it frees up.
+      if (code === "offer_space_taken" && err instanceof TillError && err.freeAt !== null && err.unitName !== null) {
+        setToast({ kind: "error", message: TILL_COPY.inUseUntil(err.unitName, clockTime(err.freeAt)) });
         return;
       }
       setToast({ kind: "error", message: tillErrorCopy(code, item) });
@@ -342,7 +348,11 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const send = sendLabel(sale, draft, catalog);
   const sendText = send === "bar" ? TILL_COPY.sendToBar : send === "kitchen" ? TILL_COPY.sendToKitchen : TILL_COPY.send;
   const itemCount = rows.filter((r) => !r.voided).reduce((n, r) => n + r.quantity, 0) + draft.reduce((n, d) => n + d.quantity, 0);
-  const payLabel = ready && sale !== null ? TILL_COPY.pay(money(sale.remainingMinor)) : TILL_COPY.payPending;
+  // 08-O4 fix 1 (O4-T2): the deposit pays the whole bill; the primary action closes the check.
+  const covered = ready && coveredByCredit(sale);
+  const payLabel = covered
+    ? TILL_COPY.closeCheck
+    : ready && sale !== null ? TILL_COPY.pay(money(sale.remainingMinor)) : TILL_COPY.payPending;
   const nothingOnCheck = rows.length === 0 && draft.length === 0;
   const canManageMoney = catalog?.canManageMoney === true;
   // #4490 O2: Tap to pay where this phone, this build, the brand and the
@@ -731,7 +741,21 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         onPress={() =>
           void run(async () => {
             const priced = draft.length > 0 ? await commitDraft(false) : sale;
-            if (priced !== null) setPayOpen(true);
+            if (priced === null) return;
+            if (coveredByCredit(priced)) {
+              // No money moves: the server closes it with no payment (version-checked).
+              try {
+                await actions.closeCovered.mutateAsync({ saleId: priced.id, expectedVersion: priced.version });
+              } catch (err) {
+                fail(err);
+                return;
+              }
+              setToast({ kind: "success", message: TILL_COPY.checkClosed });
+              setBasketSheet(false);
+              newSale();
+              return;
+            }
+            setPayOpen(true);
           })
         }
         testID="till-pay"

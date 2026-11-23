@@ -54,6 +54,9 @@ module.exports = {
     // amount the server recorded.
     "**/__tests__/tillAttempts.issue4490.o3fix5.render.test.tsx",
     "**/__tests__/tillSplit.issue4490.o4.render.test.tsx",
+    // #4490 spec 08 O4 fix 1 (O4-T2): a check the table deposit fully pays shows
+    // "Close check" and closes with no payment.
+    "**/__tests__/tillCloseCheck.issue4490.o4fix1.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",

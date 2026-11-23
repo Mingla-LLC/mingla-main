@@ -669,4 +669,106 @@ SELECT public.t4490x_ok(NOT EXISTS (
        WHERE s.venue_id = '44900608-0000-4000-9000-0000000000a1' AND l.kind = 'by_the_hour' AND l.state = 'committed') >= 4,
   'X3-6 on every paid check of this suite, the parts recorded for each offer line add up to the line exactly');
 
+
+-- -------------------------------------------------------------------------
+-- X2. O4-T2: a check the deposit fully pays can be closed (no money moves).
+-- -------------------------------------------------------------------------
+SELECT public.t4490x_service();
+DO $covered$
+DECLARE
+  v jsonb;
+  r uuid := public.t4490x_paid('x2', public.t4490x_id('t3'), 2000000);
+  v_sale uuid;
+BEGIN
+  v := public.issue_4490_till_seat('44900608-0000-4000-9000-0000000000a1', '44900608-0000-4000-8000-000000000002',
+    public.t4490x_id('spot_T3'), NULL, r, NULL, NULL, 'o4x-seat-x2');
+  v_sale := (v->>'id')::uuid;
+  PERFORM public.t4490x_round(v_sale, 1);
+  PERFORM public.issue_4490_till_reprice(v_sale);
+  INSERT INTO t4490x_ids VALUES ('x2_res', r), ('x2_sale', v_sale);
+  PERFORM public.t4490x_ok((public.t4490x_sale(v_sale)).total_due_minor = 0 AND (public.t4490x_sale(v_sale)).credit_minor = 2000000
+      AND (public.t4490x_sale(v_sale)).subtotal_minor + (public.t4490x_sale(v_sale)).service_charge_minor = 1100000,
+    'X2-0 fixture: a 20,000.00 deposit on an 11,000.00 bill: nothing to pay');
+END
+$covered$;
+SELECT public.t4490x_expect(format($q$SELECT public.issue_4490_till_take_payment(%L, 'cash', 100, 0, 100,
+    '44900608-0000-4000-8000-000000000002', NULL, gen_random_uuid(), %s)$q$, public.t4490x_id('x2_sale'), public.t4490x_v(public.t4490x_id('x2_sale'))),
+  'PT409', 'till_nothing_to_pay', 'X2-1 there is nothing to take a payment for (unchanged)');
+SELECT public.t4490x_expect(format($q$SELECT public.issue_4490_till_close_covered(%L, '44900608-0000-4000-8000-000000000002', %s)$q$,
+    public.t4490x_id('x2_sale'), public.t4490x_v(public.t4490x_id('x2_sale')) - 1),
+  'PT409', 'till_check_changed', 'X2-2a closing on an old version of the check is refused (T10)');
+SELECT public.t4490x_expect(format($q$SELECT public.issue_4490_till_close_covered(%L, '44900608-0000-4000-8000-000000000005', %s)$q$,
+    public.t4490x_id('x2_sale'), public.t4490x_v(public.t4490x_id('x2_sale'))),
+  '42501', 'not_authorized', 'X2-2b staff without sell rights cannot close it');
+DO $close$
+DECLARE
+  v jsonb;
+  b0 jsonb := public.t4490x_day();
+  v_sale uuid := public.t4490x_id('x2_sale');
+  v_version integer := public.t4490x_v(public.t4490x_id('x2_sale'));
+BEGIN
+  v := public.issue_4490_till_close_covered(v_sale, '44900608-0000-4000-8000-000000000002', v_version);
+  PERFORM public.t4490x_ok(NOT (v->>'replayed')::boolean AND (v->>'closed')::boolean
+      AND (public.t4490x_sale(v_sale)).state = 'paid' AND (public.t4490x_sale(v_sale)).paid_minor = 0
+      AND NOT EXISTS (SELECT 1 FROM public.venue_till_payments p WHERE p.sale_id = v_sale)
+      AND (public.t4490x_line(v_sale, 'deposit_credit')).state = 'committed'
+      AND (SELECT o.payment_status FROM public.venue_orders o JOIN public.venue_till_lines l ON l.venue_order_id = o.id
+           WHERE l.sale_id = v_sale) = 'paid'
+      AND (public.t4490x_res(public.t4490x_id('x2_res'))).deposit_applied_sale_id = v_sale,
+    'X2-2 Close check: the check is paid with no payment row, its round is paid, the deposit is used (credit committed)');
+  PERFORM public.t4490x_ok(public.t4490x_delta(b0, public.t4490x_day()) = '{"online":0,"atVenue":0,"tableDeposits":0,"refunded":0,"paidIn":0}'::jsonb,
+    'X2-2c today''s takings for it are 0 (no money moved) ' || public.t4490x_delta(b0, public.t4490x_day())::text);
+  -- The same tap again (a lost answer, or a second device that saw the old
+  -- version) answers the close; nothing else happens.
+  v := public.issue_4490_till_close_covered(v_sale, '44900608-0000-4000-8000-000000000002', v_version);
+  PERFORM public.t4490x_ok((v->>'replayed')::boolean AND (public.t4490x_sale(v_sale)).paid_minor = 0
+      AND NOT EXISTS (SELECT 1 FROM public.venue_till_payments p WHERE p.sale_id = v_sale),
+    'X2-3 closing it again answers the close (replayed), nothing moves');
+END
+$close$;
+SELECT public.t4490x_expect(format($q$SELECT public.issue_4490_till_void(%L, %L, NULL, '44900608-0000-4000-8000-000000000001', 'x', false, %s)$q$,
+    public.t4490x_id('x2_sale'), (public.t4490x_line(public.t4490x_id('x2_sale'), 'deposit_credit')).id,
+    public.t4490x_v(public.t4490x_id('x2_sale'))),
+  'PT409', NULL, 'X2-4 the used deposit can no longer be taken off the closed check');
+SELECT public.t4490x_as('44900608-0000-4000-8000-000000000003');
+SELECT public.t4490x_expect(format($q$SELECT public.biz_venue_cancel_paid_reservation(%L, 'x')$q$, public.t4490x_id('x2_res')),
+  'P0001', NULL, 'X2-4b ... and the booking''s deposit is not refunded (seated, used on the bill)');
+SELECT public.t4490x_reset();
+SELECT public.t4490x_ok(public.t4490x_refunds(public.t4490x_id('x2_res')) = 0, 'X2-4c no refund row for that deposit');
+
+-- Never a write-off: anything due, or nothing bought, is refused.
+SELECT public.t4490x_service();
+DO $due$
+DECLARE
+  v jsonb;
+  r uuid := public.t4490x_paid('x2b', public.t4490x_id('t3'), 500000);
+  v_sale uuid;
+  v_empty uuid;
+BEGIN
+  v := public.issue_4490_till_seat('44900608-0000-4000-9000-0000000000a1', '44900608-0000-4000-8000-000000000002',
+    public.t4490x_id('spot_T3'), NULL, r, NULL, NULL, 'o4x-seat-x2b');
+  v_sale := (v->>'id')::uuid;
+  PERFORM public.t4490x_round(v_sale, 1);
+  PERFORM public.issue_4490_till_reprice(v_sale);
+  PERFORM public.t4490x_expect(format($q$SELECT public.issue_4490_till_close_covered(%L, '44900608-0000-4000-8000-000000000002', %s)$q$,
+      v_sale, public.t4490x_v(v_sale)),
+    'PT409', 'till_close_not_covered', 'X2-5 a check with 6,000.00 still to pay cannot be closed this way');
+  PERFORM public.t4490x_ok((public.t4490x_sale(v_sale)).state = 'open' AND (public.t4490x_sale(v_sale)).total_due_minor = 600000,
+    'X2-5b ... it stays open with 6,000.00 to pay');
+  v := public.t4490x_cash(v_sale, 600000);
+  r := public.t4490x_paid('x2c', public.t4490x_id('t3'), 500000);
+  v := public.issue_4490_till_seat('44900608-0000-4000-9000-0000000000a1', '44900608-0000-4000-8000-000000000002',
+    public.t4490x_id('spot_T3'), NULL, r, NULL, NULL, 'o4x-seat-x2c');
+  v_empty := (v->>'id')::uuid;
+  PERFORM public.t4490x_expect(format($q$SELECT public.issue_4490_till_close_covered(%L, '44900608-0000-4000-8000-000000000002', %s)$q$,
+      v_empty, public.t4490x_v(v_empty)),
+    'PT409', 'till_close_not_covered', 'X2-6 a check with nothing bought cannot be closed against the deposit');
+END
+$due$;
+SELECT public.t4490x_reset();
+SELECT public.t4490x_ok(NOT has_function_privilege('authenticated', 'public.issue_4490_till_close_covered(uuid,uuid,integer)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.issue_4490_till_close_covered(uuid,uuid,integer)', 'EXECUTE')
+    AND has_function_privilege('service_role', 'public.issue_4490_till_close_covered(uuid,uuid,integer)', 'EXECUTE'),
+  'X2-7 the close is internal (service role only; the Till edge checks who is asking)');
+
 ROLLBACK;

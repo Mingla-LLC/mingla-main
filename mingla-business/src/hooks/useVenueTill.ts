@@ -14,6 +14,7 @@ import { supabase } from "../services/supabase";
 import {
   addTillMenu,
   addTillOffer,
+  closeTillCovered,
   extendTillSession,
   fetchTillCatalog,
   fetchTillChecks,
@@ -169,6 +170,7 @@ export function useTillActions(venueId: string | null) {
     setSplit: useMutation({ mutationFn: async (i: Omit<Parameters<typeof setTillSplit>[0], "venueId">) => put(await setTillSplit({ venueId: venueId as string, ...i })) }),
     seat: useMutation({ mutationFn: async (i: Omit<Parameters<typeof seatTillTable>[0], "venueId">) => put(await seatTillTable({ venueId: venueId as string, ...i })) }),
     startSession: useMutation({ mutationFn: async (i: Omit<Parameters<typeof startTillSession>[0], "venueId">) => put(await startTillSession({ venueId: venueId as string, ...i })) }),
+    closeCovered: useMutation({ mutationFn: async (i: Omit<Parameters<typeof closeTillCovered>[0], "venueId">) => put(await closeTillCovered({ venueId: venueId as string, ...i })) }),
     extendSession: useMutation({ mutationFn: async (i: Omit<Parameters<typeof extendTillSession>[0], "venueId">) => put(await extendTillSession({ venueId: venueId as string, ...i })) }),
     setServer: useMutation({
       mutationFn: async (i: Omit<Parameters<typeof setTillServer>[0], "venueId">) => {

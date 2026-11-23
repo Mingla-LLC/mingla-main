@@ -248,6 +248,11 @@ export const TILL_COPY = {
   overBy: (n: number): string => `Over by ${n} min`,
   unitOver: (unit: string, n: number): string => `${unit} is ${n} minutes over`,
   nextBookingAt: (unit: string, time: string): string => `The next booking for ${unit} is at ${time}.`,
+  // #4490 08-O4 fix 1 (O4-T4): the unit staff asked for is still in use.
+  inUseUntil: (unit: string, time: string): string => `${unit} is in use until ${time}.`,
+  // #4490 08-O4 fix 1 (O4-T2): the deposit pays the whole bill.
+  closeCheck: "Close check",
+  checkClosed: "Check closed. The deposit paid for it.",
   endAndPay: "End and pay",
   sessionEnds: (time: string): string => `Ends ${time}`,
 } as const;
@@ -268,6 +273,7 @@ export const TILL_ERROR_COPY = {
   till_check_closed: "This check is closed, so nothing changed. Open Checks to find it.",
   till_payment_in_progress: "A guest is paying right now. Try again in a few minutes.",
   till_nothing_to_pay: "There's nothing left to pay on this check.",
+  till_close_not_covered: "Only a check the deposit fully pays can be closed. Take a payment instead.",
   till_amount_over_due: "That's more than they still owe. Lower the amount.",
   till_tip_invalid: "That tip can't be taken. Pick another tip or No tip.",
   till_payment_too_large:
