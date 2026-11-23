@@ -29,6 +29,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { dispatchNotification, formatMoneyCents } from "./stripeEdgeAuth.ts";
 import { notifyBrandRoles } from "./businessNotifyTriggers.ts";
+import { isMissingTillPaymentColumn } from "./tillMigrationCompat.ts";
 
 /**
  * Callers hold the UNPINNED service client from `_shared/ticketCheckout.ts`
@@ -235,13 +236,22 @@ export async function fireVenueOrderPlacedForOrder(
   orderId: string,
 ): Promise<void> {
   try {
-    const { data, error } = await supabase
-      .from("venue_orders")
-      .select(
-        "id, brand_id, venue_id, currency, total_cents, spot_label_at_order, pickup_code, buyer_name, metadata, till_payment_id",
-      )
-      .eq("id", orderId)
-      .maybeSingle();
+    const read = (columns: string) =>
+      supabase
+        .from("venue_orders")
+        .select(columns)
+        .eq("id", orderId)
+        .maybeSingle();
+    const BASE_COLUMNS =
+      "id, brand_id, venue_id, currency, total_cents, spot_label_at_order, pickup_code, buyer_name, metadata";
+    let { data, error } = await read(`${BASE_COLUMNS}, till_payment_id`);
+    // [TRANSITIONAL] #4490 O2-T5: before the #4490 migrations reach production
+    // there is no till_payment_id; every order is then a guest/staff order and
+    // gets its push exactly as before O2. Exit: the migrations applied in
+    // production (see tillMigrationCompat.ts).
+    if (error && isMissingTillPaymentColumn(error)) {
+      ({ data, error } = await read(BASE_COLUMNS));
+    }
     if (error !== null || !data) return;
     const row = data as Record<string, unknown>;
     const metadata = (row.metadata ?? {}) as Record<string, unknown>;

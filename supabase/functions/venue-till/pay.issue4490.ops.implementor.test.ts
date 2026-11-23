@@ -4,12 +4,23 @@
 // rate-limited and answer one 404 for every unknown code, the provider pages are
 // created for the server's total, Stripe pages are expired before a cancel, and
 // confirm_return finalizes once through the shared finalizer.
+//
+// TEST-MOD-APPROVED #4490 (08-O2 fix 1): the fake world answers the new
+// issue_4490_till_pay_code_lookup like the status read (pay_code_cancel reads a
+// code without the release switch, O2-T1) and takes an optional rpcOverride
+// for the O2F1 tests below (O2-T2 global unknown-code budget, O2-T1 cancel
+// with the Till off, O2-T4 adding to a check a stale payment held, O2-T3 the
+// text window refusal).
 import {
   assert,
   assertEquals,
   assertFalse,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { createVenueTillHandler, type TillClient } from "./index.ts";
+import {
+  createVenueTillHandler,
+  TILL_UNKNOWN_CODE_LIMIT,
+  type TillClient,
+} from "./index.ts";
 import { handleVenueOrderPaystackCharge } from "../_shared/venueOrderWebhook.ts";
 import { generateTillCode, TILL_CODE_RE } from "../_shared/venueTillCard.ts";
 
@@ -69,6 +80,10 @@ function world(opts: {
   limiterAllows?: boolean;
   view?: Row;
   pageStatus?: string;
+  rpcOverride?: (
+    name: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: unknown }> | undefined;
 } = {}) {
   const provider = opts.provider ?? "paystack";
   const calls: Call[] = [];
@@ -115,6 +130,8 @@ function world(opts: {
     from: db.from,
     rpc: (name: string, params: Record<string, unknown>) => {
       calls.push({ name, params });
+      const overridden = opts.rpcOverride?.(name, params);
+      if (overridden) return overridden;
       switch (name) {
         case "pg_venue_order_rate_limit_hit":
           return Promise.resolve({
@@ -225,6 +242,7 @@ function world(opts: {
             error: null,
           });
         case "issue_4490_till_pay_code_status":
+        case "issue_4490_till_pay_code_lookup":
           return Promise.resolve({
             data: {
               code: CODE,
@@ -617,4 +635,139 @@ function fakeDbFrom(tables: Record<string, Row[]>) {
 Deno.test("O2-E13 pay codes use the door alphabet (no 0/O/1/I/L), 8 characters", () => {
   for (let i = 0; i < 200; i++) assert(TILL_CODE_RE.test(generateTillCode()));
   assertFalse(TILL_CODE_RE.test("O1LI0000"));
+});
+
+// ---------------------------------------------------------------------------
+// #4490 08-O2 fix 1
+// ---------------------------------------------------------------------------
+const anonPost = (body: Row, headers: Record<string, string>) =>
+  new Request("http://x/venue-till", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+
+Deno.test("O2F1-E1 guessing codes with a new X-Forwarded-For (and cf-connecting-ip) every time is still limited by the global unknown-code budget", async () => {
+  let unknownHits = 0;
+  const w = world({
+    // The per-address limiter allows everything (each request is a "new" address).
+    rpcOverride: (name, params) => {
+      if (name !== "issue_4490_till_code_guess_budget") return undefined;
+      if (params.p_record === true) unknownHits += 1;
+      return Promise.resolve({ data: unknownHits >= Number(params.p_limit), error: null });
+    },
+  });
+  const statuses: number[] = [];
+  const bodies = new Set<string>();
+  for (let i = 0; i < TILL_UNKNOWN_CODE_LIMIT + 20; i++) {
+    const res = await w.handler(anonPost(
+      { action: "code_view", code: `ZZZZ${String(2222 + i).slice(-4).replace(/[01]/g, "2")}` },
+      { "x-forwarded-for": `203.0.113.${i % 250}, 10.0.0.1`, "cf-connecting-ip": `198.51.100.${i % 250}` },
+    ));
+    statuses.push(res.status);
+    if (res.status === 404) bodies.add(await res.text());
+    else await res.body?.cancel();
+  }
+  assertEquals(statuses.filter((s) => s === 404).length, TILL_UNKNOWN_CODE_LIMIT);
+  assertEquals(statuses.filter((s) => s === 429).length, 20);
+  assertEquals(statuses.indexOf(429), TILL_UNKNOWN_CODE_LIMIT);
+  // Every unknown answer is the same 404.
+  assertEquals([...bodies], [JSON.stringify({ code: "pay_code_not_found" })]);
+  // While the budget is spent a REAL code answers the same 429 (no oracle).
+  const known = await w.handler(anonPost({ action: "code_view", code: CODE }, { "x-forwarded-for": "192.0.2.7" }));
+  assertEquals(known.status, 429);
+  // A real code before the budget is spent is served and never counted.
+  let hits = 0;
+  const fresh = world({
+    rpcOverride: (name, params) => {
+      if (name === "issue_4490_till_pay_code_buyer" && params.p_code !== CODE) {
+        return Promise.resolve({ data: null, error: { message: "pay_code_not_found", code: "P0002" } });
+      }
+      if (name !== "issue_4490_till_code_guess_budget") return undefined;
+      if (params.p_record === true) hits += 1;
+      return Promise.resolve({ data: false, error: null });
+    },
+  });
+  const ok = await fresh.handler(anonPost({ action: "code_view", code: CODE }, { "x-forwarded-for": "192.0.2.8" }));
+  assertEquals(ok.status, 200);
+  assertEquals(hits, 0);
+  // Unknown code_pay and confirm_return are counted too.
+  for (const action of ["code_pay", "confirm_return"]) {
+    await (await fresh.handler(anonPost({
+      action,
+      code: "ZZZZ2223",
+      buyer: { name: "Ada Guest", email: "ada@gmail.com", phone: "+2348031234567" },
+    }, {}))).body?.cancel();
+  }
+  assertEquals(hits, 2);
+});
+
+Deno.test("O2F1-E2 pay_code_cancel reads the code without the release switch, so a live code can be cancelled after the Till is switched off", async () => {
+  const w = world({
+    rpcOverride: (name) =>
+      name === "issue_4490_till_pay_code_status"
+        ? Promise.resolve({ data: null, error: { message: "till_not_enabled", code: "P0001" } })
+        : undefined,
+  });
+  const res = await w.handler(post({ action: "pay_code_cancel", venueId: VENUE, code: CODE }));
+  assertEquals(res.status, 200);
+  assert(w.calls.some((c) => c.name === "issue_4490_till_pay_code_lookup"));
+  assertFalse(w.calls.some((c) => c.name === "issue_4490_till_pay_code_status"));
+  assert(w.calls.some((c) => c.name === "issue_4490_till_card_cancel"));
+  // The staff status read itself refuses in words while the Till is off.
+  const status = await w.handler(post({ action: "pay_code_status", venueId: VENUE, code: CODE }));
+  assertEquals(status.status, 422);
+  assertEquals((await status.json()).code, "till_not_enabled");
+});
+
+Deno.test("O2F1-E3 adding to a check a stale card payment held: the stale payment is let go first, then the round is added", async () => {
+  const KEY_ = "fix1-round-0001";
+  const stale = world({
+    rpcOverride: (name) => {
+      if (name === "issue_4490_can_sell") return Promise.resolve({ data: true, error: null });
+      if (name !== "issue_4490_till_release_stale") return undefined;
+      stale.tables.venue_till_sales[0].state = "open";
+      return Promise.resolve({ data: 1, error: null });
+    },
+  });
+  stale.tables.venue_till_sales[0].state = "paying";
+  stale.tables.venue_orders.push({ id: "round-1", idempotency_key: `till:${SALE}:${KEY_}`, venue_id: VENUE });
+  const body = {
+    action: "add_menu",
+    venueId: VENUE,
+    saleId: SALE,
+    idempotencyKey: KEY_,
+    expectedVersion: 3,
+    lines: [{ menuItemId: "00000000-4490-4000-8000-0000000002d1", quantity: 1 }],
+  };
+  const ok = await stale.handler(post(body));
+  assertEquals(ok.status, 200);
+  assert(stale.calls.some((c) => c.name === "issue_4490_till_attach_round"));
+  // A live code (nothing to release) still refuses, in words.
+  const live = world({
+    rpcOverride: (name) =>
+      name === "issue_4490_can_sell"
+        ? Promise.resolve({ data: true, error: null })
+        : name === "issue_4490_till_release_stale"
+        ? Promise.resolve({ data: 0, error: null })
+        : undefined,
+  });
+  live.tables.venue_till_sales[0].state = "paying";
+  live.tables.venue_orders.push({ id: "round-1", idempotency_key: `till:${SALE}:${KEY_}`, venue_id: VENUE });
+  const refused = await live.handler(post(body));
+  assertEquals(refused.status, 409);
+  assertEquals((await refused.json()).code, "till_payment_in_progress");
+  assertFalse(live.calls.some((c) => c.name === "issue_4490_till_attach_round"));
+});
+
+Deno.test("O2F1-E4 a pay-link text past the hourly window is refused with its own code", async () => {
+  const w = world({
+    rpcOverride: (name) =>
+      name === "issue_4490_till_pay_code_text"
+        ? Promise.resolve({ data: null, error: { message: "pay_code_text_window", code: "PT409" } })
+        : undefined,
+  });
+  const res = await w.handler(post({ action: "pay_code_text", venueId: VENUE, code: CODE, phone: "+2348031234567" }));
+  assertEquals(res.status, 409);
+  assertEquals((await res.json()).code, "pay_code_text_window");
 });

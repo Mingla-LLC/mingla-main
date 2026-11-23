@@ -9,6 +9,12 @@
 //   sweep:  Till rows are cancelled with till_tap_sweep_cancel:<intentId> and
 //           the seller is told; event rows are read by their own query.
 //   Event scope requests never reach the till handlers.
+//
+// TEST-MOD-APPROVED #4490 (08-O2 fix 1): the fake answers the new Till release
+// switch read (issue_4490_till_enabled, on unless a test turns it off) and can
+// fail the sweep's Till read; the O2F1 tests below are new (O2-T1: the switch
+// closes create / location / the reader token for every role while cancel,
+// complete and seen stay open; O2-T5: the sweep before the #4490 migrations).
 import {
   assert,
   assertEquals,
@@ -35,6 +41,8 @@ function makeDb(
     canSell?: boolean;
     intent?: Record<string, unknown> | null;
     sweepRows?: unknown[];
+    tillOn?: boolean;
+    sweepError?: { code: string; message: string };
   } = {},
 ) {
   return new FakeDb(
@@ -125,6 +133,7 @@ function makeDb(
         if (
           op.filters.some(([f, c]) => f === "not.is" && c === "till_payment_id")
         ) {
+          if (opts.sweepError) return { data: null, error: opts.sweepError };
           return { data: opts.sweepRows ?? [], error: null };
         }
         if (op.filters.some(([f]) => f === "not.is")) {
@@ -146,6 +155,9 @@ function makeDb(
     (name) => {
       if (name === "issue_4490_can_sell") {
         return { data: opts.canSell ?? true, error: null };
+      }
+      if (name === "issue_4490_till_enabled") {
+        return { data: opts.tillOn ?? true, error: null };
       }
       if (name === "biz_tap_to_pay_release") {
         return { data: { iphone: true, android: true }, error: null };
@@ -439,4 +451,138 @@ Deno.test("O2-T6 the Till's reader token is for sellers at the venue, on the sam
     stripe: () => fakeStripe().client,
   } as never)(post({ scope: "till", venueId: VENUE, platform: "ios" }));
   assertEquals(refused.status, 400);
+});
+
+// ---------------------------------------------------------------------------
+// #4490 08-O2 fix 1
+// ---------------------------------------------------------------------------
+Deno.test("O2F1-T1a till create and location: with the Till off every role gets till_not_enabled, before rights and Stripe", async () => {
+  for (const canSell of [true, false]) {
+    const db = makeDb({ tillOn: false, canSell });
+    const stripe = fakeStripe();
+    const handler = createDoorTapIntentHandler({
+      serviceClient: () => db,
+      userIdFromAuthHeader: auth,
+      stripe: () => stripe.client,
+    });
+    const create = await handler(post({
+      action: "create",
+      scope: "till",
+      platform: "ios",
+      venueId: VENUE,
+      paymentId: PAYMENT,
+      clientRequestId: REQ,
+    }));
+    assertEquals(create.status, 422);
+    assertEquals((await create.json()).error, "till_not_enabled");
+    const location = await handler(post({
+      action: "location",
+      scope: "till",
+      platform: "ios",
+      venueId: VENUE,
+    }));
+    assertEquals(location.status, 422);
+    assertEquals((await location.json()).error, "till_not_enabled");
+    assertEquals(stripe.calls.length, 0);
+    assertEquals(db.rpcs.filter((r) => r.name === "issue_4490_can_sell").length, 0);
+    assertEquals(db.opsOn("door_tap_intents", "insert").length, 0);
+  }
+});
+
+Deno.test("O2F1-T1b the Till reader token: with the Till off every role gets till_not_enabled and no token", async () => {
+  const { createTerminalConnectionTokenHandler } = await import(
+    "../../terminal-connection-token/index.ts"
+  );
+  for (const canSell of [true, false]) {
+    const stripe = fakeStripe();
+    const res = await createTerminalConnectionTokenHandler({
+      serviceClient: () => makeDb({ tillOn: false, canSell }),
+      userIdFromAuthHeader: auth,
+      stripe: () => stripe.client,
+    } as never)(post({ scope: "till", venueId: VENUE, platform: "ios" }));
+    assertEquals(res.status, 422);
+    assertEquals((await res.json()).error, "till_not_enabled");
+    assertEquals(stripe.calls.length, 0);
+  }
+});
+
+Deno.test("O2F1-T1c money already moving is never stranded by the switch: cancel, complete and seen still work with the Till off", async () => {
+  const intent = {
+    id: INTENT,
+    till_payment_id: PAYMENT,
+    client_request_id: REQ,
+    stripe_account_id: "acct_till1",
+    status: "created",
+    created_by: ACTOR,
+  };
+  const cancelDb = makeDb({ tillOn: false, intent });
+  const cancelled = await createDoorTapIntentHandler({
+    serviceClient: () => cancelDb,
+    userIdFromAuthHeader: auth,
+    stripe: () => fakeStripe({ retrievePi: (id) => ({ id, status: "requires_payment_method" }) }).client,
+  })(post({ action: "cancel", scope: "till", paymentIntentId: "pi_door1", clientRequestId: REQ }));
+  assertEquals(cancelled.status, 200);
+  assertEquals((await cancelled.json()).status, "cancelled");
+  assert(cancelDb.rpcs.some((r) => r.name === "issue_4490_till_card_cancel"));
+
+  const completeDb = makeDb({ tillOn: false, intent });
+  const completed = await createDoorTapIntentHandler({
+    serviceClient: () => completeDb,
+    userIdFromAuthHeader: auth,
+    stripe: () =>
+      fakeStripe({
+        retrievePi: (id) => ({
+          id,
+          status: "succeeded",
+          amount: 2350,
+          amount_received: 2350,
+          metadata: { mingla_till_payment_id: PAYMENT },
+          latest_charge: { id: "ch_1", payment_method_details: { card_present: { brand: "visa", last4: "4242" } } },
+        }),
+      }).client,
+  })(post({ action: "complete", scope: "till", paymentIntentId: "pi_door1", clientRequestId: REQ }));
+  assertEquals(completed.status, 200);
+  assert(completeDb.rpcs.some((r) => r.name === "issue_4490_till_tap_record"));
+
+  const seenDb = makeDb({ tillOn: false, intent });
+  const seen = await createDoorTapIntentHandler({
+    serviceClient: () => seenDb,
+    userIdFromAuthHeader: auth,
+    stripe: () => fakeStripe().client,
+  })(post({ action: "seen", scope: "till", paymentIntentId: "pi_door1", clientRequestId: REQ }));
+  assertEquals(seen.status, 200);
+  for (const db of [cancelDb, completeDb, seenDb]) {
+    assertEquals(db.rpcs.filter((r) => r.name === "issue_4490_till_enabled").length, 0);
+  }
+});
+
+const sweepRequest = () =>
+  new Request("https://example.test/fn", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer svc" },
+    body: JSON.stringify({ action: "sweep_unfinished" }),
+  });
+
+Deno.test("O2F1-T5 sweep before the #4490 migrations: a missing till_payment_id column is no Till rows, not a failure; any other error still counts", async () => {
+  const run = async (sweepError: { code: string; message: string }) => {
+    const res = await createDoorTapIntentHandler({
+      serviceClient: () => makeDb({ sweepError }),
+      userIdFromAuthHeader: auth,
+      stripe: () => fakeStripe().client,
+      serviceRoleKey: () => "svc",
+      notify: () => Promise.resolve(undefined as never),
+    })(sweepRequest());
+    assertEquals(res.status, 200);
+    return (await res.json()).swept as Record<string, number>;
+  };
+  const missing = await run({
+    code: "42703",
+    message: "column door_tap_intents.till_payment_id does not exist",
+  });
+  assertEquals(missing.failed, 0);
+  const other = await run({ code: "57014", message: "canceling statement due to statement timeout" });
+  assertEquals(other.failed, 1);
+  // A 42703 about another column is a real failure, not the deploy gap.
+  const otherColumn = await run({ code: "42703", message: "column door_tap_intents.buyer_name does not exist" });
+  assertEquals(otherColumn.failed, 1);
 });

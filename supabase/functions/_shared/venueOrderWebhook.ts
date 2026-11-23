@@ -27,6 +27,7 @@
 // so a retried delivery cannot re-ring the pass.
 import { fireVenueOrderPlacedForOrder } from "./venueOrderNotify.ts";
 import { tillChannelFromPaystack } from "./venueTillCard.ts";
+import { isMissingTillPaymentColumn } from "./tillMigrationCompat.ts";
 
 type ServiceClient = any;
 
@@ -220,11 +221,21 @@ export async function handleVenueOrderPaystackCharge(
   reference: string,
   verified: Record<string, unknown>,
 ): Promise<VenueOrderFinalizeResult> {
-  const { data: order, error: lookupError } = await client
-    .from("venue_orders")
-    .select("id, brand_id, till_payment_id, metadata")
-    .eq("paystack_reference", reference)
-    .maybeSingle();
+  const lookup = (columns: string) =>
+    client
+      .from("venue_orders")
+      .select(columns)
+      .eq("paystack_reference", reference)
+      .maybeSingle();
+  let { data: order, error: lookupError } = await lookup(
+    "id, brand_id, till_payment_id, metadata",
+  );
+  // [TRANSITIONAL] #4490 O2-T5: before the #4490 migrations reach production
+  // there is no till_payment_id; a guest order is then never a Till carrier.
+  // Exit: the migrations applied in production (see tillMigrationCompat.ts).
+  if (lookupError && isMissingTillPaymentColumn(lookupError)) {
+    ({ data: order, error: lookupError } = await lookup("id, brand_id"));
+  }
   if (lookupError) {
     throw new Error(`venue_order_paystack_lookup_failed: ${lookupError.message}`);
   }

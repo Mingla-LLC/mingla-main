@@ -27,6 +27,28 @@ export async function canSellAtVenue(
   return data === true;
 }
 
+/**
+ * #4490 O2 fix 1 (O2-T1): the Till release switch (VENUE_TILL and the venue's
+ * `till` feature, issue_4490_till_enabled). Starting a Till card read and
+ * connecting a Till reader need it; recording, cancelling and seeing money
+ * that already moved never do (T19). A failed read refuses (throws).
+ */
+export async function tillEnabledAtVenue(
+  supabase: Client,
+  venueId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("issue_4490_till_enabled", {
+    p_venue_id: venueId,
+  });
+  if (error) throw new Error(`till_enabled_lookup_failed:${error.message}`);
+  return data === true;
+}
+
+/** The answer when the Till is switched off: the same for every role. */
+export function tillNotEnabledResponse(): Response {
+  return jsonResponse({ error: "till_not_enabled" }, 422);
+}
+
 /** The Terminal Location for a venue: the brand's T1 address, the venue's, the brand's. */
 export async function tillLocation(
   supabase: Client,

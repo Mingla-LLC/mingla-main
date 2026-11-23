@@ -13,8 +13,13 @@
 
 import { jsonResponse } from "../_shared/ticketCheckout.ts";
 import { tapToPayReleased } from "../_shared/doorPayServer.ts";
-import { tillLocation } from "../_shared/venueTillTerminal.ts";
+import {
+  tillEnabledAtVenue,
+  tillLocation,
+  tillNotEnabledResponse,
+} from "../_shared/venueTillTerminal.ts";
 import { isUuid } from "../_shared/doorPay.ts";
+import { isMissingTillPaymentColumn } from "../_shared/tillMigrationCompat.ts";
 import type { DoorTapIntentDeps } from "./index.ts";
 
 type Body = Record<string, unknown>;
@@ -101,6 +106,10 @@ export async function handleTillCreate(
     return jsonResponse({ error: "invalid_request" }, 400);
   }
   const supabase = deps.serviceClient();
+  // #4490 O2 fix 1 (O2-T1): no new card read while the Till is switched off.
+  if (!(await tillEnabledAtVenue(supabase, venueId))) {
+    return tillNotEnabledResponse();
+  }
   if (!(await canSell(supabase, venueId, actorId))) {
     return jsonResponse({ error: "door_access_denied" }, 400);
   }
@@ -246,6 +255,10 @@ export async function handleTillLocation(
   const venueId = body.venueId;
   if (!isUuid(venueId)) return jsonResponse({ error: "invalid_request" }, 400);
   const supabase = deps.serviceClient();
+  // #4490 O2 fix 1 (O2-T1): no Till Location while the Till is switched off.
+  if (!(await tillEnabledAtVenue(supabase, venueId))) {
+    return tillNotEnabledResponse();
+  }
   if (!(await canSell(supabase, venueId, actorId))) {
     return jsonResponse({ error: "door_access_denied" }, 400);
   }
@@ -496,6 +509,13 @@ export async function sweepTillUnfinished(
     .not("stripe_payment_intent_id", "is", null)
     .limit(100);
   if (error) {
+    // [TRANSITIONAL] #4490 O2 fix 1 (O2-T5 class): until the #4490 migrations
+    // are applied in production, door_tap_intents has no till_payment_id
+    // (42703). The event sweep runs this on every call, so that one answer is
+    // "no Till rows" (not a failure); any other error still counts and logs.
+    // Exit: migration 20280809599490 applied in production (see
+    // _shared/tillMigrationCompat.ts), then delete this branch.
+    if (isMissingTillPaymentColumn(error)) return tally;
     console.error("[door-tap-intent] till sweep read failed", error.message);
     tally.failed += 1;
     return tally;

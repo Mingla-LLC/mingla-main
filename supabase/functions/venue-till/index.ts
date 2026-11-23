@@ -38,7 +38,8 @@
 //   code_view      { code }                         (ANONYMOUS) venue, lines, amount
 //   code_pay       { code, buyer:{name,email,phone,phoneCountryIso} } (ANONYMOUS) → provider page
 //   confirm_return { code }                         (ANONYMOUS) verifies with the provider
-//   The three anonymous code actions are rate-limited per IP and per code;
+//   The three anonymous code actions are rate-limited per IP and per code,
+//   and share one global budget of unknown-code answers per minute (O2 fix 1);
 //   a code is 8 characters of a 31-letter alphabet (≈ 8.5 × 10^11), and an
 //   unknown code answers the same 404 as a malformed one.
 //
@@ -80,6 +81,7 @@ import {
 import { venueOrderEmailUndeliverable } from "../_shared/venueOrderPricing.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
 import { sha256Hex } from "../_shared/ticketCheckout.ts";
+import { requestClientIp } from "../_shared/ticketLinkToken.ts";
 import { tapToPayReleased } from "../_shared/doorPayServer.ts";
 import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
 import {
@@ -164,6 +166,8 @@ export const TILL_SAFE_CODES = [
   "pay_code_text_limit",
   "pay_code_buyer_invalid",
   "till_receipt_phone_invalid",
+  // #4490 O2 fix 1 (O2-T3): the rolling-hour pay-link text windows.
+  "pay_code_text_window",
 ] as const;
 
 // deno-lint-ignore no-explicit-any
@@ -186,6 +190,15 @@ export type VenueTillDeps = {
 /** Anonymous pay-code reads: per IP per minute, and per code per minute. */
 export const TILL_CODE_IP_LIMIT = 60;
 export const TILL_CODE_PAY_LIMIT = 10;
+/**
+ * #4490 O2 fix 1 (O2-T2): unknown pay-code answers per minute across every
+ * caller (issue_4490_till_code_guess_budget). No header is part of the key, so
+ * changing X-Forwarded-For does not buy more guesses. Real guests reach a code
+ * by its QR or text link; a typo is rare, so 300 a minute is never reached by
+ * guests (with 1,000 live codes a guesser at this rate expects one hit in
+ * about 5 years). While spent, every anonymous code answer is 429.
+ */
+export const TILL_UNKNOWN_CODE_LIMIT = 300;
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -495,6 +508,17 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         });
         if (allowed.error || allowed.data !== true) {
           return json(403, { code: "not_authorized" });
+        }
+        if (sale.state === "paying") {
+          // #4490 O2 fix 1 (O2-T4): a code past its time or a tap that never
+          // reached the reader no longer holds the check.
+          const released = await rpc("issue_4490_till_release_stale", { p_sale_id: saleId });
+          if (released.error) return tillFailure(released.error);
+          if (Number(released.data) > 0) {
+            const fresh = await loadSale();
+            if (!fresh) return json(404, { code: "till_sale_not_found" });
+            sale.state = fresh.state;
+          }
         }
         if (sale.state === "paying") {
           return json(409, { code: "till_payment_in_progress" });
@@ -1095,7 +1119,9 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       case "pay_code_cancel": {
         const code = str(body.code).toUpperCase();
         if (!TILL_CODE_RE.test(code)) return json(404, { code: "pay_code_not_found" });
-        const status = await rpc("issue_4490_till_pay_code_status", {
+        // #4490 O2 fix 1 (O2-T1): read without the release switch, so a code that
+        // is live when the Till is switched off can still be cancelled.
+        const status = await rpc("issue_4490_till_pay_code_lookup", {
           p_code: code,
           p_venue_id: venueId,
           p_actor: userId,
@@ -1253,6 +1279,28 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
     }
   }
 
+  /**
+   * #4490 O2 fix 1 (O2-T2): the global unknown pay-code budget. `record`
+   * counts one unknown answer. Fails open like the per-address limiter (a
+   * guest paying beats a log line), loudly.
+   */
+  async function guessBudgetSpent(client: TillClient, record: boolean): Promise<boolean> {
+    try {
+      const { data, error } = await client.rpc("issue_4490_till_code_guess_budget", {
+        p_record: record,
+        p_limit: TILL_UNKNOWN_CODE_LIMIT,
+      });
+      if (error) {
+        console.warn("[venue-till] unknown-code budget failed open", error.code);
+        return false;
+      }
+      return data === true;
+    } catch {
+      console.warn("[venue-till] unknown-code budget failed open");
+      return false;
+    }
+  }
+
   async function handleAnonymousCode(
     client: TillClient,
     req: Request,
@@ -1260,12 +1308,23 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
     body: Record<string, unknown>,
   ): Promise<Response> {
     const code = str(body.code).trim().toUpperCase();
-    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ||
-      req.headers.get("cf-connecting-ip")?.trim() || "unknown";
+    // The shared client-address rule (cf-connecting-ip first, as the ticket
+    // link pages): a per-address courtesy limit only, since a caller can send
+    // its own forwarding headers (O2-T2).
+    const ip = requestClientIp(req);
     if (await limited(client, `till_code_ip:${ip}`, TILL_CODE_IP_LIMIT)) {
       return json(429, { code: "rate_limited" });
     }
+    // #4490 O2 fix 1 (O2-T2): the global unknown-code budget, checked before
+    // any lookup so a known and an unknown code answer alike while it is spent.
+    if (await guessBudgetSpent(client, false)) {
+      return json(429, { code: "rate_limited" });
+    }
     if (!TILL_CODE_RE.test(code)) return json(404, { code: "pay_code_not_found" });
+    const unknownCode = async (): Promise<Response> => {
+      await guessBudgetSpent(client, true);
+      return json(404, { code: "pay_code_not_found" });
+    };
     if (action !== "code_view" && await limited(client, `till_code_pay:${code}`, TILL_CODE_PAY_LIMIT)) {
       return json(429, { code: "rate_limited" });
     }
@@ -1273,7 +1332,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
     if (action === "code_view") {
       const { data, error } = await client.rpc("issue_4490_till_pay_code_view", { p_code: code });
       if (error) {
-        if (error.message === "pay_code_not_found") return json(404, { code: "pay_code_not_found" });
+        if (error.message === "pay_code_not_found") return await unknownCode();
         console.error("[venue-till] code view failed", error.code);
         return json(500, { code: "till_failed" });
       }
@@ -1286,7 +1345,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       });
       if (viewError) {
         return viewError.message === "pay_code_not_found"
-          ? json(404, { code: "pay_code_not_found" })
+          ? await unknownCode()
           : json(500, { code: "till_failed" });
       }
       const v = view as Record<string, unknown>;
@@ -1357,7 +1416,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       p_phone_e164: phone.e164,
     });
     if (error) {
-      if (error.message === "pay_code_not_found") return json(404, { code: "pay_code_not_found" });
+      if (error.message === "pay_code_not_found") return await unknownCode();
       if (error.message === "pay_code_closed") return json(409, { code: "pay_code_closed" });
       if (error.message === "pay_code_buyer_invalid") return json(400, { code: "pay_code_buyer_invalid" });
       console.error("[venue-till] code pay failed", error.code);

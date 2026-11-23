@@ -7,7 +7,12 @@
 // verify_jwt = false at the gateway; the bearer is verified in code and the
 // caller must be allowed to take door money for the event.
 
-import { canSellAtVenue, tillLocation } from "../_shared/venueTillTerminal.ts";
+import {
+  canSellAtVenue,
+  tillEnabledAtVenue,
+  tillLocation,
+  tillNotEnabledResponse,
+} from "../_shared/venueTillTerminal.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import {
@@ -105,6 +110,10 @@ export const createTerminalConnectionTokenHandler = (
     // the Location is the one door-tap-intent (scope till) names on the sale.
     if (body?.scope === "till" && isUuid(body?.venueId)) {
       const venueId = body.venueId as string;
+      // #4490 O2 fix 1 (O2-T1): no Till reader while the Till is switched off.
+      if (!(await tillEnabledAtVenue(supabase, venueId))) {
+        return tillNotEnabledResponse();
+      }
       if (!(await canSellAtVenue(supabase, venueId, actorId))) {
         return jsonResponse({ error: "door_access_denied" }, 400);
       }
