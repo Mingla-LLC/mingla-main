@@ -224,6 +224,18 @@ describe("#4522 buyer web balance page — first screen test findings", () => {
     await TestRenderer.act(async () => { tree.unmount(); });
   });
 
+  // issue #4522 X-10 — against main's database (deploy window) the function
+  // answers 409 payment_plan_v2_unavailable: a clean answer, not a lost connection.
+  test("X-10 a balance link on a database without plan v2 says not available, not 'check your connection'", async () => {
+    mockView.mockRejectedValue(new TripBalancePayError("payment_plan_v2_unavailable", 409));
+    const tree = await mount();
+    const out = allText(tree);
+    expect(out).toContain("Not available for this trip");
+    expect(out).toContain("Your payments stay on their schedule.");
+    expect(out).not.toContain("Check your connection");
+    await TestRenderer.act(async () => { tree.unmount(); });
+  });
+
   test("S-5 a refunded overpayment is shown on the paid-in-full page", async () => {
     mockView.mockResolvedValue(view("paid", raw({
       paidMinor: 120_000, remainingMinor: 0, canPayAnyAmount: false, minPaymentMinor: null,

@@ -120,6 +120,9 @@ type Page =
   | { kind: "expired" }
   // issue #4522 S-14 — an unknown or mistyped link.
   | { kind: "invalid" }
+  // issue #4522 X-10 — the server answered cleanly that this trip has no
+  // balance payments (deploy window: plan v2 not on the database yet).
+  | { kind: "unavailable" }
   | { kind: "error"; view: TripBalanceView | null; message: string };
 
 export default function TripBalancePayPage(): React.ReactElement {
@@ -159,6 +162,11 @@ export default function TripBalancePayPage(): React.ReactElement {
         error.code === "balance_link_invalid"
       ) {
         setPage({ kind: "invalid" });
+      } else if (
+        error instanceof TripBalancePayError &&
+        error.code === "payment_plan_v2_unavailable"
+      ) {
+        setPage({ kind: "unavailable" });
       } else if (
         error instanceof TripBalancePayError &&
         error.code === "balance_not_found"
@@ -362,6 +370,13 @@ export default function TripBalancePayPage(): React.ReactElement {
       <State
         title="This balance link has expired"
         body="Open the newest link from your email, or visit your purchase in Mingla."
+      />
+    );
+  } else if (page.kind === "unavailable") {
+    content = (
+      <State
+        title="Not available for this trip"
+        body="Your payments stay on their schedule."
       />
     );
   } else if (page.kind === "invalid") {
