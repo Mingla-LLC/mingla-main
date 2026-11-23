@@ -404,6 +404,31 @@ BEGIN
 END
 $t$;
 
+-- T5-6: never written off while a flexible payment is open (its charge can
+-- still land and pay the balance).
+SELECT pg_temp.seed43('45220f02-0000-4000-8000-0000000000da', 'USD',
+  '[{"tt":"45220f02-0000-4000-8000-000000000030","due":"2026-01-10T08:00Z","amt":30}]', 1000);
+DO $t$
+DECLARE
+  o uuid := '45220f02-0000-4000-8000-0000000000da';
+  r uuid := (SELECT id FROM public.order_installments WHERE order_id = '45220f02-0000-4000-8000-0000000000da');
+  w bigint;
+BEGIN
+  INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+    collection_method, kind, flex_client_key, line_allocation, plan_bound_at)
+  VALUES (o, 2, 30, 'USD', now(), 'scheduled', 'stripe', 'auto_card', 'flex', 't56-open-flex', '[]'::jsonb, now());
+  w := public.issue_4522_waive_unchargeable_remainder(o, 'charge_claim');
+  PERFORM pg_temp.check('T5-6 a 30¢ balance with a flexible payment open is not written off',
+    w = 0 AND (SELECT status FROM public.order_installments WHERE id = r) = 'scheduled'
+    AND (public.issue_4522_balance(o)->>'waivedMinor')::bigint = 0, w::text);
+  UPDATE public.order_installments SET status = 'superseded', superseded_at = now()
+   WHERE order_id = o AND kind = 'flex';
+  w := public.issue_4522_waive_unchargeable_remainder(o, 'charge_claim');
+  PERFORM pg_temp.check('T5-6 ... once it is closed, the same balance is written off',
+    w = 30 AND (SELECT failure_reason FROM public.order_installments WHERE id = r) = 'waived_below_provider_minimum', w::text);
+END
+$t$;
+
 -- The traveler pays a whole balance below the minimum: settled by waiver, no charge.
 SELECT pg_temp.seed43('45220f02-0000-4000-8000-0000000000d9', 'USD',
   '[{"tt":"45220f02-0000-4000-8000-000000000030","due":"2027-01-10T08:00Z","amt":30}]', 1000);
