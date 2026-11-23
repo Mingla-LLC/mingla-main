@@ -919,7 +919,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           ) : null}
 
           {showPlanRefundNote ? (
-            <View testID="plan-order-refund-note">
+            <View testID="plan-order-refund-note" style={styles.planRefundNote}>
               <Text style={styles.cancelLedgerCopy}>
                 {PLAN_ORDER_REFUND_NOTE_COPY}
               </Text>
@@ -1237,6 +1237,9 @@ const styles = StyleSheet.create({
   },
   cancelLedger: {
     marginBottom: 0,
+  },
+  planRefundNote: {
+    gap: space[3],
   },
   cancelLedgerCopy: {
     fontSize: 13,
