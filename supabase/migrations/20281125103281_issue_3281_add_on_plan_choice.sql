@@ -12,7 +12,11 @@
 --     and issue_3859_bind_checkout_contract accepts add-ons on a v2 schedule
 --     only when the database's own plan for the session matches it row for row,
 --     then freezes the terms, the order's add-on choice and each add-on line's
---     plan_choice. Off (or no add-ons): both bodies behave exactly as before.
+--     plan_choice. Off (or no add-ons): issue_4522_checkout_v2_plan behaves
+--     exactly as before. #4522 X-2: a v2 schedule with no add-ons on it (the
+--     main buyer path; the contract session is created at 'full') is bound only
+--     to the database's own plan, row for row, and its terms are frozen too, so
+--     the order is a v2 plan order. Legacy (v1) schedules are unchanged.
 --   * refunds per choice: a host (biz_refund_order / refund_preview) or admin
 --     (admin_refund_order) refunding a spread add-on first takes it off the open
 --     plan rows of its package (#4522's seam issue_4522_remove_spread_addon,
@@ -168,6 +172,9 @@ DECLARE
   v_seen_ticket_ids uuid[] := ARRAY[]::uuid[];
   -- issue #3281 S5 — the database's own plan when add-ons ride it.
   v_addon_plan jsonb;
+  -- issue #4522 X-2 — the database's own plan for a v2 schedule with no
+  -- add-ons on it; its terms are frozen on the session like the add-on case.
+  v_plan_v2 jsonb;
 BEGIN
   IF p_checkout_attempt_id IS NULL
      OR p_checkout_fingerprint IS NULL
@@ -376,6 +383,34 @@ BEGIN
     END IF;
   END IF;
 
+  -- issue #4522 X-2 — a v2 schedule the add-ons do not ride (no add-ons, the
+  -- main buyer path) is a v2 plan too: the contract session was created at
+  -- 'full', so its terms exist only here. Bind it only to the database's own
+  -- plan for this session, row for row, and freeze that plan's terms.
+  IF v_addon_plan IS NULL
+     AND p_installment_schedule IS NOT NULL AND p_installment_schedule <> 'null'::jsonb
+     AND COALESCE(p_installment_schedule->>'planVersion', '') = '2' THEN
+    v_plan_v2 := public.issue_4522_checkout_v2_plan(p_checkout_session_id, p_lines);
+    IF v_plan_v2 IS NULL
+       OR COALESCE((v_plan_v2->>'addOnsOnPlan')::boolean, false)
+       OR jsonb_typeof(v_plan_v2->'paymentPlanTerms') IS DISTINCT FROM 'object'
+       OR (v_plan_v2->>'dueTodayNetCents')::bigint IS DISTINCT FROM p_due_today_cents::bigint
+       OR jsonb_typeof(v_plan_v2#>'{installmentSchedule,installments}') IS DISTINCT FROM 'array'
+       OR jsonb_array_length(v_plan_v2#>'{installmentSchedule,installments}')
+          <> jsonb_array_length(p_installment_schedule->'installments')
+       OR EXISTS (
+         SELECT 1
+           FROM jsonb_array_elements(p_installment_schedule->'installments') WITH ORDINALITY a(e, n)
+           JOIN jsonb_array_elements(v_plan_v2#>'{installmentSchedule,installments}') WITH ORDINALITY b(e, n)
+             ON b.n = a.n
+          WHERE (a.e->>'amountCents') IS DISTINCT FROM (b.e->>'amountCents')
+             OR COALESCE(a.e->>'addonPortionCents', '0') IS DISTINCT FROM (b.e->>'addonPortionCents')
+             OR (a.e->>'sourceTicketTypeId') IS DISTINCT FROM (b.e->>'sourceTicketTypeId')
+             OR (a.e->>'dueAt')::timestamptz IS DISTINCT FROM (b.e->>'dueAt')::timestamptz) THEN
+      RAISE EXCEPTION 'checkout_quote_invalid';
+    END IF;
+  END IF;
+
   UPDATE public.ticket_checkout_sessions
      SET checkout_contract_version = 2,
          checkout_attempt_id = p_checkout_attempt_id,
@@ -384,10 +419,12 @@ BEGIN
          subtotal_cents = p_due_today_cents,
          total_cents = p_due_today_cents,
          installment_schedule = p_installment_schedule,
-         -- issue #3281 S5 — frozen terms and the add-on choice, only when the
-         -- add-ons ride the plan (finalize copies both to the order).
-         payment_plan_terms = CASE WHEN v_addon_plan IS NULL THEN payment_plan_terms
-           ELSE v_addon_plan->'paymentPlanTerms' END,
+         -- issue #3281 S5 / #4522 X-2 — the frozen v2 terms (finalize copies
+         -- them to the order); the add-on choice only when add-ons ride it.
+         payment_plan_terms = CASE
+           WHEN v_addon_plan IS NOT NULL THEN v_addon_plan->'paymentPlanTerms'
+           WHEN v_plan_v2 IS NOT NULL THEN v_plan_v2->'paymentPlanTerms'
+           ELSE payment_plan_terms END,
          addon_payment_mode = CASE WHEN v_addon_plan IS NULL THEN addon_payment_mode
            ELSE v_addon_plan->>'addonPaymentMode' END,
          updated_at = now()
