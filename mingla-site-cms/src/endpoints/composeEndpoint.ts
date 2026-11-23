@@ -462,13 +462,14 @@ async function libraryImport(req: PayloadRequest): Promise<Response> {
 
 export const composeEndpoints: Endpoint[] = [
   {
-    path: "/internal/library-import",
-    method: "post",
-    handler: observeCmsEndpoint("/internal/library-import", "core_to_cms", libraryImport),
-  },
-  {
     path: "/internal/compose-from-plan",
     method: "post",
     handler: observeCmsEndpoint("/internal/compose-from-plan", "core_to_cms", composeDraft),
+  },
+  // #4572 item 3 — kept after compose: callers and suites read compose first.
+  {
+    path: "/internal/library-import",
+    method: "post",
+    handler: observeCmsEndpoint("/internal/library-import", "core_to_cms", libraryImport),
   },
 ];

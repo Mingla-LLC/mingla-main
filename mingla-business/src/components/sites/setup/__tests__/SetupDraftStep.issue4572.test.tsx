@@ -7,10 +7,10 @@
  */
 import React from "react";
 
-jest.mock("../website/WebsiteIcon", () => ({ WebsiteIcon: () => null }));
-jest.mock("../plan/BuildPart", () => ({ BuildPart: () => null }));
+jest.mock("../../website/WebsiteIcon", () => ({ WebsiteIcon: () => null }));
+jest.mock("../../plan/BuildPart", () => ({ BuildPart: () => null }));
 
-import { SetupDraftStep } from "./SetupDraftStep";
+import { SetupDraftStep } from "../SetupDraftStep";
 
 type TestNode = { props: Record<string, any>; children: (TestNode | string)[]; findAll: (test: (node: TestNode) => boolean) => TestNode[] };
 // eslint-disable-next-line @typescript-eslint/no-require-imports

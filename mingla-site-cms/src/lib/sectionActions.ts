@@ -945,6 +945,8 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
   if (blocks.length >= MAX_BLOCKS_PER_PAGE) refuse("SECTION_LIMIT_REACHED", { max: MAX_BLOCKS_PER_PAGE });
   const after = args.after_section_id;
   const at = after === null || after === undefined ? 0 : findSection(blocks, after) + 1;
+  // #4572 item 8 — say why a cover can't go here before asking for its photo.
+  if (type === "hero") blocksWithHomeCover(page, blocks, {}, at);
   let mediaId: string | null = null;
   if (SECTION_TYPES_NEEDING_PHOTO.has(type)) {
     if (typeof args.media_id !== "string" || !args.media_id) refuse("MEDIA_REQUIRED");
