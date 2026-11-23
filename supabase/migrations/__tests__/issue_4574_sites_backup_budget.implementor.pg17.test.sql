@@ -201,4 +201,88 @@ BEGIN
 END;
 $t4574$;
 
+-- #4574 rework: claim before send (tester P1-1, P2-1).
+DO $t4574_claim$
+DECLARE
+  v_c jsonb;
+  v_failed boolean;
+  v_closes timestamptz := '2026-11-26T10:00:00Z';
+BEGIN
+  IF has_function_privilege('anon', 'public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz)', 'EXECUTE')
+    OR has_function_privilege('authenticated', 'public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz)', 'EXECUTE')
+    OR has_function_privilege('authenticated', 'public.brand_site_recovery_watch_release(text, timestamptz, timestamptz, jsonb)', 'EXECUTE')
+    OR NOT has_function_privilege('service_role', 'public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz)', 'EXECUTE')
+    OR NOT has_function_privilege('service_role', 'public.brand_site_recovery_watch_release(text, timestamptz, timestamptz, jsonb)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'claim/release grants are not service_role only';
+  END IF;
+  IF position('FOR UPDATE' IN pg_get_functiondef('public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'the claim does not lock the state row';
+  END IF;
+  DELETE FROM public.brand_site_recovery_watch_state;
+
+  -- The first claim wins; the same claim again (a second, overlapping run) is refused.
+  IF NOT (public.brand_site_recovery_watch_claim('warn', v_closes, NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'first warn claim refused';
+  END IF;
+  IF (public.brand_site_recovery_watch_claim('warn', v_closes, NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'a second warn claim for the same incident was allowed (double send)';
+  END IF;
+  -- Escalation claims; de-escalation does not; a new incident re-arms.
+  IF NOT (public.brand_site_recovery_watch_claim('critical', v_closes, NULL)->>'claimed')::boolean
+    OR (public.brand_site_recovery_watch_claim('warn', v_closes, NULL)->>'claimed')::boolean
+    OR NOT (public.brand_site_recovery_watch_claim('warn', v_closes + interval '1 day', NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'level claims do not follow once-per-incident with escalation';
+  END IF;
+  -- Recovery only after an alert, once.
+  IF NOT (public.brand_site_recovery_watch_claim('recovered', v_closes + interval '2 days', NULL)->>'claimed')::boolean
+    OR (public.brand_site_recovery_watch_claim('recovered', v_closes + interval '2 days', NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'recovery claim not exactly once after an alert';
+  END IF;
+  -- Heartbeat once per completion.
+  IF NOT (public.brand_site_recovery_watch_claim('heartbeat', NULL, '2026-11-24T10:00:00Z')->>'claimed')::boolean
+    OR (public.brand_site_recovery_watch_claim('heartbeat', NULL, '2026-11-24T10:00:00Z')->>'claimed')::boolean
+    OR NOT (public.brand_site_recovery_watch_claim('heartbeat', NULL, '2026-11-25T10:00:00Z')->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'heartbeat claim not once per completion';
+  END IF;
+  -- Unproven: once, then refused until 2 h have passed.
+  IF NOT (public.brand_site_recovery_watch_claim('unproven', NULL, NULL)->>'claimed')::boolean
+    OR (public.brand_site_recovery_watch_claim('unproven', NULL, NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'unproven claimed twice inside 2 h';
+  END IF;
+  UPDATE public.brand_site_recovery_watch_state SET unproven_sent_at = clock_timestamp() - interval '1 hour 59 minutes';
+  IF (public.brand_site_recovery_watch_claim('unproven', NULL, NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'unproven claimed after 1 h 59 min';
+  END IF;
+  UPDATE public.brand_site_recovery_watch_state SET unproven_sent_at = clock_timestamp() - interval '2 hours 1 second';
+  IF NOT (public.brand_site_recovery_watch_claim('unproven', NULL, NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'unproven not claimable after 2 h';
+  END IF;
+
+  -- Release restores exactly what the undelivered claim changed.
+  DELETE FROM public.brand_site_recovery_watch_state;
+  v_c := public.brand_site_recovery_watch_claim('expired', v_closes, NULL);
+  PERFORM public.brand_site_recovery_watch_release('expired', v_closes, NULL, v_c->'prior');
+  IF (SELECT last_sent_level FROM public.brand_site_recovery_watch_state) IS NOT NULL
+    OR NOT (public.brand_site_recovery_watch_claim('expired', v_closes, NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'release did not let the next check retry';
+  END IF;
+  v_c := public.brand_site_recovery_watch_claim('unproven', NULL, NULL);
+  PERFORM public.brand_site_recovery_watch_release('unproven', NULL, NULL, v_c->'prior');
+  IF (SELECT unproven_sent_at FROM public.brand_site_recovery_watch_state) IS NOT NULL THEN
+    RAISE EXCEPTION 'unproven release did not restore the prior time';
+  END IF;
+
+  v_failed := false;
+  BEGIN PERFORM public.brand_site_recovery_watch_claim('warn', NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM = 'sites_validation_failed'; END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'a level claim without a closing time was accepted'; END IF;
+  v_failed := false;
+  BEGIN PERFORM public.brand_site_recovery_watch_claim('page', NULL, NULL);
+  EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM = 'sites_validation_failed'; END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'an unknown claim kind was accepted'; END IF;
+
+  RAISE NOTICE 'ISSUE_4574_SITES_RECOVERY_CLAIM_OK';
+END;
+$t4574_claim$;
+
 ROLLBACK;

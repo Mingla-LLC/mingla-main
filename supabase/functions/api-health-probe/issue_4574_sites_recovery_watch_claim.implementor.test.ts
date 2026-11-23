@@ -217,3 +217,18 @@ Deno.test("#4574 rework source guard: the probe claims and releases through SQL,
   assert(claim.includes("v_old.unproven_sent_at <= clock_timestamp() - interval '2 hours'"), "SQL owns the 2 h unproven cadence");
   assert(sql.includes("REVOKE ALL ON FUNCTION public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;"));
 });
+
+Deno.test("#4574 rework P3-1: a delivered email whose record call fails is not sent again", async () => {
+  const w = world();
+  w.db.now = w.db.databaseAt + 46.5 * H;
+  w.db.lastCompletion = w.db.now;
+  const realRecord = w.deps.record;
+  w.deps.record = async () => ({ error: "record failed" });
+  const o1 = await w.tick();
+  assertEquals(o1.sent, ["warn"]);
+  assertEquals(o1.record_error, "record failed");
+  w.db.now += 15 * 60 * 1000;
+  w.db.lastCompletion = w.db.now;
+  assertEquals((await w.tick()).sent, []);
+  w.deps.record = realRecord;
+});
