@@ -241,7 +241,7 @@ END $$;
 --    refund row (refunds.amount_cents must be positive): a traveler cancelling
 --    a v2 order with only the non-refundable deposit paid, and a host
 --    cancelling an old-plan order on a trip with no cancellation policy.
-SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000a6',
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000b6',
   '{"v":2,"deposit_minor":30000000,"deposit_non_refundable":true,"flex_enabled":false,"auto_adjust":true}', NULL);
 INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone,
   currency, refund_policy)
@@ -251,15 +251,15 @@ VALUES ('45220008-0000-4000-8000-000000000021', '45220008-0000-4000-8000-0000000
 INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
 VALUES ('45220008-0000-4000-8000-000000000021', now() + interval '120 days', now() + interval '127 days',
         'Africa/Lagos', true);
-SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000a7', NULL, NULL);
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000b7', NULL, NULL);
 UPDATE public.orders SET event_id = '45220008-0000-4000-8000-000000000021'
- WHERE id = '45220008-0000-4000-8000-0000000000a7';
+ WHERE id = '45220008-0000-4000-8000-0000000000b7';
 DO $$
 DECLARE v_b jsonb; r record;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
-    ('45220008-0000-4000-8000-0000000000a6'::uuid, 'buyer'),
-    ('45220008-0000-4000-8000-0000000000a7'::uuid, 'operator')
+    ('45220008-0000-4000-8000-0000000000b6'::uuid, 'buyer'),
+    ('45220008-0000-4000-8000-0000000000b7'::uuid, 'operator')
   ) v(order_id, actor) LOOP
     v_b := public.biz_cancel_trip_booking_begin(r.order_id, r.actor,
       '45220008-0000-4000-8000-000000000001', 'Cancelled with nothing to refund');
