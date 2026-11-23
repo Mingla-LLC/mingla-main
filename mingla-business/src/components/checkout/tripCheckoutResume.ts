@@ -33,6 +33,17 @@ import type {
 import type { BuyerDetails } from "./CartContext";
 import type { CheckoutResumePayload } from "./checkoutPersistence";
 
+/**
+ * A bank-transfer (second provider) page the buyer opened and left is
+ * "abandoned" at the provider, which the status check reports as a failed
+ * verify — but that page can still be paid, and the provider has no way to
+ * close it. It is never forgotten: forgetting it would open a second payable
+ * page for the same cart.
+ */
+export const STILL_PAYABLE_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "paystack_charge_abandoned",
+]);
+
 /** The session statuses whose provider page can still be paid. */
 export const RESUMABLE_TRIP_SESSION_STATUSES: ReadonlySet<string> = new Set([
   "awaiting_web_redirect",
@@ -143,13 +154,13 @@ export async function tripResumeDecision(
   getStatus: (
     checkoutSessionId: string,
     buyerStatusToken: string,
-  ) => Promise<{ status: string; order: unknown }>,
+  ) => Promise<{ status: string; order: unknown; error?: string | null }>,
 ): Promise<TripResumeDecision> {
   // No held checkout, or the cart changed since: a different purchase.
   if (resumed === null || resumed.fingerprint !== cartFingerprint) {
     return { kind: "create", forget: false };
   }
-  let status: { status: string; order: unknown };
+  let status: { status: string; order: unknown; error?: string | null };
   try {
     status = await getStatus(resumed.checkoutSessionId, resumed.buyerStatusToken);
   } catch {
@@ -161,7 +172,10 @@ export async function tripResumeDecision(
   }
   if (status.order !== null && status.order !== undefined) return { kind: "confirm" };
   if (status.status === "paid_completed") return { kind: "confirm" };
-  if (RESUMABLE_TRIP_SESSION_STATUSES.has(status.status)) {
+  if (
+    RESUMABLE_TRIP_SESSION_STATUSES.has(status.status) ||
+    (typeof status.error === "string" && STILL_PAYABLE_FAILURE_CODES.has(status.error))
+  ) {
     return resumed.redirectUrl !== null
       ? { kind: "follow", url: resumed.redirectUrl }
       : { kind: "create", forget: false };

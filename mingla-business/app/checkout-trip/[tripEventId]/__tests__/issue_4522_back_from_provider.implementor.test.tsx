@@ -357,6 +357,13 @@ describe("#4522 E-2 / E-3 — Back from the provider page", () => {
     await expect(tripResumeDecision(resumed, "cart-A", status("requires_payment", { id: "o1" }))).resolves.toEqual({ kind: "confirm" });
     await expect(tripResumeDecision(resumed, "cart-A", status("expired"))).resolves.toEqual({ kind: "create", forget: true });
     await expect(tripResumeDecision(resumed, "cart-A", status("failed"))).resolves.toEqual({ kind: "create", forget: true });
+    // a second-provider page left open reads "abandoned" at the provider, but it
+    // can still be paid and cannot be closed: it is reused, never forgotten
+    const abandoned = async () => ({ status: "failed", order: null, error: "paystack_charge_abandoned" });
+    await expect(tripResumeDecision(resumed, "cart-A", abandoned)).resolves.toEqual({ kind: "follow", url: PROVIDER_PAGE });
+    await expect(
+      tripResumeDecision({ ...resumed, redirectUrl: null }, "cart-A", abandoned),
+    ).resolves.toEqual({ kind: "create", forget: false });
     await expect(tripResumeDecision(resumed, "cart-B", status("requires_payment"))).resolves.toEqual({ kind: "create", forget: false });
     // no stored https page (a Paystack page from an older tab, say): the same attempt goes to the server
     await expect(
