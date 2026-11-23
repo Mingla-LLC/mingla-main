@@ -82,3 +82,79 @@ export const useTripCheckoutAddOns = (
     },
   });
 };
+
+/**
+ * issue #3281 G-9 — the server's add-on switches as the client may read them
+ * (booleans only). Unreadable (a database before these migrations, a failed
+ * read) or still loading: all off.
+ */
+export interface AddOnRollout {
+  addOnsEnabled: boolean;
+  addOnsOnPlanEnabled: boolean;
+  freeParentEnabled: boolean;
+  rsvpEnabled: boolean;
+}
+
+export const ADD_ON_ROLLOUT_OFF: AddOnRollout = {
+  addOnsEnabled: false,
+  addOnsOnPlanEnabled: false,
+  freeParentEnabled: false,
+  rsvpEnabled: false,
+};
+
+export const parseAddOnRollout = (raw: unknown): AddOnRollout => {
+  const row = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return {
+    addOnsEnabled: row.addOnsEnabled === true,
+    addOnsOnPlanEnabled: row.addOnsOnPlanEnabled === true,
+    freeParentEnabled: row.freeParentEnabled === true,
+    rsvpEnabled: row.rsvpEnabled === true,
+  };
+};
+
+/** Read from the public trip reader's `addOnRollout` (absent before 20281129123281: all off). */
+export const useAddOnRollout = (
+  brandSlug: string | null,
+  tripSlug: string | null,
+  enabled: boolean,
+): AddOnRollout => {
+  const b = brandSlug ?? "";
+  const s = tripSlug ?? "";
+  const query = useQuery<AddOnRollout, Error>({
+    queryKey: ["addOnRollout", b, s],
+    enabled: enabled && b.length > 0 && s.length > 0,
+    staleTime: STALE_MS,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("pg_public_trip_by_slug", {
+        p_brand_slug: b,
+        p_event_slug: s,
+      });
+      return error !== null
+        ? ADD_ON_ROLLOUT_OFF
+        : parseAddOnRollout((data as { addOnRollout?: unknown } | null)?.addOnRollout);
+    },
+  });
+  return query.data ?? ADD_ON_ROLLOUT_OFF;
+};
+
+/**
+ * The add-ons the server will take with each package: none on a package with
+ * a payment plan while add-ons on plans are off (the server refuses them on a
+ * plan, and the buyer picks the plan later), none on a free package while
+ * add-ons on free tickets are off.
+ */
+export const addOnsTheServerTakes = (
+  addOns: TripAddOnsByTicketType | undefined,
+  packages: ReadonlyArray<{ ticketTypeId: string; hasPlan: boolean; isFree: boolean }>,
+  rollout: AddOnRollout,
+): TripAddOnsByTicketType | undefined => {
+  if (addOns === undefined) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const pkg of packages) {
+    if (!(pkg.ticketTypeId in addOns)) continue;
+    if (pkg.hasPlan && !rollout.addOnsOnPlanEnabled) continue;
+    if (pkg.isFree && !rollout.freeParentEnabled) continue;
+    out[pkg.ticketTypeId] = addOns[pkg.ticketTypeId];
+  }
+  return out;
+};

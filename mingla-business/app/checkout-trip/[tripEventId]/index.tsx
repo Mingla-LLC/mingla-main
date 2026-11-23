@@ -28,6 +28,8 @@ import { checkoutStyles, color } from "../../../src/components/checkout/checkout
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import {
+  addOnsTheServerTakes,
+  useAddOnRollout,
   useTripCheckoutAddOns,
   type TripAddOnsByTicketType,
 } from "../../../src/hooks/useTripCheckoutAddOns";
@@ -208,11 +210,30 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const trip = publicTripQuery.data?.trip ?? null;
   const brand = publicTripQuery.data?.brand ?? null;
   // #3281 — each package's add-ons (read only while the add-ons flag is on).
-  const tripAddOns = useTripCheckoutAddOns(
+  const tripAddOnsRead = useTripCheckoutAddOns(
     trip?.brandSlug ?? null,
     trip?.slug ?? null,
     featureFlags.extras,
   ).data;
+  // #3281 G-9 — only add-ons the server's switches take with that package.
+  const addOnRollout = useAddOnRollout(
+    trip?.brandSlug ?? null,
+    trip?.slug ?? null,
+    featureFlags.extras,
+  );
+  const tripAddOns = React.useMemo(
+    () =>
+      addOnsTheServerTakes(
+        tripAddOnsRead,
+        (trip?.pricingTiers ?? []).map((t) => ({
+          ticketTypeId: t.ticketTypeId,
+          hasPlan: t.installmentSchedule !== null || (t.paymentPlan ?? null) !== null,
+          isFree: t.priceCents === 0,
+        })),
+        addOnRollout,
+      ),
+    [tripAddOnsRead, trip?.pricingTiers, addOnRollout],
+  );
 
   const {
     lines,

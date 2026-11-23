@@ -528,7 +528,16 @@ WITH issue_3281_s2_original(payload) AS MATERIALIZED (
     ) END
   FROM tr
 )
-SELECT public.issue_3281_attach_offering_add_ons(payload,'tiers','ticketTypeId',NULL) FROM issue_3281_s2_original;
+-- issue #3281 G-9 — the add-on switches ride the trip payload (last key,
+-- booleans only), so the trip checkout offers only add-ons the server takes.
+SELECT CASE WHEN x IS NULL OR json_typeof(x) <> 'object' THEN x ELSE (
+  SELECT json_object_agg(k, v ORDER BY ord) FROM (
+    SELECT e.key AS k, e.value AS v, e.ordinality AS ord FROM json_each(x) WITH ORDINALITY e
+    UNION ALL
+    SELECT 'addOnRollout', public.issue_3281_add_on_rollout_flags()::json, 9223372036854775807
+  ) t) END
+FROM (SELECT public.issue_3281_attach_offering_add_ons(payload,'tiers','ticketTypeId',NULL) AS x
+        FROM issue_3281_s2_original) s;
 $function$;
 
 -- pg_public_experience_by_slug: the experience page (buyer web /exp, Explorer)

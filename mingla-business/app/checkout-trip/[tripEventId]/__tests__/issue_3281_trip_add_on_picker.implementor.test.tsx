@@ -367,3 +367,33 @@ describe("#3281 — the trip cart offers each package's add-ons", () => {
     tree.unmount();
   });
 });
+
+// issue #3281 G-9 — the client reads the server's add-on switches (booleans
+// only) and never lets a cart carry an add-on the server will refuse. Before:
+// with the switches off a plan package's add-on reached Review and the
+// checkout ended on "Something went wrong" (extras_not_on_installments).
+describe("issue #3281 G-9 — add-ons the server takes", () => {
+  const {
+    ADD_ON_ROLLOUT_OFF,
+    addOnsTheServerTakes,
+    parseAddOnRollout,
+  } = jest.requireActual("../../../../src/hooks/useTripCheckoutAddOns");
+  const addOns = { plan: ["dinner"], full: ["dinner"], free: ["dinner"] };
+  const packages = [
+    { ticketTypeId: "plan", hasPlan: true, isFree: false },
+    { ticketTypeId: "full", hasPlan: false, isFree: false },
+    { ticketTypeId: "free", hasPlan: false, isFree: true },
+  ];
+  it("all off (or unreadable): no add-ons on a plan package or a free one", () => {
+    expect(addOnsTheServerTakes(addOns, packages, ADD_ON_ROLLOUT_OFF)).toEqual({ full: ["dinner"] });
+    expect(parseAddOnRollout(null)).toEqual(ADD_ON_ROLLOUT_OFF);
+    expect(parseAddOnRollout({ addOnsOnPlanEnabled: "true" })).toEqual(ADD_ON_ROLLOUT_OFF);
+  });
+  it("switches on: each package keeps its add-ons", () => {
+    const on = parseAddOnRollout({
+      addOnsEnabled: true, addOnsOnPlanEnabled: true, freeParentEnabled: true, rsvpEnabled: true,
+    });
+    expect(addOnsTheServerTakes(addOns, packages, on)).toEqual(addOns);
+  });
+});
+

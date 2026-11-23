@@ -292,6 +292,28 @@ $fn$;
 REVOKE ALL ON FUNCTION public.issue_3281_add_on_switch(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3281_add_on_switch(text) TO service_role;
 
+-- issue #3281 G-9 — what the buyer's checkout may know of the switches
+-- (booleans only, no other data), so a cart never carries an add-on the
+-- server will refuse. Not granted to any client role: the public trip reader
+-- (pg_public_trip_by_slug, SECURITY DEFINER) carries it as `addOnRollout`.
+-- A missing row reads as all off.
+CREATE FUNCTION public.issue_3281_add_on_rollout_flags()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+  SELECT jsonb_build_object(
+    'addOnsEnabled', COALESCE(bool_or(r.multi_link_enabled), false),
+    'addOnsOnPlanEnabled', COALESCE(bool_or(r.plan_enabled), false),
+    'freeParentEnabled', COALESCE(bool_or(r.free_parent_enabled), false),
+    'rsvpEnabled', COALESCE(bool_or(r.rsvp_enabled), false))
+    FROM public.add_on_rollout r WHERE r.id
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_3281_add_on_rollout_flags() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3281_add_on_rollout_flags() TO service_role;
+
 -- ── Re-emits: which tickets an add-on comes with is read from the links ─────
 
 -- Prices the extras on a cart's lines. The quote calls it without locks; the
