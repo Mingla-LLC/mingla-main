@@ -5,7 +5,7 @@
  * React.lazy per field wrapper in `HostCalendarPlaceholder.lazyHostField`
  * (one shared loader).
  */
-import { CalendarEmbed, CalendarField, DateRangeField, DateTimeField } from "@mingla/calendar/CalendarFieldEager";
+import { CalendarEmbed, CalendarField, DateRangeField, DateTimeField, DobField } from "@mingla/calendar/CalendarFieldEager";
 import type { StayRangeCalendarArgs } from "@mingla/brand-rendering/StayDateRangeRows";
 import React from "react";
 import { Platform } from "react-native";
@@ -143,6 +143,7 @@ export function FormDateBody({
   hasError = false,
   testID,
   openOnMount = false,
+  birthDate = false,
 }: {
   value: string;
   onChangeValue: (value: string) => void;
@@ -151,7 +152,25 @@ export function FormDateBody({
   hasError?: boolean;
   testID?: string;
   openOnMount?: boolean;
+  /** #4523 SC-12 (W-9) — a date-of-birth question: year grid first, no future day. */
+  birthDate?: boolean;
 }): React.ReactElement {
+  if (birthDate) {
+    return (
+      <DobField
+        label=""
+        accessibilityLabel={accessibilityLabel}
+        value={value}
+        onChange={onChangeValue}
+        disabled={disabled}
+        invalid={hasError}
+        testID={testID}
+        timeZone={detectDeviceTimezone()}
+        defaultOpen={openOnMount}
+        config={HOST_CALENDAR_CONFIG}
+      />
+    );
+  }
   return (
     <CalendarField
       label=""

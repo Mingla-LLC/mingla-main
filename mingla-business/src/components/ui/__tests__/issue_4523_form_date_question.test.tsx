@@ -12,7 +12,7 @@
 import React from "react";
 import { Platform } from "react-native";
 
-import { IntakeQuestionDate, type FormQuestion } from "@mingla/form-rendering";
+import { IntakeQuestionDate, isBirthDateQuestion, type FormQuestion } from "@mingla/form-rendering";
 import { businessFormPrimitives } from "../../checkout/intake/businessFormPrimitives";
 
 jest.mock("../Sheet", () => {
@@ -172,6 +172,88 @@ describe.each(["ios", "android", "web"] as const)("#4523 Host form date question
     await press(tree, "intake-date-close");
     expect(isOpen(tree)).toBe(false);
     expect(onChange).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => tree.unmount());
+  });
+});
+
+/**
+ * #4523 SC-12 (W-9) — a date-of-birth question in a real checkout opened the
+ * plain calendar: on this month, future days allowed, no year grid, focus left
+ * on the page. The question now opens the birth-date calendar: the year grid
+ * first, three taps to a day, no future day, and (web) focus moved in.
+ * FAILS ON REVERT: the plain calendar has no year grid.
+ */
+describe("#4523 SC-12 — a date-of-birth question opens the birth-date calendar", () => {
+  const DOB: FormQuestion = { id: "q-dob", type: "date", label: "Date of birth", required: true, position: 0 };
+  const realOs = Platform.OS;
+  afterEach(() => {
+    Object.defineProperty(Platform, "OS", { configurable: true, get: () => realOs });
+  });
+
+  const mountDob = async (onChange: jest.Mock): Promise<Tree> => {
+    let tree!: Tree;
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        <IntakeQuestionDate question={DOB} primitives={businessFormPrimitives} value="" onChange={onChange} />,
+      );
+    });
+    for (let i = 0; i < 3; i += 1) {
+      await TestRenderer.act(async () => {
+        await Promise.resolve();
+      });
+    }
+    return tree;
+  };
+
+  it("labels that ask for a birth date are birth-date questions; others are not", () => {
+    for (const label of ["Date of birth", "Birth date", "Birthday", "DOB", "Traveler date of birth"]) {
+      expect(isBirthDateQuestion({ ...DOB, label })).toBe(true);
+    }
+    for (const label of ["Arrival day", "Passport expiry date", "Doberman's name"]) {
+      expect(isBirthDateQuestion({ ...DOB, label })).toBe(false);
+    }
+    expect(isBirthDateQuestion({ ...DOB, type: "short_text" })).toBe(false);
+  });
+
+  it("year grid first, no future year, three taps to a day, focus moved in on web", async () => {
+    Object.defineProperty(Platform, "OS", { configurable: true, get: () => "web" });
+    const onChange = jest.fn();
+    const tree = await mountDob(onChange);
+    await press(tree, "intake-date");
+    const years = tree.root.findAll(
+      (n) => typeof n.props.testID === "string" && /^intake-date-calendar-year-\d{4}$/.test(n.props.testID as string) && typeof n.props.onPress === "function",
+    );
+    expect(years.length).toBe(12);
+    // Focus went into the year grid as it opened: the anchor year (25 years
+    // back) took focus. RN's jest View keeps a focus mock per instance.
+    const anchor = new Date().getUTCFullYear() - 25;
+    const focused = tree.root.findAll(
+      (n) =>
+        n.props.testID === `intake-date-calendar-year-${anchor}` &&
+        typeof (n as unknown as { instance?: { focus?: jest.Mock } }).instance?.focus === "function",
+    );
+    expect(
+      focused.some(
+        (n) => ((n as unknown as { instance: { focus: jest.Mock } }).instance.focus.mock?.calls.length ?? 0) > 0,
+      ),
+    ).toBe(true);
+    // No future year can be picked: page to the decade holding next year.
+    const nextYear = new Date().getUTCFullYear() + 1;
+    for (let i = 0; i < 6; i += 1) {
+      if (tree.root.findAll((n) => n.props.testID === `intake-date-calendar-year-${nextYear}`).length > 0) break;
+      await press(tree, "intake-date-calendar-next");
+    }
+    const future = tree.root.findAll((n) => n.props.testID === `intake-date-calendar-year-${nextYear}` && typeof n.props.onPress === "function")[0];
+    expect(future.props.disabled).toBe(true);
+    for (let i = 0; i < 6; i += 1) {
+      if (tree.root.findAll((n) => n.props.testID === "intake-date-calendar-year-1996").length > 0) break;
+      await press(tree, "intake-date-calendar-prev");
+    }
+    await press(tree, "intake-date-calendar-year-1996");
+    await press(tree, "intake-date-calendar-month-3");
+    await press(tree, "intake-date-calendar-day-1996-03-14");
+    expect(onChange).toHaveBeenCalledWith("1996-03-14");
+    expect(isOpen(tree)).toBe(false);
     await TestRenderer.act(async () => tree.unmount());
   });
 });

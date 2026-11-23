@@ -7,7 +7,7 @@
  * (`onNavigateMonth`, `onNavigateYears`, `onNavigateDecade`) only move the
  * visible month; they never call onChange, onDone or onCancel.
  */
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, Text, useWindowDimensions, View, type ViewProps } from "react-native";
 
 import { CalendarGrid, type GridSelection } from "./CalendarGrid";
@@ -139,6 +139,30 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
     const anchor = committedDate !== "" && parseCalendarDate(committedDate) !== null ? committedDate : addYears(today, -25);
     return monthOf(anchor).year - (monthOf(anchor).year % DECADE);
   });
+
+  // #4523 SC-12 (W-9) — web moves focus into a DOB's year and month grids
+  // as they open (the chosen year or month, else the anchor year), as the day
+  // grid does for its selected day. Native never pulls focus.
+  const pickRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  useEffect(() => {
+    if (Platform.OS !== "web" || props.mode !== "dob" || dobView === "day") return;
+    const anchorYear = monthOf(
+      committedDate !== "" && parseCalendarDate(committedDate) !== null
+        ? committedDate
+        : addYears(today, -25),
+    ).year;
+    const yearKey =
+      anchorYear >= decadeStart && anchorYear < decadeStart + DECADE
+        ? anchorYear
+        : Object.keys(pickRefs.current)
+            .filter((key) => key.startsWith("y") && pickRefs.current[key] !== null)
+            .map((key) => Number(key.slice(1)))
+            .sort((a, b) => a - b)[0];
+    const key = dobView === "year" ? `y${yearKey}` : `m${visible.month}`;
+    pickRefs.current[key]?.focus?.();
+    // Only a change of grid (view, decade or year) moves focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dobView, decadeStart, visible.year]);
 
   // ---- navigation: only moves the view, never commits or closes ----------
   const canMoveMonth = useCallback(
@@ -350,6 +374,9 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
             return (
               <Pressable
                 key={year}
+                ref={(node) => {
+                  pickRefs.current[`y${year}`] = off ? null : (node as { focus?: () => void } | null);
+                }}
                 accessibilityRole="button"
                 accessibilityLabel={String(year)}
                 accessibilityState={{ disabled: off }}
@@ -376,6 +403,9 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
           return (
             <Pressable
               key={month}
+              ref={(node) => {
+                pickRefs.current[`m${month}`] = off ? null : (node as { focus?: () => void } | null);
+              }}
               accessibilityRole="button"
               accessibilityLabel={monthTitle(target.year, month, locale)}
               accessibilityState={{ disabled: off }}
@@ -384,6 +414,8 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
                 setVisible(target);
                 setFocusedDate(clampToBounds(firstOf(target), min, max));
                 setDobView("day");
+                // The day grid takes focus as it opens (web only).
+                if (Platform.OS === "web") setFocusSignal((n) => n + 1);
               }}
               testID={`${testID}-month-${month}`}
               style={[styles.gridPickItem, off && styles.cellDisabled]}

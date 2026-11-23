@@ -82,6 +82,12 @@ export interface FormWebDateInputProps {
   testID?: string;
   /** #4523: the form's tokens, so a host can draw its calendar in the form's palette. */
   tokens?: FormRenderingTokens;
+  /**
+   * #4523 SC-12 (W-9): the question asks for a date of birth. The host draws
+   * its birth-date calendar (year grid first, no future day, at most 120 years
+   * back) instead of the plain one. Absent: the plain calendar, as before.
+   */
+  birthDate?: boolean;
 }
 
 export interface FormTextStyle {

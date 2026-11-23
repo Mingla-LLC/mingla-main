@@ -50,6 +50,7 @@ const BusinessFormDateInput: React.FC<FormWebDateInputProps> = ({
   disabled = false,
   hasError = false,
   testID,
+  birthDate = false,
 }) => {
   const [armed, setArmed] = useState(false);
   const { color } = activeSurfaceTokens();
@@ -81,6 +82,7 @@ const BusinessFormDateInput: React.FC<FormWebDateInputProps> = ({
         hasError={hasError}
         testID={testID}
         openOnMount={armed}
+        birthDate={birthDate}
       />
     </Suspense>
   );

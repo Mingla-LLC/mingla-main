@@ -549,6 +549,17 @@ export function formatDateForDisplay(iso: string): string {
 }
 
 /**
+ * #4523 SC-12 (W-9) — a date question that asks for a date of birth. The form
+ * schema has no birth-date type, so the question's own label says it ("Date of
+ * birth", the trip question library's wording, "Birthday", "DOB" …).
+ */
+const BIRTH_DATE_LABEL = /\b(date\s+of\s+birth|birth\s*date|birthday|d\.?o\.?b\.?)\b/i;
+
+export function isBirthDateQuestion(question: FormQuestion): boolean {
+  return question.type === "date" && BIRTH_DATE_LABEL.test(question.label);
+}
+
+/**
  * #4523 — the date question renders the host's injected date input on every
  * platform (Host: its Mingla calendar field; Explorer: its inline Mingla
  * calendar). The answer is the picked day as `YYYY-MM-DD` (or "" when
@@ -574,6 +585,7 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionTextProps> = ({
         hasError={error !== undefined && error.length > 0}
         testID="intake-date"
         tokens={primitives.tokens}
+        birthDate={isBirthDateQuestion(question)}
         onChangeValue={(v) => onChange(v)}
       />
     </IntakeQuestionShell>

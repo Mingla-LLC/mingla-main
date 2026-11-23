@@ -51,6 +51,7 @@ export const RsvpFormWebDateInput: React.FC<FormWebDateInputProps> = ({
   hasError = false,
   testID,
   tokens,
+  birthDate = false,
 }) => {
   const [open, setOpen] = useState(false);
   const labels = useExplorerCalendarLabels();
@@ -87,7 +88,8 @@ export const RsvpFormWebDateInput: React.FC<FormWebDateInputProps> = ({
       </Pressable>
       {open && !disabled ? (
         <CalendarEmbed
-          mode="single"
+          // #4523 SC-12 (W-9) — a date-of-birth question opens on the year grid.
+          mode={birthDate ? "dob" : "single"}
           label={ariaLabel}
           value={value}
           onChange={(day) => {

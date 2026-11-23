@@ -110,3 +110,30 @@ describe("#4523 Explorer form date input", () => {
     expect(isOpen(r)).toBe(false);
   });
 });
+
+// #4523 SC-12 (W-9) — a date-of-birth question opens on the year grid: three
+// taps to a day and no future year. FAILS ON REVERT: the plain calendar opens.
+describe("#4523 Explorer birth-date question", () => {
+  it("opens on the year grid; year → month → day picks the birth date", async () => {
+    const onChangeValue = jest.fn();
+    const r = await render(
+      <RsvpFormWebDateInput type="date" value="" onChangeValue={onChangeValue} ariaLabel="Date of birth" testID="rsvp-date" tokens={LIGHT_FORM_TOKENS} birthDate />,
+    );
+    await press(r, "rsvp-date");
+    const years = pressables(r, (n) => typeof n.props.testID === "string" && /^rsvp-date-calendar-year-\d{4}$/.test(n.props.testID as string));
+    expect(new Set(years.map((n) => n.props.testID)).size).toBe(12);
+    const nextYear = new Date().getUTCFullYear() + 1;
+    for (let i = 0; i < 6 && pressables(r, (n) => n.props.testID === `rsvp-date-calendar-year-${nextYear}`).length === 0; i += 1) {
+      await press(r, "rsvp-date-calendar-next");
+    }
+    expect(pressables(r, (n) => n.props.testID === `rsvp-date-calendar-year-${nextYear}`)[0].props.disabled).toBe(true);
+    for (let i = 0; i < 6 && pressables(r, (n) => n.props.testID === "rsvp-date-calendar-year-1996").length === 0; i += 1) {
+      await press(r, "rsvp-date-calendar-prev");
+    }
+    await press(r, "rsvp-date-calendar-year-1996");
+    await press(r, "rsvp-date-calendar-month-3");
+    await press(r, "rsvp-date-calendar-day-1996-03-14");
+    expect(onChangeValue).toHaveBeenCalledWith("1996-03-14");
+    expect(isOpen(r)).toBe(false);
+  });
+});
