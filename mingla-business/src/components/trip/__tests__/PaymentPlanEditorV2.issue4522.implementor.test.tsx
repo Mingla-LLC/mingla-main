@@ -275,3 +275,74 @@ describe("editor interaction and lazy ownership", () => {
     expect(publishedEditor).toContain("validateTripPackages(editState.pricing.packages)");
   });
 });
+
+// #4522 first screen test S-7 — the selected Amount/Percent label was
+// near-white on paper white. FAILS ON REVERT: segmentOn on color.paper.
+describe("#4522 S-7 deposit Amount/Percent switch is readable when selected", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { StyleSheet } = require("react-native") as typeof import("react-native");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ds = require("../../../constants/designSystem") as typeof import("../../../constants/designSystem");
+  const luminance = (hex: string): number => {
+    const v = hex.replace("#", "");
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  test("the selected segment uses the house selected surface and passes WCAG AA", () => {
+    const tree = mount(plan());
+    const selectedMode = plan().deposit.mode;
+    const seg = byTestId(tree, `trip-plan-v2-deposit-${selectedMode}`);
+    const segStyle = StyleSheet.flatten(seg.props.style as never) as { backgroundColor?: string };
+    expect(segStyle.backgroundColor).toBe(ds.materials.selected.solidFill);
+    expect(segStyle.backgroundColor).not.toBe(ds.color.paper);
+    const label = seg.findAll((n) => typeof n.props.style !== "undefined" && n.type === "Text")[0]
+      ?? seg.findAll((n) => n.props.children === (selectedMode === "amount" ? "Amount" : "Percent"))[0];
+    const textStyle = StyleSheet.flatten(label.props.style as never) as { color?: string };
+    expect(textStyle.color).toBe(ds.color.textStrong);
+    expect(contrast(textStyle.color as string, segStyle.backgroundColor as string)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+
+// #4522 first screen test S-17 — "Late booking: 1 payments instead of 3".
+// FAILS ON REVERT: the count is printed with a fixed "payments".
+describe("#4522 S-17 the late-booking line is singular for one payment", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { PaymentPlanPreview, paymentsPhrase } = require("../PaymentPlanPreview") as typeof import("../PaymentPlanPreview");
+  const textOf = (node: Instance): string =>
+    node.findAll(() => true)
+      .flatMap((n) => (Array.isArray(n.props.children) ? n.props.children : [n.props.children]))
+      .filter((c): c is string | number => typeof c === "string" || typeof c === "number")
+      .join("");
+  test("paymentsPhrase", () => {
+    expect(paymentsPhrase(1)).toBe("1 payment");
+    expect(paymentsPhrase(3)).toBe("3 payments");
+  });
+  test("38 days before departure on a 3-payment plan reads '1 payment instead of 3'", () => {
+    let tree!: Renderer;
+    act(() => {
+      tree = TestRenderer.create(
+        <PaymentPlanPreview
+          plan={plan({ count: 3, final_due_days_before_start: 30, auto_adjust: true })}
+          totalAmountMinor={120_000}
+          currency="USD"
+          tripStartAt="2027-03-12T12:00:00.000Z"
+          timeZone="UTC"
+        />,
+      );
+    });
+    mounted.push(tree);
+    act(() => {
+      (byTestId(tree, "trip-plan-preview-38").props.onPress as () => void)();
+    });
+    const adjusted = byTestId(tree, "trip-plan-preview-adjusted");
+    const line = textOf(adjusted);
+    expect(line).toContain("1 payment instead of");
+    expect(line).not.toContain("1 payments");
+  });
+});

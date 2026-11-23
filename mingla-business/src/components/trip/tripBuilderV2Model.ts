@@ -181,6 +181,21 @@ export function publishUnlockLine(items: ReadonlyArray<ChecklistItem>): string |
   return `Publish unlocks when ${list} ${open.length === 1 ? "is" : "are"} done.`;
 }
 
+/**
+ * #4522 S-18 — whether the step rail ticks a step: every checklist item the
+ * step owns is met. "Travelers & publish" owns the publish itself, so it ticks
+ * only when the whole checklist is met (on a fresh draft its own items, bank
+ * and invites, are met by default and said nothing about the step).
+ */
+export function builderStepComplete(
+  items: ReadonlyArray<ChecklistItem>,
+  step: BuilderStep,
+): boolean {
+  if (step === BUILDER_STEP_COUNT) return items.length > 0 && items.every((i) => i.done);
+  const own = items.filter((i) => i.step === step);
+  return own.length > 0 && own.every((i) => i.done);
+}
+
 /** The first unmet item, for the top-bar Publish tap. */
 export function firstOpenItem(items: ReadonlyArray<ChecklistItem>): ChecklistItem | null {
   return items.find((i) => !i.done) ?? null;

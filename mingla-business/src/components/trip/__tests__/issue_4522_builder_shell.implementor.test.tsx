@@ -33,6 +33,7 @@ import {
   firstOpenItem,
   pricingSignature,
   publishUnlockLine,
+  builderStepComplete,
   type ChecklistInput,
   type SaveGroup,
 } from "../tripBuilderV2Model";
@@ -141,6 +142,36 @@ describe("publish checklist", () => {
       (i) => i.key === "payouts",
     );
     expect(bank?.action).toBe("connect_bank");
+  });
+});
+
+// #4522 S-18 — the step rail ticks only a step that is truly complete.
+// FAILS ON REVERT: "Travelers & publish" ticks on a fresh draft (its own
+// items, bank and invites, are met by default).
+describe("step rail ticks", () => {
+  const FRESH: ChecklistInput = {
+    ...READY,
+    title: "",
+    description: "",
+    hasCover: false,
+    startAt: null,
+    endAt: null,
+    placesValid: false,
+    days: [],
+    packagesOk: true,
+    hasPricedPackage: false,
+  };
+  test("a fresh draft ticks nothing", () => {
+    const items = buildPublishChecklist(FRESH);
+    expect([1, 2, 3, 4].filter((n) => builderStepComplete(items, n as 1 | 2 | 3 | 4))).toEqual([]);
+  });
+  test("a step ticks when its own items are met; the publish step only when all are", () => {
+    const items = buildPublishChecklist({ ...FRESH, title: READY.title, description: READY.description,
+      hasCover: true, startAt: READY.startAt, endAt: READY.endAt, placesValid: true });
+    expect(builderStepComplete(items, 1)).toBe(true);
+    expect(builderStepComplete(items, 4)).toBe(false);
+    const all = buildPublishChecklist(READY);
+    expect([1, 2, 3, 4].every((n) => builderStepComplete(all, n as 1 | 2 | 3 | 4))).toBe(true);
   });
 });
 
@@ -345,10 +376,15 @@ describe("wizard wiring", () => {
     expect(wizard).toContain("intake: step === 4,\n        invite: step === 4,\n        review: step === 4,");
   });
 
-  test("Publish in the builder is never greyed out for a reason it does not state", () => {
-    expect(wizard).toContain("V2\n                      ? submitting || checkingInvitePublish");
+  // #4522 S-18 (spec §9.5) — the final Publish is enabled only when the
+  // checklist is met, and the line under it says what is left; the top-bar
+  // Publish stays tappable and jumps to what is left.
+  test("Publish in the builder is disabled until the checklist is met, and says why", () => {
+    expect(wizard).toContain("V2\n                      ? submitting || checkingInvitePublish || publishUnlock !== null");
+    expect(wizard).toContain("const publishUnlock = V2 ? publishUnlockLine(publishChecklist) : null;");
+    expect(wizard).toMatch(/V2 && publishUnlock !== null \? \(\s*<Text style=\{styles\.publishUnlockHint\} testID="trip-wizard-publish-unlock">\s*\{publishUnlock\}/);
     expect(wizard).toContain("handleBuilderPublishTap");
-    expect(wizard).toContain("publishUnlockLine(publishChecklist)");
+    expect(wizard).toContain("builderStepComplete(publishChecklist, n)");
   });
 
   test("a package created by an earlier save in the same run is never created twice", () => {

@@ -174,7 +174,8 @@ export const PaymentPlanPreview: React.FC<PaymentPlanPreviewProps> = ({
         </Text>
       ) : schedule.availability === "full_only" ? (
         <Text style={styles.notice} testID="trip-plan-preview-full-only">
-          Only {Math.floor(leadDays / 7)} payment(s) fit before the final due date,
+          Only {paymentsPhrase(Math.floor(leadDays / 7))}{" "}
+          {Math.floor(leadDays / 7) === 1 ? "fits" : "fit"} before the final due date,
           and automatic adjustment is off. This traveler can only pay in full.
         </Text>
       ) : schedule.availability === "full_deposit" ? (
@@ -197,8 +198,8 @@ export const PaymentPlanPreview: React.FC<PaymentPlanPreviewProps> = ({
           ))}
           {schedule.count_given < schedule.count_offered ? (
             <Text style={styles.notice} testID="trip-plan-preview-adjusted">
-              Late booking: {schedule.count_given} payments instead of {schedule.count_offered},
-              still at least 7 days apart.
+              Late booking: {paymentsPhrase(schedule.count_given)} instead of{" "}
+              {schedule.count_offered}, still at least 7 days apart.
             </Text>
           ) : null}
         </View>
@@ -206,6 +207,10 @@ export const PaymentPlanPreview: React.FC<PaymentPlanPreviewProps> = ({
     </View>
   );
 };
+
+/** #4522 S-17 — "1 payment", "3 payments" (spec "{n} payment(s)"). */
+export const paymentsPhrase = (count: number): string =>
+  `${count} ${count === 1 ? "payment" : "payments"}`;
 
 const styles = StyleSheet.create({
   card: {

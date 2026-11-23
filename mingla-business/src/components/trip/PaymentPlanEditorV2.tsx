@@ -17,7 +17,7 @@ import {
 
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
-import { color, radius, space, type } from "../../constants/designSystem";
+import { color, materials, radius, space, type } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
 import { PaymentPlanPreview } from "./PaymentPlanPreview";
 import type {
@@ -435,9 +435,16 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.step,
   },
   segment: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", borderRadius: radius.sm },
-  segmentOn: { backgroundColor: color.paper, borderWidth: 1, borderColor: color.lineStrong },
+  // #4522 S-7 — the house selected surface (as the discount controls use):
+  // the selected label is light on a dark selected fill, never on paper white.
+  segmentOn: {
+    backgroundColor: materials.selected.solidFill,
+    borderWidth: 1,
+    borderColor: materials.selected.rim.edge,
+    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
+  },
   segmentText: { fontSize: type.small.fontSize, color: color.text2 },
-  segmentTextOn: { color: color.text1, fontWeight: "700" },
+  segmentTextOn: { color: color.textStrong, fontWeight: "700" },
   inputWithSuffix: { flexDirection: "row", alignItems: "center", gap: space[2] },
   input: {
     flex: 1,

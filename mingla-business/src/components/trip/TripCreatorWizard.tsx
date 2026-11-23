@@ -222,6 +222,7 @@ import {
   autosaveRetryDelayMs,
   builderStepForLegacyStep,
   buildPublishChecklist,
+  builderStepComplete,
   dirtySaveGroups,
   firstOpenItem,
   isBuilderStep,
@@ -2427,6 +2428,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   // jumps to the first (never a dead tap); with none open it is today's publish.
   // `handleChecklistJump` is declared further down; this reads it at tap time.
   const checklistJumpRef = useRef<(item: ChecklistItem) => void>(() => undefined);
+  // #4522 S-18 — null when every checklist item is met.
+  const publishUnlock = V2 ? publishUnlockLine(publishChecklist) : null;
   const handleBuilderPublishTap = useCallback(async (): Promise<void> => {
     const open = firstOpenItem(publishChecklist);
     if (open === null) {
@@ -2630,11 +2633,12 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       if (publishError !== null && item.id === `step-${errorStep}`) {
         return { ...item, state: "error" as const, firstError: publishError.message };
       }
-      // #4522 — a step whose checklist items are all met shows a check.
+      // #4522 — a step whose checklist items are all met shows a check
+      // (S-18: only a truly complete step; Publish only when all are met).
       if (V2) {
         const n = Number(item.id.slice(5));
-        const own = publishChecklist.filter((c) => c.step === n);
-        if (n !== step && own.length > 0 && own.every((c) => c.done)) {
+        if (!isBuilderStep(n)) return item;
+        if (n !== step && builderStepComplete(publishChecklist, n)) {
           return { ...item, state: "done" as const };
         }
       }
@@ -3259,7 +3263,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
                   // and the checklist says what is left.
                   disabled={
                     V2
-                      ? submitting || checkingInvitePublish
+                      ? submitting || checkingInvitePublish || publishUnlock !== null
                       : submitting ||
                         tripNeedsStripe ||
                         tripNeedsBankForInstallments ||
@@ -3272,6 +3276,12 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
                   fullWidth
                   testID="trip-wizard-footer-cta"
                 />
+                {/* #4522 S-18 (spec §9.5) — the reason Publish is not enabled yet. */}
+                {V2 && publishUnlock !== null ? (
+                  <Text style={styles.publishUnlockHint} testID="trip-wizard-publish-unlock">
+                    {publishUnlock}
+                  </Text>
+                ) : null}
               </View>
             </View>
           ) : (
@@ -3621,6 +3631,12 @@ const styles = StyleSheet.create({
   },
   dockPublishCell: {
     flex: 2,
+  },
+  publishUnlockHint: {
+    marginTop: space[1],
+    fontSize: type.caption.fontSize,
+    color: color.text2,
+    textAlign: "center",
   },
   toastWrap: {
     position: "absolute",
