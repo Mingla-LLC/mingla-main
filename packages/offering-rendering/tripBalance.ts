@@ -289,6 +289,28 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
  * charged or offered to pay (the provider would refuse it) and Mingla's ops
  * team follows up. Shared by buyer web and Explorer.
  */
+/**
+ * issue #4522 pass 5 — the "Paid so far" lines: the deposit paid at checkout
+ * (it is the order's own payment, never an instalment row, so it is not in
+ * `history`) and then every collected payment. Empty when nothing was paid.
+ */
+export function tripBalancePaidSoFar(
+  balance: Pick<TripBalance, "depositMinor" | "history">,
+): Array<{ key: string; kind: "deposit" | "payment"; amountMinor: number }> {
+  const lines: Array<{ key: string; kind: "deposit" | "payment"; amountMinor: number }> = [];
+  if (balance.depositMinor > 0 && !balance.history.some((row) => row.kind === "deposit")) {
+    lines.push({ key: "deposit", kind: "deposit", amountMinor: balance.depositMinor });
+  }
+  for (const row of balance.history) {
+    lines.push({
+      key: row.installmentId,
+      kind: row.kind === "deposit" ? "deposit" : "payment",
+      amountMinor: row.amountMinor,
+    });
+  }
+  return lines;
+}
+
 export function tripBalanceBelowProviderMinimum(
   balance: Pick<TripBalance, "remainingMinor" | "providerMinimumMinor">,
 ): boolean {

@@ -31,6 +31,7 @@ import {
   tripBalanceAmountErrorCopy,
   tripBalanceBelowProviderMinimum,
   tripBalanceOptions,
+  tripBalancePaidSoFar,
   tripBalanceSmallRemainderCopy,
   unpayableRemainderCopy,
 } from "@mingla/offering-rendering/tripBalance";
@@ -635,12 +636,12 @@ function BalanceContent(
           </View>
         )
         : null}
-      {balance.history.length > 0
+      {tripBalancePaidSoFar(balance).length > 0
         ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Paid so far</Text>
-            {balance.history.map((row) => (
-              <View key={row.installmentId} style={styles.row}>
+            {tripBalancePaidSoFar(balance).map((row) => (
+              <View key={row.key} style={styles.row}>
                 <Text style={styles.muted}>
                   {row.kind === "deposit" ? "Deposit" : "Payment"}
                 </Text>

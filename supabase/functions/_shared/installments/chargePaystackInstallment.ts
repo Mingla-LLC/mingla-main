@@ -271,14 +271,23 @@ async function notifyHostFailure(
   const amount = formatMoneyFromCents(ctx.amountCents, ctx.currency);
   const buyer = ctx.buyerFirstName ?? "A buyer";
   const idem = `${ctx.installmentId}:${retryCount}`;
+  // Pass 5 — a missed payment moved onto the later payments is never "we'll
+  // try again": nothing more is tried on this one (the rollover wording).
+  const rolledOver = !atRisk && resolved.rolled_over === true;
   await deps.notifyHost({
     brandId: ctx.brandId,
     type: atRisk
       ? "business.installment_at_risk"
       : "business.installment_failed",
-    title: atRisk ? "Booking at risk" : "Instalment didn't go through",
+    title: atRisk
+      ? "Booking at risk"
+      : rolledOver
+      ? "Missed payment moved to later payments"
+      : "Instalment didn't go through",
     body: atRisk
       ? `${buyer}'s booking for ${ctx.tripTitle} is at risk after 3 missed payments. Review it in Trip Money.`
+      : rolledOver
+      ? `A ${amount} instalment for ${ctx.tripTitle} didn't go through, so it was moved to the traveler's later payments.`
       : `A ${amount} instalment for ${ctx.tripTitle} didn't go through. We'll try again${
         nextRetryAt ? ` on ${nextRetryAt.slice(0, 10)}` : ""
       }.`,

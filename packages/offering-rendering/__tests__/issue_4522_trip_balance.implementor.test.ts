@@ -12,6 +12,7 @@ import {
   unpayableRemainderCopy,
   tripBalanceBelowProviderMinimum,
   tripBalanceSmallRemainderCopy,
+  tripBalancePaidSoFar,
 } from "../tripBalance.ts";
 
 const balance = {
@@ -361,4 +362,25 @@ Deno.test("I-4522-NEVER-WRITE-OFF a whole balance below the provider's minimum s
   assertEquals(tripBalanceBelowProviderMinimum({ remainingMinor: 0, providerMinimumMinor: 50 }), false);
   assertEquals(tripBalanceBelowProviderMinimum({ remainingMinor: 30, providerMinimumMinor: 0 }), false);
   assertEquals(tripBalanceSmallRemainderCopy("$0.49"), "A small balance of $0.49 is left. We'll be in touch about it.");
+});
+
+// Pass 5 — "Paid so far" names the deposit paid at checkout (it is the
+// order's own payment, never a history row), then every collected payment.
+// FAILS-ON-REVERT: the panels listed history only and the deposit was missing.
+Deno.test("pass 5: Paid so far lists the deposit first, then each payment", () => {
+  assertEquals(
+    tripBalancePaidSoFar({
+      depositMinor: 30_000_000,
+      history: [{ installmentId: "r2", kind: "scheduled", status: "collected", amountMinor: 45_000_000 }],
+    }),
+    [
+      { key: "deposit", kind: "deposit", amountMinor: 30_000_000 },
+      { key: "r2", kind: "payment", amountMinor: 45_000_000 },
+    ],
+  );
+  assertEquals(tripBalancePaidSoFar({ depositMinor: 0, history: [] }), []);
+  assertEquals(
+    tripBalancePaidSoFar({ depositMinor: 100, history: [{ installmentId: "d", kind: "deposit", status: "collected", amountMinor: 100 }] }),
+    [{ key: "d", kind: "deposit", amountMinor: 100 }],
+  );
 });

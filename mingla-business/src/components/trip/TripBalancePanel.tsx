@@ -9,6 +9,7 @@ import {
   type TripBalanceChoice,
   tripBalanceOptions,
   tripBalanceOverpaymentLines,
+  tripBalancePaidSoFar,
 } from "@mingla/offering-rendering/tripBalance";
 
 import { radius, space, type } from "../../constants/designSystem";
@@ -205,12 +206,12 @@ export function TripBalancePanel({
         )
         : null}
 
-      {balance.history.length > 0
+      {tripBalancePaidSoFar(balance).length > 0
         ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Paid so far</Text>
-            {balance.history.map((row) => (
-              <View key={row.installmentId} style={styles.historyRow}>
+            {tripBalancePaidSoFar(balance).map((row) => (
+              <View key={row.key} style={styles.historyRow}>
                 <Text style={styles.muted}>
                   {row.kind === "deposit" ? "Deposit" : "Payment"}
                 </Text>

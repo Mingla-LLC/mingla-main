@@ -592,10 +592,17 @@ Deno.test("D-7 second provider: a rolled-over failure sends one email, no pay li
   assertEquals(emails[0].payload.actionUrl, null);
   assertEquals(pushes.length, 0);
   assertEquals(fake.rpcCalls.length, 0);
+  // Pass 5 — the host is told the rollover, never "We'll try again".
+  // FAILS-ON-REVERT: the host alert said "We'll try again." after a rollover.
+  const rolled = hosts[0] as { title: string; body: string };
+  assertEquals(rolled.title, "Missed payment moved to later payments");
+  assertEquals(rolled.body.includes("try again"), false);
+  assertEquals(rolled.body.includes("moved to the traveler's later payments"), true);
   // a failure that did not roll over is unchanged: email + push
   await notifyPaystackInstallmentFailure(fake.client as never, "r2",
     { outcome: "failed", retry_count: 1, next_retry_at: "2027-01-16T08:00:00Z", failure_reason: "card_declined" },
     deps as never);
   assertEquals(emails.length, 2);
   assertEquals(pushes.length, 1);
+  assertEquals((hosts[1] as { body: string }).body.includes("We'll try again on 2027-01-16"), true);
 });

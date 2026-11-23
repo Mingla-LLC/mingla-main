@@ -89,6 +89,12 @@ interface TravelerMoneyRow {
    * collect or cancel, whatever its rows add up to. Null for a live order.
    */
   closed: "refunded" | "cancelled" | null;
+  /**
+   * issue #4522 pass 5 — an older plan the server balance says is paid in
+   * full (nothing left, no open row): no reminder is offered. Only set from
+   * the server balance, so main's view (no balance reader) is unchanged.
+   */
+  serverSettled?: boolean;
 }
 
 
@@ -307,6 +313,7 @@ function withServerPlanFigures(
     orderTotalCents: balance.totalMinor,
     paidToDateCents: balance.paidMinor,
     outstandingCents: balance.remainingMinor,
+    serverSettled: balance.remainingMinor === 0 && row.nextInstallment === null,
   };
 }
 
@@ -937,7 +944,7 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
   // traveler payment processes, nothing else may charge; a balance below the
   // provider's minimum stays owed but cannot be charged (no Charge now).
   // (A settled v2 order has no next open row, so canCharge is already false.)
-  const settled = row.isPaidInFull || row.v2?.settled === true;
+  const settled = row.isPaidInFull || row.v2?.settled === true || row.serverSettled === true;
   const inFlight = row.v2?.paymentInFlight === true;
   const belowMinimum = row.v2?.belowProviderMinimum === true;
   const canCharge = row.nextInstallment !== null && !row.isPaidInFull && !inFlight && !belowMinimum;

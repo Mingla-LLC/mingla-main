@@ -528,6 +528,24 @@ describe("#4522 E-5 money screen, older-plan orders", () => {
     expect(out).toContain("InstallmentScheduleDisplay");
     TestRenderer.act(() => tree.unmount());
   });
+
+  // Pass 5 — a paid older plan offers no reminder (as a paid new plan).
+  // FAILS ON REVERT: the paid old-plan row still offered "Send reminder".
+  test("paid in full: $800.00 / $800.00 · $0.00 left and no reminder offered", () => {
+    installments = ["v1", "v2", "v3"].map((id, i) =>
+      oldPlan({ id, ordinal: i + 1, status: "collected", dueAt: `2027-0${i + 1}-15T09:00:00Z`, collectedAt: `2027-0${i + 1}-15T09:00:00Z` }));
+    balances = [oldBalance({
+      paidMinor: 80000, remainingMinor: 0, totalMinor: 80000, nextPayment: null, openRows: [],
+      history: ["v1", "v2", "v3"].map((id) => ({ installmentId: id, kind: "scheduled", status: "collected", amountMinor: 20000, collectedAt: "2027-01-15T09:00:00Z", refundedMinor: 0 })),
+    })];
+    const tree = render();
+    const out = text(tree);
+    expect(out).toContain("$800.00 / $800.00");
+    expect(out).toContain("No reminder needed — paid in full");
+    const reminder = tree.root.findAll((n) => n.props.accessibilityLabel === "Send reminder" && typeof n.props.onPress === "function");
+    expect(reminder.every((n) => n.props.disabled === true)).toBe(true);
+    TestRenderer.act(() => tree.unmount());
+  });
 });
 
 // issue #4522 deploy window — against main's database the service reads rows
@@ -552,6 +570,30 @@ describe("#4522 deploy window: money screen on main's database", () => {
     expect(out).toContain("InstallmentScheduleDisplay");
     expect(out).not.toContain("any amount allowed");
     expect(findToggleLabel(tree)).toBe("C24S Buyer, paid $300.00 of $300.00, Collected");
+    TestRenderer.act(() => tree.unmount());
+  });
+
+  // Pass 5 (F-5) — the real older-plan order of the fifth pass on main's
+  // database: deposit $200 paid at checkout (the order total), the first
+  // $200 instalment collected by the cron, two still due. With no balance
+  // reader the screen must draw exactly what main draws for these rows (main's
+  // own figure, wrong as it is), never a third figure. This test runs
+  // unchanged against main's money screen file (see the pass-5 report).
+  test("F-5: a real older-plan order shows main's figures and main's actions", () => {
+    installments = [
+      row({ id: "m1", kind: null, orderTotalCents: 20000, amountCents: 20000, amountChargedCents: 20000, status: "collected", dueAt: "2026-12-23T09:00:00Z", collectedAt: "2026-12-23T09:05:00Z" }),
+      row({ id: "m2", kind: null, ordinal: 2, orderTotalCents: 20000, amountCents: 20000, amountChargedCents: 20000, dueAt: "2027-01-22T09:00:00Z" }),
+      row({ id: "m3", kind: null, ordinal: 3, orderTotalCents: 20000, amountCents: 20000, amountChargedCents: 20000, dueAt: "2027-02-21T09:00:00Z" }),
+    ];
+    balances = [];
+    const tree = render();
+    const out = text(tree);
+    expect(out).toContain("$200.00 / $200.00");
+    expect(out).toContain("$0.00 left");
+    expect(out).toContain("Jan 22, 2027 · $200.00");
+    expect(findToggleLabel(tree)).toBe("C24S Buyer, paid $200.00 of $200.00, Collected");
+    expect(out).toContain("Send reminder");
+    expect(out).not.toContain("No reminder needed");
     TestRenderer.act(() => tree.unmount());
   });
 });
