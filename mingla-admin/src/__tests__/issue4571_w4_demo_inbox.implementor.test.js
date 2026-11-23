@@ -27,7 +27,7 @@ import { errorCopy } from "../lib/crmModel.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) => fs.readFileSync(path.join(here, "..", rel), "utf8");
-const TOKEN = "3f1c2b8e-9a47-4d1e-b6a2-0c9e7d5f4a31";
+const TOKEN = "45710000-0000-4000-8000-000000000001";
 
 describe("D-1 the card's scheduler link", () => {
   it("is usemingla.com/schedule?for=<token>", () => {

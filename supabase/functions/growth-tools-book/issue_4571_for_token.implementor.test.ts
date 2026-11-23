@@ -36,7 +36,7 @@ const { handler } = await import("./index.ts");
 
 const SUPABASE = "https://stub-project.supabase.co";
 const SERVICE = "service-role-test-key";
-const TOKEN = "3f1c2b8e-9a47-4d1e-b6a2-0c9e7d5f4a31";
+const TOKEN = "45710000-0000-4000-8000-000000000001";
 
 interface Recorded {
   url: string;

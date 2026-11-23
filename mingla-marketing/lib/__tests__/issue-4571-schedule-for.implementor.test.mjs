@@ -18,7 +18,7 @@ const SRC = fs.readFileSync(path.join(MARKETING, 'lib/booking-call.ts'), 'utf8')
 const helper = SRC.slice(SRC.indexOf('const SCHEDULE_TOKEN_RE'), SRC.indexOf('export async function bookCall('))
 const js = nodeModule.stripTypeScriptTypes(helper.replace('export function', 'function'))
 const bc = { scheduleTokenFrom: new Function(`${js}; return scheduleTokenFrom`)() }
-const TOKEN = '3f1c2b8e-9a47-4d1e-b6a2-0c9e7d5f4a31'
+const TOKEN = '45710000-0000-4000-8000-000000000001'
 
 test('SF-1 scheduleTokenFrom keeps a UUID and drops anything else', () => {
   assert.equal(bc.scheduleTokenFrom(TOKEN), TOKEN)
