@@ -170,7 +170,7 @@ export function goalFold(goals, shown = GOAL_PILLS) {
  * readable title (at least GOAL_PILL_MIN px). No width yet (first paint, a
  * phone where the strip scrolls): the usual GOAL_PILLS.
  */
-export const GOAL_PILL_MIN = 128;
+export const GOAL_PILL_MIN = 88;
 export const GOAL_GAP = 6;
 export const GOAL_MORE_PILL = 96;
 export function goalPillsThatFit(width, count, max = GOAL_PILLS) {

@@ -61,6 +61,7 @@ const MOVED_WORDS = [
   ["owners", "owner", "owners"],
   ["watchers", "watcher", "watchers"],
   ["demos", "demo", "demos"],
+  ["emails", "logged email", "logged emails"],
   ["files", "file", "files"],
   ["links", "Work link", "Work links"],
 ];
@@ -104,3 +105,15 @@ export const SWEEP_ACTION_WORDS = Object.freeze({
   contacted: "Prospect to Contacted",
   advance: "Next round dated",
 });
+
+/**
+ * The sentence under the merge picker: what moves, in the words the toast uses,
+ * with the number of logged emails when the server said it (email_count).
+ */
+export function mergeConfirmWords(name, emailCount = null) {
+  const n = Number(emailCount);
+  const mail = Number.isFinite(n) && emailCount !== null && emailCount !== undefined
+    ? `${n} logged ${n === 1 ? "email" : "emails"}`
+    : "logged emails";
+  return `${name}\u2019s touches, notes, ${mail}, contacts, owners, watchers, demos, files and Work links move here. Its own stage history stays on it, and it is archived with a pointer to this card. You can undo this for 7 days.`;
+}

@@ -67,6 +67,16 @@ describe("P-4 the words", () => {
   });
 });
 
+describe("P-5 (rework) Portuguese says who is responsible, not who \"replies\"", () => {
+  test("no owner word in pt reads as responde / respondem", () => {
+    const pt = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../i18n/locales/pt/brandGroupMedia.json"), "utf8")).team;
+    for (const k of ["card_people", "card_owners_one", "card_owners_other"]) {
+      expect(pt[k]).not.toMatch(/respond/);
+      expect(pt[k]).toMatch(/respons/);
+    }
+  });
+});
+
 describe("Z-1 (#4571 W3) booking times in the person's own time zone", () => {
   it("a Lagos reader sees 23:30 UTC as 00:30 the next day", () => {
     expect(localizeInstants("Linked Demo · Island Vinyl Bar · 2026-11-24T23:30Z", "en-GB", "Africa/Lagos"))

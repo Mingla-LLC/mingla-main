@@ -14,11 +14,13 @@
 --   STAGE-AT   a call dated before the move to Replied counts in Contacted
 --              (cadence_sweep.py's history rule); a call dated now is Replied.
 --   NUMBERS    Emails sent counts hand-logged email touches, once when the
---              mail log has the same card's mail that day.
+--              mail log has the same person's mail to that card that day
+--              (another rep's mail to the card does not hide it: N2).
 --   CONFIG     the report card is kept when not passed; the cron entry exists
 --              only in Dry run or On (ships unscheduled).
 --   INGEST     a bad email identifier still matches (Mac script parity).
 --   LINKS      the link picker shows stage labels.
+--   N1         crm_demo_inbox never lists an archived card.
 --
 -- FAILS-ON-REVERT: without the demo_in_use block UNDO-DEMO fails (K left in
 -- meeting with no demo); without the crm_email_log UPDATEs MAIL fails;
@@ -232,11 +234,11 @@ create function pg_temp.unmerge(p_merge text) returns text
 language sql as $fn$
   select pg_temp.person('tao', format('select public.crm_record_unmerge(%L::uuid)::text', p_merge::uuid))
 $fn$;
-create function pg_temp.mail(p_id text, p_to text, p_dir text default 'outbound', p_at timestamptz default clock_timestamp()) returns text
+create function pg_temp.mail(p_id text, p_to text, p_dir text default 'outbound', p_at timestamptz default clock_timestamp(), p_from text default 'Mingla <info@usemingla.com>') returns text
 language sql as $fn$
   select pg_temp.person('tao', format('select public.crm_email_log_ingest(%L, %L::jsonb)::text', 'info@usemingla.com',
     jsonb_build_array(case when p_dir = 'outbound'
-      then jsonb_build_object('id', p_id, 'direction', 'outbound', 'from', 'Mingla <info@usemingla.com>', 'to', jsonb_build_array(p_to), 'at', p_at, 'subject', 'Hello')
+      then jsonb_build_object('id', p_id, 'direction', 'outbound', 'from', p_from, 'to', jsonb_build_array(p_to), 'at', p_at, 'subject', 'Hello')
       else jsonb_build_object('id', p_id, 'direction', 'inbound', 'from', p_to, 'to', jsonb_build_array('info@usemingla.com'), 'at', p_at, 'subject', 'Re: Hello') end)))
 $fn$;
 create function pg_temp.n_mail(p_k text) returns text
@@ -262,6 +264,10 @@ begin
     (select (m.unmerged_at is null)::text from public.crm_record_merges m where m.id = v_merge::uuid)
       || '|' || pg_temp.stage('dk') || '|' || public.crm_record_has_demo(pg_temp.id('dk'))::text
       || '|' || (select (archived_at is not null)::text from public.crm_records where id = pg_temp.id('dd')), 'true|meeting|true|true');
+  -- N1: the archived duplicate (still at Demo booked, its demo moved away) is not "Demo booked without a linked demo".
+  v := pg_temp.person('tao', 'select public.crm_demo_inbox()::text');
+  perform pg_temp.chk('UNDO-DEMO', 'N1: the archived merged duplicate is not listed under Demo booked without a linked demo',
+    (select count(*)::text from jsonb_array_elements((v::jsonb)->'without_demo') x where (x->>'record_id')::uuid = pg_temp.id('dd')), '0');
   v := pg_temp.move('tao', 'dk', 'replied', 'Undoing a merge');
   perform pg_temp.chk('UNDO-DEMO', 'the person moves the kept card back', pg_temp.stage('dk'), 'replied');
   v := pg_temp.unmerge(v_merge);
@@ -341,19 +347,27 @@ declare v text; j jsonb; v_today date := (now() at time zone 'Africa/Lagos')::da
 begin
   perform pg_temp.host('na', 'Numbers A W6d', 'contacted');
   perform pg_temp.host('nb', 'Numbers B W6d', 'contacted');
+  perform pg_temp.host('nc', 'Numbers C W6d', 'contacted');
   perform pg_temp.ident('nb', 'email', 'b@numbers-w6d.test');
+  perform pg_temp.ident('nc', 'email', 'c@numbers-w6d.test');
   insert into public.crm_activity (record_id, kind, actor_email, channel, direction, occurred_at)
   values (pg_temp.id('na'), 'touch', pg_temp.email('kemi'), 'email', 'outbound', now()),
-         (pg_temp.id('nb'), 'touch', pg_temp.email('kemi'), 'email', 'outbound', now());
-  v := pg_temp.mail('w6d-n1', 'b@numbers-w6d.test');
+         (pg_temp.id('nb'), 'touch', pg_temp.email('kemi'), 'email', 'outbound', now()),
+         (pg_temp.id('nc'), 'touch', pg_temp.email('kemi'), 'email', 'outbound', now());
+  -- nb: Kemi's own mailbox mailed the card too, so her hand-logged touch is the same email.
+  v := pg_temp.mail('w6d-n1', 'b@numbers-w6d.test', 'outbound', clock_timestamp(), 'Kemi <' || pg_temp.email('kemi') || '>');
+  -- nc: only Tao's mailbox mailed the card (N2): Kemi's hand-logged email is still hers.
+  v := pg_temp.mail('w6d-n2', 'c@numbers-w6d.test', 'outbound', clock_timestamp(), 'Tao <' || pg_temp.email('tao') || '>');
   j := pg_temp.person('tao', format('select public.crm_outreach_numbers(%L::date, %L::date)::text', v_today, v_today))::jsonb;
-  perform pg_temp.chk('NUMBERS', 'a hand-logged email touch counts for who logged it; the one the log has is not counted twice',
-    (select x->'totals'->>'emails_sent' from jsonb_array_elements(j->'reps') x where x->>'rep' = pg_temp.email('kemi')), '1');
+  perform pg_temp.chk('NUMBERS', 'Kemi: her hand-logged email counts, and not twice when her own mail is in the log (na + nb mail + nc hand)',
+    (select x->'totals'->>'emails_sent' from jsonb_array_elements(j->'reps') x where x->>'rep' = pg_temp.email('kemi')), '3');
+  perform pg_temp.chk('NUMBERS', 'N2: Tao mailed the same card, and Kemi''s hand-logged email still counts for Kemi; Tao gets his one',
+    (select x->'totals'->>'emails_sent' from jsonb_array_elements(j->'reps') x where x->>'rep' = pg_temp.email('tao')), '1');
   perform pg_temp.chk('NUMBERS', 'the logged mail counts for the mailbox, once per message',
     (select x->'totals'->>'emails_sent' from jsonb_array_elements(j->'reps') x where x->>'rep' = 'info@usemingla.com'),
-    (select count(distinct message_id)::text from public.crm_email_log where direction = 'outbound'));
-  perform pg_temp.chk('NUMBERS', 'the team total is the log plus the one hand-logged email',
-    j->'totals'->>'emails_sent', (select (count(distinct message_id) + 1)::text from public.crm_email_log where direction = 'outbound'));
+    (select nullif(count(distinct message_id), 0)::text from public.crm_email_log where direction = 'outbound' and from_address = 'info@usemingla.com'));
+  perform pg_temp.chk('NUMBERS', 'the team total is the log plus the two hand-logged emails the log lacks (na, nc)',
+    j->'totals'->>'emails_sent', (select (count(distinct message_id) + 2)::text from public.crm_email_log where direction = 'outbound'));
 end;
 $t$;
 
@@ -402,6 +416,20 @@ begin
   v := pg_temp.person('tao', $q$select public.ops_link_search('host', 'Link Search Label W6d')::text$q$);
   perform pg_temp.chk('LINKS', 'Pick another host shows the stage label, not its id',
     (select r->>'sub' from jsonb_array_elements((v::jsonb)->'results') r where (r->>'id')::uuid = pg_temp.id('ls')), 'Replied');
+end;
+$t$;
+
+-- ───────────────────────────── N3 ─────────────────────────────
+do $t$
+declare v text;
+begin
+  perform pg_temp.host('ec', 'Email Count W6d', 'contacted');
+  perform pg_temp.ident('ec', 'email', 'ec@count-w6d.test');
+  perform pg_temp.mail('w6d-ec1', 'ec@count-w6d.test');
+  perform pg_temp.mail('w6d-ec2', 'ec@count-w6d.test');
+  v := pg_temp.person('tao', $q$select public.crm_duplicate_check('hosts', 'Email Count W6d', null)::text$q$);
+  perform pg_temp.chk('N3', 'the duplicate picker says how many logged emails a merge moves',
+    ((v::jsonb)->'exact'->>'email_count'), '2');
 end;
 $t$;
 

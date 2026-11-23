@@ -116,7 +116,7 @@ describe("R-5 sprint pills fit the bar", () => {
   it("a narrow strip keeps room for +N more and readable pills", () => {
     // The tester's 1280 board: 351px for the goals.
     const n = goalPillsThatFit(351, 7);
-    assert.equal(n, 1);
+    assert.equal(n, 2);
     assert.ok(n * (GOAL_PILL_MIN + 6) + GOAL_MORE_PILL <= 351);
     assert.equal(goalPillsThatFit(60, 7), 0);
   });

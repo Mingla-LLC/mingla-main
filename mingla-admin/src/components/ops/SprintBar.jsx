@@ -31,7 +31,7 @@ function GoalPill({ g, on, onGoal, wide = false }) {
     <button type="button" data-goal-pill={g.id} aria-pressed={on ? "true" : "false"}
       title={`${g.title} · ${goalStateLabel(g.state)}${g.owner_name ? ` · ${g.owner_name}` : ""}`}
       onClick={() => onGoal(on ? null : g.id)}
-      className={`inline-flex h-8 ${wide ? "w-full" : "min-w-[8rem] max-w-[15rem] shrink max-sm:shrink-0"} items-center gap-1.5 rounded-full border px-2.5 text-[12px] ${on ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"} ${FOCUS}`}>
+      className={`inline-flex h-8 ${wide ? "w-full" : "min-w-[5.5rem] max-w-[15rem] shrink max-sm:shrink-0"} items-center gap-1.5 rounded-full border px-2.5 text-[12px] ${on ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"} ${FOCUS}`}>
       <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${STATE_DOT[g.state] || STATE_DOT.on_track}`} />
       <span className="min-w-0 flex-1 truncate text-left font-semibold text-[var(--color-text-primary)]">{g.title}</span>
       <span className="shrink-0 tabular-nums">{Number(g.done) || 0}/{Number(g.cards) || 0}</span>

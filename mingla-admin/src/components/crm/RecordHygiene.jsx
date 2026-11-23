@@ -12,7 +12,7 @@ import {
   archiveRecord, duplicateCheck, mergeRecords, newRequestKey, recordMerges, unarchiveRecord, unmergeRecords,
 } from "../../services/crmService";
 import { cadenceWords, errorWords, loadErrorWords } from "../../lib/crmModel";
-import { mergeMovedWords } from "../../lib/sopTools";
+import { mergeConfirmWords, mergeMovedWords } from "../../lib/sopTools";
 import { localWhen } from "../../lib/opsModel";
 
 const BOX = "flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-3";
@@ -183,7 +183,7 @@ export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequest
           )}
           {pick && (
             <p className="text-[12px] text-[var(--color-text-tertiary)]">
-              {pick.name}’s touches, notes, contacts, owners, watchers, demos, files and Work links move here. Its own stage history stays on it, and it is archived with a pointer to this card. You can undo this for 7 days.
+              {mergeConfirmWords(pick.name, pick.email_count)}
             </p>
           )}
           <div className="flex flex-wrap gap-2">

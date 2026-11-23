@@ -1,5 +1,5 @@
 -- Issue #4571 (Work pipeline redesign), rework after the final test (FAIL,
--- tip ffcb44bc6d). Replaces six functions; adds no table, column or function.
+-- tip ffcb44bc6d). Replaces eight functions; adds no table, column or function.
 --
 --   1. crm_record_merge moves the duplicate's crm_email_log rows to the kept
 --      card (skipping a message the kept card already has), and lists them in
@@ -21,7 +21,8 @@
 --      it, keeps the card's stage now.
 --   4. crm_outreach_numbers: Emails sent also counts outbound email touches
 --      logged by hand (by who logged them), unless the mail log already has
---      outbound mail to that card that Lagos day, so one email counts once.
+--      outbound mail to that card that Lagos day from that same person, so
+--      one email counts once (another rep's mail does not hide it).
 --   5. crm_cadence_sweep_configure keeps the stored report card when
 --      p_report_card_id is not passed, and owns the pg_cron entry: Dry run or
 --      On schedules issue_4571_crm_cadence_sweep, Off unschedules it. This
@@ -29,6 +30,9 @@
 --      cutover). RUNBOOK change to 20281126084571: step 1 is "it ships with no
 --      cron entry"; step 2 (Dry run) creates it; Switch-off removes it.
 --   6. ops_link_search shows stage labels, not stage ids.
+--   7. crm_demo_inbox skips archived cards (a merged duplicate is not "Demo
+--      booked without a linked demo"); crm_record_lite_json carries email_count
+--      so the merge confirmation can say how many logged emails move.
 --
 -- Email identifiers (tester P3, kept on purpose): crm_email_log_ingest matches
 -- every email identifier on a card, ok or bad, not only ok ones. The Mac
@@ -417,6 +421,7 @@ BEGIN
        AND a.actor_email IS NOT NULL AND a.occurred_at >= v_lo AND a.occurred_at < v_hi
        AND NOT EXISTS (SELECT 1 FROM public.crm_email_log e
                         WHERE e.record_id = a.record_id AND e.direction = 'outbound'
+                          AND e.from_address = a.actor_email
                           AND (e.sent_at AT TIME ZONE 'Africa/Lagos')::date = (a.occurred_at AT TIME ZONE 'Africa/Lagos')::date)
      GROUP BY 1, 2
   ),
@@ -584,6 +589,69 @@ BEGIN
   END IF;
   RETURN jsonb_build_object('kind', p_kind, 'results', v_rows);
 END;
+$function$;
+
+-- From 20281126044571 (crm_demo_inbox, as replayed). #4571 rework: an archived
+-- card (a merged duplicate keeps stage meeting, with its demo moved away) is
+-- not "Demo booked without a linked demo"; only live cards are listed. The
+-- Hosts banner (crm_demo_inbox_count) counts bookings, so it is unchanged.
+CREATE OR REPLACE FUNCTION public.crm_demo_inbox() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v         record;
+  v_me      text;
+  v_book    jsonb;
+  v_without jsonb;
+  v_cancel  jsonb;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  v_me := v.actor_email;
+  SELECT COALESCE(jsonb_agg(q.j ORDER BY q.call_at DESC, q.id), '[]'::jsonb) INTO v_book
+  FROM (SELECT k.id, k.call_at,
+               jsonb_build_object('booking_id', k.id, 'name', k.name, 'venue', k.venue, 'call_at', k.call_at,
+                 'created_at', k.created_at, 'status', k.status, 'source', k.source,
+                 'suggestions', public.crm_4571_demo_candidates(k.id, v_me)) AS j
+          FROM public.book_call_leads k
+         WHERE k.audience = 'host' AND public.crm_demo_needs_linking(k.id)
+         ORDER BY k.call_at DESC, k.id
+         LIMIT 200) q;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('record_id', c.id, 'name', c.name, 'stage', c.stage,
+                   'exempt', c.demo_rule_exempt_at IS NOT NULL) ORDER BY lower(c.name), c.id), '[]'::jsonb) INTO v_without
+  FROM public.crm_records c
+  WHERE c.pipeline = 'hosts' AND c.deleted_at IS NULL AND c.archived_at IS NULL AND c.stage = 'meeting'
+    AND NOT public.crm_record_has_demo(c.id)
+    AND NOT EXISTS (SELECT 1 FROM public.crm_record_demos d WHERE d.record_id = c.id);
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('booking_id', k.id, 'record_id', c.id, 'record_name', c.name,
+                   'stage', c.stage, 'call_at', k.call_at, 'status', k.status, 'status_changed_at', k.status_changed_at)
+                   ORDER BY k.status_changed_at DESC NULLS LAST, k.call_at DESC), '[]'::jsonb) INTO v_cancel
+  FROM public.crm_record_demos d
+  JOIN public.book_call_leads k ON k.id = d.booking_id
+  JOIN public.crm_records c ON c.id = d.record_id
+  WHERE c.deleted_at IS NULL AND k.status IN ('cancelled', 'declined')
+    AND NOT public.crm_record_has_demo(c.id);
+  RETURN jsonb_build_object('needs_linking', v_book, 'without_demo', v_without, 'cancelled', v_cancel,
+    'count', jsonb_array_length(v_book), 'as_of', now());
+END;
+$$;
+
+-- From 20281126064571 (crm_record_lite_json). #4571 rework: the duplicate
+-- pickers say how many logged emails a merge would move (email_count), so the
+-- merge confirmation can name the number. crm_email_log has no client grant;
+-- every caller here is a SECURITY DEFINER function.
+CREATE OR REPLACE FUNCTION public.crm_record_lite_json(r crm_records)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''
+AS $function$
+  SELECT jsonb_build_object(
+    'id', r.id, 'name', r.name, 'stage', r.stage,
+    'contact_rule', r.contact_rule, 'contact_rule_reason', r.contact_rule_reason,
+    'owners', COALESCE((SELECT jsonb_agg(o.owner_email ORDER BY o.owner_email)
+                          FROM public.crm_record_owners o WHERE o.record_id = r.id), '[]'::jsonb),
+    'archived', r.archived_at IS NOT NULL, 'merged_into_id', r.merged_into_id,
+    'email_count', (SELECT count(DISTINCT e.message_id) FROM public.crm_email_log e WHERE e.record_id = r.id))
 $function$;
 
 COMMIT;

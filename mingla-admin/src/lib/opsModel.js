@@ -2,6 +2,7 @@
 // To review. No React and no Supabase here, so every rule is testable alone.
 
 import { planLinkProblem } from "./brandPlan.js";
+import { CALL_STATUS_LABELS } from "./inboundLeads.js";
 
 // #4270: three statuses. "Needs a person" is no longer a status: it is a
 // Send, Spend or Publish tag (person_reason) on a To do or In progress card.
@@ -1510,4 +1511,15 @@ export function cardAnchorWords(anchor) {
     };
   }
   return { lead: "Counted from", title: anchor.title || "", rest: `${day ? ` · ${day}` : ""} · ${runwayLabel(anchor.runway)}` };
+}
+
+/**
+ * The second line of a link-picker result. A demo booking's server value is its
+ * status id ("booked", "moved"); show the one label map's word ("Booked",
+ * "Moved"), never the id. Every other kind's line is already words.
+ */
+export function linkSubWords(kind, sub) {
+  const text = String(sub || "");
+  if (kind !== "booking") return text;
+  return Object.hasOwn(CALL_STATUS_LABELS, text) ? CALL_STATUS_LABELS[text] : text;
 }
