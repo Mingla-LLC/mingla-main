@@ -658,7 +658,8 @@ export function phase3dContractDigest(manifest) {
 // #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 merge of main after #4573 and #4574: renumbered the twelve #4571 migrations to 20281130014571 to 20281130124571 (same order), listed after 20281128004574 in the #1857, #1931 and #2117 lanes; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "4b18d868d104ebd4e45c45d90ac8c42d6df153c52db503c5efadfc5c3ab0591c";
+// #4571 pre-#1931 replay fix: skipped 20281130044571 (W4) and the seven later #4571 migrations after W5 (20281130064571 to 20281130124571) by exact filename in the #1931 SC-47 filtered replay; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "09b98a713ad6f07d87473cd69a0de38cfe09ffc8c4a8376dbdb8f16269ff0023";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
