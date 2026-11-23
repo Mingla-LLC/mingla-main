@@ -39,6 +39,7 @@ import { jsonResponse, serviceClient } from "../_shared/ticketCheckout.ts";
 import {
   type EscalationRung,
   fireVenueOrderEscalation,
+  tillRoundSenders,
 } from "../_shared/venueOrderNotify.ts";
 
 interface ScanRow {
@@ -102,6 +103,9 @@ serve(wrapEdgeHandler("venue-order-escalation-sweep", async (req) => {
 
   const rows = (Array.isArray(data) ? data : []) as ScanRow[];
   let notified = 0;
+  // #4490 spec 08 §11 T7: which rows are sent Till rounds, and who sent them
+  // (rung 1 tells them). A failed read only drops that extra person.
+  const tillRounds = await tillRoundSenders(supabase, rows.map((r) => r.order_id));
   const failures: string[] = [];
 
   for (const row of rows) {
@@ -124,6 +128,8 @@ serve(wrapEdgeHandler("venue-order-escalation-sweep", async (req) => {
         spotLabel: row.spot_label,
         pickupCode: row.pickup_code,
         buyerName: row.buyer_name,
+        tillRound: tillRounds.has(row.order_id),
+        takenByUserId: tillRounds.get(row.order_id) ?? null,
       });
       notified += 1;
     } catch (err) {

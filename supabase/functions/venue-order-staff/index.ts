@@ -116,6 +116,7 @@ import {
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
 import { handleStationAction } from "./stationActions.ts";
+import { fireVenueOrderReady } from "../_shared/venueOrderNotify.ts";
 // Issue #3380 — the guest's phone is read WITH the country the waiter chose.
 import {
   LEGACY_NANP_REFUSAL,
@@ -217,6 +218,7 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
         body,
         userId,
         (payload, status = 200) => jsonResponse(payload, status),
+        (input) => fireVenueOrderReady(supabase, input),
       );
     default:
       return jsonResponse({ error: "unknown_action" }, 400);
