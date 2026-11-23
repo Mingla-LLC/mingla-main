@@ -169,7 +169,7 @@ export function sitesAlertCopy(
   const budget = snapshot
     ? `A new website's first Go live needs a database backup less than ${snapshot.gate_budget_h} h old and a backup job that finished less than ${snapshot.manifest_budget_h} h ago.`
     : "A new website's first Go live needs recent backup evidence.";
-  const fix = "Fix: run the Sites backup workflow (sites-backup-restore.yml, mode backup) on main, then check that a new nightly_backup receipt was recorded. Sites already live are not affected.";
+  const fix = "Fix: run the "Sites backup and restore" GitHub workflow (mode backup) on main, then check that a new nightly_backup receipt was recorded. Sites already live are not affected.";
   switch (kind) {
     case "warn":
     case "critical": {

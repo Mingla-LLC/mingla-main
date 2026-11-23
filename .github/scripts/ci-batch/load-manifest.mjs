@@ -385,7 +385,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4549 merge of main after #4541 forms fixes and Blast push: kept main's #4541 rows and skips and the #4549 migration and both #4549 pg17 suites (filename order); re-sealed.
 // #4549 tester retest: registered the tester report-bounds pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4549 merge of main after #4548 guest pack: kept main's #4548 rows and filtered-replay skip, re-added the #4549 migration and its three pg17 suites (with sidecars) in filename order; re-sealed.
-export const BOOTSTRAP_SHA256 = "f1671059addb0b93676a0276f4593db89a0b76de81daca43675be86fb23303ba";
+// #4574 Sites backup budget: listed migration 20281128004574 after 20281124004549 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "158ad1b6cdb37a25ba62c13d43ab999018bd1aa108b2d8423b08aed9c1b045fc";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
