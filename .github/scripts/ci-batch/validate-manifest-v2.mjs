@@ -1178,13 +1178,18 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #4541] Re-banked app-mobile after the Explorer app declared
 // @mingla/form-rendering (file:../packages/form-rendering, the one question
 // model) and its two lockfile link entries. No other package version moved.
+// [TEST-MOD-APPROVED #4564] Re-banked mingla-business/package.json after react-native-onesignal
+// left expo.autolinking.android.exclude (Host Android push). Dependencies and
+// lockfiles unchanged.
 // [TEST-MOD-APPROVED #4522] Re-banked after merging main: the integrated
 // authority carries @mingla/calendar and @mingla/form-rendering in both apps
 // plus the #4389 store build guard prefixes.
+// [TEST-MOD-APPROVED #4522] Re-banked mingla-business/package.json again after merging
+// main with #4564 (the OneSignal autolinking exclude left); other files unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "77f4c9b0a293fceee7befe7c1e88d210499d53285b03aaa0a57a22f47d0fc0fc",
   "app-mobile/package-lock.json": "f122e88a4cf3ea5b2511a92a31e898bf56571d115def21233e3b830b6199760e",
-  "mingla-business/package.json": "63934c96beb3762c9a8ead26b7bd6e2c45380190e63453848e91d92b02d34e45",
+  "mingla-business/package.json": "c93681ccecbb8a6703c2b19e12dd64059fa71201c693d0784f842b5d8cf573ba",
   "mingla-business/package-lock.json": "9111e13815ad504f0b5db09a4c4bd369cd2e3794a78ae1193dea19f1284d1f99",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
