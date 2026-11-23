@@ -8,9 +8,13 @@
  */
 
 import {
+  assert,
   assertEquals,
+  assertNotEquals,
   assertThrows,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { canonicalCheckoutV2FingerprintInput } from "../../../../packages/offering-rendering/ticketCheckoutServerContract.ts";
+import { replayedSessionExtras } from "../replayedSessionExtras.ts";
 
 import {
   addOnsRideContractPlan,
@@ -139,4 +143,67 @@ Deno.test("#3281 a cart without add-ons sends no new provider field", () => {
     "Includes Early bird (−$10.00)",
   );
   assertEquals(paystackAddOnCustomFields([]), []);
+});
+
+// ── issue #4522 E-4: a replayed add-on cart keeps its add-ons ─────────────────
+
+const SESSION = "45220000-0000-4000-8000-0000000e4a01";
+const ADD_ON = "45220000-0000-4000-8000-0000000e4a02";
+const addOnRows = [{
+  ticket_add_on_id: ADD_ON, ticket_type_id: PACKAGE, add_on_name_at_purchase: "Airport transfer",
+  ticket_type_name_at_purchase: "Shared room", day_scope: null, quantity: 1, unit_price_cents: 4500, total_cents: 4500,
+}];
+const rows = (data: unknown, error: { message: string } | null = null) => () =>
+  Promise.resolve({ data, error });
+
+/** The fingerprint the create binds, from what a session says it priced. */
+const boundFingerprint = (session: Record<string, unknown>): string => {
+  const extrasTotalCents = Number(session.extrasTotalCents ?? 0);
+  const fullPriceCents = 120000 + extrasTotalCents;
+  return canonicalCheckoutV2FingerprintInput({
+    eventId: "45220000-0000-4000-8000-0000000e4a03",
+    checkoutAttemptId: "45220000-0000-4000-8000-0000000e4a04",
+    purchaseTermsAccepted: true,
+    buyer: { userId: null, name: "Sam", email: "sam@example.test", phoneE164: "+15555550143", marketingOptIn: true },
+    providerInput: { surface: "web" },
+    lines: [{ ticketTypeId: PACKAGE, quantity: 1, unitPriceCents: 120000, totalCents: 120000, paymentPlanChoice: "installments",
+      addOns: [{ addOnId: ADD_ON, quantity: 1 }], addonPaymentMode: "spread" }],
+    eventDateId: null,
+    eventDateIds: [],
+    intakeFormData: [],
+    quote: { currency: "USD", fullPriceCents, dueTodayCents: 30000, installmentSchedule: { fullPriceCents } },
+  });
+};
+
+Deno.test("#4522 E-4 a replayed session's add-ons are read from its rows, in the create's shape", async () => {
+  const replayed = await replayedSessionExtras(rows(addOnRows));
+  assertEquals(replayed, {
+    extras: [{ addOnId: ADD_ON, ticketTypeId: PACKAGE, addOnName: "Airport transfer", ticketName: "Shared room",
+      dayScope: null, quantity: 1, unitPriceCents: 4500, totalCents: 4500 }],
+    extrasTotalCents: 4500,
+  });
+  // a cart without add-ons replays with none; an unreadable answer is never a guessed 0
+  assertEquals(await replayedSessionExtras(rows([])), { extras: [], extrasTotalCents: 0 });
+  assertEquals(await replayedSessionExtras(rows(null, { message: "boom" })), null);
+});
+
+Deno.test("#4522 E-4 an unchanged add-on cart replays to the fingerprint its first call bound", async () => {
+  const firstCall = { checkoutSessionId: SESSION, totalCents: 120000, extras: [], extrasTotalCents: 4500 };
+  // issue_3859_resolve_checkout_attempt's shape: no extras at all
+  const resolved: Record<string, unknown> = { checkoutSessionId: SESSION, totalCents: 120000 };
+  assertNotEquals(boundFingerprint(resolved), boundFingerprint(firstCall)); // the E-4 cause
+  const replayed = await replayedSessionExtras(rows(addOnRows));
+  assert(replayed !== null);
+  assertEquals(boundFingerprint({ ...resolved, ...replayed }), boundFingerprint(firstCall));
+});
+
+Deno.test("#4522 E-4 the create reads a replayed session's add-ons before it prices the contract", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  const recover = source.indexOf("await replayedSessionExtras(() =>");
+  assert(source.includes('supabase.from("ticket_checkout_session_add_on_items")\n          .select(REPLAY_EXTRAS_COLUMNS)\n          .eq("checkout_session_id", checkoutSessionId)'));
+  const resolveArm = source.lastIndexOf("resolvedAttempt.data !== null", recover);
+  const priced = source.indexOf("const extrasTotalCents = Number(session.extrasTotalCents ?? 0);");
+  const bind = source.indexOf('"issue_3859_bind_checkout_contract"', priced);
+  assert(resolveArm > 0 && recover > resolveArm, "only the replay arm recovers extras");
+  assert(priced > recover && bind > priced, "extras are recovered before the contract is priced and bound");
 });

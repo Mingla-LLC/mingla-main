@@ -121,6 +121,10 @@ import {
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
 import {
+  REPLAY_EXTRAS_COLUMNS,
+  replayedSessionExtras,
+} from "./replayedSessionExtras.ts";
+import {
   brandFormRefusal,
   checkoutFormPayload,
   isCheckoutBrandFormRefusal,
@@ -2605,6 +2609,27 @@ export const createTicketCheckoutCreateHandler = (
     let session = sessionResult as Record<string, unknown>;
     await recordUnknownDiscountAttempt(session);
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
+    // issue #4522 E-4 — a replayed attempt's session comes from
+    // issue_3859_resolve_checkout_attempt, which predates add-ons and carries
+    // no extras. Read them from the session (as the create returned them), or
+    // the replay prices the cart without its add-ons, its contract
+    // fingerprint differs from the first call's and an unchanged add-on cart
+    // is sent to "Please review your order".
+    if (
+      resolvedAttempt.error === null && resolvedAttempt.data !== null &&
+      session.extrasTotalCents === undefined && checkoutSessionId.length > 0
+    ) {
+      const replayed = await replayedSessionExtras(() =>
+        supabase.from("ticket_checkout_session_add_on_items")
+          .select(REPLAY_EXTRAS_COLUMNS)
+          .eq("checkout_session_id", checkoutSessionId)
+          .order("ticket_add_on_id", { ascending: true })
+      );
+      if (replayed === null) {
+        return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+      }
+      session = { ...session, ...replayed };
+    }
     // Issue #4271 — one code pays once: a paid, cancelled or expired code
     // refuses the session under the code's row lock.
     if (doorPay !== null) {
