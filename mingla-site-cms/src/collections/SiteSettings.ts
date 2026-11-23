@@ -16,9 +16,9 @@ import {
   isSlug,
   redirectRuleProblem,
 } from "../contracts/generated/routes.ts";
-import { DESIGN_KEYS, DESIGNS } from "../contracts/generated/designs.ts";
+import { DESIGN_KEYS, DESIGNS, designFor } from "../contracts/generated/designs.ts";
 import { BUTTON_SHAPES, MOTION_PRESETS, RADIUS_PRESETS } from "../contracts/generated/tokens.ts";
-import { validateFontsField, validateTokensField } from "../lib/siteLook";
+import { validateDesignOptionsField, validateFontsField, validateTokensField } from "../lib/siteLook";
 import {
   assertReadyTenantMedia,
   bindRequestTenant,
@@ -186,6 +186,34 @@ export const SiteSettings: CollectionConfig = {
         label: { design: "As designed", calm: "Calm", lively: "Lively", none: "None" }[value],
       })),
       admin: { description: "Visitors who ask their device for reduced motion always get none." },
+    },
+    {
+      /*
+       * #4575 — the design's own options (only Grid offers any): the
+       * full-screen cover and full-colour photos. Frozen into the published
+       * artifact as `design.options` only when one changes the drawing
+       * (resolveDesignOptions); ignored on a design that does not offer them.
+       */
+      name: "design_options",
+      label: "Design options",
+      type: "group",
+      admin: {
+        condition: (data) => Boolean(designFor(data?.design)?.options?.length),
+        description: "Grid only. Full-screen photo: each page opens on a full-screen photo with a black menu bar.",
+      },
+      validate: validateDesignOptionsField,
+      fields: [
+        { name: "cover", label: "Top of the page", type: "select", options: [{ value: "full", label: "Full-screen photo" }] },
+        {
+          name: "photos",
+          label: "Photos",
+          type: "select",
+          options: [
+            { value: "colour", label: "Full colour" },
+            { value: "mono", label: "Black and white" },
+          ],
+        },
+      ],
     },
     {
       /*
