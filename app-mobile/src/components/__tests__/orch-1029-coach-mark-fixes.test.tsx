@@ -91,6 +91,16 @@ function buildIsPlausibleCutoutFromSource(overlaySrc) {
     /t\.width\s*<=\s*screenWidth\s*\*\s*0\.9/.test(overlaySrc) &&
     /t\.height\s*<=\s*screenHeight\s*\*\s*0\.8/.test(overlaySrc);
 
+  // [TEST-MOD-APPROVED #4562] CURRENT shape: the whole-screen rejection was deleted (the real
+  // Android 14 deck card measured 360x699 on a 728 dp window and was rejected on every
+  // launch). Only a rect with no size is refused.
+  const sizeOnlyShape =
+    !/FULLSCREEN_/.test(overlaySrc) &&
+    /t\.width\s*<=\s*0\s*\|\|\s*t\.height\s*<=\s*0/.test(overlaySrc);
+  if (sizeOnlyShape) {
+    return (rect) => rect.width > 0 && rect.height > 0;
+  }
+
   if (reworkShape) {
     const wRatio = num(/FULLSCREEN_WIDTH_RATIO\s*=\s*([\d.]+)/, 0.98);
     const hRatio = num(/FULLSCREEN_HEIGHT_RATIO\s*=\s*([\d.]+)/, 0.95);
@@ -221,14 +231,21 @@ function runOrch1029CoachMarkFixesTest() {
     true,
     'T-09 the recalibrated clamp MUST ACCEPT the full-width-but-not-full-height deck card {0,2,375,589} on 375×667'
   );
-  // Android warm-deck fallthrough rect: near-100% width (448/448) AND near-100% height
-  // (879 of 896 ≈ 98%) AND top at y=2 → a TRUE whole-screen rect → must be REJECTED
-  // (this is the case F-1's clamp exists to kill).
-  const fullscreenRect = { x: 0, y: 2, width: 448, height: 879, radius: 36 };
+  // [TEST-MOD-APPROVED #4562] {0,2,448,879} on 448×896 was asserted as a "whole-screen
+  // fallthrough" that must be rejected. The ORCH-1029 retest showed it is the REAL deck card
+  // (the emulator was 997 dp tall, not 896), and #4562's device run showed the same rejection
+  // hiding the real card on Android 14 (360x699 on a 728 dp window). It is now ACCEPTED.
+  const formerFullscreenRect = { x: 0, y: 2, width: 448, height: 879, radius: 36 };
   assert.equal(
-    predicate(fullscreenRect, 448, 896),
-    false,
-    'T-09 the clamp MUST still REJECT a true whole-screen rect {0,2,448,879} on 448×896'
+    predicate(formerFullscreenRect, 448, 896),
+    true,
+    'T-09 {0,2,448,879} on 448×896 is the real deck card and MUST be accepted (#4562)'
+  );
+  const android14DeckRect = { x: 0, y: 2, width: 360, height: 699, radius: 36 };
+  assert.equal(
+    predicate(android14DeckRect, 360, 728),
+    true,
+    'T-09 the Android 14 tall-cutout deck card {0,2,360,699} on a 360×728 window MUST be accepted (#4562)'
   );
   // A zero/degenerate rect is never plausible.
   assert.equal(predicate({ x: 0, y: 0, width: 0, height: 0, radius: 0 }, 375, 667), false, 'T-09 degenerate rect rejected');
@@ -239,10 +256,12 @@ function runOrch1029CoachMarkFixesTest() {
   // The overlay must reject a TRUE whole-screen rect (Android warm-deck fallthrough case)
   // via a width AND height AND top-origin guard. The bare `width>0 && height>0` test on
   // its own is NOT sufficient as the cutout gate.
+  // [TEST-MOD-APPROVED #4562] The whole-screen rejection (FULLSCREEN_* ratios) is deleted:
+  // it hid the real deck card on Android 14 phones with a tall cutout. The predicate now
+  // refuses only a rect with no size.
   assert.ok(
-    /screenWidth\s*\*\s*FULLSCREEN_WIDTH_RATIO/.test(overlaySrc) &&
-      /screenHeight\s*\*\s*FULLSCREEN_HEIGHT_RATIO/.test(overlaySrc),
-    'T-05 SpotlightOverlay must gate the whole-screen rejection on BOTH a width ratio AND a height ratio of the screen'
+    !/FULLSCREEN_/.test(overlaySrc),
+    'T-05 SpotlightOverlay must NOT carry the whole-screen rejection constants any more (#4562)'
   );
   assert.ok(
     /isPlausibleCutout/.test(overlaySrc),

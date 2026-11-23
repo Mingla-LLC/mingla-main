@@ -171,8 +171,9 @@ const TAB_BAR_ICON_SIZE = ms(20);
  *  indicator zone. v6 had 0 (flush); v6.1 tried 5px; v6.2 bumped to 6px for a touch more
  *  breathing room. `layout.bottomNavPadding` prop kept for rollback. */
 function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
-  const { isCoachLoading, isCoachPending, isCoachActive } = useCoachMarkContext();
-  const locked = isCoachLoading || isCoachPending || isCoachActive;
+  // #4562: the tabs lock only while the overlay has drawn a bubble with a way out.
+  const { isTourExitOnScreen } = useCoachMarkContext();
+  const locked = isTourExitOnScreen;
   // ORCH-0610 fix: iOS overlaps the home-indicator zone for tight bezel-hugging;
   // Android respects insets.bottom so the nav clears the system navigation panel
   // (gesture bar or 3-button nav).
