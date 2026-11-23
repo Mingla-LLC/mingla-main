@@ -78,7 +78,13 @@ import {
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
-import { freeParentAddOnsNote } from "../../../src/components/checkout/freeParentAddOnsNote";
+import {
+  extrasOfferableOnTicket,
+  FREE_PARENT_REFUSAL,
+  freeParentAddOnsNote,
+  withoutPaidAddOnsOnFreeLines,
+} from "../../../src/components/checkout/freeParentAddOnsNote";
+import { parsePublicTicketExtras } from "@mingla/offering-rendering/ticketExtrasCart";
 import {
   extrasRefusalCopy,
   extrasRefusalIn,
@@ -265,6 +271,27 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     quoteStatus === "error"
       ? extrasRefusalCopy(extrasRefusalIn(quoteErrorCode))
       : null;
+  // issue #3281 W-8 — the server refuses a paid add-on on a free ticket while
+  // the free-parent switch is off. After that answer, stop offering paid add-ons
+  // on free tickets and take the paid ones off the cart, so the buyer is never
+  // left on "Couldn't get your price".
+  const [paidOnFreeRefused, setPaidOnFreeRefused] = useState(false);
+  const refusalToken = quoteStatus === "error" ? extrasRefusalIn(quoteErrorCode) : null;
+  const eventTickets = event?.tickets;
+  useEffect(() => {
+    if (refusalToken !== FREE_PARENT_REFUSAL) return;
+    setPaidOnFreeRefused(true);
+    const byTicket = new Map(
+      (eventTickets ?? []).map((ticket) => [ticket.id, parsePublicTicketExtras(ticket.buyerExtras)]),
+    );
+    const next = withoutPaidAddOnsOnFreeLines(lines, byTicket);
+    if (next === null) return;
+    for (const line of next) setLineQuantity(line);
+  }, [refusalToken, eventTickets, lines, setLineQuantity]);
+  const offerable = <T extends { buyerExtras?: unknown; isFree: boolean }>(ticket: T): T => ({
+    ...ticket,
+    buyerExtras: extrasOfferableOnTicket(ticket.buyerExtras, ticket.isFree, paidOnFreeRefused),
+  });
   // issue #3281 S4 — a free ticket with paid add-ons: say what is being paid for.
   const freeParentNote =
     quoteStatus === "ready"
@@ -872,10 +899,10 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                         })
                       }
                     />
-                    {ticketHasAddOns(ticket.buyerExtras) ? (
+                    {ticketHasAddOns(offerable(ticket).buyerExtras) ? (
                       <React.Suspense fallback={null}>
                         <CartTicketExtras
-                          ticket={ticket}
+                          ticket={offerable(ticket)}
                           line={line}
                           eventDateIds={eventDateIds}
                           occurrences={occurrences}
@@ -890,10 +917,10 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           {/* issue #3281 — per-date carts pick extras once per ticket, after the dates. */}
           {eventDateIds.length >= 2 && !sameTicketsForEveryDate
             ? visibleTickets.map((ticket) =>
-                ticketHasAddOns(ticket.buyerExtras) ? (
+                ticketHasAddOns(offerable(ticket).buyerExtras) ? (
                   <React.Suspense key={`extras-${ticket.id}`} fallback={null}>
                     <CartTicketExtras
-                      ticket={ticket}
+                      ticket={offerable(ticket)}
                       line={lines.find((l) => l.ticketTypeId === ticket.id)}
                       eventDateIds={eventDateIds}
                       occurrences={occurrences}
