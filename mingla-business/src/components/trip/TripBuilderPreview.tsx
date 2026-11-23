@@ -30,12 +30,31 @@ import {
 } from "./tripBuilderV2Model";
 
 /** The value, `delayMs` after it last changed. */
+/**
+ * #4522 §9.4 — the preview "updates within 300ms of a change". A plain
+ * debounce restarts on every change, so a draft that keeps changing (typing,
+ * or anything that re-creates the preview object faster than the delay) kept
+ * the old value on screen (S-19: the old spots until the save landed). This
+ * shows the LATEST value at most `delayMs` after the first unshown change.
+ */
 export function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [settled, setSettled] = useState<T>(value);
+  const latest = useRef<T>(value);
+  latest.current = value;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), delayMs);
-    return (): void => clearTimeout(timer);
-  }, [value, delayMs]);
+    if (Object.is(value, settled) || timer.current !== null) return;
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setSettled(latest.current);
+    }, delayMs);
+  }, [value, settled, delayMs]);
+  useEffect(
+    () => (): void => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
   return settled;
 }
 

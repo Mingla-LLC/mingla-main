@@ -444,6 +444,35 @@ describe("live preview", () => {
     expect(shownTitle(t.root)).toBe("New");
   });
 
+  // #4522 S-19 — "within 300ms of a change" holds while the draft keeps
+  // changing: the latest value shows at most 300 ms after a change. FAILS ON
+  // REVERT: a restart-on-every-change debounce shows "Old" for as long as
+  // edits keep coming (the spots read-out stayed stale until the save).
+  test("the preview keeps up with a draft that keeps changing", () => {
+    let setTitle!: (s: string) => void;
+    const Stateful: React.FC = () => {
+      const [title, set] = React.useState("Old");
+      setTitle = set;
+      return React.createElement(Preview.TripLivePreview, { trip: trip(title), brand, themeOverrides: null });
+    };
+    let t!: ReturnType<typeof TestRenderer.create>;
+    act(() => {
+      t = TestRenderer.create(React.createElement(Stateful));
+    });
+    for (let i = 1; i <= 7; i += 1) {
+      act(() => setTitle(`Edit ${i}`));
+      act(() => {
+        jest.advanceTimersByTime(100);
+      });
+    }
+    // 700 ms of edits every 100 ms: the preview has moved on from "Old".
+    expect(shownTitle(t.root)).not.toBe("Old");
+    act(() => {
+      jest.advanceTimersByTime(PREVIEW_UPDATE_DELAY_MS);
+    });
+    expect(shownTitle(t.root)).toBe("Edit 7");
+  });
+
   test("the preview is read-only", () => {
     let t!: ReturnType<typeof TestRenderer.create>;
     act(() => {
