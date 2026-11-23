@@ -159,6 +159,14 @@ BEGIN
   IF jsonb_array_length(public.admin_trip_order_balance('45220006-0000-4000-8000-0000000000a1')->'rows') <> 3 THEN
     RAISE EXCEPTION 'E-3 Admin sees every row of the order';
   END IF;
+  -- S-13: each row says what it is charged through (no "Provider unknown").
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(
+               public.admin_trip_order_balance('45220006-0000-4000-8000-0000000000a1')->'rows') r
+              WHERE r->>'provider' IS DISTINCT FROM 'paystack'
+                 OR r->>'collectionMethod' IS DISTINCT FROM 'pay_link'
+                 OR NOT (r ? 'buyerTotalMinor')) THEN
+    RAISE EXCEPTION 'E-3b Admin rows carry provider, collection method and buyer total';
+  END IF;
   IF pg_temp.raised($q$SELECT public.biz_trip_event_balances('45220006-0000-4000-8000-000000000020')$q$)
        IS DISTINCT FROM 'P0001:balance_not_found' THEN
     RAISE EXCEPTION 'E-4 a non-member must get balance_not_found';

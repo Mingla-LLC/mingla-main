@@ -144,7 +144,10 @@ BEGIN
     SELECT jsonb_agg(jsonb_build_object('installmentId', id, 'ordinal', ordinal, 'kind', kind,
       'status', status, 'dueAt', due_at, 'amountMinor', amount_cents,
       'addonPortionMinor', addon_portion_minor, 'scheduleVersion', schedule_version,
-      'supersededAt', superseded_at, 'refundedMinor', refunded_amount_cents) ORDER BY due_at, id)
+      'supersededAt', superseded_at, 'refundedMinor', refunded_amount_cents,
+      -- S-13: what the row was charged through, so Admin never guesses.
+      'provider', provider, 'collectionMethod', collection_method,
+      'buyerTotalMinor', buyer_total_cents, 'failureReason', failure_reason) ORDER BY due_at, id)
       FROM public.order_installments WHERE order_id = p_order_id), '[]'::jsonb));
 END
 $fn$;

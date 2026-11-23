@@ -22,6 +22,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { listOrders, getOrder, getOrdersOverview, getOrderAddOnLines, getTripOrderBalance } from "../services/adminMoneyService";
 import { overpaymentRows } from "../lib/orderOverpayments";
+import { tripOrderBalanceView } from "../lib/tripOrderBalance";
 import { addOnRows, addOnLinesBody, addOnSummary, planRemovalNotice, SPREAD_ADD_ON_NOTE } from "../lib/orderAddOnRefunds";
 import { formatMoneyMinor } from "../lib/moneyFormat";
 import { describeAdminRefundError } from "../lib/adminRefundError";
@@ -297,6 +298,62 @@ function jsonBlock(obj) {
   );
 }
 
+// #4522 S-13 (spec §12) — the plan terms and balance of a v2 trip order.
+function planTermsSection(plan) {
+  const t = plan.terms;
+  const cur = plan.currency;
+  return {
+    label: "Plan terms",
+    fields: [
+      field("Plan version", t.version == null ? "—" : `v${t.version}`),
+      field("Deposit", null, () => (t.depositMinor == null ? "—" : formatMoney(t.depositMinor, cur))),
+      field("Payments after the deposit", t.countGiven == null ? "—"
+        : `${t.countGiven}${t.countOffered != null && t.countOffered !== t.countGiven ? ` of ${t.countOffered}` : ""}`),
+      field("Final payment due", t.finalDueAt ? formatDateTime(t.finalDueAt) : "—"),
+      field("Late bookings adjust", t.autoAdjust ? "Yes" : "No"),
+      field("Any amount allowed", null, () => (t.flexEnabled
+        ? `Yes${t.minPaymentMinor != null ? ` · smallest ${formatMoney(t.minPaymentMinor, cur)}` : ""}`
+        : "No")),
+      field("Deposit non-refundable", t.depositNonRefundable ? "Yes" : "No"),
+      field("Add-ons", t.addonPaymentMode === "spread" ? "Spread over the plan" : t.addonPaymentMode === "today" ? "Paid today" : "—"),
+      field("Paid", null, () => (plan.paidMinor == null ? "—" : formatMoney(plan.paidMinor, cur))),
+      field("Balance remaining", null, () => (plan.remainingMinor == null ? "—" : <span className="font-medium">{formatMoney(plan.remainingMinor, cur)}</span>)),
+      field("Total", null, () => (plan.totalMinor == null ? "—" : formatMoney(plan.totalMinor, cur))),
+      ...(plan.waivedMinor > 0 ? [field("Written off (below provider minimum)", null, () => formatMoney(plan.waivedMinor, cur))] : []),
+      ...(plan.paymentInFlight ? [field("Payment in progress", "Yes")] : []),
+    ],
+  };
+}
+
+function planRowsSection(plan, money) {
+  return {
+    label: `Installments (${plan.rows.length})`,
+    fields:
+      plan.rows.length === 0
+        ? [noneField("No installment plan")]
+        : plan.rows.map((row) =>
+            field(row.ordinal == null ? row.kind : `#${row.ordinal}`, row, (r) => (
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{formatMoney(r.buyerTotalMinor ?? r.amountMinor, plan.currency)}</span>
+                <Badge variant={r.status === "collected" ? "success" : r.status === "failed" ? "error" : "warning"}>{r.statusLabel}</Badge>
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  {r.kind}
+                  {r.scheduleVersion != null ? ` · schedule v${r.scheduleVersion}` : ""}
+                  {r.addonPortionMinor > 0 ? ` · add-ons ${formatMoney(r.addonPortionMinor, plan.currency)}` : ""}
+                  {r.refundedMinor > 0 ? ` · refunded ${formatMoney(r.refundedMinor, plan.currency)}` : ""}
+                </span>
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  {PROVIDER_NAME[r.provider ?? money?.provider] || "—"}
+                  {" · "}
+                  {INSTALLMENT_METHOD_NAME[r.collectionMethod] || "—"}
+                </span>
+                {r.dueAt && <span className="text-xs text-[var(--color-text-tertiary)]">due {formatDateTime(r.dueAt)}</span>}
+              </span>
+            )),
+          ),
+  };
+}
+
 function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance = null) {
   const order = bundle.order || {};
   const event = bundle.event || null;
@@ -306,6 +363,8 @@ function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance
   const refunds = Array.isArray(bundle.refunds) ? bundle.refunds : [];
   const discountLines = Array.isArray(bundle.discount_lines) ? bundle.discount_lines : [];
   const split = bundle.partner_split || null;
+  // #4522 S-13 (spec §12): a v2 trip order reads its rows from the balance.
+  const plan = tripOrderBalanceView(tripBalance);
 
   const sections = [
     // #4130: what the buyer paid, what Mingla kept, and whether the host was paid.
@@ -421,7 +480,7 @@ function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance
               )),
             ),
     },
-    {
+    plan ? planRowsSection(plan, money) : {
       label: `Installments (${installments.length})`,
       fields:
         installments.length === 0
@@ -474,6 +533,19 @@ function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance
       ],
     },
   ];
+
+  if (plan) {
+    sections.splice(2, 0, planTermsSection(plan));
+    sections.push({
+      label: `Balance history (${plan.history.length})`,
+      fields:
+        plan.history.length === 0
+          ? [noneField("No balance changes yet")]
+          : plan.history.map((event) =>
+              field(event.createdAt ? formatDateTime(event.createdAt) : "—", event.label),
+            ),
+    });
+  }
 
   // #4522 N5: money the traveler paid beyond what the trip cost, and where
   // its automatic refund stands.

@@ -1964,7 +1964,8 @@
         "mingla-admin/src/lib/orderAddOnRefunds.js",
         "mingla-admin/src/services/adminMoneyActService.js",
         "mingla-admin/src/services/adminMoneyService.js",
-        "mingla-admin/src/lib/orderOverpayments.js"
+        "mingla-admin/src/lib/orderOverpayments.js",
+        "mingla-admin/src/lib/tripOrderBalance.js"
       ]
     },
     {
