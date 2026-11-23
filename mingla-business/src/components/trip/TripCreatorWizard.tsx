@@ -128,6 +128,8 @@ import {
   type Step4Draft,
   type Step4Package,
 } from "./TripCreatorStep4Pricing";
+// issue #4522 deploy window — share_payment_plan only when it can matter.
+import { shouldSendSharePaymentPlan } from "./tripPlanV2EditorModel";
 // META-ORCH-1174 Leg B2 — pure (RN-free) publish-gate package validator.
 import { validateTripPackages } from "./tripPackagesValidation";
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5 component.
@@ -1392,7 +1394,12 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             priceCents,
             capacity,
             installmentSchedule: pkg.paymentPlan,
-            ...(packageIndex === 0
+            ...(packageIndex === 0 &&
+            shouldSendSharePaymentPlan({
+              draftShare: step4Draft.sharePaymentPlan,
+              savedShare: trip.sharePaymentPlan,
+              plans: currentPackages.map((p) => p.paymentPlan),
+            })
               ? { sharePaymentPlan: step4Draft.sharePaymentPlan === true }
               : {}),
             description: descriptionPatch.length > 0 ? descriptionPatch : null,
@@ -1448,6 +1455,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     step4Draft.packages,
     step4Draft.sharePaymentPlan,
     trip.id,
+    trip.sharePaymentPlan,
     revision,
     updatePricingMutation,
     createTierMutation,

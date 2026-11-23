@@ -20,6 +20,8 @@
 
 import { supabase } from "../lib/supabase";
 import { filterByReadiness, withReadiness } from "../lib/paymentReadiness";
+import { readTripOrderBalanceResult } from "../lib/tripOrderBalance";
+import { readAddOnLinesResult } from "../lib/orderAddOnRefunds";
 
 // ── Connect status (Payments) ─────────────────────────────────────────────────
 
@@ -108,22 +110,25 @@ export async function getOrder(orderId) {
   return supabase.rpc("admin_get_order", { p_order_id: orderId });
 }
 
+// issue #4522 (N5): a v2 trip order's balance, with its overpayments:
+// { balance, error } — balance null for any other order, or while the function
+// is not in the database yet (deploy window: main's view, no error); error set
+// only for a real failure.
+export async function getTripOrderBalance(orderId) {
+  return readTripOrderBalanceResult(
+    await supabase.rpc("admin_trip_order_balance", { p_order_id: orderId }),
+  );
+}
+
 /**
  * #3281 S4 — the order's add-on lines with what is already refunded:
  * [{ id, name, quantity, unit_price_cents, total_cents, refunded_quantity, refunded_cents }].
+ * [] while the function is not in the database yet (deploy window).
  */
-// issue #4522 (N5): a v2 trip order's balance, with its overpayments (null
-// for any other order or when the balance cannot be read).
-export async function getTripOrderBalance(orderId) {
-  const { data, error } = await supabase.rpc("admin_trip_order_balance", { p_order_id: orderId });
-  if (error) return null;
-  return data ?? null;
-}
-
 export async function getOrderAddOnLines(orderId) {
-  const { data, error } = await supabase.rpc("admin_order_add_on_lines", { p_order_id: orderId });
-  if (error) throw new Error(error.message || "Failed to load the order's add-ons.");
-  return Array.isArray(data) ? data : [];
+  return readAddOnLinesResult(
+    await supabase.rpc("admin_order_add_on_lines", { p_order_id: orderId }),
+  );
 }
 
 /** Read-only 30-day discount and margin rollup, grouped by currency. */

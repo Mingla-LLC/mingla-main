@@ -107,3 +107,23 @@ describe("#3281 S5 — add-ons spread over a trip plan", () => {
     assert.match(adminRefundErrorCopy("balance_payment_in_flight"), /going through right now/);
   });
 });
+
+// #3281 deploy window — Admin deploys before the migrations are applied.
+// FAILS-ON-REVERT: every order on main's database shows "Couldn't load this
+// order's add-ons" because admin_order_add_on_lines does not exist yet.
+import { readAddOnLinesResult } from "../lib/orderAddOnRefunds.js";
+
+describe("#3281 deploy window — admin_order_add_on_lines on main's database", () => {
+  it("a missing function is no add-ons (no section), exactly as on main", () => {
+    assert.deepEqual(readAddOnLinesResult({ data: null, error: { code: "PGRST202", message: "Could not find the function" } }), []);
+    assert.deepEqual(readAddOnLinesResult({ data: null, error: { code: "42883", message: "does not exist" } }), []);
+    assert.deepEqual(addOnRows(readAddOnLinesResult({ data: null, error: { code: "PGRST202" } })), []);
+  });
+  it("a real failure still throws (the page says the add-ons didn't load)", () => {
+    assert.throws(() => readAddOnLinesResult({ data: null, error: { code: "XX000", message: "boom" } }), /boom/);
+  });
+  it("lines pass through once the function exists", () => {
+    const lines = [{ id: "a", name: "Tote", quantity: 1, unit_price_cents: 1000, total_cents: 1000 }];
+    assert.deepEqual(readAddOnLinesResult({ data: lines, error: null }), lines);
+  });
+});

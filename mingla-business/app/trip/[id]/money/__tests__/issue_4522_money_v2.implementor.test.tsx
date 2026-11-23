@@ -376,3 +376,29 @@ describe("#4522 S-2 host money screen, plan-v2 orders", () => {
     expect(() => host(rawBalance({ balanceEvents: [{ reason: 7 }] }))).toThrow("trip_balance_invalid");
   });
 });
+
+// issue #4522 deploy window — against main's database the service reads rows
+// without `kind` (null) and returns no v2 balances (see
+// src/services/__tests__/issue_4522_deploy_window.implementor.test.ts). The
+// screen must then draw every order exactly as main does: the old ledger,
+// owed money summed from rows, no error and no endless spinner.
+describe("#4522 deploy window: money screen on main's database", () => {
+  test("rows without kind and no balances render the pre-#4522 view", () => {
+    installments = [
+      row({ id: "o1", kind: null, status: "collected", dueAt: "2026-11-15T09:00:00Z", collectedAt: "2026-11-20T09:00:00Z" }),
+      row({ id: "o2", kind: null, ordinal: 2, dueAt: "2027-01-15T09:00:00Z" }),
+      row({ id: "o3", kind: null, ordinal: 3, dueAt: "2027-02-10T09:00:00Z" }),
+    ];
+    balances = [];
+    const tree = render();
+    const out = text(tree);
+    expect(out).not.toContain("Couldn");
+    expect(out).not.toContain("ActivityIndicator");
+    // Main's ledger maths and plan cell (from the rows and the order total).
+    expect(out).toContain("$300.00 / $300.00");
+    expect(out).toContain("InstallmentScheduleDisplay");
+    expect(out).not.toContain("any amount allowed");
+    expect(findToggleLabel(tree)).toBe("C24S Buyer, paid $300.00 of $300.00, Collected");
+    TestRenderer.act(() => tree.unmount());
+  });
+});

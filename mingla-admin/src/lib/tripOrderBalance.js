@@ -4,6 +4,26 @@
 // balance changes. Pure: the page passes what admin_trip_order_balance
 // returned, or null for any other order. Every figure is the server's.
 
+import { isMissingFunctionError } from "./systemPages.js";
+
+/**
+ * issue #4522 deploy window — what admin_trip_order_balance answered. Admin
+ * deploys before the branch's migrations are applied; until then the function
+ * does not exist (PGRST202 / 42883) and every order keeps main's view with no
+ * error. Any other failure is reported (the order still shows, old view).
+ */
+export function readTripOrderBalanceResult(result) {
+  const error = result?.error ?? null;
+  if (error) {
+    if (isMissingFunctionError(error)) return { balance: null, error: null };
+    return {
+      balance: null,
+      error: "Couldn't load this order's payment plan. Reload to try again.",
+    };
+  }
+  return { balance: result?.data ?? null, error: null };
+}
+
 export const ROW_STATUS_LABEL = {
   scheduled: "Scheduled",
   collected: "Paid",

@@ -92,3 +92,41 @@ describe("#4522 S-13 Admin plan-v2 order view", () => {
     assert.equal(tripOrderBalanceView(null), null);
   });
 });
+
+// issue #4522 deploy window — Admin deploys before the migrations are applied.
+// FAILS-ON-REVERT: a missing admin_trip_order_balance (main's database) shown
+// as an error, or a real failure silently read as "no plan".
+import { readTripOrderBalanceResult } from "../tripOrderBalance.js";
+import { readFileSync } from "node:fs";
+
+describe("#4522 deploy window — admin_trip_order_balance on main's database", () => {
+  it("a missing function is main's view: no balance, no error", () => {
+    for (const error of [
+      { code: "PGRST202", message: "Could not find the function public.admin_trip_order_balance(p_order_id) in the schema cache" },
+      { code: "42883", message: "function public.admin_trip_order_balance(uuid) does not exist" },
+    ]) {
+      assert.deepEqual(readTripOrderBalanceResult({ data: null, error }), { balance: null, error: null });
+    }
+    assert.equal(tripOrderBalanceView(readTripOrderBalanceResult({ data: null, error: { code: "PGRST202" } }).balance), null);
+  });
+
+  it("a real failure is reported, not swallowed", () => {
+    const out = readTripOrderBalanceResult({ data: null, error: { code: "XX000", message: "boom" } });
+    assert.equal(out.balance, null);
+    assert.equal(out.error, "Couldn't load this order's payment plan. Reload to try again.");
+  });
+
+  it("once the function exists the v2 view switches on", () => {
+    const out = readTripOrderBalanceResult({ data: balance(), error: null });
+    assert.equal(out.error, null);
+    assert.notEqual(tripOrderBalanceView(out.balance), null);
+  });
+
+  it("the page reads the balance through the result (old view on null)", () => {
+    const page = readFileSync(new URL("../../pages/BusinessOrdersPage.jsx", import.meta.url), "utf8");
+    assert.match(page, /tripBalance\?\.balance \?\? null, tripBalance\?\.error \?\? null/);
+    const service = readFileSync(new URL("../../services/adminMoneyService.js", import.meta.url), "utf8");
+    assert.match(service, /readTripOrderBalanceResult\(\s*await supabase\.rpc\("admin_trip_order_balance"/);
+    assert.match(service, /readAddOnLinesResult\(\s*await supabase\.rpc\("admin_order_add_on_lines"/);
+  });
+});

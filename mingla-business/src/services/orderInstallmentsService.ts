@@ -15,8 +15,27 @@
  */
 
 import type { TripBalance } from "@mingla/offering-rendering/tripBalance";
+import type { PlanV2ProbeClient } from "@mingla/offering-rendering/planV2Schema";
 
 import { supabase } from "./supabase";
+
+/**
+ * issue #4522 deploy window — web apps deploy before the branch's migrations
+ * are applied. Until the plan-v2 schema exists (no `order_installments.kind`,
+ * no `biz_trip_event_balances`) every read here takes the pre-#4522 path.
+ * Asked through the SAME probe the edge functions use (one owner); a client
+ * may not call the service-role switch, so it asks the table question only.
+ * A real failure (anything but "does not exist") still throws.
+ */
+async function planV2SchemaReady(): Promise<boolean> {
+  // Kept off the shared service's eager graph: only plan-v2 reads ask.
+  const probe = await import("@mingla/offering-rendering/planV2Schema");
+  return probe.planV2SchemaAvailable(
+    supabase as unknown as PlanV2ProbeClient,
+    Date.now,
+    { askSwitch: false },
+  );
+}
 
 export type OrderInstallmentStatus =
   | "scheduled"
@@ -204,6 +223,8 @@ export async function fetchInstallmentsForBrandTrips(
   opts?: { atRiskOnly?: boolean; tripEventId?: string; planV2?: boolean },
 ): Promise<OrderInstallmentForBrand[]> {
   void brandId; // RLS does the filter; brandId only scopes the query key
+  // issue #4522 — `kind` only once the plan-v2 schema exists (deploy window).
+  const withKind = opts?.planV2 === true && (await planV2SchemaReady());
   let query = supabase
     .from("order_installments")
     .select(
@@ -227,7 +248,7 @@ export async function fetchInstallmentsForBrandTrips(
       failed_at,
       failure_reason,
       retry_count,
-      next_retry_at,${opts?.planV2 === true ? "\n      kind," : ""}
+      next_retry_at,${withKind ? "\n      kind," : ""}
       orders!inner (
         buyer_name,
         buyer_email,
@@ -404,10 +425,17 @@ export function decodeHostTripBalance(
 export async function fetchTripEventBalances(
   eventId: string,
 ): Promise<HostTripBalance[]> {
+  // issue #4522 deploy window — no plan-v2 schema: no v2 balances, so every
+  // order keeps the pre-#4522 ledger view.
+  if (!(await planV2SchemaReady())) return [];
   const { data, error } = await supabase.rpc("biz_trip_event_balances", {
     p_event_id: eventId,
   });
   if (error !== null) {
+    // The columns are in but this function is not (migrations applied in
+    // part): same pre-#4522 view. Any other failure surfaces.
+    const { isMissingSchemaError } = await import("@mingla/offering-rendering/planV2Schema");
+    if (isMissingSchemaError(error)) return [];
     throw new Error(`fetchTripEventBalances failed: ${error.message}`);
   }
   if (!Array.isArray(data)) throw new Error("trip_balance_invalid");

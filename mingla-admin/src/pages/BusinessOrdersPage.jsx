@@ -354,7 +354,7 @@ function planRowsSection(plan, money) {
   };
 }
 
-function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance = null) {
+function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance = null, tripBalanceError = null) {
   const order = bundle.order || {};
   const event = bundle.event || null;
   const brand = bundle.brand || null;
@@ -534,6 +534,11 @@ function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance
     },
   ];
 
+  // #4522: a real failure reading the plan balance says so; the order keeps
+  // main's view (a missing function before the migrations is not an error).
+  if (tripBalanceError) {
+    sections.splice(2, 0, { label: "Plan terms", fields: [noneField(tripBalanceError)] });
+  }
   if (plan) {
     sections.splice(2, 0, planTermsSection(plan));
     sections.push({
@@ -783,7 +788,8 @@ export function BusinessOrdersPage() {
     setAddOns(null);
     setTripBalance(null);
     try {
-      // #4522 N5: a v2 trip order's overpayments (none for any other order).
+      // #4522 N5: a v2 trip order's balance and overpayments (none for any
+      // other order, or before the #4522 migrations are applied).
       setTripBalance(await getTripOrderBalance(orderId));
       // #3281 S4: add-on lines; a failed read says so and the order still shows.
       try {
@@ -859,7 +865,7 @@ export function BusinessOrdersPage() {
             backLabel: "Orders",
             onBack: backToList,
           }}
-          sections={bundle ? buildOrderSections(bundle, setSubUserId, money, addOns, tripBalance) : []}
+          sections={bundle ? buildOrderSections(bundle, setSubUserId, money, addOns, tripBalance?.balance ?? null, tripBalance?.error ?? null) : []}
         />
         {bundle && REFUNDABLE_STATUSES.includes(order.payment_status) && !isFreeOrder(order) && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">

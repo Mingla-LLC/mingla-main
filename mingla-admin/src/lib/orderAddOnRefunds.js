@@ -10,6 +10,23 @@
 // (quantity × unit price at purchase, never more than the line has left), so the
 // amount here is only what the window shows before the admin confirms.
 
+import { isMissingFunctionError } from "./systemPages.js";
+
+/**
+ * issue #3281 deploy window — what admin_order_add_on_lines answered. Before
+ * the branch's migrations are applied the function does not exist: no add-on
+ * lines, no section, exactly as on main. Any other failure throws (the page
+ * says the add-ons didn't load).
+ */
+export function readAddOnLinesResult(result) {
+  const error = result?.error ?? null;
+  if (error) {
+    if (isMissingFunctionError(error)) return [];
+    throw new Error(error.message || "Failed to load the order's add-ons.");
+  }
+  return Array.isArray(result?.data) ? result.data : [];
+}
+
 const whole = (value) => (Number.isInteger(value) && value >= 0 ? value : 0);
 
 /** One display/refund row per add-on line; malformed rows are dropped. */
