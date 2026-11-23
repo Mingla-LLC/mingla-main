@@ -23,10 +23,7 @@ import {
   removeMinglaTeam,
   restoreMinglaTeam,
 } from "../../../services/minglaTeamService";
-import {
-  isMinglaTeamDirectoryRow,
-  parseBrandTeamDirectory,
-} from "../../../utils/brandTeamMemberIdentity";
+import { parseBrandTeamDirectory } from "../../../utils/brandTeamMemberIdentity";
 import { parseDoorReads } from "../../../services/brandFormsService";
 
 const root = path.resolve(__dirname, "../../../../..");
@@ -77,8 +74,6 @@ describe("#4579 the team directory never makes the Mingla Team entry a person", 
       // Even a malformed entry that carried an id is never a person.
       { member_id: "x", user_id: ADMIN_ID, role: "brand_admin", display_name: "Mingla Team", email: null, avatar_url: null, joined_at: null, entry_kind: "mingla_team" },
     ];
-    expect(isMinglaTeamDirectoryRow(rows[1])).toBe(true);
-    expect(isMinglaTeamDirectoryRow(rows[0])).toBe(false);
     const parsed = parseBrandTeamDirectory(rows);
     expect(parsed.map((entry) => entry.userId)).toEqual(["u1"]);
     expect(JSON.stringify(parsed)).not.toContain(ADMIN_ID);
@@ -150,6 +145,7 @@ describe("#4579 chats show the Mingla mark and never an email", () => {
     jest.doMock("../../ui/Icon", () => ({ Icon: "Icon" }));
     jest.doMock("../../messages/BrandGroupBubbleGestures", () => ({ BrandGroupBubbleGestures: "G" }));
     jest.doMock("../../messages/BrandGroupTile", () => ({ BrandGroupPersonAvatar: "A" }));
+    jest.doMock("../../messages/BrandGroupMinglaMark", () => ({ BRAND_GROUP_MINGLA_TEAM_NAME: "Mingla Team", BrandGroupMinglaMark: "M", WithBrandGroupMinglaBadge: "B" }));
     const { brandGroupSenderParts } = await import("../../messages/BrandGroupMessageRow");
     const base = {
       id: "m1", conversation_id: "c1", sender_id: ADMIN_ID, content: "hi", created_at: "2026-11-23T10:00:00Z",

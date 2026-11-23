@@ -13,7 +13,7 @@ import {
 import { color, scrim, space } from "../../constants/designSystem";
 import type { BrandGroupMember } from "../../services/brandGroupRosterService";
 import { Icon } from "../ui/Icon";
-import { MINGLA_TEAM_NAME, MinglaTeamMark, WithMinglaBadge } from "../team/MinglaTeamMark";
+import { BRAND_GROUP_MINGLA_TEAM_NAME, BrandGroupMinglaMark, WithBrandGroupMinglaBadge } from "./BrandGroupMinglaMark";
 import { useBusinessMediaTranslation } from "../../i18n";
 
 function initials(name: string): string {
@@ -112,9 +112,9 @@ export function BrandGroupPeoplePanel({
               testID={mingla ? "brand-group-people-mingla-admin" : undefined}
             >
               {mingla ? (
-                member.display_name === MINGLA_TEAM_NAME
-                  ? <MinglaTeamMark size={40} />
-                  : <WithMinglaBadge avatarSize={40}>{avatar}</WithMinglaBadge>
+                member.display_name === BRAND_GROUP_MINGLA_TEAM_NAME
+                  ? <BrandGroupMinglaMark size={40} />
+                  : <WithBrandGroupMinglaBadge avatarSize={40}>{avatar}</WithBrandGroupMinglaBadge>
               ) : avatar}
               <View style={styles.memberCopy}>
                 <Text style={styles.memberName} numberOfLines={1}>{member.display_name}</Text>

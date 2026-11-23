@@ -30,7 +30,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { BrandGroupBubbleGestures } from "./BrandGroupBubbleGestures";
 import { BrandGroupPersonAvatar } from "./BrandGroupTile";
-import { MINGLA_TEAM_NAME, MinglaTeamMark, WithMinglaBadge } from "../team/MinglaTeamMark";
+import { BRAND_GROUP_MINGLA_TEAM_NAME, BrandGroupMinglaMark, WithBrandGroupMinglaBadge } from "./BrandGroupMinglaMark";
 import { linkifyMessageText } from "../../utils/messageLinks";
 import { useBusinessMediaTranslation } from "../../i18n";
 
@@ -210,12 +210,12 @@ export function BrandGroupMessageRow({
         <View style={styles.avatarSlot}>
           {showAvatar ? (
             sender.mingla ? (
-              message.sender_display_name === MINGLA_TEAM_NAME
-                ? <MinglaTeamMark size={AVATAR} />
+              message.sender_display_name === BRAND_GROUP_MINGLA_TEAM_NAME
+                ? <BrandGroupMinglaMark size={AVATAR} />
                 : (
-                  <WithMinglaBadge avatarSize={AVATAR}>
+                  <WithBrandGroupMinglaBadge avatarSize={AVATAR}>
                     <BrandGroupPersonAvatar name={message.sender_display_name} seed={message.sender_id ?? message.sender_display_name} size={AVATAR} />
-                  </WithMinglaBadge>
+                  </WithBrandGroupMinglaBadge>
                 )
             ) : <BrandGroupPersonAvatar name={message.sender_display_name} seed={message.sender_id ?? message.sender_display_name} size={AVATAR} />
           ) : null}
@@ -226,7 +226,7 @@ export function BrandGroupMessageRow({
           sender.mingla ? (
             <View style={styles.senderRow} accessible accessibilityLabel={sender.accessibilityLabel} testID={`brand-group-sender-mingla-${message.id}`}>
               <Text style={styles.senderInRow} numberOfLines={1}>{sender.name}</Text>
-              <MinglaTeamMark size={14} testID="brand-group-sender-mark" />
+              <BrandGroupMinglaMark size={14} testID="brand-group-sender-mark" />
               {sender.rest.length > 0 ? <Text style={styles.senderInRow} numberOfLines={1}>{sender.rest}</Text> : null}
             </View>
           ) : <Text style={styles.sender} numberOfLines={1}>{senderLabel}</Text>

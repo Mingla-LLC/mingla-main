@@ -16,7 +16,6 @@ import { useDoorReads } from "../../hooks/useBrandForms";
 import type { DoorReadRow } from "../../services/brandFormsService";
 import { logWhen } from "../../utils/formRequestLog";
 import { Button } from "../ui/Button";
-import { MinglaTeamMark } from "../team/MinglaTeamMark";
 import { DOOR_READS_COPY as COPY } from "./brandFormsCopy";
 import { errorSentence } from "./useFormsToast";
 
@@ -62,7 +61,9 @@ export const DoorReadLog: React.FC<DoorReadLogProps> = ({ eventId }) => {
           // #4579: a Mingla admin added to the brand carries the Mingla mark.
           row.actorIsMinglaTeam === true ? (
             <View key={`${row.at}-${i}`} style={styles.markedLine} testID="door-read-log-mingla">
-              <MinglaTeamMark size={14} />
+              <View style={styles.mark} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <Text style={styles.markLetter}>M</Text>
+              </View>
               <Text style={[styles.line, styles.markedText]}>{doorReadLine(row)}</Text>
             </View>
           ) : (
@@ -89,6 +90,18 @@ const styles = StyleSheet.create({
   line: { ...type.small, color: color.text1 },
   markedLine: { flexDirection: "row", alignItems: "center", gap: space[1] },
   markedText: { flexShrink: 1 },
+  // #4579: the Mingla mark at 14pt, local to the forms chunk (see BrandGroupMinglaMark).
+  mark: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.ink,
+    borderWidth: 1,
+    borderColor: color.lineStrong,
+  },
+  markLetter: { color: color.accentText, fontSize: 8, fontWeight: "700" },
   muted: { ...type.small, color: color.text3 },
   warn: { ...type.small, color: color.warningText },
 });
