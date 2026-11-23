@@ -7,6 +7,8 @@ const STRUCTURAL_SHARED = new Set([
   "media.subtitle", "media.subtitle_panel", "media.file_row_meta",
   "media.month_year", "format.kb", "format.mb",
   "plan.by_mingla", "plan.more",
+  // #4571: the Work card's people line joins two translated phrases.
+  "team.card_people_list",
 ]);
 const VALID_COGNATES = new Set([
   "id:chat.media", "id:media.title", "it:chat.media", "it:media.title",
