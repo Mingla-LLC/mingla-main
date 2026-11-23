@@ -858,7 +858,8 @@ REVOKE ALL ON FUNCTION public.issue_4522_overpayment_back_minor(uuid) FROM PUBLI
 -- it), except T6-1: one stopped for 'provider_refunded_more' whose recorded
 -- refund is still open at the provider is checked by that refund's id as
 -- when refund_pending (no new refund, no new alert), so ops can act once it
--- resolves.
+-- resolves; rework 7: likewise 'provider_refund_unconfirmed', and on the
+-- second provider an open attempt without an id (looked for in the list).
 CREATE FUNCTION public.issue_4522_overpayments_due(
   p_order_id uuid DEFAULT NULL,
   p_now timestamptz DEFAULT now(),
@@ -876,13 +877,14 @@ AS $fn$
              AND (state = 'held'
                   OR (state = 'refund_failed' AND COALESCE(next_attempt_at, p_now) <= p_now)
                   OR (state = 'refund_pending' AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes'))
-                  OR (state = 'needs_ops' AND needs_ops_reason = 'provider_refunded_more'
+                  OR (state = 'needs_ops' AND needs_ops_reason IN ('provider_refunded_more', 'provider_refund_unconfirmed')
                       AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')
                       AND EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
                                    WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending'))
-                      AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                      -- rework 7: a second-provider attempt without an id is only looked for, never re-sent
+                      AND (provider = 'paystack' OR NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
                                        WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending')
-                                         AND a.provider_refund_id IS NULL)))
+                                         AND a.provider_refund_id IS NULL))))
            ORDER BY created_at, id
            LIMIT greatest(COALESCE(p_limit, 100), 1)) op
 $fn$;
@@ -1064,6 +1066,7 @@ DECLARE
   v_refund_id uuid;
   v_key text;
   v_alert boolean := false;
+  v_kind text;
 BEGIN
   SELECT * INTO v_op FROM public.order_overpayments WHERE id = p_overpayment_id;
   IF NOT FOUND OR public.issue_4522_lock_order_graph(v_op.order_id) IS NULL THEN
@@ -1099,7 +1102,21 @@ BEGIN
   -- 1. Anything still open at the provider is checked first; never replaced.
   IF EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
               WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')) THEN
-    IF v_op.ops_alerted_at IS NULL AND EXISTS (
+    -- Rework 7: a second-provider create is sent once and only looked for
+    -- after (no idempotency key there). Still unseen past the in-flight
+    -- ceiling: ops is told once (provider_refund_unconfirmed); checking goes on.
+    IF v_op.provider = 'paystack' AND NOT (v_op.detail ? 'unconfirmed_alerted_at')
+       AND EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
+                    WHERE overpayment_id = v_op.id AND state = 'creating' AND provider_refund_id IS NULL
+                      AND created_at <= p_now - public.issue_4522_flex_in_flight_ceiling()) THEN
+      UPDATE public.order_overpayments SET detail = detail || jsonb_build_object('unconfirmed_alerted_at', p_now)
+       WHERE id = v_op.id;
+      IF v_op.state <> 'needs_ops' THEN
+        PERFORM public.issue_4522_overpayment_to_needs_ops(v_op.id, 'provider_refund_unconfirmed', p_now);
+      END IF;
+      v_alert := true;
+      v_kind := 'provider_refund_unconfirmed';
+    ELSIF v_op.ops_alerted_at IS NULL AND EXISTS (
          SELECT 1 FROM public.order_overpayment_refund_attempts
           WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')
             AND created_at <= p_now - public.issue_4522_overpayment_pending_ceiling()) THEN
@@ -1107,9 +1124,9 @@ BEGIN
       PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_refund_pending_long',
         jsonb_build_object('overpayment_id', v_op.id));
       v_alert := true;
+      v_kind := 'refund_pending_too_long';
     END IF;
-    RETURN v_base || jsonb_build_object('action', 'verify', 'alertOps', v_alert,
-      'alertKind', CASE WHEN v_alert THEN 'refund_pending_too_long' END,
+    RETURN v_base || jsonb_build_object('action', 'verify', 'alertOps', v_alert, 'alertKind', v_kind,
       'attempts', (SELECT jsonb_agg(public.issue_4522_overpayment_attempt_json(a, p_now) ORDER BY a.attempt_no)
                      FROM public.order_overpayment_refund_attempts a
                     WHERE a.overpayment_id = v_op.id AND a.state IN ('creating', 'pending')));
@@ -1267,9 +1284,19 @@ BEGIN
            updated_at = p_now
      WHERE id = v_att.id;
     UPDATE public.order_overpayments SET updated_at = p_now
-     WHERE id = v_op.id AND (state = 'refund_pending' OR needs_ops_reason = 'provider_refunded_more');
+     WHERE id = v_op.id AND (state = 'refund_pending'
+                             OR needs_ops_reason IN ('provider_refunded_more', 'provider_refund_unconfirmed'));
     RETURN jsonb_build_object('ok', true, 'changed', false, 'state', v_op.state, 'attemptNo', v_att.attempt_no,
       'attemptState', v_prev);
+  END IF;
+  -- Rework 7: the provider answered an unconfirmed refund: it is back with the
+  -- automatic lane (settled below as for any answer) and may alert ops again.
+  IF v_op.needs_ops_reason = 'provider_refund_unconfirmed' THEN
+    UPDATE public.order_overpayments
+       SET state = 'refund_pending', needs_ops_reason = NULL, ops_alerted_at = NULL,
+           detail = detail - 'unconfirmed_alerted_at', updated_at = p_now
+     WHERE id = v_op.id;
+    SELECT * INTO v_op FROM public.order_overpayments WHERE id = v_op.id;
   END IF;
 
   -- T4-1: a refund the provider has that was counted failed would take the
@@ -1609,6 +1636,9 @@ GRANT EXECUTE ON FUNCTION public.issue_4522_overpayment_refund_event(text, text,
 -- the ops alert names them). Refused while a refund is open at the provider.
 --   retry            — automatic refunding starts again (needs_ops or
 --                      refund_failed → held; the failure count restarts).
+--                      Rework 7: the ONLY way a second-provider overpayment
+--                      gets another create after an unanswered one (ops
+--                      checked the dashboard: provider_refund_unconfirmed).
 --   refunded_by_hand — ops returned the remaining money outside the lane
 --                      (p_provider_refund_id names that refund): recorded
 --                      as returned, in parts that fit a refund row.
@@ -1645,6 +1675,22 @@ BEGIN
   IF v_op.state IN ('refunded', 'applied') THEN
     RETURN jsonb_build_object('ok', true, 'done', true, 'state', v_op.state);
   END IF;
+  -- Rework 7: ops found no refund at the provider for a second-provider
+  -- refund it was told is unconfirmed: that attempt is closed as never
+  -- created, so the lane (which re-reads the charge's refunds first) may send
+  -- again. Only when every open attempt is such an unconfirmed one.
+  IF p_action = 'retry' AND v_op.state = 'needs_ops' AND v_op.provider = 'paystack'
+     AND v_op.detail ? 'unconfirmed_alerted_at'
+     AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
+                      WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')
+                        AND NOT (state = 'creating' AND provider_refund_id IS NULL
+                                 AND created_at <= p_now - public.issue_4522_flex_in_flight_ceiling())) THEN
+    FOR v_att_id IN SELECT id FROM public.order_overpayment_refund_attempts
+                     WHERE overpayment_id = v_op.id AND state = 'creating' ORDER BY attempt_no LOOP
+      PERFORM public.issue_4522_apply_overpayment_attempt_outcome(v_att_id, 'not_found', NULL,
+        'ops_retry: no refund at the provider', p_now);
+    END LOOP;
+  END IF;
   IF EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
               WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')) THEN
     RAISE EXCEPTION 'overpayment_refund_open_at_provider' USING ERRCODE = 'PT409';
@@ -1656,7 +1702,7 @@ BEGIN
     UPDATE public.order_overpayments
        SET state = 'held', needs_ops_reason = NULL, consecutive_failures = 0, next_attempt_at = NULL,
            ops_alerted_at = NULL, updated_at = p_now,
-           detail = detail || jsonb_build_object('ops_retry_at', p_now, 'ops_retry_by', p_actor)
+           detail = (detail - 'unconfirmed_alerted_at') || jsonb_build_object('ops_retry_at', p_now, 'ops_retry_by', p_actor)
      WHERE id = v_op.id;
     PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_ops_retry',
       jsonb_build_object('overpayment_id', v_op.id, 'actor', p_actor, 'note', left(COALESCE(p_note, ''), 300)));

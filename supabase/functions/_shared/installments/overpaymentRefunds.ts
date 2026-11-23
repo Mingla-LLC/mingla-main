@@ -13,8 +13,12 @@
  *              refund), with the attempt's idempotency key and
  *              metadata.mingla_overpayment_id / mingla_overpayment_attempt;
  *   Paystack — a partial refund of the transaction (createPaystackRefund,
- *              merchant note = the attempt's key, so a re-send finds the same
- *              refund by reading the transaction's refund list).
+ *              merchant note = the attempt's key). Paystack takes no
+ *              idempotency key for refunds, so a create is sent at most ONCE
+ *              per attempt (rework 7): an unanswered one is only looked for in
+ *              the transaction's refund list; still unseen after
+ *              issue_4522_flex_in_flight_ceiling() it goes to ops once
+ *              (provider_refund_unconfirmed), and only an ops retry sends again.
  * An attempt the provider accepted is never re-created: its refund id is
  * stored the moment create returns (any status) and every later pass
  * retrieves THAT refund and moves on its real status
@@ -22,8 +26,8 @@
  *   (new key) once every earlier refund was re-read at the provider;
  *   pending / requires_action → kept, ops alerted once past
  *   OVERPAYMENT_PENDING_CEILING_MS.
- * An attempt whose answer never arrived (timeout, lost write) is checked by
- * re-sending the identical request with its own key inside the provider's
+ * A Stripe attempt whose answer never arrived (timeout, lost write) is checked
+ * by re-sending the identical request with its own key inside the provider's
  * key window, else (or when that answer is unknown) by reading the charge's
  * refund list for its metadata; never by a new refund. Only the provider's
  * refusal of the refund itself is final; any other error is unknown (T4-1).
@@ -119,6 +123,7 @@ interface AttemptRow {
   idempotencyKey: string | null;
   refundId?: string | null;
   withinKeyWindow?: boolean;
+  createdAt?: string;
 }
 
 interface Plan {
@@ -261,6 +266,19 @@ export function overpaymentAlert(
           ...where.slice(0, 3),
           `Owed back to the traveler for this overpayment: ${String(plan.refundMinor ?? "?")} ${units}. Refunded to the traveler on the charge for it: ${String(plan.refundedMinor ?? "?")} ${units}.${pending}`,
           "Nothing more will be refunded for it automatically. Decide whether to recover any extra amount. Then close it with issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>): Mingla counts every refund that went back to the traveler for this overpayment, sends only what is still owed (nothing if the traveler already has it all) and releases the host's payout. Do not use 'refunded_by_hand' for this case: it does not close it. Use 'retry' only once no refund for it is still pending at the provider (Mingla keeps checking the refund it recorded and refuses 'retry' while that one is pending).",
+        ],
+      };
+    }
+    case "provider_refund_unconfirmed": {
+      const sent = (plan.attempts ?? []).filter((a) => a.state === "creating" && !a.providerRefundId);
+      return {
+        subject: "Trip overpayment refund not confirmed by the provider",
+        paragraphs: [
+          "Mingla sent the provider a refund of a traveler's overpayment and never received an answer, and after 24 hours the provider still shows no such refund. Mingla never sends this refund again on its own (this provider cannot tell a repeated request from a new refund).",
+          ...where,
+          ...sent.map((a) => `Refund sent: ${String(a.amountMinor)} (${plan.currency ?? "?"} minor units) at ${a.createdAt ?? "?"}, merchant note ${a.idempotencyKey ?? "?"}.`),
+          "Safe to do: check the provider dashboard for a refund on the charge above with that merchant note. If no refund exists, use issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>): Mingla re-reads the charge's refunds first and sends only what is still owed. If one exists, do nothing: Mingla keeps checking and adopts it automatically.",
+          "The host's payout for this charge stays held until it is resolved.",
         ],
       };
     }
@@ -509,7 +527,23 @@ async function checkOpenAttempt(deps: OverpaymentRefundDeps, plan: Plan, a: Atte
       ? { answer: "unknown", providerRefundId: null, error: "not_listed_inside_key_window" }
       : { answer: "not_found", providerRefundId: null, error: "not_created_at_provider" };
   }
-  return await paystackSend(deps, plan, { amountMinor: a.amountMinor, idempotencyKey: a.idempotencyKey });
+  // Rework 7: Paystack takes no idempotency key, so a re-sent create could be
+  // a second refund. The attempt is only looked for (by its merchant note) in
+  // the transaction's refund list; not there yet stays open, never not_found.
+  let rows: Awaited<ReturnType<typeof listPaystackTransactionRefunds>>;
+  try {
+    rows = await (deps.listPaystackRefunds ?? listPaystackTransactionRefunds)({
+      transaction: String(plan.providerRef ?? ""),
+      currency: String(plan.currency ?? "NGN").toUpperCase(),
+    });
+  } catch {
+    rows = null;
+  }
+  if (rows === null) return { answer: "unknown", providerRefundId: null, error: "refund_list_unreadable" };
+  const found = rows.find((r) => r.merchantNote === a.idempotencyKey && r.amount === a.amountMinor && r.id !== "");
+  return found === undefined
+    ? { answer: "unknown", providerRefundId: null, error: "not_listed_yet" }
+    : { answer: paystackRefundAnswer(found.status), providerRefundId: found.id, error: null };
 }
 
 /**

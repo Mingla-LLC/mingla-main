@@ -1,10 +1,11 @@
-// MINGLA-INVARIANT: I-4522-OVERPAY-REFUND-ONCE-EDGE | issue #4522 | The overpayment lane never sends a new provider refund while one is creating or pending: an unanswered attempt is re-sent as the identical request or found on the charge, only the provider's refusal of the refund itself marks it failed, and every refund already on the charge is adopted before a new one; refund webhooks resolve by refund id, Mingla metadata, or the charge.
+// MINGLA-INVARIANT: I-4522-OVERPAY-REFUND-ONCE-EDGE | issue #4522 | The overpayment lane never sends a new provider refund while one is creating or pending: an unanswered Stripe attempt is re-sent as the identical request or found on the charge, an unanswered Paystack attempt is never re-sent (only looked for in the transaction's refund list, then handed to ops), only the provider's refusal of the refund itself marks it failed, and every refund already on the charge is adopted before a new one; refund webhooks resolve by refund id, Mingla metadata, or the charge.
 /**
  * issue #4522 third rework (T3-1 / T3-2 / T3-6 / T3-7 at the edge, T3-3 and
  * T3-8 helpers) — mocked providers and a scripted database, no network.
  *
  * FAILS-ON-REVERT: make the lane send a refund on a "verify" plan, re-create
  * an unanswered attempt after the key window instead of reading the list,
+ * re-send an unanswered Paystack attempt (rework 7),
  * skip the prior re-read, drop the metadata attempt number, mark a dashboard
  * refund (no Mingla metadata) as Mingla-made, drop the probe's table fallback,
  * or drop the webhook's short-collection record -> red.
@@ -302,32 +303,72 @@ Deno.test("T3-6 a large overpayment goes back in parts within one pass", async (
   assertEquals(log.creates.map((c) => c.amount), [2147483647, 852516353]);
 });
 
-Deno.test("T3-1 Paystack: a stored refund is looked up by id; an unanswered one re-sent with its merchant note", async () => {
+Deno.test("rework 7 Paystack: a stored refund is looked up by id; an unanswered one is only looked for, NEVER re-sent", async () => {
   const ps = { ...plan, provider: "paystack", providerRef: "mingla-inst-flex-l1", currency: "NGN" };
-  const looked: string[] = [];
-  const sent: Array<Record<string, unknown>> = [];
+  const note = "mingla_overpay_refund:op-1:2";
+  const run = async (listed: Array<{ id: string; amount: number; status: string; merchantNote: string }> | null | Error) => {
+    const looked: string[] = [];
+    const sent: unknown[] = [];
+    const asked: unknown[] = [];
+    const db = scripted({
+      issue_4522_begin_overpayment_refund: [{ ...ps, action: "verify", attempts: [
+        { attemptNo: 1, state: "pending", amountMinor: 10200, providerRefundId: "rfd_1" },
+        { attemptNo: 2, state: "creating", amountMinor: 5000, providerRefundId: null, idempotencyKey: note },
+      ] }],
+      issue_4522_finish_overpayment_refund: [{ ok: true, state: "refund_pending" }],
+    });
+    const outcome = await returnOverpayment(deps(db, stripe(newLog()), [], {
+      getPaystackRefund: (id: string) => {
+        looked.push(id);
+        return Promise.resolve({ id, amount: 10200, status: "processing", currency: "NGN", integration: null, transaction: "x", replayed: true });
+      },
+      listPaystackRefunds: (p) => {
+        asked.push(p);
+        return listed instanceof Error ? Promise.reject(listed) : Promise.resolve(listed);
+      },
+      // deno-lint-ignore no-explicit-any
+      createPaystackRefund: ((p: unknown) => { sent.push(p); return Promise.reject(new Error("must not be called")); }) as any,
+    }), "op-1");
+    return { outcome, looked, sent, asked, recorded: outcomes(db) };
+  };
+  // listed with its merchant note and amount: adopted by its id
+  const found = await run([{ id: "rfd_9", amount: 5000, status: "pending", merchantNote: "other" },
+    { id: "rfd_2", amount: 5000, status: "processed", merchantNote: note }]);
+  assertEquals([found.outcome, found.looked, found.sent, found.recorded],
+    ["pending", ["rfd_1"], [], ["1:pending:rfd_1", "2:succeeded:rfd_2"]]);
+  assertEquals(found.asked, [{ transaction: "mingla-inst-flex-l1", currency: "NGN" }]);
+  // not listed yet, a full page, an unreadable list: stays open (unknown), nothing sent
+  for (const listed of [[], [{ id: "rfd_3", amount: 4999, status: "pending", merchantNote: note }], null, new Error("down")]) {
+    const r = await run(listed);
+    assertEquals([r.outcome, r.sent, r.recorded], ["unknown", [], ["1:pending:rfd_1", "2:unknown:-"]]);
+  }
+});
+
+Deno.test("rework 7 Paystack: an unconfirmed refund goes to ops once with the charge, owed amount, when sent and what to do", async () => {
+  const ps = { ...plan, provider: "paystack", providerRef: "ps_ref_7", currency: "NGN", refundMinor: 500000, remainingMinor: 500000 };
+  const attempt = { attemptNo: 1, state: "creating", amountMinor: 500000, providerRefundId: null,
+    idempotencyKey: "mingla_overpay_refund:op-1:1", createdAt: "2028-11-25T10:00:00+00:00" };
   const db = scripted({
-    issue_4522_begin_overpayment_refund: [{ ...ps, action: "verify", attempts: [
-      { attemptNo: 1, state: "pending", amountMinor: 10200, providerRefundId: "rfd_1" },
-      { attemptNo: 2, state: "creating", amountMinor: 5000, providerRefundId: null, idempotencyKey: "mingla_overpay_refund:op-1:2" },
-    ] }],
-    issue_4522_finish_overpayment_refund: [{ ok: true, state: "refund_pending" }],
+    issue_4522_begin_overpayment_refund: [{ ...ps, action: "verify", alertOps: true, alertKind: "provider_refund_unconfirmed", attempts: [attempt] }],
+    issue_4522_finish_overpayment_refund: [{ ok: true, state: "needs_ops" }],
   });
+  const alerts: Array<{ s: string; p: string[] }> = [];
+  const sent: unknown[] = [];
   const outcome = await returnOverpayment(deps(db, stripe(newLog()), [], {
-    getPaystackRefund: (id: string) => {
-      looked.push(id);
-      return Promise.resolve({ id, amount: 10200, status: "processing", currency: "NGN", integration: null, transaction: "x", replayed: true });
-    },
+    listPaystackRefunds: () => Promise.resolve([]),
     // deno-lint-ignore no-explicit-any
-    createPaystackRefund: ((p: Record<string, unknown>) => {
-      sent.push(p);
-      return Promise.resolve({ id: "rfd_2", amount: 5000, status: "processed", currency: "NGN", integration: null, transaction: "x", replayed: true });
-    }) as any,
+    createPaystackRefund: ((p: unknown) => { sent.push(p); return Promise.reject(new Error("must not be called")); }) as any,
+    alertOps: (s, p) => { alerts.push({ s, p }); return Promise.resolve(); },
   }), "op-1");
-  assertEquals(outcome, "pending");
-  assertEquals(looked, ["rfd_1"]);
-  assertEquals(sent, [{ transaction: "mingla-inst-flex-l1", merchantNote: "mingla_overpay_refund:op-1:2", amountSubunits: 5000, currency: "NGN" }]);
-  assertEquals(outcomes(db), ["1:pending:rfd_1", "2:succeeded:rfd_2"]);
+  assertEquals([outcome, sent.length, alerts.length], ["unknown", 0, 1]);
+  assertEquals(alerts[0].s, "Trip overpayment refund not confirmed by the provider");
+  const copy = alerts[0].p.join(" ");
+  for (const part of ["Charge (paystack): ps_ref_7", "Still owed back to the traveler: 500000 (NGN minor units)",
+    "Refund sent: 500000 (NGN minor units) at 2028-11-25T10:00:00+00:00", "check the provider dashboard",
+    "If no refund exists, use issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>)",
+    "If one exists, do nothing: Mingla keeps checking and adopts it automatically"]) {
+    assert(copy.includes(part), `${part} :: ${copy}`);
+  }
 });
 
 Deno.test("T3-1 / T3-2 refund webhooks: our refund by metadata; a dashboard refund is not Mingla-made", () => {
