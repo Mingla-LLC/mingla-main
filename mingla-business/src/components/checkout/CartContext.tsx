@@ -147,6 +147,8 @@ export interface BuyerConfirmationReceipt {
     qty: number;
     name: string;
     amountCents: number;
+    /** issue #4522 E-8 — an add-on line (not a place). */
+    addOn?: true;
   }[];
   discountLines: {
     label: string;

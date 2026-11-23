@@ -204,7 +204,8 @@ Deno.test("#3281 a receipt names the extras bought with the tickets", async () =
   assert(payload !== null);
   assertEquals(payload.receipt.lines, [
     { qty: 2, name: "General admission", amountCents: 2000 },
-    { qty: 1, name: "Add-on: Friday dinner", amountCents: 3500 },
+    // issue #4522 E-8 — marked, so a confirmation counts places, not lines
+    { qty: 1, name: "Add-on: Friday dinner", amountCents: 3500, addOn: true },
   ]);
 });
 
@@ -324,6 +325,10 @@ Deno.test("#4522 E-7 a trip's receipt date line is its stored calendar dates, ne
   });
   assert(payload !== null);
   assertEquals(payload.receipt.dateLine, "Thu 12 Mar 2099 – Mon 16 Mar 2099");
+  // E-8 — the add-on is a marked line; the ticket lines are not
+  const addOn = payload.receipt.lines.find((line) => line.name === "Add-on: Airport transfer");
+  assertEquals(addOn?.addOn, true);
+  assert(payload.receipt.lines.filter((line) => line.addOn !== true).every((line) => line.qty > 0));
 });
 
 Deno.test("#4522 E-7 an event's receipt date line is unchanged (its own zone, with the time)", async () => {

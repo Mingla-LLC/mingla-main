@@ -15,7 +15,8 @@ export interface BuyerConfirmationTicket {
 }
 
 export interface BuyerConfirmationReceipt {
-  lines: Array<{ qty: number; name: string; amountCents: number }>;
+  /** issue #4522 E-8 — `addOn: true` marks an add-on line (not a place). */
+  lines: Array<{ qty: number; name: string; amountCents: number; addOn?: true }>;
   discountLines: Array<{ label: string; amountCents: number }>;
   feesAndTaxCents: number;
   paidCents: number;
@@ -62,7 +63,7 @@ async function readExtraLines(
   client: BuyerConfirmationClient,
   orderId: string,
   logPrefix: string,
-): Promise<Array<{ name: string; qty: number; amountCents: number }>> {
+): Promise<Array<{ name: string; qty: number; amountCents: number; addOn: true }>> {
   try {
     const result = (await client
       .from("order_add_on_line_items")
@@ -82,6 +83,7 @@ async function readExtraLines(
       name: addOnReceiptName(row.add_on_name_at_order),
       qty: Math.max(Math.round(Number(row.quantity ?? 0)), 0),
       amountCents: safeCents(row.total_cents),
+      addOn: true as const,
     }));
   } catch (error) {
     console.error(`${logPrefix} extras lookup failed`, { orderId, error });
