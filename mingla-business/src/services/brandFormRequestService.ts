@@ -114,6 +114,15 @@ export type FormRequestErrorCode =
   | "cost_unpriced"
   | "text_cap"
   | "forms_paused"
+  // #4573: every code the server can return has a sentence (Constitution rule 3).
+  | "form_request_unavailable"
+  | "form_not_found"
+  | "event_not_found"
+  | "unauthorized"
+  | "invalid_request"
+  | "invalid_json"
+  | "method_not_allowed"
+  | "request_too_large"
   | "network_error"
   | "invalid_response"
   | "unknown";
@@ -127,6 +136,34 @@ export class FormRequestError extends Error {
   }
 }
 
+/**
+ * #4573: every code guest-roster-actions can return for a form request
+ * (formRequest.ts and index.ts). Each one has its own sentence in ERROR_COPY;
+ * the regression test pins that none falls through to "unknown".
+ */
+export const FORM_REQUEST_SERVER_CODES = [
+  "forbidden",
+  "forms_paused",
+  "form_closed",
+  "form_not_live",
+  "form_not_on_event",
+  "form_not_found",
+  "event_not_found",
+  "audience_too_large",
+  "form_request_unavailable",
+  "no_recipients",
+  "cost_unpriced",
+  "preview_stale_cost",
+  "text_cap",
+  "unauthorized",
+  "invalid_json",
+  "invalid_request",
+  "request_too_large",
+  "method_not_allowed",
+] as const satisfies readonly FormRequestErrorCode[];
+
+const APP_NEEDS_UPDATE = "This app needs an update to send. Refresh the page or update the app.";
+
 const ERROR_COPY: Record<FormRequestErrorCode, string> = {
   forbidden: "Your role doesn't include this action. Ask an event manager or above.",
   form_closed: "This form is closed. Reopen it to ask guests.",
@@ -139,6 +176,14 @@ const ERROR_COPY: Record<FormRequestErrorCode, string> = {
   text_cap: "That's over today's limit for form texts. Send by email, or text the rest tomorrow.",
   // #4541 R1.8: the off switch stops sending too.
   forms_paused: "Forms are paused right now. Try again later.",
+  form_request_unavailable: "We couldn't queue these requests. Nothing was sent. Try again in a minute.",
+  form_not_found: "This form was deleted. Reload.",
+  event_not_found: "This page is no longer available. Reload.",
+  unauthorized: "Your sign-in expired. Sign in again.",
+  invalid_request: APP_NEEDS_UPDATE,
+  invalid_json: APP_NEEDS_UPDATE,
+  method_not_allowed: APP_NEEDS_UPDATE,
+  request_too_large: "Too many guests at once. Ask in smaller groups.",
   network_error: "Couldn't reach Mingla. Check your connection and try again.",
   invalid_response: "Something went wrong reading the reply. Try again.",
   unknown: "Couldn't send. Try again.",
@@ -158,9 +203,38 @@ export function parseTextsOff(v: unknown): FormRequestTextsOff | null {
 
 const getSupabase = async () => (await import("./supabase")).supabase;
 
-function codeOf(value: unknown): FormRequestErrorCode {
+/**
+ * #4573 spec §5: a send the preview allowed is refused only for a change
+ * between preview and send. For these the sheet reads the preview again so the
+ * reason and the new numbers are on screen before the next Send.
+ */
+export const FORM_REQUEST_PREVIEW_CHANGED_CODES: ReadonlySet<FormRequestErrorCode> = new Set<FormRequestErrorCode>([
+  "preview_stale_cost",
+  "forms_paused",
+  "form_closed",
+  "form_not_live",
+  "form_not_on_event",
+  "form_not_found",
+]);
+
+/** True when a refused send means the preview must be read again (spec §5). */
+export function shouldRefetchPreviewAfter(error: unknown): boolean {
+  return error instanceof FormRequestError && FORM_REQUEST_PREVIEW_CHANGED_CODES.has(error.code);
+}
+
+/** The host-facing sentence for a code ("unknown" for anything else). */
+export function formRequestErrorCopy(code: FormRequestErrorCode): string {
+  return ERROR_COPY[code];
+}
+
+export function codeOf(value: unknown): FormRequestErrorCode {
   const code = isRecord(value) && typeof value.code === "string" ? value.code : "";
-  return code in ERROR_COPY ? (code as FormRequestErrorCode) : "unknown";
+  if (Object.prototype.hasOwnProperty.call(ERROR_COPY, code)) return code as FormRequestErrorCode;
+  // #4573: a server code with no sentence is a gap; make it visible in development.
+  if (typeof __DEV__ !== "undefined" && __DEV__ === true) {
+    console.warn("[brand-form-request] no copy for server code", code === "" ? "(none)" : code);
+  }
+  return "unknown";
 }
 
 async function invoke(body: Record<string, unknown>): Promise<Record<string, unknown>> {

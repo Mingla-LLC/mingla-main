@@ -161,7 +161,7 @@ async function formRequest(request: Request, body: Parameters<typeof handleFormR
   const result = await handleFormRequest(body, actorData.user.id, {
     rpc: async (fn, args) => {
       const { data, error } = await service.rpc(fn, args);
-      return { data, error: error === null ? null : { message: error.message } };
+      return { data, error: error === null ? null : { message: error.message, code: error.code ?? null } };
     },
     dispatch: (input) => dispatchV2(service as unknown as MinimalClient, input),
     smsRates: () => loadSmsRates(service).catch(() => null),

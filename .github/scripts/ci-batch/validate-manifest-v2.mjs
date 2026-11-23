@@ -645,6 +645,10 @@ export function phase3dContractDigest(manifest) {
 // #4549 merge of main after #4541 forms fixes and Blast push: kept main's #4541 rows and skips and the #4549 migration and both #4549 pg17 suites (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4549 tester retest: registered the tester report-bounds pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4549 merge of main after #4548 guest pack: kept main's #4548 rows and filtered-replay skip, re-added the #4549 migration and its three pg17 suites (with sidecars) in filename order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4573 form request safeupdate: registered 20281127004573 in the #1857, #1931 and #2117 inventories after 20281124004549 and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4574 Sites backup budget: listed migration 20281128004574 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed;
 // MANIFEST.json phase3eContractSha256 matches.
@@ -665,6 +669,7 @@ export function phase3dContractDigest(manifest) {
 // #4522 third rework after retest FAIL (T3-1..T3-10): registered the #4522 implementor pg17 suite overpayment_refund_once (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed. MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4549 Host push repair and #3645 provider minimums: kept main's 20281124004549 row and its three pg17 suites (with sidecars) beside the #3281/#4522 rows and skips (filename order); #3645 adds no MANIFEST rows (its Deno suites register by sidecar); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 renumbering after #4549: moved the branch's 14 migrations (20281123013281..20281123143281) to 20281125013281..20281125143281 above main's 20281124004549, same relative order and slugs; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes (main's rows first) and the filtered #1931/#2117 exact-filename skips renamed; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4522 merge of main after #4573 form request safeupdate and #4574 Sites backup budget: kept main's 20281127004573 and 20281128004574 rows, their pg17 suites and filtered-replay skips beside the #3281/#4522 rows and skips; moved the branch's 14 migrations (20281125013281..20281125143281) to 20281129013281..20281129143281 above main's 20281128004574, same relative order and slugs; expectedFiles re-sorted; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 const LOCKED_PHASE3E_CONTRACT_SHA256 = "c6b87114e2f93f6f7ae94a033f6d93c145d4119d29b331cc61c7f31fd76bdae4";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
