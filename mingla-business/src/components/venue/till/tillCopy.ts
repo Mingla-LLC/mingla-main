@@ -248,6 +248,9 @@ export const TILL_ERROR_COPY = {
   pay_code_not_found: "We couldn't find that code.",
   pay_code_closed: "This code expired. Make a new one.",
   pay_code_text_limit: "The link was texted three times, the most we send.",
+  // #4490 O2 fix 1 (O2-T3): the rolling-hour text windows (6 to one number at
+  // a venue, 30 per seller).
+  pay_code_text_window: "Too many pay links were texted in the last hour. Ask the guest to scan the code instead.",
   pay_code_buyer_invalid: "Check the name, email and mobile number.",
   buyer_name_required: "Add your name.",
   buyer_email_invalid: "Check the email address.",
