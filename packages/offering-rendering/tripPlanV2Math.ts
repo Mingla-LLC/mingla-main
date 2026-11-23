@@ -199,6 +199,16 @@ export function tripCalendarDayAt(
   );
 }
 
+/**
+ * issue #4522 G-6 — the instant a trip stops taking bookings: the start of its
+ * departure day (its stored calendar date, #4420) in the trip's zone. The
+ * server refuses from the same instant (public.issue_4522_trip_booking_closed),
+ * which is also when a v2 schedule turns "closed".
+ */
+export function tripBookingClosesAt(tripStartAt: Date, timeZone: string): Date {
+  return tripCalendarDayAt(tripStartAt, 0, timeZone, 0);
+}
+
 const isoSeconds = (instantMs: number): string =>
   new Date(instantMs).toISOString().replace(/\.\d{3}Z$/, "Z");
 

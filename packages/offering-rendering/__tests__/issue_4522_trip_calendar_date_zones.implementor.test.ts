@@ -15,6 +15,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
   computeTripPlanV2Schedule,
+  tripBookingClosesAt,
   tripCalendarDayAt,
   type TripPaymentPlanV2,
 } from "../tripPlanV2Math.ts";
@@ -75,3 +76,22 @@ Deno.test("W-1: tripCalendarDayAt books on the calendar date in the zone", () =>
   assertEquals(tripCalendarDayAt(start, 60, "Asia/Tokyo", 12).toISOString(), "2027-01-11T03:00:00.000Z");
   assertEquals(tripCalendarDayAt(start, 0, "Africa/Lagos", 0).toISOString(), "2027-03-11T23:00:00.000Z");
 });
+
+// issue #4522 G-6 (S2) — bookings close when the departure day begins in the
+// trip's zone; public.issue_4522_trip_booking_closed (pg17 section L of the
+// refunds suite) answers from the same instants. Before: the buyer page added
+// 24 hours to the stored end (UTC midnight based) and the server compared the
+// end instant, so New York stopped at 19:59 on the last day and Tokyo sold
+// until 08:59 the next day.
+Deno.test("G-6: a trip stops taking bookings at 00:00 on its departure day in its zone", () => {
+  const start = new Date("2027-03-20T00:00:00Z"); // departs 20 Mar (calendar date)
+  assertEquals(tripBookingClosesAt(start, "America/New_York").toISOString(), "2027-03-20T04:00:00.000Z");
+  assertEquals(tripBookingClosesAt(start, "Africa/Lagos").toISOString(), "2027-03-19T23:00:00.000Z");
+  assertEquals(tripBookingClosesAt(start, "Asia/Tokyo").toISOString(), "2027-03-19T15:00:00.000Z");
+  // across the New York DST change (8 Mar 2027 is still EST, 15 Mar EDT)
+  assertEquals(tripBookingClosesAt(new Date("2027-03-14T00:00:00Z"), "America/New_York").toISOString(),
+    "2027-03-14T05:00:00.000Z");
+  assertEquals(tripBookingClosesAt(new Date("2027-03-15T00:00:00Z"), "America/New_York").toISOString(),
+    "2027-03-15T04:00:00.000Z");
+});
+

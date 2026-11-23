@@ -118,8 +118,12 @@ BEGIN
   IF NOT FOUND OR v_event.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'event_not_found'; END IF;
   IF v_event.visibility NOT IN ('public','hidden')
      OR v_event.status NOT IN ('scheduled','live') THEN RAISE EXCEPTION 'event_not_selling'; END IF;
-  IF EXISTS(SELECT 1 FROM public.event_dates d WHERE d.event_id=p_event_id)
-     AND NOT EXISTS(SELECT 1 FROM public.event_dates d WHERE d.event_id=p_event_id AND d.end_at>now()) THEN
+  -- issue #4522 G-6 — a trip stops taking bookings when its departure day
+  -- begins in its zone; other events when their last occurrence has ended.
+  IF (v_event.event_type='trip' AND public.issue_4522_trip_booking_closed(p_event_id))
+     OR (v_event.event_type IS DISTINCT FROM 'trip'
+     AND EXISTS(SELECT 1 FROM public.event_dates d WHERE d.event_id=p_event_id)
+     AND NOT EXISTS(SELECT 1 FROM public.event_dates d WHERE d.event_id=p_event_id AND d.end_at>now())) THEN
     RAISE EXCEPTION 'event_already_ended';
   END IF;
 
@@ -519,11 +523,16 @@ BEGIN
   -- the guest sent a day set, which is exactly why this one is needed too.
   --
   -- DELETE THIS BLOCK and a past event becomes payable again.
-  IF EXISTS (SELECT 1 FROM public.event_dates d WHERE d.event_id = p_event_id)
+  -- issue #4522 G-6 — a trip stops taking bookings when its departure day
+  -- begins in its zone (issue_4522_trip_booking_closed); the occurrence rule
+  -- below stays for every other event.
+  IF (v_event.event_type = 'trip' AND public.issue_4522_trip_booking_closed(p_event_id))
+     OR (v_event.event_type IS DISTINCT FROM 'trip'
+     AND EXISTS (SELECT 1 FROM public.event_dates d WHERE d.event_id = p_event_id)
      AND NOT EXISTS (
        SELECT 1 FROM public.event_dates d
         WHERE d.event_id = p_event_id AND d.end_at > now()
-     ) THEN
+     )) THEN
     RAISE EXCEPTION 'event_already_ended';
   END IF;
 

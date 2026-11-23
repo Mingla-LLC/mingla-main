@@ -1236,5 +1236,19 @@ BEGIN
   END IF;
 END $$;
 
+-- L. G-6 (S2): a trip stops taking bookings when its departure day begins in
+--    its zone; client and server use the same instant. FAILS ON REVERT:
+--    function absent (checkout refused from 19:59 New York on the LAST day).
+DO $$
+BEGIN
+  IF public.issue_4522_trip_booking_closed('45220008-0000-4000-8000-00000000a0a1', '2027-03-20 03:59:59+00')
+     OR NOT public.issue_4522_trip_booking_closed('45220008-0000-4000-8000-00000000a0a1', '2027-03-20 04:00:00+00')
+     OR public.issue_4522_trip_booking_closed('45220008-0000-4000-8000-00000000a0a2', '2027-03-19 22:59:59+00')
+     OR NOT public.issue_4522_trip_booking_closed('45220008-0000-4000-8000-00000000a0a2', '2027-03-19 23:00:00+00')
+     OR public.issue_4522_trip_booking_closed('45220008-0000-4000-8000-00000000a0a3', '2027-03-19 14:59:59+00')
+     OR NOT public.issue_4522_trip_booking_closed('45220008-0000-4000-8000-00000000a0a3', '2027-03-19 15:00:00+00') THEN
+    RAISE EXCEPTION 'L-0 bookings close at 00:00 on the departure day in the trip''s zone';
+  END IF;
+END $$;
 
 ROLLBACK;

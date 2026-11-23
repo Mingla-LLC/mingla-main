@@ -39,6 +39,7 @@ import { projectInstallmentSchedule } from "../../../src/utils/installmentSchedu
 // consumer identical). The deposit-due-today still comes from the existing
 // projectInstallmentSchedule; this only formats the already-computed cents.
 import { formatTripTierInstallmentNote } from "@mingla/offering-rendering";
+import { tripBookingClosesAt } from "../../../../packages/offering-rendering/tripPlanV2Math";
 import type { TripPricingTier } from "../../../src/services/tripsService";
 import type {
   TicketAvailableAt,
@@ -151,10 +152,16 @@ const tierToTicketStub = (
 const NO_EVENT_DATES: readonly string[] = [];
 const NO_OCCURRENCES: readonly never[] = [];
 
-const isTripPast = (endAtIso: string | null): boolean => {
-  if (endAtIso === null) return false;
-  const end = new Date(endAtIso).getTime();
-  return Number.isFinite(end) && end + 24 * 60 * 60 * 1000 < Date.now();
+// issue #4522 G-6 — a trip stops taking bookings when its departure day
+// begins in the trip's zone: the same instant the server refuses from.
+const isTripPast = (
+  startAtIso: string | null,
+  timeZone: string | null,
+): boolean => {
+  if (startAtIso === null) return false;
+  const start = new Date(startAtIso);
+  if (!Number.isFinite(start.getTime())) return false;
+  return Date.now() >= tripBookingClosesAt(start, timeZone || "UTC").getTime();
 };
 
 // #4420 — trip dates are calendar dates; read at UTC like the public page.
@@ -460,7 +467,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
       alreadyNavigated: autoSkipNavigatedRef.current,
       tripPresent: true,
       bookingsClosed: trip.bookingsClosed,
-      isPast: isTripPast(trip.businessTrip.endAt),
+      isPast: isTripPast(trip.businessTrip.startAt, trip.timezone),
       tiers: skipTickets.map((t) => ({
         id: t.id,
         isUnlimited: t.isUnlimited,
@@ -594,7 +601,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
 
   // Map pricing tiers → TicketStub for QuantityRow reuse.
   const tickets = trip.pricingTiers.map((t) => tierToTicketStub(t, tripAddOns));
-  const isPast = isTripPast(trip.businessTrip.endAt);
+  const isPast = isTripPast(trip.businessTrip.startAt, trip.timezone);
   const allSoldOut =
     tickets.length > 0 &&
     tickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) <= 0);
@@ -613,7 +620,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
             illustration="ticket"
             title={
               isPast
-                ? "This trip has ended"
+                ? "Bookings closed"
                 : tickets.length === 0
                   ? "Pricing isn't ready yet"
                   : "Sold out"

@@ -218,6 +218,28 @@ GRANT EXECUTE ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,json
 COMMENT ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint,bigint) IS
   'Issue #4522 §6.1: one cart line''s v2 schedule from the booking day to the final due date (the trip''s start is its stored calendar date at UTC, #4420; 09:00 in the trip time zone, rows at least 7 days apart, whole-unit split, last row absorbs). Custom amounts are against the list price (p_line_list_minor) and scale under a discount; custom rows that cannot hold degrade the line to full_only. availability: plan | full_deposit | full_window | full_only | closed.';
 
+-- issue #4522 G-6 (S2) — a trip stops taking bookings when its departure day
+-- begins in the trip's zone (the plan's "closed" rule above; the same
+-- instant tripBookingClosesAt in @mingla/offering-rendering gives the buyer
+-- page). A trip date is its stored calendar date (UTC Y-M-D, #4420). A trip
+-- with no dates is not closed by this (its booking deadline still applies).
+CREATE FUNCTION public.issue_4522_trip_booking_closed(p_event_id uuid, p_now timestamptz DEFAULT now())
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT COALESCE(p_now >= (((min(d.start_at) AT TIME ZONE 'UTC')::date)::timestamp
+           AT TIME ZONE COALESCE(NULLIF(e.timezone, ''), 'UTC')), false)
+    FROM public.events e
+    LEFT JOIN public.event_dates d ON d.event_id = e.id
+   WHERE e.id = p_event_id
+   GROUP BY e.timezone
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_booking_closed(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_trip_booking_closed(uuid, timestamptz) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 2. Does this cart carry a v2 plan line the server can run?
 -- ---------------------------------------------------------------------------
