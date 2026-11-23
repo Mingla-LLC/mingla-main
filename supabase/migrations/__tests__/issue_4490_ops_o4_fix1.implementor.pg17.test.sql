@@ -8,9 +8,11 @@
 -- MINGLA-INVARIANT: I-4490-STAFF-START-UNIT-FREE-NOW | issue #4490 | a session staff start at the Till claims its unit from now (not only from the rounded start) to its end; a unit in use now is refused offer_space_taken with the time it frees up.
 --
 -- FAILS-ON-REVERT: with the 607490 refund guard (stamp only) X1-5 fails;
--- without the reservations trigger X1-2 fails; with the 607490 finalize X3-1
--- fails (the deposit counted twice); without the close function X2-2 fails;
--- with the 607490 start_session X4-2 fails (a unit in use is started).
+-- without the reservations triggers X1-2 fails; without the seated rule X1-3
+-- fails; with the 607490 finalize (or the 589490 money day) X3-1 fails (the
+-- deposit counted twice); with part payments dated at finalize X3-5 fails;
+-- without the close function X2-2a fails; with the 607490 start_session X4-1
+-- fails (a unit in use is started).
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -452,6 +454,128 @@ BEGIN
     'X1-10 a paid booking with no deposit on a check cancels with its refund (unchanged)');
 END
 $plain$;
+SELECT public.t4490x_reset();
+
+-- -------------------------------------------------------------------------
+-- X4. O4-T4: a session staff start needs its unit free from NOW.
+-- -------------------------------------------------------------------------
+-- The pool table's day window is moved so that "now" sits 45 minutes into a
+-- 60-minute step (the start rounds UP to now + about 15 minutes), whatever
+-- the clock says when the suite runs; restored at the end.
+CREATE TEMP TABLE t4490x_window (id uuid, starts_at timestamptz) ON COMMIT DROP;
+GRANT ALL ON t4490x_window TO PUBLIC;
+INSERT INTO t4490x_window
+SELECT w.id, w.starts_at FROM public.stay_place_windows w
+JOIN public.stay_place_schedule_rules r ON r.id = w.schedule_rule_id AND r.active AND r.mode = 'flexible'
+WHERE w.offering_id = public.t4490x_id('pool') AND NOT w.booked_block AND NOT w.stop_sell
+  AND now() >= w.starts_at AND now() < w.ends_at;
+SELECT public.t4490x_ok((SELECT count(*) FROM t4490x_window) = 1, 'X4-0 fixture: the pool tables have one day window open now');
+CREATE FUNCTION public.t4490x_window_at(p_minutes_into integer) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  UPDATE public.stay_place_windows SET starts_at = date_trunc('minute', now()) - make_interval(mins => p_minutes_into)
+  WHERE id = (SELECT id FROM t4490x_window)
+$f$;
+-- Pool table 1 is in use: its current booking (a block here) ends in 5 minutes.
+CREATE FUNCTION public.t4490x_block(p_from timestamptz, p_to timestamptz) RETURNS uuid
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  INSERT INTO public.venue_space_claims (space_id, source, booked_range, claim_range, state, block_reason)
+  VALUES (public.t4490x_id('pool_unit_1'), 'block', tstzrange(p_from, p_to, '[)'), tstzrange(p_from, p_to, '[)'), 'committed', 'o4x test booking')
+  RETURNING id
+$f$;
+CREATE FUNCTION public.t4490x_refusal(p_sql text) RETURNS jsonb
+LANGUAGE plpgsql AS $f$
+DECLARE
+  v_detail text;
+BEGIN
+  EXECUTE p_sql;
+  RETURN jsonb_build_object('error', null);
+EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+  RETURN jsonb_build_object('error', SQLERRM, 'state', SQLSTATE, 'detail', NULLIF(v_detail, '')::jsonb);
+END
+$f$;
+CREATE FUNCTION public.t4490x_void_session(p_sale uuid) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT public.issue_4490_till_void(p_sale, (SELECT id FROM public.venue_till_lines WHERE sale_id = p_sale AND kind = 'by_the_hour' LIMIT 1),
+    NULL, '44900608-0000-4000-8000-000000000002', 'test', false, (SELECT version FROM public.venue_till_sales WHERE id = p_sale)) IS NOT NULL
+  AND true
+$f$;
+GRANT EXECUTE ON FUNCTION public.t4490x_window_at(integer), public.t4490x_block(timestamptz, timestamptz),
+  public.t4490x_refusal(text), public.t4490x_void_session(uuid) TO PUBLIC;
+
+SELECT public.t4490x_service();
+DO $inuse$
+DECLARE
+  v jsonb;
+  v_block uuid;
+  v_sale uuid := public.t4490x_open('x4-a');
+  v_any uuid := public.t4490x_open('x4-any');
+  v_claim public.venue_space_claims%ROWTYPE;
+BEGIN
+  PERFORM public.t4490x_window_at(45);
+  v_block := public.t4490x_block(now() - interval '55 minutes', now() + interval '5 minutes');
+  v := public.t4490x_refusal(format($q$SELECT public.t4490x_start(%L, %L, %L, 60, 'x4-a')$q$,
+    v_sale, public.t4490x_id('pool'), public.t4490x_id('pool_unit_1')));
+  PERFORM public.t4490x_ok(v->>'error' = 'offer_space_taken' AND v->>'state' = 'PT409'
+      AND v#>>'{detail,unitName}' = 'Pool table 1'
+      AND (v#>>'{detail,freeAt}')::timestamptz = (SELECT upper(claim_range) FROM public.venue_space_claims WHERE id = v_block)
+      AND NOT EXISTS (SELECT 1 FROM public.venue_till_lines WHERE sale_id = v_sale),
+    'X4-1 at :45 a start on pool table 1, still in use for 5 minutes, is refused (offer_space_taken) with when it frees up '
+      || COALESCE(v::text, ''));
+  v := public.t4490x_start(v_any, public.t4490x_id('pool'), NULL, 60, 'x4-any');
+  SELECT c.* INTO v_claim FROM public.venue_space_claims c
+  WHERE c.group_id = (public.t4490x_line(v_any, 'by_the_hour')).stay_group_id;
+  PERFORM public.t4490x_ok(v_claim.space_id <> public.t4490x_id('pool_unit_1') AND lower(v_claim.claim_range) <= now()
+      AND lower(v_claim.booked_range) > now() AND upper(v_claim.booked_range) - lower(v_claim.booked_range) = interval '60 minutes'
+      AND (public.t4490x_line(v_any, 'by_the_hour')).amount_minor = 500000,
+    'X4-2 "Any free one" never picks the table in use: another table is held from now; the price is the rounded hour (5,000.00)');
+  PERFORM public.t4490x_void_session(v_any);
+  -- The booking ends: the same start now goes through, held from now.
+  UPDATE public.venue_space_claims SET state = 'released', released_at = now(), release_reason = 'test' WHERE id = v_block;
+  v := public.t4490x_start(v_sale, public.t4490x_id('pool'), public.t4490x_id('pool_unit_1'), 60, 'x4-a2');
+  SELECT c.* INTO v_claim FROM public.venue_space_claims c
+  WHERE c.group_id = (public.t4490x_line(v_sale, 'by_the_hour')).stay_group_id;
+  PERFORM public.t4490x_ok(v_claim.space_id = public.t4490x_id('pool_unit_1') AND lower(v_claim.claim_range) <= now()
+      AND lower(v_claim.booked_range) > now() AND (public.t4490x_line(v_sale, 'by_the_hour')).amount_minor = 500000
+      AND EXISTS (SELECT 1 FROM public.venue_passes p WHERE p.group_id = v_claim.group_id AND p.valid_from <= now()),
+    'X4-3 once it is free the start goes through: held from now, admitted now, charged for the rounded hour');
+  PERFORM public.t4490x_void_session(v_sale);
+END
+$inuse$;
+SELECT public.t4490x_reset();
+
+SELECT public.t4490x_service();
+DO $down$
+DECLARE
+  v jsonb;
+  v_block uuid;
+  v_sale uuid := public.t4490x_open('x4-down');
+  v_claim public.venue_space_claims%ROWTYPE;
+BEGIN
+  -- 10 minutes into the step: the start rounds DOWN (it began 10 minutes ago).
+  PERFORM public.t4490x_window_at(10);
+  v := public.t4490x_start(v_sale, public.t4490x_id('pool'), public.t4490x_id('pool_unit_1'), 60, 'x4-down');
+  SELECT c.* INTO v_claim FROM public.venue_space_claims c
+  WHERE c.group_id = (public.t4490x_line(v_sale, 'by_the_hour')).stay_group_id;
+  PERFORM public.t4490x_ok(lower(v_claim.booked_range) < now() AND lower(v_claim.claim_range) = lower(v_claim.booked_range),
+    'X4-4 a start rounded down keeps working (its claim starts at the rounded start, already before now)');
+  PERFORM public.t4490x_void_session(v_sale);
+  -- Free now but booked before the session would end: the next booking's time.
+  v_block := public.t4490x_block(now() + interval '20 minutes', now() + interval '80 minutes');
+  v_sale := public.t4490x_open('x4-next');
+  v := public.t4490x_refusal(format($q$SELECT public.t4490x_start(%L, %L, %L, 60, 'x4-next')$q$,
+    v_sale, public.t4490x_id('pool'), public.t4490x_id('pool_unit_1')));
+  PERFORM public.t4490x_ok(v->>'error' = 'offer_space_taken'
+      AND (v#>>'{detail,nextAt}')::timestamptz = now() + interval '20 minutes' AND v#>'{detail,freeAt}' = 'null'::jsonb,
+    'X4-5 a table free now but booked in 20 minutes is refused with the next booking''s time ' || COALESCE(v::text, ''));
+  UPDATE public.venue_space_claims SET state = 'released', released_at = now(), release_reason = 'test' WHERE id = v_block;
+  UPDATE public.stay_place_windows SET starts_at = (SELECT starts_at FROM t4490x_window) WHERE id = (SELECT id FROM t4490x_window);
+  PERFORM public.t4490x_ok(NOT EXISTS (SELECT 1 FROM public.venue_space_claims c
+                                       JOIN public.venue_offer_spaces os ON os.space_id = c.space_id AND os.offering_id = public.t4490x_id('pool')
+                                       WHERE c.state IN ('held', 'committed')),
+    'X4-6 fixture: every pool table is free again (sessions voided, test bookings released)');
+END
+$down$;
 SELECT public.t4490x_reset();
 
 -- -------------------------------------------------------------------------

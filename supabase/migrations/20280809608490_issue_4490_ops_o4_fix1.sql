@@ -779,7 +779,128 @@ BEGIN
 END;
 $$;
 
--- @@NEXT@@
+-- ===========================================================================
+-- O4-T4: a staff-started session needs its unit free from NOW.
+-- ===========================================================================
+-- "Start a session now" (latest body: 607490). The start is still rounded to
+-- the offer's step and priced for that window; the claim now also covers the
+-- time from now to the rounded start (the guests are admitted at once), so a
+-- unit still in use is refused offer_space_taken with the time it frees up
+-- (freeAt) or, when it is free now but booked before the session would end,
+-- the next booking's time (nextAt). A start rounded down keeps its claim
+-- from the rounded start (already before now), as built.
+CREATE OR REPLACE FUNCTION public.issue_4490_till_start_session(
+  p_sale_id uuid,
+  p_offering_id uuid,
+  p_space_id uuid,
+  p_minutes integer,
+  p_guests integer,
+  p_actor uuid,
+  p_idempotency_key text,
+  p_expected_version integer
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_sale public.venue_till_sales%ROWTYPE;
+  v_offer public.stay_offerings%ROWTYPE;
+  v_day public.stay_place_windows%ROWTYPE;
+  v_key text := btrim(COALESCE(p_idempotency_key, ''));
+  v_step integer;
+  v_start timestamptz;
+  v_window uuid;
+  v_claim tstzrange;
+  v_units uuid[];
+  v_unit uuid;
+  v_free timestamptz;
+  v_next timestamptz;
+BEGIN
+  IF char_length(v_key) NOT BETWEEN 8 AND 150 OR p_offering_id IS NULL OR p_minutes IS NULL
+     OR p_minutes NOT BETWEEN 15 AND 1440 OR (p_guests IS NOT NULL AND p_guests NOT BETWEEN 1 AND 1000) THEN
+    RAISE EXCEPTION 'till_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+  v_sale := public.issue_4490_till_lock(p_sale_id, p_actor, p_expected_version);
+  IF public.issue_4490_till_release_stale(v_sale.id) > 0 THEN
+    SELECT * INTO v_sale FROM public.venue_till_sales WHERE id = v_sale.id FOR UPDATE;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.venue_till_lines l WHERE l.sale_id = v_sale.id AND l.idempotency_key = v_key) THEN
+    RETURN public.issue_4490_till_sale_projection(v_sale.id) || jsonb_build_object('replayed', true);
+  END IF;
+  IF v_sale.state = 'paying' THEN
+    RAISE EXCEPTION 'till_payment_in_progress' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_sale.state <> 'open' THEN
+    RAISE EXCEPTION 'till_check_closed' USING ERRCODE = 'PT409';
+  END IF;
+  SELECT * INTO v_offer FROM public.stay_offerings
+  WHERE id = p_offering_id AND venue_id = v_sale.venue_id AND kind = 'by_the_hour' AND status = 'live';
+  IF NOT FOUND OR NOT public.issue_4490_venue_feature_on(v_sale.venue_id, 'by_the_hour') THEN
+    RAISE EXCEPTION 'offer_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  IF NOT v_offer.staff_can_start THEN
+    RAISE EXCEPTION 'offer_staff_start_off' USING ERRCODE = 'PT409';
+  END IF;
+  IF NOT public.issue_4490_flag_on('VENUE_OFFERS_WRITES') THEN
+    RAISE EXCEPTION 'offers_not_enabled' USING ERRCODE = 'P0001';
+  END IF;
+  -- Starts now, rounded to the offer's step on the day's grid (half up).
+  v_step := COALESCE(v_offer.booking_length_step_minutes, 60);
+  SELECT w.* INTO v_day FROM public.stay_place_windows w
+  JOIN public.stay_place_schedule_rules r ON r.id = w.schedule_rule_id AND r.active AND r.mode = 'flexible'
+  WHERE w.offering_id = v_offer.id AND NOT w.booked_block AND NOT w.stop_sell
+    AND now() >= w.starts_at AND now() < w.ends_at
+  ORDER BY w.starts_at LIMIT 1;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'offer_window_unavailable' USING ERRCODE = 'PT409';
+  END IF;
+  v_start := v_day.starts_at + make_interval(mins => (v_step * floor(
+    (extract(epoch FROM (now() - v_day.starts_at)) / 60.0 + v_step / 2.0) / v_step))::integer);
+  IF v_start + make_interval(mins => p_minutes) > v_day.ends_at THEN
+    RAISE EXCEPTION 'offer_window_unavailable' USING ERRCODE = 'PT409';
+  END IF;
+  v_window := public.issue_4490_flexible_window(v_offer.id, v_start, p_minutes);
+  -- #4490 08-O4 fix 1 (O4-T4): the guests are let in now, so the unit is
+  -- held from now (not only from the rounded start) to the session's end:
+  -- a unit still in use is refused. The price stays the rounded window's.
+  v_claim := tstzrange(LEAST(now(), v_start - make_interval(mins => v_offer.buffer_before_minutes)),
+                       v_start + make_interval(mins => p_minutes + v_offer.buffer_after_minutes), '[)');
+  BEGIN
+    PERFORM public.issue_4490_till_session_book(
+      v_sale.id, v_offer.id, v_window, p_space_id, p_guests, p_actor, v_key, v_claim, NULL);
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN
+    IF SQLERRM <> 'offer_space_taken' THEN
+      RAISE;
+    END IF;
+    -- Say when it frees up (in use now), or when the next booking starts.
+    v_units := CASE WHEN p_space_id IS NOT NULL THEN ARRAY[p_space_id]
+                    ELSE ARRAY(SELECT os.space_id FROM public.venue_offer_spaces os
+                               WHERE os.offering_id = v_offer.id) END;
+    IF NOT EXISTS (
+         SELECT 1 FROM unnest(v_units) u(id)
+         WHERE NOT EXISTS (SELECT 1 FROM public.venue_space_claims c
+                           WHERE c.space_id = u.id AND c.state IN ('held', 'committed') AND c.claim_range @> now())) THEN
+      SELECT c.space_id, upper(c.claim_range) INTO v_unit, v_free
+      FROM public.venue_space_claims c
+      WHERE c.space_id = ANY(v_units) AND c.state IN ('held', 'committed') AND c.claim_range @> now()
+      ORDER BY upper(c.claim_range), c.space_id LIMIT 1;
+    ELSE
+      SELECT c.space_id, lower(c.booked_range) INTO v_unit, v_next
+      FROM public.venue_space_claims c
+      WHERE c.space_id = ANY(v_units) AND c.state IN ('held', 'committed') AND c.claim_range && v_claim
+        AND NOT c.claim_range @> now()
+      ORDER BY lower(c.booked_range), c.space_id LIMIT 1;
+    END IF;
+    RAISE EXCEPTION 'offer_space_taken' USING ERRCODE = 'PT409',
+      DETAIL = jsonb_build_object('unitName', (SELECT s.name FROM public.venue_spaces s WHERE s.id = v_unit),
+        'freeAt', v_free, 'nextAt', v_next)::text;
+  END;
+  PERFORM public.issue_4490_till_reprice(v_sale.id);
+  RETURN public.issue_4490_till_sale_projection(v_sale.id) || jsonb_build_object('replayed', false);
+END;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- Privileges: every new function is internal (service role only).
