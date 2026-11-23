@@ -512,11 +512,16 @@ export function useOverviewCounts(siteId: string | null, enabled = true) {
   });
 }
 
-export function useMediaLibrary(siteId: string | null, enabled: boolean) {
+export function useMediaLibrary(siteId: string | null, enabled: boolean, refetchInterval: number | false = false) {
   return useQuery({
+    // #4572 item 3 — while the brand's photos come in, the list is read again so they appear as they land.
+    refetchInterval,
     queryKey: brandSiteKeys.siteData(siteId, "media"),
     queryFn: () => contentCall<{ media: MediaItem[] }>(siteId!, "media_library").then((result) => result.media),
     enabled: siteId !== null && enabled,
+    // #4572 item 12 — opening "Choose a photo" always reads the list fresh.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
@@ -567,14 +572,17 @@ export async function uploadSitePhoto(input: {
   const done = await contentCall<{ media_id: string; state: string }>(input.siteId, "media_complete", {
     media_id: grant.media_id, checksum, bytes: bytes.byteLength,
   });
+  // #4572 item 12 (D12) — the same file again answers with the photo already
+  // there: follow the id the server reports, never the grant's.
+  const mediaId = typeof done.media_id === "string" && done.media_id ? done.media_id : grant.media_id;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const status = attempt === 0 && done.state === "READY"
       ? { state: "READY", thumb_url: null as string | null }
-      : await contentCall<{ state: string; thumb_url: string | null; rejection_code: string | null }>(input.siteId, "media_status", { media_id: grant.media_id });
+      : await contentCall<{ state: string; thumb_url: string | null; rejection_code: string | null }>(input.siteId, "media_status", { media_id: mediaId });
     if (status.state === "READY") {
       const ready = status.thumb_url !== null ? status
-        : await contentCall<{ state: string; thumb_url: string | null }>(input.siteId, "media_status", { media_id: grant.media_id });
-      return { mediaId: grant.media_id, thumbUrl: ready.thumb_url };
+        : await contentCall<{ state: string; thumb_url: string | null }>(input.siteId, "media_status", { media_id: mediaId });
+      return { mediaId, thumbUrl: ready.thumb_url };
     }
     if (status.state === "REJECTED" || status.state === "TOMBSTONED") {
       throw new BrandSitesError("MEDIA_REJECTED", CONTENT_MESSAGES.MEDIA_REJECTED ?? "That file couldn’t be accepted. Photos must be JPEG, PNG or WebP under 20 MB.", false);
@@ -1001,12 +1009,28 @@ export function usePageSections(siteId: string | null, pageId: string | null, en
   });
 }
 
-export function useSectionCatalog(siteId: string | null, enabled = true) {
+/** #4572 item 8 — one page's Add section list: Cover only where the server accepts one, and why not when it doesn't. */
+export type PageSectionCatalog = { types: SectionCatalogType[]; coverNote: string | null };
+
+/** The list the sheet shows. A Cover the server would refuse is never offered, even from an older Studio that lists it everywhere. */
+export function offeredSections(catalog: PageSectionCatalog, sections: readonly { type: string }[]): PageSectionCatalog {
+  if (!sections.some((section) => section.type === "hero")) return catalog;
+  const hasCover = catalog.types.some((entry) => entry.type === "hero");
+  return {
+    types: catalog.types.filter((entry) => entry.type !== "hero"),
+    coverNote: catalog.coverNote ?? (hasCover ? "Home already has a cover. Change it in Design → Cover." : null),
+  };
+}
+
+export function useSectionCatalog(siteId: string | null, pageId: string | null, enabled = true) {
   return useQuery({
-    queryKey: brandSiteKeys.siteData(siteId, "section-catalog"),
-    queryFn: () => contentCall<{ types: SectionCatalogType[] }>(siteId!, "section_catalog").then((result) => result.types),
-    enabled: siteId !== null && enabled,
-    staleTime: 5 * 60_000,
+    queryKey: [...brandSiteKeys.siteData(siteId, "section-catalog"), pageId] as const,
+    queryFn: () =>
+      contentCall<{ types: SectionCatalogType[]; cover_note?: string | null }>(siteId!, "section_catalog", { page_id: pageId })
+        .then((result): PageSectionCatalog => ({ types: result.types, coverNote: typeof result.cover_note === "string" ? result.cover_note : null })),
+    enabled: siteId !== null && pageId !== null && enabled,
+    // Read fresh each time the sheet opens: adding a cover changes what this page can take.
+    staleTime: 0,
   });
 }
 

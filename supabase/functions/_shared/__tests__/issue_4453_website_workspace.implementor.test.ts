@@ -330,6 +330,9 @@ const VALID_STEPS: Record<string, Record<string, unknown>> = {
     page_id: "pg_events",
     enabled: false,
   },
+  // #4572 items 16, 17 — the header button and the logo.
+  set_header_button: { op: "set_header_button", button_label: "RSVP" },
+  set_logo: { op: "set_logo", media_id: WS_MEDIA_TERRACE },
 };
 
 Deno.test("#4453 every step type in the contract is accepted in its exact shape", () => {

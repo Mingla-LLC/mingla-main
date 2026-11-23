@@ -645,11 +645,14 @@ export const ADDABLE_SECTION_TYPES: readonly BlockType[] = [
   "rich_text", "media_feature", "gallery", "feature_cards", "faq", "pull_quote", "testimonials", "offering_grid",
   "cta", "team", "facts_table", "marquee", "contact_form", "newsletter_signup", "destination_grid", "story_grid",
   "page_links", "divider", "spacer",
+  // #4572 item 8 (D4) — the home page's cover: only at the top of Home, only when it has none.
+  "hero",
 ];
 /** These start from one of the owner's own photos (`media_id` on add_section). */
-export const SECTION_TYPES_NEEDING_PHOTO: ReadonlySet<string> = new Set(["media_feature", "gallery"]);
+export const SECTION_TYPES_NEEDING_PHOTO: ReadonlySet<string> = new Set(["media_feature", "gallery", "hero"]);
 
 const ADD_DESCRIPTIONS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "A photo or video across the top of Home. Needs a photo.",
   rich_text: "A heading and a few paragraphs.",
   media_feature: "One of your photos beside a heading and a few words.",
   gallery: "A set of your photos.",
@@ -680,7 +683,7 @@ export function sectionCatalog(design: DesignKey, actor: SectionActor): AddableS
     .filter((type) => actor === "user" || ARI_BLOCK_TYPES.includes(type))
     .map((type) => ({
       type,
-      label: SECTION_WORDS[type],
+      label: type === "hero" ? "Cover" : SECTION_WORDS[type],
       description: ADD_DESCRIPTIONS[type] ?? BLOCK_CATALOG[type].description,
       needs_photo: SECTION_TYPES_NEEDING_PHOTO.has(type),
     }));
@@ -731,6 +734,8 @@ export function starterSection(type: BlockType, design: DesignKey, mediaId: stri
   if (type === "page_links") { block.mode = "teaser"; fills("items"); }
   if (type === "media_feature") { block.media = mediaId; block.alignment = "left"; }
   if (type === "gallery") block.images = [{ id: newRowId(), media: mediaId }];
+  // #4572 item 8 — a cover starts with the owner's photo and no buttons.
+  if (type === "hero") { fills("ctas"); block.ctas = []; block.media = mediaId; }
   return { block, starters };
 }
 
@@ -782,10 +787,16 @@ async function savePage(ctx: SectionContext, page: AnyDoc, data: AnyDoc): Promis
     })) as AnyDoc;
   } catch (error) {
     if (error instanceof Error && error.message === "MEDIA_REJECTED") refuse("MEDIA_PROCESSING");
-    if (error instanceof Error && error.message === "BOOKING_BLOCKS_OFF") refuse("SECTION_TYPE_NOT_AVAILABLE");
+    // #4572 item 10 — say what really happened (never "Your design doesn't have that kind of section").
+    if (error instanceof Error && error.message === "BOOKING_BLOCKS_OFF") {
+      refuse("VALIDATION_FAILED", { problems: [BOOKING_OFF_PROBLEM] });
+    }
     throw error;
   }
 }
+
+/** #4572 item 10 — the one sentence an owner sees when a change really adds a booking feature. */
+export const BOOKING_OFF_PROBLEM = "Booking features aren't switched on for this website yet, so that change wasn't saved.";
 
 const historyActor = (ctx: SectionContext): HistoryActor => (ctx.actor === "ari" ? "ari" : "user");
 
@@ -872,6 +883,56 @@ export async function removeSection(ctx: SectionContext, args: AnyDoc): Promise<
   return done(updated, null);
 }
 
+/**
+ * #4572 item 8 (D4) — Home's blocks with a cover at the top: it REPLACES a
+ * leading colour panel (`page_header`) and keeps its heading. Refused unless
+ * the page is Home, the cover goes first, and Home has no cover yet.
+ */
+export const COVER_ONLY_ON_HOME = "A cover can only go at the top of Home.";
+export const HOME_HAS_COVER = "Home already has a cover. Change it in Design → Cover.";
+
+/**
+ * #4572 item 8 — why this page can't take a cover, or null when it can. The
+ * one rule behind both the refusal below and the page's Add section list, so
+ * the list never offers a Cover the server would refuse.
+ */
+export function coverUnavailableReason(page: AnyDoc, blocks: readonly AnyDoc[]): string | null {
+  if (!isHome(page)) return COVER_ONLY_ON_HOME;
+  if (blocks.some((block) => block.blockType === "hero")) return HOME_HAS_COVER;
+  return null;
+}
+
+/** The Add section list for one page: Cover only when that page can take one, plus the one-line reason when it can't. */
+export function pageSectionCatalog(catalog: readonly AddableSection[], page: AnyDoc): { types: AddableSection[]; cover_note: string | null } {
+  const blocks = Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : [];
+  const reason = catalog.some((entry) => entry.type === "hero") ? coverUnavailableReason(page, blocks) : null;
+  // Cover goes first in the list: it can only go first on the page.
+  const types = reason ? catalog.filter((entry) => entry.type !== "hero") : [...catalog.filter((entry) => entry.type === "hero"), ...catalog.filter((entry) => entry.type !== "hero")];
+  return { types, cover_note: reason };
+}
+
+export async function readPageSectionCatalog(ctx: SectionContext, design: DesignKey, pageId: unknown): Promise<{ types: AddableSection[]; cover_note: string | null }> {
+  const catalog = sectionCatalog(design, ctx.actor);
+  if (pageId === undefined || pageId === null) return { types: catalog, cover_note: null };
+  const { page } = await loadPage(ctx, pageId);
+  return pageSectionCatalog(catalog, page);
+}
+
+export function blocksWithHomeCover(page: AnyDoc, blocks: readonly AnyDoc[], cover: AnyDoc, at: number): AnyDoc[] {
+  const reason = coverUnavailableReason(page, blocks);
+  if (reason) refuse("VALIDATION_FAILED", { problems: [reason] });
+  if (at !== 0) refuse("VALIDATION_FAILED", { problems: [COVER_ONLY_ON_HOME] });
+  const next = [...blocks];
+  const lead = next[0];
+  if (lead && lead.blockType === "page_header") {
+    const heading = typeof lead.heading === "string" && lead.heading.trim() ? lead.heading : null;
+    next[0] = heading ? { ...cover, heading } : cover;
+  } else {
+    next.unshift(cover);
+  }
+  return next;
+}
+
 export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (block: AnyDoc, texts: string[]) => void): Promise<SectionWrite> {
   const { page } = await loadPage(ctx, args.page_id);
   checkPageRevision(page, args.expected_revision);
@@ -884,6 +945,8 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
   if (blocks.length >= MAX_BLOCKS_PER_PAGE) refuse("SECTION_LIMIT_REACHED", { max: MAX_BLOCKS_PER_PAGE });
   const after = args.after_section_id;
   const at = after === null || after === undefined ? 0 : findSection(blocks, after) + 1;
+  // #4572 item 8 — say why a cover can't go here before asking for its photo.
+  if (type === "hero") blocksWithHomeCover(page, blocks, {}, at);
   let mediaId: string | null = null;
   if (SECTION_TYPES_NEEDING_PHOTO.has(type)) {
     if (typeof args.media_id !== "string" || !args.media_id) refuse("MEDIA_REQUIRED");
@@ -900,8 +963,8 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
     if (missing.length) refuse("VALIDATION_FAILED", { problems: missing.slice(0, 20).map((key) => `add_section needs words for ${key}`) });
   }
   check?.(block, texts);
-  blocks.splice(at, 0, block);
-  const updated = await savePage(ctx, page, { blocks });
+  const nextBlocks = type === "hero" ? blocksWithHomeCover(page, blocks, block, at) : (blocks.splice(at, 0, block), blocks);
+  const updated = await savePage(ctx, page, { blocks: nextBlocks });
   const stored = (Array.isArray(updated.blocks) ? updated.blocks as AnyDoc[] : [])[at];
   const sectionId = stored ? sectionIdOf(stored, at) : String(block.id);
   await recordPage(ctx, page, updated, `Add ${SECTION_WORDS[type]}`);
@@ -993,6 +1056,74 @@ export async function setMenuItems(ctx: SectionContext, args: AnyDoc): Promise<{
   const saved = await saveMenu(ctx, navigation, next);
   await recordChanges(ctx, historyActor(ctx), [menuRow(navigation, saved, "Change the menu")], ctx.group, null, ctx.operationId ?? null);
   return { menu_revision: String(saved.updatedAt ?? ""), texts: wanted.map((item) => item.label) };
+}
+
+// ---------------------------------------------------------------------------
+// #4572 item 17 — the header button and the logo, each its own undoable thing.
+// The menu (`set_menu`) never touches the header button, and the header
+// button never touches a menu item.
+// ---------------------------------------------------------------------------
+
+/** History keys: the header button is a "menu" row of its own; the logo a "look" row of its own. */
+export const HEADER_BUTTON_KEYS = ["header_cta"] as const;
+export const LOGO_KEYS = ["logo"] as const;
+
+/** The header button as the workspace shows it: its words and the page it opens (null for an outside link or none). */
+export function headerButtonView(navigation: AnyDoc | null): { label: string | null; page_id: string | null; links_outside: boolean } {
+  const cta = (navigation?.header_cta ?? null) as AnyDoc | null;
+  const label = typeof cta?.label === "string" && cta.label.trim() ? cta.label : null;
+  return { label, page_id: cta?.target_type === "url" ? null : relationId(cta?.page), links_outside: cta?.target_type === "url" && Boolean(cta?.url) };
+}
+
+/** The header button's words and, optionally, the page it opens. An outside link keeps its address when only the words change. */
+export async function setHeaderButton(ctx: SectionContext, args: AnyDoc): Promise<{ menu_revision: string; texts: string[] }> {
+  const navigation = await navigationOf(ctx);
+  if (!navigation) refuse("NOT_FOUND");
+  const label = typeof args.label === "string" ? args.label.trim() : "";
+  if (!label || label.length > MAX_NAV_LABEL_LENGTH || MARKUP.test(label)) {
+    refuse("VALIDATION_FAILED", { problems: [`label must be plain text up to ${MAX_NAV_LABEL_LENGTH} characters`] });
+  }
+  const current = (navigation.header_cta ?? {}) as AnyDoc;
+  let target: AnyDoc;
+  if (args.page_id !== undefined && args.page_id !== null) {
+    const pages = (await findAllTenantPages(ctx.scoped, ctx.tenantId)) as AnyDoc[];
+    const page = pages.find((candidate) => String(candidate.id) === String(args.page_id));
+    if (!page) refuse("PAGE_NOT_FOUND", { problems: ["page_id is not a page of this website"] });
+    if (page.enabled === false) refuse("VALIDATION_FAILED", { problems: ["that page is turned off"] });
+    target = { target_type: "page", page: String(page.id), url: null };
+  } else if (current.target_type === "url" ? current.url : relationId(current.page)) {
+    target = { target_type: current.target_type ?? "page", page: relationId(current.page), url: current.url ?? null };
+  } else {
+    refuse("VALIDATION_FAILED", { problems: ["page_id is required: the header button has no page yet"] });
+  }
+  const saved = (await ctx.req.payload.update({
+    collection: "navigation", id: navigation.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0,
+    data: { header_cta: { ...target, label } } as never,
+  })) as AnyDoc;
+  await recordChanges(ctx, historyActor(ctx), [{
+    target: "menu", targetId: "header_button", label: "Change the header button",
+    before: pickSnapshot(navigation, HEADER_BUTTON_KEYS), after: pickSnapshot(saved, HEADER_BUTTON_KEYS),
+  }], ctx.group, null, ctx.operationId ?? null);
+  return { menu_revision: String(saved.updatedAt ?? ""), texts: [label] };
+}
+
+/** The site's logo: one of the site's READY photos, or null to show the name instead. */
+export async function setSiteLogo(ctx: SectionContext, args: AnyDoc): Promise<{ look_revision: string }> {
+  const settings = await currentSettings(ctx);
+  let logo: string | null = null;
+  if (args.media_id !== null) {
+    if (typeof args.media_id !== "string" || !args.media_id) refuse("VALIDATION_FAILED", { problems: ["media_id must be a photo id or null"] });
+    await readyMedia(ctx, [args.media_id], "image");
+    logo = args.media_id;
+  }
+  const updated = (await ctx.req.payload.update({
+    collection: "site-settings", id: settings.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: { logo } as never,
+  })) as AnyDoc;
+  await recordChanges(ctx, historyActor(ctx), [{
+    target: "look", targetId: "logo", label: logo ? "Change the logo" : "Remove the logo",
+    before: pickSnapshot(settings, LOGO_KEYS), after: pickSnapshot(updated, LOGO_KEYS),
+  }], ctx.group, null, ctx.operationId ?? null);
+  return { look_revision: String(updated.updatedAt ?? "") };
 }
 
 // ---------------------------------------------------------------------------

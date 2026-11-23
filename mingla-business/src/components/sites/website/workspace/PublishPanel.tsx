@@ -10,6 +10,7 @@ import { CHECK_COPY, failureReason, publishStep, STEPS } from "../sections/Publi
 import { sectionName } from "../sections/DraftReviewCard";
 import { useDesignChecks, useDraftChanges, type ReviewStatus } from "../../../../sites/contentApi";
 import { BrandSitesError } from "../../../../services/brandSitesService";
+import { usePublishingPaused } from "../../../../sites/usePublishingPaused";
 import { publishGate, PUBLISH_PROMISE } from "../../../../sites/workspaceStatus";
 import type { Workspace } from "./useWorkspace";
 import { IconButton, parts } from "./parts";
@@ -85,8 +86,12 @@ export function PublishPanel({ ws, visible, onClose, unreadablePairs, onOpenDesi
   const rows = unreadRows(ws.review.data, (pageId, sectionId) => (pageId === ws.page?.id ? ws.sections.find((entry) => entry.id === sectionId)?.label ?? null : null));
   const unread = Math.max(ws.unread, rows.length);
 
+  // #4572 item 15 — the server's own first-publish readiness (one owner, Core).
+  const paused = usePublishingPaused(siteId, firstPublish, visible);
+  const publishingPaused = paused.paused;
   const gate = publishGate({
     canPublish: controller.capabilities.canPublish,
+    publishingPaused,
     live,
     unpublished: count,
     unread,
@@ -114,7 +119,11 @@ export function PublishPanel({ ws, visible, onClose, unreadablePairs, onOpenDesi
     await ws.flush();
     const refused = await controller.actions.publishChecked();
     setStarting(false);
-    if (refused) ws.notify({ message: refused, kind: "error" });
+    if (refused) {
+      ws.notify({ message: refused, kind: "error" });
+      // #4572 item 15 — a refused first Go live re-reads the pause, so the panel says why.
+      if (firstPublish) void paused.refetch();
+    }
   };
 
   const tips = (designChecks.data?.checks ?? []).filter((check) => check.status === "warn" && check.key !== "readability");
@@ -210,7 +219,7 @@ export function PublishPanel({ ws, visible, onClose, unreadablePairs, onOpenDesi
           <View testID="publish-checks">
             <View style={parts.row}>
               <Text style={[styles.group, parts.grow]} role="heading" aria-level={3}>Checks</Text>
-              {checking ? <Spinner label="Checking your draft" /> : blocker || unreadablePairs > 0 ? <Chip label="Needs a fix" tone="err" /> : validation.data ? <Chip label="Ready" tone="ok" testID="publish-checks-ready" /> : null}
+              {checking ? <Spinner label="Checking your draft" /> : blocker || unreadablePairs > 0 ? <Chip label="Needs a fix" tone="err" /> : publishingPaused ? <Chip label="Paused" tone="warn" testID="publish-checks-paused" /> : validation.data ? <Chip label="Ready" tone="ok" testID="publish-checks-ready" /> : null}
             </View>
             {blocker ? (
               <View style={styles.line} testID="publish-blocker">

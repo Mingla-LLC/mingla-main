@@ -542,6 +542,58 @@ async function processApprovedVideo(
   }
 }
 
+/*
+ * #4572 item 12 (D12) — uploading the same file twice used to make a second
+ * copy (21 duplicates in one Kolanut session). A READY item of the same
+ * tenant, the same declared type and the same SHA-256 is the same file: the
+ * new UPLOADING row is tombstoned (it never had approved objects), its
+ * quarantine object is deleted, and the existing item is returned, so the
+ * Host selects the photo the owner already has. Rows stored before checksums
+ * existed are never matched. Another tenant's identical file is never reused.
+ */
+export async function existingReadyCopy(
+  req: PayloadRequest,
+  media: { id: string | number; tenant?: unknown; declared_mime?: unknown; quarantine_key?: unknown },
+  checksum: string,
+) {
+  const tenant = media.tenant && typeof media.tenant === "object"
+    ? (media.tenant as { id?: unknown }).id
+    : media.tenant;
+  if (typeof tenant !== "string" && typeof tenant !== "number") return null;
+  const found = await req.payload.find({
+    collection: "media",
+    overrideAccess: true,
+    showHiddenFields: true,
+    depth: 0,
+    limit: 1,
+    where: { and: [
+      { tenant: { equals: tenant } },
+      { state: { equals: "READY" } },
+      { declared_mime: { equals: String(media.declared_mime ?? "") } },
+      { checksum: { equals: checksum } },
+      { id: { not_equals: media.id } },
+    ] },
+  });
+  const existing = found.docs[0];
+  if (!existing) return null;
+  const key = String(media.quarantine_key || "");
+  if (key) await deleteObject(cmsConfig().quarantineBucket, key);
+  await req.payload.update({
+    collection: "media",
+    id: media.id,
+    overrideAccess: false,
+    req,
+    data: {
+      state: "TOMBSTONED",
+      quarantine_key: null,
+      quarantine_delete_by: null,
+      tombstoned_at: new Date().toISOString(),
+      recovery_until: new Date().toISOString(),
+    },
+  });
+  return existing;
+}
+
 async function processUpload(
   req: PayloadRequest,
   mediaId: string,
@@ -568,6 +620,9 @@ async function processUpload(
     return reject(req, media.id, key, "TOO_LARGE");
   if ((await sha256(source)) !== checksum)
     return reject(req, media.id, key, "CHECKSUM_MISMATCH");
+  // #4572 item 12 (D12) — the same file again reuses the photo already there.
+  const repeat = await existingReadyCopy(req, media, checksum);
+  if (repeat) return repeat;
   const mime = detectedMime(source);
   if (
     !mime ||

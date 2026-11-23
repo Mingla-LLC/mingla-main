@@ -20,6 +20,7 @@
  * link it cannot honour.
  */
 import { boundedText, hasOnlyKeys, isCanonicalMinglaHref, isIanaTimeZone, plainObject, UUID_RE } from "./safety.ts";
+import { isStreamVideoHost } from "./video.ts";
 
 /*
  * #4453 milestone 5 (§6.5) — `stay`: a live room or place of the brand's
@@ -41,6 +42,15 @@ export type SiteOffering = {
   summary: string | null;
   /** `<bucket>/<key>` in Mingla's public cover storage, served via `/om`. */
   cover: { path: string; type: "image" } | null;
+  /**
+   * #4572 item 2 (D2) — a video cover's still frame on the stream CDN
+   * (`https://<host>/<video_id>/<file>`), sent only when `cover` is null.
+   * A separate key, not a new `cover` shape, so a feed that carries it never
+   * makes an older parser drop the offering (unknown keys are dropped). The
+   * renderer draws it only for a host in SITES_VIDEO_CDN_HOSTS. Absent (never
+   * null) when there is none, so older snapshots stay byte-identical.
+   */
+  cover_stream_poster?: OfferingStreamPoster;
   destination_text: string | null;
   start_at: string | null;
   end_at: string | null;
@@ -60,6 +70,9 @@ export type SiteOffering = {
   installments_available: boolean;
 };
 
+/** #4572 item 2 — `https://<host>/<video_id>/<file>` on the stream CDN. */
+export type OfferingStreamPoster = { host: string; video_id: string; file: string };
+
 export type OfferingsFeed = {
   generated_at: string;
   brand: { slug: string; currency: string | null; payment_rails: "stripe" | "paystack" };
@@ -72,7 +85,7 @@ const OFFERING_KEYS = [
   "id", "kind", "slug", "title", "summary", "cover", "destination_text", "start_at", "end_at",
   "timezone", "status", "bookings_closed", "capacity", "spots_left", "group_minimum",
   "min_price_minor", "currency", "has_free_tier", "public_url", "waitlist_enabled",
-  "installments_available",
+  "installments_available", "cover_stream_poster",
 ] as const;
 
 const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,199}$/;
@@ -90,6 +103,27 @@ function countOrNull(value: unknown, max: number): value is number | null {
 /** #2829 W7c — a cover's `<bucket>/<key>` in Mingla's public cover storage. */
 export function isOfferingCoverPath(value: unknown): value is string {
   return typeof value === "string" && COVER_PATH_RE.test(value) && !value.includes("..");
+}
+
+const STREAM_POSTER_VIDEO_RE = /^[0-9a-f-]{36}$/;
+const STREAM_POSTER_FILE_RE = /^thumbnail(?:_[A-Za-z0-9]{1,16})?\.jpg$/;
+
+/**
+ * #4572 item 2 — INVARIANT sites-cover-still-one-rule: a video cover's still
+ * is exactly {host, video_id, file} with a stream host, a 36-char id and a
+ * `thumbnail[_x].jpg` file; Core's brand_site_offering_cover_stream_poster()
+ * emits the same three parts from the same pattern.
+ */
+export function isOfferingStreamPoster(value: unknown): value is OfferingStreamPoster {
+  return plainObject(value) && hasOnlyKeys(value, ["host", "video_id", "file"]) &&
+    isStreamVideoHost(value.host) &&
+    typeof value.video_id === "string" && STREAM_POSTER_VIDEO_RE.test(value.video_id) &&
+    typeof value.file === "string" && STREAM_POSTER_FILE_RE.test(value.file);
+}
+
+/** The still's URL (no query, no redirect target): `https://host/video_id/file`. */
+export function offeringStreamPosterUrl(poster: OfferingStreamPoster): string {
+  return `https://${poster.host}/${poster.video_id}/${poster.file}`;
 }
 
 function coverOk(value: unknown): boolean {
@@ -120,6 +154,7 @@ export function isSiteOffering(value: unknown): value is SiteOffering {
     boundedText(v.title, 200, true) &&
     (v.summary === null || boundedText(v.summary, 500, true)) &&
     coverOk(v.cover) &&
+    (v.cover_stream_poster === undefined || isOfferingStreamPoster(v.cover_stream_poster)) &&
     (v.destination_text === null || boundedText(v.destination_text, 200, true)) &&
     (v.start_at === null || isInstant(v.start_at)) &&
     (v.end_at === null || isInstant(v.end_at)) &&
@@ -146,6 +181,11 @@ export function normalizeSiteOffering(raw: unknown): SiteOffering | null {
   if (!plainObject(raw)) return null;
   const pick: Record<string, unknown> = {};
   for (const key of OFFERING_KEYS) pick[key] = raw[key] === undefined ? null : raw[key];
+  // #4572 item 2 — a still that fails its rule (or none) is left out; the
+  // offering stays on the site with its title face.
+  if (pick.cover_stream_poster === null || !isOfferingStreamPoster(pick.cover_stream_poster) || pick.cover !== null) {
+    delete pick.cover_stream_poster;
+  }
   for (const key of ["bookings_closed", "has_free_tier", "waitlist_enabled", "installments_available"]) {
     if (pick[key] === null) pick[key] = false;
   }

@@ -138,9 +138,10 @@ describe("#4453 workspace reads", () => {
     const types = data.types as Doc[];
     expect(types.map((entry) => entry.type)).toEqual([...ADDABLE_SECTION_TYPES]);
     expect(types.find((entry) => entry.type === "faq")).toEqual({ type: "faq", label: "Questions and answers", description: "Questions and answers that open and close.", needs_photo: false });
-    expect(types.filter((entry) => entry.needs_photo).map((entry) => entry.type)).toEqual(["media_feature", "gallery"]);
-    // The top picture and the live booking sections are not added from here.
-    for (const type of ["hero", "availability", "ticket_tiers", "process_steps"]) expect(types.map((entry) => entry.type)).not.toContain(type);
+    // #4572 item 8 — Cover (hero) needs a photo too; with no page named the list is the design's whole list.
+    expect(types.filter((entry) => entry.needs_photo).map((entry) => entry.type)).toEqual(["media_feature", "gallery", "hero"]);
+    // The live booking sections are not added from here.
+    for (const type of ["availability", "ticket_tiers", "process_steps"]) expect(types.map((entry) => entry.type)).not.toContain(type);
   });
 
   it("refuses a member below the content rank, and an unknown page", async () => {
@@ -349,7 +350,9 @@ describe("#4453 move, remove and add a section", () => {
 
   it("refuses a type that cannot be added, an unknown place, and a full page", async () => {
     const add = (args: Doc) => call(site, "add_section", { page_id: site.aboutId, expected_revision: "1", after_section_id: null, ...args });
-    for (const type of ["hero", "availability", "nonsense", 7]) expect((await add({ type })).error.code, String(type)).toBe("SECTION_TYPE_NOT_AVAILABLE");
+    for (const type of ["availability", "nonsense", 7]) expect((await add({ type })).error.code, String(type)).toBe("SECTION_TYPE_NOT_AVAILABLE");
+    // #4572 item 8 — a cover is refused off Home with the reason, before any photo is asked for.
+    expect((await add({ type: "hero" })).error).toMatchObject({ code: "VALIDATION_FAILED", problems: ["A cover can only go at the top of Home."] });
     expect((await add({ type: "faq", after_section_id: "nope" })).error.code).toBe("SECTION_NOT_FOUND");
     pageOf(site, site.aboutId).blocks = Array.from({ length: 60 }, () => ({ id: crypto.randomUUID().slice(0, 24), blockType: "divider", variant: "neutral" }));
     expect((await add({ type: "faq" })).error).toMatchObject({ code: "SECTION_LIMIT_REACHED", max: 60 });

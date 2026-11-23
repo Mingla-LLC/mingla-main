@@ -34,7 +34,14 @@ export type DraftWriterDeps = {
   setRevision: (pageId: string, revision: string) => void;
   onState: (state: SaveState) => void;
   onSaved: (job: DraftJob) => void;
-  onError: (error: unknown, job: DraftJob, dropped: number) => void;
+  /**
+   * #4572 item 11 — `kind` says what the refusal did to the queue: "refused"
+   * (the job did not move the revision, so the jobs behind it are still valid
+   * and keep going) or "conflict" (the page moved: the rest was dropped).
+   */
+  onError: (error: unknown, job: DraftJob, dropped: number, kind: "refused" | "conflict") => void;
+  /** #4572 item 11 — a refusal the queue can drain past (not a conflict, not a lost connection). Absent: every error stops the queue. */
+  keepsQueue?: (error: unknown) => boolean;
   idleMs?: number;
 };
 
@@ -103,7 +110,7 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
         if (revision === null && needsRevision(job)) {
           failed = true;
           done(false);
-          deps.onError(new Error("PAGE_NOT_LOADED"), job, dropRest());
+          deps.onError(new Error("PAGE_NOT_LOADED"), job, dropRest(), "conflict");
           break;
         }
         try {
@@ -119,10 +126,16 @@ export function createDraftWriter(deps: DraftWriterDeps): DraftWriter {
         } catch (error) {
           done(false);
           if (disposed) return;
+          failed = true;
+          // #4572 item 11 — a refusal leaves the revision where it was, so the
+          // jobs queued behind it were made against the same draft: keep going.
+          if (deps.keepsQueue?.(error)) {
+            deps.onError(error, job, 0, "refused");
+            continue;
+          }
           // Whatever was queued behind it was made against a draft that no
           // longer exists: drop it rather than write over a teammate.
-          failed = true;
-          deps.onError(error, job, dropRest());
+          deps.onError(error, job, dropRest(), "conflict");
           break;
         }
       }

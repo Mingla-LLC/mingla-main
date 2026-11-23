@@ -70,9 +70,10 @@ async function publish(design: DesignKey, blocks: Record<string, unknown>[]) {
 const FILLS_ITSELF = new Set(["testimonials", "destination_grid", "story_grid", "page_links"]);
 
 describe("#4453 a starter section always publishes", () => {
-  it("the catalogue only offers types that exist, and never the top picture or a live booking section", () => {
+  it("the catalogue only offers types that exist, and never a live booking section", () => {
     for (const type of ADDABLE_SECTION_TYPES) expect(BLOCK_TYPES).toContain(type);
-    for (const type of ["hero", "page_header", "availability", "ticket_tiers", "process_steps", "menu_board", "venue_reservation"]) {
+    // #4572 item 8 — the top picture ("Cover") IS offered now, only at the top of Home (heroAddable.issue4572).
+    for (const type of ["page_header", "availability", "ticket_tiers", "process_steps", "menu_board", "venue_reservation"]) {
       expect(ADDABLE_SECTION_TYPES).not.toContain(type);
     }
     // A design that does not draw a type does not offer it.

@@ -287,6 +287,8 @@ function controller(over: Record<string, unknown> = {}) {
     validation: { data: { site_id: SITE, valid: true, home_revision: "7", draft_digest: "d1", checked_pages: 5 }, isFetching: false, isLoading: false, isError: false, error: null, refetch: jest.fn() },
     versions: { data: [], isLoading: false, refetch: jest.fn() },
     previewGrant: { data: { preview_url: "https://studio.test/preview?token=t1", pages: [] }, isError: false, refetch: jest.fn() },
+    // #4572 item 1 — the shared refresh state (ready: no stale report yet).
+    previewRefresh: { phase: "ready", onStale: jest.fn(), onFailed: jest.fn(), retry: jest.fn() },
     refreshPreview: jest.fn(),
     publicationOperation: null,
     publicationReceipt: { data: null },
@@ -528,7 +530,28 @@ describe("Edit mode", () => {
     await type(root, "field-s1-heading", "Mine");
     await tick(800);
     expect(words(root)).toContain("Someone changed this while you were editing. Showing the latest.");
-    expect(byId(root, "field-s1-heading")[0]!.props.value).toBe("A teammate's words");
+    // #4572 item 11 (SC-11.3, design state 12) — the latest page is read, and the owner's
+    // own words are kept on the field as "Not saved", never wiped and never written over.
+    expect(byId(root, "field-s1-heading")[0]!.props.value).toBe("Mine");
+    expect(has(root, "field-s1-heading-unsaved")).toBe(true);
+    expect(words(root)).toContain("Not saved. Your words weren’t saved. Try again on the latest version.");
+    expect(called("edit_section")).toHaveLength(1);
+  });
+
+  it("#4572 item 11 — a refused save keeps the words as Not saved, and Try again saves them", async () => {
+    const { root } = await open({ segments: ["pages"] });
+    await press(root, "section-toggle-s1");
+    state.fail.edit_section = { status: 400, code: "VALIDATION_FAILED" };
+    await type(root, "field-s1-heading", "Opening night");
+    await tick(800);
+    expect(byId(root, "field-s1-heading")[0]!.props.value).toBe("Opening night");
+    expect(has(root, "field-s1-heading-unsaved")).toBe(true);
+    delete state.fail.edit_section;
+    await press(root, "field-s1-heading-retry");
+    await tick(800);
+    expect(called("edit_section").length).toBeGreaterThanOrEqual(2);
+    expect(JSON.stringify(called("edit_section").at(-1))).toContain("Opening night");
+    expect(has(root, "field-s1-heading-unsaved")).toBe(false);
   });
 
   it("a change that does not save is taken off the screen even when the page cannot be read again", async () => {

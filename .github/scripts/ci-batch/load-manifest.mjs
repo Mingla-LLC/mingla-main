@@ -390,7 +390,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed.
 // #4572 events: listed migrations 20281129504572, 20281129604572 and 20281129704572 in the #1857, #1931 and #2117 lanes, skipped them on the #1931 and #2117 filtered replays, and registered their three pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "0dcbaf8adecaa0963bce5ace2fc910a5b9498d01fd45b870e7d5273b031c5866";
+// #4572 website items: listed migrations 20281129004572 and 20281129104572 after 20281128004574 in the #1857, #1931 and #2117 lanes and registered their two pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4572 one PR: merged the events and website halves (both lanes' rows kept, filename order); re-sealed.
+export const BOOTSTRAP_SHA256 = "e95bfa8bc8944251dc720c664c99a552e0c06e40269ee77f0cb9f874684b5aea";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
