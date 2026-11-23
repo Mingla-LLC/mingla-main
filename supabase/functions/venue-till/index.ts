@@ -38,6 +38,22 @@
 //                  → { code, payUrl, expiresAt, amountMinor, paymentId, sale }
 //   pay_code_status { code }   pay_code_cancel { code }   pay_code_text { code, phone, phoneCountryIso? } (≤ 3)
 //   keep_late      { paymentId, expectedVersion }   ("Keep it as payment")
+//
+// O4 (split bill, tables, by the hour started by staff; the server computes
+// every share, every price and every claim):
+//   set_split      { saleId, mode: "by_item"|"even"|"none", shares?|count?, expectedVersion }
+//                  by_item shares = [{ items:[{ orderItemId, units } | { lineId, units:1 }] }]
+//   pay_cash / pay_own_machine / pay_tap_start / pay_code_create take an
+//                  optional shareId: the share pays exactly its amount (the
+//                  body's amountMinor must equal it) through the same path.
+//   pay_room       { saleId, shareId?, expectedVersion }  [TRANSITIONAL] always
+//                  refused till_room_not_ready (D13: charge to room comes with
+//                  stays; exit: the room folio ships).
+//   seat           { spotId, partySize?, reservationId?, label?, serverUserId?, idempotencyKey }
+//                  → { sale } (a walk-in gets a staff reservation when Table
+//                  reservations is on; a booking's paid deposit comes off the bill)
+//   start_session  { saleId, offeringId, spaceId?, minutes, guests?, idempotencyKey, expectedVersion }
+//   extend_session { saleId, lineId, minutes, idempotencyKey, expectedVersion } ("Add 30 min")
 //   code_view      { code }                         (ANONYMOUS) venue, lines, amount
 //   code_pay       { code, buyer:{name,email,phone,phoneCountryIso} } (ANONYMOUS) → provider page
 //   confirm_return { code }                         (ANONYMOUS) verifies with the provider
@@ -176,6 +192,22 @@ export const TILL_SAFE_CODES = [
   // different payment or refund (another method, amount, tip, payment or
   // line). Nothing moved.
   "till_request_reused",
+  // #4490 08-O4: split bill, tables, by the hour, the room seam.
+  "till_split_active",
+  "till_split_invalid",
+  "till_split_after_part_payment",
+  "till_split_even_only",
+  "till_share_paid",
+  "till_share_paying",
+  "till_room_not_ready",
+  "offer_space_taken",
+  "offer_staff_start_off",
+  "offer_length_invalid",
+  "offer_too_soon",
+  "deposit_already_used",
+  "till_booking_not_found",
+  "till_booking_other_table",
+  "till_booking_not_seatable",
 ] as const;
 
 // deno-lint-ignore no-explicit-any
@@ -274,9 +306,13 @@ export function tillFailure(error: RpcError): Response {
     try {
       const detail = JSON.parse(error.details);
       for (
-        const key of ["remaining", "remainingMinor", "balanceMinor"] as const
+        const key of ["remaining", "remainingMinor", "balanceMinor", "stepMinutes"] as const
       ) {
         if (typeof detail?.[key] === "number") body[key] = detail[key];
+      }
+      // 08-O4 (T13): who has the unit next, and when.
+      for (const key of ["unitName", "nextAt"] as const) {
+        if (typeof detail?.[key] === "string") body[key] = detail[key];
       }
     } catch {
       // optional detail
@@ -869,10 +905,13 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const tip = minor(body.tipMinor ?? 0);
         const cashGiven = action === "pay_cash" ? minor(body.cashGivenMinor, false) : null;
         const requestId = str(body.clientRequestId);
+        // 08-O4: a share of a split check pays through the same path.
+        const shareId = body.shareId == null ? null : str(body.shareId);
         if (
           !UUID.test(saleId) || amount === null || tip === null ||
           !UUID.test(requestId) || expectedVersion === null ||
-          (action === "pay_cash" && cashGiven === null)
+          (action === "pay_cash" && cashGiven === null) ||
+          (shareId !== null && !UUID.test(shareId))
         ) {
           return json(400, { code: "till_invalid_payload" });
         }
@@ -880,7 +919,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           return json(400, { code: "till_payment_too_large" });
         }
         if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
-        const r = await rpc("issue_4490_till_take_payment", {
+        const payArgs = {
           p_sale_id: saleId,
           p_method: action === "pay_cash" ? "cash" : "own_machine",
           p_amount_minor: amount,
@@ -890,7 +929,10 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_device_user: userId,
           p_client_request_id: requestId,
           p_expected_version: expectedVersion,
-        });
+        };
+        const r = shareId === null
+          ? await rpc("issue_4490_till_take_payment", payArgs)
+          : await rpc("issue_4490_till_pay_share", { ...payArgs, p_share_id: shareId });
         if (r.error) return tillFailure(r.error);
         const data = r.data as Record<string, unknown>;
         // Paying sends any unsent round first (T8): tell the kitchen.
@@ -915,6 +957,169 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           changeMinor: data.changeMinor ?? null,
           replayed: data.replayed === true,
         });
+      }
+
+      case "pay_room": {
+        // [TRANSITIONAL] spec 08 D13 seam: Charge to room comes with stays.
+        // Exit: the stay venue work ships a room folio (a payment row with
+        // method 'room' and a checked-in stay at the same brand). Until then
+        // the server refuses it (issue_4490_till_take_payment raises
+        // till_room_not_ready for method 'room'); nothing is written.
+        const shareId = body.shareId == null ? null : str(body.shareId);
+        if (!UUID.test(saleId) || (shareId !== null && !UUID.test(shareId))) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
+        const roomArgs = {
+          p_sale_id: saleId,
+          p_method: "room",
+          p_amount_minor: 1,
+          p_tip_minor: 0,
+          p_cash_given_minor: null,
+          p_actor: userId,
+          p_device_user: userId,
+          p_client_request_id: crypto.randomUUID(),
+          p_expected_version: expectedVersion,
+        };
+        const r = shareId === null
+          ? await rpc("issue_4490_till_take_payment", roomArgs)
+          : await rpc("issue_4490_till_pay_share", { ...roomArgs, p_share_id: shareId });
+        return r.error ? tillFailure(r.error) : json(409, { code: "till_room_not_ready" });
+      }
+
+      case "set_split": {
+        const mode = str(body.mode);
+        if (
+          !UUID.test(saleId) || expectedVersion === null ||
+          !["by_item", "even", "none"].includes(mode)
+        ) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        let shares: unknown = {};
+        if (mode === "even") {
+          const count = intOrNull(body.count);
+          if (count === null || count < 2 || count > 20) {
+            return json(400, { code: "till_split_invalid" });
+          }
+          shares = { count };
+        } else if (mode === "by_item") {
+          const raw = Array.isArray(body.shares) ? body.shares : null;
+          if (raw === null || raw.length < 2 || raw.length > 20) {
+            return json(400, { code: "till_split_invalid" });
+          }
+          const parsed: Array<{ items: Array<Record<string, unknown>> }> = [];
+          for (const share of raw as Array<Record<string, unknown>>) {
+            const items = Array.isArray(share?.items) ? share.items as Array<Record<string, unknown>> : null;
+            if (items === null || items.length === 0 || items.length > 100) {
+              return json(400, { code: "till_split_invalid" });
+            }
+            const out: Array<Record<string, unknown>> = [];
+            for (const item of items) {
+              const units = intOrNull(item?.units);
+              const orderItemId = item?.orderItemId == null ? null : str(item.orderItemId);
+              const lineId = item?.lineId == null ? null : str(item.lineId);
+              if (
+                units === null || units < 1 || units > 99 ||
+                (orderItemId === null) === (lineId === null) ||
+                (orderItemId !== null && !UUID.test(orderItemId)) ||
+                (lineId !== null && !UUID.test(lineId))
+              ) {
+                return json(400, { code: "till_split_invalid" });
+              }
+              out.push(orderItemId !== null ? { orderItemId, units } : { lineId, units });
+            }
+            parsed.push({ items: out });
+          }
+          shares = parsed;
+        }
+        if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
+        const r = await rpc("issue_4490_till_set_split", {
+          p_sale_id: saleId,
+          p_mode: mode,
+          p_shares: shares,
+          p_actor: userId,
+          p_expected_version: expectedVersion,
+        });
+        return r.error ? tillFailure(r.error) : ok({ sale: r.data });
+      }
+
+      case "seat": {
+        const key = str(body.idempotencyKey);
+        const spotId = str(body.spotId);
+        const reservationId = body.reservationId == null ? null : str(body.reservationId);
+        const server = body.serverUserId == null ? null : str(body.serverUserId);
+        const label = body.label == null ? null : str(body.label).trim();
+        const party = body.partySize == null ? null : intOrNull(body.partySize);
+        if (
+          !KEY.test(key) || !UUID.test(spotId) ||
+          (reservationId !== null && !UUID.test(reservationId)) ||
+          (server !== null && !UUID.test(server)) ||
+          (label !== null && label.length > 40) ||
+          (body.partySize != null && (party === null || party < 1 || party > 100))
+        ) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        const r = await rpc("issue_4490_till_seat", {
+          p_venue_id: venueId,
+          p_actor: userId,
+          p_spot_id: spotId,
+          p_party_size: party,
+          p_reservation_id: reservationId,
+          p_label: label || null,
+          p_server: server,
+          p_idempotency_key: key,
+        });
+        return r.error ? tillFailure(r.error) : ok({ sale: r.data });
+      }
+
+      case "start_session": {
+        const key = str(body.idempotencyKey);
+        const offeringId = str(body.offeringId);
+        const spaceId = body.spaceId == null ? null : str(body.spaceId);
+        const minutes = intOrNull(body.minutes);
+        const guests = body.guests == null ? null : intOrNull(body.guests);
+        if (
+          !UUID.test(saleId) || !KEY.test(key) || key.length > 150 || !UUID.test(offeringId) ||
+          (spaceId !== null && !UUID.test(spaceId)) || minutes === null || minutes < 15 ||
+          minutes > 1440 || (body.guests != null && (guests === null || guests < 1 || guests > 1000)) ||
+          expectedVersion === null
+        ) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
+        const r = await rpc("issue_4490_till_start_session", {
+          p_sale_id: saleId,
+          p_offering_id: offeringId,
+          p_space_id: spaceId,
+          p_minutes: minutes,
+          p_guests: guests,
+          p_actor: userId,
+          p_idempotency_key: key,
+          p_expected_version: expectedVersion,
+        });
+        return r.error ? tillFailure(r.error) : ok({ sale: r.data });
+      }
+
+      case "extend_session": {
+        const key = str(body.idempotencyKey);
+        const lineId = str(body.lineId);
+        const minutes = intOrNull(body.minutes);
+        if (
+          !UUID.test(saleId) || !KEY.test(key) || key.length > 150 || !UUID.test(lineId) ||
+          minutes === null || minutes < 15 || minutes > 240 || expectedVersion === null
+        ) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
+        const r = await rpc("issue_4490_till_extend_session", {
+          p_sale_id: saleId,
+          p_line_id: lineId,
+          p_minutes: minutes,
+          p_actor: userId,
+          p_idempotency_key: key,
+          p_expected_version: expectedVersion,
+        });
+        return r.error ? tillFailure(r.error) : ok({ sale: r.data });
       }
 
       case "refund": {
@@ -1043,7 +1248,12 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const method = action === "pay_tap_start" ? "tap" : "scan";
         const tip = minor(body.tipMinor ?? 0);
         const requestId = str(body.clientRequestId);
-        if (!UUID.test(saleId) || tip === null || !UUID.test(requestId) || expectedVersion === null) {
+        // 08-O4: one card payment (its own carrier) per share of a split check.
+        const shareId = body.shareId == null ? null : str(body.shareId);
+        if (
+          !UUID.test(saleId) || tip === null || !UUID.test(requestId) || expectedVersion === null ||
+          (shareId !== null && !UUID.test(shareId))
+        ) {
           return json(400, { code: "till_invalid_payload" });
         }
         const sale = await loadSale();
@@ -1053,11 +1263,18 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           .select("id").eq("sale_id", saleId).eq("client_request_id", requestId).maybeSingle();
         let prepared: Record<string, unknown> | null = null;
         if (!replay) {
-          const prep = await rpc("issue_4490_till_card_prepare", {
-            p_sale_id: saleId,
-            p_actor: userId,
-            p_expected_version: expectedVersion,
-          });
+          const prep = shareId === null
+            ? await rpc("issue_4490_till_card_prepare", {
+              p_sale_id: saleId,
+              p_actor: userId,
+              p_expected_version: expectedVersion,
+            })
+            : await rpc("issue_4490_till_card_prepare_share", {
+              p_sale_id: saleId,
+              p_share_id: shareId,
+              p_actor: userId,
+              p_expected_version: expectedVersion,
+            });
           if (prep.error) return tillFailure(prep.error);
           prepared = prep.data as Record<string, unknown>;
           await firePlaced(prepared.sentOrderIds);
@@ -1087,17 +1304,24 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         }
         let started: { error: RpcError | null; data: unknown } = { error: null, data: null };
         for (let attempt = 0; attempt < 4; attempt += 1) {
-          started = await rpc("issue_4490_till_card_start", {
+          const startArgs = {
             p_sale_id: saleId,
             p_method: method,
             p_tip_minor: tip,
             p_actor: userId,
             p_device_user: userId,
             p_client_request_id: requestId,
-            p_expected_version: prepared ? Number(prepared.version) : null,
+            p_expected_version: prepared
+              ? Number(prepared.version)
+              : shareId === null
+              ? null
+              : expectedVersion,
             p_money: money,
             p_code: method === "scan" ? (codeForStart ?? newCode()) : null,
-          });
+          };
+          started = shareId === null
+            ? await rpc("issue_4490_till_card_start", startArgs)
+            : await rpc("issue_4490_till_card_start_share", { ...startArgs, p_share_id: shareId });
           // A code collision (unique code) draws again.
           if (started.error?.code === "23505" && method === "scan" && prepared) {
             codeForStart = newCode();

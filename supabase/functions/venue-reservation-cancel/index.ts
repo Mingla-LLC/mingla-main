@@ -137,6 +137,11 @@ serve(
       if (message.includes("cancel_not_allowed")) {
         return jsonResponse({ error: "cancel_not_allowed" }, 409);
       }
+      // #4490 spec 08 §11 T12: this booking's deposit was used on the bill at
+      // the venue (the Till credited it), so it is not refunded.
+      if (message.includes("reservation_deposit_used")) {
+        return jsonResponse({ error: "reservation_deposit_used" }, 409);
+      }
       console.error("venue_refund_prepare_failed", {
         reservation_id: reservationId,
       });

@@ -83,6 +83,8 @@ export function paidCancelErrorMessage(code: string | null): string {
       return "This guest has already been refunded.";
     case "seated_no_auto_refund":
       return SEATED_PAID_CANCEL_NOTE;
+    case "reservation_deposit_used":
+      return "This deposit was used on the bill at the venue.";
     case "cancel_not_allowed":
       return "This booking can't be cancelled any more.";
     case "not_authorized":

@@ -42,6 +42,9 @@ export const VENUE_STAFF_CANCEL_ERROR_STATUS: Readonly<Record<string, number>> =
     payout_in_flight: 409,
     application_fee_unrecorded: 409,
     payment_reference_missing: 409,
+    // #4490 spec 08 §11 T12: the deposit is on a bill at the venue (the Till
+    // credited it), so it is not refunded (source_refunds guard).
+    reservation_deposit_used: 409,
   });
 
 export function venueStaffCancelErrorCode(message: string): string | null {
