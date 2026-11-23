@@ -326,3 +326,33 @@ Deno.test("#3969 Admin reads emails through the admin contacts read", async () =
     "reporter emails use the admin contacts read",
   );
 });
+
+Deno.test("#3969 every own-profile read is pinned to the expected user id", async () => {
+  // get_my_profile follows whatever bearer the shared client holds, so an
+  // unpinned read during an account switch could hand back the old account's
+  // row. Every readMyProfile() / rpc("get_my_profile") chain must carry
+  // .eq("id", ...) before it ends (the `;`).
+  const unpinned: string[] = [];
+  const probe = (file: string, raw: string): void => {
+    const source = stripComments(raw);
+    const re = /(readMyProfile\s*\(\s*\)|\.rpc\(\s*["']get_my_profile["']\s*\))/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(source)) !== null) {
+      const end = source.indexOf(";", m.index);
+      const chain = source.slice(m.index, end === -1 ? source.length : end);
+      if (!/\.eq\(\s*["']id["']/.test(chain)) unpinned.push(`${file}:${lineOf(source, m.index)}`);
+    }
+  };
+  probe("self-test", `const a = await readMyProfile().single();`);
+  assert(unpinned.length === 1, "self-test: an unpinned read must be caught");
+  unpinned.length = 0;
+  probe("self-test", `const a = await readMyProfile()\n.eq("id", u)\n.single();`);
+  assert(unpinned.length === 0, "self-test: a pinned read must pass");
+
+  const files = await sourceFiles();
+  for (const file of files) {
+    if (file.endsWith("services/profileAccessService.ts")) continue;
+    probe(file, await Deno.readTextFile(new URL(file, repoRoot)));
+  }
+  assert(unpinned.length === 0, `own-profile reads without .eq("id", ...): ${unpinned.join(", ")}`);
+});

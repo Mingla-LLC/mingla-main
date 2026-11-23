@@ -350,6 +350,7 @@ export const useAuthSimple = () => {
           // Load profile (non-blocking — user sees home while this completes)
           try {
             const { data: profile, error: profileError } = await readMyProfile()
+              .eq("id", session.user.id)
               .single<User & { explorer_deleted_at?: string | null }>();
 
             if (profileError) {
@@ -421,6 +422,7 @@ export const useAuthSimple = () => {
 
                   if (!createError || createError?.code === "23505") {
                     const { data: stored, error: rereadError } = await readMyProfile()
+                      .eq("id", session.user.id)
                       .maybeSingle<User>();
                     if (rereadError || !stored) {
                       console.error("Error reading the profile after creating it:", rereadError);
@@ -710,7 +712,9 @@ export const useAuthSimple = () => {
       }
 
       // Issue #3969: the saved row comes back through the own-profile read.
-      const { data, error } = await readMyProfile().single<User>();
+      const { data, error } = await readMyProfile()
+        .eq("id", user.id)
+        .single<User>();
       if (error) {
         Alert.alert(
           "Update Failed",

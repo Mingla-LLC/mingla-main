@@ -2569,6 +2569,7 @@ function AppContent() {
 
             // Load profile
             const { data: profile, error: profileError } = await readMyProfile()
+              .eq("id", data.session.user.id)
               .single<ProfileUser>();
 
             if (profileError) {
