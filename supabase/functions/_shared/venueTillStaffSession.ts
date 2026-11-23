@@ -23,7 +23,12 @@ type Client = any;
 export const STAFF_SESSION_RE = /^[0-9a-f]{64}$/;
 export const STAFF_PIN_RE = /^[0-9]{4,6}$/;
 
-export type StepUpPurpose = "refund" | "void_sent" | "reopen" | "export" | "sign_out";
+export type StepUpPurpose =
+  | "refund"
+  | "void_sent"
+  | "reopen"
+  | "export"
+  | "sign_out";
 
 export type TillActor = {
   /** Who acts: the PIN member on a Till device, else the signed-in account. */
@@ -50,7 +55,9 @@ function hexOf(bytes: Uint8Array): string {
 export async function staffTokenHash(token: string): Promise<string | null> {
   if (!STAFF_SESSION_RE.test(token)) return null;
   const bytes = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) bytes[i] = parseInt(token.slice(i * 2, i * 2 + 2), 16);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(token.slice(i * 2, i * 2 + 2), 16);
+  }
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return `\\x${hexOf(digest)}`;
 }
@@ -65,17 +72,26 @@ export function jwtAuthSessionId(jwt: string): string | null {
   const part = jwt.split(".")[1];
   if (!part) return null;
   try {
-    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "="));
+    const json = atob(
+      part.replace(/-/g, "+").replace(/_/g, "/").padEnd(
+        Math.ceil(part.length / 4) * 4,
+        "=",
+      ),
+    );
     const claims = JSON.parse(json) as Record<string, unknown>;
     const id = claims.session_id;
-    return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id) ? id.toLowerCase() : null;
+    return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)
+      ? id.toLowerCase()
+      : null;
   } catch {
     return null;
   }
 }
 
 /** PostgREST / Postgres "function does not exist" (the migration not applied yet). */
-export function isMissingPinFunction(error: { code?: unknown; message?: unknown } | null | undefined): boolean {
+export function isMissingPinFunction(
+  error: { code?: unknown; message?: unknown } | null | undefined,
+): boolean {
   return error?.code === "PGRST202" || error?.code === "42883";
 }
 
@@ -88,7 +104,12 @@ export function isMissingPinFunction(error: { code?: unknown; message?: unknown 
  */
 export async function resolveTillActor(
   client: Client,
-  input: { venueId: string; userId: string; jwt: string; staffSession: unknown },
+  input: {
+    venueId: string;
+    userId: string;
+    jwt: string;
+    staffSession: unknown;
+  },
 ): Promise<TillActorResult> {
   const self: TillActor = {
     actorUserId: input.userId,
@@ -109,9 +130,13 @@ export async function resolveTillActor(
     return { ok: false, status: 500, code: "till_failed" };
   }
   if (gate.data !== true) return { ok: true, actor: self };
-  const token = typeof input.staffSession === "string" ? input.staffSession : "";
+  const token = typeof input.staffSession === "string"
+    ? input.staffSession
+    : "";
   const tokenHash = await staffTokenHash(token);
-  if (tokenHash === null) return { ok: false, status: 401, code: "pin_session_required" };
+  if (tokenHash === null) {
+    return { ok: false, status: 401, code: "pin_session_required" };
+  }
   const authSessionId = jwtAuthSessionId(input.jwt);
   const resolved = await client.rpc("issue_4490_pin_session_resolve", {
     p_token_hash: tokenHash,
@@ -146,15 +171,25 @@ export type StepUpResult =
   | { ok: false; status: number; body: Record<string, unknown> };
 
 /** The PIN answers the client maps to copy (tillCopy.ts). */
-export function pinRefusal(result: Record<string, unknown>): { status: number; body: Record<string, unknown> } {
+export function pinRefusal(
+  result: Record<string, unknown>,
+): { status: number; body: Record<string, unknown> } {
   switch (result.reason) {
     case "wrong":
       return {
         status: 403,
-        body: { code: "pin_wrong", triesLeft: typeof result.triesLeft === "number" ? result.triesLeft : null },
+        body: {
+          code: "pin_wrong",
+          triesLeft: typeof result.triesLeft === "number"
+            ? result.triesLeft
+            : null,
+        },
       };
     case "locked":
-      return { status: 403, body: { code: "pin_locked", lockedUntil: result.lockedUntil ?? null } };
+      return {
+        status: 403,
+        body: { code: "pin_locked", lockedUntil: result.lockedUntil ?? null },
+      };
     case "hard_locked":
       return { status: 403, body: { code: "pin_hard_locked" } };
     case "device_limited":
@@ -183,7 +218,8 @@ export async function requireStepUp(
     target: string | null;
   },
 ): Promise<StepUpResult> {
-  const raw = input.stepUp !== null && typeof input.stepUp === "object" && !Array.isArray(input.stepUp)
+  const raw = input.stepUp !== null && typeof input.stepUp === "object" &&
+      !Array.isArray(input.stepUp)
     ? input.stepUp as Record<string, unknown>
     : null;
   const pin = typeof raw?.pin === "string" ? raw.pin : "";
@@ -216,5 +252,9 @@ export async function requireStepUp(
     const refusal = pinRefusal(result ?? {});
     return { ok: false, status: refusal.status, body: refusal.body };
   }
-  return { ok: true, approverUserId: String(result.approverUserId), approvalId: String(result.approvalId) };
+  return {
+    ok: true,
+    approverUserId: String(result.approverUserId),
+    approvalId: String(result.approvalId),
+  };
 }
