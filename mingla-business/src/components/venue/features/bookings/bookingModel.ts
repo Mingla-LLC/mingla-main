@@ -35,6 +35,9 @@ export function methodLabel(method: string): string {
       return "bank transfer";
     case "card_at_venue":
       return "card at the venue";
+    // #4490 08-O4 fix 1 (O4-T3): the part of a Till bill the table deposit paid.
+    case "table_deposit":
+      return "the table deposit on the bill";
     default:
       return "another way";
   }

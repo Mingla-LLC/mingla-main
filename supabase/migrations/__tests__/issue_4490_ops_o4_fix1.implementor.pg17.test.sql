@@ -453,4 +453,220 @@ BEGIN
 END
 $plain$;
 SELECT public.t4490x_reset();
+
+-- -------------------------------------------------------------------------
+-- X3. O4-T3: "Paid in today" counts what each payment actually took.
+-- -------------------------------------------------------------------------
+CREATE FUNCTION public.t4490x_day(p_offset integer DEFAULT 0) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT public.issue_4490_venue_money_day('44900608-0000-4000-9000-0000000000a1',
+    public.issue_4490_venue_local_date('44900608-0000-4000-9000-0000000000a1') + p_offset)
+$f$;
+-- What changed in "Paid in today" between two reads.
+CREATE FUNCTION public.t4490x_delta(p_before jsonb, p_after jsonb) RETURNS jsonb
+LANGUAGE sql IMMUTABLE AS $f$
+  SELECT jsonb_build_object(
+    'online', (p_after#>>'{paidIn,online}')::bigint - (p_before#>>'{paidIn,online}')::bigint,
+    'atVenue', (p_after#>>'{paidIn,atVenue}')::bigint - (p_before#>>'{paidIn,atVenue}')::bigint,
+    'tableDeposits', (p_after#>>'{paidIn,tableDeposits}')::bigint - (p_before#>>'{paidIn,tableDeposits}')::bigint,
+    'refunded', (p_after#>>'{paidIn,refunded}')::bigint - (p_before#>>'{paidIn,refunded}')::bigint,
+    'paidIn', (p_after->>'paidInMinor')::bigint - (p_before->>'paidInMinor')::bigint)
+$f$;
+-- A share paid by scan whose transfer lands (Mingla money).
+CREATE FUNCTION public.t4490x_scan_share(p_sale uuid, p_share uuid, p_code text) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
+DECLARE
+  v jsonb;
+BEGIN
+  v := public.issue_4490_till_card_prepare_share(p_sale, p_share, '44900608-0000-4000-8000-000000000002',
+    (SELECT version FROM public.venue_till_sales WHERE id = p_sale));
+  v := public.issue_4490_till_card_start_share(p_sale, p_share, 'scan', 0, '44900608-0000-4000-8000-000000000002', NULL,
+    gen_random_uuid(), (v->>'version')::integer,
+    jsonb_build_object('provider', 'paystack', 'totalCents', (v->>'amountMinor')::bigint,
+      'subtotalCents', (v->>'amountMinor')::bigint - (v->>'serviceChargeMinor')::bigint,
+      'serviceChargeCents', (v->>'serviceChargeMinor')::bigint, 'tipCents', 0, 'currency', 'NGN',
+      'effectiveTakeRateBps', 0, 'serviceFeeBps', 0, 'minglaFeeCents', 0, 'platformServiceFeeCents', 0,
+      'buyerSubtotalCents', (v->>'amountMinor')::bigint, 'taxAmountCents', 0), p_code);
+  PERFORM public.issue_4490_till_apply_payment((v->>'paymentId')::uuid);
+  RETURN (v->>'paymentId')::uuid;
+END
+$f$;
+CREATE FUNCTION public.t4490x_cash(p_sale uuid, p_amount bigint) RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT public.issue_4490_till_take_payment(p_sale, 'cash', p_amount, 0, p_amount,
+    '44900608-0000-4000-8000-000000000002', NULL, gen_random_uuid(), (SELECT version FROM public.venue_till_sales WHERE id = p_sale))
+$f$;
+CREATE FUNCTION public.t4490x_cash_share(p_sale uuid, p_share uuid) RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT public.issue_4490_till_pay_share(p_sale, p_share, 'cash', (SELECT amount_minor FROM public.venue_till_shares WHERE id = p_share), 0,
+    (SELECT amount_minor FROM public.venue_till_shares WHERE id = p_share), '44900608-0000-4000-8000-000000000002', NULL,
+    gen_random_uuid(), (SELECT version FROM public.venue_till_sales WHERE id = p_sale))
+$f$;
+CREATE FUNCTION public.t4490x_share(p_sale uuid, p_no integer) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT id FROM public.venue_till_shares WHERE sale_id = p_sale AND share_no = p_no
+$f$;
+-- The booking side: what each booking of a check has recorded, by method.
+CREATE FUNCTION public.t4490x_booked(p_sale uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT COALESCE(string_agg(x.m || ':' || x.a, ',' ORDER BY x.m), '')
+  FROM (SELECT CASE WHEN o.method = 'till' THEN 'till/' || tp.method ELSE o.method END AS m, sum(o.amount_minor) AS a
+        FROM public.venue_offline_payments o
+        LEFT JOIN public.venue_till_payments tp ON tp.id = o.till_payment_id
+        WHERE o.group_id IN (SELECT l.stay_group_id FROM public.venue_till_lines l WHERE l.sale_id = p_sale)
+        GROUP BY 1) x
+$f$;
+GRANT EXECUTE ON FUNCTION public.t4490x_day(integer), public.t4490x_delta(jsonb, jsonb), public.t4490x_scan_share(uuid, uuid, text),
+  public.t4490x_cash(uuid, bigint), public.t4490x_cash_share(uuid, uuid), public.t4490x_share(uuid, integer),
+  public.t4490x_booked(uuid) TO PUBLIC;
+-- More tables for these checks (T3, T4).
+SELECT public.t4490x_as('44900608-0000-4000-8000-000000000001');
+SELECT public.issue_4490_manage_table('create', '44900608-0000-4000-9000-0000000000a1',
+  jsonb_build_object('name', 'T3', 'capacity', 4, 'spaceId', (SELECT t.space_id FROM public.venue_tables t WHERE t.id = public.t4490x_id('t1'))), 'o4x-setup-t3') IS NOT NULL;
+SELECT public.t4490x_reset();
+INSERT INTO t4490x_ids
+SELECT 'spot_' || t.name, q.id FROM public.qr_spots q JOIN public.venue_tables t ON t.id = q.venue_table_id
+WHERE t.venue_id = '44900608-0000-4000-9000-0000000000a1' AND t.name = 'T3';
+
+SELECT public.t4490x_service();
+DO $deposit$
+DECLARE
+  v jsonb;
+  b0 jsonb := public.t4490x_day();
+  b1 jsonb;
+  b2 jsonb;
+  r uuid;
+  v_sale uuid;
+  v_group uuid;
+BEGIN
+  r := public.t4490x_paid('x3', public.t4490x_id('t3'), 500000);
+  b1 := public.t4490x_day();
+  v := public.issue_4490_till_seat('44900608-0000-4000-9000-0000000000a1', '44900608-0000-4000-8000-000000000002',
+    public.t4490x_id('spot_T3'), NULL, r, NULL, NULL, 'o4x-seat-x3');
+  v_sale := (v->>'id')::uuid;
+  v := public.t4490x_start(v_sale, public.t4490x_id('board'), NULL, 60, 'x3-board');
+  PERFORM public.t4490x_ok((v->>'totalDueMinor')::bigint = 700000 AND (v->>'creditMinor')::bigint = 500000,
+    'X3-0 fixture: a 12,000.00 Boardroom hour on a check with a 5,000.00 deposit: 7,000.00 to pay');
+  v := public.t4490x_cash(v_sale, 700000);
+  b2 := public.t4490x_day();
+  v_group := (public.t4490x_line(v_sale, 'by_the_hour')).stay_group_id;
+  PERFORM public.t4490x_ok(public.t4490x_delta(b0, b1) = '{"online":0,"atVenue":0,"tableDeposits":500000,"refunded":0,"paidIn":500000}'::jsonb,
+    'X3-1a the deposit paid online counts once, as a table deposit, the day it is paid ' || public.t4490x_delta(b0, b1)::text);
+  PERFORM public.t4490x_ok(public.t4490x_delta(b1, b2) = '{"online":0,"atVenue":700000,"tableDeposits":0,"refunded":0,"paidIn":700000}'::jsonb,
+    'X3-1 paying the 7,000.00 left in cash adds 7,000.00 at the venue and nothing online (the deposit is never counted twice) '
+      || public.t4490x_delta(b1, b2)::text);
+  PERFORM public.t4490x_ok(public.t4490x_booked(v_sale) = 'table_deposit:500000,till/cash:700000'
+      AND (SELECT m.balance FROM public.issue_4490_booking_money(v_group) m) = 0,
+    'X3-1b the session''s booking holds 7,000.00 cash + 5,000.00 paid by the deposit: fully paid, nothing due twice '
+      || public.t4490x_booked(v_sale));
+END
+$deposit$;
+SELECT public.t4490x_reset();
+
+SELECT public.t4490x_service();
+DO $split$
+DECLARE
+  v jsonb;
+  b0 jsonb;
+  b1 jsonb;
+  b2 jsonb;
+  v_sale uuid := public.t4490x_open('x3-split');
+  v_cash uuid;
+BEGIN
+  PERFORM public.t4490x_start(v_sale, public.t4490x_id('pool'), NULL, 60, 'x3-split');
+  PERFORM public.issue_4490_till_set_split(v_sale, 'even', '{"count":2}', '44900608-0000-4000-8000-000000000002', public.t4490x_v(v_sale));
+  b0 := public.t4490x_day();
+  PERFORM public.t4490x_scan_share(v_sale, public.t4490x_share(v_sale, 1), 'XTHREEAA');
+  v := public.t4490x_cash_share(v_sale, public.t4490x_share(v_sale, 2));
+  v_cash := (v->>'paymentId')::uuid;
+  b1 := public.t4490x_day();
+  PERFORM public.t4490x_ok((v->>'salePaid')::boolean
+      AND public.t4490x_delta(b0, b1) = '{"online":250000,"atVenue":250000,"tableDeposits":0,"refunded":0,"paidIn":500000}'::jsonb,
+    'X3-2 a 5,000.00 pool hour split evenly, share 1 by scan and share 2 in cash: 2,500.00 online and 2,500.00 at the venue '
+      || public.t4490x_delta(b0, b1)::text);
+  -- The cash share is refunded in full: it comes off once, that day.
+  PERFORM public.issue_4490_till_refund(v_cash, 250000, 0, 'Guest left', false, '44900608-0000-4000-8000-000000000001',
+    NULL, gen_random_uuid());
+  b2 := public.t4490x_day();
+  PERFORM public.t4490x_ok(public.t4490x_delta(b1, b2) = '{"online":0,"atVenue":0,"tableDeposits":0,"refunded":250000,"paidIn":-250000}'::jsonb,
+    'X3-3 refunding the cash share takes 2,500.00 off that day as refunded; the scan share is untouched '
+      || public.t4490x_delta(b1, b2)::text);
+END
+$split$;
+SELECT public.t4490x_reset();
+
+SELECT public.t4490x_service();
+DO $byitem$
+DECLARE
+  v jsonb;
+  b0 jsonb;
+  b1 jsonb;
+  v_sale uuid := public.t4490x_open('x3-items');
+  v_line uuid;
+  v_item uuid;
+BEGIN
+  PERFORM public.t4490x_start(v_sale, public.t4490x_id('pool'), NULL, 60, 'x3-items');
+  PERFORM public.t4490x_round(v_sale, 1);
+  PERFORM public.issue_4490_till_send(v_sale, '44900608-0000-4000-8000-000000000002');
+  v_line := (public.t4490x_line(v_sale, 'by_the_hour')).id;
+  SELECT i.id INTO v_item FROM public.venue_order_items i
+  JOIN public.venue_till_lines l ON l.venue_order_id = i.venue_order_id WHERE l.sale_id = v_sale;
+  PERFORM public.issue_4490_till_set_split(v_sale, 'by_item',
+    jsonb_build_array(jsonb_build_object('items', jsonb_build_array(jsonb_build_object('lineId', v_line, 'units', 1))),
+                      jsonb_build_object('items', jsonb_build_array(jsonb_build_object('orderItemId', v_item, 'units', 1)))),
+    '44900608-0000-4000-8000-000000000002', public.t4490x_v(v_sale));
+  b0 := public.t4490x_day();
+  PERFORM public.t4490x_scan_share(v_sale, public.t4490x_share(v_sale, 1), 'XTHREEBB');
+  v := public.t4490x_cash_share(v_sale, public.t4490x_share(v_sale, 2));
+  b1 := public.t4490x_day();
+  PERFORM public.t4490x_ok((v->>'salePaid')::boolean
+      AND public.t4490x_delta(b0, b1) = '{"online":500000,"atVenue":0,"tableDeposits":0,"refunded":0,"paidIn":500000}'::jsonb
+      AND public.t4490x_booked(v_sale) = 'till/scan:500000',
+    'X3-4 split by item: the guest who took the pool table paid it by scan (5,000.00 online); the drinks share in cash adds nothing '
+      || public.t4490x_delta(b0, b1)::text || ' ' || public.t4490x_booked(v_sale));
+END
+$byitem$;
+SELECT public.t4490x_reset();
+
+-- Part payments on different days land on their own days.
+SELECT public.t4490x_service();
+DO $days$
+DECLARE
+  v jsonb;
+  y0 jsonb;
+  t0 jsonb;
+  y1 jsonb;
+  t1 jsonb;
+  v_sale uuid := public.t4490x_open('x3-days');
+BEGIN
+  PERFORM public.t4490x_start(v_sale, public.t4490x_id('pool'), NULL, 60, 'x3-days');
+  y0 := public.t4490x_day(-1);
+  t0 := public.t4490x_day();
+  v := public.t4490x_cash(v_sale, 200000);
+  -- Test only: that part payment was taken yesterday (moved in time inside
+  -- this rolled-back transaction).
+  UPDATE public.venue_till_payments SET paid_at = now() - interval '1 day' WHERE id = (v->>'paymentId')::uuid;
+  v := public.t4490x_cash(v_sale, 300000);
+  y1 := public.t4490x_day(-1);
+  t1 := public.t4490x_day();
+  PERFORM public.t4490x_ok((v->>'salePaid')::boolean
+      AND (public.t4490x_delta(y0, y1)->>'atVenue')::bigint = 200000 AND (public.t4490x_delta(t0, t1)->>'atVenue')::bigint = 300000,
+    'X3-5 a 2,000.00 part payment yesterday and the 3,000.00 rest today land on their own days '
+      || public.t4490x_delta(y0, y1)::text || ' / ' || public.t4490x_delta(t0, t1)::text);
+END
+$days$;
+SELECT public.t4490x_reset();
+
+SELECT public.t4490x_ok(NOT EXISTS (
+    SELECT 1 FROM public.venue_till_lines l
+    JOIN public.venue_till_sales s ON s.id = l.sale_id AND s.venue_id = '44900608-0000-4000-9000-0000000000a1'
+    WHERE l.kind IN ('entry', 'group_package', 'balance', 'by_the_hour') AND l.state IN ('committed', 'refunded')
+      AND l.amount_minor <> COALESCE((SELECT sum(o.amount_minor) FROM public.venue_offline_payments o
+                                      WHERE o.group_id = l.stay_group_id
+                                        AND (o.idempotency_key LIKE 'till-line:' || l.id || ':%'
+                                             OR o.idempotency_key = 'till-credit:' || l.id)), 0))
+  AND (SELECT count(*) FROM public.venue_till_lines l JOIN public.venue_till_sales s ON s.id = l.sale_id
+       WHERE s.venue_id = '44900608-0000-4000-9000-0000000000a1' AND l.kind = 'by_the_hour' AND l.state = 'committed') >= 4,
+  'X3-6 on every paid check of this suite, the parts recorded for each offer line add up to the line exactly');
+
 ROLLBACK;
