@@ -106,20 +106,21 @@ export const quoteTicketCheckout = async (
         ).then(({ decodeTicketQuotePlanV2 }) =>
           decodeTicketQuotePlanV2(quote.paymentPlanV2),
         );
-  const addonPaymentMode =
-    quote.addonPaymentMode === undefined
-      ? undefined
+  // issue #4522 S-1 — the wire carries JSON null when the cart has no add-on
+  // choice; only a non-null value outside today | spread is refused.
+  const rawAddonPaymentMode: unknown = quote.addonPaymentMode;
+  const addonPaymentModeField =
+    rawAddonPaymentMode === undefined
+      ? ({ ok: true, mode: undefined } as const)
       : await import(
           "@mingla/offering-rendering/ticketQuotePlanV2Contract"
-        ).then(({ decodeTicketQuoteAddOnPaymentMode }) =>
-          decodeTicketQuoteAddOnPaymentMode(quote.addonPaymentMode),
+        ).then(({ readTicketQuoteAddOnPaymentModeField }) =>
+          readTicketQuoteAddOnPaymentModeField(rawAddonPaymentMode),
         );
-  if (
-    quote.addonPaymentMode !== undefined &&
-    addonPaymentMode === undefined
-  ) {
+  if (!addonPaymentModeField.ok) {
     throw new Error("addon_payment_mode_invalid");
   }
+  const addonPaymentMode = addonPaymentModeField.mode;
   const planTotalBuyerCents = installmentPlanBuyerTotal(
     quote.buyerTotalCents,
     schedule,

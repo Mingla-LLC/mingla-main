@@ -42,6 +42,23 @@ export function decodeTicketQuoteAddOnPaymentMode(
   return value === "today" || value === "spread" ? value : undefined;
 }
 
+/**
+ * The quote's `addonPaymentMode` field as sent on the wire: the SQL emits JSON
+ * null whenever the v2 cart has no add-on choice, and older bodies omit it.
+ * Both mean "no choice"; any other non-null value is refused (fail closed).
+ */
+export type TicketQuoteAddOnPaymentModeField =
+  | { ok: true; mode: "today" | "spread" | undefined }
+  | { ok: false };
+
+export function readTicketQuoteAddOnPaymentModeField(
+  value: unknown,
+): TicketQuoteAddOnPaymentModeField {
+  if (value === undefined || value === null) return { ok: true, mode: undefined };
+  const mode = decodeTicketQuoteAddOnPaymentMode(value);
+  return mode === undefined ? { ok: false } : { ok: true, mode };
+}
+
 const AVAILABILITIES: ReadonlySet<string> = new Set([
   "plan",
   "full_deposit",
