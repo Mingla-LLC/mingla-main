@@ -98,4 +98,13 @@ SELECT pg_temp.issue_4490_o4f2_patch(
     END IF;
   ELSIF NEW.kind = 'by_the_hour' THEN$new$);
 
+-- ===========================================================================
+-- O4-B2: an unpaid even split does not make the check "even only".
+-- ===========================================================================
+SELECT pg_temp.issue_4490_o4f2_patch(
+  'public.issue_4490_till_sale_extras(uuid)'::regprocedure,
+  $old$OR EXISTS (SELECT 1 FROM public.venue_till_shares sh WHERE sh.sale_id = p_sale_id AND sh.mode = 'even')$old$,
+  $new$OR EXISTS (SELECT 1 FROM public.venue_till_shares sh WHERE sh.sale_id = p_sale_id AND sh.mode = 'even'
+                          AND sh.state <> 'unpaid')$new$);
+
 COMMIT;

@@ -468,5 +468,99 @@ SELECT public.t4490y_ok(public.t4490y_refunds(public.t4490y_id('y3c_res')) = 0 A
     AND (public.t4490y_res(public.t4490y_id('y3c_res'))).status = 'seated',
   'Y3-7 ... the booking stays seated with its deposit on the check, no refund row');
 
+-- -------------------------------------------------------------------------
+-- Y2. O4-B2: an unpaid even split does not make the check "even only".
+-- -------------------------------------------------------------------------
+SELECT public.t4490y_service();
+DO $even$
+DECLARE
+  v jsonb;
+  s uuid := public.t4490y_open('y2');
+  v_item uuid;
+BEGIN
+  PERFORM public.t4490y_round(s, 2);
+  v := public.issue_4490_till_set_split(s, 'even', '{"count":2}', '44900609-0000-4000-8000-000000000002', public.t4490y_v(s));
+  PERFORM public.t4490y_ok(jsonb_array_length(v->'shares') = 2 AND NOT (v#>>'{split,evenOnly}')::boolean,
+    'Y2-1 "2 ways" with nothing paid: two unpaid shares and By item still allowed (evenOnly false)');
+  SELECT i.id INTO v_item FROM public.venue_order_items i JOIN public.venue_till_lines l ON l.venue_order_id = i.venue_order_id
+  WHERE l.sale_id = s;
+  v := public.issue_4490_till_set_split(s, 'by_item',
+    jsonb_build_array(jsonb_build_object('items', jsonb_build_array(jsonb_build_object('orderItemId', v_item, 'units', 1))),
+                      jsonb_build_object('items', jsonb_build_array(jsonb_build_object('orderItemId', v_item, 'units', 1)))),
+    '44900609-0000-4000-8000-000000000002', public.t4490y_v(s));
+  PERFORM public.t4490y_ok(jsonb_array_length(v->'shares') = 2 AND v#>>'{shares,0,mode}' = 'by_item',
+    'Y2-2 ... and By item then replaces it');
+  v := public.issue_4490_till_set_split(s, 'even', '{"count":2}', '44900609-0000-4000-8000-000000000002', public.t4490y_v(s));
+  PERFORM public.t4490y_cash_share(s, public.t4490y_share(s, 1));
+  v := public.issue_4490_till_sale_projection(s);
+  PERFORM public.t4490y_ok((v#>>'{split,evenOnly}')::boolean,
+    'Y2-3 once an even share is paid, only an even split of the rest (evenOnly true; deviation 8 unchanged)');
+  INSERT INTO t4490y_ids VALUES ('y2_sale', s);
+END
+$even$;
+SELECT public.t4490y_reset();
 
+-- -------------------------------------------------------------------------
+-- O1-N3 still holds on a part-paid split check: a line can be added, and an
+-- unpaid line voided (the browser's "locked basket" was the pay sheet open
+-- over the menu, not a server rule).
+-- -------------------------------------------------------------------------
+SELECT public.t4490y_service();
+DO $basket$
+DECLARE
+  s uuid := public.t4490y_id('y2_sale');
+  v_order uuid;
+  v_line uuid;
+BEGIN
+  v_order := public.t4490y_round(s, 1);
+  SELECT id INTO v_line FROM public.venue_till_lines WHERE sale_id = s AND venue_order_id = v_order;
+  PERFORM public.t4490y_ok((public.t4490y_sale(s)).state = 'open' AND (public.t4490y_sale(s)).paid_minor > 0
+      AND NOT EXISTS (SELECT 1 FROM public.venue_till_shares WHERE sale_id = s AND state = 'unpaid'),
+    'Y0-1 a part-paid split check takes a new round (the unpaid share is dropped, the paid one kept)');
+  PERFORM public.t4490y_void(s, v_line);
+  PERFORM public.t4490y_ok((SELECT state FROM public.venue_till_lines WHERE id = v_line) = 'voided',
+    'Y0-2 ... and that unpaid round can be voided again (O1-N3)');
+END
+$basket$;
+SELECT public.t4490y_reset();
+
+-- -------------------------------------------------------------------------
+-- Y1. O4-B1 on the server: a share's scan code carries exactly the share plus
+-- the tip chosen (no recomputation); a tip above the payment is refused.
+-- -------------------------------------------------------------------------
+SELECT public.t4490y_service();
+DO $tips$
+DECLARE
+  v jsonb;
+  s uuid := public.t4490y_open('y1');
+  sh uuid;
+  p uuid;
+BEGIN
+  PERFORM public.t4490y_round(s, 3);
+  PERFORM public.issue_4490_till_set_split(s, 'even', '{"count":3}', '44900609-0000-4000-8000-000000000002', public.t4490y_v(s));
+  sh := public.t4490y_share(s, 3);
+  -- 3 x 10,000.00 food, 10% service charge: 33,000.00 in 3; share 3 = 11,000.00; 10% of its food = 1,000.00.
+  v := public.issue_4490_till_card_prepare_share(s, sh, '44900609-0000-4000-8000-000000000002', public.t4490y_v(s));
+  v := public.issue_4490_till_card_start_share(s, sh, 'scan', 100000, '44900609-0000-4000-8000-000000000002', NULL,
+    gen_random_uuid(), (v->>'version')::integer,
+    jsonb_build_object('provider', 'paystack', 'totalCents', (v->>'amountMinor')::bigint + 100000,
+      'subtotalCents', (v->>'amountMinor')::bigint - (v->>'serviceChargeMinor')::bigint,
+      'serviceChargeCents', (v->>'serviceChargeMinor')::bigint, 'tipCents', 100000, 'currency', 'NGN',
+      'effectiveTakeRateBps', 0, 'serviceFeeBps', 0, 'minglaFeeCents', 0, 'platformServiceFeeCents', 0,
+      'buyerSubtotalCents', (v->>'amountMinor')::bigint, 'taxAmountCents', 0), 'YTHREEAB');
+  p := (v->>'paymentId')::uuid;
+  PERFORM public.t4490y_ok((SELECT amount_minor FROM public.venue_till_payments WHERE id = p) = 1100000
+      AND (SELECT tip_minor FROM public.venue_till_payments WHERE id = p) = 100000
+      AND (SELECT o.total_cents FROM public.venue_orders o WHERE o.till_payment_id = p) = 1200000
+      AND (SELECT o.tip_cents FROM public.venue_orders o WHERE o.till_payment_id = p) = 100000,
+    'Y1-1 the scan code for share 3 (11,000.00) with a 10% tip on its food (1,000.00) asks the guest for 12,000.00');
+  PERFORM public.t4490y_expect(format($q$SELECT public.issue_4490_till_pay_share(%L, %L, 'cash', %s, %s, %s,
+      '44900609-0000-4000-8000-000000000002', NULL, gen_random_uuid(), %s)$q$, s, public.t4490y_share(s, 1),
+      (SELECT amount_minor FROM public.venue_till_shares WHERE id = public.t4490y_share(s, 1)),
+      (SELECT amount_minor FROM public.venue_till_shares WHERE id = public.t4490y_share(s, 1)) + 1,
+      2 * (SELECT amount_minor FROM public.venue_till_shares WHERE id = public.t4490y_share(s, 1)) + 1, public.t4490y_v(s)),
+    '22023', 'till_tip_invalid', 'Y1-2 a tip above the share itself is refused (spec 08 §4: tips at most 100% of the share)');
+END
+$tips$;
+SELECT public.t4490y_reset();
 ROLLBACK;
