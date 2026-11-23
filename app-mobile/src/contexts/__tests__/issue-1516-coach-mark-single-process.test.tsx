@@ -338,7 +338,7 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
       __esModule: true,
       mixpanelService: {
         track() {}, timeEvent() {},
-        trackCoachMarkViewed() {}, trackCoachMarkCompleted() {},
+        trackCoachMarkViewed() {}, trackCoachMarkCompleted() {}, trackCoachMarkHeld() {},
         trackCoachTourCompleted() {}, trackCoachMarkSkipped() {},
       },
     },
@@ -353,7 +353,9 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
     return hardwareBackHandler();
   };
 
-  return { rt, sb, mount, read, fireHardwareBack, navigations, stepsModule, unmount: rt.unmount, flush: rt.flush };
+  const hasBackListener = () => typeof hardwareBackHandler === 'function';
+
+  return { rt, sb, mount, read, fireHardwareBack, hasBackListener, navigations, stepsModule, unmount: rt.unmount, flush: rt.flush };
 }
 
 // Enough time for the scroll-step path (TAB_NAVIGATE_DELAY_MS + the full offset poll
@@ -456,6 +458,12 @@ async function run() {
       const h = makeHarness(1, realSteps);
       const inst = h.mount();
       await clock.advance(SETTLE_MS, inst, h.flush);
+      // [TEST-MOD-APPROVED #4562] R-6c: a held step 1 (the overlay has drawn nothing) does
+      // not own Android Back, so no listener is registered and Back behaves normally.
+      assert.equal(h.hasBackListener(), false, 'R-6c: step 1 held (nothing drawn) must register no Back listener');
+      // The tour owns Back only once the overlay reports the bubble it drew.
+      h.read(inst).reportPresentation(1);
+      await clock.settle(inst, h.flush);
       const writesBefore = [...h.sb.writes];
       assert.equal(h.fireHardwareBack(), true, 'R-6: step 1 must consume Android Back');
       await clock.settle(inst, h.flush);
@@ -468,6 +476,8 @@ async function run() {
       const inst = h.mount();
       await clock.advance(SETTLE_MS, inst, h.flush);
       h.read(inst).skipStep(4);
+      await clock.settle(inst, h.flush);
+      h.read(inst).reportPresentation(5); // [TEST-MOD-APPROVED #4562] the bubble is drawn
       await clock.settle(inst, h.flush);
       assert.equal(h.fireHardwareBack(), true, 'R-6: step 5 must consume Android Back');
       await clock.advance(SETTLE_MS, inst, h.flush);
