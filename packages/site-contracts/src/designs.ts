@@ -136,6 +136,21 @@ export type DesignChrome = {
 };
 
 /**
+ * #4575 — design options: a design may offer a small set of owner choices
+ * that change how it draws without changing the design key or version (a
+ * version bump would invalidate every published artifact of that design).
+ * Only Grid offers any. Stored in the Site CMS settings group
+ * `design_options`; frozen into a published artifact as `design.options`
+ * only when one changes the drawing (resolveDesignOptions).
+ */
+export const DESIGN_OPTION_VALUES = { cover: ["full"], photos: ["colour", "mono"] } as const;
+export type DesignOptionKey = keyof typeof DESIGN_OPTION_VALUES;
+/** What an owner stores (Studio's group may hold nulls = not set). */
+export type DesignOptions = { cover?: "full" | null; photos?: "colour" | "mono" | null };
+/** What a published artifact carries: only what changes the drawing; never empty. */
+export type ResolvedDesignOptions = { cover?: "full"; photos?: "colour" };
+
+/**
  * #4453 §3.3 — the shared block library: every layout the runtime draws once
  * (mingla-sites/src/designs/shared/blocks) for any design, from token
  * variables only. A design offers a subset in its `variants`. The new block
@@ -222,6 +237,8 @@ export type DesignDefinition = {
   chrome: DesignChrome;
   /** #4453 — the layout a NEW composition takes per block type (else `variants[type][0]`). */
   picks: Readonly<Partial<Record<BlockType, string>>>;
+  /** #4575 — the options this design offers; absent = none. */
+  options?: readonly DesignOptionKey[];
 };
 
 /**
@@ -1126,6 +1143,8 @@ export const GRID: DesignDefinition = {
   image: { filter: "mono", treatment: "Monochrome, high contrast, hard square crops; colour returns on hover" },
   chrome: { header: ["grid-bar", "glass", "center", "pill"], footer: ["giant", "columns"] },
   picks: GRID_PICKS,
+  // #4575 — the full-screen cover and full-colour photos (drawn by public/designs/grid/options-1.css).
+  options: ["cover", "photos"],
 };
 
 const TERRA_PICKS: Readonly<Partial<Record<BlockType, string>>> = {
@@ -1627,6 +1646,52 @@ export function isDesignKey(value: unknown): value is DesignKey {
 
 export function designFor(key: unknown): DesignDefinition | null {
   return isDesignKey(key) ? DESIGNS[key] : null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value) as unknown;
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * #4575 — a stored `design_options` value: null/undefined, or a plain object
+ * with only `cover` and `photos`, each null/undefined or one of its values.
+ * Throws `DESIGN_OPTIONS_INVALID:<key>` (`:design_options` for a non-object).
+ */
+export function assertDesignOptions(value: unknown): asserts value is DesignOptions {
+  if (value === null || value === undefined) return;
+  if (!isPlainObject(value)) throw new Error("DESIGN_OPTIONS_INVALID:design_options");
+  for (const [key, entry] of Object.entries(value)) {
+    if (!(key in DESIGN_OPTION_VALUES)) throw new Error(`DESIGN_OPTIONS_INVALID:${key}`);
+    if (entry === null || entry === undefined) continue;
+    const allowed = DESIGN_OPTION_VALUES[key as DesignOptionKey] as readonly string[];
+    if (typeof entry !== "string" || !allowed.includes(entry)) throw new Error(`DESIGN_OPTIONS_INVALID:${key}`);
+  }
+}
+
+/**
+ * #4575 — what a published artifact carries for a design's stored options:
+ * only the options the design offers and that change its drawing. Full
+ * colour is the default when the cover is on; "mono" is the design's own
+ * monochrome. An invalid stored value counts as none (never throws). Null
+ * when nothing is set, so an artifact without options is unchanged.
+ */
+export function resolveDesignOptions(design: DesignDefinition, stored: unknown): ResolvedDesignOptions | null {
+  try {
+    assertDesignOptions(stored);
+  } catch {
+    // An invalid stored value is treated as no options (the settings field validates on save).
+    return null;
+  }
+  const offered = design.options ?? [];
+  const resolved: ResolvedDesignOptions = {};
+  if (offered.includes("cover") && stored?.cover === "full") resolved.cover = "full";
+  if (offered.includes("photos")) {
+    if (stored?.photos === "colour") resolved.photos = "colour";
+    else if (stored?.photos !== "mono" && resolved.cover === "full") resolved.photos = "colour";
+  }
+  return resolved.cover || resolved.photos ? resolved : null;
 }
 
 /**

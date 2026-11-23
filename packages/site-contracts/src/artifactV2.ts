@@ -13,7 +13,7 @@
  */
 import { assertNoSampleContent } from "./planPreview.ts";
 import { assertSiteBlock, BLOCK_CATALOG, type SiteBlock } from "./blocks.ts";
-import { designFor, FOOTER_VARIANTS, HEADER_VARIANTS, type DesignKey, type FooterVariant, type HeaderVariant } from "./designs.ts";
+import { designFor, FOOTER_VARIANTS, HEADER_VARIANTS, type DesignKey, type FooterVariant, type HeaderVariant, type ResolvedDesignOptions } from "./designs.ts";
 import {
   assertFontAssets,
   assertFontFallbacks,
@@ -269,7 +269,8 @@ export type ArtifactV2 = {
   source_digest: string;
   generated_at: string;
   brand: { display_name: string; short_description?: string; logo?: MediaRef };
-  design: { key: DesignKey; version: number };
+  /** #4575: `options` is absent on every artifact without options (all published before #4575 and every site that never set one). */
+  design: { key: DesignKey; version: number; options?: ResolvedDesignOptions };
   tokens: ResolvedTokens;
   fonts: FontSlots;
   font_assets: FontAsset[];
@@ -577,9 +578,20 @@ export function assertArtifactV2(value: unknown, serializedBytes?: number): asse
   ) fail("ARTIFACT_DIGEST_MISMATCH");
 
   // Design, tokens, fonts.
-  if (!plainObject(a.design) || !hasOnlyKeys(a.design, ["key", "version"])) fail("ARTIFACT_DESIGN_MISMATCH");
+  if (!plainObject(a.design) || !hasOnlyKeys(a.design, ["key", "version", "options"])) fail("ARTIFACT_DESIGN_MISMATCH");
   const design = designFor((a.design as Record<string, unknown>).key);
   if (!design || (a.design as Record<string, unknown>).version !== design.version) fail("ARTIFACT_DESIGN_MISMATCH");
+  // #4575 — design options: only what the design offers and only values that change its drawing.
+  const options = (a.design as Record<string, unknown>).options;
+  if (options !== undefined) {
+    const offered: readonly string[] = design.options ?? [];
+    if (
+      !plainObject(options) || Object.keys(options).length === 0 || !hasOnlyKeys(options, ["cover", "photos"]) ||
+      ("cover" in options && options.cover !== "full") ||
+      ("photos" in options && options.photos !== "colour") ||
+      Object.keys(options).some((key) => !offered.includes(key))
+    ) fail("ARTIFACT_DESIGN_MISMATCH");
+  }
   assertResolvedTokens(a.tokens);
   assertFontSlots(a.fonts);
   assertFontAssets(a.font_assets, a.fonts as FontSlots);
