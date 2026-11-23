@@ -1722,6 +1722,19 @@ CREATE TRIGGER zz_issue_4579_payout_settings_owner_only
   BEFORE UPDATE ON public.brands
   FOR EACH ROW EXECUTE FUNCTION public.issue_4579_tg_payout_settings_owner_only();
 
+-- 5c. The payouts history (a mirror of the payment partner's payouts, written by
+--     the webhook with the service role) is read-only to brand teams. The old
+--     FOR ALL policy also let Brand admins insert, change and delete rows; only
+--     the service role writes now. The read audience is unchanged.
+DROP POLICY IF EXISTS "Brand admin plus can manage payouts" ON public.payouts;
+DROP POLICY IF EXISTS "issue_4579_payouts_team_read" ON public.payouts;
+CREATE POLICY "issue_4579_payouts_team_read" ON public.payouts
+  FOR SELECT TO authenticated
+  USING (public.biz_can_manage_payments_for_brand_for_caller(brand_id));
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.payouts FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.payouts TO authenticated;
+GRANT ALL ON TABLE public.payouts TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 6. Grants. Internal helpers are not callable by clients.
 -- ---------------------------------------------------------------------------

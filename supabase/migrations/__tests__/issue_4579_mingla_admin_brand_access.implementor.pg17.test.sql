@@ -32,6 +32,7 @@
 -- T-9  payout settings (fix pass): every payout field on the brand row is owner-only by any
 --      client path; service-role and no-user server paths are unchanged.
 -- T-10 Host Community (fix pass): a Mingla admin's post shows Mingla Team and the public name.
+-- T-11 payouts history (fix pass): only the service role writes it; the team still reads it.
 -- T-8  catalog: every host-facing reader in spec v3 section 3 calls issue_4579_; the helpers that
 --      grant or revoke are not executable by authenticated.
 --
@@ -801,4 +802,53 @@ BEGIN
     'T-10 the feed never carries the admin''s email, handle or username');
 END;
 $t10$;
+ROLLBACK;
+
+-- ═══ T-11 the payouts history is written only by the service role (fix pass) ════
+-- FAILS-ON-REVERT: restoring the FOR ALL "Brand admin plus can manage payouts"
+-- policy (and the client write grants) fails the "refused" lines.
+BEGIN;
+SELECT pg_temp.fixture();
+SELECT pg_temp.backfill();
+INSERT INTO public.payouts(id, brand_id, stripe_payout_id, amount_cents, currency, status)
+VALUES (pg_temp.u('po1'), pg_temp.u('b1'), 'po_t4579', 1000, 'GBP', 'pending');
+DO $t11$
+DECLARE v_who text; v_err text; v_n text;
+BEGIN
+  FOREACH v_who IN ARRAY ARRAY['host', 'a1', 'owner'] LOOP
+    PERFORM pg_temp.ok(pg_temp.try_api(pg_temp.u(v_who), format(
+        'INSERT INTO public.payouts(brand_id, stripe_payout_id, amount_cents, currency, status) VALUES (%L, ''po_forged'', 5000, ''GBP'', ''paid'')',
+        pg_temp.u('b1'))) LIKE '42501:%',
+      format('T-11 %s cannot insert a payout row', v_who));
+    PERFORM pg_temp.ok(pg_temp.try_api(pg_temp.u(v_who), format(
+        'UPDATE public.payouts SET status = ''paid'', amount_cents = 1 WHERE id = %L', pg_temp.u('po1'))) LIKE '42501:%',
+      format('T-11 %s cannot change a payout row', v_who));
+    PERFORM pg_temp.ok(pg_temp.try_api(pg_temp.u(v_who), format(
+        'DELETE FROM public.payouts WHERE id = %L', pg_temp.u('po1'))) LIKE '42501:%',
+      format('T-11 %s cannot delete a payout row', v_who));
+  END LOOP;
+  PERFORM pg_temp.ok((SELECT status = 'pending' AND amount_cents = 1000 FROM public.payouts WHERE id = pg_temp.u('po1'))
+    AND NOT EXISTS (SELECT 1 FROM public.payouts WHERE stripe_payout_id = 'po_forged'),
+    'T-11 the payout row is untouched and nothing was forged');
+  -- The team still reads it.
+  v_n := (pg_temp.json_as(pg_temp.u('host'), format('SELECT to_jsonb(count(*)) FROM public.payouts WHERE id = %L', pg_temp.u('po1'))))::text;
+  PERFORM pg_temp.ok(v_n = '1', 'T-11 a Brand admin still reads the payouts history');
+  -- The service role (the webhook) still writes.
+  PERFORM set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  EXECUTE 'SET LOCAL SESSION AUTHORIZATION authenticator';
+  EXECUTE 'SET LOCAL ROLE service_role';
+  UPDATE public.payouts SET status = 'paid' WHERE id = pg_temp.u('po1');
+  EXECUTE 'RESET ROLE';
+  EXECUTE 'RESET SESSION AUTHORIZATION';
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM pg_temp.ok((SELECT status FROM public.payouts WHERE id = pg_temp.u('po1')) = 'paid',
+    'T-11 the service role (webhook) still writes payouts');
+  PERFORM pg_temp.ok(NOT has_table_privilege('authenticated', 'public.payouts', 'INSERT')
+    AND NOT has_table_privilege('authenticated', 'public.payouts', 'UPDATE')
+    AND NOT has_table_privilege('authenticated', 'public.payouts', 'DELETE')
+    AND NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'payouts'
+                     AND cmd IN ('ALL', 'INSERT', 'UPDATE', 'DELETE') AND 'authenticated' = ANY (roles)),
+    'T-11 clients hold no write grant or write policy on payouts');
+END;
+$t11$;
 ROLLBACK;
