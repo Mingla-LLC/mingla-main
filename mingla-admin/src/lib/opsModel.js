@@ -160,8 +160,37 @@ export function subtasksWithLink(subtasks, link) {
 
 /** #4571 W2: at most two link chips on a tile or a subtask row, then "+N". */
 export function linkChips(links, max = 2) {
-  const list = (Array.isArray(links) ? links : []).filter((l) => l && l.kind && l.id && l.label);
+  const list = (Array.isArray(links) ? links : []).filter((l) => l && l.kind && l.id && l.label)
+    .map((l) => ({ ...l, label: linkLabelWords(l.label) }));  // #4571 W3: a demo's time in the viewer's zone
   return { shown: list.slice(0, max), more: Math.max(0, list.length - max) };
+}
+
+/**
+ * #4571 W3: a booking or demo time in the viewer's own time zone, "24 Nov,
+ * 15:30". `timeZone` is for tests; the browser's zone otherwise. "" when the
+ * value is not a time.
+ */
+export function localWhen(iso, timeZone = undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const opts = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+  if (timeZone) opts.timeZone = timeZone;
+  return d.toLocaleString("en-GB", opts);
+}
+
+/**
+ * #4571 W3: a link label as people read it. A demo booking's label ends in
+ * its UTC instant ("Demo · Island Vinyl Bar · 2026-11-24T14:30Z", from
+ * ops_link_label); that instant is shown in the viewer's zone. Any other
+ * label is returned as it is.
+ */
+export function linkLabelWords(label, timeZone = undefined) {
+  const text = String(label || "");
+  const m = /^(.*· )(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z)$/.exec(text);
+  if (!m) return text;
+  const when = localWhen(m[2].replace("Z", ":00Z"), timeZone);
+  return when ? `${m[1]}${when}` : text;
 }
 
 /** The eleven rules every agent follows, as people read them. */
@@ -813,9 +842,10 @@ export function quickAddProblems({ title = "", owners = [], watchers = [], due =
 }
 
 /** #4270 W2: the item ops_work_add gets from a host card's "Add work item". */
-export function quickAddItem({ title, owners, watchers = [], due, filesUrl = "", hostSees = false, recordId }) {
+export function quickAddItem({ title, owners, watchers = [], due, filesUrl = "", hostSees = false, recordId, linkKind = "host" }) {
   const item = { quick: true, title: String(title || "").trim(), owners, watchers, due_on: due,
-    links: [{ kind: "host", id: recordId }], on_brand_plan: !!hostSees };
+    // #4571 W3: a creator card links its new task to the creator (only a host card offers "Host can see").
+    links: [{ kind: linkKind === "creator" ? "creator" : "host", id: recordId }], on_brand_plan: linkKind === "creator" ? false : !!hostSees };
   if (String(filesUrl || "").trim()) item.files_url = String(filesUrl).trim();
   return item;
 }

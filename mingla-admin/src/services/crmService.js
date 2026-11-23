@@ -122,6 +122,33 @@ export function setOwners(id, ownerEmails) {
   );
 }
 
+/**
+ * #4571 W3: owners (1 to 10 once there is one) and watchers (0 to 10) in one
+ * step; nobody both. `expectedUpdatedAt` is the card's updated_at as read.
+ */
+export function setRecordPeople(id, ownerEmails, watcherEmails, expectedUpdatedAt = null) {
+  return call(() =>
+    supabase.rpc("crm_record_set_people", {
+      p_id: id, p_owner_emails: ownerEmails, p_watcher_emails: watcherEmails, p_expected_updated_at: expectedUpdatedAt,
+    })
+  );
+}
+
+/** #4571 W3: every open or recently closed Work card and subtask pointing at a record. */
+export function recordWork(id) {
+  return call(() => supabase.rpc("crm_record_work", { p_id: id }));
+}
+
+/** #4571 W3: My calls today, in the SOP order. `today` is the viewer's day. */
+export function callsQueue(today) {
+  return call(() => supabase.rpc("crm_calls_queue", { p_today: today || null }));
+}
+
+/** #4571 W3: a handle's follower count, as a person read it (null clears it). */
+export function setFollowers(identifierId, followers) {
+  return call(() => supabase.rpc("crm_identifier_set_followers", { p_identifier_id: identifierId, p_followers: followers }));
+}
+
 /** entry: { kind: "note", body } or { kind: "touch", channel, direction, ... }. */
 export function logActivity(id, entry, requestKey) {
   return call(() =>

@@ -57,6 +57,7 @@ import {
   todayIso,
   workingWords,
   showsHostSees,
+  linkLabelWords,
 } from "../../lib/opsModel";
 import { GROUP_LABELS, hoursLabel, liveColumns, parseEstimate, writeShowChanges } from "../../lib/workBoardModel";
 import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
@@ -129,7 +130,7 @@ function troubleWords(card, today) {
 }
 
 /** A property chip: its value, or a faint "+ Due" when empty; it opens a small picker. */
-function PropChip({ label, value, empty, children, disabled, danger = false, width = "w-64" }) {
+export function PropChip({ label, value, empty, children, disabled, danger = false, width = "w-64" }) {
   return (
     <Popover label={label} width={width} disabled={disabled} dataAttr={`prop:${label}`}
       button={value
@@ -142,7 +143,7 @@ function PropChip({ label, value, empty, children, disabled, danger = false, wid
 }
 
 /** Owners or Watching: avatars, + to change, in a popover with the people field. */
-function PeopleChip({ id, label, people, field }) {
+export function PeopleChip({ id, label, people, field }) {
   return (
     <Popover label={label} width="w-80" dataAttr={`people:${label}`}
       button={<span className="inline-flex items-center gap-1.5"><span className="text-[var(--color-text-tertiary)]">{label}</span>
@@ -744,10 +745,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                   <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[12.5px]">
                     {l.exists && linkSide(l) ? (
                       <SideLink side={linkSide(l)} aria-label={`Open ${l.label}`} className={`inline-flex min-h-7 min-w-0 items-center break-words rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
-                        <span>{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{l.label}</span>
+                        <span>{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{linkLabelWords(l.label)}</span>
                       </SideLink>
                     ) : (
-                      <span className="min-w-0 break-words">{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{l.label}{l.exists ? "" : " (removed)"}</span>
+                      <span className="min-w-0 break-words">{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{linkLabelWords(l.label)}{l.exists ? "" : " (removed)"}</span>
                     )}
                     <button type="button" aria-label={`Unlink ${l.label}`} disabled={!canEdit || !!busy} onClick={() => {
                       // #4571 W2: removing never cascades by itself; with subtasks holding it, ask.
