@@ -638,6 +638,30 @@ export async function handleInstallmentPaymentFailed(
   const existingRow = existing as Record<string, unknown>;
   const currentRetryCount = Number(existingRow.retry_count ?? 0);
   const currentStatus = String(existingRow.status ?? "");
+  // issue #4522 (E-1, SC-8) — on a v2 order a failure for a row that is no
+  // longer open (its missed amount already rolled onto later rows, or it was
+  // collected or cancelled) is a late or duplicate signal for an attempt the
+  // cron already handled: nothing is owed on this row, so it never flags the
+  // booking at risk and sends no second dunning email. Legacy orders keep
+  // their behaviour exactly.
+  if (planV2 && currentStatus !== "scheduled" && currentStatus !== "failed") {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: brandId,
+      event_id: null,
+      action: "tr3.installment_failed_webhook",
+      target_type: "order_installment",
+      target_id: installmentId,
+      after: {
+        ordinal: existingRow.ordinal,
+        retry_count: currentRetryCount,
+        failure_reason: failureReason,
+        late_for_status: currentStatus,
+        at_risk_flipped: false,
+      },
+    });
+    return brandId;
+  }
   // If the cron already wrote 'failed' for this attempt, retry_count is
   // already incremented. We only increment here if the webhook fires
   // independently (cron synced confirm threw but webhook is the only
