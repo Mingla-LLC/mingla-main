@@ -30,6 +30,8 @@
 --         was refunded; the recorded refund completing keeps it with ops.
 --   T6-1  an open recorded refund after a refund past the amount is still
 --         checked (never re-sent, never re-alerted); ops can act once it ends.
+--   T6-2  a succeeded extra refund counts as returned: an ops retry after the
+--         recorded refund failed or was reversed sends nothing.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
@@ -514,6 +516,36 @@ BEGIN
   v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T6-1 ... ops retry is accepted and closes it without a new refund',
     (pg_temp.op(op)).state = 'refunded' AND pg_temp.n_attempts(op) = 1, v::text);
+
+  -- T6-2: the recorded refund fails, the extra one succeeded.
+  op := pg_temp.ng_overpayment(r7, 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9071');
+  v := public.issue_4522_overpayment_refund_event('paystack', '9072', 'mingla-inst-' || r7::text || '-l1', 500000,
+         'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T6-2 the alert says what is still pending at the provider',
+    (v->'results'->0->>'alertOps')::boolean AND (v->'results'->0->>'refundedMinor')::bigint = 1000000
+    AND (v->'results'->0->>'pendingMinor')::bigint = 500000, v::text);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'failed', '9071', 'refund.failed');
+  PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T6-2 ... ops retry sends nothing: the extra refund already returned it',
+    (pg_temp.op(op)).state = 'refunded' AND pg_temp.n_attempts(op) = 1
+    AND public.issue_4522_overpayment_back_minor(op) = 500000, v::text);
+
+  -- T6-2: the recorded refund succeeded, the provider reversed it, then an extra one succeeded.
+  op := pg_temp.ng_overpayment(r8, 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'succeeded', '9081');
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9081', 'mingla-inst-' || r8::text || '-l1', 500000, 'failed');
+  v := public.issue_4522_overpayment_refund_event('paystack', '9082', 'mingla-inst-' || r8::text || '-l1', 500000,
+         'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T6-2 after a reversal the extra refund is not counted as more than owed',
+    (v->'results'->0->>'refundedMinor')::bigint = 500000 AND (v->'results'->0->>'overRefundedMinor')::bigint = 0, v::text);
+  PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T6-2 ... ops retry sends nothing', (pg_temp.op(op)).state = 'refunded'
+    AND pg_temp.n_attempts(op) = 1, v::text);
 
 END
 $t$;

@@ -828,6 +828,28 @@ AS $fn$
    WHERE overpayment_id = p_overpayment_id AND state IN ('creating', 'pending', 'succeeded')
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_overpayment_committed_minor(uuid) FROM PUBLIC, anon, authenticated, service_role;
+-- T6-2: what actually went back to the traveler on the charge for an
+-- overpayment: its succeeded attempts plus each succeeded refund past the
+-- amount recorded in detail.over_refunded (a failed one moved no money; one
+-- an attempt also names is counted once). A new refund never exceeds
+-- refund_minor minus this.
+CREATE FUNCTION public.issue_4522_overpayment_back_minor(p_overpayment_id uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT public.issue_4522_overpayment_returned_minor(o.id) + COALESCE((
+           SELECT sum((e->>'amount_minor')::bigint)
+             FROM jsonb_array_elements(COALESCE(o.detail->'over_refunded', '[]'::jsonb)) e
+            WHERE COALESCE(e->>'status', 'succeeded') = 'succeeded'
+              AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                               WHERE a.overpayment_id = o.id AND a.state = 'succeeded'
+                                 AND a.provider_refund_id = e->>'provider_refund_id')), 0)::bigint
+    FROM public.order_overpayments o WHERE o.id = p_overpayment_id
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_overpayment_back_minor(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- The overpayments that need the edge's attention now: new ones, failed
 -- ones whose retry is due, and ones with a refund at the provider whose
@@ -937,6 +959,7 @@ AS $fn$
 DECLARE
   v_op public.order_overpayments;
   v_refunded bigint;
+  v_pending bigint;
   v_returned bigint;
   v_alert boolean;
 BEGIN
@@ -955,10 +978,15 @@ BEGIN
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;
-  v_refunded := public.issue_4522_overpayment_committed_minor(v_op.id)
-    + (SELECT COALESCE(sum((e->>'amount_minor')::bigint), 0)
-         FROM public.order_overpayments o, jsonb_array_elements(o.detail->'over_refunded') e
-        WHERE o.id = v_op.id);
+  -- T6-2: a failed refund is not counted; what is still pending is named.
+  SELECT public.issue_4522_overpayment_committed_minor(v_op.id)
+           + COALESCE(sum((e->>'amount_minor')::bigint) FILTER (WHERE COALESCE(e->>'status', '') <> 'failed'), 0),
+         COALESCE((SELECT sum(amount_minor) FROM public.order_overpayment_refund_attempts
+                    WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')), 0)
+           + COALESCE(sum((e->>'amount_minor')::bigint) FILTER (WHERE e->>'status' = 'pending'), 0)
+    INTO v_refunded, v_pending
+    FROM public.order_overpayments o, jsonb_array_elements(o.detail->'over_refunded') e
+   WHERE o.id = v_op.id;
   PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_over_refunded',
     jsonb_build_object('overpayment_id', v_op.id, 'unmatched_attempt_no', p_attempt_no,
       'provider_refund_id', p_provider_refund_id, 'amount_minor', p_amount_minor,
@@ -968,7 +996,8 @@ BEGIN
   v_returned := public.issue_4522_overpayment_returned_minor(v_op.id);
   RETURN jsonb_build_object('ok', true, 'changed', true, 'state', 'needs_ops', 'attemptNo', p_attempt_no,
     'alertOps', v_alert, 'alertKind', 'provider_refunded_more', 'overRefundedMinor', v_refunded - v_op.refund_minor,
-    'refundMinor', v_op.refund_minor, 'refundedMinor', v_refunded, 'extraProviderRefundId', p_provider_refund_id,
+    'refundMinor', v_op.refund_minor, 'refundedMinor', v_refunded, 'pendingMinor', v_pending,
+    'extraProviderRefundId', p_provider_refund_id,
     'returnedMinor', v_returned, 'remainingMinor', v_op.refund_minor - v_returned);
 END
 $fn$;
@@ -1038,7 +1067,8 @@ BEGIN
   SELECT e.brand_id INTO v_brand FROM public.orders o JOIN public.events e ON e.id = o.event_id
    WHERE o.id = v_op.order_id;
   v_returned := public.issue_4522_overpayment_returned_minor(v_op.id);
-  v_remaining := v_op.refund_minor - v_returned;
+  -- T6-2: a succeeded refund past the amount also went back to the traveler.
+  v_remaining := v_op.refund_minor - public.issue_4522_overpayment_back_minor(v_op.id);
   v_base := jsonb_build_object('ok', true, 'done', false,
     'overpaymentId', v_op.id, 'orderId', v_op.order_id, 'installmentId', v_op.installment_id,
     'brandId', v_brand, 'provider', v_op.provider, 'providerRef', v_op.provider_ref,
