@@ -17,6 +17,18 @@
 //     reading for the same incident sends nothing;
 //   * the probe's auth check still runs before the body is read and the
 //     sites_recovery route returns before the vendor tick.
+// Rework (claim before send), tester angles:
+//   * the stateless slot hits exactly once per 2 h on the real cron minutes
+//     (:04 :19 :34 :49) and at its edges (00:00:00.000 in, 00:15 out);
+//   * clock skew between the SQL 2 h claim and the stateless slot: a claim
+//     that worked at 10:49 then a claim outage still sends at most 2 in any
+//     rolling 2 h and at most 13 a day;
+//   * SQL is the authority: claimed:false suppresses a send the snapshot
+//     state would allow, and a dry run never claims or releases;
+//   * a claim ERROR on a gate alert fails OPEN (the warn still goes out) and
+//     is never released;
+//   * release runs only for a send that reached nobody, with the claim's own
+//     prior, and never for a delivered email.
 //
 // FAILS-ON-REVERT (verified by the tester): delete `if (opts.dryRun) return
 // outcome;` and the dry-run test fails; delete `&& lastAlert !== null` from the
@@ -30,8 +42,10 @@ import {
   levelForHeadroom,
   readSitesSnapshot,
   runSitesRecoveryWatch,
+  type SitesWatchClaim,
   type SitesWatchDeps,
   type SitesWatchState,
+  statelessUnprovenSlot,
 } from "./sitesRecoveryWatch.ts";
 
 const H = 60 * 60 * 1000;
@@ -219,4 +233,112 @@ Deno.test("#4574 adv: probe auth runs before the body is read; the lane returns 
   const lane = src.slice(src.indexOf("async function handleSitesRecovery"), src.indexOf("function jsonResponse"));
   assert(lane.includes('"as_of_requires_dry_run" }, 400)'), "as_of without dry_run must be refused");
   assert(!/console\.(log|warn|error)\([^)]*SERVICE_ROLE/.test(lane), "no secret may be logged");
+});
+
+// ── rework: claim before send ────────────────────────────────────────────
+
+function claimHarness(data: unknown, claimImpl: (kind: string) => SitesWatchClaim, deliver = true, snapError: string | null = null) {
+  const calls = { send: [] as string[], claim: [] as string[], release: [] as { kind: string; prior: unknown }[] };
+  const deps: SitesWatchDeps = {
+    snapshot: async () => ({ data, error: snapError }),
+    record: async () => ({ error: null }),
+    send: async (a) => {
+      calls.send.push(a.kind);
+      return { succeeded: deliver ? 1 : 0 };
+    },
+    claim: async (kind) => {
+      calls.claim.push(kind);
+      return claimImpl(kind);
+    },
+    release: async (kind, _c, _h, prior) => {
+      calls.release.push({ kind, prior });
+      return { error: null };
+    },
+    nowMs: () => T0,
+  };
+  return { deps, calls };
+}
+
+Deno.test("#4574 adv rework: the stateless slot hits once per 2 h on the real cron minutes, edges exact", () => {
+  const day = Date.parse("2026-11-24T00:00:00Z");
+  let hits = 0;
+  for (let m = 4; m < 24 * 60; m += 15) if (statelessUnprovenSlot(day + m * 60 * 1000)) hits += 1;
+  assertEquals(hits, 12);
+  assert(statelessUnprovenSlot(day));
+  assert(statelessUnprovenSlot(day + 15 * 60 * 1000 - 1));
+  assert(!statelessUnprovenSlot(day + 15 * 60 * 1000));
+  assert(!statelessUnprovenSlot(day + 1 * H + 4 * 60 * 1000));
+  assert(statelessUnprovenSlot(day + 22 * H + 4 * 60 * 1000));
+});
+
+Deno.test("#4574 adv rework: SQL claim then claim outage (clock skew) stays bounded", async () => {
+  // 10:49 the claim works (SQL stamps unproven_sent_at), from 11:04 every claim errors.
+  const start = Date.parse("2026-11-24T10:49:00Z");
+  const sentAt: number[] = [];
+  let now = start;
+  let sqlSentAt: number | null = null;
+  const deps: SitesWatchDeps = {
+    snapshot: async () => ({ data: null, error: "statement timeout" }),
+    record: async () => ({ error: "statement timeout" }),
+    send: async () => {
+      sentAt.push(now);
+      return { succeeded: 1 };
+    },
+    claim: async () => {
+      if (now === start) {
+        const ok = sqlSentAt === null || now - sqlSentAt >= 2 * H;
+        if (ok) sqlSentAt = now;
+        return { claimed: ok, prior: {}, error: null };
+      }
+      return { claimed: false, prior: null, error: "connection refused" };
+    },
+    nowMs: () => now,
+  };
+  for (let i = 0; i < 96; i++) {
+    await runSitesRecoveryWatch(deps, { dryRun: false });
+    now += 15 * 60 * 1000;
+  }
+  assert(sentAt.length <= 13, `sent ${sentAt.length} in 24 h`);
+  for (const t of sentAt) {
+    const inWindow = sentAt.filter((u) => u >= t && u < t + 2 * H).length;
+    assert(inWindow <= 2, `more than 2 unproven emails within 2 h of ${iso(t)}`);
+  }
+});
+
+Deno.test("#4574 adv rework: SQL is the authority; a dry run never claims", async () => {
+  // Snapshot state says warn is due; the claim says another run has it.
+  const data = snap({ closesAt: T0 + 1.5 * H });
+  const h = claimHarness(data, () => ({ claimed: false, prior: {}, error: null }));
+  const o = await runSitesRecoveryWatch(h.deps, { dryRun: false });
+  assertEquals(o.would_send, ["warn"]);
+  assertEquals(o.not_claimed, ["warn"]);
+  assertEquals(h.calls.send, []);
+  assertEquals(h.calls.release, []);
+  // The probe turns anything but a literal jsonb true into "not claimed".
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assert(src.includes("claimed: row.claimed === true"), "the claim RPC result must be read as a strict boolean");
+  const dry = claimHarness(data, () => ({ claimed: true, prior: {}, error: null }));
+  await runSitesRecoveryWatch(dry.deps, { dryRun: true });
+  assertEquals(dry.calls.claim, []);
+  assertEquals(dry.calls.release, []);
+  assertEquals(dry.calls.send, []);
+});
+
+Deno.test("#4574 adv rework: a claim error on a gate alert fails open and is never released", async () => {
+  const h = claimHarness(snap({ closesAt: T0 + 1.5 * H }), () => ({ claimed: false, prior: null, error: "connection refused" }), false);
+  const o = await runSitesRecoveryWatch(h.deps, { dryRun: false });
+  assertEquals(h.calls.send, ["warn"], "a database outage must not silence the warn");
+  assertEquals(o.claim_errors.length, 1);
+  assertEquals(h.calls.release, [], "nothing was claimed, so nothing may be released");
+});
+
+Deno.test("#4574 adv rework: release only for an undelivered send, with the claim's own prior", async () => {
+  const prior = { last_sent_level: "warn", incident_closes_at: iso(T0 + 0.4 * H) };
+  const delivered = claimHarness(snap({ closesAt: T0 + 0.4 * H }), () => ({ claimed: true, prior, error: null }), true);
+  await runSitesRecoveryWatch(delivered.deps, { dryRun: false });
+  assertEquals(delivered.calls.send, ["critical"]);
+  assertEquals(delivered.calls.release, [], "a delivered email must never be released");
+  const failed = claimHarness(snap({ closesAt: T0 + 0.4 * H }), () => ({ claimed: true, prior, error: null }), false);
+  await runSitesRecoveryWatch(failed.deps, { dryRun: false });
+  assertEquals(failed.calls.release, [{ kind: "critical", prior }]);
 });

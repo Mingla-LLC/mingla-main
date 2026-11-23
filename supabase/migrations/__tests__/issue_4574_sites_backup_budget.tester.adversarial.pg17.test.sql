@@ -15,6 +15,15 @@
 --     owner postgres, EXECUTE for authenticated + service_role only;
 --   * service_role can INSERT/UPDATE the watch row (the hourly ready mark);
 --   * re-running the cron.schedule call keeps exactly one job (idempotent).
+-- Rework (claim before send), tester angles:
+--   * claim and release are SECURITY DEFINER, search_path pg_catalog,pg_temp,
+--     and anon / authenticated / PUBLIC cannot EXECUTE them; calling claim as
+--     the authenticated role is refused (no forging or suppressing alerts);
+--   * release misuse: a stale release for a delivered warn after a critical
+--     was claimed, a release for another closing time, and a heartbeat release
+--     for another completion all change nothing;
+--   * release restores exactly the prior the claim returned;
+--   * the unproven 2 h window is exact in SQL (2 h - 1 s refused, 2 h + 1 s claimed).
 -- FAILS-ON-REVERT: with the gate back on `interval '26 hours'` the
 -- 48 h - 1 s case raises 'backup 48 h - 1 s old blocked first publish'.
 
@@ -180,5 +189,73 @@ BEGIN
   RAISE NOTICE 'ISSUE_4574_TESTER_ADVERSARIAL_OK';
 END;
 $t4574adv$;
+
+DO $t4574claim$
+DECLARE
+  v_x timestamptz := '2026-11-26T10:00:00Z';
+  v_c jsonb;
+  v_s public.brand_site_recovery_watch_state;
+  v_denied boolean;
+  v_fn text;
+BEGIN
+  FOREACH v_fn IN ARRAY ARRAY[
+    'public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz)',
+    'public.brand_site_recovery_watch_release(text, timestamptz, timestamptz, jsonb)'] LOOP
+    IF has_function_privilege('anon', v_fn, 'EXECUTE') OR has_function_privilege('authenticated', v_fn, 'EXECUTE')
+      OR has_function_privilege('public', v_fn, 'EXECUTE') OR NOT has_function_privilege('service_role', v_fn, 'EXECUTE') THEN
+      RAISE EXCEPTION '% is not service_role only', v_fn;
+    END IF;
+    IF NOT (SELECT p.prosecdef AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp'] FROM pg_proc p WHERE p.oid = v_fn::regprocedure) THEN
+      RAISE EXCEPTION '% lost SECURITY DEFINER or its search_path', v_fn;
+    END IF;
+  END LOOP;
+  SET LOCAL ROLE authenticated;
+  v_denied := false;
+  BEGIN PERFORM public.brand_site_recovery_watch_claim('unproven', NULL, NULL);
+  EXCEPTION WHEN insufficient_privilege THEN v_denied := true; END;
+  RESET ROLE;
+  IF NOT v_denied THEN RAISE EXCEPTION 'authenticated could claim (suppress) a recovery email'; END IF;
+
+  -- release misuse
+  DELETE FROM public.brand_site_recovery_watch_state;
+  v_c := public.brand_site_recovery_watch_claim('warn', v_x, NULL);
+  IF (v_c->>'claimed')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'first warn not claimed: %', v_c; END IF;
+  v_c := public.brand_site_recovery_watch_claim('critical', v_x, NULL);
+  IF (v_c->>'claimed')::boolean IS NOT TRUE OR v_c->'prior'->>'last_sent_level' IS DISTINCT FROM 'warn' THEN
+    RAISE EXCEPTION 'critical not claimed or prior wrong: %', v_c; END IF;
+  PERFORM public.brand_site_recovery_watch_release('warn', v_x, NULL, '{}'::jsonb);
+  PERFORM public.brand_site_recovery_watch_release('critical', v_x + interval '1 day', NULL, '{}'::jsonb);
+  SELECT * INTO v_s FROM public.brand_site_recovery_watch_state;
+  IF v_s.last_sent_level IS DISTINCT FROM 'critical' OR v_s.incident_closes_at IS DISTINCT FROM v_x THEN
+    RAISE EXCEPTION 'a stale or foreign release re-opened a delivered claim (% %)', v_s.last_sent_level, v_s.incident_closes_at;
+  END IF;
+  -- the real release restores exactly the claim's prior
+  PERFORM public.brand_site_recovery_watch_release('critical', v_x, NULL, v_c->'prior');
+  SELECT * INTO v_s FROM public.brand_site_recovery_watch_state;
+  IF v_s.last_sent_level IS DISTINCT FROM 'warn' OR v_s.incident_closes_at IS DISTINCT FROM v_x
+    OR v_s.last_sent_at IS DISTINCT FROM (v_c->'prior'->>'last_sent_at')::timestamptz THEN
+    RAISE EXCEPTION 'release did not restore the prior exactly';
+  END IF;
+  IF (public.brand_site_recovery_watch_claim('warn', v_x, NULL)->>'claimed')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'warn re-claimed for the same incident after the critical release';
+  END IF;
+  -- heartbeat release for another completion changes nothing
+  PERFORM public.brand_site_recovery_watch_claim('heartbeat', NULL, '2026-11-25T10:00:00Z');
+  PERFORM public.brand_site_recovery_watch_release('heartbeat', NULL, '2026-11-24T10:00:00Z', '{"heartbeat_for":null}'::jsonb);
+  IF (SELECT heartbeat_for FROM public.brand_site_recovery_watch_state) IS DISTINCT FROM '2026-11-25T10:00:00Z'::timestamptz THEN
+    RAISE EXCEPTION 'a heartbeat release for another completion cleared the claim';
+  END IF;
+  -- unproven 2 h window, exact
+  UPDATE public.brand_site_recovery_watch_state SET unproven_sent_at = clock_timestamp() - interval '2 hours' + interval '1 second';
+  IF (public.brand_site_recovery_watch_claim('unproven', NULL, NULL)->>'claimed')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'unproven claimed 1 s inside the 2 h window';
+  END IF;
+  UPDATE public.brand_site_recovery_watch_state SET unproven_sent_at = clock_timestamp() - interval '2 hours' - interval '1 second';
+  IF (public.brand_site_recovery_watch_claim('unproven', NULL, NULL)->>'claimed')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'unproven not claimed 1 s after the 2 h window';
+  END IF;
+  RAISE NOTICE 'ISSUE_4574_TESTER_ADVERSARIAL_CLAIM_OK';
+END;
+$t4574claim$;
 
 ROLLBACK;
