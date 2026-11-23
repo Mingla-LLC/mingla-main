@@ -68,3 +68,16 @@ Deno.test("E-6: a cancel with nothing to refund skips every provider, ledger and
   assertStringIncludes(source, "const cancelNoticeKey = noRefund ? `order:${orderId}` : refundId;");
   assertStringIncludes(source, "idempotency_key: `tr4_cancel:${cancelNoticeKey}:cancelled`,");
 });
+
+// Pass 5 (T9-2) — begin refuses while a charge of the booking can still land
+// (pg17: issue_4522_refunds_payouts A3); the edge answers 409 with the
+// "already processing" reason and nothing is cancelled, so the caller retries.
+// FAILS-ON-REVERT: the refusal fell through to a 500 rpc_error.
+Deno.test("T9-2: a begin refused for a charge in flight is a 409 balance_payment_in_flight", () => {
+  const at = source.indexOf('case "balance_payment_in_flight":');
+  assertEquals(at > 0, true);
+  const arm = source.slice(at, at + 260);
+  assertStringIncludes(arm, 'code: "balance_payment_in_flight"');
+  assertStringIncludes(arm, "status: 409");
+  assertStringIncludes(arm, "A payment on this trip is already processing");
+});

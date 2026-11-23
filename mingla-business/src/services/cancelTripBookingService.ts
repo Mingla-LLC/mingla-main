@@ -84,7 +84,9 @@ export type CancelTripBookingErrorCode =
   | "begin_failed"
   | "compute_failed"
   | "network_error"
-  | "internal_error";
+  | "internal_error"
+  // issue #4522 pass 5 (T9-2) — a charge can still land; nothing was cancelled.
+  | "balance_payment_in_flight";
 
 export interface CancelTripBookingError extends Error {
   code: CancelTripBookingErrorCode;
@@ -139,6 +141,8 @@ const userMessageFor = (code: string): string => {
       return "This brand isn't set up for refunds. Contact the organizer.";
     case "stripe_refund_failed":
       return "Couldn't process the refund. Try again or contact the organizer.";
+    case "balance_payment_in_flight":
+      return "A payment on this trip is already processing. Nothing was cancelled. Try again in a few minutes.";
     case "ledger_insert_failed_after_stripe_success":
     case "commit_failed_after_stripe_success":
       return "Refund was processed but we couldn't update our records. Refresh to confirm.";

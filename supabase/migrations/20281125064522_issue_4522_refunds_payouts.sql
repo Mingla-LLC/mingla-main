@@ -359,6 +359,29 @@ BEGIN
     );
   END IF;
 
+  -- issue #4522 pass 5 (T9-2) — never cancel while a charge of this order can
+  -- still land (a marked card charge whose answer is unknown, a second-provider
+  -- attempt created or unknown, an open flexible payment): its money would be
+  -- left out of the refund. Under the order graph lock (the charge paths take
+  -- it to mark), so no charge can start between this check and the cancel.
+  -- The caller retries once the charge settles (webhook or the next cron
+  -- read-back).
+  IF public.issue_4522_lock_order_graph(p_order_id) IS NULL THEN
+    RETURN jsonb_build_object('ok',false,'reason','order_not_found');
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.order_installments oi
+     WHERE oi.order_id=p_order_id AND oi.status IN ('scheduled','failed')
+       AND (oi.kind='flex'
+            OR oi.in_flight_attempt_id IS NOT NULL
+            OR (oi.provider='stripe' AND oi.status='scheduled'
+                AND oi.stripe_payment_intent_id IS NOT NULL AND oi.failed_at IS NULL)
+            OR EXISTS (SELECT 1 FROM public.order_installment_charge_attempts a
+                        WHERE a.installment_id=oi.id AND a.state IN ('created','unknown')))
+  ) THEN
+    RETURN jsonb_build_object('ok',false,'reason','balance_payment_in_flight');
+  END IF;
+
   -- issue #4522 (D-9) — a host or operator cancel refunds a non-refundable deposit.
   PERFORM set_config('mingla.cancel_actor_kind',p_actor_kind,true);
   v_compute:=public.biz_compute_refund_for_cancel(p_order_id,p_cancel_at);

@@ -113,6 +113,68 @@ BEGIN
   END IF;
 END $$;
 
+-- A3. Pass 5 (T9-2): a cancel never goes through while a charge of the
+--     booking can still land (its money would be left out of the refund);
+--     nothing is written, and the same cancel works once the charge settles.
+--     FAILS ON REVERT: begin cancelled the order with the charge in flight.
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000a9',
+  '{"v":2,"deposit_minor":30000000,"flex_enabled":true,"auto_adjust":true}', NULL);
+DO $$
+DECLARE
+  v_o constant uuid := '45220008-0000-4000-8000-0000000000a9';
+  v_row uuid;
+  v_attempt uuid;
+  v_b jsonb;
+  v_case text;
+BEGIN
+  SELECT id INTO v_row FROM public.order_installments WHERE order_id = v_o AND ordinal = 1;
+  FOREACH v_case IN ARRAY ARRAY['card_marked', 'second_provider_attempt', 'flex_open'] LOOP
+    IF v_case = 'card_marked' THEN
+      -- the card path's in-flight mark (createInstallmentPI): a PaymentIntent on a scheduled card row
+      INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+        collection_method, stripe_payment_intent_id)
+      VALUES (v_o, 5, 10000000, 'NGN', now(), 'scheduled', 'stripe', 'auto_card', 'pi_in_flight_t92');
+    ELSIF v_case = 'second_provider_attempt' THEN
+      INSERT INTO public.order_installment_charge_attempts(installment_id, provider, attempt_no, method, reference,
+        state, amount_cents, application_fee_cents)
+      VALUES (v_row, 'paystack', 1, 'auto_card', 'mingla-inst-' || v_row::text || '-a1', 'unknown', 30600000, 1350000)
+      RETURNING id INTO v_attempt;
+    ELSE
+      INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+        collection_method, plan_bound_at, buyer_total_cents, kind, flex_client_key, line_allocation)
+      VALUES (v_o, 9, 10000000, 'NGN', now(), 'scheduled', 'paystack', 'pay_link', now(), 10200000, 'flex',
+        'client-key-t92', '[{"ticket_type_id":"45220008-0000-4000-8000-000000000030","net_minor":10000000,"addon_minor":0}]');
+    END IF;
+    FOREACH v_b IN ARRAY ARRAY[
+      public.biz_cancel_trip_booking_begin(v_o, 'operator', '45220008-0000-4000-8000-000000000001', 'Host cancelled this booking'),
+      public.biz_cancel_trip_booking_begin(v_o, 'buyer', NULL, 'Changed my plans for the trip')] LOOP
+      IF COALESCE((v_b->>'ok')::boolean, true) OR v_b->>'reason' IS DISTINCT FROM 'balance_payment_in_flight' THEN
+        RAISE EXCEPTION 'A3-1 % : a cancel with a charge in flight must be refused: %', v_case, v_b;
+      END IF;
+    END LOOP;
+    IF (SELECT cancelled_at FROM public.orders WHERE id = v_o) IS NOT NULL
+       OR EXISTS (SELECT 1 FROM public.refunds WHERE order_id = v_o)
+       OR EXISTS (SELECT 1 FROM public.order_installments WHERE order_id = v_o AND status = 'cancelled') THEN
+      RAISE EXCEPTION 'A3-2 % : a refused cancel writes nothing', v_case;
+    END IF;
+    -- the charge settles: the row is no longer in flight
+    IF v_case = 'card_marked' THEN
+      -- released after the read-back found it never charged (issue_4522_release_unconfirmed_stripe_charge)
+      UPDATE public.order_installments SET stripe_payment_intent_id = NULL
+       WHERE order_id = v_o AND ordinal = 5;
+    ELSIF v_case = 'second_provider_attempt' THEN
+      UPDATE public.order_installment_charge_attempts SET state = 'failed', resolved_at = now() WHERE id = v_attempt;
+    ELSE
+      UPDATE public.order_installments SET status = 'failed', failed_at = now(), failure_reason = 'card_declined' WHERE order_id = v_o AND ordinal = 9;
+      UPDATE public.order_installments SET status = 'superseded', superseded_at = now() WHERE order_id = v_o AND ordinal = 9;
+    END IF;
+  END LOOP;
+  v_b := public.biz_cancel_trip_booking_begin(v_o, 'operator', '45220008-0000-4000-8000-000000000001', 'Host cancelled this booking');
+  IF NOT COALESCE((v_b->>'ok')::boolean, false) OR (SELECT cancelled_at FROM public.orders WHERE id = v_o) IS NULL THEN
+    RAISE EXCEPTION 'A3-3 once nothing is in flight the same cancel goes through: %', v_b;
+  END IF;
+END $$;
+
 -- B. SC-14 / D-9: an operator cancel refunds everything, deposit included,
 --    and leaves superseded rows as they are.
 DO $$

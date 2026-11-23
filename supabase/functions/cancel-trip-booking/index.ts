@@ -173,6 +173,14 @@ function mapComputeReasonToHttp(
         status: 400,
         detail: "actor_kind must be buyer or operator",
       };
+    // issue #4522 pass 5 (T9-2) — a charge of this booking can still land:
+    // nothing was cancelled; retry once it settles.
+    case "balance_payment_in_flight":
+      return {
+        code: "balance_payment_in_flight",
+        status: 409,
+        detail: "A payment on this trip is already processing",
+      };
     default:
       return { code: "rpc_error", status: 500, detail: reason };
   }
