@@ -346,6 +346,11 @@ export interface HostTripBalance {
   nextPayment: { dueAt: string; amountMinor: number; status?: string } | null;
   openRowIds: string[];
   heldCreditMinor: number;
+  /**
+   * issue #4522 X-8 — the part of heldCreditMinor whose automatic refund
+   * stopped and waits for Mingla support (overpayment state needs_ops).
+   */
+  needsOpsCreditMinor: number;
   overpaymentRefundedMinor: number;
   /** The smallest charge the provider accepts (0 = none known). */
   providerMinimumMinor: number;
@@ -399,6 +404,17 @@ export function decodeHostTripBalance(
       createdAt,
     });
   }
+  // issue #4522 X-8 — overpayments whose automatic refund stopped (needs_ops).
+  let needsOpsCreditMinor = 0;
+  const rawOverpayments = Array.isArray(value.overpayments) ? value.overpayments : [];
+  for (const entry of rawOverpayments) {
+    if (!isObject(entry) || entry.state !== "needs_ops") continue;
+    const refund = safeInt(entry.refundMinor);
+    const returned = safeInt(entry.returnedMinor) ?? 0;
+    if (refund === null || refund < returned) throw new Error("trip_balance_invalid");
+    needsOpsCreditMinor += refund - returned;
+  }
+  if (needsOpsCreditMinor > base.heldCreditMinor) throw new Error("trip_balance_invalid");
   return {
     orderId: base.orderId,
     currency: base.currency,
@@ -410,6 +426,7 @@ export function decodeHostTripBalance(
     nextPayment: base.nextPayment,
     openRowIds: base.openRows.map((row) => row.installmentId),
     heldCreditMinor: base.heldCreditMinor,
+    needsOpsCreditMinor,
     overpaymentRefundedMinor: base.overpaymentRefundedMinor,
     providerMinimumMinor: base.providerMinimumMinor,
     terms: decodeTerms(value.terms),

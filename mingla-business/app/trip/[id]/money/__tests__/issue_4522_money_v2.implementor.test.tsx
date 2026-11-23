@@ -355,6 +355,35 @@ describe("#4522 S-2 host money screen, plan-v2 orders", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
+  // issue #4522 X-8 — a refund stopped for Mingla support (needs_ops) is not "Refunding".
+  test("an overpayment whose automatic refund stopped waits for Mingla support, not Refunding", () => {
+    installments = [
+      row({ id: "n1", status: "collected", dueAt: "2026-11-15T09:00:00Z", collectedAt: "2026-11-15T09:00:00Z" }),
+      row({ id: "n2", ordinal: 2, status: "collected", dueAt: "2026-11-16T09:00:00Z", amountCents: 60000, amountChargedCents: 60000, collectedAt: "2026-11-16T09:00:00Z" }),
+    ];
+    balances = [host(rawBalance({
+      paidMinor: 90000,
+      remainingMinor: 0,
+      totalMinor: 90000,
+      canPayAnyAmount: false,
+      minPaymentMinor: null,
+      maxPartialMinor: null,
+      nextPayment: null,
+      heldCreditMinor: 40000,
+      overpayments: [
+        { overpaymentId: "op1", state: "needs_ops", reason: "flex_exceeds_balance", refundMinor: 30000, amountMinor: 30000, returnedMinor: 0, needsOpsReason: "provider_refunded_more", currency: "USD" },
+        { overpaymentId: "op2", state: "held", reason: "flex_exceeds_balance", refundMinor: 10000, amountMinor: 10000, returnedMinor: 0, needsOpsReason: null, currency: "USD" },
+      ],
+    }))];
+    const tree = render();
+    press(tree, findToggleLabel(tree));
+    const out = text(tree);
+    expect(out).toContain("Paid $300.00 more than the balance · Mingla support is handling the refund");
+    expect(out).toContain("Paid $100.00 more than the balance · Refunding");
+    expect(out).not.toContain("Paid $400.00 more than the balance · Refunding");
+    TestRenderer.act(() => tree.unmount());
+  });
+
   test("an old-plan order with no v2 balance keeps the ledger view exactly as before", () => {
     installments = [
       row({ id: "v1", kind: "scheduled", orderTotalCents: 120000, amountChargedCents: 40000, amountCents: 40000 }),

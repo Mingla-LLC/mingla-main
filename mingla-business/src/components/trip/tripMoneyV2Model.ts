@@ -68,6 +68,8 @@ export interface TripMoneyV2View {
 export const TRIP_MONEY_V2_IN_FLIGHT_COPY = "A traveler payment is processing.";
 export const TRIP_MONEY_V2_BELOW_MINIMUM_COPY =
   "Too small for the payment provider to charge. Mingla will follow up.";
+/** issue #4522 X-8 — an overpayment refund stopped for Mingla support (needs ops). */
+export const TRIP_MONEY_V2_NEEDS_OPS_COPY = "Mingla support is handling the refund";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -201,9 +203,18 @@ export function buildTripMoneyV2View(input: {
   const nextOpenRow =
     settled || nextOpenId === undefined ? null : rowsById.get(nextOpenId) ?? null;
   const overpaymentLines: string[] = [];
-  if (balance.heldCreditMinor > 0) {
+  // issue #4522 X-8 — a refund that stopped for Mingla support is not
+  // "Refunding": it waits for a person (Admin: needs ops).
+  const needsOps = Math.min(balance.needsOpsCreditMinor, balance.heldCreditMinor);
+  const refunding = balance.heldCreditMinor - needsOps;
+  if (refunding > 0) {
     overpaymentLines.push(
-      `Paid ${money(balance.heldCreditMinor)} more than the balance · Refunding`,
+      `Paid ${money(refunding)} more than the balance · Refunding`,
+    );
+  }
+  if (needsOps > 0) {
+    overpaymentLines.push(
+      `Paid ${money(needsOps)} more than the balance · ${TRIP_MONEY_V2_NEEDS_OPS_COPY}`,
     );
   }
   if (balance.overpaymentRefundedMinor > 0) {
