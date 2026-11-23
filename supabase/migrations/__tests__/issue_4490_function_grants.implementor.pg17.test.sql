@@ -43,6 +43,9 @@
 -- code expiry, tap record, pay-code view/buyer/status/text, keep late payment), all internal (service role
 -- only: the anonymous pay page reaches view/buyer through venue-till); the finalizer it re-emits keeps
 -- its service-role-only grant.
+-- TEST-MOD-APPROVED #4490 (08-O2 fix 1): 20280809600490 adds four functions (stale payment release, the
+-- pay-code lookup without the switch, the pay-link text limits, the unknown-code guess budget) and
+-- re-emits the pay-code status and text reads, all internal (service role only).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -500,6 +503,10 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_pay_code_status(text,uuid,uuid)', 'internal'),
   ('issue_4490_till_pay_code_text(text,uuid,uuid,text,text)', 'internal'),
   ('issue_4490_till_keep_late_payment(uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_release_stale(uuid)', 'internal'),
+  ('issue_4490_till_pay_code_lookup(text,uuid,uuid)', 'internal'),
+  ('issue_4490_till_text_limits()', 'internal'),
+  ('issue_4490_till_code_guess_budget(boolean,integer)', 'internal'),
   ('biz_venue_tab_open(uuid)', 'signed_in'),
   ('biz_venue_tab_close(uuid,text)', 'signed_in'),
   ('biz_venue_order_transition(uuid,text,text)', 'signed_in'),
