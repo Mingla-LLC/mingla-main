@@ -843,4 +843,67 @@ BEGIN
   END IF;
 END $$;
 
+-- I6. A naira refund after payout is owed once, whichever records it first
+--     (found on the real path: the debt was booked by both the owner and
+--     record_paystack_refund_outcome, 97,750,000 for a 47,740,000 payout).
+--     Two paid sales of one trip, so the debt is not capped by the payout.
+--     FAILS ON REVERT of the owner's set-not-add: principal 58,650,000.
+CREATE FUNCTION pg_temp.pay_naira(p_order uuid, p_ref text) RETURNS public.brand_payout_releases
+LANGUAGE plpgsql AS $$
+DECLARE v_r public.brand_payout_releases; v_claim record; v_leg uuid;
+BEGIN
+  PERFORM pg_temp.sale(p_order, '45220008-0000-4000-8000-000000000027', 'NGN', 30000000, p_ref, false);
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_r := pg_temp.rel(p_order);
+  SELECT * INTO v_claim FROM public.claim_paystack_payout_releases(100, now()) c WHERE c.release_id = v_r.id;
+  PERFORM public.record_paystack_leg_plan(v_r.id, v_claim.claim_id,
+    '[{"chunk_index":0,"principal_cents":28640000,"estimated_fee_cents":5000,"stamp_duty_cents":5000,"fee_schedule_version":"i4522"}]'::jsonb, now());
+  IF NOT public.authorize_paystack_payout_execution(v_r.id, v_claim.claim_id, now()) THEN
+    RAISE EXCEPTION 'I6-0 the naira payout is sent';
+  END IF;
+  SELECT id INTO v_leg FROM public.payout_transfer_legs WHERE release_id = v_r.id AND kind = 'organiser';
+  PERFORM public.record_paystack_transfer_leg_outcome(v_leg, v_r.id, 'succeeded', 'TRF_' || p_ref, 'ref-' || p_ref, NULL, now());
+  PERFORM public.reconcile_paystack_transfer_leg_fee(v_leg, 5000, 5000, now());
+  RETURN pg_temp.rel(p_order);
+END $$;
+INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone,
+  currency, refund_policy)
+VALUES ('45220008-0000-4000-8000-000000000027', '45220008-0000-4000-8000-000000000013',
+  '45220008-0000-4000-8000-000000000001', 'Payout naira trip 2', 'payout-naira-trip-2-4522', 'trip', 'scheduled',
+  'public', 'Africa/Lagos', 'NGN', '{"kind":"standard","tiers":[{"days_before_start":0,"refund_pct":100}]}');
+INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+VALUES ('45220008-0000-4000-8000-000000000027', now() + interval '120 days', now() + interval '124 days', 'Africa/Lagos', true);
+DO $$
+DECLARE v_r public.brand_payout_releases; v_other public.brand_payout_releases; v_refund uuid;
+BEGIN
+  v_r := pg_temp.pay_naira('45220008-0000-4000-8000-0000000000f3', 'mingla_i_f3');
+  v_other := pg_temp.pay_naira('45220008-0000-4000-8000-0000000000f4', 'mingla_i_f4');
+  IF v_r.status <> 'released' OR v_other.status <> 'released' OR v_other.id = v_r.id THEN
+    RAISE EXCEPTION 'I6-1 two paid naira payouts: % %', v_r.status, v_other.status;
+  END IF;
+  -- the refund is recorded on the order first, then its provider outcome
+  INSERT INTO public.refunds(order_id, amount_cents, currency, status, reason,
+    application_fee_refund_status, application_fee_refunded_cents)
+  VALUES ('45220008-0000-4000-8000-0000000000f3', 30000000, 'NGN', 'pending', 'i6 refund after payout',
+    'not_applicable', 0) RETURNING id INTO v_refund;
+  PERFORM public.admin_refund_order_commit(v_refund, 'ps_rf_i6', 0, 'succeeded', NULL);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000000f3', v_refund,
+    'mingla_i_f3', 'mingla_refund:' || v_refund, 'ps_rf_i6', 30000000, 'processed', NULL, now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (SELECT sum(principal_cents) FROM public.organiser_payout_debts
+       WHERE origin_release_id = v_r.id AND kind = 'post_release_refund') <> 30000000 THEN
+    RAISE EXCEPTION 'I6-2 the refund after payout is owed once (main''s full refund amount): %',
+      (SELECT sum(principal_cents) FROM public.organiser_payout_debts WHERE origin_release_id = v_r.id);
+  END IF;
+  IF (SELECT count(*) FROM public.payout_release_alert_outbox
+       WHERE release_id = v_r.id AND error_message LIKE 'payout_refund_debt_opened:%') <> 1 THEN
+    RAISE EXCEPTION 'I6-3 ops are told once';
+  END IF;
+END $$;
+
 ROLLBACK;
