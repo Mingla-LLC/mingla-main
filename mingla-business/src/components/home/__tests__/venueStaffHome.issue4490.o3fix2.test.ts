@@ -3,10 +3,13 @@
  * sell, check-in, bookings, money) sees every venue they hold a grant at on
  * Home, whatever its type. Before, Home kept only Stay and restaurant venues,
  * so a login at a Play and games or Cafe venue read "No venue access yet".
+ *
+ * TEST-MOD-APPROVED #4490 (08-O3 fix 3): the suite's one source-text read (Home
+ * reads the list through the model and lands on /venue/<id>) moved, word for
+ * word, into .github/scripts/strict-grep/issue-4490-host-wiring.mjs as pin
+ * `venue-staff-home-any-type` (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN), as O3 fix 1
+ * did for the Till and station suites; every behavioural test stays here.
  */
-import fs from "node:fs";
-import path from "node:path";
-
 import type { VenueListing } from "../../../services/venueListingsService";
 import {
   listVenueStaffVenues,
@@ -44,13 +47,5 @@ describe("venue-only Home list (#4490 O3 fix 2)", () => {
     expect(listVenueStaffVenues([])).toEqual([]);
     expect(listVenueStaffVenues(undefined)).toEqual([]);
     expect(listVenueStaffVenues(null)).toEqual([]);
-  });
-
-  it("Home reads the list through the model and still lands on /venue/<id>", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../VenueStaffHome.tsx"), "utf8");
-    expect(src).toContain("listVenueStaffVenues(venuesQuery.data)");
-    expect(src).toContain("router.push(`/venue/${venue.id}` as never)");
-    expect(src).toContain("No venue access yet");
-    expect(src).not.toMatch(/venueCategory === "stay" \|\| venue\.venueCategory === "restaurant"/);
   });
 });

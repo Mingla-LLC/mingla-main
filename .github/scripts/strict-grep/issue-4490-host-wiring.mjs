@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, the station rail routing) keeps its load-bearing lines.
+// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing) keeps its load-bearing lines.
 /**
  * #4490 W3 fix 1 — the structural pins of eight #4490 mingla-business jest
  * suites, moved here as the additive strict-grep gate that
@@ -341,6 +341,17 @@ const PINS = [
       'kind: "kitchen_ticket", venueId, orderId: waitingRound.orderId',
     ],
     why: "the Till shows Ready to take out with Picked up, and Nobody has accepted with Print ticket (§11 T5/T7)",
+  },
+  {
+    id: "venue-staff-home-any-type",
+    file: `${BIZ}/src/components/home/VenueStaffHome.tsx`,
+    contains: [
+      "listVenueStaffVenues(venuesQuery.data)",
+      "router.push(`/venue/${venue.id}` as never)",
+      "No venue access yet",
+    ],
+    absentMatches: [/venueCategory === "stay" \|\| venue\.venueCategory === "restaurant"/],
+    why: "venue-only Home reads its list through the model (every venue type) and lands on /venue/<id> (08-O3 fix 2)",
   },
   {
     id: "till-iphone-one-modal-per-presenter",
