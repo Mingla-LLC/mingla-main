@@ -422,3 +422,82 @@ Deno.test("rework 9 T8-3: marked planned Stripe charges are settled, failed, rel
   }, [{ installmentId: "r1", orderId: "o1", paymentIntentId: "pi_m", marked: true, pastCeiling: false }]);
   assertEquals([keptCounts.in_flight, kept], [1, []]);
 });
+
+// ── Pass 5 (F-3): a duplicate / late second-provider payment is refunded by
+// its REFERENCE. The refund helper verifies the transaction first and the
+// provider's verify takes a reference (GET /transaction/verify/:reference);
+// the numeric transaction id is only the identity check. Driven through the
+// real refundInstallmentAttempt and the real createPaystackRefund, with the
+// provider answering exactly the documented shapes already encoded here.
+// FAILS-ON-REVERT: the numeric id was sent as the reference, the verify was
+// refused, the refund was marked failed and ops were told to refund by hand.
+import { refundInstallmentAttempt } from "../paystackInstallmentWebhook.ts";
+import { createPaystackRefund } from "../../paystackRefunds.ts";
+import { fakeSupabase } from "./issue_3645_fake_supabase.ts";
+
+Deno.test("F-3: the duplicate-payment refund verifies the transaction by reference, checks its id, and is sent once", async () => {
+  const REF = "mingla-inst-4522f300-0000-4000-8000-000000000001-a2";
+  const TXN_ID = 4522500010;
+  const saved = { mode: Deno.env.get("PAYSTACK_MODE"), key: Deno.env.get("PAYSTACK_SECRET_KEY_TEST") };
+  Deno.env.set("PAYSTACK_MODE", "test");
+  Deno.env.set("PAYSTACK_SECRET_KEY_TEST", "sk_test_issue4522f3");
+  const realFetch = globalThis.fetch;
+  const urls: string[] = [];
+  const posts: Record<string, unknown>[] = [];
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    urls.push(`${init?.method ?? "GET"} ${url.replace("https://api.paystack.co", "")}`);
+    const ok = (data: unknown) => Promise.resolve(new Response(JSON.stringify({ status: true, data }), { status: 200 }));
+    if (url.includes("/transaction/verify/")) {
+      const ref = decodeURIComponent(url.split("/transaction/verify/")[1]);
+      return ref === REF
+        ? ok({ id: TXN_ID, reference: REF, amount: 9000000, currency: "NGN", status: "success" })
+        : Promise.resolve(new Response(JSON.stringify({ status: false, message: "Transaction reference not found" }), { status: 400 }));
+    }
+    if (url.includes("/refund?")) return ok([]);
+    if (url.endsWith("/refund") && init?.method === "POST") {
+      posts.push(JSON.parse(String(init.body)));
+      return ok({ id: 7001, amount: 9000000, status: "pending", currency: "NGN", transaction: { id: TXN_ID, reference: REF } });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+  const fake = fakeSupabase({
+    table: (op) => {
+      if (op.table === "order_installment_charge_attempts" && op.kind === "select") {
+        return { data: { id: "4522f300-0000-4000-8000-0000000000a1", installment_id: "4522f300-0000-4000-8000-0000000000b1",
+          method: "pay_link", state: "refund_due", amount_cents: 9000000, reference: REF, provider_transaction_id: String(TXN_ID) }, error: null };
+      }
+      if (op.table === "order_installments") {
+        return { data: { id: "4522f300-0000-4000-8000-0000000000b1", order_id: "4522f300-0000-4000-8000-0000000000c1", currency: "NGN" }, error: null };
+      }
+      if (op.table === "refunds" && op.kind === "insert") return { data: { id: "4522f300-0000-4000-8000-0000000000d1" }, error: null };
+      return { data: null, error: null };
+    },
+    rpc: () => ({ data: { ok: true }, error: null }),
+  });
+  const alerts: string[] = [];
+  try {
+    const out = await refundInstallmentAttempt(fake.client as never, "4522f300-0000-4000-8000-0000000000a1", {
+      createPaystackRefund,
+      alertOps: (subject: string) => { alerts.push(subject); return Promise.resolve(); },
+      dispatchBuyerEmail: () => Promise.resolve(true),
+    } as never);
+    assertEquals(out, { ok: true });
+    assertEquals(alerts, []);
+    assertEquals(urls[0], `GET /transaction/verify/${encodeURIComponent(REF)}`);
+    assertEquals(posts.length, 1, "one automatic send");
+    assertEquals(posts[0].transaction, REF);
+    assertEquals(posts[0].merchant_note, "mingla_inst_dup:4522f300-0000-4000-8000-0000000000a1");
+    const outcome = fake.rpcCalls.find((c) => c.name === "record_paystack_refund_outcome");
+    assertEquals(outcome?.args.p_transaction_reference, REF);
+    // a different transaction behind the same reference is refused, never refunded
+    posts.length = 0;
+    await createPaystackRefund({ transaction: REF, expectedTransactionId: TXN_ID + 1, merchantNote: "x", currency: "NGN" })
+      .then(() => { throw new Error("must refuse"); }, (e) => assertEquals(String(e.message), "Paystack transaction identity mismatch"));
+    assertEquals(posts.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (saved.mode === undefined) Deno.env.delete("PAYSTACK_MODE"); else Deno.env.set("PAYSTACK_MODE", saved.mode);
+    if (saved.key === undefined) Deno.env.delete("PAYSTACK_SECRET_KEY_TEST"); else Deno.env.set("PAYSTACK_SECRET_KEY_TEST", saved.key);
+  }
+});

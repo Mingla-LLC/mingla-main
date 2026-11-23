@@ -336,11 +336,26 @@ export async function refundInstallmentAttempt(
     refundId = String((inserted as { id: string }).id);
   }
 
-  const transaction = paystackRefundTransaction(attempt.reference, attempt.provider_transaction_id);
+  // Pass 5 (F-3) — the refund helper verifies the transaction first, and
+  // Paystack's verify takes the transaction REFERENCE (GET
+  // /transaction/verify/:reference); the numeric transaction id only proves it
+  // is the same transaction (expectedTransactionId), as the source-refund
+  // lane does. Sending the id as the reference failed every duplicate refund.
+  const transaction = attempt.reference.length > 0
+    ? attempt.reference
+    : paystackRefundTransaction(null, attempt.provider_transaction_id);
   if (transaction === null) throw new Error("duplicate refund has no transaction reference");
+  const expectedTransactionId = Number(attempt.provider_transaction_id ?? NaN);
   let refund;
   try {
-    refund = await deps.createPaystackRefund({ transaction, merchantNote, currency: "NGN" });
+    refund = await deps.createPaystackRefund({
+      transaction,
+      ...(Number.isSafeInteger(expectedTransactionId) && expectedTransactionId > 0
+        ? { expectedTransactionId }
+        : {}),
+      merchantNote,
+      currency: "NGN",
+    });
   } catch (err) {
     if (isRetryablePaystackRefundError(err)) throw err;
     await deps.alertOps("Paystack duplicate instalment refund failed", [
