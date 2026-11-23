@@ -139,10 +139,8 @@ function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loa
     logo: { media_id: relationId(settings.logo) },
     // #4572 item 9 — whether Home has a cover Ari may talk about (Design → Cover).
     home_cover: homeCoverFacts(draft.pages),
-    // #4572 item 8 — Cover only while Home has none, and it goes only at the top of Home.
-    addable_sections: sectionCatalog(design, "ari")
-      .filter((entry) => entry.type !== "hero" || !homeCoverFacts(draft.pages).available)
-      .map((entry) => ({ type: entry.type, label: entry.type === "hero" ? "Cover (top of Home only)" : entry.label, needs_photo: entry.needs_photo })),
+    // #4575: Ari never adds the cover (sectionCatalog leaves it out for Ari).
+    addable_sections: sectionCatalog(design, "ari").map((entry) => ({ type: entry.type, label: entry.label, needs_photo: entry.needs_photo })),
     media: draft.media.slice(0, mediaMax).map((item) => ({
       id: String(item.id),
       kind: String(item.detected_mime ?? "").startsWith("video/") ? "video" : "photo",

@@ -169,14 +169,15 @@ describe("#4572 item 16 — the Logo row", () => {
   });
 });
 
-describe("#4572 item 8 — Add section never offers a Cover the server refuses", () => {
-  const cover = { type: "hero", label: "Cover", description: "A photo or video across the top of Home. Needs a photo.", needs_photo: true };
+describe("#4572 item 8 (follows #4575) — Add section never offers a cover the server refuses", () => {
+  const cover = { type: "hero", label: "Big picture", description: "The cover: one of your photos across the top of the page, with a headline, a line under it and up to three short facts. It replaces the page title.", needs_photo: true };
   const faq = { type: "faq", label: "Questions", description: "Q and A.", needs_photo: false };
-  it("keeps the server's list and reason as they are", () => {
+  it("keeps the server's list and reason as they are, on any page with no cover", () => {
     expect(offeredSections({ types: [cover, faq], coverNote: null }, [])).toEqual({ types: [cover, faq], coverNote: null });
-    expect(offeredSections({ types: [faq], coverNote: "A cover can only go at the top of Home." }, [])).toEqual({ types: [faq], coverNote: "A cover can only go at the top of Home." });
+    expect(offeredSections({ types: [cover, faq], coverNote: null }, [{ type: "faq" }])).toEqual({ types: [cover, faq], coverNote: null });
+    expect(offeredSections({ types: [faq], coverNote: "This page already has a big picture." }, [])).toEqual({ types: [faq], coverNote: "This page already has a big picture." });
   });
-  it("a page that already has a cover never lists one, and says where to change it (an older Studio lists it everywhere)", () => {
-    expect(offeredSections({ types: [faq, cover], coverNote: null }, [{ type: "hero" }])).toEqual({ types: [faq], coverNote: "Home already has a cover. Change it in Design → Cover." });
+  it("a page that already has a cover never lists one, with the server's reason (an older Studio lists it everywhere)", () => {
+    expect(offeredSections({ types: [faq, cover], coverNote: null }, [{ type: "hero" }])).toEqual({ types: [faq], coverNote: "This page already has a big picture." });
   });
 });

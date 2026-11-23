@@ -1009,16 +1009,16 @@ export function usePageSections(siteId: string | null, pageId: string | null, en
   });
 }
 
-/** #4572 item 8 — one page's Add section list: Cover only where the server accepts one, and why not when it doesn't. */
+/** #4572 item 8 (follows #4575) — one page's Add section list: the cover ("Big picture") only where the server accepts one (a page with none yet), and why not when it doesn't. */
 export type PageSectionCatalog = { types: SectionCatalogType[]; coverNote: string | null };
 
-/** The list the sheet shows. A Cover the server would refuse is never offered, even from an older Studio that lists it everywhere. */
+/** The list the sheet shows. A cover the server would refuse (the page has one) is never offered, even from an older Studio that lists it everywhere. */
 export function offeredSections(catalog: PageSectionCatalog, sections: readonly { type: string }[]): PageSectionCatalog {
   if (!sections.some((section) => section.type === "hero")) return catalog;
   const hasCover = catalog.types.some((entry) => entry.type === "hero");
   return {
     types: catalog.types.filter((entry) => entry.type !== "hero"),
-    coverNote: catalog.coverNote ?? (hasCover ? "Home already has a cover. Change it in Design → Cover." : null),
+    coverNote: catalog.coverNote ?? (hasCover ? "This page already has a big picture." : null),
   };
 }
 

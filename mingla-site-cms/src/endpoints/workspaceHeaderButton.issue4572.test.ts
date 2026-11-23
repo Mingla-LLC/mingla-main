@@ -124,33 +124,35 @@ describe("#4572 item 16 — set_logo", () => {
   });
 });
 
-describe("#4572 item 8 — Add section offers Cover only where the server takes it", () => {
+describe("#4572 item 8 (follows #4575) — Add section offers the cover only where the server takes it", () => {
   const catalog = async (pageId: string) => {
     const response = await contentEndpoints[0]!.handler(signedRequest(site, { action: "section_catalog", site_id: SITE, brand_id: BRAND, user_id: USER, rank: 20, args: { page_id: pageId } }));
     return ((await response.json()) as Doc).data as { types: Doc[]; cover_note: string | null };
   };
 
-  it("not on another page, with the one-line reason", async () => {
-    const about = await catalog(site.aboutId);
-    expect(about.types.map((entry) => entry.type)).not.toContain("hero");
-    expect(about.cover_note).toBe("A cover can only go at the top of Home.");
+  it("on another page with no cover, first in the list", async () => {
+    const about = site.rows("pages").find((page) => String(page.id) === site.aboutId)!;
+    about.blocks = ((about.blocks as Doc[] | undefined) ?? []).filter((block) => block.blockType !== "hero");
+    const listed = await catalog(site.aboutId);
+    expect(listed.types[0]).toMatchObject({ type: "hero", label: "Big picture", needs_photo: true });
+    expect(listed.cover_note).toBeNull();
   });
 
-  it("not on a Home that already has a cover", async () => {
+  it("not on a page that already has a cover, with the one-line reason", async () => {
     const home = await catalog(site.homeId);
     expect(home.types.map((entry) => entry.type)).not.toContain("hero");
-    expect(home.cover_note).toBe("Home already has a cover. Change it in Design → Cover.");
+    expect(home.cover_note).toBe("This page already has a big picture.");
   });
 
   it("first in the list on a Home with only a colour panel", async () => {
     const home = site.rows("pages").find((page) => String(page.id) === site.homeId)!;
     home.blocks = (home.blocks as Doc[]).filter((block) => block.blockType !== "hero");
     const listed = await catalog(site.homeId);
-    expect(listed.types[0]).toMatchObject({ type: "hero", label: "Cover", needs_photo: true });
+    expect(listed.types[0]).toMatchObject({ type: "hero", label: "Big picture", needs_photo: true });
     expect(listed.cover_note).toBeNull();
   });
 
-  it("Ari's addable list drops Cover while Home has one", async () => {
+  it("Ari's addable list never has the cover (#4575)", async () => {
     const { data } = await ari(site, "get_site_workspace");
     expect((data.addable_sections as Doc[]).map((entry) => entry.type)).not.toContain("hero");
   });

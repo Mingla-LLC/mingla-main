@@ -409,7 +409,7 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
         onPick={(picked) => {
           const wanted = photoFor;
           setPhotoFor(null);
-          // A cover only ever goes first on Home (it replaces the colour panel there).
+          // #4575: a cover always goes first on its page (it replaces a page title there).
           if (wanted) ws.add(wanted.type, wanted.label, wanted.type === "hero" ? null : after?.id ?? null, picked.id);
         }}
       />

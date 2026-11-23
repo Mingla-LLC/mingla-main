@@ -642,17 +642,15 @@ const STARTER_ROWS: Readonly<Record<string, number>> = { "faq.items": 2, "featur
 
 /** Section types an owner may add from the workspace, in the order they are offered. */
 export const ADDABLE_SECTION_TYPES: readonly BlockType[] = [
-  "rich_text", "media_feature", "gallery", "feature_cards", "faq", "pull_quote", "testimonials", "offering_grid",
+  "hero", "rich_text", "media_feature", "gallery", "feature_cards", "faq", "pull_quote", "testimonials", "offering_grid",
   "cta", "team", "facts_table", "marquee", "contact_form", "newsletter_signup", "destination_grid", "story_grid",
   "page_links", "divider", "spacer",
-  // #4572 item 8 (D4) — the home page's cover: only at the top of Home, only when it has none.
-  "hero",
 ];
 /** These start from one of the owner's own photos (`media_id` on add_section). */
 export const SECTION_TYPES_NEEDING_PHOTO: ReadonlySet<string> = new Set(["media_feature", "gallery", "hero"]);
 
 const ADD_DESCRIPTIONS: Readonly<Partial<Record<BlockType, string>>> = {
-  hero: "A photo or video across the top of Home. Needs a photo.",
+  hero: "The cover: one of your photos across the top of the page, with a headline, a line under it and up to three short facts. It replaces the page title.",
   rich_text: "A heading and a few paragraphs.",
   media_feature: "One of your photos beside a heading and a few words.",
   gallery: "A set of your photos.",
@@ -681,9 +679,11 @@ export function sectionCatalog(design: DesignKey, actor: SectionActor): AddableS
     .filter((type) => DESIGNS[design].variants[type].length > 0)
     // Ari adds only the kinds its own tools may write.
     .filter((type) => actor === "user" || ARI_BLOCK_TYPES.includes(type))
+    // #4575: the cover is the owner's to add; Ari's addable list is unchanged.
+    .filter((type) => actor === "user" || type !== "hero")
     .map((type) => ({
       type,
-      label: type === "hero" ? "Cover" : SECTION_WORDS[type],
+      label: SECTION_WORDS[type],
       description: ADD_DESCRIPTIONS[type] ?? BLOCK_CATALOG[type].description,
       needs_photo: SECTION_TYPES_NEEDING_PHOTO.has(type),
     }));
@@ -706,6 +706,9 @@ export function starterSection(type: BlockType, design: DesignKey, mediaId: stri
       starters.set(key, STARTER_BODY);
     } else if (spec.kind === "enum" && spec.required) {
       block[key] = spec.values[0];
+    } else if (type === "hero" && key === "ctas") {
+      // #4575: a button row needs a link, which an owner cannot set here: the cover starts with no buttons.
+      continue;
     } else if (spec.kind === "list" && (spec.required || STARTER_ROWS[`${type}.${key}`])) {
       const texts = (Object.entries(spec.item) as Array<[string, FieldSpec]>).filter(([, child]) => child.kind === "text" && child.required);
       // A list of Mingla records (offerings, reviews) starts empty: Mingla fills it.
@@ -733,9 +736,8 @@ export function starterSection(type: BlockType, design: DesignKey, mediaId: stri
   if (type === "offering_grid") { block.mode = "upcoming"; block.kind = "all"; fills("offerings"); }
   if (type === "page_links") { block.mode = "teaser"; fills("items"); }
   if (type === "media_feature") { block.media = mediaId; block.alignment = "left"; }
+  if (type === "hero") { block.media = mediaId; block.ctas = []; }
   if (type === "gallery") block.images = [{ id: newRowId(), media: mediaId }];
-  // #4572 item 8 — a cover starts with the owner's photo and no buttons.
-  if (type === "hero") { fills("ctas"); block.ctas = []; block.media = mediaId; }
   return { block, starters };
 }
 
@@ -884,30 +886,21 @@ export async function removeSection(ctx: SectionContext, args: AnyDoc): Promise<
 }
 
 /**
- * #4572 item 8 (D4) — Home's blocks with a cover at the top: it REPLACES a
- * leading colour panel (`page_header`) and keeps its heading. Refused unless
- * the page is Home, the cover goes first, and Home has no cover yet.
+ * #4572 item 8, following #4575: a page can take a cover (the "Big picture")
+ * when it has none yet. One rule behind both addSection's refusal and the
+ * page's Add section list, so the list never offers one the server would refuse.
  */
-export const COVER_ONLY_ON_HOME = "A cover can only go at the top of Home.";
-export const HOME_HAS_COVER = "Home already has a cover. Change it in Design → Cover.";
+export const PAGE_HAS_COVER = "This page already has a big picture.";
 
-/**
- * #4572 item 8 — why this page can't take a cover, or null when it can. The
- * one rule behind both the refusal below and the page's Add section list, so
- * the list never offers a Cover the server would refuse.
- */
-export function coverUnavailableReason(page: AnyDoc, blocks: readonly AnyDoc[]): string | null {
-  if (!isHome(page)) return COVER_ONLY_ON_HOME;
-  if (blocks.some((block) => block.blockType === "hero")) return HOME_HAS_COVER;
-  return null;
+export function coverUnavailableReason(blocks: readonly AnyDoc[]): string | null {
+  return blocks.some((block) => block.blockType === "hero") ? PAGE_HAS_COVER : null;
 }
 
-/** The Add section list for one page: Cover only when that page can take one, plus the one-line reason when it can't. */
+/** The Add section list for one page: the cover only when that page can take one, plus the one-line reason when it can't. */
 export function pageSectionCatalog(catalog: readonly AddableSection[], page: AnyDoc): { types: AddableSection[]; cover_note: string | null } {
   const blocks = Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : [];
-  const reason = catalog.some((entry) => entry.type === "hero") ? coverUnavailableReason(page, blocks) : null;
-  // Cover goes first in the list: it can only go first on the page.
-  const types = reason ? catalog.filter((entry) => entry.type !== "hero") : [...catalog.filter((entry) => entry.type === "hero"), ...catalog.filter((entry) => entry.type !== "hero")];
+  const reason = catalog.some((entry) => entry.type === "hero") ? coverUnavailableReason(blocks) : null;
+  const types = reason ? catalog.filter((entry) => entry.type !== "hero") : [...catalog];
   return { types, cover_note: reason };
 }
 
@@ -916,21 +909,6 @@ export async function readPageSectionCatalog(ctx: SectionContext, design: Design
   if (pageId === undefined || pageId === null) return { types: catalog, cover_note: null };
   const { page } = await loadPage(ctx, pageId);
   return pageSectionCatalog(catalog, page);
-}
-
-export function blocksWithHomeCover(page: AnyDoc, blocks: readonly AnyDoc[], cover: AnyDoc, at: number): AnyDoc[] {
-  const reason = coverUnavailableReason(page, blocks);
-  if (reason) refuse("VALIDATION_FAILED", { problems: [reason] });
-  if (at !== 0) refuse("VALIDATION_FAILED", { problems: [COVER_ONLY_ON_HOME] });
-  const next = [...blocks];
-  const lead = next[0];
-  if (lead && lead.blockType === "page_header") {
-    const heading = typeof lead.heading === "string" && lead.heading.trim() ? lead.heading : null;
-    next[0] = heading ? { ...cover, heading } : cover;
-  } else {
-    next.unshift(cover);
-  }
-  return next;
 }
 
 export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (block: AnyDoc, texts: string[]) => void): Promise<SectionWrite> {
@@ -942,11 +920,15 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
   if (typeof type !== "string" || !sectionCatalog(design, ctx.actor).some((entry) => entry.type === type) || !isBlockType(type)) {
     refuse("SECTION_TYPE_NOT_AVAILABLE");
   }
-  if (blocks.length >= MAX_BLOCKS_PER_PAGE) refuse("SECTION_LIMIT_REACHED", { max: MAX_BLOCKS_PER_PAGE });
+  const isCover = type === "hero";
+  // #4575: the cover is the top of the page, once.
+  const coverReason = isCover ? coverUnavailableReason(blocks) : null;
+  if (coverReason) refuse("VALIDATION_FAILED", { problems: [coverReason] });
+  // Replacing a page title does not add a section, so it needs no room.
+  const replacesTitle = isCover && blocks[0]?.blockType === "page_header";
+  if (blocks.length >= MAX_BLOCKS_PER_PAGE && !replacesTitle) refuse("SECTION_LIMIT_REACHED", { max: MAX_BLOCKS_PER_PAGE });
   const after = args.after_section_id;
-  const at = after === null || after === undefined ? 0 : findSection(blocks, after) + 1;
-  // #4572 item 8 — say why a cover can't go here before asking for its photo.
-  if (type === "hero") blocksWithHomeCover(page, blocks, {}, at);
+  const at = isCover || after === null || after === undefined ? 0 : findSection(blocks, after) + 1;
   let mediaId: string | null = null;
   if (SECTION_TYPES_NEEDING_PHOTO.has(type)) {
     if (typeof args.media_id !== "string" || !args.media_id) refuse("MEDIA_REQUIRED");
@@ -954,6 +936,14 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
     mediaId = args.media_id;
   }
   const starter = starterSection(type, design, mediaId);
+  if (replacesTitle) {
+    // #4575: the page title's own words carry over (the owner wrote them, they are not starter text).
+    const title = blocks[0]!;
+    const heading = typeof title.heading === "string" ? title.heading.trim() : "";
+    if (heading) { starter.block.heading = heading; starter.starters.delete("heading"); }
+    const lines = typeof title.subheading === "string" ? title.subheading.split("\n").map((line) => line.trim()).filter(Boolean) : [];
+    if (lines.length) starter.block.subheading = lines.join(" · ").slice(0, 300);
+  }
   const edits = parseEdits(args.edits);
   const { block, texts } = applyEdits(starter.block, edits, ctx.actor);
   if (ctx.actor === "ari") {
@@ -963,8 +953,9 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
     if (missing.length) refuse("VALIDATION_FAILED", { problems: missing.slice(0, 20).map((key) => `add_section needs words for ${key}`) });
   }
   check?.(block, texts);
-  const nextBlocks = type === "hero" ? blocksWithHomeCover(page, blocks, block, at) : (blocks.splice(at, 0, block), blocks);
-  const updated = await savePage(ctx, page, { blocks: nextBlocks });
+  if (replacesTitle) blocks.splice(0, 1);
+  blocks.splice(at, 0, block);
+  const updated = await savePage(ctx, page, { blocks });
   const stored = (Array.isArray(updated.blocks) ? updated.blocks as AnyDoc[] : [])[at];
   const sectionId = stored ? sectionIdOf(stored, at) : String(block.id);
   await recordPage(ctx, page, updated, `Add ${SECTION_WORDS[type]}`);
