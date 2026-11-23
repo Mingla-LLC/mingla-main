@@ -341,6 +341,9 @@ const mapTicket = (t: TicketStub): PublicTicketProps => ({
         ? "both"
         : "online",
   displayOrder: typeof t.displayOrder === "number" ? t.displayOrder : 0,
+  // issue #3281 S-21 — the add-ons on sale for this ticket; the page's
+  // "Add at checkout:" list reads them (the slot is null while extras are off).
+  ...(t.buyerExtras !== undefined ? { buyerExtras: t.buyerExtras } : {}),
 });
 
 // issue #2209 — THE EYEBROW'S DATE BLOCK, resolved from the event's REAL

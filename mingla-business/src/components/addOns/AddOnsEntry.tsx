@@ -71,7 +71,10 @@ export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, cur
         {draft === undefined ? (
           <SavedAddOnsLine eventId={offeringId} offering={offering} />
         ) : (
-          <PromoLine offering={offering} />
+          <AddOnNamesLine
+            names={draftAddOnsPayload(draft.event).addOns.map((addOn) => addOn.name)}
+            offering={offering}
+          />
         )}
       </Pressable>
       {opened ? (
@@ -109,13 +112,21 @@ const PromoLine: React.FC<{ offering: AddOnOfferingKind }> = ({ offering }) => (
  */
 const SavedAddOnsLine: React.FC<{ eventId: string; offering: AddOnOfferingKind }> = ({ eventId, offering }) => {
   const query = useOfferingAddOns(eventId);
-  const names = (query.data?.addOns ?? [])
-    .map((addOn) => addOn.name.trim())
-    .filter((name) => name.length > 0);
-  if (names.length === 0) return <PromoLine offering={offering} />;
+  return (
+    <AddOnNamesLine names={(query.data?.addOns ?? []).map((addOn) => addOn.name)} offering={offering} />
+  );
+};
+
+/** The add-on names ("Coat check · Dinner"), or the promo line when there are none. */
+const AddOnNamesLine: React.FC<{ names: readonly string[]; offering: AddOnOfferingKind }> = ({
+  names,
+  offering,
+}) => {
+  const shown = names.map((name) => name.trim()).filter((name) => name.length > 0);
+  if (shown.length === 0) return <PromoLine offering={offering} />;
   return (
     <Text style={styles.sub} numberOfLines={2} testID="add-ons-entry-list">
-      {names.join(" · ")}
+      {shown.join(" · ")}
     </Text>
   );
 };
