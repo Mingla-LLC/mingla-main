@@ -3,7 +3,7 @@
   "kind": "edge-function-policy",
   "name": "venue-till",
   "verify_jwt": false,
-  "gateway_reason": "The Till's sent-receipt page reads a receipt without a Mingla account (O1 receipts); every staff action verifies the bearer in code and passes the verified user to service-only Till RPCs that check venue.sell, money rights or brand rank.",
+  "gateway_reason": "The Till's sent-receipt page and the scan-to-pay page (/pay/till/<code>: view, pay, confirm on return) are used without a Mingla account (O1 receipts, O2); the pay-code actions are rate-limited per IP and per code and answer one 404 for any unknown code. Every staff action verifies the bearer in code and passes the verified user to service-only Till RPCs that check venue.sell, money rights or brand rank.",
   "env": {
     "migration_fallback_top_level": [],
     "optional_top_level": [],

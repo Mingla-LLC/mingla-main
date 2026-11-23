@@ -570,6 +570,12 @@ export interface VenueOrderMoneyInput {
   serviceFeeBps?: number;
   /** NG only — country_vat_config bps. */
   vatRateBps?: number | null;
+  /**
+   * #4490 spec 08 O2: a Till card payment carries its share of the check's
+   * service charge as an exact amount (never re-derived from bps, unlike
+   * billToPhone's `serviceChargeBps: 0`). Inside the fee basis, as always.
+   */
+  serviceChargeCentsOverride?: number;
 }
 
 export interface VenueOrderMoney {
@@ -620,10 +626,9 @@ export function computeVenueOrderMoney(
 ): VenueOrderMoney {
   // (2) the venue's own service charge — VENUE revenue, so it IS inside the fee
   // basis. This is the deliberate contrast with a tip (D-9 / P-19).
-  const serviceChargeCents = feeFromBps(
-    input.subtotalCents,
-    input.serviceChargeBps,
-  );
+  const serviceChargeCents = input.serviceChargeCentsOverride !== undefined
+    ? input.serviceChargeCentsOverride
+    : feeFromBps(input.subtotalCents, input.serviceChargeBps);
   // (3) THE FEE BASIS.
   const feeBasisCents = input.subtotalCents + serviceChargeCents;
 

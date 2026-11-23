@@ -65,7 +65,7 @@ import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
-import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+import { resolveVenueVisitOrigin } from "../_shared/venueOfferVisitLink.ts";
 import {
   classifyStripePaymentIntentCreateFailure,
   jsonResponse,
@@ -927,7 +927,9 @@ async function billToPhone(
         amountSubunits: money.totalCents,
         currency: "NGN",
         reference,
-        callbackUrl: `${PRODUCTION_BUSINESS_WEB_ORIGIN}/o/venue/${
+        // #4490 spec 08 O2: the return origin comes from env (loopback on the
+        // local stack), never the hard-coded production origin (ruling 8).
+        callbackUrl: `${resolveVenueVisitOrigin((name) => Deno.env.get(name))}/o/venue/${
           encodeURIComponent(input.orderId)
         }?bst=${encodeURIComponent(buyerStatusToken)}`,
         channels: paystackChannelsForCountry("NG"),

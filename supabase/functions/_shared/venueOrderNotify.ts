@@ -27,7 +27,7 @@
 
 // @ts-ignore — Deno ESM import (pin matches stripeEdgeAuth.ts for type parity)
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { formatMoneyCents } from "./stripeEdgeAuth.ts";
+import { dispatchNotification, formatMoneyCents } from "./stripeEdgeAuth.ts";
 import { notifyBrandRoles } from "./businessNotifyTriggers.ts";
 
 /**
@@ -238,7 +238,7 @@ export async function fireVenueOrderPlacedForOrder(
     const { data, error } = await supabase
       .from("venue_orders")
       .select(
-        "id, brand_id, venue_id, currency, total_cents, spot_label_at_order, pickup_code, buyer_name, metadata",
+        "id, brand_id, venue_id, currency, total_cents, spot_label_at_order, pickup_code, buyer_name, metadata, till_payment_id",
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -246,6 +246,12 @@ export async function fireVenueOrderPlacedForOrder(
     const row = data as Record<string, unknown>;
     const metadata = (row.metadata ?? {}) as Record<string, unknown>;
     if (String(metadata.tab_settlement ?? "") === "true") return;
+    // #4490 spec 08 O2: a Till carrier is a payment, never a new order. Only
+    // late money (a cancelled payment that was paid) tells the seller.
+    if (typeof row.till_payment_id === "string") {
+      await fireTillLatePayment(supabase, row.till_payment_id, String(row.venue_id));
+      return;
+    }
 
     const { count } = await supabase
       .from("venue_order_items")
@@ -328,4 +334,42 @@ export async function fireVenueOrderEscalation(
     // alert per order that gets louder, not a growing stack (P-55).
     pushOverrides: { collapseId: venueOrderCollapseId(input.orderId) },
   });
+}
+
+/**
+ * #4490 spec 08 O2 — "A cancelled payment was paid". Pushed once to whoever
+ * took the payment, only when the money landed after the payment was
+ * cancelled or its code expired (the Till then shows Refund / Keep).
+ */
+export async function fireTillLatePayment(
+  supabase: VenueOrderNotifyClient,
+  paymentId: string,
+  venueId: string,
+): Promise<void> {
+  try {
+    const { data } = await supabase.from("venue_till_payments")
+      .select("id, paid_late, taken_by_user_id, venue_till_sales!inner(brand_id, check_label)")
+      .eq("id", paymentId).maybeSingle();
+    const row = (data ?? null) as Record<string, unknown> | null;
+    if (!row || row.paid_late !== true || typeof row.taken_by_user_id !== "string") return;
+    const rel = row.venue_till_sales as Record<string, unknown> | Array<Record<string, unknown>>;
+    const sale = Array.isArray(rel) ? rel[0] : rel;
+    await dispatchNotification({
+      userId: row.taken_by_user_id,
+      brandId: String(sale?.brand_id ?? ""),
+      type: "business.venue_till_paid_late",
+      title: "A cancelled payment was paid",
+      body: "Refund it or keep it as payment",
+      data: { venueId, paymentId },
+      relatedId: paymentId,
+      relatedType: "venue_till_payment",
+      idempotencyKey: `venue_till_paid_late:${paymentId}`,
+      deepLink: `mingla-business://venue/${venueId}/till?checks=1`,
+    });
+  } catch (err) {
+    console.warn(
+      "[venueOrderNotify] fireTillLatePayment failed (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }

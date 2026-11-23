@@ -26,6 +26,22 @@
 //   receipt   { paymentId, phone?, phoneCountryIso?, email? } → { queued, sendsLeft }
 //   receipt_view { paymentId, token }   (ANONYMOUS)         → { receipt }
 //
+// O2 (tap to pay, scan to pay; the amount is always what is left on the
+// check, priced by the server; the body may only carry the tip):
+//   pay_tap_start  { saleId, tipMinor, clientRequestId, expectedVersion, platform }
+//                  → { paymentId, amountMinor, chargedMinor, sale }   (then door-tap-intent scope till)
+//   pay_card_cancel { paymentId }      a tap payment that never reached the reader
+//   pay_code_create { saleId, tipMinor, clientRequestId, expectedVersion }
+//                  → { code, payUrl, expiresAt, amountMinor, paymentId, sale }
+//   pay_code_status { code }   pay_code_cancel { code }   pay_code_text { code, phone, phoneCountryIso? } (≤ 3)
+//   keep_late      { paymentId, expectedVersion }   ("Keep it as payment")
+//   code_view      { code }                         (ANONYMOUS) venue, lines, amount
+//   code_pay       { code, buyer:{name,email,phone,phoneCountryIso} } (ANONYMOUS) → provider page
+//   confirm_return { code }                         (ANONYMOUS) verifies with the provider
+//   The three anonymous code actions are rate-limited per IP and per code;
+//   a code is 8 characters of a 31-letter alphabet (≈ 8.5 × 10^11), and an
+//   unknown code answers the same 404 as a malformed one.
+//
 // verify_jwt = false (the gateway does not check it) with the bearer REQUIRED
 // and verified here for every staff action. `receipt_view` is the one
 // anonymous action: the buyer web receipt page (/receipt/till/<id>#t=) reads
@@ -44,6 +60,27 @@ import {
 import { loadMenuSnapshot } from "../_shared/venueOrderCore.ts";
 import { fireVenueOrderPlacedForOrder } from "../_shared/venueOrderNotify.ts";
 import { resolveBuyerPhone } from "../_shared/buyerPhone.ts";
+import {
+  generateTillCode,
+  makeTillPayUrl,
+  priceTillCarrier,
+  TILL_CODE_RE,
+} from "../_shared/venueTillCard.ts";
+import { resolveVenueVisitOrigin } from "../_shared/venueOfferVisitLink.ts";
+import { stripeTicketCheckout } from "../_shared/stripe.ts";
+import {
+  paystackInitializeTransaction,
+  paystackVerifyTransaction,
+} from "../_shared/paystack.ts";
+import { paystackChannelsForCountry } from "../_shared/paymentProvider.ts";
+import {
+  confirmVenueOrderPaystackOnReturn,
+  venueOrderPaystackReference,
+} from "../_shared/venueOrderWebhook.ts";
+import { venueOrderEmailUndeliverable } from "../_shared/venueOrderPricing.ts";
+import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
+import { sha256Hex } from "../_shared/ticketCheckout.ts";
+import { tapToPayReleased } from "../_shared/doorPayServer.ts";
 import {
   issueTillReceiptTokenHash,
   TILL_RECEIPT_TOKEN_RE,
@@ -113,6 +150,19 @@ export const TILL_SAFE_CODES = [
   "till_line_not_paid",
   "not_authorized",
   "venue_not_found",
+  // #4490 O2: tap to pay and scan to pay.
+  "till_card_not_ready",
+  "till_card_tax_at_checkout",
+  "brand_setup_incomplete",
+  "till_tap_not_available",
+  "till_payment_already_paid",
+  "till_payment_landing",
+  "till_late_nothing_to_keep",
+  "pay_code_not_found",
+  "pay_code_closed",
+  "pay_code_text_limit",
+  "pay_code_buyer_invalid",
+  "till_receipt_phone_invalid",
 ] as const;
 
 // deno-lint-ignore no-explicit-any
@@ -124,7 +174,17 @@ export type VenueTillDeps = {
   notifyPlaced?: (client: TillClient, orderId: string) => Promise<void>;
   /** The receipt token hash for a payment's first receipt (tests inject). */
   receiptTokenHash?: (paymentId: string) => Promise<string>;
+  /** O2 test seams: providers and the code generator. */
+  // deno-lint-ignore no-explicit-any
+  stripe?: () => any;
+  paystackInit?: typeof paystackInitializeTransaction;
+  paystackVerify?: (reference: string) => Promise<Record<string, unknown>>;
+  generateCode?: () => string;
 };
+
+/** Anonymous pay-code reads: per IP per minute, and per code per minute. */
+export const TILL_CODE_IP_LIMIT = 60;
+export const TILL_CODE_PAY_LIMIT = 10;
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -232,6 +292,14 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
   const receiptTokenHash = deps.receiptTokenHash ??
     (async (paymentId: string) =>
       (await issueTillReceiptTokenHash({ paymentId })).hashHex);
+  const stripeClient = deps.stripe ?? stripeTicketCheckout;
+  const paystackInit = deps.paystackInit ?? paystackInitializeTransaction;
+  const paystackVerify = deps.paystackVerify ??
+    ((reference: string) => paystackVerifyTransaction(reference));
+  const newCode = deps.generateCode ?? (() => generateTillCode());
+  // Pay URL, return and callback origins: env (local loopback on the local
+  // stack), never the hard-coded production origin.
+  const origin = () => resolveVenueVisitOrigin(env);
 
   return async function handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {
@@ -277,6 +345,10 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         return json(404, { code: "receipt_not_found" });
       }
       return ok({ receipt: data });
+    }
+
+    if (action === "code_view" || action === "code_pay" || action === "confirm_return") {
+      return await handleAnonymousCode(client, req, action, body);
     }
 
     const jwt = (req.headers.get("authorization") ?? "").replace(
@@ -347,8 +419,14 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
               item.available === true;
           }
         }
-        // Tap to pay arrives with O2; the sheet shows it only when true.
-        return ok({ ...catalog, menus, tapAvailable: false });
+        // The server half of the tap matrix (spec 08 §3 O2): a Stripe brand
+        // paid out in GB or the US, released for this platform. The device,
+        // the build and the seller are checked by the app.
+        return ok({
+          ...catalog,
+          menus,
+          tapAvailable: await tapServerAllows(String(catalog.brandId), venueId, body.platform),
+        });
       }
 
       case "checks": {
@@ -416,6 +494,9 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         });
         if (allowed.error || allowed.data !== true) {
           return json(403, { code: "not_authorized" });
+        }
+        if (sale.state === "paying") {
+          return json(409, { code: "till_payment_in_progress" });
         }
         if (sale.state !== "open") return json(409, { code: "till_check_closed" });
         const idempotencyKey = `till:${saleId}:${key}`;
@@ -893,10 +974,505 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         return r.error ? tillFailure(r.error) : ok(r.data);
       }
 
+      case "pay_tap_start":
+      case "pay_code_create": {
+        const method = action === "pay_tap_start" ? "tap" : "scan";
+        const tip = minor(body.tipMinor ?? 0);
+        const requestId = str(body.clientRequestId);
+        if (!UUID.test(saleId) || tip === null || !UUID.test(requestId) || expectedVersion === null) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        const sale = await loadSale();
+        if (!sale) return json(404, { code: "till_sale_not_found" });
+        // A retried tap returns what it made (no second payment).
+        const { data: replay } = await client.from("venue_till_payments")
+          .select("id").eq("sale_id", saleId).eq("client_request_id", requestId).maybeSingle();
+        let prepared: Record<string, unknown> | null = null;
+        if (!replay) {
+          const prep = await rpc("issue_4490_till_card_prepare", {
+            p_sale_id: saleId,
+            p_actor: userId,
+            p_expected_version: expectedVersion,
+          });
+          if (prep.error) return tillFailure(prep.error);
+          prepared = prep.data as Record<string, unknown>;
+          await firePlaced(prepared.sentOrderIds);
+        }
+        let money: Record<string, unknown> = { provider: "stripe", totalCents: 1 };
+        let codeForStart: string | null = null;
+        if (prepared) {
+          const priced = await priceTillCarrier(client, {
+            brandId: String(sale.brand_id),
+            venueId,
+            currency: String(prepared.currency),
+            amountMinor: Number(prepared.amountMinor),
+            serviceChargeMinor: Number(prepared.serviceChargeMinor),
+            tipMinor: tip,
+          });
+          if (!priced.ok) return json(priced.code === "till_payment_too_large" ? 400 : 409, { code: priced.code });
+          if (method === "tap") {
+            if (
+              priced.provider !== "stripe" ||
+              !(await tapServerAllows(String(sale.brand_id), venueId, body.platform))
+            ) {
+              return json(409, { code: "till_tap_not_available" });
+            }
+          }
+          money = priced.money;
+          if (method === "scan") codeForStart = newCode();
+        }
+        let started: { error: RpcError | null; data: unknown } = { error: null, data: null };
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          started = await rpc("issue_4490_till_card_start", {
+            p_sale_id: saleId,
+            p_method: method,
+            p_tip_minor: tip,
+            p_actor: userId,
+            p_device_user: userId,
+            p_client_request_id: requestId,
+            p_expected_version: prepared ? Number(prepared.version) : null,
+            p_money: money,
+            p_code: method === "scan" ? (codeForStart ?? newCode()) : null,
+          });
+          // A code collision (unique code) draws again.
+          if (started.error?.code === "23505" && method === "scan" && prepared) {
+            codeForStart = newCode();
+            continue;
+          }
+          break;
+        }
+        if (started.error) return tillFailure(started.error);
+        const data = started.data as Record<string, unknown>;
+        const projection = await rpc("issue_4490_till_sale_projection", { p_sale_id: saleId });
+        const out: Record<string, unknown> = {
+          paymentId: data.paymentId,
+          amountMinor: data.amountMinor,
+          tipMinor: data.tipMinor,
+          chargedMinor: data.chargedMinor,
+          state: data.state,
+          replayed: data.replayed === true,
+          sale: projection.data,
+        };
+        if (method === "scan" && typeof data.code === "string") {
+          out.code = data.code;
+          out.payUrl = makeTillPayUrl(origin(), data.code);
+          out.expiresAt = data.expiresAt;
+          out.codeStatus = data.codeStatus;
+        }
+        return ok(out);
+      }
+
+      case "pay_card_cancel": {
+        // A tap payment whose card reader never started (no PaymentIntent).
+        // A tap with a PaymentIntent is cancelled through door-tap-intent.
+        const paymentId = str(body.paymentId);
+        if (!UUID.test(paymentId)) return json(400, { code: "till_invalid_payload" });
+        const owned = await paymentAtVenue(paymentId);
+        if (!owned) return json(404, { code: "till_payment_not_found" });
+        if (owned.method !== "tap") return json(400, { code: "till_invalid_payload" });
+        const { data: intent } = await client.from("door_tap_intents")
+          .select("id, stripe_payment_intent_id").eq("till_payment_id", paymentId).maybeSingle();
+        if (intent?.stripe_payment_intent_id) {
+          return json(409, { code: "till_payment_in_progress" });
+        }
+        const r = await rpc("issue_4490_till_card_cancel", { p_payment_id: paymentId, p_actor: userId });
+        return r.error ? tillFailure(r.error) : ok(r.data);
+      }
+
+      case "pay_code_status": {
+        const code = str(body.code).toUpperCase();
+        if (!TILL_CODE_RE.test(code)) return json(404, { code: "pay_code_not_found" });
+        const r = await rpc("issue_4490_till_pay_code_status", {
+          p_code: code,
+          p_venue_id: venueId,
+          p_actor: userId,
+        });
+        if (r.error) return tillFailure(r.error);
+        return ok({ ...(r.data as Record<string, unknown>), payUrl: makeTillPayUrl(origin(), code) });
+      }
+
+      case "pay_code_cancel": {
+        const code = str(body.code).toUpperCase();
+        if (!TILL_CODE_RE.test(code)) return json(404, { code: "pay_code_not_found" });
+        const status = await rpc("issue_4490_till_pay_code_status", {
+          p_code: code,
+          p_venue_id: venueId,
+          p_actor: userId,
+        });
+        if (status.error) return tillFailure(status.error);
+        const st = status.data as Record<string, unknown>;
+        if (st.paymentState !== "pending") {
+          return json(409, {
+            code: st.paymentState === "paid" ? "till_payment_already_paid" : "pay_code_closed",
+          });
+        }
+        // Stripe first: expire the guest's page; a page that already completed
+        // means the money is landing, so nothing is cancelled. Paystack cannot
+        // cancel an initialised transaction: only our page closes, and money
+        // that still lands is late money (recorded, refundable).
+        const { data: carrier } = await client.from("venue_orders")
+          .select("id, provider, stripe_account_id, stripe_checkout_session_id")
+          .eq("till_payment_id", String(st.paymentId)).eq("fulfillment_status", "payment_only")
+          .maybeSingle();
+        if (carrier?.provider === "stripe" && carrier.stripe_checkout_session_id) {
+          const answer = await expireStripePage(
+            String(carrier.stripe_checkout_session_id),
+            String(carrier.stripe_account_id),
+            `till_code_cancel:${st.paymentId}`,
+          );
+          if (answer !== "expired") {
+            return json(409, { code: "till_payment_landing" });
+          }
+        }
+        const r = await rpc("issue_4490_till_card_cancel", {
+          p_payment_id: String(st.paymentId),
+          p_actor: userId,
+        });
+        return r.error ? tillFailure(r.error) : ok(r.data);
+      }
+
+      case "pay_code_text": {
+        const code = str(body.code).toUpperCase();
+        if (!TILL_CODE_RE.test(code)) return json(404, { code: "pay_code_not_found" });
+        const phone = resolveBuyerPhone(str(body.phone), body.phoneCountryIso ?? null);
+        if (phone.e164 === null || phone.legacyNanpGuess) {
+          return json(400, { code: "till_receipt_phone_invalid" });
+        }
+        const r = await rpc("issue_4490_till_pay_code_text", {
+          p_code: code,
+          p_venue_id: venueId,
+          p_actor: userId,
+          p_phone_e164: phone.e164,
+          p_pay_url: makeTillPayUrl(origin(), code),
+        });
+        return r.error ? tillFailure(r.error) : ok(r.data);
+      }
+
+      case "keep_late": {
+        const paymentId = str(body.paymentId);
+        if (!UUID.test(paymentId) || expectedVersion === null) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        if (!(await paymentAtVenue(paymentId))) return json(404, { code: "till_payment_not_found" });
+        const r = await rpc("issue_4490_till_keep_late_payment", {
+          p_payment_id: paymentId,
+          p_actor: userId,
+          p_expected_version: expectedVersion,
+        });
+        return r.error ? tillFailure(r.error) : ok(r.data);
+      }
+
       default:
         return json(400, { code: "unknown_action" });
     }
+
+    async function paymentAtVenue(paymentId: string): Promise<Record<string, unknown> | null> {
+      const owns = await client.from("venue_till_payments")
+        .select("id, method, venue_till_sales!inner(venue_id)")
+        .eq("id", paymentId).maybeSingle();
+      if (
+        owns.error || !owns.data ||
+        (owns.data as Record<string, { venue_id?: string }>).venue_till_sales?.venue_id !== venueId
+      ) {
+        return null;
+      }
+      return owns.data as Record<string, unknown>;
+    }
   };
+
+  /** The server half of the tap availability matrix. */
+  async function tapServerAllows(
+    brandId: string,
+    venueId: string,
+    platform: unknown,
+  ): Promise<boolean> {
+    const client = deps.client ? deps.client() : null;
+    const c = client ?? createClient(env("SUPABASE_URL") ?? "", env("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: rows } = await c.rpc("resolve_brand_pricing_inputs", {
+      p_brand_id: brandId,
+      p_venue_id: venueId,
+    });
+    const row = Array.isArray(rows) ? rows[0] as Record<string, unknown> | undefined : undefined;
+    if (!row || String(row.payment_provider ?? "").toLowerCase() === "paystack") return false;
+    const country = String(row.payment_country ?? "").trim().toUpperCase();
+    if (country !== "GB" && country !== "US") return false;
+    return await tapToPayReleased(c, brandId, platform);
+  }
+
+  /** Stripe-first close of a scan page (door-pay-code's rule). */
+  async function expireStripePage(
+    sessionId: string,
+    stripeAccount: string,
+    idempotencyKey: string,
+  ): Promise<"expired" | "complete" | "unconfirmed"> {
+    // deno-lint-ignore no-explicit-any
+    let stripe: any;
+    try {
+      stripe = stripeClient();
+    } catch {
+      return "unconfirmed";
+    }
+    try {
+      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      const expired = await stripe.checkout.sessions.expire(sessionId, {}, {
+        stripeAccount,
+        idempotencyKey,
+      });
+      if (expired?.status === "expired") return "expired";
+      if (expired?.status === "complete") return "complete";
+    } catch (_err) {
+      // Stripe refuses a page that is no longer open: read it instead.
+    }
+    try {
+      // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      const read = await stripe.checkout.sessions.retrieve(sessionId, {}, { stripeAccount });
+      return read?.status === "expired" ? "expired" : read?.status === "complete" ? "complete" : "unconfirmed";
+    } catch {
+      return "unconfirmed";
+    }
+  }
+
+  /** Fails open when the limiter itself errors (a guest paying beats a log line). */
+  async function limited(client: TillClient, scope: string, limit: number): Promise<boolean> {
+    try {
+      const { data, error } = await client.rpc("pg_venue_order_rate_limit_hit", {
+        p_scope_key: await sha256Hex(scope),
+        p_limit: limit,
+      });
+      if (error) {
+        console.warn("[venue-till] code limiter failed open", error.code);
+        return false;
+      }
+      return (data as { allowed?: boolean } | null)?.allowed === false;
+    } catch {
+      return false;
+    }
+  }
+
+  async function handleAnonymousCode(
+    client: TillClient,
+    req: Request,
+    action: string,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    const code = str(body.code).trim().toUpperCase();
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ||
+      req.headers.get("cf-connecting-ip")?.trim() || "unknown";
+    if (await limited(client, `till_code_ip:${ip}`, TILL_CODE_IP_LIMIT)) {
+      return json(429, { code: "rate_limited" });
+    }
+    if (!TILL_CODE_RE.test(code)) return json(404, { code: "pay_code_not_found" });
+    if (action !== "code_view" && await limited(client, `till_code_pay:${code}`, TILL_CODE_PAY_LIMIT)) {
+      return json(429, { code: "rate_limited" });
+    }
+
+    if (action === "code_view") {
+      const { data, error } = await client.rpc("issue_4490_till_pay_code_view", { p_code: code });
+      if (error) {
+        if (error.message === "pay_code_not_found") return json(404, { code: "pay_code_not_found" });
+        console.error("[venue-till] code view failed", error.code);
+        return json(500, { code: "till_failed" });
+      }
+      return ok({ view: data });
+    }
+
+    if (action === "confirm_return") {
+      const { data: view, error: viewError } = await client.rpc("issue_4490_till_pay_code_view", {
+        p_code: code,
+      });
+      if (viewError) {
+        return viewError.message === "pay_code_not_found"
+          ? json(404, { code: "pay_code_not_found" })
+          : json(500, { code: "till_failed" });
+      }
+      const v = view as Record<string, unknown>;
+      if (v.paid === true) return ok({ result: "confirmed", view: v });
+      const { data: row } = await client.from("venue_till_pay_codes")
+        .select("payment_id").eq("code", code).maybeSingle();
+      const { data: carrier } = row
+        ? await client.from("venue_orders")
+          .select("id, provider, total_cents, currency, paystack_reference, stripe_account_id, stripe_checkout_session_id")
+          .eq("till_payment_id", row.payment_id).eq("fulfillment_status", "payment_only").maybeSingle()
+        : { data: null };
+      if (!carrier) return ok({ result: "not_paid", view: v });
+      let result = "in_progress";
+      try {
+        if (carrier.provider === "paystack" && typeof carrier.paystack_reference === "string") {
+          // The reference is the carrier's own; the query string's is never trusted.
+          result = await confirmVenueOrderPaystackOnReturn(
+            client,
+            carrier.paystack_reference,
+            paystackVerify,
+          );
+        } else if (carrier.provider === "stripe" && carrier.stripe_checkout_session_id) {
+          // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+          // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+          const page = await stripeClient().checkout.sessions.retrieve(
+            String(carrier.stripe_checkout_session_id),
+            {},
+            { stripeAccount: String(carrier.stripe_account_id) },
+          );
+          if (page?.status === "complete" && page?.payment_status === "paid") {
+            const fin = await client.rpc("pg_venue_order_finalize_payment", {
+              p_order_id: carrier.id,
+              p_provider: "stripe",
+              p_paid_amount_cents: Number(page.amount_total),
+              p_currency: String(page.currency ?? "").toUpperCase(),
+              p_payment_intent_id: typeof page.payment_intent === "string" ? page.payment_intent : null,
+              p_charge_id: null,
+              p_provider_fee_cents: null,
+              p_provider_balance_transaction_id: null,
+            });
+            const status = (fin.data as Record<string, unknown> | null)?.status;
+            result = !fin.error && (status === "finalized" || status === "replayed") ? "confirmed" : "in_progress";
+          } else if (page?.status === "expired") {
+            result = "not_paid";
+          }
+        }
+      } catch (err) {
+        console.warn("[venue-till] return check failed", err instanceof Error ? err.message : "unknown");
+        result = "in_progress";
+      }
+      const { data: after } = await client.rpc("issue_4490_till_pay_code_view", { p_code: code });
+      return ok({ result, view: after ?? v });
+    }
+
+    // code_pay: the guest's contact, then the provider page for the server's amount.
+    const buyer = (body.buyer ?? {}) as Record<string, unknown>;
+    const name = str(buyer.name).trim();
+    const email = str(buyer.email).trim().toLowerCase();
+    const phone = resolveBuyerPhone(buyer.phone, buyer.phoneCountryIso ?? null);
+    if (name.length < 2 || name.length > 120) return json(400, { code: "buyer_name_required" });
+    if (!EMAIL.test(email) || email.length > 254) return json(400, { code: "buyer_email_invalid" });
+    if (venueOrderEmailUndeliverable(email)) return json(400, { code: "buyer_email_undeliverable" });
+    if (phone.e164 === null || phone.legacyNanpGuess) return json(400, { code: "buyer_phone_invalid" });
+    const { data: info, error } = await client.rpc("issue_4490_till_pay_code_buyer", {
+      p_code: code,
+      p_name: name,
+      p_email: email,
+      p_phone_e164: phone.e164,
+    });
+    if (error) {
+      if (error.message === "pay_code_not_found") return json(404, { code: "pay_code_not_found" });
+      if (error.message === "pay_code_closed") return json(409, { code: "pay_code_closed" });
+      if (error.message === "pay_code_buyer_invalid") return json(400, { code: "pay_code_buyer_invalid" });
+      console.error("[venue-till] code pay failed", error.code);
+      return json(500, { code: "till_failed" });
+    }
+    const p = info as Record<string, unknown>;
+    const carrierId = String(p.carrierOrderId);
+    const returnUrl = `${makeTillPayUrl(origin(), code)}?paid=1`;
+    const continuation = (p.continuation ?? null) as Record<string, unknown> | null;
+    if (continuation && typeof continuation.url === "string") {
+      return ok({ provider: p.provider, redirectUrl: continuation.url });
+    }
+    if (p.provider === "paystack") {
+      const reference = venueOrderPaystackReference(carrierId);
+      const stamp = await client.from("venue_orders").update({ paystack_reference: reference })
+        .eq("id", carrierId).is("paystack_reference", null).select("id");
+      if (stamp.error || !Array.isArray(stamp.data) || stamp.data.length !== 1) {
+        return json(409, { code: "till_payment_in_progress" });
+      }
+      const { data: brandRow } = await client.from("brands")
+        .select("payout_hold_cutover_at").eq("id", String(p.brandId)).maybeSingle();
+      const { data: pricing } = await client.rpc("resolve_brand_pricing_inputs", {
+        p_brand_id: String(p.brandId),
+        p_venue_id: null,
+      });
+      const subaccount = Array.isArray(pricing) && typeof pricing[0]?.paystack_subaccount_code === "string"
+        ? pricing[0].paystack_subaccount_code
+        : null;
+      try {
+        const init = await paystackInit({
+          email,
+          amountSubunits: Number(p.totalCents),
+          currency: "NGN",
+          reference,
+          callbackUrl: returnUrl,
+          channels: paystackChannelsForCountry("NG"),
+          metadata: {
+            mingla_venue_order_id: carrierId,
+            mingla_till_payment_id: String(p.paymentId),
+            mingla_brand_id: String(p.brandId),
+          },
+          ...venueOrderSplitFields(
+            Boolean(brandRow?.payout_hold_cutover_at),
+            subaccount,
+            Number(p.applicationFeeCents),
+          ),
+        });
+        await mergeContinuation(client, carrierId, { url: init.authorization_url, reference });
+        return ok({ provider: "paystack", redirectUrl: init.authorization_url });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await client.from("venue_orders").update({ paystack_reference: null })
+          .eq("id", carrierId).eq("paystack_reference", reference).eq("payment_status", "pending");
+        console.error("[venue-till] paystack initialise failed", message.slice(0, 120));
+        return json(502, { code: /email/i.test(message) ? "buyer_email_undeliverable" : "till_failed" });
+      }
+    }
+    try {
+      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      const page = await stripeClient().checkout.sessions.create({
+        mode: "payment",
+        currency: String(p.currency).toLowerCase(),
+        line_items: [{
+          price_data: {
+            currency: String(p.currency).toLowerCase(),
+            unit_amount: Number(p.totalCents),
+            product_data: { name: `Bill at ${String(p.venueName) || "the venue"}` },
+          },
+          quantity: 1,
+        }],
+        payment_intent_data: {
+          metadata: {
+            mingla_venue_order_id: carrierId,
+            mingla_till_payment_id: String(p.paymentId),
+            mingla_brand_id: String(p.brandId),
+          },
+          ...(Number(p.applicationFeeCents) > 0
+            ? { application_fee_amount: Number(p.applicationFeeCents) }
+            : {}),
+          statement_descriptor_suffix: "MINGLA",
+        },
+        customer_email: email,
+        // Stripe's minimum page life is 30 minutes.
+        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+        success_url: returnUrl,
+        cancel_url: makeTillPayUrl(origin(), code),
+        metadata: {
+          mingla_venue_order_id: carrierId,
+          mingla_till_payment_id: String(p.paymentId),
+          mingla_brand_id: String(p.brandId),
+        },
+      }, {
+        stripeAccount: String(p.stripeAccountId),
+        idempotencyKey: `till_code_pay:${carrierId}`,
+      });
+      await client.from("venue_orders").update({ stripe_checkout_session_id: page.id })
+        .eq("id", carrierId).is("stripe_checkout_session_id", null);
+      await mergeContinuation(client, carrierId, { url: page.url, sessionId: page.id });
+      return ok({ provider: "stripe", redirectUrl: page.url });
+    } catch (err) {
+      console.error("[venue-till] stripe page failed", err instanceof Error ? err.message.slice(0, 120) : "unknown");
+      return json(502, { code: "till_failed" });
+    }
+  }
+
+  async function mergeContinuation(
+    client: TillClient,
+    carrierId: string,
+    continuation: Record<string, unknown>,
+  ): Promise<void> {
+    const { data } = await client.from("venue_orders").select("metadata").eq("id", carrierId).maybeSingle();
+    const metadata = (data?.metadata ?? {}) as Record<string, unknown>;
+    await client.from("venue_orders").update({
+      metadata: { ...metadata, payment_continuation: continuation },
+    }).eq("id", carrierId);
+  }
 }
 
 if (import.meta.main) {

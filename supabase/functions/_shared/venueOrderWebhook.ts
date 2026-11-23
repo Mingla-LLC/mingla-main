@@ -26,6 +26,7 @@
 // discriminates the real flip ('finalized') from a webhook replay ('replayed'),
 // so a retried delivery cannot re-ring the pass.
 import { fireVenueOrderPlacedForOrder } from "./venueOrderNotify.ts";
+import { tillChannelFromPaystack } from "./venueTillCard.ts";
 
 type ServiceClient = any;
 
@@ -221,7 +222,7 @@ export async function handleVenueOrderPaystackCharge(
 ): Promise<VenueOrderFinalizeResult> {
   const { data: order, error: lookupError } = await client
     .from("venue_orders")
-    .select("id, brand_id")
+    .select("id, brand_id, till_payment_id, metadata")
     .eq("paystack_reference", reference)
     .maybeSingle();
   if (lookupError) {
@@ -237,6 +238,19 @@ export async function handleVenueOrderPaystackCharge(
   const fees = feesRaw === null || feesRaw === undefined ? null : Number(feesRaw);
   if (!Number.isSafeInteger(amount) || !/^[A-Z]{3}$/.test(currency)) {
     throw new Error("venue_order_provider_evidence_invalid");
+  }
+
+  // #4490 spec 08 O2: a Till carrier keeps the verified channel (a bank
+  // transfer confirms itself through charge.success) so the finalizer can
+  // write it on the Till payment ("Paid by bank transfer").
+  if (typeof order.till_payment_id === "string") {
+    const channel = tillChannelFromPaystack(verified.channel);
+    if (channel !== null) {
+      const metadata = (order.metadata ?? {}) as Record<string, unknown>;
+      await client.from("venue_orders")
+        .update({ metadata: { ...metadata, provider_channel: channel } })
+        .eq("id", order.id);
+    }
   }
 
   const { data, error } = await client.rpc("pg_venue_order_finalize_payment", {
