@@ -4,7 +4,16 @@
  * (§3 O5 Copy, §2 screens 1, 13, 14); new lines are listed for Seth.
  */
 
-import type { TillPinPerson } from "../../../services/venueTillService";
+/** One person on "Who's selling?" (the server's list; venueTillService maps it). */
+export interface TillPinPerson {
+  memberId: string;
+  name: string;
+  role: string;
+  profile: string | null;
+  canSell: boolean;
+  canApprove: boolean;
+  canManage: boolean;
+}
 
 export const PIN_COPY = {
   whoSelling: "Who's selling?",

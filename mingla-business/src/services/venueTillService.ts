@@ -15,7 +15,7 @@ import {
   requestStepUp,
   setTillStaffSession,
 } from "./tillStaffSession";
-import { pinRetryMessage } from "../components/venue/till/pinModel";
+import { pinRetryMessage, type TillPinPerson } from "../components/venue/till/pinModel";
 
 type Json = Record<string, unknown>;
 
@@ -1030,15 +1030,7 @@ export function extendTillSession(input: {
 // #4490 spec 08 O5 part A — PINs and "Who's selling?".
 // ---------------------------------------------------------------------------
 
-export interface TillPinPerson {
-  memberId: string;
-  name: string;
-  role: string;
-  profile: string | null;
-  canSell: boolean;
-  canApprove: boolean;
-  canManage: boolean;
-}
+export type { TillPinPerson };
 
 export interface TillPinStaff {
   /** True only on a Till device login at this venue (the Till released there). */
