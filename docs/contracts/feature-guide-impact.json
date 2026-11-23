@@ -5445,6 +5445,7 @@
       "paths": [
         "mingla-business/src/components/trip/InstallmentScheduleDisplay.tsx",
         "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
+        "mingla-business/src/hooks/useTripPlanV2Schema.ts",
         "packages/offering-rendering/offeringRefundPolicy.ts",
         "supabase/migrations/20281125024522_issue_4522_plan_v2_model.sql",
         "supabase/migrations/20281125034522_issue_4522_plan_v2_checkout.sql",

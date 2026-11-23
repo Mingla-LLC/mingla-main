@@ -356,6 +356,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["usePublicEvents.ts", "anon-readable events via security-definer public views (buyer-web feed)"],
   ["usePublicTripBySlug.ts", "anon-readable published trips via trip-sidecar anon RLS (buyer-web)"],
   ["usePublicTripById.ts", "anon-readable published trips by id (buyer-web)"],
+  ["useTripPlanV2Schema.ts", "schema probe: asks whether order_installments.kind exists (limit 0, reads no rows), the same answer for every caller (#4522 W-5)"],
   ["useTripCheckoutAddOns.ts", "anon-readable package add-ons from the security-definer pg_public_trip_by_slug reader for the trip checkout (#3281, buyer-web)"],
   ["usePublicTripGuide.ts", "anon-readable trip guide of public trips via security-definer pg_public_trip_guide (#2829, buyer-web)"],
   ["useBrand.ts", "brands has a 'Public can read non-deleted brands' anon RLS policy; useBrand single-by-id is the public brand shell"],

@@ -27,7 +27,7 @@ import { supabase } from "./supabase";
  * may not call the service-role switch, so it asks the table question only.
  * A real failure (anything but "does not exist") still throws.
  */
-async function planV2SchemaReady(): Promise<boolean> {
+export async function planV2SchemaReady(): Promise<boolean> {
   // Kept off the shared service's eager graph: only plan-v2 reads ask.
   const probe = await import("@mingla/offering-rendering/planV2Schema");
   return probe.planV2SchemaAvailable(

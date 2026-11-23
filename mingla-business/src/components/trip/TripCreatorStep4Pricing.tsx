@@ -48,6 +48,7 @@ import { MAX_TRIP_PACKAGES } from "./tripPackagesValidation";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 import { pricesClearedNotice } from "../../utils/draftFollowsBrandCurrency";
 import { featureFlags, isFeatureEnabled } from "../../config/featureFlags";
+import { useTripPlanV2Schema } from "../../hooks/useTripPlanV2Schema";
 import {
   convertLegacyPlanToV2,
   DEFAULT_TRIP_PAYMENT_PLAN_V2,
@@ -159,6 +160,13 @@ export interface TripCreatorStep4PricingProps {
   addOnsEventId?: string | null;
 }
 
+/**
+ * issue #4522 W-5 — spec §7 `payment_plan_v2_unavailable` host copy, first
+ * sentence (nothing was attempted, so nothing "wasn't saved").
+ */
+export const TRIP_PLAN_V2_NOT_SWITCHED_ON_COPY =
+  "The new payment plans aren't switched on yet.";
+
 export const TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY =
   "Payment plans aren't available with this payment setup. Your saved schedule is kept, but buyers can't select it.";
 
@@ -204,6 +212,12 @@ interface PackageCardProps {
   onSharePaymentPlanChange: (next: boolean) => void;
   v2PlanAuthoringLocked: boolean;
   v2PlanAuthoringLockedReason?: string;
+  /**
+   * issue #4522 W-5 — the plan-v2 schema is not in this database yet (deploy
+   * window): "missing" offers no new plan and says so; "checking" waits for
+   * the probe. An old percent plan can still be removed (a v1 save).
+   */
+  v2Schema: "ready" | "checking" | "missing";
   allowCapacityChange: boolean;
   showSharePaymentPlanControl: boolean;
   /** Whether a Remove control is shown (false when only 1 package remains). */
@@ -225,6 +239,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
   onSharePaymentPlanChange,
   v2PlanAuthoringLocked,
   v2PlanAuthoringLockedReason,
+  v2Schema,
   allowCapacityChange,
   showSharePaymentPlanControl,
   canRemove,
@@ -254,6 +269,9 @@ const PackageCard: React.FC<PackageCardProps> = ({
   const sharedFollower = sharePaymentPlan && index > 0;
   const rollbackLocked = v2Plan !== null && !featureFlags.tripPlanV2;
   const stagedAuthoringLocked = featureFlags.tripPlanV2 && v2PlanAuthoringLocked;
+  // W-5 — nothing can switch a new plan on until the server has plan v2.
+  const v2Unavailable = featureFlags.tripPlanV2 && v2Schema !== "ready";
+  const cannotTurnOn = !planEnabled && v2Unavailable;
 
   const handleTogglePlan = useCallback(
     (next: boolean) => {
@@ -266,6 +284,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
         stagedAuthoringLocked
       ) return;
       if (next) {
+        if (v2Unavailable) return;
         onPatch({
           paymentPlan: featureFlags.tripPlanV2
             ? {
@@ -291,6 +310,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
       sharedFollower,
       rollbackLocked,
       stagedAuthoringLocked,
+      v2Unavailable,
     ],
   );
 
@@ -462,7 +482,8 @@ const PackageCard: React.FC<PackageCardProps> = ({
               planSuspended ||
               sharedFollower ||
               rollbackLocked ||
-              stagedAuthoringLocked,
+              stagedAuthoringLocked ||
+              cannotTurnOn,
           }}
           onPress={() => {
             if (
@@ -471,7 +492,8 @@ const PackageCard: React.FC<PackageCardProps> = ({
               planSuspended ||
               sharedFollower ||
               rollbackLocked ||
-              stagedAuthoringLocked
+              stagedAuthoringLocked ||
+              cannotTurnOn
             ) return;
             handleTogglePlan(!planEnabled);
           }}
@@ -482,7 +504,9 @@ const PackageCard: React.FC<PackageCardProps> = ({
             <Text style={styles.paymentPlanSubtitle}>
               {planSuspended
                 ? TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY
-                : rollbackLocked
+                : cannotTurnOn && v2Schema === "missing"
+                  ? TRIP_PLAN_V2_NOT_SWITCHED_ON_COPY
+                  : rollbackLocked
                   ? "The new plan editor is switched off. Your saved plan is kept."
                   : stagedAuthoringLocked
                     ? v2PlanAuthoringLockedReason ?? "Your saved plan is kept."
@@ -502,7 +526,8 @@ const PackageCard: React.FC<PackageCardProps> = ({
               planSuspended ||
               sharedFollower ||
               rollbackLocked ||
-              stagedAuthoringLocked
+              stagedAuthoringLocked ||
+              cannotTurnOn
             }
             trackColor={{ false: color.fill.step, true: color.accent }}
             thumbColor={color.paper}
@@ -529,7 +554,8 @@ const PackageCard: React.FC<PackageCardProps> = ({
                 planSuspended ||
                 sharedFollower ||
                 disabled === true ||
-                stagedAuthoringLocked
+                stagedAuthoringLocked ||
+                v2Unavailable
               }
               style={styles.convertPlanButton}
               testID={`trip-plan-v1-convert-${index}`}
@@ -634,6 +660,14 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   );
 
   const packages = draft.packages;
+  // issue #4522 W-5 — the shared plan-v2 probe; asked only with the v2 editor.
+  const planV2Schema = useTripPlanV2Schema(featureFlags.tripPlanV2);
+  const v2Schema: "ready" | "checking" | "missing" =
+    planV2Schema.data === true
+      ? "ready"
+      : planV2Schema.data === false
+        ? "missing"
+        : "checking"; // loading, or the probe failed: offer nothing new yet
   const pricesAwaitingReentry = packages.some(
     (p) => p.priceNeedsReentry === true && p.priceMajor.trim().length === 0,
   );
@@ -791,6 +825,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           onSharePaymentPlanChange={handleSharePaymentPlanChange}
           v2PlanAuthoringLocked={v2PlanAuthoringLocked}
           v2PlanAuthoringLockedReason={v2PlanAuthoringLockedReason}
+          v2Schema={v2Schema}
           allowCapacityChange={allowCapacityChange}
           showSharePaymentPlanControl={showSharePaymentPlanControl}
           canRemove={canRemoveAny}
