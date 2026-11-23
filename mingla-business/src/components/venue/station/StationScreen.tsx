@@ -38,6 +38,9 @@ import { Spinner } from "../../ui/Spinner";
 import { Toast } from "../../ui/Toast";
 import { StationBoard, type StationBanner } from "./StationBoard";
 import { StationStart } from "./StationStart";
+import { StationSoldOutBody } from "./StationSoldOut";
+import { STOCK_COPY, stockErrorCopy } from "../stock/stockCopy";
+import { setStationSoldOut, StockError } from "../../../services/venueStockService";
 import { STATION_COPY, stationErrorCopy } from "./stationCopy";
 import {
   ageSeconds,
@@ -76,6 +79,9 @@ export function StationScreen({ venueId, initialStation, startedOnLoad }: Statio
   const [now, setNow] = useState(() => Date.now());
   const [mutedUntil, setMutedUntil] = useState<number | null>(null);
   const [muteOpen, setMuteOpen] = useState(false);
+  // #4490 O5 part C (T15): "Mark sold out", and the "{item} is sold out" banner with Undo.
+  const [soldOutOpen, setSoldOutOpen] = useState(false);
+  const [soldOutDone, setSoldOutDone] = useState<{ menuItemId: string; name: string } | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [printingKey, setPrintingKey] = useState<string | null>(null);
@@ -213,7 +219,25 @@ export function StationScreen({ venueId, initialStation, startedOnLoad }: Statio
   const muted = isMuted(mutedUntil, now);
   const mutedTime = mutedUntil !== null ? venueTime(mutedUntil, board?.timezone ?? null) : null;
   const firstNew = board !== null ? oldestNew(board.tickets) : null;
-  const banner: StationBanner | null = pdfFailed !== null
+  const undoSoldOut = async (): Promise<void> => {
+    const done = soldOutDone;
+    if (done === null) return;
+    try {
+      await setStationSoldOut(venueId, done.menuItemId, false);
+      setSoldOutDone(null);
+    } catch (err) {
+      setToast({ kind: "error", message: stockErrorCopy(err instanceof StockError ? err.code : "stock_failed") });
+    }
+  };
+  const banner: StationBanner | null = soldOutDone !== null
+    ? {
+      tone: "info",
+      title: STOCK_COPY.boardDoneTitle(soldOutDone.name),
+      body: STOCK_COPY.boardDoneBody,
+      action: { label: STOCK_COPY.undo, onPress: () => void undoSoldOut() },
+      testID: "station-banner-sold-out",
+    }
+    : pdfFailed !== null
     ? {
       tone: "danger",
       title: STATION_COPY.pdfFailed,
@@ -297,6 +321,7 @@ export function StationScreen({ venueId, initialStation, startedOnLoad }: Statio
         banner={banner}
         muteLabel={muted && mutedTime !== null ? STATION_COPY.soundOffUntil(mutedTime) : STATION_COPY.mute}
         onMute={() => (muted ? setMutedUntil(null) : setMuteOpen(true))}
+        onSoldOut={() => setSoldOutOpen(true)}
         ageOf={(t) => ageSeconds(t.sentAt, now, offset)}
         ringOn={reduceMotion || Math.floor(now / 1000) % 2 === 0}
         busyKey={busyKey}
@@ -323,6 +348,20 @@ export function StationScreen({ venueId, initialStation, startedOnLoad }: Statio
       {body}
       <Sheet visible={muteOpen} onClose={() => setMuteOpen(false)} testID="station-mute-sheet">
         <MuteSheetBody onMute={mute} onClose={() => setMuteOpen(false)} />
+      </Sheet>
+      <Sheet visible={soldOutOpen} onClose={() => setSoldOutOpen(false)} testID="station-sold-out-sheet">
+        {soldOutOpen ? (
+          <StationSoldOutBody
+            venueId={venueId}
+            station={choice}
+            timeOf={(iso) => venueTime(Date.parse(iso), board?.timezone ?? null) ?? "--"}
+            onClose={() => setSoldOutOpen(false)}
+            onMarked={(item) => {
+              setSoldOutOpen(false);
+              setSoldOutDone(item);
+            }}
+          />
+        ) : null}
       </Sheet>
       <Toast visible={toast !== null} kind={toast?.kind ?? "info"} message={toast?.message ?? ""}
         onDismiss={() => setToast(null)} testID="station-toast" />

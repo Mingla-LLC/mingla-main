@@ -33,6 +33,7 @@ import {
   waitingMinutes,
   type VenueOrder,
 } from "./venueOrderViews";
+import { STOCK_COPY } from "./stock/stockCopy";
 
 const TONE_COLOR: Record<string, string> = {
   neutral: color.text2,
@@ -121,6 +122,13 @@ export function VenueOrderCard({
         {refundOpen ? (
           <Text style={styles.refundNote} testID={`venue-order-refund-flag-${order.id}`}>
             The guest has asked for a refund — approve it or tell them why not.
+          </Text>
+        ) : null}
+
+        {order.soldOutAfterPayment === true ? (
+          // #4490 O5 part C (T16): swap it or refund it (open the order).
+          <Text style={styles.escalation} testID={`venue-order-sold-out-flag-${order.id}`}>
+            {STOCK_COPY.afterPayment}
           </Text>
         ) : null}
 

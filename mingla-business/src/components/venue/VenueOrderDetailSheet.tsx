@@ -27,6 +27,7 @@ import {
 } from "../../constants/designSystem";
 import { formatCurrency } from "../../utils/currency";
 import { Sheet } from "../ui/Sheet";
+import { OrderSoldOutSection } from "./stock/OrderSoldOutSection";
 import {
   VENUE_ORDER_ACTION_LABEL,
   VENUE_ORDER_DESTRUCTIVE_ACTIONS,
@@ -173,6 +174,11 @@ export function VenueOrderDetailSheet({
               {formatCurrency(order.tipCents, order.currency, true)}
             </Text>
           </View>
+        ) : null}
+
+        {order.soldOutAfterPayment === true ? (
+          // #4490 O5 part C (T16): swap or refund, never dropped silently.
+          <OrderSoldOutSection venueId={order.venueId} orderId={order.id} currency={order.currency} />
         ) : null}
 
         {refundOpen ? (

@@ -23,6 +23,7 @@ import { PhoneField, usePhoneEntry } from "../../ui/PhoneField";
 import { Pill } from "../../ui/Pill";
 import { TillPayQr } from "./TillPayQr";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
+import { tillSoldOutSentence } from "../stock/stockModel";
 import { receiptPhoneStartCountry } from "./tillModel";
 import { cardTotalDiffers, countdown, scanPanelState, spacedCode } from "./tillPayModel";
 
@@ -101,7 +102,7 @@ export function TillScanPanel(props: TillScanPanelProps): React.ReactElement {
       setTextNote(TILL_COPY.linkSent(r.textLinksLeft));
       setTexting(false);
     } catch (err) {
-      setError(tillErrorCopy(err instanceof TillError ? err.code : "till_failed"));
+      setError(err instanceof TillError && err.code === "item_sold_out" ? tillSoldOutSentence("pay", err.item, null) : tillErrorCopy(err instanceof TillError ? err.code : "till_failed"));
     } finally {
       setTextBusy(false);
     }
@@ -116,7 +117,7 @@ export function TillScanPanel(props: TillScanPanelProps): React.ReactElement {
       props.onChooseAnother();
     } catch (err) {
       setAskCancel(false);
-      setError(tillErrorCopy(err instanceof TillError ? err.code : "till_failed"));
+      setError(err instanceof TillError && err.code === "item_sold_out" ? tillSoldOutSentence("pay", err.item, null) : tillErrorCopy(err instanceof TillError ? err.code : "till_failed"));
       void read();
     } finally {
       setBusy(false);

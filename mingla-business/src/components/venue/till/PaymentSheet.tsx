@@ -58,6 +58,7 @@ import {
   type TillAttempt,
 } from "./tillPayModel";
 import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
+import { tillSoldOutSentence } from "../stock/stockModel";
 import { cashPresets, changeDue, tipBaseMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 import { openFloorPdf } from "../../../utils/floorPdf";
 
@@ -319,7 +320,7 @@ export function PaymentSheet({
         setShare(null);
         setStep("split");
       }
-      setError(tillErrorCopy(code));
+      setError(code === "item_sold_out" && err instanceof TillError ? tillSoldOutSentence("pay", err.item, null) : tillErrorCopy(code));
     } finally {
       setBusy(false);
     }
@@ -360,7 +361,7 @@ export function PaymentSheet({
         setShare(null);
         setStep("split");
       }
-      setError(tillErrorCopy(code));
+      setError(code === "item_sold_out" && err instanceof TillError ? tillSoldOutSentence("pay", err.item, null) : tillErrorCopy(code));
     } finally {
       setBusy(false);
     }
@@ -439,7 +440,7 @@ export function PaymentSheet({
     } catch (err) {
       const code = err instanceof TillError ? err.code : "till_failed";
       if (code === "till_check_changed") onRefreshSale();
-      setError(tillErrorCopy(code));
+      setError(code === "item_sold_out" && err instanceof TillError ? tillSoldOutSentence("pay", err.item, null) : tillErrorCopy(code));
     } finally {
       setBusy(false);
     }

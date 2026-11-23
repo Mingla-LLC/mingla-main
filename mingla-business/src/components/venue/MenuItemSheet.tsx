@@ -143,6 +143,12 @@ export interface MenuItemSheetProps {
    * item: a group cannot reference an item id that does not exist yet.
    */
   optionsSection?: React.ReactNode;
+  /**
+   * #4490 spec 08 O5 — "Track stock", the count and "Warn me at", rendered
+   * INSIDE this sheet by the parent (it owns the stock call). Absent where the
+   * Till is not on for the venue, and for an unsaved item.
+   */
+  stockSection?: React.ReactNode;
   testID?: string;
 }
 
@@ -207,6 +213,7 @@ export function MenuItemSheet({
   deleting = false,
   canDelete = false,
   optionsSection,
+  stockSection,
   testID,
 }: MenuItemSheetProps): React.ReactElement {
   const hasDiscountQueryClient =
@@ -727,6 +734,10 @@ export function MenuItemSheet({
               ))}
             </View>
           </Field>
+
+          {stockSection !== undefined ? (
+            <View testID="menu-item-stock-section">{stockSection}</View>
+          ) : null}
 
           {optionsSection !== undefined ? (
             <View testID="menu-item-options-section">{optionsSection}</View>

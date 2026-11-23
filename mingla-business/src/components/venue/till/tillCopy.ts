@@ -297,6 +297,9 @@ export const TILL_ERROR_COPY = {
   till_server_invalid: "That person can't sell at this venue.",
   till_round_invalid: "That order can't go on this check.",
   till_item_not_orderable: "This item sold out while you were adding it",
+  // #4490 O5 part C: a send, or a payment that sends first, found too little
+  // stock; nothing was sent and no money moved (the Till names the item).
+  item_sold_out: "An item on this check sold out. Take it off, then try again.",
   till_hold_lapsed: "The hold already ran out. We've loaded the latest.",
   till_tab_settled_on_pad: "That tab is already closed.",
   till_round_settled_elsewhere: "That order has already moved on. Pull to refresh.",

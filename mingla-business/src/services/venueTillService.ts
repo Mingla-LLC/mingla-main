@@ -38,6 +38,8 @@ export class TillError extends Error {
   /** #4490 O5: a wrong PIN's tries left, a lock's end. */
   triesLeft: number | null = null;
   lockedUntil: string | null = null;
+  /** #4490 O5 part C: item_sold_out: units still left of that item. */
+  stockLeft: number | null = null;
   constructor(
     code: string,
     item: string | null = null,
@@ -234,6 +236,10 @@ export interface TillMenuItem {
   allowsNotes: boolean;
   station: string | null;
   modifierGroups: TillModifierGroup[];
+  /** #4490 O5 part C: units left; null = not counted. */
+  stockLeft: number | null;
+  /** #4490 O5 part C: "Warn me at"; null = no warning. */
+  stockWarnAt: number | null;
 }
 
 export interface TillCatalog {
@@ -489,6 +495,8 @@ export function mapTillCatalog(v: unknown): TillCatalog {
             orderable: item.orderable === true,
             allowsNotes: item.allowsNotes !== false,
             station: strOrNull(item.station),
+            stockLeft: numOrNull(item.stockLeft),
+            stockWarnAt: numOrNull(item.stockWarnAt),
             modifierGroups: arr(item.modifierGroups).map((g) => {
               const group = obj(g);
               return {
@@ -583,10 +591,12 @@ async function tillError(error: { message?: string; context?: unknown }): Promis
     try {
       const body = obj(await (context as Response).json());
       if (typeof body.code === "string" && body.code.length > 0) {
-        const e = new TillError(body.code, strOrNull(body.item), numOrNull(body.remainingMinor),
+        // #4490 O5 part C: item_sold_out names the item (itemName) and what is left.
+        const e = new TillError(body.code, strOrNull(body.item) ?? strOrNull(body.itemName), numOrNull(body.remainingMinor),
           { unitName: strOrNull(body.unitName), nextAt: strOrNull(body.nextAt), freeAt: strOrNull(body.freeAt) });
         e.triesLeft = numOrNull(body.triesLeft);
         e.lockedUntil = strOrNull(body.lockedUntil);
+        e.stockLeft = numOrNull(body.left);
         return e;
       }
     } catch {

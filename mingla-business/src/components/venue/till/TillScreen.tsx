@@ -85,6 +85,7 @@ import { ReceiptStep } from "./ReceiptStep";
 import { TillStepUpHost } from "./TillStepUp";
 import type { TillPinPerson } from "../../../services/venueTillService";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
+import { stockPill, tillSoldOutSentence } from "../stock/stockModel";
 import {
   basketLaunchedAfterClose,
   basketSheetsNest,
@@ -243,6 +244,12 @@ export function TillScreen({
       // 08-O4 fix 1 (O4-T4): the unit is still in use; when it frees up.
       if (code === "offer_space_taken" && err instanceof TillError && err.freeAt !== null && err.unitName !== null) {
         setToast({ kind: "error", message: TILL_COPY.inUseUntil(err.unitName, clockTime(err.freeAt)) });
+        return;
+      }
+      // #4490 O5 part C: "{item} sold out. Take it off before sending." / "Only {n} left."
+      if (code === "item_sold_out" && err instanceof TillError) {
+        setToast({ kind: "error", message: tillSoldOutSentence("send", err.item, err.stockLeft) });
+        if (saleId !== null) actions.refreshSale(saleId);
         return;
       }
       setToast({ kind: "error", message: tillErrorCopy(code, item) });
@@ -590,7 +597,13 @@ export function TillScreen({
                 <Text style={styles.tileName} numberOfLines={2}>{item.name}</Text>
                 <View style={styles.tileFoot}>
                   <Text style={styles.tilePrice}>{item.priceMinor === null ? "--" : money(item.priceMinor)}</Text>
-                  {!sellable ? <Pill variant="draft">{TILL_COPY.soldOut}</Pill> : null}
+                  {!sellable ? <Pill variant="draft">{TILL_COPY.soldOut}</Pill> : (() => {
+                    // #4490 O5 part C: "{n} left" while counted (warning tone at "Warn me at").
+                    const pill = stockPill(item.stockLeft, item.stockWarnAt);
+                    return pill === null ? null : (
+                      <Pill variant={pill.tone === "warn" ? "warn" : "muted"} testID={`till-item-stock-${item.id}`}>{pill.label}</Pill>
+                    );
+                  })()}
                 </View>
               </Pressable>
             );

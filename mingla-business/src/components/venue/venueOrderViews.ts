@@ -64,6 +64,8 @@ export interface VenueOrderLine {
   quantity: number;
   notes: string | null;
   modifiers: string[];
+  /** #4490 O5 part C: a line voided (a sold-out line that was swapped or refunded). */
+  voided?: boolean;
 }
 
 export interface VenueOrder {
@@ -94,6 +96,8 @@ export interface VenueOrder {
   refundDecision: "approved" | "declined" | null;
   /** 0..3. Raised ONLY by the escalation sweep, never by the client. */
   escalationLevel: number;
+  /** #4490 O5 part C (T16): a line sold out after the guest paid (flag on the order). */
+  soldOutAfterPayment?: boolean;
 }
 
 /** The 5 segmented views in display order — a control INSIDE the module. */

@@ -93,6 +93,19 @@ import {
 } from "./menuTextValidation";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
 import { OrderingModeCard } from "./OrderingModeCard";
+// #4490 spec 08 O5 part C — stock counts (shown only while the Till is
+// released; a venue that never sets a count sees nothing new).
+import { useTillReleased } from "../../hooks/useTillReleased";
+import { MenuItemStockSection } from "./stock/MenuItemStockSection";
+import { MenuStockLoader, type MenuStockState } from "./stock/MenuStockLoader";
+import { stockPill } from "./stock/stockModel";
+
+/** "19:58" on this device's clock (no Intl parts; rule 10 is money only). */
+function clockTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 const STACKED_ITEM_ROW_WIDTH = 720;
@@ -174,6 +187,13 @@ export function VenueMenuModule({
   // The stored value is untouched.
   const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
 
+  // #4490 O5 part C: counts are read only while the Till is released; the
+  // Stock section shows where the Till is on for this venue (or the item is
+  // still counted, so a count can always be cleared).
+  const tillReleased = useTillReleased();
+  const [stockState, setStockState] = useState<MenuStockState>({ tillOnHere: false, stockById: undefined });
+  const tillOnHere = tillReleased && venueId !== null && stockState.tillOnHere;
+  const stockById = tillReleased ? stockState.stockById : undefined;
   const menusQuery = useBrandMenus(brandId, venueId);
   const refetchMenus = menusQuery.refetch;
   const menus = useMemo(() => menusQuery.data ?? [], [menusQuery.data]);
@@ -1165,6 +1185,23 @@ export function VenueMenuModule({
                   ) : (
                     <Text style={styles.itemPrice}>—</Text>
                   )}
+                  {(() => {
+                    const stock = stockById?.get(item.id);
+                    const pill = stock === undefined ? null : stockPill(stock.stockCount, stock.warnAt);
+                    // Plain text, not the kit Pill: the row stays free of the
+                    // animated pill's native chain (the menu's render proofs).
+                    return pill === null ? null : (
+                      <Text
+                        style={[
+                          styles.stockBadge,
+                          pill.tone === "err" ? styles.stockBadgeOut : pill.tone === "warn" ? styles.stockBadgeWarn : null,
+                        ]}
+                        testID={`venue-menu-item-stock-${item.id}`}
+                      >
+                        {pill.label}
+                      </Text>
+                    );
+                  })()}
                   {/*
                     #1789 (SPEC #1788 P-15) — ONE-TAP 86, on the row.
                     The flag always existed; reaching it took ~5 taps behind the
@@ -1381,6 +1418,9 @@ export function VenueMenuModule({
         </React.Suspense>
       ) : null}
 
+      {tillReleased && venueId !== null ? (
+        <MenuStockLoader brandId={brandId} venueId={venueId} onChange={setStockState} />
+      ) : null}
       <MenuItemSheet
         visible={itemSheetOpen}
         onClose={closeItemSheet}
@@ -1398,6 +1438,21 @@ export function VenueMenuModule({
         onDelete={canMutate ? handleDeleteItem : undefined}
         deleting={deleteItem.isPending}
         canDelete={canMutate}
+        stockSection={
+          itemSheetOpen && editingItem !== null && venueId !== null &&
+          (tillOnHere || stockById?.has(editingItem.id) === true) ? (
+            <MenuItemStockSection
+              brandId={brandId}
+              venueId={venueId}
+              menuItemId={editingItem.id}
+              stockCount={stockById?.get(editingItem.id)?.stockCount ?? null}
+              stockWarnAt={stockById?.get(editingItem.id)?.warnAt ?? null}
+              stockOutAt={stockById?.get(editingItem.id)?.outAt ?? null}
+              canMutate={canMutate}
+              formatTime={clockTime}
+            />
+          ) : undefined
+        }
         optionsSection={
           itemSheetOpen ? (
             <React.Suspense fallback={null}>
@@ -1595,6 +1650,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     flexWrap: "wrap",
     rowGap: space[1],
+  },
+  // #4490 O5 part C: "{n} left" / "Sold out" beside the price.
+  stockBadge: {
+    ...type.caption,
+    color: color.text2,
+  },
+  stockBadgeWarn: {
+    color: color.warningText,
+  },
+  stockBadgeOut: {
+    color: color.errorText,
   },
   itemStatusGroup: {
     flexDirection: "row",

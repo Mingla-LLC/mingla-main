@@ -15,6 +15,7 @@ import { Banner, type BannerTone } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Chip, Pill, Segmented } from "../../ui/Pill";
 import { STATION_COPY } from "./stationCopy";
+import { STOCK_COPY } from "../stock/stockCopy";
 import {
   columnTickets,
   stationNoun,
@@ -45,6 +46,8 @@ export interface StationBoardProps {
   banner: StationBanner | null;
   muteLabel: string;
   onMute: () => void;
+  /** #4490 O5 part C (T15): opens "Mark sold out". Absent = no control. */
+  onSoldOut?: () => void;
   ageOf: (ticket: StationTicket) => number;
   ringOn: boolean;
   busyKey: string | null;
@@ -119,6 +122,10 @@ export function StationBoard(props: StationBoardProps): React.ReactElement {
             </Pill>
           </View>
         </View>
+        {props.onSoldOut !== undefined ? (
+          <Button label={STOCK_COPY.boardButton} variant="secondary" size="md" leadingIcon="flag" onPress={props.onSoldOut}
+            testID="station-sold-out" />
+        ) : null}
         <Button label={props.muteLabel} variant="secondary" size="md" leadingIcon="bell" onPress={props.onMute}
           testID="station-mute" />
         <Button label={STATION_COPY.close} variant="ghost" size="md" onPress={props.onClose} testID="station-close" />

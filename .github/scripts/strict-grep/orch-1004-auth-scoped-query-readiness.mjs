@@ -234,6 +234,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    (station_board) as the signed-in member; a pre-auth fire would answer
   //    401 and show "Couldn't load the orders". It folds isAuthReady into enabled.
   "useStationBoard.ts",
+  // #4490 spec 08 O5 part C — the Menu builder's stock counts (menu_items,
+  // RLS brand member read). Folds isAuthReady into enabled.
+  "useMenuStock.ts",
   // ── #4490 spec 08 O5 part B — Close the day, the drawer and the Till settings
   //    read venue-till with the staff JWT. Each folds isAuthReady into enabled.
   "useVenueDayClose.ts",
