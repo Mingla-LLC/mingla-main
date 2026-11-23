@@ -5491,6 +5491,7 @@
         "mingla-business/src/components/trip/AddOnPlanChoice.tsx",
         "mingla-business/src/components/trip/TripPlanV2CheckoutChoice.tsx",
         "packages/offering-rendering/tripBalance.ts",
+        "packages/offering-rendering/planV2Schema.ts",
         "packages/offering-rendering/tripPlanV2Contract.ts",
         "packages/offering-rendering/ticketQuotePlanV2Contract.ts",
         "packages/offering-rendering/TripPlanV2PublicSummary.tsx",
