@@ -13,6 +13,8 @@ import type {
   BrandSiteDomains,
   StudioExchange,
 } from "../sites/contracts";
+import type { DesignOptions } from "../../../packages/site-contracts/src/designs.ts";
+import { designOptionsPayload, safeDesignOptions } from "../sites/siteLook";
 
 interface SitesSuccess<T> {
   ok: true;
@@ -625,6 +627,8 @@ export interface BrandSiteLook {
   design: string | null;
   tokens: unknown;
   fonts: unknown;
+  /** #4575 — Grid's cover and photos options (empty when none are set). */
+  designOptions: DesignOptions;
   revision: string;
 }
 
@@ -643,6 +647,7 @@ export async function getBrandSiteLook(input: { brandId: string; siteId: string 
     design: typeof settings.design === "string" ? settings.design : null,
     tokens: settings.tokens ?? null,
     fonts: settings.fonts ?? null,
+    designOptions: safeDesignOptions(settings.design_options),
     revision: settings.updatedAt,
   };
 }
@@ -656,6 +661,8 @@ export async function saveBrandSiteLook(input: {
   fonts: unknown;
   /** #2829 W9a — the design, when the owner switched it. */
   design?: string;
+  /** #4575 — Grid's options, only when the owner changed them (an older app never sends them, so they are kept). */
+  designOptions?: DesignOptions;
 }): Promise<{ revision: string }> {
   const data = await invoke<{ revision?: unknown }>(`/v1/sites/${input.siteId}/ari`, "POST", {
     operation_id: operationId(),
@@ -669,6 +676,7 @@ export async function saveBrandSiteLook(input: {
         tokens: input.tokens,
         fonts: input.fonts,
         ...(input.design ? { design: input.design } : {}),
+        ...(input.designOptions !== undefined ? { design_options: designOptionsPayload(input.designOptions) } : {}),
       },
     },
   });

@@ -10,6 +10,7 @@ import {
   type OwnerTokenOverrides,
 } from "../contracts/generated/tokens.ts";
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
+import { assertDesignOptions, type DesignOptions } from "../contracts/generated/designs.ts";
 
 /*
  * #2829 AD-2 — a site's look as Studio stores it: the design, the owner's
@@ -83,4 +84,20 @@ export function validateFontsField(value: unknown): true | string {
     }
   }
   return true;
+}
+
+/** #4575 — Payload field validator for the `design_options` group (Grid's cover and photos). */
+export function validateDesignOptionsField(value: unknown): true | string {
+  try {
+    assertDesignOptions(value);
+    return true;
+  } catch {
+    return "That design option is not valid.";
+  }
+}
+
+/** #4575 — the stored `design_options` group, or null when none is stored. */
+export function designOptionsOf(settings: Settings): DesignOptions | null {
+  const stored = settings?.design_options;
+  return stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as DesignOptions) : null;
 }

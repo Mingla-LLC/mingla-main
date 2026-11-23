@@ -18,7 +18,7 @@ import { siteBlocks } from "../blocks/siteBlocks";
 import { BLOCK_CATALOG, isBlockType, type BlockType, type FieldSpec } from "../contracts/generated/blocks.ts";
 import { ARI_BLOCK_TYPES } from "../contracts/generated/blocks.ts";
 import { ariCopyFields, ARI_RICH_TEXT_MAX } from "../contracts/generated/ariToolSchemas.ts";
-import { compositionVariant, DESIGN_KEYS, DESIGNS, isAriDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
+import { assertDesignOptions, compositionVariant, DESIGN_KEYS, DESIGNS, isAriDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { BUTTON_SHAPES, MOTION_PRESETS, RADIUS_PRESETS, type OwnerTokenOverrides } from "../contracts/generated/tokens.ts";
 import { MAX_BLOCKS_PER_PAGE, MAX_NAV_ITEMS, MAX_NAV_LABEL_LENGTH } from "../contracts/generated/limits.ts";
 import { MAX_HERO_VIDEO_MS } from "../contracts/generated/video.ts";
@@ -1060,6 +1060,16 @@ export async function setLook(ctx: SectionContext, args: AnyDoc): Promise<{ look
     if (args[key] === undefined) continue;
     if (!(allowed as readonly unknown[]).includes(args[key])) refuse("VALIDATION_FAILED", { problems: [key] });
     changes[key] = args[key];
+  }
+  // #4575 — Grid's cover and photos options are the owner's choice; Ari never sets them.
+  if (args.design_options !== undefined) {
+    if (ctx.actor === "ari") refuse("VALIDATION_FAILED", { problems: ["Design options are the owner's choice"] });
+    try {
+      assertDesignOptions(args.design_options);
+    } catch {
+      refuse("VALIDATION_FAILED", { problems: ["design_options"] });
+    }
+    changes.design_options = args.design_options;
   }
   if (!Object.keys(changes).length) refuse("VALIDATION_FAILED", { problems: ["nothing to change"] });
 
