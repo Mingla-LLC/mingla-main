@@ -12,7 +12,7 @@ import { DESIGN_KEYS, DESIGNS, type DesignKey } from "../../../packages/site-con
 import {
   STYLE_AVOID_WARNING,
   STYLE_KEYS,
-  primaryFormat,
+  styleFormat,
   styleFitLevel,
   styleFitReason,
   type FormatKey,
@@ -31,7 +31,8 @@ export function lookPickerKeys(styleLibrary: boolean, current: string | null | u
 
 export function planFormatOf(plan: { offeringsSelected: string[] | null; story: { main_action?: string } | null } | null | undefined): FormatKey | null {
   if (!plan) return null;
-  return primaryFormat({
+  // #4572 item 6 — styles are judged by the style format (a gallery stays art).
+  return styleFormat({
     offerings_selected: plan.offeringsSelected ?? [],
     main_action_page: mainActionPage(plan.story?.main_action ?? null, plan.offeringsSelected ?? []),
   });
