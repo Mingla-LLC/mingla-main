@@ -326,7 +326,7 @@ begin
   -- adds the closed crm_record_sources_json helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader and does not broaden the agent write surface.
-  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 82 crm_ functions (#4571 W3 adds seven, W4 twenty)',
+  perform pg_temp.t3802b_check('B-1', 'there are exactly 18 team_agent_ functions and 106 crm_ functions (#4571 W3 adds seven, W4 twenty, W6 twenty-six)',
     (select count(*) filter (where p.proname like 'team\_agent\_%')::text || '/' || count(*) filter (where p.proname like 'crm\_%')
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '18/106');
   perform pg_temp.t3802b_check('B-1', 'no agent function takes a person from its caller',

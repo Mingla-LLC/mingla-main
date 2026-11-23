@@ -125,8 +125,60 @@ begin
   -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader without changing identifier normalization.
-  perform pg_temp.t3802c_check('N-1', '#4130 leaves 53 crm_ functions; #4571 W3 adds seven and W4 twenty, so 80',
-    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '80');
+  -- #4571 rework: the exact crm_ catalog, by signature, not a bare count, so
+  -- a new or dropped function shows by name. It is the same inventory as
+  -- issue_3802_wave1_crm_pipelines W1-12 (c_client || c_internal ||
+  -- c_later_readers): 53 before #4571, then W3 seven, W4 twenty, W6 twenty-six.
+  perform pg_temp.t3802c_check('N-1', 'the crm_ functions are exactly the named ones (53 before #4571, W3 7, W4 20, W6 26: 106)',
+    (select string_agg(p.oid::regprocedure::text, ' ' order by p.oid::regprocedure::text)
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'),
+    (select string_agg(x, ' ' order by x) from unnest(array[
+      -- before #4571 (#3802 waves, #4130)
+      'crm_activity_json(crm_activity)', 'crm_apply_brand_link(uuid)', 'crm_audit(text,text,text,text,jsonb)',
+      'crm_beta_icp(text[])', 'crm_beta_lead_to_host(uuid)', 'crm_beta_leads_list()', 'crm_brand_is_live(uuid)',
+      'crm_city_region(text)', 'crm_clean_identifiers(jsonb)', 'crm_clean_owners(jsonb)', 'crm_config()',
+      'crm_contact_check(text,jsonb)', 'crm_ctx()', 'crm_display_name(text)', 'crm_due_json(text,date,integer)',
+      'crm_duplicate_check(text,text,uuid)', 'crm_home_summary(date)', 'crm_ident_key(text,text)',
+      'crm_identifier_hits(text,jsonb,uuid)', 'crm_identifier_matches(text,jsonb,uuid)',
+      'crm_identifiers_json(uuid)', 'crm_link_search(text,text)', 'crm_name_key(text)', 'crm_phone_national(text)',
+      'crm_pipeline_def(text)', 'crm_reconcile_live(uuid)', 'crm_record_create(text,jsonb,text)',
+      'crm_record_create_core(text,jsonb,text,text)', 'crm_record_delete(uuid)', 'crm_record_get(uuid)',
+      'crm_record_json(crm_records)', 'crm_record_lite_json(crm_records)', 'crm_record_log(uuid,jsonb,text)',
+      'crm_record_move_stage(uuid,text,text,text)', 'crm_record_restore(uuid)', 'crm_record_set_owners(uuid,text[])',
+      'crm_record_sources_json(uuid)', 'crm_record_undo_stage_move(uuid)', 'crm_record_update(uuid,jsonb)',
+      'crm_records_bulk_create(text,jsonb,text)', 'crm_records_list(text)', 'crm_request_begin(text,text,text)',
+      'crm_request_claim(text,text,jsonb)', 'crm_request_finish(text,text,text,jsonb)', 'crm_stage_counts_json()',
+      'crm_stage_def(text,text)', 'crm_target_set(uuid,text,integer)', 'crm_targets_json(date)',
+      'crm_team_pulse(timestamp with time zone,timestamp with time zone)', 'crm_team_summary(date)',
+      'crm_undoable_activity(uuid,text)', 'crm_validate_fields(text,jsonb,text)', 'crm_vocab()',
+      -- #4571 W3
+      'crm_4571_people_overlap(uuid,text[],text[])', 'crm_calls_queue(date)',
+      'crm_identifier_set_followers(uuid,integer)', 'crm_notify_watchers(uuid,uuid,text,text,text)',
+      'crm_record_set_people(uuid,text[],text[],timestamp with time zone)', 'crm_record_work(uuid)',
+      'crm_record_work_ids(uuid)',
+      -- #4571 W4
+      'crm_4571_booking_icp(text)', 'crm_4571_demo_booking(uuid)', 'crm_4571_demo_candidates(uuid,text)',
+      'crm_4571_demo_link_core(book_call_leads,crm_records,text,text,text)',
+      'crm_4571_demo_move_ok(uuid,text,text,text,timestamp with time zone)', 'crm_4571_demo_stage_guard()',
+      'crm_demo_calendar_bits(uuid)', 'crm_demo_create_record(uuid)', 'crm_demo_gate(crm_records)',
+      'crm_demo_inbox()', 'crm_demo_inbox_count()', 'crm_demo_link(uuid,uuid,text)',
+      'crm_demo_link_from_token(text,uuid)', 'crm_demo_needs_linking(uuid)', 'crm_demo_not_a_host(uuid)',
+      'crm_demo_stage_allowed(uuid,text)', 'crm_demo_suggestions(uuid)', 'crm_demo_unlink(uuid)',
+      'crm_record_demos_json(uuid)', 'crm_record_has_demo(uuid)',
+      -- #4571 W6
+      'crm_4571_cadence(crm_records,date)', 'crm_4571_cadence_config()', 'crm_4571_email_of(text)',
+      'crm_4571_numbers_row(integer,integer,integer,integer,integer,integer)', 'crm_4571_person_ctx()',
+      'crm_4571_stage_at(uuid,timestamp with time zone)', 'crm_4571_suggest_replied(crm_records)',
+      'crm_4571_sweep_reader()', 'crm_4571_system_move(uuid,text,text,text)', 'crm_4571_w6_json(crm_records)',
+      'crm_4571_working_days_after(date,integer)', 'crm_cadence_state(uuid)', 'crm_cadence_sweep(boolean,text)',
+      'crm_cadence_sweep_configure(text,uuid,text[],date)', 'crm_cadence_sweep_cron()',
+      'crm_cadence_sweep_preview()', 'crm_cadence_sweep_status(uuid)', 'crm_duplicate_pairs(text)',
+      'crm_email_log_ingest(text,jsonb)', 'crm_outreach_numbers(date,date)', 'crm_record_archive(uuid,text)',
+      'crm_record_merge(uuid,uuid,text)', 'crm_record_merges_json(uuid)', 'crm_record_unarchive(uuid)',
+      'crm_record_unmerge(uuid)', 'crm_records_archived_list(text)'
+    ]::text[]) x));
+  perform pg_temp.t3802c_check('N-1', 'and that is 106 crm_ functions',
+    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '106');
   perform pg_temp.t3802c_check('N-1', 'is_admin_user() has the source it had before Wave 4',
     (select md5(prosrc) from pg_proc where oid = 'public.is_admin_user()'::regprocedure), 'dc5465a20a4246c6921be0469e261a8b');
 end;
