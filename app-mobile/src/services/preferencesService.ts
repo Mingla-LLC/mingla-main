@@ -89,7 +89,7 @@ export class PreferencesService {
       // Issue #3969: own row only, through the own-profile read.
       const { data, error } = await readMyProfile()
         .eq("id", userId)
-        .single();
+        .single<ProfileData>();
 
       if (error) {
         console.error("Error fetching user profile:", error);

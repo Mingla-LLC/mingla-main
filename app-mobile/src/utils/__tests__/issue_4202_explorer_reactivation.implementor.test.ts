@@ -259,7 +259,7 @@ Deno.test("#4202 reactivation PATCH changes only the Explorer marker and onboard
     reactivate: true,
   });
 
-  assert(request);
+  if (!request) throw new Error("reactivation must send a write");
   assertEquals(request.init.method, "PATCH");
   assertEquals(
     JSON.parse(String(request.init.body)),

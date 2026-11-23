@@ -350,7 +350,7 @@ export const useAuthSimple = () => {
           // Load profile (non-blocking — user sees home while this completes)
           try {
             const { data: profile, error: profileError } = await readMyProfile()
-              .single();
+              .single<User & { explorer_deleted_at?: string | null }>();
 
             if (profileError) {
               // #4445 [signed-out-profile-read] — begin sign-out race guard.
@@ -419,16 +419,16 @@ export const useAuthSimple = () => {
                       updated_at: new Date().toISOString(),
                     });
 
-                  if (createError && createError.code !== "23505") {
-                    console.error("Error creating profile:", createError);
-                  } else {
+                  if (!createError || createError?.code === "23505") {
                     const { data: stored, error: rereadError } = await readMyProfile()
-                      .maybeSingle();
+                      .maybeSingle<User>();
                     if (rereadError || !stored) {
                       console.error("Error reading the profile after creating it:", rereadError);
                     } else if (mounted) {
                       setProfile(stored);
                     }
+                  } else {
+                    console.error("Error creating profile:", createError);
                   }
                   // #4456 [profile-fallback] — end real-columns insert.
                 } catch (createError) {
@@ -710,7 +710,7 @@ export const useAuthSimple = () => {
       }
 
       // Issue #3969: the saved row comes back through the own-profile read.
-      const { data, error } = await readMyProfile().single();
+      const { data, error } = await readMyProfile().single<User>();
       if (error) {
         Alert.alert(
           "Update Failed",

@@ -125,6 +125,7 @@ import {
   supabaseUrl,
 } from "../src/services/supabase";
 import { readMyProfile } from "../src/services/profileAccessService";
+import type { User as ProfileUser } from "../src/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { logger } from "../src/utils/logger";
@@ -2568,7 +2569,7 @@ function AppContent() {
 
             // Load profile
             const { data: profile, error: profileError } = await readMyProfile()
-              .single();
+              .single<ProfileUser>();
 
             if (profileError) {
               console.error("Error loading profile after deep-link sign-in:", profileError);

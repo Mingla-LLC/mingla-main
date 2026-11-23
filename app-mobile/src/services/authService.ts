@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { readMyProfile } from "./profileAccessService";
+import type { User } from "../types";
 import { useAppStore } from "../store/appStore";
 import { moderateText } from "./moderationService";
 
@@ -72,7 +73,7 @@ class AuthService {
       // Issue #3969: own row only, through the own-profile read.
       const { data: profile, error } = await readMyProfile()
         .eq("id", userId)
-        .single();
+        .single<User>();
 
       if (error) {
         console.error("Error loading user profile:", error);
@@ -99,7 +100,7 @@ class AuthService {
         });
 
       if (insertError) throw insertError;
-      const { data, error } = await readMyProfile().eq("id", userId).single();
+      const { data, error } = await readMyProfile().eq("id", userId).single<User>();
       if (error) throw error;
       return data;
     } catch (error) {
@@ -126,7 +127,7 @@ class AuthService {
         .eq("id", userId);
       const { data, error } = updateError
         ? { data: null, error: updateError }
-        : await readMyProfile().eq("id", userId).single();
+        : await readMyProfile().eq("id", userId).single<User>();
 
       if (error) {
         console.error("❌ Profile update error:", error);
@@ -258,7 +259,7 @@ class AuthService {
       // Now fetch the updated profile separately
       const { data: updatedProfile, error: selectError } = await readMyProfile()
         .eq("id", userId)
-        .single();
+        .single<User>();
 
       if (selectError) {
         console.warn("⚠️ Could not fetch updated profile:", selectError);
