@@ -65,6 +65,9 @@ $f$;
 GRANT EXECUTE ON FUNCTION public.t4490a2_ok(boolean,text), public.t4490a2_expect(text,text,text,text),
   public.t4490a2_as(uuid), public.t4490a2_service(), public.t4490a2_reset() TO PUBLIC;
 
+-- Pickup codes are unique per live order: hand them out in order, never at random.
+CREATE SEQUENCE public.t4490a2_pickup START 701;
+GRANT USAGE ON SEQUENCE public.t4490a2_pickup TO PUBLIC;
 CREATE TEMP TABLE t4490a2_ids (k text PRIMARY KEY, v uuid) ON COMMIT DROP;
 GRANT ALL ON t4490a2_ids TO PUBLIC;
 CREATE FUNCTION public.t4490a2_id(p_k text) RETURNS uuid LANGUAGE sql AS $f$
@@ -158,7 +161,7 @@ BEGIN
     buyer_subtotal_cents, total_cents, payment_status, fulfillment_status, idempotency_key, confirmed_at
   ) VALUES (
     v_order, v_session, '44900a00-0000-4000-9000-000000000010', p_venue, 'guest_page',
-    lpad((100 + floor(random() * 800))::int::text, 3, '0'), 'Tolu', 'tolu@example.test', '+2348031234567',
+    (nextval('public.t4490a2_pickup')::int)::text, 'Tolu', 'tolu@example.test', '+2348031234567',
     'mingla', 'paystack', 'NGN', v_sub, 0, 0, 0, 0, 0, false, false, false,
     v_sub, v_sub, CASE WHEN p_paid THEN 'paid' ELSE 'pending' END, 'placed', 'guest-a2:' || v_order,
     CASE WHEN p_paid THEN now() END);
@@ -193,7 +196,7 @@ BEGIN
   ) VALUES (
     v_order, v_sale.session_id, v_sale.brand_id, v_sale.venue_id, v_sale.qr_spot_id,
     CASE WHEN v_sale.qr_spot_id IS NOT NULL THEN 'Table 6' END, 'staff', p_actor,
-    CASE WHEN v_sale.qr_spot_id IS NULL THEN lpad((100 + floor(random() * 800))::int::text, 3, '0') END,
+    CASE WHEN v_sale.qr_spot_id IS NULL THEN (nextval('public.t4490a2_pickup')::int)::text END,
     'venue_collected', 'NGN', v_sub, v_sub, 0, 0, 0, 0, 0, 0, false, false, false,
     v_sub, v_sub, 'pending', 'held', 'till-round-a2:' || v_order,
     jsonb_build_object('unsettled_staff_order', true, 'till_sale_id', p_sale));
