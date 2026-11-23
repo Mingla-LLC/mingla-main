@@ -678,7 +678,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 ops O3 part A2: floor-alerts migration 20280809603490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O3 fix 1: migration 20280809604490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O3 fix 5: migration 20280809605490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "888f9fd230fbc2326089b53e82222895f23a3a7927d9d7c8a48fa9b985935c03";
+// issue #4490 ops O4: split 20280809606490 + tables/hour 20280809607490 and their pg17 suites registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "977d5673445c7bdcc564ff06202197b73e640098a03b7c5ee2bf721ce547ce05";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
