@@ -462,6 +462,8 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
             totalMinor: 130000,
             canPayAnyAmount: true,
             minPaymentMinor: 10000,
+            maxPartialMinor: 90000,
+            providerMinimumMinor: 0,
             paymentInFlight: false,
             nextPayment: { installmentId: "i1", dueAt: "2027-03-01T00:00:00Z", amountMinor: 30000 },
             openRows: [
