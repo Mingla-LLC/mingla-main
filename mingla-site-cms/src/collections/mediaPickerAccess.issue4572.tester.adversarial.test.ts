@@ -49,10 +49,11 @@ const withAccess = fields.filter((f) => f.name && f.access);
 
 const mediaFields: Field[] = [...(Media.fields as Field[]), { name: "tenant", type: "text" } as Field];
 const mediaConfig = { ...Media, fields: mediaFields, flattenedFields: flattenAllFields({ fields: mediaFields }) };
-function request(base: { user: unknown; context: Record<string, unknown> }) {
+function request(base: Base) {
   return { ...base, locale: undefined, payload: { collections: { media: { config: mediaConfig } }, config: { localization: false } } };
 }
-async function query(where: unknown, base = member) {
+type Base = { user: unknown; context: Record<string, unknown> };
+async function query(where: unknown, base: Base = member) {
   await validateQueryPaths({ collectionConfig: mediaConfig as never, overrideAccess: false, req: request(base) as never, where: where as never });
 }
 
