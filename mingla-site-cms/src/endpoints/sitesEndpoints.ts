@@ -28,6 +28,8 @@ import {
 import { presignedGet, readObject, writeObject } from "../lib/objectStore";
 import {
   applyStudioMediaSelection,
+  applyStudioSettingsSelection,
+  studioSettingsTargets,
   studioMediaTargets,
 } from "../lib/studioMediaSelection";
 import { base64url } from "../lib/crypto";
@@ -990,7 +992,7 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
     }
     const mediaScoped = studioMediaGrantRequest(request);
     const tenantWhere = { tenant: { equals: session.tenant_id } };
-    const [pages, media] = await Promise.all([
+    const [pages, media, settings] = await Promise.all([
       findAllTenantPages(request, session.tenant_id)
         .then((docs) => ({ docs })),
       req.payload.find({
@@ -1003,6 +1005,16 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
         sort: "-updatedAt",
         where: tenantWhere,
       }),
+      // #4572 item 16 — the logo and social image are places a photo can go too.
+      req.payload.find({
+        collection: "site-settings",
+        overrideAccess: false,
+        req: request,
+        draft: true,
+        depth: 0,
+        limit: 1,
+        where: tenantWhere,
+      }).then((result) => result.docs[0] ?? null),
     ]);
     // #2829 W11 (A11) — "in use" is the same full scan removal checks
     // (every page, content entry, setting, navigation and footer field), so
@@ -1029,7 +1041,7 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
               ? item.recovery_until
               : null,
         })),
-        targets: studioMediaTargets(pages.docs),
+        targets: [...studioSettingsTargets(settings), ...studioMediaTargets(pages.docs)],
         close_url: "/admin/collections/pages",
       },
     });
@@ -1079,6 +1091,7 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
     const { request } = await requireAuthenticatedStudioRequest(req);
     const body = await objectBody(req);
     const mediaId = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
+    if (body.scope === "site_settings") return await studioSettingsAttach(req, request, body, mediaId);
     const { page, media } = await loadStudioMediaAttachRecords(
       request,
       String(body.page_id || ""),
@@ -1121,6 +1134,56 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
   } catch (error) {
     return safeFailure(error);
   }
+}
+
+/** #4572 item 16 — a READY photo as the site's logo or social image (draft); a stale revision is refused. */
+async function studioSettingsAttach(
+  req: PayloadRequest,
+  request: PayloadRequest,
+  body: Record<string, unknown>,
+  mediaId: string,
+): Promise<Response> {
+  const [settings, media] = await Promise.all([
+    req.payload.findByID({
+      collection: "site-settings",
+      id: String(body.page_id || ""),
+      overrideAccess: false,
+      req: request,
+      draft: true,
+      depth: 0,
+    }),
+    req.payload.findByID({
+      collection: "media",
+      id: mediaId,
+      overrideAccess: false,
+      req: studioMediaGrantRequest(request),
+      depth: 0,
+    }),
+  ]);
+  if (media.state !== "READY") throw new Error("MEDIA_PROCESSING");
+  const data = applyStudioSettingsSelection(settings, String(media.id), {
+    expectedRevision: String(body.expected_revision || ""),
+    field: body.field,
+  });
+  const updated = await req.payload.update({
+    collection: "site-settings",
+    id: settings.id,
+    overrideAccess: false,
+    req: request,
+    draft: true,
+    depth: 0,
+    data: data as never,
+  });
+  return json({
+    ok: true,
+    data: {
+      page_id: String(updated.id),
+      media_id: String(media.id),
+      draft_revision: String(updated.updatedAt ?? ""),
+      state: 8,
+      return_url: `/admin/collections/site-settings/${encodeURIComponent(String(updated.id))}`,
+    },
+  });
 }
 
 async function mediaTombstone(req: PayloadRequest): Promise<Response> {

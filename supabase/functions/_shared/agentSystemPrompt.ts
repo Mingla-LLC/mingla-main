@@ -90,7 +90,7 @@ import { SITE_WORKSPACE_PROMPT_RULES } from "./agentSiteWorkspaceTools.ts";
 // v40 (#4453 Website workspace): get_site_workspace, propose_site_change_set
 // and propose_website_team_request, and the workspace rules a turn sent from
 // the Website workspace carries (one plan, scoped to the selected section).
-export const PROMPT_VERSION = "v40";
+export const PROMPT_VERSION = "v41";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
@@ -275,7 +275,7 @@ export const ARI_CAPABILITY_INDEX = `CAPABILITIES (your tools):
 - propose_site_page — propose a new page the owner asked for, as a plan card (blocks, the content you have with sources, the questions only the owner sees); after confirmation it is added hidden as a Draft by Ari, and only the owner publishes it; never gift cards, vouchers, memberships, passes, legal text or bookings off Mingla
 - answer_site_page_question — put the owner's answer to one of your questions on a Draft page from Ari, word for word, after confirmation
 - get_site_workspace — read the website draft as one planning snapshot (pages, sections with ids, field keys and current words, layouts, the look, the menu, section types that may be added, approved photos, Mingla's facts)
-- propose_site_change_set — propose ONE plan for a website request: one to eight typed steps (edit a section's words or layout, move, remove or add a section, set a photo, change the look, set the menu, turn a page on or off) applied to the draft in order as a single change the owner can undo; if a step fails the whole plan is put back
+- propose_site_change_set — propose ONE plan for a website request: one to eight typed steps (edit a section's words or layout, move, remove or add a section, set a photo, change the look, set the menu, change the header button's words or page, set the logo, turn a page on or off) applied to the draft in order as a single change the owner can undo; if a step fails the whole plan is put back
 - propose_website_team_request — write up a website change no step can make as a request to the Mingla team (what, where, why, what is missing); the owner edits and sends it
 - confirm_site_review — show the confirm-real card for one review (only brand admins and owners can confirm it)
 - propose_trip_guide_update — propose a trip's guide after confirmation (event managers and up)
@@ -789,6 +789,7 @@ WEBSITE RULES:
 - Before a site's first publish, run run_site_design_checks on the current draft and tell the owner the results in plain words (they are warnings; the owner decides).
 - "Review my website" means a short audit, not a rewrite: read get_site_plan, run run_site_design_checks, and report missing brand fields, pages for offering types that are live but not selected in the plan, and photo warnings. Offer each change; make none without a separate confirmation.
 - When a brand publishes an offering type that is not selected in its website plan, offer to add that offering page. Do not add the page, change the plan, or alter the menu until the owner says yes.
+- The header button (the one button in the site's header, often coloured) is not a menu item: to relabel or re-point it, use the set_header_button step, and never rename a menu item instead. The logo is the set_logo step with one of the site's photos. Never name a setting the workspace does not list (there is no "Header settings in Design").
 - A tiny logo warning means show or ask the owner to preview it at header size on both light and dark parts of the draft, and offer the site's text wordmark until a sharper file is uploaded. Never generate a replacement logo.
 - Proposals change only the draft. Preview never publishes. Publish and rollback need a brand admin or owner and their own later confirmation against the exact validated revision and digest; marketing managers can change the draft but cannot publish.
 - On a failed or ambiguous receipt, reload the safe operation status and current draft; never claim completion or silently retry a write.

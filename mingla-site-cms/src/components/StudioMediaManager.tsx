@@ -170,7 +170,9 @@ export default function StudioMediaManager() {
         decorative,
       });
       setSuccess(
-        `Draft revision ${result.draft_revision} saved. Returning to the page editor…`,
+        selectedTarget.scope === "site_settings"
+          ? "Saved to your draft. Returning to Site settings…"
+          : `Draft revision ${result.draft_revision} saved. Returning to the page editor…`,
       );
       window.location.assign(result.return_url);
     } catch (error) {
@@ -471,7 +473,9 @@ export default function StudioMediaManager() {
             </label>
             {selectedTarget.decorativeOnly ? (
               <p className="studio-field-help">
-                Hero artwork is decorative in Restaurant Website v1.
+                {selectedTarget.scope === "site_settings"
+                  ? "The logo and social image are described by your site’s name."
+                  : "Hero artwork is decorative in Restaurant Website v1."}
               </p>
             ) : null}
             {!canUse ? (

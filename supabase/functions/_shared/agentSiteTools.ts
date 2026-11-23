@@ -1541,7 +1541,7 @@ const proposeSiteComposition = tool(
       type: "array",
       maxItems: MAX_NAV_ITEMS,
       description:
-        "The header menu, in order (labels and pages). Links to other websites and “More” groups stay as they are.",
+        "The menu links in the header, in order (labels and pages); never the header button, which is not a menu item. Links to other websites and “More” groups stay as they are.",
       items: closedObject({
         page_path: PAGE_PATH,
         label: plainText(MAX_NAV_LABEL_LENGTH),

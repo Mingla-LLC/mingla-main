@@ -78,6 +78,9 @@ export const SITE_STEP_OPS = [
   "set_look",
   "set_menu",
   "set_page_enabled",
+  // #4572 item 17 — the header button and the logo are their own steps, never a menu item.
+  "set_header_button",
+  "set_logo",
 ] as const;
 export type SiteStepOp = (typeof SITE_STEP_OPS)[number];
 
@@ -196,6 +199,7 @@ export const SITE_WORKSPACE_PROMPT_RULES =
 - When part of the request cannot be done with these steps, do the part you can and list the rest in couldnt (what, and why in plain words).
 - When nothing here can do what the owner asked, say so plainly in one sentence and call propose_website_team_request so the Mingla team can build it. Never pretend, and never offer a workaround that links bookings off Mingla.
 - You never publish from here. Publishing is the owner's Publish button. Never invent facts, prices, dates or reviews.
+- The header button (header_button: the one button in the header, often coloured, such as "Tickets") is not a menu item. "Change the red button", "the header button", "the button at the top" mean set_header_button; never rename a menu item for it. The menu (set_menu) is only the page links. The logo is logo: change it with set_logo and a photo id from media.
 - Only describe a place in Mingla (a tab, a button) that the workspace lists; never name a screen you have not been given. Home's cover is in home_cover: when available is false, the owner adds one in Design → Cover (a photo first, then a video if they like).
 - Keep every reply to two sentences.`;
 
@@ -275,7 +279,7 @@ const STEP = {
   type: "object",
   additionalProperties: false,
   description:
-    "One typed change. edit_section: page_id, section_id, and at least one of edits, layout, list_ops. move_section: page_id, section_id, to_index. remove_section: page_id, section_id. add_section: page_id, type, after_section_id (leave out to add at the top), optional edits, and media_id when the type needs a photo. set_section_media: page_id, section_id, slot, media_id. set_look: at least one of design, tokens (only the colours that change), fonts, radius, button_shape, motion. set_menu: items. set_page_enabled: page_id, enabled.",
+    "One typed change. edit_section: page_id, section_id, and at least one of edits, layout, list_ops. move_section: page_id, section_id, to_index. remove_section: page_id, section_id. add_section: page_id, type, after_section_id (leave out to add at the top), optional edits, and media_id when the type needs a photo. set_section_media: page_id, section_id, slot, media_id. set_look: at least one of design, tokens (only the colours that change), fonts, radius, button_shape, motion. set_menu: items (the menu links only, never the header button). set_page_enabled: page_id, enabled. set_header_button: button_label, and page_id when the button should open another page (the header button is the one button in the header, often coloured; it is NOT a menu item). set_logo: media_id (null shows the site's name instead).",
   properties: {
     op: { type: "string", enum: [...SITE_STEP_OPS] },
     page_id: ID,
@@ -373,7 +377,8 @@ const STEP = {
       type: "array",
       minItems: 1,
       maxItems: MAX_NAV_ITEMS,
-      description: "The whole menu, in order",
+      description:
+        "The whole menu (the page links in the header), in order. This never changes the header button: use set_header_button for that.",
       items: {
         type: "object",
         additionalProperties: false,
@@ -389,6 +394,13 @@ const STEP = {
       },
     },
     enabled: { type: "boolean" },
+    button_label: {
+      type: "string",
+      minLength: 1,
+      maxLength: MAX_NAV_LABEL_LENGTH,
+      description:
+        "set_header_button only: the header button's new words (header_button in get_site_workspace)",
+    },
   },
   required: ["op"],
 };
@@ -624,6 +636,8 @@ const STEP_FIELDS: Record<SiteStepOp, readonly string[]> = {
   set_look: ["design", "tokens", "fonts", "radius", "button_shape", "motion"],
   set_menu: ["items"],
   set_page_enabled: ["page_id", "enabled"],
+  set_header_button: ["button_label", "page_id"],
+  set_logo: ["media_id"],
 };
 
 const shortText = (value: unknown, max: number) =>
@@ -792,12 +806,27 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
         return `${at("enabled")} must be true or false`;
       }
       return idProblem(step.page_id, at("page_id"));
+    case "set_header_button":
+      if (!shortText(step.button_label, MAX_NAV_LABEL_LENGTH)) {
+        return `${
+          at("button_label")
+        } must be 1 to ${MAX_NAV_LABEL_LENGTH} characters`;
+      }
+      if (step.page_id === undefined || step.page_id === null) return null;
+      return idProblem(step.page_id, at("page_id"));
+    case "set_logo":
+      if (step.media_id !== null && !isUuid(step.media_id)) {
+        return `${
+          at("media_id")
+        } must be an approved photo id, or null to show the site's name`;
+      }
+      return null;
   }
 }
 
 /** Does this step write words a visitor reads? (Studio's own rule.) */
 export function siteStepWritesWords(step: Record<string, unknown>): boolean {
-  if (step.op === "set_menu") return true;
+  if (step.op === "set_menu" || step.op === "set_header_button") return true;
   // A new list row is new words too.
   if (
     step.op === "edit_section" && Array.isArray(step.list_ops) &&
@@ -865,7 +894,34 @@ export function siteChangeSetProblem(
       ) return `couldnt[${index}] needs what and why in plain words`;
     }
   }
-  return null;
+  return siteHeaderButtonProblem(args.request, steps);
+}
+
+/*
+ * #4572 item 17 — the owner asked about the header button ("the red button",
+ * "the header button", "the button at the top"). Renaming a menu item for it
+ * changes the wrong thing (Kolanut: "Tickets" in the menu became "RSVP" while
+ * the red button still said "Tickets"), so a plan that sets the menu for such
+ * a request without a set_header_button step is sent back.
+ * INVARIANT sites-header-button-not-menu: a header-button request is never answered with only a menu change
+ */
+const HEADER_BUTTON_REQUEST =
+  /\b(?:red|orange|green|blue|black|white|coloured|colored|big|main|primary|header|top|cta)\s+button\b|\bbutton\s+(?:in|at|on)\s+(?:the\s+)?(?:header|top)\b|\bheader\s+(?:cta|button)\b/i;
+
+export function siteHeaderButtonProblem(
+  request: unknown,
+  steps: unknown[],
+): string | null {
+  if (typeof request !== "string" || !HEADER_BUTTON_REQUEST.test(request)) {
+    return null;
+  }
+  const ops = steps.map((raw) =>
+    isRecord(raw) && isRecord(raw.step) ? raw.step.op : null
+  );
+  if (!ops.includes("set_menu") || ops.includes("set_header_button")) {
+    return null;
+  }
+  return "The owner asked about the header button, which is not a menu item: change it with a set_header_button step (button_label, and page_id only to open another page), and leave the menu as it is unless they asked to change the menu too.";
 }
 
 /** The first problem with a team request, or null. */

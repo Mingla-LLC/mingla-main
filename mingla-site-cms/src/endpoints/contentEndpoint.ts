@@ -1274,7 +1274,8 @@ async function runWorkspaceAction(ctx: Ctx): Promise<Record<string, unknown>> {
     case "page_sections":
       return sections.readPageSections(write, args.page_id, (ids) => thumbsFor(ctx, ids));
     case "section_catalog":
-      return { types: sections.sectionCatalog(siteDesign(await currentSettings(base)), "user") };
+      // #4572 item 8 — with page_id, Cover is listed only where the server accepts it (Home with no cover).
+      return sections.readPageSectionCatalog(write, siteDesign(await currentSettings(base)), args.page_id);
     case "edit_section":
       return saved(await sections.editSection(write, { ...args, expected_revision: expected(args) }));
     case "move_section":
