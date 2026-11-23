@@ -8,6 +8,7 @@ import {
   codeOf,
   httpStatusOf,
   readEdgeRefusal,
+  type CheckoutRefusal,
 } from "./checkoutErrorCopy";
 import type {
   BuyerDetails,
@@ -531,6 +532,17 @@ const isWorthRetrying = (error: unknown): boolean => {
   return status >= 500;
 };
 
+/**
+ * issue #4522 X-3 — the server could not start the payment with the provider
+ * (Stripe Checkout Session / PaymentIntent create, Paystack initialize). No
+ * payment window was ever handed to the guest.
+ */
+const PROVIDER_START_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "checkout_session_create_failed",
+  "payment_intent_create_failed",
+  "paystack_initialize_failed",
+]);
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -646,20 +658,32 @@ const invokeOrThrow = async <T>(
   }
   // issue #2511 — a 5xx comes back as a HANDLED error, not a throw, so the
   // retry decision has to be made here too, not only in the catch above.
+  let firstRefusal: CheckoutRefusal | null = null;
   if (
     retrying &&
     error !== null &&
     error !== undefined &&
     isWorthRetrying(error)
   ) {
-    await sleep(CHECKOUT_RETRY_DELAY_MS);
-    ({ data, error } = await invokeWithRetry(functionName, body));
+    // issue #4522 X-3 — a 5xx that NAMES a provider-start failure is the
+    // server's answer, not a blip: it has already parked that attempt, so a
+    // repeat can only be told "payment in progress" (a window that never
+    // opened). Surface the first answer instead; anything else retries as before.
+    firstRefusal = await readEdgeRefusal(error);
+    if (
+      firstRefusal.code === null ||
+      !PROVIDER_START_FAILURE_CODES.has(firstRefusal.code)
+    ) {
+      firstRefusal = null;
+      await sleep(CHECKOUT_RETRY_DELAY_MS);
+      ({ data, error } = await invokeWithRetry(functionName, body));
+    }
   }
   if (error) {
     // issue #2188 — carry the status + bounded token forward. `.message` is
     // deliberately UNCHANGED so no existing caller's behaviour shifts; the new
     // fields are additive and are what the copy mappers read.
-    const refusal = await readEdgeRefusal(error);
+    const refusal = firstRefusal ?? (await readEdgeRefusal(error));
     // issue #2511 — `error` is now `unknown` (the retry path widened it), so the
     // framework message is read defensively. The STRING IS UNCHANGED for every
     // shape supabase-js actually produces; #2188's contract that `.message` keeps
