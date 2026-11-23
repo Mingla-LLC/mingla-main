@@ -13,6 +13,8 @@
 //       fails the booking: 200 {ok:true}; the failure is logged with the
 //       booking key only, never the email or the token;
 //   F-4 a failed booking row write makes no link call (nothing to link yet).
+//   F-5 (#4571 rework) a link call that hangs is abandoned after its short
+//       timeout: "failed", logged, and the booking answer never waits on it.
 //
 // FAILS-ON-REVERT: without parseScheduleToken / linkDemoFromToken in
 // bookingLead.ts and their call in index.ts, F-1 finds no link call.
@@ -24,7 +26,7 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-import { parseScheduleToken } from "./bookingLead.ts";
+import { linkDemoFromToken, parseScheduleToken } from "./bookingLead.ts";
 
 Deno.env.set("GOOGLE_CALENDAR_KEYS", "client-id|client-secret|refresh-token");
 Deno.env.set("RESEND_API_KEY", "re_test_key");
@@ -194,4 +196,35 @@ Deno.test("#4571 W4 F-4 no link call when the booking row could not be written",
     assertEquals(res.status, 200);
     assertEquals(linkCalls(calls).length, 0);
   });
+});
+
+Deno.test("#4571 rework F-5 a link call that hangs is abandoned after its timeout", async () => {
+  const original = globalThis.fetch;
+  const errors: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  // A server that never answers: only the abort signal ends the request.
+  globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) return; // no signal: hangs for ever (the guard below fails the test)
+      signal.addEventListener("abort", () => reject(signal.reason));
+    })) as typeof fetch;
+  try {
+    const started = Date.now();
+    let guard: number | undefined;
+    const result = await Promise.race([
+      linkDemoFromToken("slot:hang", TOKEN, { supabaseUrl: SUPABASE, serviceKey: SERVICE }, 50),
+      new Promise<string>((resolve) => { guard = setTimeout(() => resolve("still waiting after 2 s"), 2000); }),
+    ]);
+    clearTimeout(guard);
+    const took = Date.now() - started;
+    assertEquals(result, "failed");
+    assert(took < 2000, `the link call gave up in ${took} ms`);
+    assert(errors.some((e) => String(e[0]).includes("DEMO LINK FAILED")), "the abandoned link is logged");
+    assert(!errors.flat().some((x) => String(x).includes(TOKEN)), "the token is never logged");
+  } finally {
+    globalThis.fetch = original;
+    console.error = originalError;
+  }
 });

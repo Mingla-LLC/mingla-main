@@ -246,10 +246,17 @@ export type DemoLinkResult =
  * booking: a failure is logged with the booking key only (no email, no token)
  * and the booking waits on Needs linking, where a person links it.
  */
+/**
+ * #4571 rework: the booking answer waits on the link call at most this long.
+ * A slow link is abandoned (logged, the booking waits on Needs linking).
+ */
+export const DEMO_LINK_TIMEOUT_MS = 2500;
+
 export async function linkDemoFromToken(
   bookingKeyValue: string,
   scheduleToken: string,
   config: LeadWriteConfig,
+  timeoutMs: number = DEMO_LINK_TIMEOUT_MS,
 ): Promise<DemoLinkResult> {
   const base = (config.supabaseUrl ?? "").replace(/\/+$/, "");
   const key = config.serviceKey ?? "";
@@ -273,6 +280,7 @@ export async function linkDemoFromToken(
         p_booking_key: bookingKeyValue,
         p_token: scheduleToken,
       }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       console.error(
