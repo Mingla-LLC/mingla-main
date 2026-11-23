@@ -105,6 +105,10 @@ or response rows containing personal data.
   `20270530001977`, `20270610002060`, `20270621001980`, `20270625001981`. Migration
   `20270630003055` (#3055) already delivered their certification objects in production, and applying
   one of them can clobber or abort against the live requirement set.
+- plpgsql bodies reached through PostgREST need WHERE on every DELETE/UPDATE (pg-safeupdate).
+  Production's `authenticator` role preloads `safeupdate`, so a bare `DELETE FROM pg_temp.x;` raises
+  SQLSTATE 21000 there while a superuser pg17 test passes. Clear scratch tables with `WHERE true`;
+  the #4573 pg17 catalog gate (`I-4573-NO-BARE-DELETE-UPDATE`) fails any public function without it.
 
 ## Consumer app project URL
 

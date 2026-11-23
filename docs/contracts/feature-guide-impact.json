@@ -1645,7 +1645,8 @@
         "mingla-business/src/utils/guestCsvExport.ts",
         "mingla-business/src/components/guests/AddCompGuestSheet.tsx",
         "mingla-business/src/components/guests/TicketLinkRequestsSheet.tsx",
-        "mingla-business/src/components/guests/TicketLinksSheet.tsx"
+        "mingla-business/src/components/guests/TicketLinksSheet.tsx",
+        "supabase/migrations/20281127004573_issue_4573_form_request_safeupdate.sql"
       ]
     },
     {
