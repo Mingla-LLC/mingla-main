@@ -165,6 +165,9 @@ language sql as $fn$ select pg_temp.person(p_who, p_sql) $fn$;
 
 
 -- Fixtures. tao owns four hosts with due dates; seth owns one; one is deleted.
+-- #4571 W4: Demo Lounge and Onboarded Place sit past the Demo booked rule as
+-- grandfathered cards (the rule refuses an insert there; issue_4571_w4_*).
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 insert into public.crm_records (id, pipeline, name, stage, due_on, created_by, updated_by, deleted_at, deleted_by) values
   ('45730000-0000-4000-d000-000000000001', 'hosts', 'Island Vinyl', 'contacted', current_date - 2, 'seth.w34571@test.local', 'seth.w34571@test.local', null, null),
   ('45730000-0000-4000-d000-000000000002', 'hosts', 'Palm Court Kitchen', 'prospect', current_date - 5, 'seth.w34571@test.local', 'seth.w34571@test.local', null, null),
@@ -176,6 +179,8 @@ insert into public.crm_records (id, pipeline, name, stage, due_on, created_by, u
   ('45730000-0000-4000-d000-000000000008', 'hosts', 'Seths Own', 'contacted', current_date - 1, 'seth.w34571@test.local', 'seth.w34571@test.local', null, null),
   ('45730000-0000-4000-d000-000000000009', 'hosts', 'Onboarded Place', 'onboarded', current_date - 1, 'seth.w34571@test.local', 'seth.w34571@test.local', null, null),
   ('45730000-0000-4000-d000-000000000010', 'creators', 'Ngozi Creates', 'identified', null, 'seth.w34571@test.local', 'seth.w34571@test.local', null, null);
+update public.crm_records set demo_rule_exempt_at = now() where id::text like '45730000-0000-4000-d000-%' and stage in ('meeting', 'onboarded');
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;
 select pg_temp.keep('iv', '45730000-0000-4000-d000-000000000001'), pg_temp.keep('pc', '45730000-0000-4000-d000-000000000002'),
        pg_temp.keep('br', '45730000-0000-4000-d000-000000000003'), pg_temp.keep('dl', '45730000-0000-4000-d000-000000000004'),
        pg_temp.keep('ap', '45730000-0000-4000-d000-000000000005'), pg_temp.keep('cr', '45730000-0000-4000-d000-000000000010');

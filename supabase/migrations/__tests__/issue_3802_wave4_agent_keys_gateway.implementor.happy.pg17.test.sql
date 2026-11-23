@@ -322,9 +322,9 @@ begin
   -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader and does not broaden the agent gateway.
-  perform pg_temp.t3802k_check('K-1', 'there are exactly 60 crm_ functions (#4571 W3 adds seven)',
+  perform pg_temp.t3802k_check('K-1', 'there are exactly 82 crm_ functions (#4571 W3 adds seven, W4 twenty)',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname like 'crm\_%'), '60');
+      where n.nspname = 'public' and p.proname like 'crm\_%'), '80');
 
   foreach t in array array['public.team_agent_keys', 'public.team_agent_calls'] loop
     perform pg_temp.t3802k_check('K-1', t || ': row security on, no policy, no trigger',

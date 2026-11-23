@@ -37,6 +37,11 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 
 -- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
 -- takes its owner and watcher: this suite's cards go under one fallback main
@@ -589,14 +594,16 @@ begin
   perform pg_temp.w3_check('W3-BRAND', 'one run links one, makes one card, and asks a person once',
     (v_res->'brand_autolink'->>'linked') || '/' || (v_res->'brand_autolink'->>'created') || '/' || (v_res->'brand_autolink'->>'pick'), '1/1/1');
   select * into v_rec from public.crm_records where id = '39830000-0000-4000-c200-000000000001';
-  perform pg_temp.w3_check('W3-BRAND', 'the one card with the same email is linked and moves to Onboarded',
-    coalesce(v_rec.brand_id::text, 'none') || '/' || v_rec.stage, '39830000-0000-4000-b400-000000000001/onboarded');
+  perform pg_temp.w3_check('W3-BRAND', 'the one card with the same email is linked; #4571 W4: it stays at Contacted until a booked demo is linked',
+    coalesce(v_rec.brand_id::text, 'none') || '/' || v_rec.stage, '39830000-0000-4000-b400-000000000001/contacted');
+  perform pg_temp.w3_check('W3-BRAND', '#4571 W4: and its log says the stage waits for a linked demo',
+    (select count(*)::text from public.crm_activity where record_id = v_rec.id and kind = 'note' and via = 'system' and body like '%until a demo booked through the scheduler is linked%'), '1');
   perform pg_temp.w3_check('W3-BRAND', 'its log says why, in words',
-    (select body from public.crm_activity where record_id = v_rec.id and kind = 'note' and via = 'system' order by occurred_at desc limit 1),
+    (select body from public.crm_activity where record_id = v_rec.id and kind = 'note' and via = 'system' and body like 'Brand %' order by occurred_at desc limit 1),
     'Brand W33980 Email Brand linked by itself: same email as this card.');
-  perform pg_temp.w3_check('W3-BRAND', 'a brand nobody matches gets a host card in Onboarded, with no owner',
+  perform pg_temp.w3_check('W3-BRAND', 'a brand nobody matches gets a host card, with no owner (#4571 W4: at Prospect until a booked demo is linked)',
     (select c.name || '/' || c.stage || '/' || coalesce(c.source, '') || '/' || (select count(*) from public.crm_record_owners o where o.record_id = c.id)
-       from public.crm_records c where c.brand_id = '39830000-0000-4000-b400-000000000002'), 'W33980 New Rooftop/onboarded/inbound/0');
+       from public.crm_records c where c.brand_id = '39830000-0000-4000-b400-000000000002'), 'W33980 New Rooftop/prospect/inbound/0');
   perform pg_temp.w3_check('W3-BRAND', 'an ambiguous phone (two cards) links nothing',
     (select count(*) from public.crm_records where brand_id = '39830000-0000-4000-b400-000000000003')::text
       || '/' || (select count(*) from public.crm_records where id in ('39830000-0000-4000-c200-000000000002', '39830000-0000-4000-c200-000000000003') and brand_id is not null),

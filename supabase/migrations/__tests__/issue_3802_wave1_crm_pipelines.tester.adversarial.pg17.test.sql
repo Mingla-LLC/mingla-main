@@ -50,6 +50,17 @@
 -- PART 1 — one transaction, rolled back.
 -- ===========================================================================
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
+-- #4571 W4: this suite proves brand linking and Live, which predate the Demo
+-- booked rule; the rule (tested in issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql
+-- and, for the brand path, issue_3980_synced_w3.implementor.happy.pg17.test.sql)
+-- is answered yes inside this rolled-back transaction only.
+create or replace function public.crm_4571_demo_move_ok(p_record_id uuid, p_pipeline text, p_from text, p_to text, p_exempt_at timestamptz) returns boolean
+language sql stable set search_path = '' as $ov$ select true $ov$;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 
@@ -320,7 +331,10 @@ declare
     'crm_home_summary','crm_team_summary','crm_target_set','crm_beta_leads_list','crm_beta_lead_to_host',
     'crm_contact_check',
     -- #4571 W3
-    'crm_record_set_people','crm_record_work','crm_calls_queue','crm_identifier_set_followers'];
+    'crm_record_set_people','crm_record_work','crm_calls_queue','crm_identifier_set_followers',
+    -- #4571 W4: Needs linking and a person's link decisions
+    'crm_demo_suggestions','crm_demo_link','crm_demo_create_record','crm_demo_not_a_host','crm_demo_unlink',
+    'crm_demo_inbox','crm_demo_inbox_count'];
   -- #4130: the Team dashboard reader is a separately guarded aggregate RPC,
   -- with the public, pg_temp path from the approved admin contract.
   c_later_readers constant text[] := array['crm_team_pulse'];
@@ -353,10 +367,10 @@ begin
   end loop;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'crm\_%';
-  perform pg_temp.x_eq('XA-1', 'number of crm_ functions (#4571 W3 adds seven)', v_n::text, '60');
+  perform pg_temp.x_eq('XA-1', 'number of crm_ functions (#4571 W3 adds seven, W4 twenty)', v_n::text, '80');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = any (c_client || c_later_readers) and p.prosecdef;
-  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights (#4571 W3 adds four)', v_n::text, '25');
+  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights (#4571 W3 adds four, W4 seven)', v_n::text, '32');
 
   -- Every other function with owner rights in this migration is pinned too.
   perform pg_temp.x_ok('XA-1', 'admin_beta_leads_list keeps a pinned search path',
@@ -377,7 +391,9 @@ begin
       (select count(*)::text from pg_attribute a where a.attrelid = r.oid and a.attacl is not null), '0');
     -- #4571 W2: the one stage_at trigger on crm_activity (INVARIANT crm-activity-stage-at-written) is expected.
     perform pg_temp.x_eq('XA-1', r.relname || ': triggers', (select count(*)::text from pg_trigger where tgrelid = r.oid and not tgisinternal
-        and not (r.relname = 'crm_activity' and tgname = 'ops_4571_activity_stage_at')), '0');
+        and not (r.relname = 'crm_activity' and tgname = 'ops_4571_activity_stage_at')
+        -- #4571 W4: the Demo booked rule (INVARIANT crm-demo-before-demo-booked) is expected.
+        and not (r.relname = 'crm_records' and tgname = 'crm_4571_demo_stage_guard')), '0');
     perform pg_temp.x_ok('XA-1', r.relname || ': no client role holds anything',
       not exists (select 1 from unnest(array['anon','authenticated','authenticator']) ro,
                     unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']) pv
@@ -385,7 +401,7 @@ begin
   end loop;
   perform pg_temp.x_eq('XA-1', 'number of crm_ tables',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '9');  -- #4571 W3: crm_record_watchers
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '10');  -- #4571 W3: crm_record_watchers; W4: crm_record_demos
   perform pg_temp.x_eq('XA-1', 'no view, sequence or materialised view named crm_',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind in ('v','m','S') and c.relname like 'crm\_%'), '0');
@@ -1320,7 +1336,8 @@ $t$;
 do $t$
 declare
   -- #4571 W3: watchers, last_touch and open_work.
-  c_record_keys constant text := 'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch,last_touch_at,name,next_action,open_work,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,watchers,went_live_at';
+  -- #4571 W4: a host carries demo_gate and next_demo.
+  c_record_keys constant text := 'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,demo_gate,due_on,followers,icp,id,identifiers,last_touch,last_touch_at,name,next_action,next_demo,open_work,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,watchers,went_live_at';
   v_got jsonb;
   v_txt text;
   v_q text;
@@ -1380,7 +1397,9 @@ begin
   -- [TEST-MOD-APPROVED #3802] 2026-10-15: record details append the
   -- read-only imports summary; record/list payload keys remain pinned below.
   perform pg_temp.x_eq('XA-14', 'opening a record returns exactly six parts (#4571 W3: its files)',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got) k), 'activity,files,imports,links,record,undoable_activity_id');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got) k),
+    -- #4571 W4: a host's read carries its demos and its scheduler token.
+    'activity,demos,files,imports,links,record,schedule_token,undoable_activity_id');
   v_got := pg_temp.x_as('partner', $$select public.crm_records_list('hosts')::text$$)::jsonb;
   perform pg_temp.x_eq('XA-14', 'every listed record carries exactly its named keys',
     (select string_agg(distinct ks, ';') from (select (select string_agg(k, ',' order by k) from jsonb_object_keys(e) k) ks
@@ -1486,7 +1505,9 @@ begin
         and not exists (select 1 from x_people p where p.email = l.admin_email and p.id = l.actor_uid
                            and p.who in ('owner', 'admin', 'growth', 'partner'))), '0');
   perform pg_temp.x_eq('XA-15', 'the system is the actor only for automatic Live moves',
-    (select coalesce(string_agg(distinct action, ','), 'crm.stage_auto_live') from public.admin_audit_log where action like 'crm.%' and admin_email = 'system'),
+    (select coalesce(string_agg(distinct action, ','), 'crm.stage_auto_live') from public.admin_audit_log where action like 'crm.%' and admin_email = 'system'
+       -- #4571 W4: the migration's grandfathering count and a booking that links itself are the system's own.
+       and action not in ('crm.demo_rule_grandfathered', 'crm.demo_link')),
     'crm.stage_auto_live');
 
   -- The two new roles cannot write or change the trail themselves.
@@ -2236,6 +2257,11 @@ create function t3802x_race.rec(p_label text, p_ok boolean, p_detail text) retur
   insert into t3802x_race.results (label, ok, detail) values (p_label, coalesce(p_ok, false), left(coalesce(p_detail, ''), 400)) $fn$;
 
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 set local session_replication_role = replica;
 select t3802x_race.cleanup();
 insert into auth.users (id, email) values
@@ -2256,6 +2282,19 @@ insert into public.crm_records (id, pipeline, name, stage, brand_id, created_by,
   ('38021111-0000-4000-c910-000000000006', 'hosts', 'Issue3802x Race Undo',        'prospect',  null, 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local');
 insert into public.crm_records (id, pipeline, name, stage, created_by, updated_by, deleted_at, deleted_by) values
   ('38021111-0000-4000-c910-000000000007', 'hosts', 'Issue3802x Race Restore', 'prospect', 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local', now(), 'issue3802x-race-1@test.local');
+-- #4571 W4: the C-9..C-11 race fixtures (moved here from the race body).
+insert into public.crm_records (id, pipeline, name, stage, brand_id, agreement, went_live_at, created_by, updated_by) values
+      ('38021111-0000-4000-c910-000000000009', 'hosts',    'Issue3802x Race Unlink',  'onboarded', null, null, null, 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local'),
+      ('38021111-0000-4000-c910-00000000000a', 'hosts',    'Issue3802x Race Undo Live', 'live', '38021111-0000-4000-c800-000000000001', null, now(), 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local'),
+      ('38021111-0000-4000-c910-00000000000b', 'creators', 'Issue3802x Race Creator', 'booked', null, 'signed', null, 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local');
+insert into public.crm_records (id, pipeline, name, stage, brand_id, created_by, updated_by)
+    values ('38021111-0000-4000-c910-00000000000c', 'hosts', 'Issue3802x Race Picked', 'onboarded', '38021111-0000-4000-c800-000000000001',
+            'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local');
+-- #4571 W4: the race fixtures past Demo booked are grandfathered cards, so the
+-- races (other sessions, real commits) move them inside the band as before.
+update public.crm_records set demo_rule_exempt_at = now()
+ where pipeline = 'hosts' and stage in ('meeting', 'onboarded', 'live') and demo_rule_exempt_at is null and name like 'Issue3802x %';
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 
 do $race$
@@ -2357,12 +2396,10 @@ begin
     (select count(*) filter (where deleted_at is null) = 1 and count(*) = 2 from public.crm_records where name_key = 'issue3802xracerestore'), null);
 
   -- RETEST additions (C-9..C-11): the rules that were tightened, under a race.
-  perform t3802x_race.rec('C-9..C-11 fixtures', t3802x_race.solo(0, $q$with ins as (
-    insert into public.crm_records (id, pipeline, name, stage, brand_id, agreement, went_live_at, created_by, updated_by) values
-      ('38021111-0000-4000-c910-000000000009', 'hosts',    'Issue3802x Race Unlink',  'onboarded', null, null, null, 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local'),
-      ('38021111-0000-4000-c910-00000000000a', 'hosts',    'Issue3802x Race Undo Live', 'live', '38021111-0000-4000-c800-000000000001', null, now(), 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local'),
-      ('38021111-0000-4000-c910-00000000000b', 'creators', 'Issue3802x Race Creator', 'booked', null, 'signed', null, 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local')
-    returning 1) select count(*)::text from ins$q$) = '3', null);
+  -- #4571 W4: these three are written with the fixtures above (as grandfathered
+  -- cards; the Demo booked rule refuses an insert at Onboarded or Live).
+  perform t3802x_race.rec('C-9..C-11 fixtures', t3802x_race.solo(0, $q$select count(*)::text from public.crm_records
+    where id in ('38021111-0000-4000-c910-000000000009', '38021111-0000-4000-c910-00000000000a', '38021111-0000-4000-c910-00000000000b')$q$) = '3', null);
 
   -- C-9: the run promotes a host while a person is clearing its brand link.
   perform t3802x_race.solo(0, $q$update public.crm_records set brand_id = '38021111-0000-4000-c800-000000000001'
@@ -2399,9 +2436,8 @@ begin
       and (select stage = 'negotiating' and agreement = 'sent' from public.crm_records where id = '38021111-0000-4000-c910-00000000000b'), p.r1 || '/' || p.r2);
   -- C-12: a person clears the brand link just as the run has picked the host.
   -- (Linked only now, so the real scheduled run cannot get there first.)
-  perform t3802x_race.rec('C-12 fixture', t3802x_race.solo(0, $q$insert into public.crm_records (id, pipeline, name, stage, brand_id, created_by, updated_by)
-    values ('38021111-0000-4000-c910-00000000000c', 'hosts', 'Issue3802x Race Picked', 'onboarded', '38021111-0000-4000-c800-000000000001',
-            'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local') returning 'added'$q$) = 'added', null);
+  -- #4571 W4: written with the fixtures above, as a grandfathered card.
+  perform t3802x_race.rec('C-12 fixture', t3802x_race.solo(0, $q$select 'added' from public.crm_records where id = '38021111-0000-4000-c910-00000000000c'$q$) = 'added', null);
   select * into p from t3802x_race.pair(
     2, $q$select (r->'record'->>'stage') || '/' || coalesce(r->'record'->>'brand_id', '<none>') from public.crm_record_update('38021111-0000-4000-c910-00000000000c', '{"brand_id":null}') r$q$,
     0, $q$select public.crm_reconcile_live('38021111-0000-4000-c910-00000000000c')::text$q$);
@@ -2435,8 +2471,14 @@ select count(*) as t3802x_race_total,
 
 -- Remove the committed rows, whatever the verdict.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 set local session_replication_role = replica;
 select t3802x_race.cleanup();
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 select (select count(*) from public.crm_records where name like 'Issue3802x Race %' or created_by like 'issue3802x-race-%')
      + (select count(*) from public.crm_activity a where a.actor_email like 'issue3802x-race-%'

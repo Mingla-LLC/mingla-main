@@ -388,7 +388,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4571 W1 people and goals: listed migration 20281126014571 after 20281124004549 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4571 W2 links and call outcomes: listed migration 20281126024571 after 20281126014571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4571 W3 host and creator card: listed migration 20281126034571 after 20281126024571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "ad173a0946cbfb3fd439728a9229b166d4c5fcdcd79ce4245da65e4d96d0740e";
+// #4571 W4 demo bookings and the stage rule: listed migration 20281126044571 after 20281126034571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "00b890e86fcb4ba1f2093e2c219b5cf3512a713e4b9fbb419176bd74955e573a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

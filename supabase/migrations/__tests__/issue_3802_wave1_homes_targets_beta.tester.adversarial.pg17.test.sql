@@ -47,6 +47,17 @@
 -- PART 1 — one transaction, rolled back.
 -- ===========================================================================
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
+-- #4571 W4: this suite proves brand linking and Live, which predate the Demo
+-- booked rule; the rule (tested in issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql
+-- and, for the brand path, issue_3980_synced_w3.implementor.happy.pg17.test.sql)
+-- is answered yes inside this rolled-back transaction only.
+create or replace function public.crm_4571_demo_move_ok(p_record_id uuid, p_pipeline text, p_from text, p_to text, p_exempt_at timestamptz) returns boolean
+language sql stable set search_path = '' as $ov$ select true $ov$;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -336,7 +347,7 @@ begin
       'ERR:22023:stage_changed: This card is in Contacted now, not Prospect, so nothing was moved.%');
   end loop;
   perform pg_temp.y_like('XB-3', 'a stale move to Lost with no reason is still refused as stale, not for the reason',
-    pg_temp.y_move('partner', v_id, 'lost', null, 'meeting'), 'ERR:22023:stage_changed: This card is in Contacted now, not Meeting%');
+    pg_temp.y_move('partner', v_id, 'lost', null, 'meeting'), 'ERR:22023:stage_changed: This card is in Contacted now, not Demo booked (Google Meet)%');  -- #4571 W4: the meeting stage's label
 
   -- Values that are not a stage of this pipeline.
   foreach v_bad in array array['', ' ', 'CONTACTED', 'contacted ', 'booked', 'identified', 'null', 'contacted; drop table x', U&'contacted\200B'] loop
@@ -360,7 +371,7 @@ begin
   perform pg_temp.y_eq('XB-3', 'the right expected stage moves the card',
     pg_temp.y_move('partner', v_id, 'meeting', null, 'contacted')::jsonb ->> 'changed', 'true');
   perform pg_temp.y_like('XB-3', 'the same call again is now stale',
-    pg_temp.y_move('growth', v_id, 'replied', null, 'contacted'), 'ERR:22023:stage_changed: This card is in Meeting now, not Contacted%');
+    pg_temp.y_move('growth', v_id, 'replied', null, 'contacted'), 'ERR:22023:stage_changed: This card is in Demo booked (Google Meet) now, not Contacted%');  -- #4571 W4: the meeting stage's label
   perform pg_temp.y_eq('XB-3', 'two moves were logged in all',
     (select count(*)::text from public.crm_activity where record_id = v_id and kind = 'stage_move'), '2');
 
@@ -1333,6 +1344,11 @@ select set_config('t3802y.conn',
 create table t3802y_race.results (seq serial primary key, label text, ok boolean, detail text);
 
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 delete from public.crm_activity where record_id in (select id from public.crm_records where created_by like 'issue3802y-race-%');
 delete from public.crm_record_owners where record_id in (select id from public.crm_records where created_by like 'issue3802y-race-%');
 delete from public.crm_records where created_by like 'issue3802y-race-%';
@@ -1355,6 +1371,7 @@ insert into public.seeding_cities (id, google_place_id, name, country, country_c
   ('38020000-0000-4000-e930-000000000001', 'issue3802y-race-city', 'Issue3802y Race City', 'Nigeria', 'NG', 1, 1, 0, 0, 2, 2, false);
 insert into public.crm_records (id, pipeline, name, stage, created_by, updated_by) values
   ('38020000-0000-4000-e910-000000000001', 'hosts', 'Issue3802y Race Card', 'prospect', 'issue3802y-race-1@test.local', 'issue3802y-race-1@test.local');
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 
 do $race$
@@ -1515,6 +1532,11 @@ select count(*) as t3802y_race_total,
 
 -- Remove the committed rows, whatever the verdict.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 delete from public.crm_activity where record_id in (select id from public.crm_records where created_by like 'issue3802y-race-%');
 delete from public.crm_record_owners where record_id in (select id from public.crm_records where created_by like 'issue3802y-race-%');
 delete from public.crm_records where created_by like 'issue3802y-race-%';
@@ -1524,6 +1546,7 @@ delete from public.admin_audit_log where admin_email like 'issue3802y-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802y-race-%';
 delete from auth.users where email like 'issue3802y-race-%';
 delete from public.seeding_cities where google_place_id = 'issue3802y-race-city';
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 reset search_path;
 \if :t3802y_made_dblink

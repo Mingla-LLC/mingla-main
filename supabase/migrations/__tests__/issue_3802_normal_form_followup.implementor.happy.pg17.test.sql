@@ -125,8 +125,8 @@ begin
   -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader without changing identifier normalization.
-  perform pg_temp.t3802c_check('N-1', '#4130 leaves 53 crm_ functions; #4571 W3 adds seven, so 60',
-    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '60');
+  perform pg_temp.t3802c_check('N-1', '#4130 leaves 53 crm_ functions; #4571 W3 adds seven and W4 twenty, so 80',
+    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '80');
   perform pg_temp.t3802c_check('N-1', 'is_admin_user() has the source it had before Wave 4',
     (select md5(prosrc) from pg_proc where oid = 'public.is_admin_user()'::regprocedure), 'dc5465a20a4246c6921be0469e261a8b');
 end;
