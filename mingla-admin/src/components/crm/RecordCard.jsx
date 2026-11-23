@@ -106,6 +106,22 @@ export function OwnerFaces({ emails, team, max = 2 }) {
  * Demo booked lock read the W4 fields (`next_demo`, `demo_gate`) only when the
  * server sends them; the cadence round reads W6's `cadence`.
  */
+/**
+ * #4571 final gate: the locked next-stage button's tooltip and screen-reader
+ * words say the same thing. Demo booked needs a linked demo; Onboarded and Live
+ * need a linked demo or the host's Mingla brand.
+ */
+export function lockedNextTitle(next) {
+  return next.id === "meeting"
+    ? `${next.label} needs a linked demo. Open the card to book one.`
+    : `${next.label} needs a linked demo or the host's Mingla brand. Open the card to book a demo or link the brand.`;
+}
+export function lockedNextLabel(next, record) {
+  return next.id === "meeting"
+    ? `${next.label} is locked for ${record.name}. Open the card to book a demo.`
+    : `${next.label} is locked for ${record.name}. Open the card to book a demo or link the brand.`;
+}
+
 export function RecordCard({
   record,
   def,
@@ -218,8 +234,8 @@ export function RecordCard({
               icon={Calendar}
               data-gate-action=""
               disabled={disabled || pending}
-              title={next.id === "meeting" ? `${next.label} needs a linked demo. Open the card to book one.` : `${next.label} needs a linked demo or the host's Mingla brand. Open the card to book a demo or link the brand.`}
-              aria-label={`${next.label} is locked for ${record.name}. Open the card to book a demo`}
+              title={lockedNextTitle(next)}
+              aria-label={lockedNextLabel(next, record)}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpen(record);

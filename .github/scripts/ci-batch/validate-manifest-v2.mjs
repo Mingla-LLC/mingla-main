@@ -652,7 +652,8 @@ export function phase3dContractDigest(manifest) {
 // #4571 W5 Calendar week: listed migration 20281126054571 after 20281126044571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 W6a, W6b, W6c and rework: listed migrations 20281126064571 to 20281126094571 in the #1857, #1931 and #2117 lanes and registered their pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 W7: listed migration 20281126104571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories, plus the W7 Admin suite; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5254f5b498cd9ae7ff012e467d912ab8e4d630ea95b7e1d8c36c1ff00c72ad1c";
+// #4571 final gate: listed migration 20281126114571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories, plus the final-gate Admin render suite; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7e270f475f9b1128f65df33d96220a537fb94c0d021d5aa76df86dd15792069c";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

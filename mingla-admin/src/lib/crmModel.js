@@ -364,6 +364,8 @@ const SERVER_WORDS = new Set([
   "demo_in_use",
   "not_a_host_call",
   "not_a_host",
+  // #4571 final gate: a merge, or its undo, between two different Mingla brands.
+  "brand_conflict",
 ]);
 
 // Tokens whose server message is written for a caller of the function (it

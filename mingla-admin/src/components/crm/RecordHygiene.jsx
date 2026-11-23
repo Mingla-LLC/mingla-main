@@ -32,6 +32,15 @@ function useMerges(recordId, tick) {
   return { ...state, retry: () => setAgain((n) => n + 1) };
 }
 
+/** #4571 final gate: the merge confirmation, which names the logged emails that move. */
+export function MergeConfirmLine({ pick }) {
+  return (
+    <p data-merge-confirm="" className="text-[12px] text-[var(--color-text-tertiary)]">
+      {mergeConfirmWords(pick.name, pick.email_count)}
+    </p>
+  );
+}
+
 export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequestMove, onOpenCard }) {
   const { addToast } = useToast();
   const [mode, setMode] = useState(""); // "" | "archive" | "merge"
@@ -181,11 +190,7 @@ export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequest
               ))}
             </div>
           )}
-          {pick && (
-            <p className="text-[12px] text-[var(--color-text-tertiary)]">
-              {mergeConfirmWords(pick.name, pick.email_count)}
-            </p>
-          )}
+          {pick && <MergeConfirmLine pick={pick} />}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" className="min-h-11" loading={busy === "merge"} disabled={disabled || !pick} onClick={doMerge}>
               {pick ? `Merge ${pick.name} into this card` : "Pick the duplicate"}
