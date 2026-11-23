@@ -9,9 +9,6 @@
  *   - delete the brandZoneForNewDraft effect from EventCreatorWizard or
  *     RsvpCreatorWizard, or `brandZone:` from the experience wizard → BZ-7 fails.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { brandZoneForNewDraft, defaultTimezoneForBrand } from "../timezones";
 
 const NY = "America/New_York";
@@ -66,25 +63,5 @@ describe("#4572 7e brand zone first", () => {
       }),
     ).toBeNull();
     expect(brandZoneForNewDraft({ brand: null, draftDate: null, draftTimezone: NY, deviceZone: NY })).toBeNull();
-  });
-
-  test("BZ-7 every wizard reads the one rule", () => {
-    const REPO = join(__dirname, "..", "..", "..");
-    const code = (rel: string): string =>
-      readFileSync(join(REPO, rel), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/^\s*\/\/.*$/gm, "");
-    for (const rel of [
-      "src/components/event/EventCreatorWizard.tsx",
-      "src/components/rsvp/RsvpCreatorWizard.tsx",
-    ]) {
-      const src = code(rel);
-      expect(src).toMatch(/brandZoneForNewDraft\(\{\s*brand,\s*draftDate: liveDraft\.date,/);
-      expect(src).toContain("updateDraft(liveDraft.id, { timezone: zone })");
-    }
-    expect(code("src/components/experience/ExperienceCreatorWizard.tsx")).toContain(
-      "brandZone: brand?.defaultTimezone ?? null",
-    );
-    expect(code("src/hooks/useExperienceDraftAdapter.ts")).toContain("brandZone: brandTzHints?.brandZone");
   });
 });

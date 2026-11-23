@@ -1,17 +1,11 @@
-// MINGLA-INVARIANT: I-4572-PRICE-FROM-ONE-OWNER | issue #4572 | Every "From <price>" / "Free" label on the brand page (upcoming cards, next-up bar, experience, event and trip cards) and the Host brand teaser comes from packages/offering-rendering/priceFromLabel.ts: free first, then "From <formatMoney>" (₦ glyph), and nothing when the price is unknown. No other `From ${` template may appear in those files.
 // issue #4572 item 7b — implementor regression.
 //
 // FAILS-ON-REVERT (true line deletion):
 //   - delete `if (minorUnits <= 0) return "Free";` → "zero price is Free" fails
 //     (it prints "From ₦0");
 //   - delete `if (isFree === true) return "Free";` → "isFree wins" fails;
-//   - restore the brand page's own `offeringPriceLabel` with a `From ${`
-//     template → "no second owner" fails;
-//   - restore NextEventTeaser's inline "Free"/`From ${` price → "no second
-//     owner" fails.
-
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+// The "one owner" source rule (I-4572-PRICE-FROM-ONE-OWNER) is held by the
+// Deno suite packages/offering-rendering/__tests__/issue_4572_events_wiring.test.ts.
 
 import {
   formatMoney,
@@ -49,28 +43,5 @@ describe("#4572 7b priceFromLabel", () => {
   test("a missing currency never gains a symbol", () => {
     expect(priceFromLabel({ minorUnits: 1000, currency: null })).toBe("From 10.00");
     expect(formatMoney(10, null)).toBe("10.00");
-  });
-});
-
-describe("#4572 7b no second owner (adversarial, comments ignored)", () => {
-  const REPO = join(__dirname, "..", "..", "..", "..", "..");
-  const code = (rel: string): string =>
-    readFileSync(join(REPO, rel), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/^\s*\/\/.*$/gm, "");
-
-  test.each([
-    "packages/brand-rendering/PublicBrandPage.tsx",
-    "mingla-business/src/components/brand/NextEventTeaser.tsx",
-  ])("%s builds no 'From' label itself", (rel) => {
-    const src = code(rel);
-    expect(src).not.toContain("From ${");
-    expect(src).not.toMatch(/\bofferingPriceLabel\b/);
-    expect(src).toContain("priceFromLabel(");
-  });
-
-  test("NextEventTeaser never fabricates Free for an unknown price", () => {
-    const src = code("mingla-business/src/components/brand/NextEventTeaser.tsx");
-    expect(src).not.toMatch(/\?\s*"Free"/);
   });
 });
