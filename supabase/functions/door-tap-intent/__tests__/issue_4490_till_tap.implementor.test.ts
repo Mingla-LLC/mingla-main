@@ -412,3 +412,31 @@ Deno.test("O2-T5 sweep: an unfinished Till tap is cancelled at Stripe first, the
   );
   assertEquals(eventReads.length, 2);
 });
+
+Deno.test("O2-T6 the Till's reader token is for sellers at the venue, on the same Location the sale names", async () => {
+  const { createTerminalConnectionTokenHandler } = await import(
+    "../../terminal-connection-token/index.ts"
+  );
+  const stripe = fakeStripe();
+  const db = makeDb();
+  const res = await createTerminalConnectionTokenHandler({
+    serviceClient: () => db,
+    userIdFromAuthHeader: auth,
+    stripe: () => stripe.client,
+  } as never)(post({ scope: "till", venueId: VENUE, platform: "ios" }));
+  assertEquals(res.status, 200);
+  const token = stripe.calls.find((c) =>
+    c.method === "terminal.connectionTokens.create"
+  )!;
+  assertEquals((token.params as Record<string, string>).location, "tml_door1");
+  assertEquals(
+    (token.options as Record<string, string>).stripeAccount,
+    "acct_till1",
+  );
+  const refused = await createTerminalConnectionTokenHandler({
+    serviceClient: () => makeDb({ canSell: false }),
+    userIdFromAuthHeader: auth,
+    stripe: () => fakeStripe().client,
+  } as never)(post({ scope: "till", venueId: VENUE, platform: "ios" }));
+  assertEquals(refused.status, 400);
+});

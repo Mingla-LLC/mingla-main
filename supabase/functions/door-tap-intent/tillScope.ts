@@ -13,12 +13,7 @@
 
 import { jsonResponse } from "../_shared/ticketCheckout.ts";
 import { tapToPayReleased } from "../_shared/doorPayServer.ts";
-import {
-  ensureTerminalLocation,
-  loadBrandTapContext,
-  tapContextStatus,
-  terminalAddressFor,
-} from "../_shared/doorTerminal.ts";
+import { tillLocation } from "../_shared/venueTillTerminal.ts";
 import { isUuid } from "../_shared/doorPay.ts";
 import type { DoorTapIntentDeps } from "./index.ts";
 
@@ -94,67 +89,6 @@ async function loadTillPayment(
     return null;
   }
   return { payment, sale, carrier };
-}
-
-/** The Terminal Location for a venue: the brand's T1 address, the venue's, the brand's. */
-async function tillLocation(
-  supabase: Client,
-  // deno-lint-ignore no-explicit-any
-  stripe: any,
-  brandId: string,
-  venueId: string,
-  stripeAccountId: string,
-): Promise<
-  { ok: true; locationId: string } | { ok: false; response: Response }
-> {
-  const tap = await loadBrandTapContext(supabase, brandId);
-  if (!tap.ok) {
-    return {
-      ok: false,
-      response: jsonResponse({ error: tap.error }, tapContextStatus(tap.error)),
-    };
-  }
-  const { data: venue } = await supabase.from("venue_listings")
-    .select("address, city, country_code").eq("id", venueId).maybeSingle();
-  const address = terminalAddressFor({
-    tapLocationAddress: tap.tapLocationAddress,
-    venueTaxAddress: venue
-      ? {
-        line1: venue.address ?? "",
-        city: venue.city ?? "",
-        country: venue.country_code ?? "",
-      }
-      : null,
-    brandAddress: tap.brandAddress,
-    brandCity: tap.brandCity,
-    country: tap.country,
-  });
-  if (address === null) {
-    return {
-      ok: false,
-      response: jsonResponse({
-        error: "tap_not_available",
-        reason: "address_missing",
-      }, 400),
-    };
-  }
-  const locationId = await ensureTerminalLocation(supabase, stripe, {
-    brandId: tap.brandId,
-    brandName: tap.brandName,
-    stripeAccountId,
-    country: tap.country,
-    address,
-  });
-  if (locationId === null) {
-    return {
-      ok: false,
-      response: jsonResponse({
-        error: "tap_not_available",
-        reason: "address_missing",
-      }, 400),
-    };
-  }
-  return { ok: true, locationId };
 }
 
 export async function handleTillCreate(
