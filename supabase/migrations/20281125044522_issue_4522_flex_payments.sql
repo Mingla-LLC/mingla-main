@@ -437,6 +437,10 @@ REVOKE ALL ON FUNCTION public.issue_4522_overpayment_policy(uuid) FROM PUBLIC, a
 -- A collected row is kept out of payouts while part of it is overpayment not
 -- yet returned, or while it is a flexible payment not yet settled (the split
 -- between what it paid and what it overpaid is not known yet).
+-- Rework 9 (T8-1): also while a second-provider overpayment whose unanswered
+-- refund ops closed with 'retry' is still watched (detail.retry_watch_from,
+-- until the lane closes the watch after issue_4522_overpayment_pending_ceiling()):
+-- the original refund may yet complete at the provider with its webhook lost.
 CREATE FUNCTION public.issue_4522_row_payout_blocked(p_installment_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -446,7 +450,9 @@ SET search_path = public, pg_temp
 AS $fn$
   SELECT EXISTS (SELECT 1 FROM public.order_overpayments op
                   WHERE op.installment_id = p_installment_id
-                    AND op.state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops'))
+                    AND (op.state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops')
+                         OR (op.state = 'refunded' AND op.detail ? 'retry_watch_from'
+                             AND NOT (op.detail ? 'retry_watch_closed_at'))))
       OR EXISTS (SELECT 1 FROM public.order_installments oi
                   WHERE oi.id = p_installment_id AND oi.kind = 'flex' AND oi.status = 'collected'
                     AND NOT EXISTS (SELECT 1 FROM public.order_balance_events e
@@ -878,7 +884,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
   SELECT COALESCE(jsonb_agg(jsonb_build_object('overpaymentId', op.id, 'orderId', op.order_id,
-           'state', op.state) ORDER BY op.created_at, op.id), '[]'::jsonb)
+           'state', op.state) ORDER BY (op.state = 'refunded'), op.created_at, op.id), '[]'::jsonb)
     FROM (SELECT * FROM public.order_overpayments
            WHERE (p_order_id IS NULL OR order_id = p_order_id)
              AND (state = 'held'
@@ -893,8 +899,14 @@ AS $fn$
                                        WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending')
                                          AND a.provider_refund_id IS NULL)))
                            -- T7-2: an extra refund still pending is re-read on the charge
-                           OR detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb)))
-           ORDER BY created_at, id
+                           OR detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb))
+                  -- Rework 9 (T8-1): a refunded overpayment whose unanswered
+                  -- refund ops closed with 'retry' is watched: the charge's
+                  -- refunds are re-read (nothing is sent) until the watch closes.
+                  OR (state = 'refunded' AND detail ? 'retry_watch_from' AND NOT (detail ? 'retry_watch_closed_at')
+                      AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')))
+           -- Watched rows come after every row that may still need a refund.
+           ORDER BY (state = 'refunded'), created_at, id
            LIMIT greatest(COALESCE(p_limit, 100), 1)) op
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_overpayments_due(uuid, timestamptz, integer) FROM PUBLIC, anon, authenticated;
@@ -1084,6 +1096,32 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'overpayment_not_found');
   END IF;
   SELECT * INTO v_op FROM public.order_overpayments WHERE id = p_overpayment_id FOR UPDATE;
+  -- Rework 9 (T8-1): after ops closed an unanswered second-provider refund
+  -- with 'retry', the original may still complete at the provider with its
+  -- webhook lost. For issue_4522_overpayment_pending_ceiling() after that
+  -- retry the charge's refunds are re-read (action 'reconcile': the
+  -- original's own merchant note names this overpayment and attempt, so a
+  -- completed one is recorded as refunded past the amount, stopped for ops
+  -- once, payout kept held). Nothing is ever sent from here. Then the watch
+  -- closes and the host's payout for the charge is released.
+  IF v_op.state = 'refunded' AND v_op.detail ? 'retry_watch_from' AND NOT (v_op.detail ? 'retry_watch_closed_at') THEN
+    IF (v_op.detail->>'retry_watch_from')::timestamptz <= p_now - public.issue_4522_overpayment_pending_ceiling() THEN
+      UPDATE public.order_overpayments
+         SET detail = detail || jsonb_build_object('retry_watch_closed_at', p_now), updated_at = p_now
+       WHERE id = v_op.id;
+      PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_retry_watch_closed',
+        jsonb_build_object('overpayment_id', v_op.id, 'watched_from', v_op.detail->>'retry_watch_from'));
+      PERFORM public.issue_4522_sync_row_payout_hold(v_op.installment_id);
+    ELSIF NOT COALESCE(p_reconciled, false) THEN
+      UPDATE public.order_overpayments SET updated_at = p_now WHERE id = v_op.id;
+      RETURN jsonb_build_object('ok', true, 'done', false, 'action', 'reconcile',
+        'overpaymentId', v_op.id, 'orderId', v_op.order_id, 'installmentId', v_op.installment_id,
+        'brandId', (SELECT e.brand_id FROM public.orders o JOIN public.events e ON e.id = o.event_id
+                     WHERE o.id = v_op.order_id),
+        'provider', v_op.provider, 'providerRef', v_op.provider_ref, 'currency', trim(v_op.currency),
+        'refundMinor', v_op.refund_minor, 'state', v_op.state, 'watch', true);
+    END IF;
+  END IF;
   IF v_op.state IN ('refunded', 'applied') THEN
     RETURN jsonb_build_object('ok', true, 'done', true, 'state', v_op.state);
   END IF;
@@ -1725,6 +1763,7 @@ DECLARE
   v_att_id uuid;
   v_res jsonb;
   v_k integer := 0;
+  v_closed boolean := false;
 BEGIN
   IF p_action IS NULL OR p_action NOT IN ('retry', 'refunded_by_hand') THEN
     RAISE EXCEPTION 'overpayment_ops_action_invalid' USING ERRCODE = '22023';
@@ -1751,6 +1790,7 @@ BEGIN
                      WHERE overpayment_id = v_op.id AND state = 'creating' ORDER BY attempt_no LOOP
       PERFORM public.issue_4522_apply_overpayment_attempt_outcome(v_att_id, 'not_found', NULL,
         'ops_retry: no refund at the provider', p_now);
+      v_closed := true;
     END LOOP;
   END IF;
   IF EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
@@ -1768,6 +1808,9 @@ BEGIN
        SET state = 'held', needs_ops_reason = NULL, consecutive_failures = 0, next_attempt_at = NULL,
            ops_alerted_at = NULL, updated_at = p_now,
            detail = (detail - 'unconfirmed_alerted_at') || jsonb_build_object('ops_retry_at', p_now, 'ops_retry_by', p_actor)
+                    -- Rework 9 (T8-1): an unanswered refund was closed as never
+                    -- created: the charge is watched for it (see begin).
+                    || CASE WHEN v_closed THEN jsonb_build_object('retry_watch_from', p_now) ELSE '{}'::jsonb END
      WHERE id = v_op.id;
     PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_ops_retry',
       jsonb_build_object('overpayment_id', v_op.id, 'actor', p_actor, 'note', left(COALESCE(p_note, ''), 300)));

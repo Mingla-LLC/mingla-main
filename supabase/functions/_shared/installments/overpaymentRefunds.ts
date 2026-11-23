@@ -274,10 +274,11 @@ export function overpaymentAlert(
       return {
         subject: "Trip overpayment refund not confirmed by the provider",
         paragraphs: [
-          "Mingla sent the provider a refund of a traveler's overpayment and never received an answer, and after 24 hours the provider still shows no such refund. Mingla never sends this refund again on its own (this provider cannot tell a repeated request from a new refund).",
+          "Mingla tried to send the provider a refund of a traveler's overpayment and never received an answer: the request may or may not have reached the provider. After 24 hours the provider still shows no such refund. Mingla never sends this refund again on its own (this provider cannot tell a repeated request from a new refund).",
           ...where,
-          ...sent.map((a) => `Refund sent: ${String(a.amountMinor)} (${plan.currency ?? "?"} minor units) at ${a.createdAt ?? "?"}, merchant note ${a.idempotencyKey ?? "?"}.`),
+          ...sent.map((a) => `Refund attempted: ${String(a.amountMinor)} (${plan.currency ?? "?"} minor units) at ${a.createdAt ?? "?"}, merchant note ${a.idempotencyKey ?? "?"}.`),
           "Safe to do: check the provider dashboard for a refund on the charge above with that merchant note. If no refund exists, use issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>): Mingla re-reads the charge's refunds first and sends only what is still owed. If one exists, do nothing: Mingla keeps checking and adopts it automatically.",
+          "After a 'retry', Mingla keeps re-reading this charge's refunds for 7 days in case the first refund still completes (it then alerts once and stops), and the host's payout for this charge stays held for those 7 days.",
           "The host's payout for this charge stays held until it is resolved.",
         ],
       };
