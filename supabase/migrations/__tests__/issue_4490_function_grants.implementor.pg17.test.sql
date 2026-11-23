@@ -59,6 +59,10 @@
 -- card_start (same signatures); tables and by the hour (20280809607490) add nine (the deposit refund
 -- guard, the line-voided trigger, session book / span / start / extend, seat, the catalog extras) and
 -- re-emit the service charge left and the sale extras; all internal (service role only).
+-- TEST-MOD-APPROVED #4490 (08-O4 fix 1): 20280809608490 adds five functions (the reservation deposit
+-- owner trigger, the deposit's part on a booking, a check's line funding, the offer part of a payment
+-- refund, the covered-check close) and re-emits the refund guard, finalize, the Till offer payment
+-- record, the money day and start session (same signatures); all internal (service role only).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -538,6 +542,12 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_extend_session(uuid,uuid,integer,uuid,text,integer)', 'internal'),
   ('issue_4490_till_seat(uuid,uuid,uuid,integer,uuid,text,uuid,text)', 'internal'),
   ('issue_4490_till_catalog_extras(uuid)', 'internal'),
+  -- 08-O4 fix 1 (20280809608490): all internal (service role only).
+  ('issue_4490_reservation_deposit_owned()', 'internal'),
+  ('issue_4490_record_till_credit(uuid,bigint,uuid,uuid,text)', 'internal'),
+  ('issue_4490_till_line_funding(uuid)', 'internal'),
+  ('issue_4490_till_refund_offer_parts(uuid)', 'internal'),
+  ('issue_4490_till_close_covered(uuid,uuid,integer)', 'internal'),
   -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),
