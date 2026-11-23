@@ -222,3 +222,202 @@ Deno.test("rework 9 T8-5: a claim refused as below the provider minimum alerts o
     if (alertOps) assertMatch(alerts[0].paragraphs.join(" "), /order_1; amount: 49 USD/);
   }
 });
+
+// ── Pass 5 (F-4 / T9-3, same defect on main): a success webhook that lands
+// before the worker's post-confirm re-check is the charge applied, never a
+// refund. One in-memory row shared by the real worker (createInstallmentPI),
+// the real webhook handler and the real read-back (reconcileMarkedStripeCharges).
+// FAILS-ON-REVERT: the worker refunded the whole charge while the row stayed
+// "collected" (traveler refunded AND host paid).
+import { handleInstallmentPaymentSucceeded } from "../../installmentWebhookHandlers.ts";
+import { reconcileMarkedStripeCharges } from "../flexReclaim.ts";
+
+type Row = Record<string, unknown>;
+
+function settleWorld(opts: { main?: boolean; cancelDuringConfirm?: boolean } = {}) {
+  const row: Row = {
+    id: "inst_1", order_id: "order_1", ordinal: 2, amount_cents: 15000, kind: "scheduled", status: "scheduled",
+    stripe_payment_intent_id: null, stripe_charge_id: null, cancelled_at: null, collected_at: null,
+    payout_accounting_state: "not_ready", application_fee_amount_cents: null, failed_at: null,
+  };
+  const stripeCalls: string[] = [];
+  const collectedWrites: string[] = [];
+  const audits: string[] = [];
+  const missing = { code: "42703", message: "column order_installments.kind does not exist" };
+  const matches = (filters: Array<[string, string, unknown]>) =>
+    filters.every(([kind, col, val]) =>
+      kind === "eq" ? row[col] === val
+      : kind === "in" ? (val as unknown[]).includes(row[col])
+      : kind === "is" ? row[col] === val
+      : true
+    );
+  const claim = () =>
+    ["scheduled", "failed"].includes(String(row.status)) && row.cancelled_at === null
+      ? { ok: true }
+      : row.cancelled_at !== null
+      ? { ok: false, reason: "order_cancelled" }
+      : { ok: false, reason: "installment_not_chargeable", status: row.status };
+  const supabase = {
+    rpc(name: string, _args: Record<string, unknown> = {}) {
+      const ok = (data: unknown) => Promise.resolve({ data, error: null });
+      switch (name) {
+        case "issue_4522_plan_v2_enabled":
+          return opts.main === true
+            ? Promise.resolve({ data: null, error: { code: "42883", message: "function does not exist" } })
+            : ok(true);
+        case "claim_order_installment_for_charge": return ok(claim());
+        case "issue_4522_mark_stripe_charge_in_flight": {
+          const c = claim();
+          if (c.ok) row.stripe_payment_intent_id = _args.p_payment_intent_id;
+          return ok(c.ok ? { ...c, marked: true } : c);
+        }
+        case "resolve_effective_take_rate_bps":
+          return ok([{ effective_take_rate_bps: 150, take_rate_source: "default" }]);
+        case "issue_4522_record_short_collection": return ok({ ok: true, shortMinor: 0 });
+        case "record_order_installment_provider_sale":
+          row.payout_accounting_state = "ready";
+          row.application_fee_amount_cents = _args.p_application_fee_amount_cents;
+          return ok({ ok: true });
+        case "issue_3645_clear_at_risk_if_settled": return ok(null);
+        case "issue_4522_claim_paid_in_full_notice": return ok(false);
+        default: throw new Error(`unexpected rpc ${name}`);
+      }
+    },
+    from(table: string) {
+      const op = { kind: "select", columns: "", values: null as Row | null, filters: [] as Array<[string, string, unknown]>, head: false };
+      const run = () => {
+        if (table === "audit_log") {
+          audits.push(String((op.values as Row)?.action ?? ""));
+          return { data: null, error: null };
+        }
+        if (table !== "order_installments") return { data: null, error: null };
+        if (opts.main === true && op.columns.includes("kind")) return { data: null, error: missing };
+        if (op.kind === "update") {
+          if (!matches(op.filters)) return { data: null, error: null };
+          if (op.values?.status === "collected") collectedWrites.push(String(op.values.stripe_payment_intent_id));
+          Object.assign(row, op.values);
+          return { data: { ...row }, error: null };
+        }
+        if (op.head) return { data: null, error: null, count: 1 };
+        return { data: matches(op.filters) ? { ...row } : null, error: null };
+      };
+      const chain: Record<string, unknown> = {};
+      const f = (kind: string) => (col: string, val: unknown) => { op.filters.push([kind, col, val]); return chain; };
+      Object.assign(chain, {
+        select(columns?: string, o?: { head?: boolean }) { if (op.kind === "select") op.columns = columns ?? "*"; if (o?.head) op.head = true; return chain; },
+        update(values: Row) { op.kind = "update"; op.values = values; return chain; },
+        insert(values: Row) { op.kind = "insert"; op.values = values; return Promise.resolve(run()); },
+        eq: f("eq"), in: f("in"), is: f("is"), neq: f("neq"), limit: () => chain, order: () => chain,
+        maybeSingle: () => Promise.resolve(run()),
+        single: () => Promise.resolve(run()),
+        then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) { return Promise.resolve(run()).then(resolve, reject); },
+      });
+      return chain;
+    },
+  };
+  const succeededPi = () => ({
+    id: "pi_new", object: "payment_intent", status: "succeeded", amount: 15000, amount_received: 15000,
+    application_fee_amount: 225, latest_charge: "ch_new",
+    metadata: { mingla_installment_id: "inst_1", mingla_order_id: "order_1", mingla_brand_id: "brand_1" },
+  });
+  const webhook = () =>
+    handleInstallmentPaymentSucceeded(supabase as never, { type: "payment_intent.succeeded", data: { object: succeededPi() } });
+  const readBack = () =>
+    reconcileMarkedStripeCharges({
+      supabase: supabase as never,
+      stripe: () => ({
+        paymentIntents: {
+          retrieve: () => { stripeCalls.push("retrieve"); return Promise.resolve(succeededPi()); },
+          cancel: () => { stripeCalls.push("cancel"); return Promise.reject(new Error("no")); },
+        },
+      }) as never,
+      stripeAccountFor: () => Promise.resolve("acct_1"),
+      settleStripe: async (pi) => { await handleInstallmentPaymentSucceeded(supabase as never, { type: "payment_intent.succeeded", data: { object: pi } }); },
+      failStripe: () => Promise.resolve(),
+    }, [{ installmentId: "inst_1", orderId: "order_1", paymentIntentId: String(row.stripe_payment_intent_id ?? "pi_new"), marked: true, pastCeiling: false }]);
+  let duringConfirm: () => Promise<unknown> = () => Promise.resolve();
+  const stripe = {
+    paymentIntents: {
+      create(params: Row) { stripeCalls.push(`create:${params.amount}`); return Promise.resolve({ id: "pi_new", status: "requires_confirmation" }); },
+      async confirm() {
+        stripeCalls.push("confirm");
+        await duringConfirm();
+        if (opts.cancelDuringConfirm === true) { row.status = "cancelled"; row.cancelled_at = "2026-11-23T00:00:00Z"; }
+        return { id: "pi_new", status: "succeeded" };
+      },
+      cancel() { stripeCalls.push("cancel"); return Promise.resolve({ id: "pi_new", status: "canceled" }); },
+    },
+    refunds: { create() { stripeCalls.push("refund"); return Promise.resolve({ id: "re_1" }); } },
+  };
+  const alerts: string[] = [];
+  const input = {
+    installmentId: "inst_1", brandId: "brand_1", supabase: supabase as never, stripe: stripe as never,
+    alertOps: (subject: string) => { alerts.push(subject); return Promise.resolve(); },
+    installment: {
+      id: "inst_1", order_id: "order_1", ordinal: 2, amount_cents: 15000, referral_share_minor: 0,
+      currency: "USD", due_at: "2026-11-20T09:00:00Z", status: "scheduled", retry_count: 0,
+      schedule_version: 0, stripe_payment_intent_id: null,
+    },
+    order: {
+      id: "order_1", event_id: "event_1", stripe_customer_id_on_connected_account: "cus_1",
+      saved_payment_method_id: "pm_1", buyer_user_id: null, buyer_email: "b@example.test", at_risk: false,
+    },
+    brand: { id: "brand_1", contact_email: null, name: "Brand" },
+    stripeAccount: { brand_id: "brand_1", stripe_account_id: "acct_1" },
+  };
+  return {
+    row, stripeCalls, collectedWrites, audits, alerts, webhook, readBack,
+    run: (during: () => Promise<unknown>) => { duringConfirm = during; return createInstallmentPI(input as never); },
+  };
+}
+
+const prevSuppressedLog = console.log;
+Deno.test("F-4: every interleaving of {worker re-check, success webhook, read-back}: one charge, zero refunds, row collected once", async () => {
+  const savedEnv = Deno.env.get("SUPABASE_URL");
+  Deno.env.delete("SUPABASE_URL"); // no email dispatch in this test
+  console.log = () => {};
+  try {
+    const orders: Array<[string, (w: ReturnType<typeof settleWorld>) => Promise<unknown>, (w: ReturnType<typeof settleWorld>) => Promise<unknown>]> = [
+      ["webhook before the re-check", (w) => w.webhook(), async () => {}],
+      ["webhook after the worker", async () => {}, (w) => w.webhook()],
+      ["read-back before the re-check, webhook after", (w) => w.readBack(), (w) => w.webhook()],
+      ["webhook before the re-check, read-back and a duplicate webhook after", (w) => w.webhook(), async (w) => { await w.readBack(); await w.webhook(); }],
+      ["webhook and read-back both before the re-check", async (w) => { await w.webhook(); await w.readBack(); }, async () => {}],
+    ];
+    for (const main of [false, true]) {
+      for (const [label, during, after] of orders) {
+        if (main && label.includes("read-back")) continue; // no marked rows to read back on main's database
+        resetPlanV2SchemaProbeForTests();
+        const w = settleWorld({ main });
+        const result = await w.run(() => during(w));
+        await after(w);
+        const tag = `${main ? "main db" : "v2 db"}: ${label}`;
+        assertEquals(result.outcome, "collected", tag);
+        assertEquals(w.stripeCalls.filter((c) => c === "confirm").length, 1, tag);
+        assertEquals(w.stripeCalls.filter((c) => c === "refund").length, 0, tag);
+        assertEquals([w.row.status, w.row.stripe_payment_intent_id, w.row.stripe_charge_id], ["collected", "pi_new", "ch_new"], tag);
+        assertEquals(w.collectedWrites, ["pi_new"], `${tag}: collected exactly once`);
+        assertEquals(w.row.payout_accounting_state, "ready", tag);
+        assertEquals(w.alerts, [], tag);
+      }
+    }
+  } finally {
+    console.log = prevSuppressedLog;
+    if (savedEnv !== undefined) Deno.env.set("SUPABASE_URL", savedEnv);
+    resetPlanV2SchemaProbeForTests();
+  }
+});
+
+Deno.test("F-4: a charge that truly cannot be applied (cancelled during the charge) is refunded once, the row stays cancelled, ops alerted once", async () => {
+  for (const main of [false, true]) {
+    resetPlanV2SchemaProbeForTests();
+    const w = settleWorld({ main, cancelDuringConfirm: true });
+    const result = await w.run(() => Promise.resolve());
+    assertEquals([result.outcome, result.reason], ["skipped", "cancelled_during_charge_refunded"]);
+    assertEquals(w.stripeCalls.filter((c) => c === "refund").length, 1);
+    assertEquals(w.row.status, "cancelled");
+    assertEquals(w.alerts, ["A trip payment was refunded as soon as it was taken"]);
+    assertEquals(w.audits.includes("tr3.installment_cancelled_during_charge_refunded"), true);
+  }
+  resetPlanV2SchemaProbeForTests();
+});

@@ -17,7 +17,7 @@ import { writeAudit } from "../audit.ts";
 import { installmentKeyVersionSuffix } from "./installmentIdempotencyKey.ts";
 import { orderHasPlanV2Terms, rollOverMissedPayment } from "./missedRollover.ts";
 import { planV2SchemaAvailable } from "./planV2Schema.ts";
-import { alertUnchargeableRemainder } from "./installmentOpsAlert.ts";
+import { alertUnchargeableRemainder, installmentOpsAlert } from "./installmentOpsAlert.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import {
   MAX_RETRY_ATTEMPTS,
@@ -222,6 +222,44 @@ async function loadInstallmentContext(
     brand: brand as BrandRow,
     stripeAccount: stripeAccount as StripeAccount,
   };
+}
+
+/**
+ * Pass 5 (F-4) — what a SUCCEEDED charge whose post-confirm re-claim failed
+ * means, read from the row itself:
+ * - `applied`: the row was settled (collected) for this very PaymentIntent —
+ *   the success webhook or the read-back got there first;
+ * - `refund`: the money cannot be applied — the row, its order or its event
+ *   was cancelled, or the row was settled by a different charge;
+ * - `unknown`: anything else (the row could not be read, or it is still open
+ *   behind another guard): never refunded here; the webhook / read-back
+ *   records what was collected.
+ */
+export async function postConfirmVerdict(
+  supabase: SupabaseClient,
+  installmentId: string,
+  paymentIntentId: string,
+  reclaimReason: string | null,
+): Promise<"applied" | "refund" | "unknown"> {
+  const { data: row, error } = await supabase
+    .from("order_installments")
+    .select("status, stripe_payment_intent_id, cancelled_at")
+    .eq("id", installmentId)
+    .maybeSingle();
+  if (error !== null || row === null) return "unknown";
+  const r = row as { status?: unknown; stripe_payment_intent_id?: unknown; cancelled_at?: unknown };
+  const status = String(r.status ?? "");
+  if (status === "collected" || status === "refunded") {
+    return r.stripe_payment_intent_id === paymentIntentId && status === "collected" ? "applied" : "refund";
+  }
+  if (
+    status === "cancelled" || (r.cancelled_at !== null && r.cancelled_at !== undefined) ||
+    reclaimReason === "order_cancelled" || reclaimReason === "event_cancelled" ||
+    reclaimReason === "installment_cancelled"
+  ) {
+    return "refund";
+  }
+  return "unknown";
 }
 
 export async function createInstallmentPI(
@@ -460,6 +498,14 @@ export async function createInstallmentPI(
     // Post-confirm safety reclaim. If cancel won between reclaim and confirm
     // and the PI already succeeded, refund fail-closed — cancel cannot undo a
     // succeeded charge.
+    // Pass 5 (F-4 / T9-3, same defect on main) — the re-claim also fails when
+    // the success webhook (or the cron's read-back) already settled the row
+    // for THIS PaymentIntent: that charge is applied, never refunded. A refund
+    // here happens only when the money truly cannot be applied (the row, its
+    // order or its event was cancelled, or the row was settled by another
+    // charge), and then ops are alerted once. Anything else stays with the
+    // webhook / read-back, which records what was collected.
+    let settledByWebhook = false;
     {
       const { data: postConfirm, error: postConfirmError } = await supabase.rpc(
         "claim_order_installment_for_charge",
@@ -468,13 +514,40 @@ export async function createInstallmentPI(
       const postConfirmRow = (postConfirm ?? null) as {
         ok?: boolean;
         reason?: string;
+        status?: string;
       } | null;
       if (
         postConfirmError !== null ||
         postConfirmRow === null ||
         postConfirmRow.ok !== true
       ) {
-        if (pi.status === "succeeded") {
+        const verdict = pi.status === "succeeded"
+          ? await postConfirmVerdict(supabase, installment.id, pi.id, postConfirmRow?.reason ?? null)
+          : null;
+        if (verdict === "applied") {
+          settledByWebhook = true;
+        } else if (verdict === "unknown") {
+          await writeAudit(supabase, {
+            user_id: null,
+            brand_id: brand.id,
+            event_id: order.event_id,
+            action: "tr3.installment_pi_settlement_left_to_webhook",
+            target_type: "order_installment",
+            target_id: installment.id,
+            after: {
+              ordinal: installment.ordinal,
+              stripe_payment_intent_id: pi.id,
+              reclaim_reason: postConfirmRow?.reason ?? postConfirmError?.message ?? "unknown",
+            },
+          });
+          return {
+            ok: false,
+            error: "post_confirm_unsettled",
+            outcome: "unknown",
+            reason: "post_confirm_unsettled",
+            chargeId: pi.id,
+          };
+        } else if (verdict === "refund") {
           try {
             // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
             await stripe.refunds.create(
@@ -494,6 +567,29 @@ export async function createInstallmentPI(
               }`,
             );
           }
+          await writeAudit(supabase, {
+            user_id: null,
+            brand_id: brand.id,
+            event_id: order.event_id,
+            action: "tr3.installment_cancelled_during_charge_refunded",
+            target_type: "order_installment",
+            target_id: installment.id,
+            after: {
+              ordinal: installment.ordinal,
+              amount_cents: installment.amount_cents,
+              stripe_payment_intent_id: pi.id,
+              reclaim_reason: postConfirmRow?.reason ?? "unknown",
+            },
+          });
+          await (input.alertOps ?? installmentOpsAlert)(
+            "A trip payment was refunded as soon as it was taken",
+            [
+              "A scheduled trip card payment went through after its booking or payment was closed, so it could not be applied and was refunded in full automatically.",
+              `Order: ${order.id}; instalment: ${installment.id}; PaymentIntent: ${pi.id}`,
+              `Amount: ${installment.amount_cents} ${installment.currency} (minor units); reason: ${postConfirmRow?.reason ?? "unknown"}`,
+              "Check the booking and the traveler's balance; nothing else was changed.",
+            ],
+          );
           return {
             ok: false,
             error: "cancelled_during_charge_refunded",
@@ -502,26 +598,28 @@ export async function createInstallmentPI(
             chargeId: pi.id,
           };
         }
-        try {
-          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-          await stripe.paymentIntents.cancel(pi.id, {}, {
-            idempotencyKey:
-              `installment-race-cancel:${installment.id}:${pi.id}:postconfirm`,
-            stripeAccount: stripeAccount.stripe_account_id,
-          });
-        } catch (cancelErr) {
-          console.error(
-            "[createInstallmentPI] best-effort PI cancel after post-confirm race failed",
-            cancelErr instanceof Error ? cancelErr.message : cancelErr,
-          );
+        if (!settledByWebhook) {
+          try {
+            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+            await stripe.paymentIntents.cancel(pi.id, {}, {
+              idempotencyKey:
+                `installment-race-cancel:${installment.id}:${pi.id}:postconfirm`,
+              stripeAccount: stripeAccount.stripe_account_id,
+            });
+          } catch (cancelErr) {
+            console.error(
+              "[createInstallmentPI] best-effort PI cancel after post-confirm race failed",
+              cancelErr instanceof Error ? cancelErr.message : cancelErr,
+            );
+          }
+          return {
+            ok: false,
+            error: "cancelled_during_charge",
+            outcome: "skipped",
+            reason: "cancelled_during_charge",
+            chargeId: pi.id,
+          };
         }
-        return {
-          ok: false,
-          error: "cancelled_during_charge",
-          outcome: "skipped",
-          reason: "cancelled_during_charge",
-          chargeId: pi.id,
-        };
       }
     }
 
