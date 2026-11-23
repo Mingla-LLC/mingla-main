@@ -72,6 +72,9 @@ export const OfferingAddOnsBlock: React.FC<OfferingAddOnsBlockProps> = ({
   const formatMoney = (minor: number): string => formatAddOnMoney(minor, currency);
   const chips = publicAddOnChips(addOns).filter((chip) => !freeOnly || chip.priceAllInCents === 0);
   if (chips.length === 0) return null;
+  // issue #3281 S-21 — an RSVP has no checkout: its guests pick add-ons on
+  // the RSVP itself, so the RSVP card reads "Add-ons:".
+  const lead = id === "rsvp" ? "Add-ons:" : "Add at checkout:";
   const label = (chip: OfferingAddOnChip): string =>
     chip.soldOut
       ? `${chip.name}, sold out`
@@ -80,10 +83,10 @@ export const OfferingAddOnsBlock: React.FC<OfferingAddOnsBlockProps> = ({
     <View
       style={styles.wrap}
       accessible
-      accessibilityLabel={`Add at checkout: ${chips.map(label).join("; ")}`}
+      accessibilityLabel={`${lead} ${chips.map(label).join("; ")}`}
       testID={testID}
     >
-      <Text style={[styles.lead, { color: palette.secondaryText }]}>Add at checkout:</Text>
+      <Text style={[styles.lead, { color: palette.secondaryText }]}>{lead}</Text>
       <View style={styles.chips}>
         {chips.map((chip) => {
           const uri =

@@ -17,6 +17,7 @@ import type { AddOnsEditorSheetProps } from "./AddOnsEditorSheet";
 import type { AddOnOfferingKind } from "./addOnsEditorModel";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
 import { draftAddOnsFromSave, draftAddOnsPayload } from "./draftAddOnsSource";
+import { useOfferingAddOns } from "../../hooks/useOfferingAddOns";
 
 // The editor's chunk loads on the first tap; a failed load (offline) shows
 // the house retry instead of breaking the offering editor. Nothing here
@@ -67,9 +68,11 @@ export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, cur
         testID="add-ons-entry"
       >
         <Text style={styles.title}>Add-ons</Text>
-        <Text style={styles.sub}>
-          Sell things like dinner, a tote or a transfer with your {offering === "rsvp" ? "RSVP" : offering === "trip" ? "packages" : offering === "experience" ? "options" : "tickets"}.
-        </Text>
+        {draft === undefined ? (
+          <SavedAddOnsLine eventId={offeringId} offering={offering} />
+        ) : (
+          <PromoLine offering={offering} />
+        )}
       </Pressable>
       {opened ? (
         <LazyAddOnsEditorSheet
@@ -89,6 +92,31 @@ export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, cur
         />
       ) : null}
     </View>
+  );
+};
+
+/** The card's line before any add-on exists (and while the list loads). */
+const PromoLine: React.FC<{ offering: AddOnOfferingKind }> = ({ offering }) => (
+  <Text style={styles.sub}>
+    Sell things like dinner, a tote or a transfer with your {offering === "rsvp" ? "RSVP" : offering === "trip" ? "packages" : offering === "experience" ? "options" : "tickets"}.
+  </Text>
+);
+
+/**
+ * issue #3281 S-22 — the collapsed card names the add-ons the offering
+ * already has ("Airport transfer · Dinner"), from the same read the editor
+ * uses (one key per offering), so the host sees them without opening it.
+ */
+const SavedAddOnsLine: React.FC<{ eventId: string; offering: AddOnOfferingKind }> = ({ eventId, offering }) => {
+  const query = useOfferingAddOns(eventId);
+  const names = (query.data?.addOns ?? [])
+    .map((addOn) => addOn.name.trim())
+    .filter((name) => name.length > 0);
+  if (names.length === 0) return <PromoLine offering={offering} />;
+  return (
+    <Text style={styles.sub} numberOfLines={2} testID="add-ons-entry-list">
+      {names.join(" · ")}
+    </Text>
   );
 };
 

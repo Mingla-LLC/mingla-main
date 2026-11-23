@@ -23,6 +23,11 @@ jest.mock("../../../config/featureFlags", () => ({
 jest.mock("../../ui/ErrorBoundary", () => ({
   ErrorBoundary: ({ children }: { children?: React.ReactNode }) => children ?? null,
 }));
+// #3281 S-22 — the card reads the offering's saved add-ons (the editor's key).
+const savedAddOns: { data: { addOns: Array<{ name: string }> } | undefined } = { data: undefined };
+jest.mock("../../../hooks/useOfferingAddOns", () => ({
+  useOfferingAddOns: () => savedAddOns,
+}));
 const loads: string[] = [];
 jest.mock("../AddOnsEditorSheet", () => {
   loads.push("editor");
@@ -86,6 +91,19 @@ describe("the Add-ons card", () => {
     expect(loads).toEqual(["editor"]);
     const sheet = tree.root.findAll((n) => n.type === "MockEditorSheet")[0];
     expect(sheet.props).toMatchObject({ eventId: SAVED, offering: "trip", currency: "USD", visible: true });
+  });
+
+  // #3281 first screen test S-22 — FAILS ON REVERT: the collapsed card shows
+  // only the generic line although the trip already has add-ons.
+  test("flag on, saved offering with add-ons: the collapsed card names them", () => {
+    flags.extras = true;
+    savedAddOns.data = { addOns: [{ name: "Airport transfer" }, { name: "Welcome dinner" }] };
+    const json = JSON.stringify(render(SAVED).toJSON());
+    expect(json).toContain("Airport transfer · Welcome dinner");
+    expect(json).not.toContain("Sell things like");
+    savedAddOns.data = { addOns: [] };
+    expect(JSON.stringify(render(SAVED).toJSON())).toContain("Sell things like");
+    savedAddOns.data = undefined;
   });
 
   test("the editor is never imported eagerly by the card", () => {

@@ -97,6 +97,30 @@ describe("#3281 S2 the public add-on block", () => {
   });
 });
 
+// #3281 first screen test S-21 — an RSVP has no checkout. FAILS ON REVERT:
+// the RSVP card says "Add at checkout:".
+describe("#3281 S-21 the RSVP card's add-on lead", () => {
+  test("the RSVP card reads 'Add-ons:'; tickets keep 'Add at checkout:'", async () => {
+    let tree!: Tree;
+    await TestRenderer.act(() => {
+      tree = TestRenderer.create(
+        <OfferingAddOnsBlock
+          enabled
+          addOns={ADD_ONS}
+          palette={createThemePalette(theme)}
+          currency="USD"
+          id="rsvp"
+          freeOnly
+        />,
+      );
+    });
+    const json = JSON.stringify(tree.toJSON());
+    await TestRenderer.act(() => tree.unmount());
+    expect(json).not.toContain("Add at checkout");
+    expect(json).toContain("Add-ons:");
+  });
+});
+
 describe("#3281 S6 the RSVP door line on the Host scanner", () => {
   test("a reply's own addOns field becomes the Add-ons line; a reply without it is unchanged", () => {
     const admitted = withDoorAddOns({

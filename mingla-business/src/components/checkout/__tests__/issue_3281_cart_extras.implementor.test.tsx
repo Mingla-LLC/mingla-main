@@ -307,3 +307,49 @@ describe("#3281 Host native checkout", () => {
     await act(async () => tree.unmount());
   });
 });
+
+// #3281 first screen test S-21 — the order summary lists the add-ons the
+// server priced, as the details step does. FAILS ON REVERT: the summary shows
+// the ticket line only ("1 × Paid drink $8.00" missing).
+describe("#3281 S-21 the order summary lists priced add-ons", () => {
+  test("a ticket line, then each add-on with its server total", () => {
+    const quote = {
+      currency: "USD",
+      lines: [{ ticketTypeId: "tt-free", ticketName: "Free entry", quantity: 1, lineListCents: 0, lineNetCents: 0 }],
+      discountCents: 0,
+      listSubtotalCents: 0,
+      netSubtotalCents: 800,
+      extras: [
+        { addOnId: "a-1", ticketTypeId: "tt-free", addOnName: "Paid drink", ticketName: "Free entry", dayScope: null, quantity: 1, unitPriceCents: 800, totalCents: 800 },
+      ],
+    };
+    let texts: string[] = [];
+    jest.isolateModules(() => {
+      jest.doMock("../CartContext", () => ({ useCart: () => ({ lines: [], quote }) }));
+      jest.doMock("../../../hooks/useResponsiveLayout", () => ({
+        useResponsiveLayout: () => ({ isWideDesktop: true, isWeb: true, width: 1440 }),
+      }));
+      jest.doMock("expo-linear-gradient", () => ({ LinearGradient: () => null }));
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const R = require("react") as typeof import("react");
+      const RN = require("react-native") as typeof import("react-native");
+      const renderer = require("react-test-renderer") as {
+        create: (el: React.ReactElement) => { root: { findAll: (p: (n: { type: unknown; props: Record<string, unknown> }) => boolean) => Array<{ props: Record<string, unknown> }> } };
+        act: (fn: () => void) => void;
+      };
+      const { CheckoutOrderSummary } = require("../CheckoutOrderSummary") as typeof import("../CheckoutOrderSummary");
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      let tree!: ReturnType<typeof renderer.create>;
+      renderer.act(() => {
+        tree = renderer.create(R.createElement(CheckoutOrderSummary, { wide: true, bottomInset: 0, children: R.createElement(RN.Text, null, "Continue") }));
+      });
+      const lines = tree.root.findAll((n) => n.props.testID === "checkout-summary-add-on-line");
+      expect(lines.length).toBeGreaterThan(0);
+      texts = tree.root
+        .findAll((n) => n.type === RN.Text)
+        .map((n) => [n.props.children].flat().join(""));
+    });
+    expect(texts).toContain("Paid drink × 1");
+    expect(texts).toContain("$8.00");
+  });
+});
