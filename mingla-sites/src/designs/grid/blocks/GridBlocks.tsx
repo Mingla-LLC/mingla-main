@@ -1,6 +1,6 @@
 import { HeroBackgroundVideo } from "../../../components/v2/HeroBackgroundVideo";
 import { HeadlineLines, Photo, sectionId, type SharedBlockProps } from "../../shared/parts";
-import { HeroButtons, TripSearch, heroParts } from "../../shared/blocks/Hero";
+import { HeroButtons, HeroFullbleed, TripSearch, heroParts } from "../../shared/blocks/Hero";
 
 /*
  * #4453 6b — Grid's signature hero (spec §3.2), drawn from the shared role
@@ -18,6 +18,8 @@ import { HeroButtons, TripSearch, heroParts } from "../../shared/blocks/Hero";
  * here).
  */
 export function HeroGridIndex({ block, index, ctx }: SharedBlockProps) {
+  // #4575 — with Grid's full-screen cover on, every index-sheet hero draws as the full-screen photo.
+  if (ctx.artifact.design.options?.cover === "full") return <HeroFullbleed block={block} index={index} ctx={ctx} />;
   const p = heroParts(block, index, ctx);
   const id = sectionId(block, index);
   const place = ctx.artifact.footer.location;
