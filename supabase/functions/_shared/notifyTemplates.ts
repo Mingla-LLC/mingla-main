@@ -145,6 +145,24 @@ function fmtAmount(payload: Record<string, unknown>): string {
   }
 }
 
+// #4490 spec 08 O5 (T16): the sold-out text in one segment. The outcome is a
+// fixed slot, so a long swap name or amount falls back to a shorter outcome
+// rather than failing the send.
+function shortName(name: string): string {
+  return name.length > 24 ? `${name.slice(0, 21)}...` : name;
+}
+
+function soldOutSms(venue: string, item: string, link: string, outcomes: string[]): string {
+  for (const outcome of outcomes) {
+    try {
+      return renderBuyerSms("S21", { venue, title: item, stateWord: outcome, link });
+    } catch {
+      // try the next, shorter outcome
+    }
+  }
+  return renderBuyerSms("S21", { venue: "", title: item, stateWord: outcomes[outcomes.length - 1], link });
+}
+
 // Format an ISO timestamp into a short date + time for copy interpolation.
 // Locale-aware-friendly but deterministic for tests (en-US, UTC-stable display
 // would require the venue tz — the thin slice passes pre-formatted date/time in
@@ -835,6 +853,53 @@ export function renderCategoryMessage(
           link,
           noun: "receipt",
         }),
+      };
+    }
+
+    // #4490 spec 08 O5 (T16) — an item the guest paid for sold out; the
+    // venue swapped it (same price or less, any difference refunded) or
+    // refunded it. The link is the order's claim link, built at send time.
+    case "buyer_venue_order_sold_out": {
+      const venue = str(payload.venue_name, brand || "the venue");
+      const item = str(payload.item_name, "An item");
+      const link = str(
+        payload.message_link_display ?? payload.message_link_url,
+        "usemingla.com/download",
+      );
+      const refund = Number(payload.refund_minor);
+      const amount = Number.isFinite(refund) && refund > 0
+        ? fmtAmount({ amount_cents: refund, currency: payload.currency })
+        : "";
+      const swap = str(payload.swap_name, "");
+      const outcome = payload.outcome === "swap"
+        ? (amount
+          ? `The kitchen swapped it for ${swap}, and ${amount} is on its way back to your card`
+          : `The kitchen swapped it for ${swap}, same price`)
+        : `${amount || "Your money"} is on its way back to your card`;
+      return {
+        push: {
+          title: `${item} sold out`,
+          body: `${outcome}.`,
+        },
+        email: {
+          subject: `${item} sold out at ${venue}`,
+          body: payload.outcome === "swap"
+            ? `${item} sold out after you paid, so the kitchen swapped it for ${swap}.` +
+              (amount
+                ? ` ${amount} is on its way back to your card. Banks can take 5 to 10 working days.`
+                : " Same price, so nothing changes on your bill.")
+            : `${item} sold out after you paid. ${amount || "Your money"} is on its way back to your card. ` +
+              "Banks can take 5 to 10 working days.",
+        },
+        sms: soldOutSms(venue, item, link, [
+          payload.outcome === "swap"
+            ? (amount
+              ? `Swapped for ${shortName(swap)}, ${amount} back to your card`
+              : `Swapped for ${shortName(swap)}`)
+            : `${amount || "Your money"} is on its way back to your card`,
+          payload.outcome === "swap" ? (amount ? `Swapped, ${amount} back` : "Swapped") : "Refund on its way",
+          payload.outcome === "swap" ? "Swapped" : "Refunded",
+        ]),
       };
     }
 

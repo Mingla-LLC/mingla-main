@@ -474,6 +474,68 @@ export async function fireVenueOrderEscalation(
  * took the payment, only when the money landed after the payment was
  * cancelled or its code expired (the Till then shows Refund / Keep).
  */
+/** #4490 spec 08 O5 (T16): a guest order still waiting for a swap or refund. */
+export interface VenueOrderSoldOutEscalationInput {
+  orderId: string;
+  brandId: string;
+  venueId: string;
+  venueName: string;
+  itemNames: string | null;
+  flaggedSeconds: number;
+  spotLabel?: string | null;
+  pickupCode?: string | null;
+  buyerName?: string | null;
+}
+
+export function soldOutEscalationCopy(
+  destination: string,
+  itemNames: string | null,
+  minutes: number,
+): { title: string; body: string } {
+  const what = itemNames && itemNames.trim() ? itemNames.trim() : "An item";
+  return {
+    title: `Sold out after payment · ${destination}`,
+    body: `${what} sold out after the guest paid, ${minutes} min ago. Swap it or refund it.`,
+  };
+}
+
+/**
+ * T16 — rung 1 for a sold-out-after-payment order nobody resolved in 10
+ * minutes: the brand's order roles and the venue's floor staff, once (its own
+ * idempotency key; the scan claims it once). Never refunds, never pauses.
+ */
+export async function fireVenueOrderSoldOutEscalation(
+  supabase: VenueOrderNotifyClient,
+  input: VenueOrderSoldOutEscalationInput,
+): Promise<void> {
+  const destination = venueOrderDestinationLabel(input);
+  const copy = soldOutEscalationCopy(destination, input.itemNames, unackedMinutes(input.flaggedSeconds));
+  const recipients = await venueOrderRecipients(supabase, {
+    brandId: input.brandId,
+    venueId: input.venueId,
+    roles: ROLES_VENUE_ORDER,
+    floor: true,
+  });
+  await dispatchToEach(recipients, {
+    type: "business.venue_order_unacknowledged",
+    title: copy.title,
+    body: copy.body,
+    data: {
+      orderId: input.orderId,
+      venueId: input.venueId,
+      brandId: input.brandId,
+      venueName: input.venueName,
+      destination,
+      soldOutAfterPayment: true,
+    },
+    relatedId: input.orderId,
+    relatedType: "venue_order",
+    idempotencyKey: `business.venue_order_sold_out:${input.orderId}`,
+    deepLink: venueOrdersDeepLink(input.venueId),
+    pushOverrides: { collapseId: venueOrderCollapseId(input.orderId) },
+  });
+}
+
 export async function fireTillLatePayment(
   supabase: VenueOrderNotifyClient,
   paymentId: string,

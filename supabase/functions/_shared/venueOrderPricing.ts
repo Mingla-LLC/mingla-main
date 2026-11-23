@@ -262,6 +262,11 @@ export interface MenuItemRow {
   currency: string;
   is_available: boolean;
   discounts_allowed?: boolean;
+  /**
+   * #4490 spec 08 O5: units left; NULL (or absent, before migration
+   * 20280809615490) = not tracked.
+   */
+  stock_count?: number | null;
 }
 
 export interface MenuModifierRow {

@@ -67,6 +67,10 @@
 -- re-emits the refund guard, finalize and the sale extras (same signatures).
 -- TEST-MOD-APPROVED #4490 (08-O5 part A): 20280809611490 adds the PIN functions, the floor audit
 -- helper, the device void and four trigger functions; all internal (service role only).
+-- TEST-MOD-APPROVED #4490 (08-O5 part C): 20280809615490 adds the stock functions (13 internal, service
+-- role only), the orderable rule and the stock guard trigger (invoker helpers); the functions it
+-- re-emits or patches (till send, till void, the finalizer, the floor audit, the day summary) keep
+-- their classes.
 -- TEST-MOD-APPROVED #4490 (08-O5 part B): 20280809613490 adds the daily close (summary, close, reopen,
 -- carry over, the drawer, export and their helpers) and its two guard trigger functions, all internal
 -- (service role only); it re-emits the floor audit helper and the Till business date (same signatures,
@@ -605,6 +609,24 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_cash_movement(uuid,date,text,bigint,text,uuid,uuid,uuid)', 'internal'),
   ('issue_4490_day_export(uuid,date,uuid,uuid)', 'internal'),
   ('issue_4490_till_settings_read(uuid,uuid)', 'internal'),
+  -- 08-O5 part C (20280809615490): stock. The orderable rule is a pure invoker helper the two
+  -- anon menu views call; the guard trigger is an invoker on purpose (it must see the caller's
+  -- role); everything else is internal (service role only).
+  ('issue_4490_menu_item_orderable(boolean,integer)', 'helper'),
+  ('issue_4490_menu_item_stock_guard()', 'helper'),
+  ('issue_4490_can_manage_menu(uuid,uuid)', 'internal'),
+  ('issue_4490_stock_projection(uuid)', 'internal'),
+  ('issue_4490_stock_item_venue(uuid)', 'internal'),
+  ('issue_4490_stock_set(uuid,integer,integer,uuid,uuid)', 'internal'),
+  ('issue_4490_station_sold_out(uuid,boolean,uuid)', 'internal'),
+  ('issue_4490_station_stock(uuid,text,uuid)', 'internal'),
+  ('issue_4490_stock_take(uuid[],text,uuid)', 'internal'),
+  ('issue_4490_stock_give_back(uuid)', 'internal'),
+  ('issue_4490_venue_order_mint_partial_refund(uuid,bigint,uuid,text,text)', 'internal'),
+  ('issue_4490_order_sold_out_resolve(uuid,uuid[],text,uuid,uuid,uuid,text)', 'internal'),
+  ('issue_4490_order_sold_out(uuid,uuid)', 'internal'),
+  ('issue_4490_sold_out_open(uuid)', 'internal'),
+  ('issue_4490_sold_out_escalation_scan(timestamp with time zone,integer)', 'internal'),
   -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),

@@ -178,6 +178,8 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     buyer_door_receipt: ["order_id", "event_id"],
     // #4490 spec 08 O1 — Till receipts: opaque ids only (no token, no contact).
     buyer_till_receipt: ["till_payment_id", "venue_id"],
+    // #4490 spec 08 O5 (T16): a guest's line sold out after they paid.
+    buyer_venue_order_sold_out: ["venue_order_id", "venue_id"],
     buyer_ticket_sent: ["ticket_id", "event_id"],
     rsvp_acknowledgement: ["rsvp_id", "event_id", "guest_id"],
     rsvp_pass: ["rsvp_id", "event_id", "guest_id"],

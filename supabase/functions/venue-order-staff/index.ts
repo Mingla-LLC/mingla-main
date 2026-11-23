@@ -115,6 +115,7 @@ import {
 } from "../_shared/paymentProvider.ts";
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
+import { handleStockAction } from "./stockActions.ts";
 import { handleStationAction } from "./stationActions.ts";
 import { fireVenueOrderReady } from "../_shared/venueOrderNotify.ts";
 // Issue #3380 — the guest's phone is read WITH the country the waiter chose.
@@ -218,6 +219,22 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
         userId,
         (payload, status = 200) => jsonResponse(payload, status),
         (input) => fireVenueOrderReady(supabase, input),
+      );
+    // ---- #4490 spec 08 O5 part C — stock and sold out after payment. -----
+    case "stock_set":
+    case "station_stock":
+    case "station_sold_out":
+    case "order_sold_out":
+    case "sold_out_resolve":
+      return await handleStockAction(
+        supabase,
+        action,
+        body,
+        {
+          userId,
+          jwt: (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim(),
+        },
+        (payload, status = 200) => jsonResponse(payload, status),
       );
     default:
       return jsonResponse({ error: "unknown_action" }, 400);

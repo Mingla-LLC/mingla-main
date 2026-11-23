@@ -193,6 +193,49 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     String(order.fulfillment_status),
   ) && order.refund_requested_at === null && order.money_path === "mingla";
 
+  // #4490 spec 08 O5 (T16): a line that sold out after the guest paid, and
+  // what the venue did about it (swapped, refunded, or still deciding). Read
+  // only for a flagged order (the flag exists only once migration
+  // 20280809615490 is in, so an older database never sees this read).
+  const orderMeta = (order.metadata !== null && typeof order.metadata === "object"
+    ? order.metadata
+    : {}) as Record<string, unknown>;
+  let soldOut: Array<Record<string, unknown>> = [];
+  if (orderMeta.sold_out_after_payment === true) {
+    const { data: lines, error: linesError } = await supabase
+      .from("venue_order_items")
+      .select("id, item_name_at_order, quantity, sold_out_resolution, sold_out_refund_minor, swapped_to_item_id, line_no")
+      .eq("venue_order_id", order.id)
+      .not("sold_out_at", "is", null)
+      .order("line_no", { ascending: true });
+    if (linesError) {
+      console.error("[venue-order-status] sold-out lines read failed", linesError.code ?? "unknown");
+    } else {
+      const swapIds = (lines ?? []).map((l: Record<string, unknown>) => l.swapped_to_item_id)
+        .filter((id: unknown): id is string => typeof id === "string");
+      const names = new Map<string, string>();
+      if (swapIds.length > 0) {
+        const { data: swaps } = await supabase.from("venue_order_items")
+          .select("id, item_name_at_order").in("id", swapIds);
+        for (const row of (swaps ?? []) as Array<Record<string, unknown>>) {
+          names.set(String(row.id), String(row.item_name_at_order));
+        }
+      }
+      soldOut = ((lines ?? []) as Array<Record<string, unknown>>).map((l) => ({
+        itemName: String(l.item_name_at_order),
+        quantity: Number(l.quantity),
+        soldOutAfterPayment: true,
+        resolution: l.sold_out_resolution === "swap" || l.sold_out_resolution === "refund"
+          ? l.sold_out_resolution
+          : null,
+        swappedToName: typeof l.swapped_to_item_id === "string"
+          ? names.get(l.swapped_to_item_id) ?? null
+          : null,
+        refundedMinor: typeof l.sold_out_refund_minor === "number" ? l.sold_out_refund_minor : null,
+      }));
+    }
+  }
+
   const paymentContinuation = includePaymentContinuation
     ? await resolveVenueOrderPaymentContinuation(
       order as unknown as VenueOrderContinuationRow,
@@ -225,6 +268,7 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     spotLabel: order.spot_label_at_order,
     canCancel,
     canRequestRefund,
+    soldOut,
     ...(includePaymentContinuation ? { paymentContinuation } : {}),
     // Every charge the guest paid, itemised — the venue's service charge stays
     // its own line and the tip stays outside every fee

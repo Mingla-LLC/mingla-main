@@ -224,6 +224,35 @@ export async function resolveOrderContext(
   };
 }
 
+/**
+ * #4490 spec 08 O5 (rule 13): THE orderable rule, the same expression as
+ * public.issue_4490_menu_item_orderable(is_available, stock_count) in
+ * migration 20280809615490: on, and not sold out. A NULL count means the item
+ * is not tracked and changes nothing; sold out never flips is_available.
+ */
+export function menuItemOrderable(
+  item: { is_available: boolean; stock_count?: number | null },
+): boolean {
+  const stock = item.stock_count;
+  return item.is_available === true &&
+    (stock === null || stock === undefined || stock > 0);
+}
+
+/**
+ * [TRANSITIONAL] #4490 spec 08 O5: merging deploys the functions before the
+ * migration that adds menu_items.stock_count (20280809615490) may be applied.
+ * Until it is, PostgREST answers 42703 for a select naming the column; the
+ * snapshot then reads without it (every item untracked, today's rule). Any
+ * other error is unchanged. Exit: the migration applied in production; then
+ * delete this and the fallback read in loadMenuSnapshot.
+ */
+export function isMissingStockColumn(
+  error: { code?: unknown; message?: unknown } | null | undefined,
+): boolean {
+  return error?.code === "42703" &&
+    /stock_count/.test(String(error?.message ?? ""));
+}
+
 export interface MenuSnapshot {
   itemsById: Map<string, MenuItemRow>;
   groupsByItemId: Map<string, MenuModifierGroupRow[]>;
@@ -255,12 +284,18 @@ export async function loadMenuSnapshot(
     return { itemsById, groupsByItemId, modifiersById, orderableItemIds };
   }
 
-  const { data: items, error: itemsError } = await supabase
+  const itemColumns =
+    "id, menu_id, brand_id, name, price_cents, currency, is_available, discounts_allowed";
+  let { data: items, error: itemsError } = await supabase
     .from("menu_items")
-    .select(
-      "id, menu_id, brand_id, name, price_cents, currency, is_available, discounts_allowed",
-    )
+    .select(`${itemColumns}, stock_count`)
     .in("id", input.menuItemIds);
+  if (isMissingStockColumn(itemsError)) {
+    ({ data: items, error: itemsError } = await supabase
+      .from("menu_items")
+      .select(itemColumns)
+      .in("id", input.menuItemIds));
+  }
   if (itemsError) {
     throw new Error(`menu_items_lookup_failed: ${itemsError.message}`);
   }
@@ -313,7 +348,7 @@ export async function loadMenuSnapshot(
     if (inWindow) openMenuIds.add(String(menu.id));
   }
   for (const [id, item] of itemsById) {
-    if (openMenuIds.has(String(item.menu_id)) && item.is_available === true) {
+    if (openMenuIds.has(String(item.menu_id)) && menuItemOrderable(item)) {
       orderableItemIds.add(id);
     }
   }

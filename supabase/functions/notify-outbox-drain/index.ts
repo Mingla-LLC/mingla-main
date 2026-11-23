@@ -556,7 +556,11 @@ export function genericBuyerLinkRequest(
     const sourceId = from("reservation_id");
     return sourceId ? { kind: "reservation", sourceId } : null;
   }
-  if (category === "buyer_venue_order_receipt") {
+  if (
+    category === "buyer_venue_order_receipt" ||
+    // #4490 spec 08 O5 (T16): the same claim subject, built at send time.
+    category === "buyer_venue_order_sold_out"
+  ) {
     const sourceId = from("venue_order_id");
     return sourceId ? { kind: "venue_order", sourceId } : null;
   }

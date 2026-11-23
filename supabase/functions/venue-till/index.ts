@@ -232,6 +232,9 @@ export const TILL_SAFE_CODES = [
   "pin_weak",
   "pin_invalid",
   "pin_hard_locked",
+  // #4490 08-O5C: a send (or a payment that sends first) found too little
+  // stock for an item; nothing was sent and no money moved.
+  "item_sold_out",
 ] as const;
 
 // deno-lint-ignore no-explicit-any
@@ -503,7 +506,9 @@ export function tillFailure(error: RpcError): Response {
       }
       // 08-O4 (T13): who has the unit next, and when.
       // 08-O4 fix 1 (O4-T4): when a unit in use frees up.
-      for (const key of ["unitName", "nextAt", "freeAt"] as const) {
+      // 08-O5C: which item sold out, and how many are left.
+      if (typeof detail?.left === "number") body.left = detail.left;
+      for (const key of ["unitName", "nextAt", "freeAt", "itemName"] as const) {
         if (typeof detail?.[key] === "string") body[key] = detail[key];
       }
     } catch {
@@ -712,9 +717,31 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           menuItemIds: itemIds,
         });
         for (const menu of menus) {
-          for (const item of menu.items ?? []) {
+          // #4490 08-O5C (T15): an item switched off is left out of the Till;
+          // a sold-out one stays, shown "Sold out" (stock never flips it off).
+          menu.items = (menu.items ?? []).filter((item) => item.available === true);
+          for (const item of menu.items) {
             item.orderable = snapshot.orderableItemIds.has(String(item.id)) &&
               item.available === true;
+            const row = snapshot.itemsById.get(String(item.id));
+            // NULL = not tracked (or the column is not there yet).
+            item.stockLeft = typeof row?.stock_count === "number" ? row.stock_count : null;
+          }
+        }
+        // "Warn me at" levels, read only when something is tracked.
+        const trackedIds = menus.flatMap((m) => (m.items ?? []))
+          .filter((i) => typeof i.stockLeft === "number").map((i) => String(i.id));
+        if (trackedIds.length > 0) {
+          const { data: warnRows } = await client.from("menu_items")
+            .select("id, stock_warn_at").in("id", trackedIds);
+          const warnById = new Map<string, number | null>();
+          for (const w of (warnRows ?? []) as Array<Record<string, unknown>>) {
+            warnById.set(String(w.id), typeof w.stock_warn_at === "number" ? w.stock_warn_at : null);
+          }
+          for (const menu of menus) {
+            for (const item of menu.items ?? []) {
+              item.stockWarnAt = warnById.get(String(item.id)) ?? null;
+            }
           }
         }
         // The server half of the tap matrix (spec 08 §3 O2): a Stripe brand
