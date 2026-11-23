@@ -119,7 +119,9 @@ export function strip(props) { return renderToStaticMarkup(<SprintBar onGoal={()
     jsx: "automatic",
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
     logLevel: "silent",
-    define: { "process.env.NODE_ENV": '"production"' },
+    // #4571: the bundled board now reaches lib/supabase.js (through the subtask links); the
+    // bundle is plain Node, so give it the two build-time vars it reads (a placeholder URL, no network).
+    define: { "process.env.NODE_ENV": '"production"', "import.meta.env.VITE_SUPABASE_URL": '"http://localhost:54321"', "import.meta.env.VITE_SUPABASE_ANON_KEY": '"test-anon-key"' },
   });
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "issue4270-board-")), "harness.mjs");
   fs.writeFileSync(file, out.outputFiles[0].text);

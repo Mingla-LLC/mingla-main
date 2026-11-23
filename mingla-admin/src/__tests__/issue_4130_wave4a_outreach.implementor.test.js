@@ -19,7 +19,7 @@
 //          on the card as a contact detail; Competitor Ops left the page
 //   W4A-5  Calendar: event times in the event's own time zone; test brands
 //          hidden unless asked (#4255: the runway list and its tabs are gone;
-//          Month and Board remain)
+//          Month and Board remain; #4571 W5 adds Week)
 //   W4A-6  Server: every new function refuses anon and checks its gate; app
 //          runs are never inbound leads
 //
@@ -312,11 +312,16 @@ describe("#4130 W4A-5: Calendar", () => {
     assert.deepEqual([...testAnchorIds(rows)], ["b"]);
   });
 
-  it("#4255: Month and Board only; the runway is read for the month in both views", () => {
+  it("#4255/#4571 W5: Month, Week and Board; the runway is read for the range on screen in every view", () => {
     const page = stripComments(read("pages/ContentCalendarPage.jsx"));
     assert.ok(!/Event runway|RunwayTable|\{localWhen\(r\)\}/.test(page));
     assert.match(page, /getCalendarRunway\(runwayFrom, runwayTo, todayIso\(\)\)/);
-    assert.match(page, /const runwayFrom = localDateKey\(days\[0\]\);/);
+    // [TEST-MOD-APPROVED #4571] W5: the range is the week on screen in Week, the month in Month and Board.
+    assert.match(page, /const rangeFrom = isWeek && week \? week\.from : localDateKey\(days\[0\]\);/);
+    assert.match(page, /const rangeTo = isWeek && week \? week\.to : localDateKey\(days\[days\.length - 1\]\);/);
+    assert.match(page, /const runwayFrom = rangeFrom;/);
+    assert.match(page, /const runwayTo = rangeTo;/);
+    assert.match(page, /\{ value: "calendar", label: "Month" \},\s*\{ value: "week", label: "Week" \},\s*\{ value: "board", label: "Board" \}/);
   });
 });
 
