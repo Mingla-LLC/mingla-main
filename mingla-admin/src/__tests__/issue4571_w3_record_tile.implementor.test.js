@@ -150,3 +150,24 @@ describe("D-1 the pipeline board drags with dnd-kit, like the Work board", () =>
     assert.match(read("pages/PipelinePage.jsx"), /addToast\(\{ variant: "error", title: `\$\{record\.name\} didn't move`, description: errorWords\(err\) \}\);/);
   });
 });
+
+describe("F-1 files and the thread on a host or creator card", () => {
+  const panel = read("components/crm/RecordPanel.jsx");
+  it("the card reuses the Work card's files section, on the record", () => {
+    assert.match(panel, /<CardFiles card=\{record\} record files=\{current\.data\?\.files \|\| \[\]\}/);
+    assert.ok(panel.includes("useCardUploads(record?.id || null, () => setReloadTick((n) => n + 1), { record: true })"));
+    const svc = read("services/opsService.js");
+    assert.match(svc, /supabase\.rpc\("ops_record_file_add", \{ p_record_id: recordId, p_file: file, p_request_key: key \|\| null \}\)/);
+    assert.match(svc, /record \? addRecordFile\(cardId, meta, key\) : addFile\(cardId, meta, key\)/);
+    // same bucket, same limits: the upload goes where the server says, through the one uploader
+    assert.match(svc, /if \(added\?\.upload\?\.path\) await uploadFileObject\(added\.upload\.bucket \|\| "ops-work-files"/);
+    assert.match(read("components/ops/CardFiles.jsx"), /ops\.addCardLink\(card\.id, v, linkFriendlyName\(v\), requestKey\("web_link"\), \{ record \}\)/);
+  });
+  it("Thread focuses the notes composer at the top of the timeline", () => {
+    assert.match(panel, /data-thread-button="" onClick=\{focusNote\}>Thread<\/Button>/);
+    assert.match(panel, /const focusNote = \(\) => \{[\s\S]*?if \(fold && !fold\.open\) fold\.open = true;[\s\S]*?box\?\.focus\?\.\(\);/);
+    assert.match(panel, /<textarea ref=\{noteRef\} id=\{fid\("note"\)\}/);
+    assert.ok(panel.indexOf('data-record-section="note"') < panel.indexOf("<ActivityLog"), "the composer sits above the timeline");
+    assert.match(panel, /submitLog\(\{ kind: "note", body \}, noteKey\.current\.key\)/);
+  });
+});

@@ -21,6 +21,12 @@
 --   QUEUE    "My calls today": the caller's own hosts due today or earlier,
 --            Replied and Demo booked pinned first, then Contacted, Prospect,
 --            oldest due first, then name; deleted and other people's excluded.
+--   CONNECTOR set_owners takes watcher_emails through the real gateway; my_day
+--            carries calls_due.
+--   FILES    a host or creator file uses the Work card files table, bucket,
+--            limits (25 MB, 50, types), upload and read checks and signed
+--            links; never on a card and a record at once; an agent only on a
+--            card its person owns or watches; a deleted record's files stop.
 --
 -- FAILS-ON-REVERT: on W2 the website kind, crm_record_watchers,
 -- crm_record_set_people, crm_record_work and crm_calls_queue do not exist.
@@ -425,6 +431,76 @@ begin
   v := pg_temp.gw(v_key, 'my_day', '{}'::jsonb);
   perform pg_temp.chk('CONNECTOR', 'my_day carries calls_due, the same count as My calls today',
     (v::jsonb)#>>'{result,calls_due}', (pg_temp.person('tao', 'select public.crm_calls_queue()::text')::jsonb)->>'count');
+end;
+$t$;
+
+-- ───────────────────────────── FILES ─────────────────────────────
+create function pg_temp.as_check(p_who text, p_sql text) returns text
+language plpgsql as $fn$
+declare v_id uuid; v_email text; v_out text;
+begin
+  select id, email into strict v_id, v_email from tx_people where who = p_who;
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', v_id::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'email', v_email, 'role', 'authenticated')::text, true);
+  execute p_sql into v_out;
+  reset role;
+  return v_out;
+end;
+$fn$;
+do $t$
+declare v text; v_img uuid; v_path text; v_link uuid; i int;
+begin
+  v := pg_temp.person('tao', format($q$select public.ops_record_file_add(%L::uuid, '{"kind":"image","name":"Island menu.png","mime":"image/png","size_bytes":2048}'::jsonb, %L)::text$q$, pg_temp.id('iv'), pg_temp.rk()));
+  v_img := ((v::jsonb)#>>'{file,id}')::uuid; v_path := (v::jsonb)#>>'{upload,path}';
+  perform pg_temp.chk('FILES', 'a picture goes to the Work card bucket, under the record, with the same 25 MB cap',
+    ((v::jsonb)#>>'{upload,bucket}') || '|' || (v_path like pg_temp.id('iv')::text || '/' || v_img::text || '/Island_menu.png')::text
+      || '|' || ((v::jsonb)#>>'{upload,max_bytes}') || '|' || ((v::jsonb)#>>'{file,record_id}'),
+    'ops-work-files|true|26214400|' || pg_temp.id('iv')::text);
+  perform pg_temp.chk('FILES', 'the row lives in ops_work_files with no card',
+    (select coalesce(card_id::text, 'none') || '/' || record_id::text from public.ops_work_files where id = v_img), 'none/' || pg_temp.id('iv')::text);
+  perform pg_temp.chk('FILES', 'the bucket takes that path from the person who added it',
+    pg_temp.as_check('tao', format('select public.ops_file_can_upload(%L)::text', v_path)), 'true');
+  perform pg_temp.chk('FILES', 'and from nobody else', pg_temp.as_check('kemi', format('select public.ops_file_can_upload(%L)::text', v_path)), 'false');
+  perform pg_temp.chk('FILES', 'an upload not yet there is not listed on the card',
+    (select jsonb_array_length((pg_temp.person('tao', format('select public.crm_record_get(%L::uuid)::text', pg_temp.id('iv')))::jsonb)->'files'))::text, '0');
+  insert into storage.objects (bucket_id, name) values ('ops-work-files', v_path);
+  perform pg_temp.chk('FILES', 'once uploaded the card lists it and any teammate may read it',
+    (select string_agg(f->>'name', ',') from jsonb_array_elements((pg_temp.person('tao', format('select public.crm_record_get(%L::uuid)::text', pg_temp.id('iv')))::jsonb)->'files') f)
+      || '|' || pg_temp.as_check('kemi', format('select public.ops_file_can_read(%L)::text', v_path)), 'Island menu.png|true');
+  v := pg_temp.person('kemi', format('select public.ops_file_sign(%L::uuid)::text', v_img));
+  perform pg_temp.chk('FILES', 'it opens through a 5-minute signed link', ((v::jsonb)->>'bucket') || '|' || ((v::jsonb)->>'expires_in'), 'ops-work-files|300');
+  v := pg_temp.person('tao', format($q$select public.ops_record_file_add(%L::uuid, '{"kind":"document","name":"Deck.pdf","mime":"application/pdf","size_bytes":26214401}'::jsonb, %L)::text$q$, pg_temp.id('iv'), pg_temp.rk()));
+  perform pg_temp.lk('FILES', 'over 25 MB is refused as on a Work card', v, 'ERR:22023:file_too_big:%');
+  v := pg_temp.person('tao', format($q$select public.ops_record_file_add(%L::uuid, '{"kind":"document","name":"Run.exe","mime":"application/x-msdownload","size_bytes":10}'::jsonb, %L)::text$q$, pg_temp.id('iv'), pg_temp.rk()));
+  perform pg_temp.lk('FILES', 'a type a Work card refuses is refused', v, 'ERR:22023:invalid_file: Documents can be%');
+  v := pg_temp.person('tao', format($q$select public.ops_record_file_add(%L::uuid, '{"kind":"link","url":"https://drive.example/folder"}'::jsonb, %L)::text$q$, pg_temp.id('iv'), pg_temp.rk()));
+  v_link := ((v::jsonb)#>>'{file,id}')::uuid;
+  perform pg_temp.chk('FILES', 'a link is stored with no upload', ((v::jsonb)->'upload')::text, 'null');
+  v := pg_temp.agent('abi', format($q$select public.ops_record_file_add(%L::uuid, '{"kind":"link","url":"https://x.example/a"}'::jsonb, %L)::text$q$, pg_temp.id('iv'), pg_temp.rk()));
+  perform pg_temp.lk('FILES', 'an agent cannot add a file to a card its person neither owns nor watches', v, 'ERR:42501:not_your_card:%');
+  v := pg_temp.person('abi', format('select public.ops_file_archive(%L::uuid)::text', v_link));
+  perform pg_temp.chk('FILES', 'an admin may remove it', (v::jsonb)->>'changed', 'true');
+  v := pg_temp.person('kemi', format('select public.ops_file_archive(%L::uuid)::text', v_img));
+  perform pg_temp.lk('FILES', 'a watcher who did not add it may not', v, 'ERR:42501:forbidden:%');
+  -- the picture plus 49 links: 50 live files (the removed link does not count)
+  for i in 1..49 loop
+    insert into public.ops_work_files (record_id, kind, name, url, added_by) values (pg_temp.id('iv'), 'link', 'L' || i, 'https://x.example/' || i, 'tao.w34571@test.local');
+  end loop;
+  v := pg_temp.person('tao', format($q$select public.ops_record_file_add(%L::uuid, '{"kind":"link","url":"https://x.example/over"}'::jsonb, %L)::text$q$, pg_temp.id('iv'), pg_temp.rk()));
+  perform pg_temp.lk('FILES', 'a record holds 50 files, as a card does', v, 'ERR:22023:too_many_files:%');
+  begin
+    insert into public.ops_work_files (card_id, record_id, kind, name, url, added_by)
+    values ((select id from public.ops_work_cards limit 1), pg_temp.id('iv'), 'link', 'Both', 'https://x.example/both', 'tao.w34571@test.local');
+    perform pg_temp.chk('FILES', 'a file is on a card or a record, never both', 'stored', 'refused');
+  exception when check_violation then
+    perform pg_temp.chk('FILES', 'a file is on a card or a record, never both', 'refused', 'refused');
+  end;
+  update public.crm_records set deleted_at = now(), deleted_by = 'seth.w34571@test.local' where id = pg_temp.id('iv');
+  perform pg_temp.chk('FILES', 'a deleted record''s files stop being served', pg_temp.as_check('kemi', format('select public.ops_file_can_read(%L)::text', v_path)), 'false');
+  update public.crm_records set deleted_at = null, deleted_by = null where id = pg_temp.id('iv');
+  perform pg_temp.chk('FILES', 'no client may touch the table directly',
+    (has_table_privilege('authenticated', 'public.ops_work_files', 'SELECT') or has_table_privilege('anon', 'public.ops_work_files', 'INSERT'))::text, 'false');
 end;
 $t$;
 

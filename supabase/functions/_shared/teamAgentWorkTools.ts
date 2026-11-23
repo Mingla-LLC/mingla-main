@@ -843,6 +843,8 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_file_add: { excluded: "a person attaches files and links to a card" },
   ops_file_archive: { excluded: "a person removes a file from a card" },
   ops_file_sign: { excluded: "a person opens a card's file in Admin" },
+  // #4571 W3: the same files on a host or creator card.
+  ops_record_file_add: { excluded: "a person attaches files and links to a host or creator card, as on a Work card" },
   ops_message_list: {
     excluded: "an agent reads a card's thread with read_log",
   },

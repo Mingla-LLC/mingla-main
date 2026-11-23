@@ -238,6 +238,8 @@ export const moveWork = (id, statusId, revision, { proof = null, result = null, 
 export const addSubtask = (parentId, item, key) => call(() => supabase.rpc("ops_subtask_add", { p_parent_id: parentId, p_item: item, p_request_key: key }));
 export const reorderSubtasks = (parentId, ids, revision) => call(() => supabase.rpc("ops_subtask_reorder", { p_parent_id: parentId, p_ids: ids, p_expected_revision: revision }));
 export const addFile = (cardId, file, key) => call(() => supabase.rpc("ops_file_add", { p_card_id: cardId, p_file: file, p_request_key: key || null }));
+// #4571 W3: the same files on a host or creator card (same bucket, limits and signed links).
+export const addRecordFile = (recordId, file, key) => call(() => supabase.rpc("ops_record_file_add", { p_record_id: recordId, p_file: file, p_request_key: key || null }));
 export const archiveFile = (fileId) => call(() => supabase.rpc("ops_file_archive", { p_file_id: fileId }));
 export const signFile = (fileId) => call(() => supabase.rpc("ops_file_sign", { p_file_id: fileId }));
 // #4255 rework (P3): my read marker on a card's thread (the Thread badge).
@@ -294,14 +296,17 @@ export const signedFileUrls = async (bucket, paths, seconds = 300) => {
  * file goes), then the upload to that path. Returns the file row. A failed
  * upload leaves a row that never shows (it lists only uploaded files).
  */
-export async function uploadCardFile(cardId, file, { kind, mime, key } = {}) {
-  const added = await addFile(cardId, { kind, name: String(file?.name || "file").slice(0, 200), mime, size_bytes: Number(file?.size) || 0 }, key);
+export async function uploadCardFile(cardId, file, { kind, mime, key, record = false } = {}) {
+  const meta = { kind, name: String(file?.name || "file").slice(0, 200), mime, size_bytes: Number(file?.size) || 0 };
+  // #4571 W3: `record` puts it on a host or creator card instead of a Work card.
+  const added = await (record ? addRecordFile(cardId, meta, key) : addFile(cardId, meta, key));
   if (added?.upload?.path) await uploadFileObject(added.upload.bucket || "ops-work-files", added.upload.path, file, mime);
   return added?.file || null;
 }
 
 /** A link onto a card (no page is fetched). */
-export const addCardLink = (cardId, url, name, key) => addFile(cardId, { kind: "link", url, ...(name ? { name } : {}) }, key).then((r) => r?.file || null);
+export const addCardLink = (cardId, url, name, key, { record = false } = {}) =>
+  (record ? addRecordFile : addFile)(cardId, { kind: "link", url, ...(name ? { name } : {}) }, key).then((r) => r?.file || null);
 
 /** A short-lived address to open a file: a link's own, or a 5-minute signed one. */
 export async function openableFileUrl(fileId) {

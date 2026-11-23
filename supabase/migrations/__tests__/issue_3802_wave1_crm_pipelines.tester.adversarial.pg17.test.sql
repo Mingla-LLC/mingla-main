@@ -1379,8 +1379,8 @@ begin
     (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got->'record') k), c_record_keys);
   -- [TEST-MOD-APPROVED #3802] 2026-10-15: record details append the
   -- read-only imports summary; record/list payload keys remain pinned below.
-  perform pg_temp.x_eq('XA-14', 'opening a record returns exactly five parts',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got) k), 'activity,imports,links,record,undoable_activity_id');
+  perform pg_temp.x_eq('XA-14', 'opening a record returns exactly six parts (#4571 W3: its files)',
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got) k), 'activity,files,imports,links,record,undoable_activity_id');
   v_got := pg_temp.x_as('partner', $$select public.crm_records_list('hosts')::text$$)::jsonb;
   perform pg_temp.x_eq('XA-14', 'every listed record carries exactly its named keys',
     (select string_agg(distinct ks, ';') from (select (select string_agg(k, ',' order by k) from jsonb_object_keys(e) k) ks

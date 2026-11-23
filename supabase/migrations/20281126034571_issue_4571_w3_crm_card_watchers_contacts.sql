@@ -22,6 +22,12 @@
 --   7. The connector: set_owners takes watcher_emails (crm_record_set_people)
 --      and my_day carries calls_due (team_agent_call). Booking link labels end
 --      in their UTC instant so every reader shows its own time zone.
+--   8. Files on host and creator cards reuse the Work card files: the same
+--      ops_work_files table (record_id, or card_id, never both), the same
+--      private ops-work-files bucket and limits (25 MB, 50 per card), signed
+--      5-minute links, no image transformations. ops_record_file_add adds one;
+--      ops_file_sign and ops_file_archive and the bucket checks take them;
+--      crm_record_get lists them.
 --
 -- INVARIANT crm-record-watchers-optional-not-owner: gate crm_record_set_people
 -- and crm_4571_people_overlap (crm_record_set_owners); test
@@ -44,7 +50,13 @@
 -- crm_identifiers_json and crm_record_log from 20281126024571;
 -- crm_record_set_owners from 20271202003980; crm_record_move_stage from
 -- 20271116003980; ops_link_label from 20281126024571 (and refresh stored
--- booking labels); team_agent_call from 20271231204134.
+-- booking labels); team_agent_call from 20271231204134. Files: archive
+-- every ops_work_files row with a record_id (say how many on #4571), delete
+-- them and their storage objects, drop ops_record_file_add,
+-- ops_record_files_json, ops_work_files_by_record, the two checks and
+-- record_id, set card_id NOT NULL again; restore ops_file_can_upload and
+-- ops_file_can_read from 20280624004255, ops_file_archive and ops_file_sign
+-- from 20280624014255, crm_record_get from 20271023003802.
 
 BEGIN;
 
@@ -1892,6 +1904,228 @@ BEGIN
 END;
 $function$
 ;
+-- ---------------------------------------------------------------------------
+-- 8. Files on host and creator cards: the Work card files model, reused.
+-- ---------------------------------------------------------------------------
+-- #4571 W3: a file belongs to a Work card (card_id) or to a host or creator
+-- (record_id), never both. Same table, same private ops-work-files bucket,
+-- same 25 MB per file, same types, same signed 5-minute links, no image
+-- transformations (spend cap, #1643). 50 files per record. A record file is
+-- never a thread attachment and never the card's Files link.
+ALTER TABLE public.ops_work_files ALTER COLUMN card_id DROP NOT NULL;
+-- No foreign key on purpose: no key joins a pipeline (crm_) table to another
+-- table (#3802 W1-12), as ops_work_links.target_id and ops_expected_events do.
+-- Every read below requires the record to exist and not be deleted.
+ALTER TABLE public.ops_work_files ADD COLUMN record_id uuid;
+ALTER TABLE public.ops_work_files
+  ADD CONSTRAINT ops_work_files_one_home CHECK ((card_id IS NULL) <> (record_id IS NULL)),
+  ADD CONSTRAINT ops_work_files_record_plain CHECK (record_id IS NULL OR (message_id IS NULL AND NOT from_files_url));
+CREATE INDEX ops_work_files_by_record ON public.ops_work_files (record_id, added_at) WHERE record_id IS NOT NULL AND archived_at IS NULL;
+COMMENT ON COLUMN public.ops_work_files.record_id IS
+  'Issue #4571 W3. The host or creator this file is on (then card_id is NULL). Same bucket, limits and signed links as a card''s files.';
+
+-- From 20280624004255_issue_4255_work_v2_schema.sql:570. #4571 W3: also a live record's file.
+CREATE OR REPLACE FUNCTION public.ops_file_can_upload(p_name text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT auth.uid() IS NOT NULL AND COALESCE(public.admin_team_can('crm'), false)
+     AND EXISTS (SELECT 1 FROM public.ops_work_files f
+                   LEFT JOIN public.ops_work_cards w ON w.id = f.card_id
+                   LEFT JOIN public.crm_records r ON r.id = f.record_id  -- #4571 W3
+                  WHERE f.storage_path = p_name AND f.archived_at IS NULL
+                    AND ((f.card_id IS NOT NULL AND w.archived_at IS NULL) OR (f.record_id IS NOT NULL AND r.id IS NOT NULL AND r.deleted_at IS NULL))
+                    AND f.added_at > now() - interval '24 hours'
+                    AND f.added_by = (SELECT lower(btrim(u.email)) FROM auth.users u WHERE u.id = auth.uid()))
+$$;
+
+-- From 20280624004255_issue_4255_work_v2_schema.sql:583. #4571 W3: also a live record's file.
+CREATE OR REPLACE FUNCTION public.ops_file_can_read(p_name text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT auth.uid() IS NOT NULL AND COALESCE(public.admin_team_can('crm'), false)
+     AND EXISTS (SELECT 1 FROM public.ops_work_files f
+                   LEFT JOIN public.ops_work_cards w ON w.id = f.card_id
+                   LEFT JOIN public.crm_records r ON r.id = f.record_id  -- #4571 W3
+                  WHERE f.storage_path = p_name AND f.archived_at IS NULL
+                    AND ((f.card_id IS NOT NULL AND w.archived_at IS NULL) OR (f.record_id IS NOT NULL AND r.id IS NOT NULL AND r.deleted_at IS NULL)))
+$$;
+
+-- #4571 W3: a record's live files: links, and pictures and documents that
+-- finished uploading (the twin of ops_files_json for a card).
+CREATE FUNCTION public.ops_record_files_json(p_record_id uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT COALESCE(jsonb_agg(public.ops_file_json(f) || jsonb_build_object('record_id', f.record_id) ORDER BY f.added_at, f.id), '[]'::jsonb)
+    FROM public.ops_work_files f
+   WHERE f.record_id = p_record_id AND f.archived_at IS NULL
+     AND (f.kind = 'link' OR public.ops_file_uploaded(f.storage_path))
+$$;
+REVOKE ALL ON FUNCTION public.ops_record_files_json(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_record_files_json(uuid) TO service_role;
+
+-- #4571 W3: add a file or a link to a host or creator. The twin of
+-- ops_file_add (20280624014255:1832): the same checks, words and limits; the
+-- path is <record>/<file>/<name>. An agent may add one only to a record its
+-- person owns or watches.
+CREATE FUNCTION public.ops_record_file_add(p_record_id uuid, p_file jsonb, p_request_key text DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record; r public.crm_records; f public.ops_work_files; v_replay jsonb; v_kind text; v_name text; v_mime text; v_size bigint;
+        v_url text; v_id uuid := gen_random_uuid(); v_safe text; v_out jsonb; v_bad text;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  IF p_file IS NULL OR jsonb_typeof(p_file) <> 'object' THEN
+    RAISE EXCEPTION 'invalid_file: Send the file''s kind, name, type and size, or a link.' USING ERRCODE = '22023';
+  END IF;
+  SELECT k INTO v_bad FROM jsonb_object_keys(p_file) k WHERE k NOT IN ('kind','name','mime','size_bytes','url') LIMIT 1;
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION '%', format('unknown_field: A file takes kind, name, mime, size_bytes and url, not "%s".', left(v_bad, 40)) USING ERRCODE = '22023';
+  END IF;
+  v_replay := public.ops_request_begin(v.actor_email, p_request_key, 'record_file', jsonb_build_object('record', p_record_id, 'file', p_file));
+  IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
+  SELECT * INTO r FROM public.crm_records c WHERE c.id = p_record_id AND c.deleted_at IS NULL FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That record is no longer here. It may have been deleted.' USING ERRCODE = 'P0002'; END IF;
+  IF v.via IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.crm_record_owners o WHERE o.record_id = r.id AND o.owner_email = v.actor_email)
+     AND NOT EXISTS (SELECT 1 FROM public.crm_record_watchers w WHERE w.record_id = r.id AND w.watcher_email = v.actor_email) THEN
+    RAISE EXCEPTION 'not_your_card: Your person does not own or watch this card. Ask an owner to add them.' USING ERRCODE = '42501';
+  END IF;
+  IF (SELECT count(*) FROM public.ops_work_files x WHERE x.record_id = r.id AND x.archived_at IS NULL) >= 50 THEN
+    RAISE EXCEPTION 'too_many_files: A card holds 50 files. Remove one first, or share a folder link.' USING ERRCODE = '22023';
+  END IF;
+  v_kind := p_file->>'kind';
+  IF v_kind IS NULL OR v_kind NOT IN ('image','document','link') THEN
+    RAISE EXCEPTION 'invalid_file: A file is an image, a document or a link.' USING ERRCODE = '22023';
+  END IF;
+  IF v_kind = 'link' THEN
+    v_url := btrim(COALESCE(p_file->>'url', ''));
+    IF char_length(v_url) NOT BETWEEN 9 AND 2000 OR v_url !~ '^https://[^[:space:]]+$' OR public.ops_has_control(v_url) THEN
+      RAISE EXCEPTION 'invalid_file: Links start with https:// and stay under 2,000 characters.' USING ERRCODE = '22023';
+    END IF;
+    v_name := COALESCE(public.ops_one_line(p_file->>'name'), substring(v_url FROM '^https://([^/?#]+)'), 'Link');
+  ELSE
+    v_name := public.ops_one_line(p_file->>'name');
+    v_mime := lower(btrim(COALESCE(p_file->>'mime', '')));
+    IF jsonb_typeof(p_file->'size_bytes') <> 'number' OR (p_file->>'size_bytes') !~ '^\d{1,12}$' THEN
+      RAISE EXCEPTION 'invalid_file: Send the file''s size in bytes.' USING ERRCODE = '22023';
+    END IF;
+    v_size := (p_file->>'size_bytes')::bigint;
+    IF v_size > 26214400 THEN
+      RAISE EXCEPTION '%', format('file_too_big: %s is over 25 MB. Share it as a link instead.', COALESCE(left(v_name, 120), 'This file')) USING ERRCODE = '22023';
+    END IF;
+    IF v_size < 1 THEN RAISE EXCEPTION 'invalid_file: That file is empty.' USING ERRCODE = '22023'; END IF;
+    IF NOT public.ops_file_mime_ok(v_kind, v_mime) THEN
+      RAISE EXCEPTION '%', CASE WHEN v_kind = 'image' THEN 'invalid_file: Pictures can be JPEG, PNG, WebP, GIF or HEIC.'
+        ELSE 'invalid_file: Documents can be PDF, Word, Excel, PowerPoint, text, CSV, Keynote, Numbers or Pages.' END USING ERRCODE = '22023';
+    END IF;
+    v_safe := left(btrim(regexp_replace(COALESCE(v_name, ''), '[^A-Za-z0-9._-]+', '_', 'g'), '_.'), 120);
+    IF v_safe IS NULL OR v_safe = '' THEN v_safe := 'file'; END IF;
+  END IF;
+  IF v_name IS NULL OR char_length(v_name) > 200 OR public.ops_has_control(v_name) THEN
+    RAISE EXCEPTION 'invalid_file: Name the file in 1 to 200 characters.' USING ERRCODE = '22023';
+  END IF;
+  INSERT INTO public.ops_work_files (id, card_id, record_id, kind, name, mime, size_bytes, storage_path, url, added_by, added_via)
+  VALUES (v_id, NULL, r.id, v_kind, v_name, CASE WHEN v_kind <> 'link' THEN v_mime END, v_size,
+          CASE WHEN v_kind <> 'link' THEN r.id::text || '/' || v_id::text || '/' || v_safe END, v_url, v.actor_email, v.via)
+  RETURNING * INTO f;
+  PERFORM public.crm_audit(v.actor_email, 'crm.file_add', 'crm_record', r.id::text,
+    jsonb_strip_nulls(jsonb_build_object('via', v.via)) || jsonb_build_object('file_id', f.id, 'kind', f.kind));
+  v_out := jsonb_build_object('file', public.ops_file_json(f) || jsonb_build_object('record_id', f.record_id),
+    'upload', CASE WHEN f.storage_path IS NOT NULL THEN jsonb_build_object('bucket', 'ops-work-files', 'path', f.storage_path,
+                                                                         'max_bytes', 26214400, 'expires_in_hours', 24) END);
+  PERFORM public.ops_request_finish(v.actor_email, p_request_key, 'record_file', v_out);
+  RETURN v_out;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ops_record_file_add(uuid, jsonb, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ops_record_file_add(uuid, jsonb, text) TO authenticated, service_role;
+
+-- From 20280624014255_issue_4255_work_v2_functions.sql:1902. #4571 W3: a record's file is removed by
+-- whoever added it, an owner of the record or an admin.
+CREATE OR REPLACE FUNCTION public.ops_file_archive(p_file_id uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record; f public.ops_work_files;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  SELECT * INTO f FROM public.ops_work_files x WHERE x.id = p_file_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That file is no longer here.' USING ERRCODE = 'P0002'; END IF;
+  IF f.archived_at IS NOT NULL THEN RETURN jsonb_build_object('file', public.ops_file_json(f), 'changed', false); END IF;
+  IF NOT ((f.added_by = v.actor_email AND f.added_via IS NOT DISTINCT FROM v.via)
+          OR (v.via IS NULL AND (public.ops_is_person_on(f.card_id, v.actor_email, ARRAY['owner'])
+                                 OR EXISTS (SELECT 1 FROM public.crm_record_owners o WHERE o.record_id = f.record_id AND o.owner_email = v.actor_email)  -- #4571 W3
+                                 OR COALESCE(public.is_admin_user(), false)))) THEN
+    RAISE EXCEPTION 'forbidden: Only the person who added this file, an owner of the card or an admin can remove it.' USING ERRCODE = '42501';
+  END IF;
+  IF f.from_files_url THEN
+    RAISE EXCEPTION 'invalid_file: This is the card''s Files link. Clear the Files link on the card instead.' USING ERRCODE = '22023';
+  END IF;
+  UPDATE public.ops_work_files x SET archived_at = now(), archived_by = v.actor_email WHERE x.id = f.id RETURNING * INTO f;
+  IF f.record_id IS NOT NULL THEN  -- #4571 W3
+    PERFORM public.crm_audit(v.actor_email, 'crm.file_archive', 'crm_record', f.record_id::text,
+      jsonb_strip_nulls(jsonb_build_object('via', v.via)) || jsonb_build_object('file_id', f.id));
+  END IF;
+  RETURN jsonb_build_object('file', public.ops_file_json(f), 'changed', true);
+END;
+$$;
+
+-- From 20280624014255_issue_4255_work_v2_functions.sql:1926. #4571 W3: also a live record's file.
+CREATE OR REPLACE FUNCTION public.ops_file_sign(p_file_id uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record; f public.ops_work_files;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  SELECT x.* INTO f FROM public.ops_work_files x
+    LEFT JOIN public.ops_work_cards w ON w.id = x.card_id
+    LEFT JOIN public.crm_records r ON r.id = x.record_id  -- #4571 W3
+   WHERE x.id = p_file_id AND x.archived_at IS NULL
+     AND ((x.card_id IS NOT NULL AND w.archived_at IS NULL) OR (x.record_id IS NOT NULL AND r.id IS NOT NULL AND r.deleted_at IS NULL));
+  IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That file is no longer here.' USING ERRCODE = 'P0002'; END IF;
+  IF f.kind = 'link' THEN
+    RETURN jsonb_build_object('kind', 'link', 'url', f.url, 'name', f.name);
+  END IF;
+  IF NOT public.ops_file_uploaded(f.storage_path) THEN
+    RAISE EXCEPTION 'not_uploaded: This file has not finished uploading. Try again in a moment.' USING ERRCODE = '22023';
+  END IF;
+  RETURN jsonb_build_object('kind', f.kind, 'bucket', 'ops-work-files', 'path', f.storage_path, 'expires_in', 300,
+                            'name', f.name, 'mime', f.mime, 'size_bytes', f.size_bytes);
+END;
+$$;
+
+-- From 20271023003802_issue_3802_wave6_crm_import.sql:120. #4571 W3: the record's files.
+CREATE OR REPLACE FUNCTION public.crm_record_get(p_id uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v     record;
+  v_rec public.crm_records;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = p_id AND c.deleted_at IS NULL;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'not_found: That record is no longer here. It may have been deleted.' USING ERRCODE = 'P0002';
+  END IF;
+  RETURN jsonb_build_object(
+    'record', public.crm_record_json(v_rec),
+    'links', jsonb_build_object(
+      'brand', (SELECT jsonb_build_object('id', b.id, 'name', b.name, 'slug', b.slug,
+                                          'is_live', public.crm_brand_is_live(b.id))
+                  FROM public.brands b WHERE b.id = v_rec.brand_id AND b.deleted_at IS NULL),
+      'place', (SELECT jsonb_build_object('id', p.id, 'name', p.name, 'city', p.city)
+                  FROM public.place_pool p WHERE p.id = v_rec.place_id AND p.deleted_at IS NULL)),
+    'activity', COALESCE((
+      SELECT jsonb_agg(public.crm_activity_json(a) ORDER BY a.occurred_at DESC, a.created_at DESC, a.id)
+      FROM (SELECT x.* FROM public.crm_activity x
+             WHERE x.record_id = v_rec.id
+             ORDER BY x.occurred_at DESC, x.created_at DESC, x.id
+             LIMIT 200) a), '[]'::jsonb),
+    'imports', public.crm_record_sources_json(v_rec.id),
+    'undoable_activity_id', public.crm_undoable_activity(v_rec.id, v.actor_email),
+    'files', public.ops_record_files_json(v_rec.id));  -- #4571 W3
+END;
+$$;
+
+
 -- ---------------------------------------------------------------------------
 -- 7. "My calls today".
 -- ---------------------------------------------------------------------------

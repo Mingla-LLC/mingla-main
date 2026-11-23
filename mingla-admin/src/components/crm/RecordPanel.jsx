@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ArrowRight, ExternalLink, FileText, Phone, Plus } from "lucide-react";
+import { ArrowRight, ExternalLink, FileText, MessageSquare, Phone, Plus } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { SideLink } from "../ui/PanelStack";
 import { Button } from "../ui/Button";
@@ -20,6 +20,8 @@ import { HostTeamSection } from "./HostTeamSection";
 import { HostPlanSection } from "./HostPlanSection";
 import { hostMissing } from "../../lib/opsModel";
 import { ActivityLog } from "./ActivityLog";
+import { CardFiles } from "../ops/CardFiles";
+import { useCardUploads } from "../../hooks/useCardFiles";
 import { QuickLinks } from "./RecordCard";
 import { PropChip, PeopleChip } from "../ops/WorkDetail";
 import { PeopleField } from "../people/PeopleField";
@@ -50,7 +52,7 @@ import {
   terminalStage,
 } from "../../lib/crmModel";
 import { buildCrmHash } from "../../lib/crmUrl";
-import { getRecord, recordWork, setFollowers, setRecordPeople } from "../../services/crmService";
+import { getRecord, newRequestKey, recordWork, setFollowers, setRecordPeople } from "../../services/crmService";
 import { useRecordDraftCount } from "../../hooks/useDrafts";
 
 // What someone typed on a card that could not be sent before the card went
@@ -301,6 +303,21 @@ export function RecordPanel({
   const [activityFilter, setActivityFilter] = useState("all");
   const [peopleBusy, setPeopleBusy] = useState(false);
   const logRef = useRef(null);
+  // #4571 W3: the record's files, the Work card's files model (same bucket and limits).
+  const fileUploads = useCardUploads(record?.id || null, () => setReloadTick((n) => n + 1), { record: true });
+  // #4571 W3: the notes composer at the top of the timeline; Thread focuses it.
+  const noteRef = useRef(null);
+  const [note, setNote] = useState("");
+  const [noteBusy, setNoteBusy] = useState(false);
+  const noteKey = useRef({ key: null, value: "" });
+  const focusNote = () => {
+    const box = noteRef.current;
+    const fold = box?.closest?.("details");
+    if (fold && !fold.open) fold.open = true;
+    setActivityFilter("all");
+    box?.scrollIntoView?.({ block: "center" });
+    box?.focus?.();
+  };
 
   // The latest values, for code that runs later (a close, an unmount).
   const live = useRef({ drafts, unsent, record, discarded: false });
@@ -610,6 +627,20 @@ export function RecordPanel({
     onChange: (e) => save(key, e.target.value),
   });
   const fieldError = (key) => (Object.hasOwn(unsent, key) ? unsent[key].message : "");
+
+  /** #4571 W3: a note from the timeline's composer; the same request key until it is sent. */
+  const addNote = async () => {
+    const body = note.trim();
+    if (!body || noteBusy || !record) return;
+    if (noteKey.current.value !== body) noteKey.current = { key: newRequestKey(), value: body };
+    setNoteBusy(true);
+    const res = await submitLog({ kind: "note", body }, noteKey.current.key);
+    if (mounted.current) {
+      setNoteBusy(false);
+      if (res.ok) { setNote(""); noteKey.current = { key: null, value: "" }; }
+      else addToast({ variant: "error", title: "Note not added", description: res.message });
+    }
+  };
 
   /** #4571 W3: owners and watchers in one step (crm_record_set_people). */
   const savePeople = async (owners, watchers, words) => {
@@ -969,6 +1000,7 @@ export function RecordPanel({
             onClick={() => { const box = logRef.current; const fold = box?.closest?.("details"); if (fold && !fold.open) fold.open = true; box?.scrollIntoView?.({ block: "center" }); box?.querySelector?.("select, textarea, input, button")?.focus?.(); }}>
             Log call
           </Button>
+          <Button variant="ghost" size="sm" className="min-h-11" icon={MessageSquare} data-thread-button="" onClick={focusNote}>Thread</Button>
           {(record.stage_reason || stageHelp) && <p className="w-full text-[12px] text-[var(--color-text-tertiary)]">{record.stage_reason ? `Reason: ${record.stage_reason}. ` : ""}{stageHelp}</p>}
         </section>
         <section aria-label="People and details" data-record-section="people" className="flex min-w-0 flex-wrap items-center gap-1">
@@ -1205,6 +1237,17 @@ export function RecordPanel({
           <LogForm key={record.id} record={record} config={config} def={def} disabled={locked} onSubmit={submitLog} />
         </div>
 
+        <div data-record-section="note" className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-[var(--gray-200)] p-2">
+          <label htmlFor={fid("note")} className="sr-only">Add a note</label>
+          <textarea ref={noteRef} id={fid("note")} rows={2} maxLength={2000} value={note} disabled={locked || noteBusy}
+            placeholder="Add a note for the team" onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addNote(); } }}
+            className={`${CONTROL_CLASS} min-h-[44px] py-2`} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" className="min-h-11" loading={noteBusy} disabled={locked || noteBusy || !note.trim()} onClick={addNote}>Add note</Button>
+            <span className="text-[12px] text-[var(--color-text-tertiary)]">Touches, stage moves, calls and notes in one list.</span>
+          </div>
+        </div>
         <div role="group" aria-label="Filter activity" className="flex flex-wrap gap-1">
           {ACTIVITY_FILTERS.map(([k, l]) => (
             <button key={k} type="button" aria-pressed={activityFilter === k} onClick={() => setActivityFilter(k)}
@@ -1226,6 +1269,10 @@ export function RecordPanel({
           </div>
         )}
         </DetailsFold>
+        {/* #4571 W3: Files, the Work card's files section on a host or creator. */}
+        <div data-record-section="files" className="border-t border-[var(--gray-200)] pt-3">
+          <CardFiles card={record} record files={current.data?.files || []} disabled={locked} uploads={fileUploads} onChanged={() => setReloadTick((n) => n + 1)} />
+        </div>
         {footerExtra}
       </div>
     </Drawer>

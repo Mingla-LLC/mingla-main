@@ -1367,7 +1367,8 @@ begin
   -- [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 appends one safe,
   -- read-only imports key to record details; the record/list shapes stay exact.
   perform pg_temp.t3802w_check('W1-11', 'record view: top-level keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r)) k), 'activity,imports,links,record,undoable_activity_id');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r)) k), -- #4571 W3: and the record's files (the Work card files model).
+    'activity,files,imports,links,record,undoable_activity_id');
 end;
 $w11$;
 
