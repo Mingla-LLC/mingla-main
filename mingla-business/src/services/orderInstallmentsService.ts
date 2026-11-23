@@ -319,6 +319,8 @@ export interface TripPlanTerms {
   countGiven: number | null;
   finalDueAt: string | null;
   tripStartAt: string | null;
+  /** The zone the order's due times were set in (the event's zone). */
+  timeZone?: string | null;
   flexEnabled: boolean;
 }
 
@@ -365,6 +367,7 @@ function decodeTerms(value: unknown): TripPlanTerms {
     countGiven: safeInt(terms.count_given),
     finalDueAt: isoText(terms.final_due_at),
     tripStartAt: isoText(terms.trip_start_at),
+    timeZone: typeof terms.time_zone === "string" && terms.time_zone.length > 0 ? terms.time_zone : null,
     flexEnabled: terms.flex_enabled === true,
   };
 }

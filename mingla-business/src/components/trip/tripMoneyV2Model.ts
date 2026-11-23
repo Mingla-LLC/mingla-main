@@ -99,6 +99,33 @@ function rowChip(row: OrderInstallmentForBrand): TripMoneyV2Chip | null {
   }
 }
 
+/**
+ * Whole calendar days from the last payment's due date (read in the order's own
+ * zone) to the trip's date. A trip date is its stored calendar date (#4522 W-1),
+ * so the two dates are compared as dates, not as instants: 09:00 in New York a
+ * month before is 30 days, not 29.4.
+ */
+export function calendarDaysBefore(
+  tripStartAt: string,
+  finalDueAt: string,
+  timeZone: string | null,
+): number {
+  let dueDate = finalDueAt.slice(0, 10);
+  if (timeZone !== null) {
+    try {
+      dueDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(finalDueAt));
+    } catch {
+      // An unknown zone name: the UTC date is the nearest honest reading.
+    }
+  }
+  return Math.round((Date.parse(tripStartAt.slice(0, 10)) - Date.parse(dueDate)) / DAY_MS);
+}
+
 function termsLine(
   balance: HostTripBalance,
   rows: readonly OrderInstallmentForBrand[],
@@ -110,9 +137,7 @@ function termsLine(
     new Set(rows.filter((row) => row.kind !== "flex").map((row) => row.dueAt)).size;
   let line = `${money(balance.depositMinor)} deposit, then ${count} payment${count === 1 ? "" : "s"}`;
   if (terms.finalDueAt !== null && terms.tripStartAt !== null) {
-    const days = Math.round(
-      (Date.parse(terms.tripStartAt) - Date.parse(terms.finalDueAt)) / DAY_MS,
-    );
+    const days = calendarDaysBefore(terms.tripStartAt, terms.finalDueAt, terms.timeZone ?? null);
     if (days >= 0) {
       line += `, last one ${days} day${days === 1 ? "" : "s"} before departure`;
     }
