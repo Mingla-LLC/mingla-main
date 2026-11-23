@@ -44,6 +44,7 @@ export type BusinessNotificationType =
   | "business.door_tap_not_completed"
   | "business.door_tap_paid_unseen"
   | "business.venue_till_paid_late"
+  | "business.venue_order_ready"
   | "business.venue_till_tap_paid_unseen"
   | "business.venue_till_tap_not_completed"
   | "business.dispute_opened"
@@ -213,6 +214,21 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
   },
   // #4490 spec 08 O2 — Till card money: a cancelled payment that was paid
   // anyway (refund it or keep it), and Till taps nobody saw end.
+  // #4490 spec 08 §11 T5 — a station marked a Till round ready: the person who
+  // sent it (and the check's server) takes it out.
+  "business.venue_order_ready": {
+    type: "business.venue_order_ready",
+    pushTitle: "Ready to take out",
+    pushBody: "The kitchen marked your order ready",
+    inAppTitle: "Ready to take out",
+    inAppBody: "The kitchen marked your order ready",
+    severity: "info",
+    family: "team",
+    icon: "check",
+    masterCategory: "orderActivity",
+    defaultPush: true,
+    defaultInApp: true,
+  },
   "business.venue_till_paid_late": {
     type: "business.venue_till_paid_late",
     pushTitle: "A cancelled payment was paid",

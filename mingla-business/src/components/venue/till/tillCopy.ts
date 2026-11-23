@@ -187,6 +187,17 @@ export const TILL_COPY = {
   keepAsPayment: "Keep as payment",
   refundIt: "Refund it",
   lateKept: "Kept as payment",
+  // #4490 spec 08 §11 T5 / T7 — the kitchen on the Till.
+  readyToTakeOut: (destination: string): string => `Ready to take out · ${destination}`,
+  readyAt: (time: string): string => `Ready ${time}`,
+  notAccepted: (minutes: number): string => `Not accepted · ${minutes} min`,
+  nobodyAccepted: (destination: string): string => `Nobody has accepted ${destination}'s order`,
+  nobodyAcceptedBody: "Print the ticket and take it to the kitchen, or call them.",
+  pickedUp: "Picked up",
+  printTicket: "Print ticket",
+  stationNames: (stations: readonly string[]): string =>
+    stations.map((s) => (s === "bar" ? "Bar" : "Kitchen")).join(" and "),
+  thisCheck: "this check",
 } as const;
 
 /**

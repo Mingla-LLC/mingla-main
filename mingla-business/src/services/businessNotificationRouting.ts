@@ -409,6 +409,8 @@ export function resolveBusinessNavTarget(
 
     // Issue #3386: a push without its deep link still reaches the venue's
     // Settings, never the account tab.
+    // #4490 spec 08 §11 T5: "Ready · {destination}" opens the Till on its checks.
+    case "business.venue_order_ready":
     case "business.venue_till_paid_late":
     case "business.venue_till_tap_paid_unseen":
     case "business.venue_till_tap_not_completed": {

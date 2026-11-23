@@ -59,7 +59,19 @@ export interface TillLine {
   sent: boolean | null;
   fulfillmentStatus: string | null;
   pickupCode: string | null;
+  /** #4490 O3 A2: when the round went to the kitchen, and when a station accepted it. */
+  sentAt: string | null;
+  acknowledgedAt: string | null;
+  /** One entry per station with live lines on this round (spec 08 §11 T5/T7). */
+  stationTickets: TillStationTicket[];
   items: TillItem[];
+}
+
+export interface TillStationTicket {
+  station: "kitchen" | "bar";
+  acceptedAt: string | null;
+  readyAt: string | null;
+  pickedUpAt: string | null;
 }
 
 export interface TillPayment {
@@ -230,6 +242,17 @@ export function mapTillSale(v: unknown): TillSale {
         sent: typeof line.sent === "boolean" ? line.sent : null,
         fulfillmentStatus: strOrNull(line.fulfillmentStatus),
         pickupCode: strOrNull(line.pickupCode),
+        sentAt: strOrNull(line.sentAt),
+        acknowledgedAt: strOrNull(line.acknowledgedAt),
+        stationTickets: arr(line.stationTickets).map((t): TillStationTicket => {
+          const ticket = obj(t);
+          return {
+            station: ticket.station === "bar" ? "bar" : "kitchen",
+            acceptedAt: strOrNull(ticket.acceptedAt),
+            readyAt: strOrNull(ticket.readyAt),
+            pickedUpAt: strOrNull(ticket.pickedUpAt),
+          };
+        }),
         items: arr(line.items).map(mapItem),
       };
     }),

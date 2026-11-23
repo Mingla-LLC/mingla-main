@@ -64,13 +64,18 @@ import { PaymentSheet } from "./PaymentSheet";
 import { useStationsEntry } from "../../../hooks/useStationsEntry";
 import { stationHref } from "../station/stationRoute";
 import { openFloorPdf } from "../../../utils/floorPdf";
-import { STATION_COPY } from "../station/stationCopy";
+import { STATION_COPY, stationErrorCopy } from "../station/stationCopy";
+import { runStationAction, StationError } from "../../../services/venueStationService";
 import { ReceiptStep } from "./ReceiptStep";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
 import {
   addToDraft,
   basketRows,
+  clockTime,
   floorLayoutFor,
+  readyToTakeOut,
+  tillDestination,
+  unacceptedRound,
   handoverChoices,
   itemNeedsChoices,
   itemSellable,
@@ -239,7 +244,13 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     setDraft([]);
   };
 
-  const rows = basketRows(sale);
+  // #4490 O3 A2: a 15 s clock for "Not accepted · {n} min" (the server's times).
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  const rows = basketRows(sale, nowMs);
   const ready = totalsReady(sale, draft);
   const send = sendLabel(sale, draft, catalog);
   const sendText = send === "bar" ? TILL_COPY.sendToBar : send === "kitchen" ? TILL_COPY.sendToKitchen : TILL_COPY.send;
@@ -294,6 +305,36 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     } finally {
       setKeeping(null);
       actions.refreshSale(sale.id);
+    }
+  };
+  // #4490 spec 08 §11 T5 / T7: the kitchen's word on this check.
+  const destination = tillDestination(sale, TILL_COPY.thisCheck);
+  const onThePass = readyToTakeOut(sale);
+  const waitingRound = unacceptedRound(sale, nowMs);
+  const [kitchenBusy, setKitchenBusy] = useState<"pickup" | "print" | null>(null);
+  const pickUp = async (): Promise<void> => {
+    if (sale === null || kitchenBusy !== null) return;
+    setKitchenBusy("pickup");
+    try {
+      for (const round of onThePass) {
+        for (const station of round.stations) await runStationAction("picked_up", round.orderId, station);
+      }
+    } catch (err) {
+      setToast({ kind: "error", message: stationErrorCopy(err instanceof StationError ? err.code : "station_failed") });
+    } finally {
+      setKitchenBusy(null);
+      actions.refreshSale(sale.id);
+    }
+  };
+  const printWaiting = async (): Promise<void> => {
+    if (waitingRound === null || kitchenBusy !== null) return;
+    setKitchenBusy("print");
+    try {
+      await openFloorPdf({ kind: "kitchen_ticket", venueId, orderId: waitingRound.orderId, station: waitingRound.station });
+    } catch (err) {
+      setToast({ kind: "error", message: stationErrorCopy(err instanceof StationError ? err.code : "floor_pdf_failed") });
+    } finally {
+      setKitchenBusy(null);
     }
   };
   const checkName = sale?.checkLabel ?? sale?.spotLabel ?? TILL_COPY.newCheck;
@@ -422,12 +463,29 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
       ) : overpaid > 0 ? (
         <Banner tone="warning" title={TILL_COPY.overpaid(money(overpaid))} testID="till-overpaid" />
       ) : null}
+      {onThePass.length > 0 ? (
+        <Banner
+          tone="ok"
+          title={TILL_COPY.readyToTakeOut(destination)}
+          body={TILL_COPY.stationNames(Array.from(new Set(onThePass.flatMap((r) => r.stations))))}
+          action={{ label: TILL_COPY.pickedUp, onPress: () => void pickUp(), testID: "till-picked-up" }}
+          testID="till-ready-banner"
+        />
+      ) : waitingRound !== null ? (
+        <Banner
+          tone="warning"
+          title={TILL_COPY.nobodyAccepted(destination)}
+          body={`${TILL_COPY.notAccepted(waitingRound.minutes)}. ${TILL_COPY.nobodyAcceptedBody}`}
+          action={{ label: TILL_COPY.printTicket, onPress: () => void printWaiting(), testID: "till-print-ticket" }}
+          testID="till-unaccepted-banner"
+        />
+      ) : null}
       <ScrollView style={styles.grow} contentContainerStyle={styles.basketList}>
         {rows.map((row) => (
           <ListRow
             key={row.key}
             title={`${row.quantity > 1 ? `${row.quantity} × ` : ""}${row.label}`}
-            subtitle={row.voided ? TILL_COPY.void : row.lineState === "refunded" ? TILL_COPY.refunded : row.detail ?? undefined}
+            subtitle={row.voided ? TILL_COPY.void : row.lineState === "refunded" ? TILL_COPY.refunded : kitchenSubtitle(row) ?? undefined}
             value={money(row.amountMinor)}
             disabled={row.voided || row.lineState === "refunded"}
             chevron={false}
@@ -1388,6 +1446,16 @@ function RefundSheet({
       </View>
     </Sheet>
   );
+}
+
+/** A sent row's detail plus what the kitchen says ("Ready 21:12", "Not accepted · 4 min"). */
+function kitchenSubtitle(row: BasketRow): string | null {
+  const k = row.kitchen;
+  const state = k === null ? null
+    : k.kind === "ready" ? TILL_COPY.readyAt(clockTime(k.readyAt))
+    : k.kind === "not_accepted" ? TILL_COPY.notAccepted(k.minutes)
+    : null;
+  return [row.detail, state].filter((x): x is string => typeof x === "string" && x.length > 0).join(" · ") || null;
 }
 
 const styles = StyleSheet.create({

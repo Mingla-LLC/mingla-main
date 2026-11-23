@@ -40,8 +40,11 @@ describe("template coverage", () => {
   // #4238 W6b adds the nine business.ad_* Host ad notices: 38.
   // TEST-MOD-APPROVED #4490 (spec 08 O2): three Till card notices (late
   // payment, a Till tap paid while unseen, a Till tap not finished): 41.
-  test("41 business types include payout, Community, support, Brand groups, discounts, the door taps, the Till taps and the ad notices", () => {
-    expect(TYPES).toHaveLength(41);
+  // TEST-MOD-APPROVED #4490 (spec 08 O3 part A2): "Ready to take out" for the
+  // person who sent a Till round (§11 T5): 42.
+  test("42 business types include payout, Community, support, Brand groups, discounts, the door taps, the Till taps, the Till ready notice and the ad notices", () => {
+    expect(TYPES).toHaveLength(42);
+    expect(isBusinessNotificationType("business.venue_order_ready")).toBe(true);
     expect(isBusinessNotificationType("business.venue_till_paid_late")).toBe(true);
     expect(isBusinessNotificationType("business.venue_till_tap_paid_unseen")).toBe(true);
     expect(isBusinessNotificationType("business.venue_till_tap_not_completed")).toBe(true);

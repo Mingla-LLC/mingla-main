@@ -7,6 +7,79 @@
 
 import type { TillCatalog, TillLine, TillMenuItem, TillSale, TillServer } from "../../../services/venueTillService";
 
+// ---------------------------------------------------------------- O3 A2
+/** #4490 spec 08 §11 T7: a sent round reads "Not accepted" from this many minutes. */
+export const NOT_ACCEPTED_AFTER_MINUTES = 3;
+
+export type RoundKitchenState =
+  | { kind: "waiting" }
+  | { kind: "not_accepted"; minutes: number }
+  | { kind: "accepted" }
+  | { kind: "ready"; readyAt: string };
+
+/**
+ * What the kitchen says about a sent menu round (T5/T7): ready once every
+ * station with lines marked it ready; not accepted from 3 minutes after it was
+ * sent; nothing once it was picked up, delivered, voided or never sent.
+ */
+export function roundKitchenState(line: TillLine, nowMs: number): RoundKitchenState | null {
+  if (line.kind !== "menu_round" || line.sentAt === null || line.state === "voided") return null;
+  if (line.fulfillmentStatus === "delivered" || line.fulfillmentStatus === "cancelled" || line.fulfillmentStatus === "refunded") return null;
+  const tickets = line.stationTickets;
+  if (tickets.length > 0 && tickets.every((t) => t.pickedUpAt !== null)) return null;
+  if (tickets.length > 0 && tickets.every((t) => t.readyAt !== null)) {
+    const latest = tickets.map((t) => t.readyAt as string).sort().slice(-1)[0];
+    return { kind: "ready", readyAt: latest };
+  }
+  if (line.acknowledgedAt !== null) return { kind: "accepted" };
+  const sent = Date.parse(line.sentAt);
+  const minutes = Number.isFinite(sent) ? Math.max(0, Math.floor((nowMs - sent) / 60_000)) : 0;
+  return minutes >= NOT_ACCEPTED_AFTER_MINUTES ? { kind: "not_accepted", minutes } : { kind: "waiting" };
+}
+
+/** Rounds with a station ticket on the pass (ready, not picked up). */
+export function readyToTakeOut(sale: TillSale | null): Array<{ orderId: string; stations: Array<"kitchen" | "bar"> }> {
+  if (sale === null) return [];
+  return sale.lines
+    .filter((l) => l.kind === "menu_round" && l.orderId !== null && l.sentAt !== null && l.state !== "voided"
+      && l.fulfillmentStatus !== "delivered")
+    .map((l) => ({
+      orderId: l.orderId as string,
+      stations: l.stationTickets.filter((t) => t.readyAt !== null && t.pickedUpAt === null).map((t) => t.station),
+    }))
+    .filter((r) => r.stations.length > 0);
+}
+
+/** The oldest sent round nobody accepted for 3 minutes, with a station to print for. */
+export function unacceptedRound(
+  sale: TillSale | null,
+  nowMs: number,
+): { orderId: string; station: "kitchen" | "bar"; minutes: number } | null {
+  if (sale === null) return null;
+  for (const line of sale.lines) {
+    const state = roundKitchenState(line, nowMs);
+    if (state?.kind === "not_accepted" && line.orderId !== null) {
+      const ticket = line.stationTickets.find((t) => t.acceptedAt === null) ?? line.stationTickets[0];
+      return { orderId: line.orderId, station: ticket?.station ?? "kitchen", minutes: state.minutes };
+    }
+  }
+  return null;
+}
+
+/** "HH:MM" from an instant, on the device clock (the Till is at the venue). */
+export function clockTime(iso: string): string {
+  const d = new Date(Date.parse(iso));
+  if (Number.isNaN(d.getTime())) return "--:--";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** Where a check's food goes, for the ready / not accepted banners. */
+export function tillDestination(sale: TillSale | null, fallback: string): string {
+  if (sale === null) return fallback;
+  const pickup = sale.lines.find((l) => l.pickupCode !== null)?.pickupCode ?? null;
+  return sale.spotLabel ?? sale.checkLabel ?? (pickup !== null ? `Pickup ${pickup}` : fallback);
+}
+
 // Spec 08 §2: phone < 600, tablet 600–1023, desk ≥ 1024, on every platform.
 // One owner since O3: src/utils/floorLayout.ts (also used by useFloorLayout).
 export { floorLayoutFor, type FloorLayout } from "../../../utils/floorLayout";
@@ -37,15 +110,18 @@ export interface BasketRow {
   lineId: string | null;
   /** The server line's state: held until the check is fully paid. */
   lineState: TillLine["state"];
+  /** #4490 O3 A2: the round's kitchen state (sent menu items only). */
+  kitchen: RoundKitchenState | null;
 }
 
 /** The check's server lines as rows: one per menu item, one per offer line. */
-export function basketRows(sale: TillSale | null): BasketRow[] {
+export function basketRows(sale: TillSale | null, nowMs: number = Date.now()): BasketRow[] {
   if (sale === null) return [];
   const rows: BasketRow[] = [];
   for (const line of sale.lines) {
     if (line.kind === "menu_round") {
       const sent = line.sent === true;
+      const kitchen = roundKitchenState(line, nowMs);
       for (const item of line.items) {
         rows.push({
           key: `item:${item.id}`,
@@ -59,6 +135,7 @@ export function basketRows(sale: TillSale | null): BasketRow[] {
           orderItemId: item.id,
           lineId: null,
           lineState: line.state,
+          kitchen: item.voided ? null : kitchen,
         });
       }
     } else {
@@ -74,6 +151,7 @@ export function basketRows(sale: TillSale | null): BasketRow[] {
         orderItemId: null,
         lineId: line.id,
         lineState: line.state,
+        kitchen: null,
       });
     }
   }

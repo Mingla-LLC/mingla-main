@@ -30,3 +30,12 @@ describe("Till card notices", () => {
     },
   );
 });
+
+// TEST-MOD-APPROVED #4490 (spec 08 O3 part A2): the ready push (§11 T5) opens the Till's checks too.
+describe("08-O3 A2 ready push routing", () => {
+  test("business.venue_order_ready opens the Till on its checks, with or without the deep link", () => {
+    expect(resolveBusinessNavTarget({ type: "business.venue_order_ready", data: {}, venueId: "ven-3" } as unknown as BusinessPushData))
+      .toBe("/venue/ven-3/till?checks=1");
+    expect(parseBusinessDeepLink("mingla-business://venue/ven-3/till")).toBe("/venue/ven-3/till?checks=1");
+  });
+});

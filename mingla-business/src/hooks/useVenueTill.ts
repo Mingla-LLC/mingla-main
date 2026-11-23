@@ -86,6 +86,16 @@ export function useTillSale(venueId: string | null, saleId: string | null): UseQ
           void queryClient.invalidateQueries({ queryKey: venueTillKeys.sale(venueId as string, saleId as string) });
         },
       )
+      // #4490 spec 08 §11 T6: every station change bumps venue_orders.station_rev,
+      // so the check hears "accepted", "ready" and "picked up" at once (the 15 s
+      // poll stays the floor).
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "venue_orders", filter: `venue_id=eq.${venueId}` },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: venueTillKeys.sale(venueId as string, saleId as string) });
+        },
+      )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
