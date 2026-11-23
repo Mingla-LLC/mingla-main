@@ -40,13 +40,10 @@ const EVENT_LABEL = {
   host_adjust: "Remaining payments updated.",
 };
 
-const WAIVED = "waived_below_provider_minimum";
-
 function rowLabel(row) {
   if (row.kind === "flex") {
     return row.status === "refunded" ? "Refunded" : "Partial";
   }
-  if (row.status === "superseded" && row.failureReason === WAIVED) return "Written off";
   return ROW_STATUS_LABEL[row.status] ?? String(row.status ?? "—");
 }
 
@@ -100,7 +97,10 @@ export function tripOrderBalanceView(balance) {
     paidMinor: money(balance.paidMinor),
     remainingMinor: money(balance.remainingMinor),
     totalMinor: money(balance.totalMinor),
-    waivedMinor: money(balance.waivedMinor) ?? 0,
+    // A balance below the provider's minimum stays owed (never written off)
+    // and cannot be charged automatically; ops follow up.
+    belowProviderMinimum: Number.isSafeInteger(balance.remainingMinor) && balance.remainingMinor > 0
+      && Number.isSafeInteger(balance.providerMinimumMinor) && balance.remainingMinor < balance.providerMinimumMinor,
     paymentInFlight: balance.paymentInFlight === true,
     rows,
     history,

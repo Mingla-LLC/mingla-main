@@ -41,6 +41,7 @@ import { featureFlags } from "../../../../src/config/featureFlags";
 import {
   buildTripMoneyV2View,
   TRIP_MONEY_V2_CHIP_LABEL,
+  TRIP_MONEY_V2_BELOW_MINIMUM_COPY,
   TRIP_MONEY_V2_IN_FLIGHT_COPY,
   type TripMoneyV2Chip,
   type TripMoneyV2View,
@@ -891,17 +892,20 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
   compact = false,
 }) => {
   const recentReminder = useRecentReminderForOrder(row.orderId);
-  // issue #4522 S-2 — a settled plan-v2 order (paid, or written off) is paid in
-  // full; while a traveler payment processes, nothing else may charge.
+  // issue #4522 S-2 — a settled plan-v2 order is paid in full; while a
+  // traveler payment processes, nothing else may charge; a balance below the
+  // provider's minimum stays owed but cannot be charged (no Charge now).
   // (A settled v2 order has no next open row, so canCharge is already false.)
   const settled = row.isPaidInFull || row.v2?.settled === true;
   const inFlight = row.v2?.paymentInFlight === true;
-  const canCharge = row.nextInstallment !== null && !row.isPaidInFull && !inFlight;
+  const belowMinimum = row.v2?.belowProviderMinimum === true;
+  const canCharge = row.nextInstallment !== null && !row.isPaidInFull && !inFlight && !belowMinimum;
   const sendPayLink = row.nextInstallment?.collectionMethod === "pay_link" ||
     row.nextInstallment?.buyerAction === "approval_required";
   const reminderDisabled = row.isPaidInFull ||
     settled ||
     inFlight ||
+    belowMinimum ||
     recentReminder.data !== null ||
     recentReminder.isLoading ||
     sendReminderMutation.isPending;
@@ -950,6 +954,11 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
       {inFlight && !settled ? (
         <Text style={styles.moneyBookingMeta} testID="trip-money-in-flight">
           {TRIP_MONEY_V2_IN_FLIGHT_COPY}
+        </Text>
+      ) : null}
+      {belowMinimum && !inFlight ? (
+        <Text style={styles.moneyBookingMeta} testID="trip-money-below-minimum">
+          {TRIP_MONEY_V2_BELOW_MINIMUM_COPY}
         </Text>
       ) : null}
     </View>
@@ -1057,7 +1066,6 @@ function v2ChipStyle(chip: TripMoneyV2Chip): { pill: object; text: object } {
   switch (chip) {
     case "paid":
     case "paid_partial":
-    case "written_off":
       return {
         pill: styles.moneyStatusPillCollected,
         text: styles.moneyStatusPillTextCollected,

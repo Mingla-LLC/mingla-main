@@ -453,57 +453,24 @@ Deno.test("T4-3 an amount that would leave too little is refused by name; nothin
   assertEquals(calls.length, 0);
 });
 
-Deno.test("T4-3 a whole balance below the provider's minimum is settled by waiver: no charge, no payment sheet", async () => {
-  const fake = world("stripe", undefined, true, { begin: { installmentId: null, waived: true, waivedMinor: 30 } });
+Deno.test("I-4522-NEVER-WRITE-OFF a whole balance below the provider's minimum: nothing is charged or written off, ops are alerted, no paid-in-full email", async () => {
+  const fake = world("stripe", undefined, true, {
+    begin: { installmentId: null, belowProviderMinimum: true, remainingMinor: 30, alertOps: true,
+      order_id: ORDER, currency: "USD", amountMinor: 0 },
+  });
   const calls: unknown[] = [];
+  const alerts: string[][] = [];
   const res = await handleTripBalancePay(
     post({ action: "start", orderId: ORDER, amountMinor: 30, expectedRemainingMinor: 30,
       clientKey: "client-key-t43b", method: "saved_card" }, "buyer-jwt"),
-    deps(fake, calls),
+    { ...deps(fake, calls), alertOps: (s: string, p: string[]) => { alerts.push([s, ...p]); return Promise.resolve(); } },
   );
   assertEquals(res.status, 409);
-  assertEquals(await res.json(), { error: "balance_settled", waivedMinor: 30 });
+  assertEquals(await res.json(), { error: "balance_below_provider_minimum" });
   assertEquals(calls.length, 0);
-});
-
-Deno.test("T5-3 a balance settled by the write-off sends the paid-in-full email, once per order", async () => {
-  const fake = world("stripe", undefined, true, {
-    begin: { installmentId: null, waived: true, waivedMinor: 30 },
-    claims: [true, false],
-  });
-  const emails: string[] = [];
-  const realFetch = globalThis.fetch;
-  const env = { url: Deno.env.get("SUPABASE_URL"), key: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") };
-  Deno.env.set("SUPABASE_URL", "http://local-supabase");
-  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "local-service-key");
-  globalThis.fetch = ((input: Request | URL | string, init?: RequestInit) => {
-    emails.push(`${String(input)} ${String(init?.body ?? "")}`);
-    return Promise.resolve(new Response("{}", { status: 200 }));
-  }) as typeof fetch;
-  try {
-    for (const key of ["client-key-t53a", "client-key-t53b"]) {
-      const res = await handleTripBalancePay(
-        post({ action: "start", orderId: ORDER, amountMinor: 30, expectedRemainingMinor: 30,
-          clientKey: key, method: "saved_card" }, "buyer-jwt"),
-        deps(fake, []),
-      );
-      assertEquals(res.status, 409);
-    }
-  } finally {
-    globalThis.fetch = realFetch;
-    if (env.url === undefined) Deno.env.delete("SUPABASE_URL");
-    else Deno.env.set("SUPABASE_URL", env.url);
-    if (env.key === undefined) Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
-    else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", env.key);
-  }
-  assertEquals(fake.rpcCalls.filter((c) => c.name === "issue_4522_claim_paid_in_full_notice")
-    .map((c) => c.args), [
-    { p_order_id: ORDER, p_source: "flex_payment_waiver" },
-    { p_order_id: ORDER, p_source: "flex_payment_waiver" },
-  ]);
-  assertEquals(emails.length, 1);
-  assertEquals(emails[0].includes("/functions/v1/ticket-confirmation-dispatch"), true);
-  assertEquals(emails[0].includes("installment_plan_paid_in_full") && emails[0].includes(ORDER), true);
+  assertEquals(alerts.length, 1);
+  assertEquals(alerts[0][0], "A trip balance is too small to charge");
+  assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_claim_paid_in_full_notice"), false);
 });
 
 Deno.test("T4-3 the Paystack new-card handoff applies the same rule before issuing a link; the quote is public", async () => {

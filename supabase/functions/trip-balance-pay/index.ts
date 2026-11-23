@@ -28,12 +28,10 @@ import {
 } from "../_shared/installments/installmentFeeRate.ts";
 import { flexPaymentIdempotencyKey } from "../_shared/installments/installmentIdempotencyKey.ts";
 import {
-  defaultDispatchBuyerEmail,
   mintPayLinkToken,
   PAY_LINK_TOKEN_PATTERN,
   payLinkTokenHashHex,
 } from "../_shared/installments/installmentPayLinks.ts";
-import { claimPaidInFullNotice } from "../_shared/installments/paidInFullNotice.ts";
 import { chargePaystackInstallment } from "../_shared/installments/chargePaystackInstallment.ts";
 import {
   createFlexPaymentIntent,
@@ -52,7 +50,10 @@ import {
   verifyOpenFlexPayments,
 } from "../_shared/installments/flexReclaim.ts";
 import { handleInstallmentPaymentSucceeded } from "../_shared/installmentWebhookHandlers.ts";
-import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
+import {
+  alertUnchargeableRemainder,
+  installmentOpsAlert,
+} from "../_shared/installments/installmentOpsAlert.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import {
@@ -185,7 +186,6 @@ function publicBalance(
     "minPaymentMinor",
     "maxPartialMinor",
     "providerMinimumMinor",
-    "waivedMinor",
     "paymentInFlight",
     "heldCreditMinor",
     "overpaymentRefundedMinor",
@@ -570,13 +570,12 @@ export async function handleTripBalancePay(
   const refused = refusalFrom(beginError);
   if (refused !== null) return refused;
   const flex = (begun ?? {}) as Record<string, unknown>;
-  // T4-3: a whole balance below the provider's minimum is settled by waiver;
-  // nothing is charged. T5-3: the paid-in-full email, once per order.
-  if (flex.waived === true) {
-    if (await claimPaidInFullNotice(supabase, String(orderId), "flex_payment_waiver")) {
-      await defaultDispatchBuyerEmail("installment_plan_paid_in_full", { orderId: String(orderId) });
-    }
-    return jsonResponse({ error: "balance_settled", waivedMinor: Number(flex.waivedMinor ?? 0) }, 409);
+  // I-4522-NEVER-WRITE-OFF: a whole balance below the provider's minimum is
+  // never charged (it would be refused) and never written off: it stays owed
+  // and ops are alerted once. Nothing is begun.
+  if (flex.belowProviderMinimum === true) {
+    await alertUnchargeableRemainder(flex, deps.alertOps);
+    return jsonResponse({ error: "balance_below_provider_minimum" }, 409);
   }
   const installmentId = String(flex.installmentId ?? "");
   if (installmentId.length === 0) {

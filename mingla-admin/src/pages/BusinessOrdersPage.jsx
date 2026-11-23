@@ -319,7 +319,7 @@ function planTermsSection(plan) {
       field("Paid", null, () => (plan.paidMinor == null ? "—" : formatMoney(plan.paidMinor, cur))),
       field("Balance remaining", null, () => (plan.remainingMinor == null ? "—" : <span className="font-medium">{formatMoney(plan.remainingMinor, cur)}</span>)),
       field("Total", null, () => (plan.totalMinor == null ? "—" : formatMoney(plan.totalMinor, cur))),
-      ...(plan.waivedMinor > 0 ? [field("Written off (below provider minimum)", null, () => formatMoney(plan.waivedMinor, cur))] : []),
+      ...(plan.belowProviderMinimum ? [field("Can't be charged", "Below the payment provider's minimum. Still owed; follow up with the traveler.")] : []),
       ...(plan.paymentInFlight ? [field("Payment in progress", "Yes")] : []),
     ],
   };

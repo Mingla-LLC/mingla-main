@@ -135,7 +135,6 @@ const rawBalance = (overrides: Record<string, unknown>): Record<string, unknown>
   minPaymentMinor: 9000,
   maxPartialMinor: 89950,
   providerMinimumMinor: 50,
-  waivedMinor: 0,
   paymentInFlight: false,
   heldCreditMinor: 0,
   overpaymentRefundedMinor: 0,
@@ -280,29 +279,29 @@ describe("#4522 S-2 host money screen, plan-v2 orders", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
-  test("written off below the provider minimum: settled, no Charge now", () => {
+  test("below the provider minimum: still owed and Scheduled at its true amount, never written off, no Charge now", () => {
     installments = [
-      row({ id: "w1", status: "superseded", dueAt: "2027-02-10T09:00:00Z", amountCents: 30, amountChargedCents: 30, failureReason: "waived_below_provider_minimum" }),
+      row({ id: "w1", status: "scheduled", dueAt: "2027-02-10T09:00:00Z", amountCents: 30, amountChargedCents: 30 }),
     ];
     balances = [host(rawBalance({
       depositMinor: 119970,
-      paidMinor: 120000,
-      remainingMinor: 0,
+      paidMinor: 119970,
+      remainingMinor: 30,
       totalMinor: 120000,
       canPayAnyAmount: false,
       minPaymentMinor: null,
       maxPartialMinor: null,
-      waivedMinor: 30,
-      nextPayment: null,
-      openRows: [],
+      nextPayment: { installmentId: "w1", dueAt: "2027-02-10T09:00:00Z", amountMinor: 30, status: "scheduled" },
+      openRows: [{ installmentId: "w1", dueAt: "2027-02-10T09:00:00Z", amountMinor: 30, status: "scheduled" }],
     }))];
     const tree = render();
     press(tree, findToggleLabel(tree));
     const out = text(tree);
-    expect(out).toContain("$0.00 left");
-    expect(out).not.toContain("$1,199.70 left");
-    expect(out).toContain("Written off");
-    expect(out).toContain("No reminder needed — paid in full");
+    expect(out).toContain("$0.30 left");
+    expect(out).toContain("Scheduled");
+    expect(out).not.toContain("Written off");
+    expect(out).not.toContain("paid in full");
+    expect(out).toContain("Too small for the payment provider to charge. Mingla will follow up.");
     expect(charge(tree)?.props.disabled).toBe(true);
     TestRenderer.act(() => tree.unmount());
   });

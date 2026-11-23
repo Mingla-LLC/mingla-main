@@ -182,31 +182,23 @@ describe("#4522 buyer web balance page — first screen test findings", () => {
     await TestRenderer.act(async () => { tree.unmount(); });
   });
 
-  test("S-4 a balance too small to charge, written off by the server, is paid in full", async () => {
-    mockView
-      .mockResolvedValueOnce(view("payable", raw({
-        paidMinor: 119_951, remainingMinor: 49, maxPartialMinor: null, minPaymentMinor: 49,
-        nextPayment: { installmentId: "r3", dueAt: "2027-02-10T09:00:00Z", amountMinor: 49 },
-        openRows: [{ installmentId: "r3", dueAt: "2027-02-10T09:00:00Z", amountMinor: 49 }],
-      })))
-      .mockResolvedValueOnce(view("paid", raw({
-        paidMinor: 119_951, remainingMinor: 0, totalMinor: 119_951, canPayAnyAmount: false,
-        minPaymentMinor: null, maxPartialMinor: null, nextPayment: null, openRows: [],
-      })));
-    mockStart.mockRejectedValue(new TripBalancePayError("balance_settled", 409));
+  test("S-4 a balance below the provider's minimum stays owed: a short neutral line, no pay button, never paid in full", async () => {
+    mockView.mockResolvedValue(view("payable", raw({
+      paidMinor: 119_951, remainingMinor: 49, maxPartialMinor: null, minPaymentMinor: 49,
+      providerMinimumMinor: 50,
+      nextPayment: { installmentId: "r3", dueAt: "2027-02-10T09:00:00Z", amountMinor: 49 },
+      openRows: [{ installmentId: "r3", dueAt: "2027-02-10T09:00:00Z", amountMinor: 49 }],
+    })));
     const tree = await mount();
-    // S-16: one card, not three identical ones.
-    const cards = new Set(
-      tree.root
-        .findAll((n) => n.props.accessibilityRole === "radio" && typeof n.props.onPress === "function")
-        .map((n) => n.props.accessibilityLabel),
-    );
-    expect([...cards]).toEqual(["Pay it all"]);
-    await pressPay(tree);
     const out = allText(tree);
-    expect(out).not.toContain("Something went wrong");
-    expect(out).toContain("Paid in full");
-    expect(out).toContain("The last amount was too small to charge, so it has been cleared.");
+    expect(out).toContain("A small balance of $0.49 is left. We'll be in touch about it.");
+    expect(out).not.toContain("Paid in full");
+    expect(out).not.toContain("too small to charge, so it has been cleared");
+    const payButtons = tree.root.findAll((n) =>
+      n.props.accessibilityRole === "radio" || (n.props.accessibilityRole === "button" && /^Pay/.test(String(n.props.accessibilityLabel ?? "")))
+    );
+    expect(payButtons).toHaveLength(0);
+    expect(mockStart).not.toHaveBeenCalled();
     await TestRenderer.act(async () => { tree.unmount(); });
   });
 

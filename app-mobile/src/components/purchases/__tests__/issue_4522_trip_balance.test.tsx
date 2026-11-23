@@ -86,7 +86,7 @@ test("#4522 Explorer maps every buyer-facing balance refusal to approved copy", 
       "flex_amount_invalid",
       "flex_amount_below_minimum",
       "flex_amount_leaves_unpayable_remainder",
-      "balance_settled",
+      "balance_below_provider_minimum",
       "plan_not_flexible",
       "deposit_not_paid",
       "balance_not_found",
@@ -116,7 +116,13 @@ test("#4522 T4-3 / T4-8 both balance screens: a forbidden amount names the two p
     // "leaves_unpayable_remainder" to unpayableRemainderCopy), shown live.
     assert.ok(screen.includes("tripBalanceAmountErrorCopy("), `${name}: refused before any request`);
     assert.ok(screen.includes("unpayableRemainderCopy("), `${name}: shared copy naming both amounts`);
-    assert.ok(screen.includes('"balance_settled"'), `${name}: a waived balance`);
+    // I-4522-NEVER-WRITE-OFF: no "written off" state; a balance too small to
+    // charge stays owed, with the shared line and no pay button.
+    assert.ok(screen.includes('"balance_below_provider_minimum"'), `${name}: too small to charge`);
+    assert.ok(screen.includes("tripBalanceBelowProviderMinimum(") && screen.includes("tripBalanceSmallRemainderCopy("),
+      `${name}: shared small-balance rule and line`);
+    assert.ok(!screen.includes('"balance_settled"') && !screen.includes("too small to charge, so it has been cleared"),
+      `${name}: no write-off`);
     assert.doesNotMatch(screen, /already processing\. Try again in a few minutes/, `${name}: T4-8 copy`);
     assert.match(screen, /still being confirmed\. You can pay again once it's confirmed, within 24 hours\./);
   }

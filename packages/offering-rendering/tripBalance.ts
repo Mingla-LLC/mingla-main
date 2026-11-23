@@ -284,6 +284,24 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
 }
 
 /**
+ * issue #4522 — a whole balance above zero but below what the payment
+ * provider can charge. It is never written off: it stays owed, nothing is
+ * charged or offered to pay (the provider would refuse it) and Mingla's ops
+ * team follows up. Shared by buyer web and Explorer.
+ */
+export function tripBalanceBelowProviderMinimum(
+  balance: Pick<TripBalance, "remainingMinor" | "providerMinimumMinor">,
+): boolean {
+  return balance.remainingMinor > 0 &&
+    balance.remainingMinor < balance.providerMinimumMinor;
+}
+
+/** issue #4522 — the traveler's line for a balance below the provider's minimum. */
+export function tripBalanceSmallRemainderCopy(amount: string): string {
+  return `A small balance of ${amount} is left. We'll be in touch about it.`;
+}
+
+/**
  * issue #4522 (T4-3) — whether a payment is one the server accepts: the whole
  * balance, or (a flexible plan) minPaymentMinor .. maxPartialMinor.
  */

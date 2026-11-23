@@ -345,7 +345,8 @@ export interface HostTripBalance {
   openRowIds: string[];
   heldCreditMinor: number;
   overpaymentRefundedMinor: number;
-  waivedMinor: number;
+  /** The smallest charge the provider accepts (0 = none known). */
+  providerMinimumMinor: number;
   terms: TripPlanTerms;
   balanceEvents: TripBalanceEvent[];
 }
@@ -380,10 +381,6 @@ export function decodeHostTripBalance(
   if (base === null || !isObject(value)) {
     throw new Error("trip_balance_invalid");
   }
-  const waived = value.waivedMinor === undefined || value.waivedMinor === null
-    ? 0
-    : safeInt(value.waivedMinor);
-  if (waived === null || waived < 0) throw new Error("trip_balance_invalid");
   const rawEvents = Array.isArray(value.balanceEvents) ? value.balanceEvents : [];
   const balanceEvents: TripBalanceEvent[] = [];
   for (const event of rawEvents) {
@@ -411,7 +408,7 @@ export function decodeHostTripBalance(
     openRowIds: base.openRows.map((row) => row.installmentId),
     heldCreditMinor: base.heldCreditMinor,
     overpaymentRefundedMinor: base.overpaymentRefundedMinor,
-    waivedMinor: waived,
+    providerMinimumMinor: base.providerMinimumMinor,
     terms: decodeTerms(value.terms),
     balanceEvents,
   };

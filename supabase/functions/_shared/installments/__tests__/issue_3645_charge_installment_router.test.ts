@@ -106,19 +106,41 @@ Deno.test("#3645 I-3645-PS-4: routing never reads brands.payment_provider", asyn
   assert(!src.replace(/\/\*[\s\S]*?\*\//g, "").includes("payment_provider"));
 });
 
-Deno.test("#4522 T5-3: a claim settled by the write-off sends the paid-in-full email once, on both providers", async () => {
+Deno.test("#4522 I-4522-NEVER-WRITE-OFF: a balance too small to charge is skipped on both providers, never settled or emailed", async () => {
   for (const provider of ["stripe", "paystack"]) {
     const t = setup({ provider, collection_method: "auto_card", order_id: "o1" },
-      { reason: "waived_below_provider_minimum", claims: [true, false] });
-    assertEquals((await t.run()).reason, "waived_below_provider_minimum");
-    assertEquals((await t.run()).reason, "waived_below_provider_minimum");
-    assertEquals(t.fake.rpcCalls.filter((c) => c.name === "issue_4522_claim_paid_in_full_notice").map((c) => c.args),
-      [{ p_order_id: "o1", p_source: "charge_claim_waiver" }, { p_order_id: "o1", p_source: "charge_claim_waiver" }]);
-    assertEquals(t.emails, ["installment_plan_paid_in_full"], provider);
+      { reason: "below_provider_minimum", claims: [true] });
+    assertEquals((await t.run()).reason, "below_provider_minimum");
+    // No paid-in-full email and no paid-in-full claim: it is still owed.
+    assertEquals(t.emails, [], provider);
+    assertEquals(t.fake.rpcCalls.some((c) => c.name === "issue_4522_claim_paid_in_full_notice"), false, provider);
   }
-  const waits = setup({ provider: "stripe", collection_method: "auto_card", order_id: "o1" },
-    { reason: "below_provider_minimum", claims: [true] });
-  await waits.run();
-  assertEquals(waits.emails, []);
-  assertEquals(waits.fake.rpcCalls.some((c) => c.name === "issue_4522_claim_paid_in_full_notice"), false);
+});
+
+Deno.test("#4522 I-4522-NEVER-WRITE-OFF: a pay-link row too small to charge gets no link, no failure, and one ops alert", async () => {
+  const alerts: string[][] = [];
+  const t = setup({ provider: "paystack", collection_method: "pay_link" },
+    { checkpoint: { ok: false, reason: "below_provider_minimum", alertOps: true, remainingMinor: 9999, order_id: "o1", currency: "NGN" } });
+  const r = await chargeInstallment({
+    supabase: t.fake.client as never, installmentId: INST, trigger: "cron",
+    deps: { now: () => new Date("2027-03-01T13:00:00Z"),
+      alertOps: (s: string, p: string[]) => { alerts.push([s, ...p]); return Promise.resolve(); },
+      dispatchBuyerEmail: (kind: string) => { t.emails.push(kind); return Promise.resolve(true); } } as never,
+  });
+  assertEquals(r, { outcome: "skipped", reason: "below_provider_minimum" });
+  assertEquals(t.emails, []);
+  assertEquals(t.fake.rpcCalls.some((c) => c.name === "issue_3645_issue_pay_link"), false);
+  assertEquals(alerts.length, 1);
+  assertEquals(alerts[0][0], "A trip balance is too small to charge");
+  assert(alerts[0][2].includes("o1") && alerts[0][2].includes("9999") && alerts[0][2].includes("NGN"));
+  // Once: the database answers alertOps only the first time.
+  const again = setup({ provider: "paystack", collection_method: "pay_link" },
+    { checkpoint: { ok: false, reason: "below_provider_minimum", alertOps: false } });
+  const before = alerts.length;
+  await chargeInstallment({
+    supabase: again.fake.client as never, installmentId: INST, trigger: "cron",
+    deps: { now: () => new Date("2027-03-01T13:00:00Z"),
+      alertOps: (s: string) => { alerts.push([s]); return Promise.resolve(); } } as never,
+  });
+  assertEquals(alerts.length, before);
 });

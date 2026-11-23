@@ -10,6 +10,8 @@ import {
   tripBalanceAmountAllowed,
   tripBalanceOptions,
   unpayableRemainderCopy,
+  tripBalanceBelowProviderMinimum,
+  tripBalanceSmallRemainderCopy,
 } from "../tripBalance.ts";
 
 const balance = {
@@ -351,4 +353,12 @@ Deno.test("#4522 S-15 the set-dates line is the spec's copy", () => {
     TRIP_BALANCE_SET_DATES_COPY,
     "The host has set payment dates, so you can pay the next payment or everything.",
   );
+});
+
+Deno.test("I-4522-NEVER-WRITE-OFF a whole balance below the provider's minimum stays owed with its own line", () => {
+  assertEquals(tripBalanceBelowProviderMinimum({ remainingMinor: 49, providerMinimumMinor: 50 }), true);
+  assertEquals(tripBalanceBelowProviderMinimum({ remainingMinor: 50, providerMinimumMinor: 50 }), false);
+  assertEquals(tripBalanceBelowProviderMinimum({ remainingMinor: 0, providerMinimumMinor: 50 }), false);
+  assertEquals(tripBalanceBelowProviderMinimum({ remainingMinor: 30, providerMinimumMinor: 0 }), false);
+  assertEquals(tripBalanceSmallRemainderCopy("$0.49"), "A small balance of $0.49 is left. We'll be in touch about it.");
 });

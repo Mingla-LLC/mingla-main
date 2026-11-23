@@ -17,6 +17,7 @@ import { applicationFeeWithReferralShare } from "../attribution.ts";
 import { formatMoneyFromCents } from "../email/currency.ts";
 import { paystackTicketSplitFields } from "../ngPaystackSplit.ts";
 import { claimPaidInFullNotice } from "./paidInFullNotice.ts";
+import { alertUnchargeableRemainder } from "./installmentOpsAlert.ts";
 import {
   classifyPaystackChargeResponse,
   paystackChargeAuthorization,
@@ -314,6 +315,8 @@ export async function chargePaystackInstallment(input: {
   }
   const attempt = (begun ?? {}) as Record<string, unknown>;
   if (attempt.ok !== true) {
+    // issue #4522 — a balance too small to charge stays owed; ops once.
+    await alertUnchargeableRemainder(attempt, deps.alertOps);
     return {
       outcome: "skipped",
       reason: String(attempt.reason ?? "not_chargeable"),

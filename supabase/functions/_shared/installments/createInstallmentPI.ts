@@ -17,6 +17,7 @@ import { writeAudit } from "../audit.ts";
 import { installmentKeyVersionSuffix } from "./installmentIdempotencyKey.ts";
 import { rollOverMissedPayment } from "./missedRollover.ts";
 import { planV2SchemaAvailable } from "./planV2Schema.ts";
+import { alertUnchargeableRemainder } from "./installmentOpsAlert.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import {
   MAX_RETRY_ATTEMPTS,
@@ -260,6 +261,8 @@ export async function createInstallmentPI(
       | null;
     if (claimRow === null || claimRow.ok !== true) {
       const reason = String(claimRow?.reason ?? "not_chargeable");
+      // issue #4522 — a balance too small to charge stays owed; ops once.
+      await alertUnchargeableRemainder(claimRow as Record<string, unknown> | null);
       return {
         ok: false,
         error: reason,

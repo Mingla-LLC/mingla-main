@@ -9,6 +9,8 @@
 --     and any planned row while a flex row is open (flex_payment_in_flight).
 --   issue_3645_begin_installment_attempt (20280202003645) — the same guard
 --     for planned Paystack rows; a flex row may start its own attempt.
+--   issue_3645_checkpoint_pay_link_installment (20280202003645) — a v2 row
+--     below the provider's minimum is never counted as an unpaid failure.
 -- Conflicts raise PT409 (balance_payment_in_flight, balance_changed), never 40001.
 
 BEGIN;
@@ -19,7 +21,8 @@ DECLARE r record; v_actual text;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
     ('public.claim_order_installment_for_charge(uuid)','fc915f58ff0c2c665fd701da9f792a23'),
-    ('public.issue_3645_begin_installment_attempt(uuid,text,bigint,boolean,timestamptz)','18253e8ae6725e5533c83fab15390014')
+    ('public.issue_3645_begin_installment_attempt(uuid,text,bigint,boolean,timestamptz)','18253e8ae6725e5533c83fab15390014'),
+    ('public.issue_3645_checkpoint_pay_link_installment(uuid,timestamptz)','f9ce7aeeeba4ef9fe5db6a743bf9278d')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -1869,17 +1872,17 @@ REVOKE ALL ON FUNCTION public.issue_4522_row_in_flight(uuid) FROM PUBLIC, anon, 
 --    p_paid: [{ticket_type_id, net_minor, addon_minor}] leaving the balance.
 --    p_rolled_in_row: a superseded missed row whose amount joins later rows.
 -- ---------------------------------------------------------------------------
--- T4-3 (I-4522-FLEX-NO-UNPAYABLE-REMAINDER): a v2 order whose whole open
--- balance is above zero but below the provider's minimum charge
--- (issue_3355_provider_minimum_charge_minor) can never be collected: the
--- provider refuses it. It is written off here, once, as settled by waiver:
--- never charged, never dunned, never paid out (its rows are superseded with
--- failure_reason 'waived_below_provider_minimum', not collected), counted as
--- settled so the order reaches paid in full, and audited per row with the
--- amount. Strictly below the floor only, so at most floor − 1 minor units per
--- order (49¢ USD, ₦99.99 NGN); never while a charge can still land. Returns
--- the amount waived (0 when nothing was). The caller holds the order's locks.
-CREATE FUNCTION public.issue_4522_waive_unchargeable_remainder(p_order_id uuid, p_source text)
+-- I-4522-NEVER-WRITE-OFF: a v2 order whose whole open balance is above zero
+-- but below the provider's minimum charge
+-- (issue_3355_provider_minimum_charge_minor) cannot be charged: the provider
+-- refuses it. It is never written off ("Mingla must never lose money"): it
+-- stays owed (never paid in full; payouts as for any open balance), is never
+-- sent to the provider, failed, dunned or flagged at risk, and ops are told
+-- once. This audits the leftover once per order and amount and returns the
+-- amount the first time (the caller alerts ops), 0 otherwise or when the rule
+-- does not apply (strictly below the floor; never while a charge can still
+-- land). The caller holds the order's locks.
+CREATE FUNCTION public.issue_4522_flag_unchargeable_remainder(p_order_id uuid, p_source text)
 RETURNS bigint
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1890,7 +1893,7 @@ DECLARE
   v_floor bigint;
   v_rem bigint;
   v_charge bigint;
-  v_row record;
+  v_first uuid;
 BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
   IF NOT FOUND OR COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) <> 2 THEN
@@ -1908,29 +1911,23 @@ BEGIN
                    AND public.issue_4522_row_in_flight(id)) THEN
     RETURN 0;
   END IF;
-  FOR v_row IN SELECT id, amount_cents FROM public.order_installments
-                WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
-                ORDER BY due_at, id LOOP
-    PERFORM public.issue_3645_audit_installment(v_row.id, 'tr3.installment_waived_below_provider_minimum',
-      jsonb_build_object('order_id', p_order_id, 'amount_minor', v_row.amount_cents,
-        'order_remaining_minor', v_rem, 'provider_minimum_minor', v_floor, 'source', p_source));
-  END LOOP;
-  UPDATE public.order_installments
-     SET status = 'superseded', superseded_at = now(), failure_reason = 'waived_below_provider_minimum',
-         next_retry_at = NULL, updated_at = now()
-   WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed');
-  UPDATE public.order_installment_pay_links l
-     SET revoked_at = now(), revoked_reason = 'installment_superseded'
-    FROM public.order_installments oi
-   WHERE l.installment_id = oi.id AND oi.order_id = p_order_id AND l.revoked_at IS NULL
-     AND oi.failure_reason = 'waived_below_provider_minimum';
-  UPDATE public.order_balance_links SET revoked_at = now(), revoked_reason = 'paid_in_full'
-   WHERE order_id = p_order_id AND revoked_at IS NULL;
-  PERFORM public.issue_3645_clear_at_risk_if_settled(p_order_id);
+  IF EXISTS (SELECT 1 FROM public.audit_log a
+               JOIN public.order_installments oi ON a.target_id = oi.id::text
+              WHERE a.target_type = 'order_installment' AND oi.order_id = p_order_id
+                AND a.action = 'tr3.installment_below_provider_minimum_owed'
+                AND (a.after->>'amount_minor')::bigint = v_rem) THEN
+    RETURN 0;
+  END IF;
+  SELECT id INTO v_first FROM public.order_installments
+   WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+   ORDER BY due_at, id LIMIT 1;
+  PERFORM public.issue_3645_audit_installment(v_first, 'tr3.installment_below_provider_minimum_owed',
+    jsonb_build_object('order_id', p_order_id, 'amount_minor', v_rem, 'currency', trim(v_order.currency),
+      'provider_minimum_minor', v_floor, 'source', p_source));
   RETURN v_rem;
 END
 $fn$;
-REVOKE ALL ON FUNCTION public.issue_4522_waive_unchargeable_remainder(uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.issue_4522_flag_unchargeable_remainder(uuid, text) FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE FUNCTION public.issue_4522_rebalance_order(
   p_order_id uuid,
@@ -2179,10 +2176,6 @@ BEGIN
 
   INSERT INTO public.order_balance_events (order_id, reason, trigger_installment_id, before, after, actor)
   VALUES (p_order_id, p_reason, p_trigger_installment_id, v_before, v_after, p_actor);
-  -- T4-3: a whole balance left below the provider's minimum is settled by waiver.
-  IF public.issue_4522_waive_unchargeable_remainder(p_order_id, p_reason) > 0 THEN
-    v_r2 := 0;
-  END IF;
 
   RETURN jsonb_build_object('remainingMinor', v_r2, 'rows', v_after);
 END
@@ -2210,7 +2203,6 @@ DECLARE
   v_min bigint;
   v_next jsonb;
   v_floor bigint;
-  v_waived bigint;
 BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
   IF NOT FOUND THEN RETURN NULL; END IF;
@@ -2226,10 +2218,6 @@ BEGIN
       JOIN public.order_installments oi ON oi.id = op.installment_id
      WHERE op.order_id = p_order_id AND op.reason = 'flex_exceeds_balance'
        AND oi.status IN ('collected', 'refunded'));
-  -- T4-3: a remainder below the provider's minimum written off by waiver is settled.
-  SELECT COALESCE(sum(amount_cents), 0) INTO v_waived FROM public.order_installments
-   WHERE order_id = p_order_id AND status = 'superseded' AND failure_reason = 'waived_below_provider_minimum';
-  v_collected := v_collected + v_waived;
   v_floor := COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0);
   v_flexible := COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
     AND COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false)
@@ -2265,8 +2253,9 @@ BEGIN
     -- provider's minimum owing. Allowed: minPaymentMinor .. maxPartialMinor,
     -- or exactly remainingMinor; null = only the whole balance.
     'maxPartialMinor', CASE WHEN v_flexible AND v_remaining - v_floor >= v_min THEN v_remaining - v_floor END,
+    -- A remaining balance below this stays owed (never written off): the
+    -- traveler is not offered a payment the provider would refuse.
     'providerMinimumMinor', v_floor,
-    'waivedMinor', v_waived,
     'paymentInFlight', public.issue_4522_order_has_open_flex(p_order_id)
                        OR public.issue_4522_order_has_open_attempt(p_order_id)
                        OR public.issue_4522_collection_guard(p_order_id) IS NOT DISTINCT FROM 'flex_settlement_pending',
@@ -2374,7 +2363,7 @@ DECLARE
   v_released jsonb := '[]'::jsonb;
   v_rem_left bigint;
   v_floor bigint;
-  v_waived bigint;
+  v_left bigint;
 BEGIN
   IF p_method IS NULL OR p_method NOT IN ('auto_card', 'pay_link') THEN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
@@ -2456,19 +2445,19 @@ BEGIN
   END IF;
   -- T4-3 (I-4522-FLEX-NO-UNPAYABLE-REMAINDER): pay the whole balance, or
   -- leave at least the provider's minimum owing (issue_4522_balance quotes
-  -- maxPartialMinor). A whole balance the provider cannot charge is settled
-  -- by waiver instead of a charge that would be refused.
+  -- maxPartialMinor). A whole balance the provider cannot charge is never
+  -- sent (it would be refused) and never written off: it stays owed and ops
+  -- are alerted once (I-4522-NEVER-WRITE-OFF).
   v_floor := COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0);
   IF v_flexible AND p_amount_minor < v_remaining AND v_remaining - p_amount_minor < v_floor THEN
     RAISE EXCEPTION 'flex_amount_leaves_unpayable_remainder' USING ERRCODE = '22023',
       DETAIL = greatest(v_remaining - v_floor, 0)::text;
   END IF;
-  IF p_amount_minor = v_remaining AND v_remaining < v_floor THEN
-    v_waived := public.issue_4522_waive_unchargeable_remainder(p_order_id, 'flex_payment');
-    IF v_waived > 0 THEN
-      RETURN jsonb_build_object('installmentId', NULL, 'waived', true, 'waivedMinor', v_waived,
-        'amountMinor', 0, 'currency', trim(v_currency), 'provider', v_provider, 'released', '[]'::jsonb);
-    END IF;
+  IF v_remaining < v_floor THEN
+    v_left := public.issue_4522_flag_unchargeable_remainder(p_order_id, 'flex_payment');
+    RETURN jsonb_build_object('installmentId', NULL, 'belowProviderMinimum', true,
+      'remainingMinor', v_remaining, 'alertOps', v_left > 0, 'order_id', p_order_id,
+      'amountMinor', 0, 'currency', trim(v_currency), 'provider', v_provider, 'released', '[]'::jsonb);
   END IF;
   IF v_provider = 'stripe' AND p_method <> 'auto_card' THEN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
@@ -2844,6 +2833,7 @@ DECLARE
   v_order_id uuid;
   v_event_id uuid;
   v_guard text;
+  v_left bigint;
 BEGIN
   IF p_installment_id IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'installment_id_required');
@@ -2922,15 +2912,16 @@ BEGIN
   IF v_guard IS NOT NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', v_guard);
   END IF;
-  -- T4-3: a v2 row the provider would refuse as too small is never sent: a
-  -- whole balance below the minimum is settled by waiver; otherwise the row
-  -- waits (no charge, no failure, no reminder) for the rest to be paid.
+  -- T4-3: a v2 row the provider would refuse as too small is never sent and
+  -- never written off: it waits (no charge, no failure, no reminder) and
+  -- stays owed; once it is the whole balance, ops are alerted once
+  -- (I-4522-NEVER-WRITE-OFF, alertOps).
   IF v_inst.kind = 'scheduled' AND COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
      AND COALESCE(v_inst.buyer_total_cents, v_inst.amount_cents)
          < COALESCE(public.issue_3355_provider_minimum_charge_minor(v_inst.currency), 0) THEN
-    RETURN jsonb_build_object('ok', false, 'reason',
-      CASE WHEN public.issue_4522_waive_unchargeable_remainder(v_order.id, 'charge_claim') > 0
-           THEN 'waived_below_provider_minimum' ELSE 'below_provider_minimum' END);
+    v_left := public.issue_4522_flag_unchargeable_remainder(v_order.id, 'charge_claim');
+    RETURN jsonb_build_object('ok', false, 'reason', 'below_provider_minimum',
+      'alertOps', v_left > 0, 'remainingMinor', v_left, 'order_id', v_order.id, 'currency', trim(v_inst.currency));
   END IF;
 
   RETURN jsonb_build_object(
@@ -3013,6 +3004,7 @@ DECLARE
   v_attempt_no integer;
   v_reference text;
   v_attempt_id uuid;
+  v_left bigint;
 BEGIN
   IF p_method IS NULL OR p_method NOT IN ('auto_card', 'pay_link', 'approve') THEN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
@@ -3053,12 +3045,12 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'amount_missing');
   END IF;
   -- T4-3: as claim_order_installment_for_charge — never send a charge the
-  -- provider refuses as too small.
+  -- provider refuses as too small, never write it off.
   IF v_inst.kind = 'scheduled' AND COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
      AND v_inst.buyer_total_cents < COALESCE(public.issue_3355_provider_minimum_charge_minor(v_inst.currency), 0) THEN
-    RETURN jsonb_build_object('ok', false, 'reason',
-      CASE WHEN public.issue_4522_waive_unchargeable_remainder(v_order.id, 'charge_claim') > 0
-           THEN 'waived_below_provider_minimum' ELSE 'below_provider_minimum' END);
+    v_left := public.issue_4522_flag_unchargeable_remainder(v_order.id, 'charge_claim');
+    RETURN jsonb_build_object('ok', false, 'reason', 'below_provider_minimum',
+      'alertOps', v_left > 0, 'remainingMinor', v_left, 'order_id', v_order.id, 'currency', trim(v_inst.currency));
   END IF;
   IF v_inst.in_flight_attempt_id IS NOT NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'attempt_in_flight');
@@ -3109,6 +3101,60 @@ BEGIN
     'application_fee_cents', p_application_fee_cents,
     'attempt_no', v_attempt_no
   );
+END
+$function$;
+
+CREATE OR REPLACE FUNCTION public.issue_3645_checkpoint_pay_link_installment(p_installment_id uuid, p_now timestamp with time zone DEFAULT now())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_event_status text;
+  v_inst public.order_installments;
+  v_order public.orders;
+  v_fail jsonb;
+  v_left bigint;
+BEGIN
+  v_event_status := public.issue_3645_lock_installment_graph(p_installment_id);
+  IF v_event_status IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
+  END IF;
+  SELECT * INTO v_inst FROM public.order_installments WHERE id = p_installment_id;
+  SELECT * INTO v_order FROM public.orders WHERE id = v_inst.order_id;
+  IF v_inst.provider <> 'paystack' OR v_inst.collection_method <> 'pay_link' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_pay_link');
+  END IF;
+  IF v_inst.status NOT IN ('scheduled', 'failed') OR v_inst.cancelled_at IS NOT NULL
+     OR v_order.cancelled_at IS NOT NULL OR v_event_status = 'cancelled' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_open');
+  END IF;
+  IF v_inst.in_flight_attempt_id IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'attempt_in_flight');
+  END IF;
+  -- issue #4522 (I-4522-NEVER-WRITE-OFF) — a v2 row below the provider's
+  -- minimum can never be paid by its link, so an unpaid link is not a
+  -- failure: no failure counted, no at risk, no dunning, no new link. It
+  -- stays owed; once it is the whole balance, ops are alerted once.
+  IF v_inst.kind = 'scheduled' AND COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
+     AND COALESCE(v_inst.buyer_total_cents, v_inst.amount_cents)
+         < COALESCE(public.issue_3355_provider_minimum_charge_minor(v_inst.currency), 0) THEN
+    v_left := public.issue_4522_flag_unchargeable_remainder(v_order.id, 'pay_link_checkpoint');
+    RETURN jsonb_build_object('ok', false, 'reason', 'below_provider_minimum',
+      'alertOps', v_left > 0, 'remainingMinor', v_left, 'order_id', v_order.id, 'currency', trim(v_inst.currency));
+  END IF;
+  IF v_inst.retry_count >= 3 THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'already_at_risk');
+  END IF;
+  IF (v_inst.status = 'scheduled' AND v_inst.due_at > p_now)
+     OR (v_inst.status = 'failed' AND (v_inst.next_retry_at IS NULL OR v_inst.next_retry_at > p_now)) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'checkpoint_not_reached');
+  END IF;
+  v_fail := public.issue_3645_count_installment_failure(p_installment_id, 'pay_link_unpaid', p_now);
+  PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_paystack_' || (v_fail ->> 'outcome'),
+    jsonb_build_object('reason', 'pay_link_unpaid', 'retry_count', v_fail -> 'retry_count'));
+  RETURN v_fail || jsonb_build_object('ok', true, 'installment_id', p_installment_id, 'order_id', v_inst.order_id);
 END
 $function$;
 

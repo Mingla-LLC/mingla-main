@@ -19,7 +19,7 @@ const balance = (overrides = {}) => ({
     auto_adjust: true, flex_enabled: true, min_payment_minor: 9000, deposit_minor: 30000,
     deposit_non_refundable: true, addon_payment_mode: null, count_offered: 3, count_given: 3,
   },
-  waivedMinor: 0,
+  providerMinimumMinor: 50,
   paymentInFlight: false,
   overpayments: [],
   balanceEvents: [
@@ -74,16 +74,18 @@ describe("#4522 S-13 Admin plan-v2 order view", () => {
     ]);
   });
 
-  it("shows a remainder written off below the provider minimum as written off", () => {
+  it("shows a balance below the provider minimum as still owed and Scheduled, never written off", () => {
     const view = tripOrderBalanceView(balance({
-      remainingMinor: 0, paidMinor: 120000, waivedMinor: 30,
-      rows: [{ installmentId: "w", ordinal: 1, kind: "scheduled", status: "superseded", dueAt: "2027-02-10T09:00:00Z",
-        amountMinor: 30, scheduleVersion: 2, provider: "stripe", collectionMethod: "auto_card",
-        failureReason: "waived_below_provider_minimum" }],
+      remainingMinor: 30, paidMinor: 119970, totalMinor: 120000,
+      rows: [{ installmentId: "w", ordinal: 1, kind: "scheduled", status: "scheduled", dueAt: "2027-02-10T09:00:00Z",
+        amountMinor: 30, scheduleVersion: 2, provider: "stripe", collectionMethod: "auto_card" }],
     }));
-    assert.equal(view.rows[0].statusLabel, "Written off");
-    assert.equal(view.waivedMinor, 30);
-    assert.equal(view.remainingMinor, 0);
+    assert.equal(view.rows[0].statusLabel, "Scheduled");
+    assert.equal(view.rows[0].amountMinor, 30);
+    assert.equal(view.remainingMinor, 30);
+    assert.equal(view.belowProviderMinimum, true);
+    assert.equal("waivedMinor" in view, false);
+    assert.equal(tripOrderBalanceView(balance()).belowProviderMinimum, false);
   });
 
   it("gives no v2 view to an older plan or a non-trip order", () => {

@@ -17,7 +17,6 @@ export type TripMoneyV2Chip =
   | "failed"
   | "rebalanced"
   | "refunded"
-  | "written_off"
   | "cancelled";
 
 export const TRIP_MONEY_V2_CHIP_LABEL: Record<TripMoneyV2Chip, string> = {
@@ -27,7 +26,6 @@ export const TRIP_MONEY_V2_CHIP_LABEL: Record<TripMoneyV2Chip, string> = {
   failed: "Failed",
   rebalanced: "Rebalanced",
   refunded: "Refunded",
-  written_off: "Written off",
   cancelled: "Cancelled",
 };
 
@@ -50,8 +48,14 @@ export interface TripMoneyV2HistoryItem {
 export interface TripMoneyV2View {
   termsLine: string;
   ledger: TripMoneyV2LedgerRow[];
-  /** Nothing is owed (paid in full, or the last few cents written off). */
+  /** Nothing is owed (paid in full). A balance is never written off. */
   settled: boolean;
+  /**
+   * issue #4522 — what is still owed is below the provider's minimum: it
+   * stays owed (Scheduled, its true amount) but cannot be charged, so there
+   * is no Charge now; Mingla's ops team follows up.
+   */
+  belowProviderMinimum: boolean;
   /** A traveler payment (flexible payment or a charge) is still processing. */
   paymentInFlight: boolean;
   /** The row Charge now / Send reminder act on: the next open scheduled row. */
@@ -62,8 +66,9 @@ export interface TripMoneyV2View {
 }
 
 export const TRIP_MONEY_V2_IN_FLIGHT_COPY = "A traveler payment is processing.";
+export const TRIP_MONEY_V2_BELOW_MINIMUM_COPY =
+  "Too small for the payment provider to charge. Mingla will follow up.";
 
-const WAIVED_REASON = "waived_below_provider_minimum";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function rowChip(row: OrderInstallmentForBrand): TripMoneyV2Chip | null {
@@ -86,7 +91,7 @@ function rowChip(row: OrderInstallmentForBrand): TripMoneyV2Chip | null {
     case "cancelled":
       return "cancelled";
     case "superseded":
-      return row.failureReason === WAIVED_REASON ? "written_off" : "rebalanced";
+      return "rebalanced";
     default: {
       const unreachable: never = row.status;
       return unreachable;
@@ -185,6 +190,8 @@ export function buildTripMoneyV2View(input: {
     termsLine: termsLine(balance, rows, money),
     ledger,
     settled,
+    belowProviderMinimum: balance.remainingMinor > 0 &&
+      balance.remainingMinor < balance.providerMinimumMinor,
     paymentInFlight: balance.paymentInFlight || openFlex,
     nextOpenRow,
     nextPayment:

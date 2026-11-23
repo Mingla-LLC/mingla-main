@@ -21,7 +21,9 @@ import {
   parseTripBalanceAmount,
   type TripBalanceChoice,
   tripBalanceAmountErrorCopy,
+  tripBalanceBelowProviderMinimum,
   tripBalanceOptions,
+  tripBalanceSmallRemainderCopy,
   unpayableRemainderCopy,
   type TripBalanceView,
 } from "@mingla/offering-rendering/tripBalance";
@@ -49,10 +51,6 @@ const StripePayment = React.lazy(() =>
 );
 const POLL_INTERVAL_MS = 2_000;
 const POLL_BUDGET_MS = 30_000;
-
-/** issue #4522 S-4 — the server cleared a balance too small to charge. */
-const BALANCE_SETTLED_COPY =
-  "Nothing more is owed on this trip. The last amount was too small to charge, so it has been cleared.";
 
 const first = (value: string | string[] | undefined): string =>
   typeof value === "string" ? value : "";
@@ -91,8 +89,10 @@ const paymentErrorCopy = (
       return balance
         ? unpayableRemainderCopy(balance, (minor) => balanceMoney(minor, balance.currency))
         : "Enter a valid amount.";
-    case "balance_settled":
-      return BALANCE_SETTLED_COPY;
+    case "balance_below_provider_minimum":
+      return balance
+        ? tripBalanceSmallRemainderCopy(balanceMoney(balance.remainingMinor, balance.currency))
+        : "Payment couldn't start. Your balance has not been changed.";
     case "plan_not_flexible":
       return "This trip takes set payments. You can pay your next payment or the full balance.";
     case "deposit_not_paid":
@@ -109,7 +109,7 @@ const paymentErrorCopy = (
 
 type Page =
   | { kind: "loading" }
-  | { kind: "ready"; view: TripBalanceView; notice?: string }
+  | { kind: "ready"; view: TripBalanceView }
   | {
     kind: "stripe";
     view: TripBalanceView;
@@ -259,15 +259,15 @@ export default function TripBalancePayPage(): React.ReactElement {
   }, [balance, choice, customAmount]);
 
   /**
-   * issue #4522 S-4 / S-6 — the server says there is nothing left to charge
-   * (it cleared a balance too small to charge, or the balance was settled
-   * elsewhere): read the link again and show what is true now.
+   * issue #4522 S-6 — the server says there is nothing it can charge now
+   * (the balance was settled elsewhere, or what is left is below the
+   * provider's minimum): read the link again and show what is true now.
    */
-  const refreshAfterSettled = async (notice?: string): Promise<boolean> => {
+  const refreshAfterSettled = async (): Promise<boolean> => {
     const fresh = await viewTripBalanceLink(token).catch(() => null);
     if (fresh === null) return false;
     last.current = fresh;
-    setPage({ kind: "ready", view: fresh, ...(notice ? { notice } : {}) });
+    setPage({ kind: "ready", view: fresh });
     return true;
   };
 
@@ -326,10 +326,10 @@ export default function TripBalancePayPage(): React.ReactElement {
         );
       } else if (
         error instanceof TripBalancePayError &&
-        error.code === "balance_settled" &&
-        (await refreshAfterSettled(BALANCE_SETTLED_COPY))
+        error.code === "balance_below_provider_minimum" &&
+        (await refreshAfterSettled())
       ) {
-        // S-4: shown as paid in full, with why.
+        // Too small to charge: shown as still owed, with no pay button.
       } else if (
         error instanceof TripBalancePayError &&
         error.code === "balance_not_found" &&
@@ -403,9 +403,7 @@ export default function TripBalancePayPage(): React.ReactElement {
     content = (
       <State
         title="Paid in full"
-        body={page.kind === "ready" && page.notice
-          ? page.notice
-          : `You're all set for ${page.view.tripTitle ?? "your trip"}.`}
+        body={`You're all set for ${page.view.tripTitle ?? "your trip"}.`}
       >
         {/* issue #4522 S-5 — an overpayment refunded (or being refunded). */}
         {page.view.balance ? <TripBalanceOverpayment balance={page.view.balance} /> : null}
@@ -453,6 +451,20 @@ export default function TripBalancePayPage(): React.ReactElement {
       <State
         title="Not available for this trip"
         body="Your payments stay on their schedule."
+      />
+    );
+  } else if (
+    tripBalanceBelowProviderMinimum(page.view.balance) &&
+    !page.view.balance.paymentInFlight
+  ) {
+    // issue #4522 — below what the provider can charge: still owed, never
+    // written off, and no pay button that would fail.
+    content = (
+      <State
+        title="Balance remaining"
+        body={tripBalanceSmallRemainderCopy(
+          balanceMoney(page.view.balance.remainingMinor, page.view.balance.currency),
+        )}
       />
     );
   } else {

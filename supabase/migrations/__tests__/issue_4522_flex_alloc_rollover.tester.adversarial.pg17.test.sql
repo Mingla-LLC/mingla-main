@@ -1,4 +1,5 @@
--- MINGLA-INVARIANT: I-4522-FLEX-NO-UNPAYABLE-REMAINDER | issue #4522 | A flexible payment either pays the whole remaining balance or leaves at least the provider's minimum charge owing (refused by name otherwise, and quoted as maxPartialMinor); re-spread, rollover, short collection and add-on removal never leave a row the provider cannot charge; a whole balance below the provider's minimum is never charged or dunned but settled once by waiver, at most the minimum less one minor unit, audited and never paid out.
+-- MINGLA-INVARIANT: I-4522-NEVER-WRITE-OFF | issue #4522 | A v2 trip balance is never written off: a whole balance below the provider's minimum stays owed, is never charged, failed, dunned or counted as paid in full, and ops are alerted once.
+-- MINGLA-INVARIANT: I-4522-FLEX-NO-UNPAYABLE-REMAINDER | issue #4522 | A flexible payment either pays the whole remaining balance or leaves at least the provider's minimum charge owing (refused by name otherwise, and quoted as maxPartialMinor); re-spread, rollover, short collection and add-on removal never leave a row the provider cannot charge; a whole balance below the provider's minimum is never charged, dunned or written off: it stays owed and ops are alerted once.
 -- MINGLA-INVARIANT: I-4522-14 | issue #4522 | A flexible payment of any allowed amount (from the minimum up to the remaining balance less the provider's minimum, or the whole balance) allocates exactly across packages (largest remainder, never more than a package owes); a client key replays only its own request; a missed payment that cannot be placed in its own package flags the booking at risk and the failure count always persists; a failure for a superseded row is a no-op; count_installment_failure locks event, order, then rows.
 \set ON_ERROR_STOP on
 
@@ -361,7 +362,9 @@ BEGIN
 END
 $t$;
 
--- A whole balance below the provider's minimum: never charged, settled once by waiver.
+-- I-4522-NEVER-WRITE-OFF: a whole balance below the provider's minimum is
+-- never charged, failed, dunned or written off: it stays owed and ops are
+-- alerted once (alertOps the first time only).
 SELECT pg_temp.seed43('45220f02-0000-4000-8000-0000000000d6', 'USD',
   '[{"tt":"45220f02-0000-4000-8000-000000000030","due":"2026-01-10T08:00Z","amt":30}]', 1000);
 SELECT pg_temp.seed43('45220f02-0000-4000-8000-0000000000d7', 'NGN',
@@ -376,36 +379,45 @@ DECLARE
   r7 uuid := (SELECT id FROM public.order_installments WHERE order_id = '45220f02-0000-4000-8000-0000000000d7');
   r8 uuid := (SELECT id FROM public.order_installments WHERE order_id = '45220f02-0000-4000-8000-0000000000d8' AND ordinal = 1);
 BEGIN
-  UPDATE public.orders SET at_risk = true, at_risk_since = now() WHERE id = '45220f02-0000-4000-8000-0000000000d6';
   UPDATE public.order_installments SET status = 'failed', retry_count = 1, failure_reason = 'amount_too_small', failed_at = now() WHERE id = r6;
   v := public.claim_order_installment_for_charge(r6);
-  PERFORM pg_temp.check('T4-3 Stripe: a 30¢ balance is never sent to the provider; it is settled by waiver',
-    v->>'reason' = 'waived_below_provider_minimum' AND NOT (v->>'ok')::boolean, v::text);
+  PERFORM pg_temp.check('T4-3 Stripe: a 30¢ balance is never sent to the provider; ops are alerted',
+    v->>'reason' = 'below_provider_minimum' AND NOT (v->>'ok')::boolean AND (v->>'alertOps')::boolean
+    AND (v->>'remainingMinor')::bigint = 30 AND v->>'currency' = 'USD'
+    AND v->>'order_id' = '45220f02-0000-4000-8000-0000000000d6', v::text);
   b := public.issue_4522_balance('45220f02-0000-4000-8000-0000000000d6');
-  PERFORM pg_temp.check('T4-3 ... paid in full, waived 30¢ counted as settled, at risk cleared, never paid out',
-    (b->>'remainingMinor')::bigint = 0 AND (b->>'waivedMinor')::bigint = 30 AND (b->>'paidMinor')::bigint = (b->>'totalMinor')::bigint
-    AND NOT (SELECT at_risk FROM public.orders WHERE id = '45220f02-0000-4000-8000-0000000000d6')
-    AND (SELECT status = 'superseded' AND failure_reason = 'waived_below_provider_minimum' AND payout_accounting_state IS DISTINCT FROM 'ready'
-           FROM public.order_installments WHERE id = r6)
+  PERFORM pg_temp.check('T4-3 ... it stays owed: not paid in full, nothing written off, the row untouched',
+    (b->>'remainingMinor')::bigint = 30 AND (b->>'paidMinor')::bigint = (b->>'totalMinor')::bigint - 30
+    AND NOT (b ? 'waivedMinor')
+    AND (SELECT status = 'failed' AND retry_count = 1 AND amount_cents = 30 FROM public.order_installments WHERE id = r6)
+    AND NOT public.issue_4522_claim_paid_in_full_notice('45220f02-0000-4000-8000-0000000000d6', 'test')
     AND (SELECT count(*) FROM public.audit_log
           WHERE target_type = 'order_installment' AND target_id = r6::text
-            AND action = 'tr3.installment_waived_below_provider_minimum' AND (after->>'amount_minor')::bigint = 30) = 1, b::text);
+            AND action = 'tr3.installment_below_provider_minimum_owed' AND (after->>'amount_minor')::bigint = 30) = 1, b::text);
   v := public.claim_order_installment_for_charge(r6);
-  PERFORM pg_temp.check('T4-3 ... once: a second claim finds nothing to charge', v->>'reason' = 'installment_not_chargeable', v::text);
+  PERFORM pg_temp.check('T4-3 ... ops are alerted once: a second claim refuses without a new alert',
+    v->>'reason' = 'below_provider_minimum' AND NOT (v->>'alertOps')::boolean
+    AND (SELECT count(*) FROM public.audit_log WHERE target_id = r6::text
+          AND action = 'tr3.installment_below_provider_minimum_owed') = 1, v::text);
   v := public.issue_3645_begin_installment_attempt(r7, 'pay_link', 0, true, now());
-  PERFORM pg_temp.check('T4-3 Paystack: ₦99.99 is never sent either; settled by waiver (strictly below ₦100)',
-    v->>'reason' = 'waived_below_provider_minimum'
-    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000d7')->>'waivedMinor')::bigint = 9999, v::text);
+  PERFORM pg_temp.check('T4-3 Paystack: ₦99.99 is never sent either (strictly below ₦100); stays owed, ops alerted',
+    v->>'reason' = 'below_provider_minimum' AND (v->>'alertOps')::boolean
+    AND NOT EXISTS (SELECT 1 FROM public.order_installment_charge_attempts WHERE installment_id = r7)
+    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000d7')->>'remainingMinor')::bigint = 9999, v::text);
+  v := public.issue_3645_checkpoint_pay_link_installment(r7, now() + interval '400 days');
+  PERFORM pg_temp.check('T4-3 Paystack: its unpaid link is never counted as a failure (no at risk, no dunning)',
+    v->>'reason' = 'below_provider_minimum' AND NOT (v->>'alertOps')::boolean
+    AND (SELECT status = 'scheduled' AND retry_count = 0 FROM public.order_installments WHERE id = r7)
+    AND NOT (SELECT at_risk FROM public.orders WHERE id = '45220f02-0000-4000-8000-0000000000d7'), v::text);
   v := public.claim_order_installment_for_charge(r8);
-  PERFORM pg_temp.check('T4-3 a 30¢ row while $300 is still owed: not charged, not failed, not waived (it waits)',
-    v->>'reason' = 'below_provider_minimum'
-    AND (SELECT status FROM public.order_installments WHERE id = r8) = 'scheduled'
-    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000d8')->>'waivedMinor')::bigint = 0, v::text);
+  PERFORM pg_temp.check('T4-3 a 30¢ row while $300 is still owed: not charged, not failed, no alert (it waits)',
+    v->>'reason' = 'below_provider_minimum' AND NOT (v->>'alertOps')::boolean
+    AND (SELECT status FROM public.order_installments WHERE id = r8) = 'scheduled', v::text);
 END
 $t$;
 
--- T5-6: never written off while a flexible payment is open (its charge can
--- still land and pay the balance).
+-- T5-6: never flagged while a flexible payment is open (its charge can still
+-- land and pay the balance); nothing is ever written off either way.
 SELECT pg_temp.seed43('45220f02-0000-4000-8000-0000000000da', 'USD',
   '[{"tt":"45220f02-0000-4000-8000-000000000030","due":"2026-01-10T08:00Z","amt":30}]', 1000);
 DO $t$
@@ -417,29 +429,30 @@ BEGIN
   INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
     collection_method, kind, flex_client_key, line_allocation, plan_bound_at)
   VALUES (o, 2, 30, 'USD', now(), 'scheduled', 'stripe', 'auto_card', 'flex', 't56-open-flex', '[]'::jsonb, now());
-  w := public.issue_4522_waive_unchargeable_remainder(o, 'charge_claim');
-  PERFORM pg_temp.check('T5-6 a 30¢ balance with a flexible payment open is not written off',
-    w = 0 AND (SELECT status FROM public.order_installments WHERE id = r) = 'scheduled'
-    AND (public.issue_4522_balance(o)->>'waivedMinor')::bigint = 0, w::text);
+  w := public.issue_4522_flag_unchargeable_remainder(o, 'charge_claim');
+  PERFORM pg_temp.check('T5-6 a 30¢ balance with a flexible payment open is not flagged', w = 0, w::text);
   UPDATE public.order_installments SET status = 'superseded', superseded_at = now()
    WHERE order_id = o AND kind = 'flex';
-  w := public.issue_4522_waive_unchargeable_remainder(o, 'charge_claim');
-  PERFORM pg_temp.check('T5-6 ... once it is closed, the same balance is written off',
-    w = 30 AND (SELECT failure_reason FROM public.order_installments WHERE id = r) = 'waived_below_provider_minimum', w::text);
+  w := public.issue_4522_flag_unchargeable_remainder(o, 'charge_claim');
+  PERFORM pg_temp.check('T5-6 ... once it is closed, ops are told and the 30¢ stays owed',
+    w = 30 AND (SELECT status = 'scheduled' AND failure_reason IS NULL FROM public.order_installments WHERE id = r)
+    AND (public.issue_4522_balance(o)->>'remainingMinor')::bigint = 30, w::text);
 END
 $t$;
 
--- The traveler pays a whole balance below the minimum: settled by waiver, no charge.
+-- The traveler asks to pay a whole balance below the minimum: nothing is
+-- begun, nothing written off; it stays owed and ops are told.
 SELECT pg_temp.seed43('45220f02-0000-4000-8000-0000000000d9', 'USD',
   '[{"tt":"45220f02-0000-4000-8000-000000000030","due":"2027-01-10T08:00Z","amt":30}]', 1000);
 DO $t$
 DECLARE v jsonb;
 BEGIN
   v := public.issue_4522_begin_flex_payment('45220f02-0000-4000-8000-0000000000d9', 30, 30, 'whole-key-30', 'auto_card');
-  PERFORM pg_temp.check('T4-3 paying a 30¢ whole balance: no charge is begun; it is settled by waiver',
-    (v->>'waived')::boolean AND (v->>'waivedMinor')::bigint = 30 AND v->>'installmentId' IS NULL
+  PERFORM pg_temp.check('T4-3 paying a 30¢ whole balance: no charge is begun; it stays owed and ops are alerted',
+    (v->>'belowProviderMinimum')::boolean AND (v->>'alertOps')::boolean AND v->>'installmentId' IS NULL
+    AND NOT (v ? 'waived')
     AND NOT EXISTS (SELECT 1 FROM public.order_installments WHERE order_id = '45220f02-0000-4000-8000-0000000000d9' AND kind = 'flex')
-    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000d9')->>'remainingMinor')::bigint = 0, v::text);
+    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000d9')->>'remainingMinor')::bigint = 30, v::text);
 END
 $t$;
 
@@ -491,10 +504,11 @@ BEGIN
     AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000e3')->>'remainingMinor')::bigint = 30
     AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000e3')->>'paidMinor')::bigint
         = (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000e3')->>'totalMinor')::bigint - 30, v::text);
-  PERFORM pg_temp.check('T4-3 the waiver is closed to client roles',
-    NOT has_function_privilege('authenticated', 'public.issue_4522_waive_unchargeable_remainder(uuid, text)', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.issue_4522_waive_unchargeable_remainder(uuid, text)', 'EXECUTE')
-    AND NOT has_function_privilege('service_role', 'public.issue_4522_waive_unchargeable_remainder(uuid, text)', 'EXECUTE'));
+  PERFORM pg_temp.check('T4-3 the write-off is gone; its replacement flag is internal',
+    to_regprocedure('public.issue_4522_waive_unchargeable_remainder(uuid,text)') IS NULL
+    AND NOT has_function_privilege('authenticated', 'public.issue_4522_flag_unchargeable_remainder(uuid, text)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.issue_4522_flag_unchargeable_remainder(uuid, text)', 'EXECUTE')
+    AND NOT has_function_privilege('service_role', 'public.issue_4522_flag_unchargeable_remainder(uuid, text)', 'EXECUTE'));
 END
 $t$;
 

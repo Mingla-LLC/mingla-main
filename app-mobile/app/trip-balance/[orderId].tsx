@@ -29,7 +29,9 @@ import {
   supportsBalancePayments,
   TRIP_BALANCE_SET_DATES_COPY,
   tripBalanceAmountErrorCopy,
+  tripBalanceBelowProviderMinimum,
   tripBalanceOptions,
+  tripBalanceSmallRemainderCopy,
   unpayableRemainderCopy,
 } from "@mingla/offering-rendering/tripBalance";
 
@@ -68,10 +70,6 @@ const clientKey = (): string =>
 const amountString = (minor: number): string =>
   `${Math.floor(minor / 100)}.${String(minor % 100).padStart(2, "0")}`;
 
-/** issue #4522 S-4 — the server cleared a balance too small to charge. */
-const BALANCE_SETTLED_COPY =
-  "Nothing more is owed on this trip. The last amount was too small to charge, so it has been cleared.";
-
 const paymentErrorCopy = (
   code: string,
   balance: TripBalance | null,
@@ -98,8 +96,10 @@ const paymentErrorCopy = (
       return balance
         ? unpayableRemainderCopy(balance, (minor) => money(minor, balance.currency))
         : "Enter a valid amount.";
-    case "balance_settled":
-      return BALANCE_SETTLED_COPY;
+    case "balance_below_provider_minimum":
+      return balance
+        ? tripBalanceSmallRemainderCopy(money(balance.remainingMinor, balance.currency))
+        : "Payment couldn't start. Your balance has not been changed.";
     case "plan_not_flexible":
       return "This trip takes set payments. You can pay your next payment or the full balance.";
     case "deposit_not_paid":
@@ -324,12 +324,12 @@ export default function TripBalanceRoute(): React.ReactElement {
         toastManager.info(paymentErrorCopy(error.code, balance), 5000);
         await query.refetch();
       } else if (
-        error instanceof TripBalancePayError && error.code === "balance_settled"
+        error instanceof TripBalancePayError &&
+        error.code === "balance_below_provider_minimum"
       ) {
-        // issue #4522 S-4 — the server cleared the last, too-small amount:
-        // nothing is owed. Show the paid state, not an error.
+        // issue #4522 — what is left is too small to charge: it stays owed
+        // (never written off); the refreshed balance shows it, no pay button.
         await refreshBoth();
-        toastManager.success(BALANCE_SETTLED_COPY, 5000);
       } else if (
         error instanceof TripBalancePayError &&
         error.code === "balance_not_found"
@@ -416,6 +416,15 @@ export default function TripBalanceRoute(): React.ReactElement {
       <State
         title="Nothing to pay"
         body="This trip balance is no longer due."
+      />
+    );
+  } else if (tripBalanceBelowProviderMinimum(balance) && !balance.paymentInFlight) {
+    // issue #4522 — below what the provider can charge: still owed, never
+    // written off, and no pay button that would fail.
+    content = (
+      <State
+        title="Balance remaining"
+        body={tripBalanceSmallRemainderCopy(money(balance.remainingMinor, balance.currency))}
       />
     );
   } else {content = (

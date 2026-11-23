@@ -20,8 +20,8 @@ import {
   type ChargePaystackDeps,
   notifyPaystackInstallmentFailure,
 } from "./chargePaystackInstallment.ts";
-import { defaultDispatchBuyerEmail, sendInstallmentPayLink } from "./installmentPayLinks.ts";
-import { claimPaidInFullNotice } from "./paidInFullNotice.ts";
+import { sendInstallmentPayLink } from "./installmentPayLinks.ts";
+import { alertUnchargeableRemainder } from "./installmentOpsAlert.ts";
 
 export type ChargeInstallmentOutcome =
   | "collected"
@@ -36,23 +36,6 @@ export interface ChargeDeps extends ChargePaystackDeps {
   createInstallmentPI: (input: Parameters<typeof createInstallmentPI>[0]) => Promise<CreateInstallmentPIResult>;
   chargePaystackInstallment: typeof chargePaystackInstallment;
   now: () => Date;
-}
-
-/**
- * issue #4522 (T5-3): a claim that settled the order by writing off a balance
- * below the provider's minimum (reason waived_below_provider_minimum) sends
- * the paid-in-full email like every other settle, claimed once per order.
- */
-async function paidInFullAfterWaiver(
-  supabase: SupabaseClient,
-  orderId: string,
-  reason: string | undefined,
-  deps: Partial<ChargeDeps>,
-): Promise<void> {
-  if (reason !== "waived_below_provider_minimum") return;
-  if (await claimPaidInFullNotice(supabase, orderId, "charge_claim_waiver")) {
-    await (deps.dispatchBuyerEmail ?? defaultDispatchBuyerEmail)("installment_plan_paid_in_full", { orderId });
-  }
 }
 
 export async function chargeInstallment(input: {
@@ -79,7 +62,6 @@ export async function chargeInstallment(input: {
   const brandId = String(one(one(row.orders).events).brand_id);
   const provider = String(row.provider);
   const method = String(row.collection_method);
-  const orderId = typeof row.order_id === "string" ? row.order_id : "";
 
   if (input.dryRun === true) return { outcome: "skipped", reason: `dry_run:${provider}:${method}` };
 
@@ -91,7 +73,6 @@ export async function chargeInstallment(input: {
       supabase,
       override: input.atRiskOverride ? { atRisk: true } : undefined,
     });
-    await paidInFullAfterWaiver(supabase, orderId, result.reason, deps);
     return {
       outcome: (result.outcome ?? (result.ok ? "collected" : "skipped")) as ChargeInstallmentOutcome,
       reason: result.reason ?? result.error,
@@ -103,9 +84,7 @@ export async function chargeInstallment(input: {
 
   if (method === "auto_card") {
     const run = deps.chargePaystackInstallment ?? chargePaystackInstallment;
-    const charged = await run({ supabase, installmentId: input.installmentId, atRiskOverride: input.atRiskOverride, deps });
-    await paidInFullAfterWaiver(supabase, orderId, charged.reason, deps);
-    return charged;
+    return await run({ supabase, installmentId: input.installmentId, atRiskOverride: input.atRiskOverride, deps });
   }
 
   // pay_link: a reached checkpoint counts one failure and resends the link.
@@ -121,6 +100,12 @@ export async function chargeInstallment(input: {
     return { outcome: checkpoint.outcome === "at_risk" ? "at_risk_flagged" : "pay_link_sent", reason: "pay_link_unpaid" };
   }
   const reason = String(checkpoint.reason ?? "");
+  // issue #4522 — a balance too small to charge: no link, no failure; it
+  // stays owed and ops are alerted once.
+  if (reason === "below_provider_minimum") {
+    await alertUnchargeableRemainder(checkpoint, deps.alertOps);
+    return { outcome: "skipped", reason };
+  }
   if (reason === "attempt_in_flight" || reason === "installment_not_open" || reason === "not_pay_link") {
     return { outcome: "skipped", reason };
   }
