@@ -1148,6 +1148,29 @@ BEGIN
   END IF;
 END $$;
 
+-- J4. Card cancel final status: every charge refunded in full ends
+--     'refunded'; a kept deposit leaves it 'partial_refund'. FAILS ON REVERT:
+--     a card cancel that refunded everything stayed 'partial_refund'.
+DO $$
+DECLARE v_refund uuid; v_row record;
+BEGIN
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id = '45220008-0000-4000-8000-0000000004f1';
+  FOR v_row IN SELECT id FROM public.order_installments
+                WHERE order_id = '45220008-0000-4000-8000-0000000004f1' AND status = 'collected' LOOP
+    PERFORM public.issue_3645_mark_installment_refunded(v_row.id, v_refund, 30000);
+  END LOOP;
+  UPDATE public.refunds SET status = 'succeeded', application_fee_refunded_cents = 0,
+         application_fee_refund_status = 'not_applicable', processed_at = now() WHERE id = v_refund;
+  UPDATE public.orders SET refunded_amount_cents = public.issue_4522_order_charge_refunded_cents(id),
+         payment_status = 'partial_refund' WHERE id = '45220008-0000-4000-8000-0000000004f1';
+  IF public.issue_4522_settle_trip_cancel_status('45220008-0000-4000-8000-0000000004f1') <> 'refunded' THEN
+    RAISE EXCEPTION 'J4-0 a fully refunded cancelled booking ends refunded';
+  END IF;
+  UPDATE public.orders SET refunded_amount_cents = 0 WHERE id = '45220008-0000-4000-8000-0000000004f1';
+  IF public.issue_4522_settle_trip_cancel_status('45220008-0000-4000-8000-0000000004f1') <> 'partial_refund' THEN
+    RAISE EXCEPTION 'J4-1 a kept deposit leaves it partly refunded';
+  END IF;
+END $$;
 
 
 

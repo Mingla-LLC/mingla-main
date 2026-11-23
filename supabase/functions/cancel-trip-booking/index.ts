@@ -1381,7 +1381,7 @@ serve(async (req: Request): Promise<Response> => {
   // issue #4522 G-3 / G-4 — the cancel completes only when its refund is
   // settled in our books (card: the last attempt's finalize; second provider:
   // the commit, or the commit of an earlier run of this same cancel). Then
-  // it is marked complete exactly once.
+  // its final status is set and it is marked complete exactly once.
   let firstCompletion = !resumable;
   if (resumable && !noRefund) {
     if (commitErr) {
@@ -1393,6 +1393,14 @@ serve(async (req: Request): Promise<Response> => {
     if (settledRow?.status !== "succeeded") {
       await noteTripCancel("waiting", "refund_not_yet_settled");
       return inProgressResponse("refund_not_yet_settled");
+    }
+    const { error: settleError } = await supabase.rpc(
+      "issue_4522_settle_trip_cancel_status",
+      { p_order_id: orderId },
+    );
+    if (settleError) {
+      await noteTripCancel("failure", `status_settle_failed: ${settleError.message}`);
+      return inProgressResponse(`status_settle_failed: ${settleError.message}`);
     }
     firstCompletion = (await noteTripCancel("completed", null)).first_completion;
   } else if (commitErr || !commitData || !(commitData as { ok: boolean }).ok) {

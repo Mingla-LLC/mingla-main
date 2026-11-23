@@ -25,8 +25,8 @@ export interface TripOrderRow {
   paymentStatus: string;
   /**
    * issue #4522 G-8 — when the booking was cancelled (orders.cancelled_at). A
-   * card order cancelled with a full refund keeps payment_status
-   * 'partial_refund', so this is what says "Cancelled".
+   * cancelled order that kept money (or a card cancel from before #4522 pass
+   * 7) keeps payment_status 'partial_refund', so this is what says "Cancelled".
    */
   cancelledAt?: string | null;
   totalCents: number;

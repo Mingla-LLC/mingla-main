@@ -166,6 +166,7 @@ Deno.test("G-3/G-4: a cancel with the #4522 operation is never rolled back part-
   assertStringIncludes(source, 'error: "refund_in_progress",');
   // completion is decided by the settled refund row, and is marked once
   assertStringIncludes(source, 'firstCompletion = (await noteTripCancel("completed", null)).first_completion;');
+  assertStringIncludes(source, '"issue_4522_settle_trip_cancel_status"');
   // a second-provider refund with no answer is read back, never sent again
   assertStringIncludes(source, "await reconcilePaystackRefund({");
   assertStringIncludes(source, '"issue_4522_claim_trip_paystack_send"');

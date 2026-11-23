@@ -73,9 +73,10 @@ export const TRIP_MONEY_V2_NEEDS_OPS_COPY = "Mingla support is handling the refu
 
 /**
  * issue #4522 X-7 / G-8 — a refunded or cancelled order. The payment status
- * says it for a second-provider order; a card order the host cancelled keeps
- * 'partial_refund' even after every part was refunded, so its cancel time
- * (orders.cancelled_at) says "Cancelled" for it, old plan and new plan alike.
+ * says it ('refunded' once every charge went back, on both providers since
+ * #4522 pass 7); a cancelled order that kept money (a non-refundable deposit,
+ * a partial tier) or was cancelled before that keeps 'partial_refund', so its
+ * cancel time (orders.cancelled_at) says "Cancelled" for it.
  */
 export function closedOrderState(
   paymentStatus: string | undefined,

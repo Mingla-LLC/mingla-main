@@ -1119,6 +1119,36 @@ $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_claim_trip_paystack_send(uuid, text, boolean) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_claim_trip_paystack_send(uuid, text, boolean) TO service_role;
 
+-- Pass 7 (card cancel final status): a cancelled booking whose every charge
+-- (the order's own and each collected instalment or flexible payment) is
+-- refunded in full ends 'refunded' on both providers; anything kept (a
+-- non-refundable deposit, a partial tier) leaves it 'partial_refund'.
+CREATE FUNCTION public.issue_4522_settle_trip_cancel_status(p_order_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE v_status text;
+BEGIN
+  PERFORM 1 FROM public.orders WHERE id = p_order_id FOR NO KEY UPDATE;
+  UPDATE public.orders o
+     SET payment_status = CASE
+           WHEN o.refunded_amount_cents >= COALESCE(o.buyer_total_cents, o.total_cents)
+            AND NOT EXISTS (SELECT 1 FROM public.order_installments oi
+                             WHERE oi.order_id = o.id AND oi.status = 'collected'
+                               AND oi.refunded_amount_cents < COALESCE(oi.buyer_total_cents, oi.amount_cents))
+           THEN 'refunded' ELSE 'partial_refund' END,
+         updated_at = now()
+   WHERE o.id = p_order_id AND o.cancelled_at IS NOT NULL
+     AND o.payment_status IN ('paid', 'partial_refund', 'refunded')
+     AND EXISTS (SELECT 1 FROM public.refunds r WHERE r.order_id = o.id AND r.status = 'succeeded')
+  RETURNING o.payment_status INTO v_status;
+  RETURN v_status;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_settle_trip_cancel_status(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_settle_trip_cancel_status(uuid) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 7. Pass 6 (S9-1): an instalment whose charge the provider has refunded is
