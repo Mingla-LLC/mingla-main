@@ -229,7 +229,7 @@ export function formRequestErrorCopy(code: FormRequestErrorCode): string {
 
 export function codeOf(value: unknown): FormRequestErrorCode {
   const code = isRecord(value) && typeof value.code === "string" ? value.code : "";
-  if (code in ERROR_COPY) return code as FormRequestErrorCode;
+  if (Object.prototype.hasOwnProperty.call(ERROR_COPY, code)) return code as FormRequestErrorCode;
   // #4573: a server code with no sentence is a gap; make it visible in development.
   if (typeof __DEV__ !== "undefined" && __DEV__ === true) {
     console.warn("[brand-form-request] no copy for server code", code === "" ? "(none)" : code);

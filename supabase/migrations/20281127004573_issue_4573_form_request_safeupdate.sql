@@ -11,6 +11,24 @@
 -- on each bare DELETE / UPDATE. CREATE OR REPLACE keeps the existing grants
 -- and COMMENT ON FUNCTION.
 
+-- Drift guard: each body this file replaces must be the one #4541 shipped (the md5 of prosrc, equal to
+-- production's at the time of writing). A body that moved since would be silently overwritten otherwise.
+DO $drift_guard$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+      ('public.brand_form_request_enqueue(uuid,uuid,uuid,text,text,jsonb,text[])', 'c8cb796af4c2220cbaaf915572d08fe2'),
+      ('public.brand_form_auto_reminders_due()', '1c38414c4caa2ccda748f895da2952d5')
+    ) AS v(sig, expected_md5)
+  LOOP
+    IF (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid = r.sig::regprocedure)
+       IS DISTINCT FROM r.expected_md5 THEN
+      RAISE EXCEPTION 'issue #4573 drift: % no longer matches its #4541 repository definition', r.sig;
+    END IF;
+  END LOOP;
+END;
+$drift_guard$;
+
 -- The send. R5.2: blast_cap first, then the brand's request lock. R5.4: when the
 -- texts this send needs are more than the month has left (or than today's 300
 -- allow), texts are off for the whole send: each recipient keeps email (and

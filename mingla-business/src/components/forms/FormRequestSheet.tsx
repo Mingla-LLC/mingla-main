@@ -192,7 +192,8 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
     requestChannels(input.channels, p.pushAvailable).length > 0 &&
     canSendRequest(p, confirmUnpriced) &&
     !send.isPending &&
-    !preview.isFetching;
+    !preview.isFetching &&
+    !preview.isError;
   const remindCost =
     p === undefined ? null : channels.includes("sms") && p.smsCount > 0 ? COPY.autoRemindCost(costLine(p)) : COPY.autoRemindFree;
   const storedChannels = remindChannels.map((c) => (c === "sms" ? COPY.sms : c === "push" ? COPY.push : COPY.email)).join(", ");

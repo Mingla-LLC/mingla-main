@@ -1,10 +1,17 @@
--- MINGLA-INVARIANT: I-4573-NO-BARE-DELETE-UPDATE | issue #4573 | no public function body has a DELETE or UPDATE without a WHERE clause: hosted PostgREST sessions preload pg-safeupdate (authenticator session_preload_libraries=safeupdate), which refuses one with SQLSTATE 21000 (T-1, any function, not only the form request ones; write WHERE true to clear a scratch table).
+-- MINGLA-INVARIANT: I-4573-NO-BARE-DELETE-UPDATE | issue #4573 | no public function body written as a static DELETE FROM or UPDATE ... SET statement lacks a top-level WHERE clause; pg-safeupdate (preloaded by hosted PostgREST sessions) refuses one with SQLSTATE 21000. Dynamic SQL (EXECUTE of a string) is NOT checked: comments and string literals are stripped first.
 --
 -- #4573 (20281127004573_issue_4573_form_request_safeupdate.sql): PostgreSQL 17 proof after the full
 -- replay, run as supabase_admin.
 --
--- T-1  catalog (SC-4, unconditional): no public function has a bare DELETE FROM <rel>; or an
---      UPDATE <rel> SET ...; with no WHERE (string literals and comments stripped first).
+-- T-1  catalog (SC-4, unconditional), what it checks and nothing more: in the body of every public
+--      function and procedure, after comments, string literals, dollar-quoted strings and quoted
+--      identifiers are blanked out, every statement that starts with DELETE FROM (with or without
+--      ONLY, alias, USING, RETURNING, inside a CTE or a LANGUAGE sql body) or UPDATE <rel> SET ... has
+--      the word WHERE at its own top level (a WHERE that sits only inside a parenthesised subquery
+--      does not count). ON CONFLICT DO UPDATE SET and FOR UPDATE are not statements of this kind.
+--      NOT checked: dynamic SQL (EXECUTE 'DELETE FROM t'; the text is a string), DO blocks (not in the
+--      catalog), functions outside public, and DML issued by other means.
+--      The scanner is proved on planted functions, both ways (each shape flagged; each clean shape not).
 -- T-2  with LOAD 'safeupdate' (what every PostgREST session runs with in production):
 --      SC-1 brand_form_request_enqueue queues an all-NG audience and a mixed NG/US audience;
 --      SC-2 with texts off (over the monthly allowance) the enqueue succeeds, reason
@@ -33,30 +40,161 @@ CREATE OR REPLACE FUNCTION pg_temp.subj(VARIADIC p_tags text[]) RETURNS jsonb LA
 $fn$;
 
 -- ═══ T-1 catalog: no bare DELETE / UPDATE in any public function (SC-4) ═══════════
-DO $t$
-DECLARE v_bad text;
+-- Blank out comments, string literals, dollar-quoted strings and quoted identifiers, then for each
+-- DELETE FROM / UPDATE <rel> SET statement look for WHERE at the statement's own paren depth.
+CREATE FUNCTION pg_temp.bare_dml(p text) RETURNS text[] LANGUAGE plpgsql AS $fn$
+DECLARE
+  n int := length(p); i int := 1; k int; j int; q int; c text; tag text;
+  chunks text[] := '{}'; s text; found text[] := '{}';
+  pos int; kind text; depth int; top text; ch text;
 BEGIN
-  WITH src AS (
-    SELECT p.oid::regprocedure::text AS fn,
-           -- Single-quoted literals and comments out first, in one left-to-right pass (a ';' inside a
-           -- string is not a statement end; an apostrophe inside a comment does not open a string).
-           regexp_replace(p.prosrc, '''([^'']|'''')*''|--[^\n]*', ' ', 'g') AS body
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname = 'public' AND p.prokind IN ('f', 'p')
-  ), hits AS (
-    SELECT fn, 'DELETE' AS stmt FROM src
-     WHERE body ~* '\mDELETE\s+FROM\s+[a-z_."]+\s*;'
-    UNION ALL
-    SELECT s.fn, 'UPDATE' FROM src s
-     CROSS JOIN LATERAL regexp_matches(s.body, '(\mUPDATE\s+[a-z_."]+(?:\s+(?:AS\s+)?[a-z_]+)?\s+SET\s[^;]*;)', 'gi') m(x)
-     WHERE m.x[1] !~* '\mWHERE\M'
-  )
-  SELECT string_agg(DISTINCT fn || ' (' || stmt || ')', ', ') INTO v_bad FROM hits;
+  -- 1. strip
+  LOOP
+    k := regexp_instr(p, '''|--|/\*|\$|"', i);
+    IF k = 0 THEN chunks := chunks || substr(p, i); EXIT; END IF;
+    chunks := chunks || substr(p, i, k - i);
+    c := substr(p, k, 2);
+    IF substr(c, 1, 1) = '''' THEN
+      j := k + 1;
+      LOOP
+        q := strpos(substr(p, j), '''');
+        IF q = 0 THEN j := n + 1; EXIT; END IF;
+        j := j + q;                                   -- just past the quote
+        IF substr(p, j, 1) = '''' THEN j := j + 1; ELSE EXIT; END IF;
+      END LOOP;
+      chunks := array_append(chunks, ' '::text); i := j;
+    ELSIF substr(c, 1, 1) = '"' THEN
+      j := k + 1;
+      LOOP
+        q := strpos(substr(p, j), '"');
+        IF q = 0 THEN j := n + 1; EXIT; END IF;
+        j := j + q;
+        IF substr(p, j, 1) = '"' THEN j := j + 1; ELSE EXIT; END IF;
+      END LOOP;
+      chunks := array_append(chunks, ' q '::text); i := j;
+    ELSIF c = '--' THEN
+      q := strpos(substr(p, k), E'\n');
+      i := CASE WHEN q = 0 THEN n + 1 ELSE k + q END; chunks := array_append(chunks, ' '::text);
+    ELSIF c = '/*' THEN
+      q := strpos(substr(p, k + 2), '*/');
+      i := CASE WHEN q = 0 THEN n + 1 ELSE k + 2 + q + 1 END; chunks := array_append(chunks, ' '::text);
+    ELSE  -- '$': a dollar-quote tag, or a parameter such as $1
+      tag := substring(substr(p, k, 64) from '^\$([A-Za-z_][A-Za-z0-9_]*)?\$');
+      IF tag IS NULL AND substr(p, k, 2) <> '$$' THEN
+        chunks := array_append(chunks, '$'::text); i := k + 1;
+      ELSE
+        tag := '$' || COALESCE(tag, '') || '$';
+        q := strpos(substr(p, k + length(tag)), tag);
+        i := CASE WHEN q = 0 THEN n + 1 ELSE k + length(tag) + q - 1 + length(tag) END;
+        chunks := array_append(chunks, ' '::text);
+      END IF;
+    END IF;
+    EXIT WHEN i > n;
+  END LOOP;
+  s := array_to_string(chunks, '');
+  -- 2. every DELETE FROM / UPDATE <rel> SET start
+  k := 1;
+  LOOP
+    pos := regexp_instr(s, '\m(DELETE\s+FROM|UPDATE)\M', k, 1, 0, 'i');
+    EXIT WHEN pos = 0;
+    k := pos + 1;
+    kind := upper(substring(substr(s, pos, 8) from '^[A-Za-z]+'));
+    IF kind = 'UPDATE' THEN
+      CONTINUE WHEN substr(s, pos, 400) !~* '^UPDATE\s+(ONLY\s+)?[^\s;()]+(\s+(AS\s+)?[A-Za-z_][A-Za-z0-9_]*)?\s+SET\M';
+      CONTINUE WHEN substr(s, greatest(pos - 12, 1), least(pos - 1, 12)) ~* '\mDO\s*$';
+    END IF;
+    depth := 0; top := ''; j := pos;
+    WHILE j <= length(s) LOOP
+      ch := substr(s, j, 1);
+      IF ch = '(' THEN depth := depth + 1;
+      ELSIF ch = ')' THEN depth := depth - 1; EXIT WHEN depth < 0;
+      ELSIF ch = ';' AND depth = 0 THEN EXIT;
+      ELSIF depth = 0 THEN top := top || ch;
+      END IF;
+      j := j + 1;
+    END LOOP;
+    IF top !~* '\mWHERE\M' THEN
+      found := found || left(regexp_replace(substr(s, pos, 80), '\s+', ' ', 'g'), 50);
+    END IF;
+  END LOOP;
+  RETURN found;
+END;
+$fn$;
+
+-- The scan over one schema (pg_temp = this session's temp schema), optionally one name prefix.
+CREATE FUNCTION pg_temp.bare_fns(p_nsp text, p_prefix text DEFAULT '') RETURNS text LANGUAGE sql AS $fn$
+  SELECT string_agg(DISTINCT p.proname || ' [' || array_to_string(pg_temp.bare_dml(p.prosrc), '; ') || ']', ', ')
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.oid = CASE WHEN p_nsp = 'pg_temp' THEN pg_my_temp_schema() ELSE (SELECT oid FROM pg_namespace WHERE nspname = p_nsp) END
+     AND p.prokind IN ('f', 'p') AND p.proname LIKE p_prefix || '%'
+     AND p.prosrc ~* '(DELETE|UPDATE)'
+     AND cardinality(pg_temp.bare_dml(p.prosrc)) > 0
+$fn$;
+
+-- The real catalog.
+DO $t$
+DECLARE v_bad text := pg_temp.bare_fns('public');
+BEGIN
   PERFORM pg_temp.ok(v_bad IS NULL,
     'T-1 SC-4 no public function has a DELETE or UPDATE without WHERE (found: ' || COALESCE(v_bad, 'none') || ')');
 END;
 $t$;
+
+-- The scanner proved on planted functions (temp schema, rolled back). Each "bad" shape must be flagged
+-- (the gate goes red on it); each "clean" shape must not.
+BEGIN;
+CREATE TEMP TABLE t2x (a int, b int);
+CREATE TEMP TABLE "q2" (a int);
+DO $t$
+DECLARE
+  r record; v text; n_bad int := 0; n_clean int := 0;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+    ('bad_plain',      'plpgsql', 'BEGIN DELETE FROM t2x; END;', true),
+    ('bad_digits',     'plpgsql', 'BEGIN DELETE FROM pg_temp.t2x; END;', true),
+    ('bad_quoted',     'plpgsql', 'BEGIN DELETE FROM pg_temp."q2"; END;', true),
+    ('bad_as_alias',   'plpgsql', 'BEGIN DELETE FROM t2x AS d; END;', true),
+    ('bad_bare_alias', 'plpgsql', 'BEGIN DELETE FROM t2x d; END;', true),
+    ('bad_returning',  'plpgsql', 'DECLARE v int; BEGIN DELETE FROM t2x RETURNING a INTO v; END;', true),
+    ('bad_cte',        'plpgsql', 'BEGIN WITH d AS (DELETE FROM t2x RETURNING a) SELECT count(*) FROM d; END;', true),
+    ('bad_using',      'plpgsql', 'BEGIN DELETE FROM t2x USING q2; END;', true),
+    ('bad_only',       'plpgsql', 'BEGIN DELETE FROM ONLY t2x; END;', true),
+    ('bad_upd_where_in_sub', 'plpgsql', 'BEGIN UPDATE t2x SET a = (SELECT max(a) FROM q2 WHERE a > 0); END;', true),
+    ('bad_del_where_in_sub', 'plpgsql', 'BEGIN DELETE FROM t2x USING (SELECT a FROM q2 WHERE a > 0) s; END;', true),
+    ('bad_update',     'plpgsql', 'BEGIN UPDATE t2x SET a = 1; END;', true),
+    ('bad_upd_alias',  'plpgsql', 'BEGIN UPDATE t2x AS u SET a = 1; END;', true),
+    ('bad_upd_bare_alias', 'plpgsql', 'BEGIN UPDATE t2x u SET a = 1; END;', true),
+    ('bad_upd_only',   'plpgsql', 'BEGIN UPDATE ONLY t2x SET a = 1; END;', true),
+    ('bad_upd_from',   'plpgsql', 'BEGIN UPDATE t2x SET a = q.a FROM q2 q; END;', true),
+    ('bad_upd_returning', 'plpgsql', 'DECLARE v int; BEGIN UPDATE t2x SET a = 1 RETURNING a INTO v; END;', true),
+    ('bad_sql_noterm', 'sql',     'DELETE FROM t2x', true),
+    ('bad_sql_update', 'sql',     'UPDATE t2x SET a = 1', true),
+    ('bad_second_stmt', 'plpgsql', 'BEGIN DELETE FROM t2x WHERE a = 1; WITH d AS (UPDATE t2x SET a = 2 RETURNING a) SELECT 1; END;', true),
+    ('ok_where_true',  'plpgsql', 'BEGIN DELETE FROM t2x WHERE true; UPDATE t2x SET a = 1 WHERE true; END;', false),
+    ('ok_alias_where', 'plpgsql', 'BEGIN DELETE FROM t2x AS d WHERE d.a = 1; UPDATE t2x u SET a = 1 WHERE u.a = 2; END;', false),
+    ('ok_using_where', 'plpgsql', 'BEGIN DELETE FROM t2x USING q2 WHERE t2x.a = q2.a; UPDATE t2x SET a = q.a FROM q2 q WHERE q.a = t2x.a; END;', false),
+    ('ok_cte_where',   'plpgsql', 'BEGIN WITH d AS (DELETE FROM t2x WHERE a = 1 RETURNING a) SELECT count(*) FROM d; END;', false),
+    ('ok_returning_where', 'plpgsql', 'DECLARE v int; BEGIN DELETE FROM ONLY t2x WHERE a = 1 RETURNING a INTO v; END;', false),
+    ('ok_sql_where',   'sql',     'DELETE FROM t2x WHERE a > 0', false),
+    ('ok_conflict',    'plpgsql', 'BEGIN INSERT INTO t2x(a) VALUES (1) ON CONFLICT DO NOTHING; INSERT INTO t2x(a) VALUES (1) ON CONFLICT (a) DO UPDATE SET b = 1; END;', false),
+    ('ok_for_update',  'plpgsql', 'DECLARE v int; BEGIN SELECT a INTO v FROM t2x FOR UPDATE; END;', false),
+    ('ok_comment_string', 'plpgsql', E'BEGIN -- DELETE FROM t2x;\n /* UPDATE t2x SET a = 1; */ PERFORM ''DELETE FROM t2x; UPDATE t2x SET a = 1;''; PERFORM $q$DELETE FROM t2x;$q$; END;', false),
+    ('ok_semicolon_in_string', 'plpgsql', 'BEGIN DELETE FROM t2x WHERE a::text = '';''; END;', false),
+    -- Stated limit: dynamic SQL is a string and is not checked.
+    ('limit_execute',  'plpgsql', 'BEGIN EXECUTE ''DELETE FROM t2x''; END;', false)
+  ) AS x(tag, lang, body, expect_bad)
+  LOOP
+    EXECUTE format('CREATE FUNCTION pg_temp.%I() RETURNS void LANGUAGE %s AS %L', 'zp_' || r.tag, r.lang, r.body);
+    v := pg_temp.bare_fns('pg_temp', 'zp_' || r.tag);
+    PERFORM pg_temp.ok((v IS NOT NULL) = r.expect_bad,
+      'T-1 scanner ' || CASE WHEN r.expect_bad THEN 'flags ' ELSE 'passes ' END || r.tag || ' (' || COALESCE(v, 'clean') || ')');
+    IF r.expect_bad THEN n_bad := n_bad + 1; ELSE n_clean := n_clean + 1; END IF;
+  END LOOP;
+  PERFORM pg_temp.ok(n_bad >= 20 AND n_clean >= 10, 'T-1 scanner planted ' || n_bad || ' bad and ' || n_clean || ' clean shapes');
+END;
+$t$;
+ROLLBACK;
 
 BEGIN;
 -- What PostgREST sessions run with in hosted Supabase.

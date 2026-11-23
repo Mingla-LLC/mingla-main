@@ -100,6 +100,12 @@ describe("#4573 SC-6: every server code has a sentence", () => {
     expect(codeOf({ ok: false, code: "brand_new_code" })).toBe("unknown");
     expect(formRequestErrorCopy("unknown")).toBe(UNKNOWN);
   });
+
+  it("an inherited key such as constructor is not a code", () => {
+    expect(codeOf({ ok: false, code: "constructor" })).toBe("unknown");
+    expect(codeOf({ ok: false, code: "__proto__" })).toBe("unknown");
+    expect(codeOf({ ok: false, code: "toString" })).toBe("unknown");
+  });
 });
 
 describe("#4573 §5: a refusal that means the preview changed reads the preview again", () => {
