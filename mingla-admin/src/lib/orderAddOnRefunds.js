@@ -74,7 +74,14 @@ export function addOnLinesBody(rows) {
 
 /** "×2 · paid $20.00 · refunded 1 ($10.00)" pieces for the order view. */
 export function addOnSummary(row, formatMoney, currency) {
-  const parts = [`×${row.quantity}`, `paid ${formatMoney(row.paidCents, currency)}`];
+  // #4522 X-9 — a spread add-on was not paid at checkout: it rides the plan's
+  // payments, so it is never shown as "paid".
+  const parts = [
+    `×${row.quantity}`,
+    row.spread
+      ? `spread over the plan ${formatMoney(row.paidCents, currency)}`
+      : `paid ${formatMoney(row.paidCents, currency)}`,
+  ];
   if (row.refundedQty > 0 || row.refundedCents > 0) {
     parts.push(`refunded ${row.refundedQty} (${formatMoney(row.refundedCents, currency)})`);
   }

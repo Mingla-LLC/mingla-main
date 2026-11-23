@@ -82,7 +82,13 @@ describe("#3281 S5 — add-ons spread over a trip plan", () => {
     const [row] = addOnRows([SPREAD], { s1: 2 });
     assert.deepEqual([row.spread, row.removedQty, row.removedCents, row.remaining, row.qty, row.amount],
       [true, 1, 30000, 1, 1, 30000]);
-    assert.equal(addOnSummary(row, money, "USD"), "×2 · paid USD 600.00 · taken off the plan USD 300.00");
+    // #4522 X-9 — nothing of a spread add-on is paid at checkout.
+    assert.equal(addOnSummary(row, money, "USD"), "×2 · spread over the plan USD 600.00 · taken off the plan USD 300.00");
+  });
+
+  it("#4522 X-9 — a spread add-on with nothing taken off is never shown as paid", () => {
+    const [row] = addOnRows([{ ...SPREAD, removed_quantity: 0, removed_cents: 0 }]);
+    assert.equal(addOnSummary(row, money, "USD"), "×2 · spread over the plan USD 600.00");
   });
 
   it("a line with nothing taken off the plan reads exactly as before", () => {
