@@ -1,6 +1,8 @@
 -- MINGLA-INVARIANT: I-4261-PLAN-PENDING-VENUE-FENCE | issue #4261 | A group-chat plan or suggested place on a pending venue's pool row remains a disallowed pending-venue dependency, and only the reviewed empty schema shape advances the correction RPC pin.
 -- TEST-MOD-APPROVED #4490 (08-O3 part A): the #2099 pending-venue seal moved to 1af08ee1… (the Till pay-link
 -- texts lane, 20280809600490, has a venue_id column); pin owner 20280809602490.
+-- TEST-MOD-APPROVED #4490 (08-O5 part A): the #2099 pending-venue seal moved to 7523789e… (the PIN lanes,
+-- 20280809611490, have venue_id columns); pin owner 20280809612490.
 -- MINGLA-INVARIANT: I-4188-STAY-PENDING-VENUE-FENCE | issue #4188 | Stay operational rows remain disallowed pending-venue dependencies, and only the reviewed empty schema shape advances the correction RPC pin.
 \set ON_ERROR_STOP on
 
@@ -87,7 +89,7 @@ BEGIN
     p->>'schema_fingerprint' IN (
       -- [TEST-MOD-APPROVED #4490] guest list repin (20280809444490): the guest list lanes (20280809414490) advance the reviewed pin.
       -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20280809554490): the Till lanes (20280809464490) advance the reviewed pin.
-      '1af08ee123350acaba09584d58b81bcdf0ac7dd158a37d9131fc63e279bbba77'
+      '7523789ee37ffa086988e13498ab9422555f4d44280e5f3603de613597296785'
     ),
     false
   ) THEN

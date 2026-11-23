@@ -35,9 +35,13 @@ on:
       - "supabase/migrations/20280809464490_issue_4490_ops_till_core.sql"
       - "supabase/migrations/20280809554490_issue_4490_ops_o1_pending_venue_repin.sql"
       # issue #4490 spec 08 O2 fix 1 / O3 — the Till pay-link texts lane and its
-      # pin owner (now the current pin owner D4 replays).
+      # pin owner.
       - "supabase/migrations/20280809600490_issue_4490_ops_o2_fix1.sql"
       - "supabase/migrations/20280809602490_issue_4490_ops_o3_pending_venue_repin.sql"
+      # issue #4490 spec 08 O5 part A — the PIN lanes and their pin owner (now
+      # the current pin owner D4 replays).
+      - "supabase/migrations/20280809611490_issue_4490_ops_pin.sql"
+      - "supabase/migrations/20280809612490_issue_4490_ops_o5a_pending_venue_repin.sql"
       # issue #2648 — the four files below are READ by
       # issue_2855_pending_venue_schema_pin.implementor.test.ts, which this
       # workflow runs, and none of them were listed here. So inputs that decide
@@ -421,14 +425,14 @@ jobs:
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20280809602490_issue_4490_ops_o3_pending_venue_repin.sql
+            -f - < supabase/migrations/20280809612490_issue_4490_ops_o5a_pending_venue_repin.sql
           after_second="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20280809602490_issue_4490_ops_o3_pending_venue_repin.sql
+            -f - < supabase/migrations/20280809612490_issue_4490_ops_o5a_pending_venue_repin.sql
           after_third="$(snapshot)"
           test "$before" = "$after_second"
           test "$after_second" = "$after_third"

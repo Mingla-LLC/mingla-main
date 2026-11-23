@@ -65,6 +65,8 @@
 -- record, the money day and start session (same signatures); all internal (service role only).
 -- TEST-MOD-APPROVED #4490 (08-O4 fix 3): 20280809610490 adds the deposit excess refund (internal) and
 -- re-emits the refund guard, finalize and the sale extras (same signatures).
+-- TEST-MOD-APPROVED #4490 (08-O5 part A): 20280809611490 adds the PIN functions, the floor audit
+-- helper, the device void and four trigger functions; all internal (service role only).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -552,6 +554,32 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_close_covered(uuid,uuid,integer)', 'internal'),
   -- 08-O4 fix 3 (20280809610490): the deposit excess refund, internal.
   ('issue_4490_till_refund_deposit_excess(uuid,uuid)', 'internal'),
+  -- 08-O5 part A (20280809611490): PINs, PIN sessions, step-up, the floor audit, all internal.
+  ('issue_4490_pin_gate(uuid,uuid)', 'internal'),
+  ('issue_4490_pin_is_weak(text)', 'internal'),
+  ('issue_4490_pin_member_is_mingla_admin(uuid)', 'internal'),
+  ('issue_4490_pin_member_eligible(uuid,uuid,text)', 'internal'),
+  ('issue_4490_pin_can_reset(uuid,uuid)', 'internal'),
+  ('issue_4490_pin_can_manage_venue(uuid,uuid)', 'internal'),
+  ('issue_4490_pin_current_device(uuid)', 'internal'),
+  ('issue_4490_floor_audit(uuid,uuid,uuid,text,text,text,jsonb)', 'internal'),
+  ('issue_4490_pin_set(uuid,uuid,text)', 'internal'),
+  ('issue_4490_pin_reset(uuid,uuid)', 'internal'),
+  ('issue_4490_pin_status(uuid,uuid)', 'internal'),
+  ('issue_4490_pin_team(uuid,uuid)', 'internal'),
+  ('issue_4490_pin_staff(uuid,uuid)', 'internal'),
+  ('issue_4490_pin_check(uuid,uuid,uuid,text,text)', 'internal'),
+  ('issue_4490_pin_unlock(uuid,uuid,uuid,text,uuid)', 'internal'),
+  ('issue_4490_pin_session_resolve(bytea,uuid,uuid,uuid)', 'internal'),
+  ('issue_4490_pin_session_end(bytea,uuid,uuid,text)', 'internal'),
+  ('issue_4490_pin_sessions_end_all(uuid)', 'internal'),
+  ('issue_4490_pin_approve(bytea,uuid,uuid,uuid,uuid,text,text,text)', 'internal'),
+  ('issue_4490_pin_actor_assert(uuid,uuid,uuid)', 'internal'),
+  ('issue_4490_pin_money_row_guard()', 'internal'),
+  ('issue_4490_till_void_on_device(uuid,uuid,uuid,uuid,uuid,text,boolean,integer,boolean)', 'internal'),
+  ('issue_4490_floor_audit_paid()', 'internal'),
+  ('issue_4490_floor_audit_refund()', 'internal'),
+  ('issue_4490_floor_audit_void()', 'internal'),
   -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),

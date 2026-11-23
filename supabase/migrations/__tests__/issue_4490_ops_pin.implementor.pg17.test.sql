@@ -296,6 +296,7 @@ DO $mingla$
 DECLARE
   v jsonb;
 BEGIN
+  SET LOCAL ROLE postgres; -- the table owner adds #4579's column for this proof only
   ALTER TABLE public.brand_team_members ADD COLUMN granted_via text NULL;
   UPDATE public.brand_team_members SET granted_via = 'mingla_admin' WHERE id = '44900500-0000-4000-a000-000000000004';
   v := public.issue_4490_pin_staff('44900500-0000-4000-9000-0000000000a1', '44900500-0000-4000-8000-000000000005');
@@ -305,6 +306,8 @@ BEGIN
                                                     '44900500-0000-4000-a000-000000000004', 'refund'),
     'PIN-3e a granted_via = mingla_admin member is not venue staff on Who''s selling (#4579)');
   ALTER TABLE public.brand_team_members DROP COLUMN granted_via;
+  RESET ROLE;
+  PERFORM public.t4490p_service();
   PERFORM public.t4490p_ok(public.issue_4490_pin_member_eligible('44900500-0000-4000-9000-0000000000a1',
                                                                 '44900500-0000-4000-a000-000000000004', 'refund'),
     'PIN-3f without the column the filter is a no-op');
