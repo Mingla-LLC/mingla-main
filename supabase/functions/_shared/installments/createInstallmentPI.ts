@@ -106,6 +106,8 @@ export type CreateInstallmentPIInput = {
   dryRun?: boolean;
   /** Tests only: a stand-in Stripe client. Production uses stripeTicketCheckout(). */
   stripe?: ReturnType<typeof stripeTicketCheckout>;
+  /** Tests only: a stand-in ops alert. Production uses the instalment ops alert. */
+  alertOps?: (subject: string, paragraphs: string[]) => Promise<void>;
 };
 
 function serviceClient(): SupabaseClient {
@@ -274,7 +276,7 @@ export async function createInstallmentPI(
     if (claimRow === null || claimRow.ok !== true) {
       const reason = String(claimRow?.reason ?? "not_chargeable");
       // issue #4522 — a balance too small to charge stays owed; ops once.
-      await alertUnchargeableRemainder(claimRow as Record<string, unknown> | null);
+      await alertUnchargeableRemainder(claimRow as Record<string, unknown> | null, input.alertOps);
       return {
         ok: false,
         error: reason,

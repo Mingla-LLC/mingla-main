@@ -202,3 +202,23 @@ Deno.test("rework 9 T8-2: before the #4522 schema (main's database) a lost confi
   assertEquals(w.rpcCalls.some((c) => c.name === "issue_4522_mark_stripe_charge_in_flight"), false);
   resetPlanV2SchemaProbeForTests();
 });
+
+// ── rework 9 (T8-5): the "too small to charge" ops alert on the card path ──
+// FAILS-ON-REVERT: drop alertUnchargeableRemainder from createInstallmentPI's claim refusal -> red.
+Deno.test("rework 9 T8-5: a claim refused as below the provider minimum alerts ops once and never calls Stripe", async () => {
+  for (const alertOps of [true, false]) {
+    resetPlanV2SchemaProbeForTests();
+    const w = chargeWorld({ ok: true, marked: true }, {
+      claimAnswer: { ok: false, reason: "below_provider_minimum", alertOps, remainingMinor: 49, order_id: "order_1", currency: "USD" },
+    });
+    const alerts: Array<{ subject: string; paragraphs: string[] }> = [];
+    const result = await createInstallmentPI({
+      ...(w.input as Record<string, unknown>),
+      alertOps: (subject: string, paragraphs: string[]) => { alerts.push({ subject, paragraphs }); return Promise.resolve(); },
+    } as never);
+    assertEquals([result.outcome, result.reason], ["skipped", "below_provider_minimum"]);
+    assertEquals(w.stripeCalls, []);
+    assertEquals(alerts.map((a) => a.subject), alertOps ? ["A trip balance is too small to charge"] : []);
+    if (alertOps) assertMatch(alerts[0].paragraphs.join(" "), /order_1; amount: 49 USD/);
+  }
+});
