@@ -41,6 +41,25 @@ export const collapseTripPlanChoice = (
     ? "installments"
     : "full";
 
+/**
+ * issue #4522 — the cart-level choice the page's Reserve hands to checkout. With
+ * packages selected it is the collapse of their lines; with NO quantity picked yet
+ * there are no lines to collapse, so the choice the buyer made on the page (the
+ * cart-level control or any package's own control) is kept instead of being reset
+ * to "full".
+ */
+export const resolveTripReserveChoice = (
+  selectedLines: ReadonlyArray<TripCartLineChoice>,
+  cartChoice: TripPaymentPlanChoice,
+  choiceByTier: Readonly<Record<string, TripPaymentPlanChoice>>,
+): TripPaymentPlanChoice => {
+  if (selectedLines.length > 0) return collapseTripPlanChoice(selectedLines);
+  return cartChoice === "installments" ||
+    Object.values(choiceByTier).includes("installments")
+    ? "installments"
+    : "full";
+};
+
 /** A seeded checkout line parsed from the `lines` route param JSON. */
 export interface SeededTripLine {
   ticketTypeId: string;

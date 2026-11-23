@@ -115,7 +115,10 @@ import {
   buildTripOfferingBrand,
   buildTripOfferingData,
 } from "../../../src/components/trip/tripOfferingAdapter";
-import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPlanChoice";
+import {
+  collapseTripPlanChoice,
+  resolveTripReserveChoice,
+} from "../../../src/components/trip/tripCartPlanChoice";
 import { recordShareDestination } from "../../../src/analytics/shareDestination";
 import {
   captureOfferingCta,
@@ -748,7 +751,11 @@ const ResolvedTripPage: React.FC<{
   // installment rows are minted when no package is on a plan — pay-in-full opt-out).
   const reserveSelected = (): void => {
     handleTripReserve(
-      collapseTripPlanChoice(offeringState.selectedLines),
+      resolveTripReserveChoice(
+        offeringState.selectedLines,
+        paymentPlanChoice,
+        planChoiceByTier,
+      ),
       offeringState.selectedLines,
     );
   };
