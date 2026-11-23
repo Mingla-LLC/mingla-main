@@ -287,3 +287,133 @@ export async function loadFlexPaymentsToVerify(
   if (error !== null) throw new Error(`flex_verify_list_failed:${error.message ?? "unknown"}`);
   return flexPaymentsToVerify(data);
 }
+
+/**
+ * issue #4522 (rework 9, T8-2 / T8-3) — planned Stripe charges the cron
+ * marked in flight (issue_4522_mark_stripe_charge_in_flight) whose outcome
+ * Mingla never learned: the worker died after marking or after sending the
+ * confirm, or the confirm's answer was lost. Read on a later run for EVERY
+ * order (at risk or not) once the row has been untouched for
+ * FLEX_RECLAIM_WINDOW_MS (a live worker may still be confirming):
+ *   succeeded                 → settled through the webhook's success path;
+ *   processing                → kept in flight (its amount stays frozen);
+ *   requires_action           → kept until FLEX_IN_FLIGHT_CEILING_MS, then
+ *                               cancelled as below;
+ *   requires_payment_method with a payment error, on a marked row
+ *                             → the card was refused: recorded through the
+ *                               webhook's failure path (counted once);
+ *   requires_confirmation / requires_payment_method / canceled
+ *                             → never charged: cancelled, read back
+ *                               cancelled, then the marker is cleared
+ *                               (issue_4522_release_unconfirmed_stripe_charge)
+ *                               so the row is charged normally, once, under a
+ *                               new idempotency key;
+ *   no answer / anything else → kept; nothing changes.
+ * A row that still carries a failed attempt's PaymentIntent (failed_at set:
+ * a retry whose worker died before marking) is released the same way.
+ */
+export interface MarkedStripeCharge {
+  installmentId: string;
+  orderId: string;
+  paymentIntentId: string;
+  /** true when the PaymentIntent is the row's marked charge (failed_at is null). */
+  marked: boolean;
+  pastCeiling: boolean;
+}
+
+export interface MarkedChargeDeps {
+  supabase: RpcClient;
+  stripe: () => FlexStripe;
+  stripeAccountFor: (charge: MarkedStripeCharge) => Promise<string | null>;
+  settleStripe: (paymentIntent: Record<string, unknown>) => Promise<void>;
+  failStripe: (paymentIntent: Record<string, unknown>) => Promise<void>;
+}
+
+export type MarkedChargeOutcome = "settled" | "failed" | "released" | "in_flight" | "error";
+
+async function releaseMarked(deps: MarkedChargeDeps, charge: MarkedStripeCharge): Promise<MarkedChargeOutcome> {
+  const { data, error } = await deps.supabase.rpc("issue_4522_release_unconfirmed_stripe_charge", {
+    p_installment_id: charge.installmentId,
+    p_payment_intent_id: charge.paymentIntentId,
+  });
+  const result = (data ?? null) as { ok?: boolean; reason?: string } | null;
+  if (error !== null || result?.ok !== true) {
+    console.warn(JSON.stringify({
+      event: "marked_charge_release_refused",
+      installmentId: charge.installmentId,
+      reason: error?.message ?? result?.reason ?? "unknown",
+    }));
+    return "error";
+  }
+  return "released";
+}
+
+async function reconcileOneMarked(deps: MarkedChargeDeps, charge: MarkedStripeCharge): Promise<MarkedChargeOutcome> {
+  const account = await deps.stripeAccountFor(charge);
+  if (account === null) return "in_flight";
+  const stripe = deps.stripe();
+  let pi: Record<string, unknown>;
+  try {
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+    pi = await stripe.paymentIntents.retrieve(charge.paymentIntentId, {}, { stripeAccount: account });
+  } catch {
+    return "in_flight";
+  }
+  let status = String(pi.status ?? "");
+  if (status === "succeeded") {
+    await deps.settleStripe(pi);
+    return "settled";
+  }
+  if (status === "canceled") return await releaseMarked(deps, charge);
+  if (status === "requires_payment_method" && charge.marked && pi.last_payment_error != null) {
+    await deps.failStripe(pi);
+    return "failed";
+  }
+  const cancelable = status === "requires_confirmation" || status === "requires_payment_method" ||
+    (status === "requires_action" && charge.pastCeiling);
+  if (!cancelable) return "in_flight";
+  try {
+    const cancelled = await stripe.paymentIntents.cancel(charge.paymentIntentId, {}, {
+      idempotencyKey: `installment-unconfirmed-cancel:${charge.installmentId}:${charge.paymentIntentId}`,
+      stripeAccount: account,
+    });
+    status = String(cancelled.status ?? "");
+  } catch {
+    // The cancel lost to a confirmation, or no answer: only a read-back decides.
+    try {
+      // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+      pi = await stripe.paymentIntents.retrieve(charge.paymentIntentId, {}, { stripeAccount: account });
+      status = String(pi.status ?? "");
+      if (status === "succeeded") {
+        await deps.settleStripe(pi);
+        return "settled";
+      }
+    } catch {
+      return "in_flight";
+    }
+  }
+  return status === "canceled" ? await releaseMarked(deps, charge) : "in_flight";
+}
+
+/** Read every marked charge back from Stripe and act only on its answer. */
+export async function reconcileMarkedStripeCharges(
+  deps: MarkedChargeDeps,
+  charges: readonly MarkedStripeCharge[],
+): Promise<Record<MarkedChargeOutcome, number>> {
+  const counts: Record<MarkedChargeOutcome, number> = { settled: 0, failed: 0, released: 0, in_flight: 0, error: 0 };
+  for (const charge of charges) {
+    let outcome: MarkedChargeOutcome;
+    try {
+      outcome = await reconcileOneMarked(deps, charge);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: "marked_charge_reconcile_failed",
+        installmentId: charge.installmentId,
+        reason: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+      }));
+      outcome = "error";
+    }
+    counts[outcome] += 1;
+  }
+  return counts;
+}

@@ -64,15 +64,25 @@ Deno.test("createInstallmentPI builds its key with the version suffix and reads 
 
 // ── I-4522-CHARGE-IS-WHAT-IS-OWED: the Stripe confirm waits for the mark ────
 
-function chargeWorld(markAnswer: Record<string, unknown>) {
+function chargeWorld(markAnswer: Record<string, unknown>, opts: {
+  confirmError?: Error;
+  claimAnswer?: Record<string, unknown>;
+  schemaMissing?: boolean;
+} = {}) {
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const stripeCalls: string[] = [];
   const updates: Record<string, unknown>[] = [];
   const supabase = {
     rpc(name: string, args: Record<string, unknown> = {}) {
       rpcCalls.push({ name, args });
-      if (name === "issue_4522_plan_v2_enabled") return Promise.resolve({ data: true, error: null });
-      if (name === "claim_order_installment_for_charge") return Promise.resolve({ data: { ok: true }, error: null });
+      if (name === "issue_4522_plan_v2_enabled") {
+        return Promise.resolve(opts.schemaMissing === true
+          ? { data: null, error: { code: "42883", message: "function does not exist" } }
+          : { data: true, error: null });
+      }
+      if (name === "claim_order_installment_for_charge") {
+        return Promise.resolve({ data: opts.claimAnswer ?? { ok: true }, error: null });
+      }
       if (name === "issue_4522_mark_stripe_charge_in_flight") return Promise.resolve({ data: markAnswer, error: null });
       if (name === "resolve_effective_take_rate_bps") {
         return Promise.resolve({ data: [{ effective_take_rate_bps: 150, take_rate_source: "default" }], error: null });
@@ -95,7 +105,12 @@ function chargeWorld(markAnswer: Record<string, unknown>) {
         stripeCalls.push(`create:${params.amount}`);
         return Promise.resolve({ id: "pi_new", status: "requires_confirmation" });
       },
-      confirm() { stripeCalls.push("confirm"); return Promise.resolve({ id: "pi_new", status: "succeeded" }); },
+      confirm() {
+        stripeCalls.push("confirm");
+        return opts.confirmError !== undefined
+          ? Promise.reject(opts.confirmError)
+          : Promise.resolve({ id: "pi_new", status: "succeeded" });
+      },
       cancel() { stripeCalls.push("cancel"); return Promise.resolve({ id: "pi_new", status: "canceled" }); },
     },
     refunds: { create() { stripeCalls.push("refund"); return Promise.resolve({}); } },
@@ -142,4 +157,48 @@ Deno.test("I-4522-CHARGE-IS-WHAT-IS-OWED: a row that changed since its amount wa
   assertEquals(w.stripeCalls, ["create:15000", "cancel"]);
   // skipped, not failed: no failure written, no retry spent, no dunning
   assertEquals(w.updates.length, 0);
+});
+
+// ── rework 9 (T8-2): an unknown confirm answer leaves the marked row in flight ──
+// FAILS-ON-REVERT: mark the row failed on any confirm error again (drop the
+// isDefiniteStripeDecline / confirmSent branch in createInstallmentPI) -> red.
+const failedUpdates = (w: ReturnType<typeof chargeWorld>) => w.updates.filter((u) => u.status === "failed");
+
+Deno.test("rework 9 T8-2: a confirm whose answer is lost (network, 5xx, 409, 429) keeps the marked row in flight, never failed", async () => {
+  const errors = [
+    new Error("socket hang up"),
+    Object.assign(new Error("An error occurred with our connection to Stripe."), { type: "StripeConnectionError" }),
+    Object.assign(new Error("api error"), { type: "StripeAPIError", statusCode: 500 }),
+    Object.assign(new Error("in use"), { type: "StripeIdempotencyError", statusCode: 409 }),
+    Object.assign(new Error("rate"), { type: "StripeRateLimitError", statusCode: 429 }),
+    Object.assign(new Error("state"), { type: "StripeInvalidRequestError", statusCode: 400, code: "payment_intent_unexpected_state" }),
+  ];
+  for (const confirmError of errors) {
+    resetPlanV2SchemaProbeForTests();
+    const w = chargeWorld({ ok: true, marked: true }, { confirmError });
+    const result = await createInstallmentPI(w.input as never);
+    assertEquals([result.outcome, result.reason], ["unknown", "confirm_answer_unknown"], confirmError.message);
+    assertEquals(w.stripeCalls, ["create:15000", "confirm"]);
+    assertEquals(failedUpdates(w).length, 0, "an unknown answer never marks the row failed");
+  }
+});
+
+Deno.test("rework 9 T8-2: only the card's refusal (a card error) marks the row failed", async () => {
+  resetPlanV2SchemaProbeForTests();
+  const w = chargeWorld({ ok: true, marked: true }, {
+    confirmError: Object.assign(new Error("Your card was declined."), { type: "StripeCardError", statusCode: 402, code: "card_declined" }),
+  });
+  const result = await createInstallmentPI(w.input as never);
+  assertEquals(result.outcome, "failed");
+  assertEquals(failedUpdates(w).length, 1);
+});
+
+Deno.test("rework 9 T8-2: before the #4522 schema (main's database) a lost confirm answer is handled exactly as main does (failed)", async () => {
+  resetPlanV2SchemaProbeForTests();
+  const w = chargeWorld({ ok: true, marked: true }, { confirmError: new Error("socket hang up"), schemaMissing: true });
+  const result = await createInstallmentPI(w.input as never);
+  assertEquals(result.outcome, "failed");
+  assertEquals(failedUpdates(w).length, 1);
+  assertEquals(w.rpcCalls.some((c) => c.name === "issue_4522_mark_stripe_charge_in_flight"), false);
+  resetPlanV2SchemaProbeForTests();
 });

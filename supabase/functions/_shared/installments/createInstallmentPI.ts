@@ -78,9 +78,21 @@ export type CreateInstallmentPIResult = {
   ok: boolean;
   chargeId?: string;
   error?: string;
-  outcome?: "collected" | "failed" | "skipped" | "at_risk_flagged";
+  outcome?: "collected" | "failed" | "skipped" | "at_risk_flagged" | "unknown";
   reason?: string;
 };
+
+/**
+ * issue #4522 (rework 9, T8-2) — only Stripe's refusal of the card itself
+ * (a card error, HTTP 402) proves a confirm did not charge. A timeout, a
+ * network error, a 5xx, a 409/429 or any other answer is unknown: the money
+ * may have moved.
+ */
+export function isDefiniteStripeDecline(error: unknown): boolean {
+  const e = error as { type?: unknown; statusCode?: unknown; rawType?: unknown; raw?: { type?: unknown } | null } | null;
+  return e?.type === "StripeCardError" || e?.statusCode === 402 || e?.rawType === "card_error" ||
+    e?.raw?.type === "card_error";
+}
 
 export type CreateInstallmentPIInput = {
   installmentId: string;
@@ -346,6 +358,8 @@ export async function createInstallmentPI(
   // issue #4522 — asked before any Stripe call (a probe outage throws here,
   // never after a PaymentIntent exists).
   const markInFlight = await planV2SchemaAvailable(supabase);
+  // issue #4522 (rework 9, T8-2) — set once the marked charge's confirm is sent.
+  let confirmSent = false;
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
     // Create unconfirmed, re-claim, then confirm — never confirm:true before reclaim
@@ -427,6 +441,7 @@ export async function createInstallmentPI(
       }
     }
 
+    confirmSent = true;
     // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
     pi = await stripe.paymentIntents.confirm(
       pi.id,
@@ -546,6 +561,24 @@ export async function createInstallmentPI(
     const reason = `${stripeErr.code ?? stripeErr.type ?? "unknown"}:${
       stripeErr.message ?? ""
     }`.slice(0, 500);
+    // issue #4522 (rework 9, T8-2, I-4522-CHARGE-IS-WHAT-IS-OWED) — the row
+    // was marked in flight for exactly this charge and its confirm was sent:
+    // unless the card was refused, the money may have moved. The row stays in
+    // flight (its amount frozen) until the success / failure webhook or the
+    // cron's read-back of this PaymentIntent (reconcileMarkedStripeCharges)
+    // says what happened; it is never marked failed on an unknown answer.
+    if (markInFlight && confirmSent && !isDefiniteStripeDecline(err)) {
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: brand.id,
+        event_id: order.event_id,
+        action: "tr3.installment_pi_confirm_unknown",
+        target_type: "order_installment",
+        target_id: installment.id,
+        after: { ordinal: installment.ordinal, amount_cents: installment.amount_cents, reason },
+      });
+      return { ok: false, error: reason, outcome: "unknown", reason: "confirm_answer_unknown" };
+    }
     const nextRetryCount = installment.retry_count + 1;
     const lastRetry = nextRetryCount >= MAX_RETRY_ATTEMPTS;
     const nextRetryAt = lastRetry

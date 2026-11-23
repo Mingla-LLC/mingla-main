@@ -3025,14 +3025,67 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'balance_changed',
       'amount_cents', v_row.amount_cents, 'schedule_version', v_row.schedule_version);
   END IF;
+  -- Rework 9 (T8-4): a row already marked for ANOTHER PaymentIntent that is
+  -- not known dead keeps it (the same id replays). A PaymentIntent is known
+  -- dead when its attempt failed (failed_at set; a retry keeps the failed
+  -- attempt's id on the row) or the cron released it
+  -- (issue_4522_release_unconfirmed_stripe_charge clears the id).
+  IF v_row.stripe_payment_intent_id IS NOT NULL AND v_row.stripe_payment_intent_id <> p_payment_intent_id
+     AND v_row.failed_at IS NULL THEN
+    RAISE EXCEPTION 'stripe_charge_already_in_flight' USING ERRCODE = 'PT409';
+  END IF;
+  -- failed_at is cleared with the mark, so a marked row is never mistaken
+  -- for a failed attempt's (dead) PaymentIntent.
   UPDATE public.order_installments
-     SET stripe_payment_intent_id = p_payment_intent_id, updated_at = now()
+     SET stripe_payment_intent_id = p_payment_intent_id, failed_at = NULL, updated_at = now()
    WHERE id = p_installment_id;
   RETURN v_claim || jsonb_build_object('marked', true, 'schedule_version', v_row.schedule_version);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer) TO service_role;
+
+-- Rework 9 (T8-3): a marked planned Stripe charge that the cron found never
+-- confirmed at the provider (it read the PaymentIntent back as cancelled
+-- after cancelling it) is released: the marker is cleared, so the row is
+-- charged normally again, and schedule_version moves on, so that charge uses
+-- a new idempotency key (the cancelled PaymentIntent's key would replay it).
+-- Also a retried row left scheduled with its failed attempt's PaymentIntent
+-- (a worker that died before marking). Only the row's own PaymentIntent,
+-- only while the row is still scheduled. Caller: process-scheduled-installments
+-- (service role).
+CREATE FUNCTION public.issue_4522_release_unconfirmed_stripe_charge(
+  p_installment_id uuid,
+  p_payment_intent_id text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order_id uuid;
+  v_n integer;
+BEGIN
+  SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
+  IF NOT FOUND OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
+  END IF;
+  UPDATE public.order_installments
+     SET stripe_payment_intent_id = NULL, schedule_version = schedule_version + 1, updated_at = now()
+   WHERE id = p_installment_id AND kind = 'scheduled' AND provider = 'stripe' AND status = 'scheduled'
+     AND stripe_payment_intent_id IS NOT DISTINCT FROM p_payment_intent_id
+     AND p_payment_intent_id IS NOT NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n = 0 THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_marked_for_this_payment');
+  END IF;
+  PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_stripe_charge_released_unconfirmed',
+    jsonb_build_object('payment_intent_id', p_payment_intent_id));
+  RETURN jsonb_build_object('ok', true, 'released', true, 'orderId', v_order_id);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_release_unconfirmed_stripe_charge(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_release_unconfirmed_stripe_charge(uuid, text) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_3645_begin_installment_attempt(p_installment_id uuid, p_method text, p_application_fee_cents bigint, p_atrisk_override boolean DEFAULT false, p_now timestamp with time zone DEFAULT now())
  RETURNS jsonb
