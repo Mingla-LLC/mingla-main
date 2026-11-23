@@ -25,7 +25,7 @@
       "noMatch": "Żaden kraj banku nie pasuje do „{{query}}”.",
       "cantPayOut": "Mingla nie może jeszcze tam wypłacać",
       "locked": "Wypłaty są już ustawione dla banku w kraju {{country}}. Aby użyć innego kraju, najpierw odłącz płatności.",
-      "forbidden": "Tylko właściciel marki lub administrator może zmienić kraj banku.",
+      "forbidden": "Tylko właściciel marki może zmienić ustawienia wypłat.",
       "conflict": "Zmieniono na innym urządzeniu na {{country}}.",
       "keep": "Zachowaj",
       "change": "Zmień",

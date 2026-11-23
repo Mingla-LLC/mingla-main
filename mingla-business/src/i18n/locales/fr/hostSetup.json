@@ -25,7 +25,7 @@
       "noMatch": "Aucun pays bancaire ne correspond à « {{query}} ».",
       "cantPayOut": "Mingla ne peut pas encore verser de fonds dans ce pays",
       "locked": "Les versements sont déjà configurés pour une banque en {{country}}. Pour utiliser un autre pays, déconnectez d'abord les paiements.",
-      "forbidden": "Seul le propriétaire de la marque ou un admin peut changer le pays bancaire.",
+      "forbidden": "Seul le propriétaire de la marque peut modifier les paramètres de versement.",
       "conflict": "Modifié sur un autre appareil : {{country}}.",
       "keep": "Garder",
       "change": "Modifier",

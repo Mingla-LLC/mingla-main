@@ -25,7 +25,7 @@
       "noMatch": "Tiada negara bank sepadan dengan '{{query}}'.",
       "cantPayOut": "Mingla belum boleh membuat pembayaran ke sana",
       "locked": "Pembayaran sudah ditetapkan untuk bank di {{country}}. Untuk menggunakan negara lain, putuskan sambungan pembayaran dahulu.",
-      "forbidden": "Hanya pemilik jenama atau admin boleh menukar negara bank.",
+      "forbidden": "Hanya pemilik jenama boleh menukar tetapan pembayaran.",
       "conflict": "Ini telah ditukar pada peranti lain kepada {{country}}.",
       "keep": "Kekalkan",
       "change": "Tukar",

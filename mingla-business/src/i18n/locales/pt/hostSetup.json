@@ -25,7 +25,7 @@
       "noMatch": "Nenhum país bancário corresponde a \"{{query}}\".",
       "cantPayOut": "A Mingla ainda não faz repasses para lá",
       "locked": "Os repasses já estão configurados para um banco em {{country}}. Para usar outro país, desconecte os pagamentos primeiro.",
-      "forbidden": "Só o dono da marca ou um admin pode mudar o país bancário.",
+      "forbidden": "Só o dono da marca pode mudar as definições de pagamento.",
       "conflict": "Isso foi alterado em outro dispositivo para {{country}}.",
       "keep": "Manter",
       "change": "Alterar",

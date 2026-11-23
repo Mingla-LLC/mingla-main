@@ -25,7 +25,7 @@
       "noMatch": "Babu ƙasar banki da ta dace da '{{query}}'.",
       "cantPayOut": "Mingla ba za ta iya biyan kuɗi zuwa can ba tukuna",
       "locked": "An riga an saita biyan kuɗi don banki a {{country}}. Don amfani da wata ƙasa, fara cire haɗin biyan kuɗi.",
-      "forbidden": "Mai alamar ko mai gudanarwa ne kaɗai zai iya canza ƙasar banki.",
+      "forbidden": "Mai alamar ne kaɗai zai iya canza saitunan biyan kuɗi.",
       "conflict": "An canza wannan a wata na'ura zuwa {{country}}.",
       "keep": "Bari",
       "change": "Canza",

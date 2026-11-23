@@ -25,7 +25,7 @@
       "noMatch": "Ọ dịghị obodo akụ dabara '{{query}}'.",
       "cantPayOut": "Mingla enweghị ike ịkwụ ụgwọ ebe ahụ ugbu a",
       "locked": "Edoziela ịkwụ ụgwọ maka akụ dị na {{country}}. Iji obodo ọzọ, buru ụzọ wepụ njikọ ịkwụ ụgwọ.",
-      "forbidden": "Naanị onye nwe akara ma ọ bụ onye nchịkwa nwere ike ịgbanwe obodo akụ.",
+      "forbidden": "Naanị onye nwe akara nwere ike ịgbanwe ntọala ịkwụ ụgwọ.",
       "conflict": "A gbanwere nke a na ngwaọrụ ọzọ ka ọ bụrụ {{country}}.",
       "keep": "Debe",
       "change": "Gbanwee",

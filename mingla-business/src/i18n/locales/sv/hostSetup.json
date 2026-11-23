@@ -25,7 +25,7 @@
       "noMatch": "Inget bankland matchar '{{query}}'.",
       "cantPayOut": "Mingla kan inte betala ut dit än",
       "locked": "Utbetalningar är redan inställda för en bank i {{country}}. Koppla först från betalningar för att använda ett annat land.",
-      "forbidden": "Bara varumärkets ägare eller en admin kan ändra bankland.",
+      "forbidden": "Bara varumärkets ägare kan ändra utbetalningsinställningarna.",
       "conflict": "Det här ändrades på en annan enhet till {{country}}.",
       "keep": "Behåll",
       "change": "Ändra",

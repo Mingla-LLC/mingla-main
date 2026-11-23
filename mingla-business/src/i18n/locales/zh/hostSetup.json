@@ -25,7 +25,7 @@
       "noMatch": "没有与“{{query}}”匹配的银行国家/地区。",
       "cantPayOut": "Mingla 暂时无法向该地打款",
       "locked": "已为 {{country}} 的银行设置打款。如需使用其他国家/地区，请先断开付款连接。",
-      "forbidden": "只有品牌所有者或管理员可以更改银行所在国家/地区。",
+      "forbidden": "只有品牌所有者可以更改收款设置。",
       "conflict": "已在另一台设备上更改为 {{country}}。",
       "keep": "保留",
       "change": "更改",

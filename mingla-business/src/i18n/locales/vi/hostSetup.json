@@ -25,7 +25,7 @@
       "noMatch": "Không có quốc gia ngân hàng nào khớp với '{{query}}'.",
       "cantPayOut": "Mingla chưa thể chuyển tiền đến đó",
       "locked": "Khoản thanh toán đã được thiết lập cho ngân hàng tại {{country}}. Để dùng quốc gia khác, hãy ngắt kết nối thanh toán trước.",
-      "forbidden": "Chỉ chủ thương hiệu hoặc quản trị viên mới đổi được quốc gia ngân hàng.",
+      "forbidden": "Chỉ chủ thương hiệu mới đổi được cài đặt nhận tiền.",
       "conflict": "Mục này đã được đổi trên thiết bị khác thành {{country}}.",
       "keep": "Giữ",
       "change": "Đổi",

@@ -25,7 +25,7 @@
       "noMatch": "Tidak ada negara bank yang cocok dengan '{{query}}'.",
       "cantPayOut": "Mingla belum bisa mencairkan dana ke sana",
       "locked": "Pencairan sudah diatur untuk bank di {{country}}. Untuk memakai negara lain, putuskan pembayaran dulu.",
-      "forbidden": "Hanya pemilik brand atau admin yang bisa mengubah negara bank.",
+      "forbidden": "Hanya pemilik brand yang bisa mengubah pengaturan pembayaran.",
       "conflict": "Ini diubah di perangkat lain menjadi {{country}}.",
       "keep": "Pertahankan",
       "change": "Ubah",

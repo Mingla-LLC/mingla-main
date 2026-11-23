@@ -25,7 +25,7 @@
       "noMatch": "Nicio țară bancară nu corespunde cu „{{query}}”.",
       "cantPayOut": "Mingla nu poate plăti încă acolo",
       "locked": "Plățile sunt deja configurate pentru o bancă din {{country}}. Ca să folosești altă țară, deconectează mai întâi plățile.",
-      "forbidden": "Doar proprietarul brandului sau un admin poate schimba țara băncii.",
+      "forbidden": "Doar proprietarul brandului poate schimba setările de plată.",
       "conflict": "A fost schimbat pe alt dispozitiv în {{country}}.",
       "keep": "Păstrează",
       "change": "Schimbă",
