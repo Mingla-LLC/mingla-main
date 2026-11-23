@@ -517,10 +517,20 @@ SELECT public.t4490o3_as(NULL);
 SELECT public.t4490o3_expect($q$SELECT count(*) FROM public.venue_station_tickets$q$,
   '42501', NULL, 'S-10f signed out reads nothing');
 SELECT public.t4490o3_reset();
-SELECT public.t4490o3_ok(NOT EXISTS (
-    SELECT 1 FROM information_schema.columns WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'public')
-  OR EXISTS (SELECT 1 FROM storage.buckets b WHERE b.id = 'venue-floor-pdfs' AND NOT b.public),
-  'S-10g the venue-floor-pdfs bucket is private');
+-- The CI baseline's storage schema may lack buckets.public (the migration's own guard), so
+-- the column is read only when it exists.
+DO $bucket$
+DECLARE
+  v_private boolean := true;
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'public') THEN
+    EXECUTE $q$SELECT EXISTS (SELECT 1 FROM storage.buckets b WHERE b.id = 'venue-floor-pdfs' AND NOT b.public)$q$
+      INTO v_private;
+  END IF;
+  PERFORM public.t4490o3_ok(v_private, 'S-10g the venue-floor-pdfs bucket is private (where the storage schema has buckets.public)');
+END
+$bucket$;
 
 -- ===========================================================================
 -- S-11 what a floor PDF prints, and who may make it.

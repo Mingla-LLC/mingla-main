@@ -29,7 +29,10 @@ const ORIGINAL_PATH =
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
 const CURRENT_PIN_PATH =
-  "supabase/migrations/20280809554490_issue_4490_ops_o1_pending_venue_repin.sql";
+  "supabase/migrations/20280809602490_issue_4490_ops_o3_pending_venue_repin.sql";
+// [TEST-MOD-APPROVED #4490] 08-O3 part A: the current pin owner is the O3 repin
+// (20280809602490), which advances the pin over the Till pay-link texts lane added
+// by 20280809600490; it stays disallowed. It carries the P1 owner's rewrites.
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -69,7 +72,7 @@ const NEW_PIN =
 // (20280809554490), which advances the pin over the Till lanes added by
 // 20280809464490; they stay disallowed. It carries the P1 owner's rewrites.
 const CURRENT_HASHES = [
-  "ea061db24e8b6fab2f80c25a61a07aeb17b730b09f88cfa394a00b6b5d218304",
+  "1af08ee123350acaba09584d58b81bcdf0ac7dd158a37d9131fc63e279bbba77",
 ] as const;
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
@@ -455,7 +458,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
-  const currentPinName = "20280809554490_issue_4490_ops_o1_pending_venue_repin.sql";
+  const currentPinName = "20280809602490_issue_4490_ops_o3_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),

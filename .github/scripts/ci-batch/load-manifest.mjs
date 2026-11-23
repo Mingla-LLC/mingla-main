@@ -416,7 +416,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 ops O2: till-pay migration 20280809599490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 ops O2 fix 1: o2-fix1 migration 20280809600490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 ops O3 part A: stations migration 20280809601490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "659810ae8329209c1026c060fc3d8f822e812079543b55c8770a006b835b6e08";
+// issue #4490 ops O3 part A: #2099 repin 20280809602490 (pin owner) registered, the 1931 baseline skips it by exact filename, the #2099 path scope lists 600490 and 602490; re-sealed.
+// issue #4490 ops O3 part A: the #2117 phase-1 lane skips the #2099 repin 20280809602490 by exact filename; re-sealed.
+export const BOOTSTRAP_SHA256 = "c75a13097876b43561093ea6cac531b99e67b5b685c2a98400af4f22e7b208e9";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
