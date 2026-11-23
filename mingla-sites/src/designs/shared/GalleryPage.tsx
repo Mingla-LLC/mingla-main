@@ -131,6 +131,8 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
       id="mg-scope"
       className={`mg-scope mg-page mg-page--${design.key}`}
       data-mg-look="gallery"
+      data-mg-cover={artifact.design.options?.cover}
+      data-mg-photos={artifact.design.options?.photos}
       data-motion={motion["data-motion"]}
       data-mg-profile={motion["data-mg-profile"]}
       style={motion.style}

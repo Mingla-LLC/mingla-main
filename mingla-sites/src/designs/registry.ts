@@ -30,6 +30,8 @@ export type DesignRenderer = {
   sharedStylesheet?: string;
   /** #2829 W7 — the design draws its own 404 page (others keep the generic one). */
   drawsNotFound?: boolean;
+  /** #4575 — linked after the design's own sheet only when the artifact carries design options; immutable, a change is options-2.css. */
+  optionsStylesheet?: string;
   Page: ComponentType<{
     artifact: ArtifactV2;
     page?: ArtifactPage;
@@ -64,7 +66,7 @@ export const DESIGN_RENDERERS: Readonly<Record<DesignKey, DesignRenderer>> = {
   maison: { stylesheet: (version) => `/designs/maison/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: MaisonPage },
   // #4453 6b — Journal, Grid and Terra, the same way.
   journal: { stylesheet: (version) => `/designs/journal/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: JournalPage },
-  grid: { stylesheet: (version) => `/designs/grid/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: GridPage },
+  grid: { stylesheet: (version) => `/designs/grid/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, optionsStylesheet: "/designs/grid/options-1.css", Page: GridPage },
   terra: { stylesheet: (version) => `/designs/terra/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: TerraPage },
   // #4453 6c — Pop, Sunset and Pulse, the same way.
   pop: { stylesheet: (version) => `/designs/pop/${version}.css`, sharedStylesheet: SHARED_STYLESHEET, Page: PopPage },

@@ -8,12 +8,14 @@
  * only from this screen, so the Business boot bundle never carries them.
  */
 import {
+  assertDesignOptions,
   ATELIER,
   designFontSlots,
   designFor,
   designSwatches,
   PRIMARY_SWATCHES,
   type DesignDefinition,
+  type DesignOptions,
 } from "../../../packages/site-contracts/src/designs.ts";
 import { normalizeHex, type RampStep } from "../../../packages/site-contracts/src/colorRamp.ts";
 import {
@@ -107,6 +109,25 @@ export function safeTokenOverrides(value: unknown): OwnerTokenOverrides {
   } catch {
     return {};
   }
+}
+
+/** #4575 — the stored design options (Grid's cover and photos); an invalid value reads as none. */
+export function safeDesignOptions(value: unknown): DesignOptions {
+  try {
+    assertDesignOptions(value);
+  } catch {
+    return {};
+  }
+  const out: DesignOptions = {};
+  const stored = (value ?? {}) as DesignOptions;
+  if (stored.cover) out.cover = stored.cover;
+  if (stored.photos) out.photos = stored.photos;
+  return out;
+}
+
+/** #4575 — what a save sends: every option explicitly (a cleared one as null, so the stored value is cleared too). */
+export function designOptionsPayload(options: DesignOptions): { cover: DesignOptions["cover"]; photos: DesignOptions["photos"] } {
+  return { cover: options.cover ?? null, photos: options.photos ?? null };
 }
 
 export function safeFontOverrides(value: unknown): OwnerFontOverrides {

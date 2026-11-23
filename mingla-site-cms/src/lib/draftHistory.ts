@@ -31,7 +31,7 @@ export const MAX_GROUP_LABEL = 120;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The site's look, as one undoable thing. */
-export const LOOK_KEYS = ["design", "tokens", "fonts", "radius", "button_shape", "motion"] as const;
+export const LOOK_KEYS = ["design", "tokens", "fonts", "radius", "button_shape", "motion", "design_options"] as const;
 /** The header menu, as one undoable thing. */
 export const MENU_KEYS = ["items"] as const;
 

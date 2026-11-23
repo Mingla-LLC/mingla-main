@@ -65,7 +65,7 @@ import {
   isHomePage,
   tenantPagePaths,
 } from "../lib/pageTree";
-import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
+import { assertDesignOptions, DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { buildPreviewSections, MAX_PREVIEW_SECTIONS_BYTES, previewSectionsKey } from "../contracts/generated/previewSections.ts";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
@@ -1596,6 +1596,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
         "radius",
         "button_shape",
         "motion",
+        // #4575 — Grid's cover and photos options (validated below).
+        "design_options",
         "seo_title",
         "seo_description",
         "social_image",
@@ -1605,6 +1607,13 @@ async function ari(req: PayloadRequest): Promise<Response> {
         Object.keys(changes).some((key) => !allowed.has(key))
       )
         throw new Error("VALIDATION_FAILED");
+      if (changes.design_options !== undefined) {
+        try {
+          assertDesignOptions(changes.design_options);
+        } catch {
+          throw new Error("VALIDATION_FAILED");
+        }
+      }
       const updated = await req.payload.update({
         collection: "site-settings",
         id: settings.id,

@@ -163,7 +163,50 @@ export function OfferingGridPoster(props: SharedBlockProps) {
   );
 }
 
+/** A srcset entry's or a URL's path ends in a centre crop (`/c400`, `/c768`), before any `?` query. */
+const CROP_PATH = /\/c(?:400|768)$/;
+const pathOf = (url: string) => url.split("?")[0]!;
+
+/**
+ * #4575 — the WHOLE cover picture for a flyer, never a 4:3 centre crop: the
+ * card's srcset without its `c400` / `c768` crops (preview-stamped URLs keep
+ * their `?` key), `src` its first remaining entry; with no srcset left, the
+ * stored cover (`/original`) in place of a crop. Null with no cover.
+ */
+export function wholeCoverSources(card: { coverUrl: string | null; coverSrcSet: string | null }): { src: string; srcSet: string | null } | null {
+  if (!card.coverUrl) return null;
+  const kept = (card.coverSrcSet ?? "")
+    .split(/,\s*/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry && !CROP_PATH.test(pathOf(entry.split(/\s+/)[0]!)));
+  if (kept.length) return { src: kept[0]!.split(/\s+/)[0]!, srcSet: kept.join(", ") };
+  const [path, ...query] = card.coverUrl.split("?");
+  const src = path!.replace(CROP_PATH, "/original");
+  return { src: query.length ? `${src}?${query.join("?")}` : src, srcSet: null };
+}
+
+/** #4575 — a list row's flyer (Grid's full-screen cover): the whole picture, at its own shape. */
+function FlyerThumb({ item }: { item: GridItem }) {
+  const sources = wholeCoverSources(item.card);
+  if (!sources) return null;
+  const image = (
+    <img
+      src={sources.src}
+      srcSet={sources.srcSet ?? undefined}
+      sizes={sources.srcSet ? "(min-width: 861px) 15vw, (min-width: 721px) 25vw, 66vw" : undefined}
+      alt=""
+      loading="lazy"
+      decoding="async"
+    />
+  );
+  return item.card.detailHref
+    ? <a className="mg-to-detail-img" href={item.card.detailHref} tabIndex={-1} aria-hidden="true">{image}</a>
+    : image;
+}
+
 export function OfferingGridList(props: SharedBlockProps) {
+  // #4575 — Grid's full-screen cover adds a flyer column to each row.
+  const flyers = props.ctx.artifact.design.options?.cover === "full";
   return (
     <GridShell {...props} className="mg-offers-list">
       {(items) => (
@@ -171,6 +214,7 @@ export function OfferingGridList(props: SharedBlockProps) {
           {items.map((item) => (
             <li key={item.card.id} className="mg-lrow" data-offering-kind={item.card.kind}>
               <p className="mg-lrow__d">{item.card.dates}</p>
+              {flyers ? <div className="mg-lrow__img"><FlyerThumb item={item} /></div> : null}
               <div className="mg-lrow__t">
                 <h3><CardTitle card={item.card} /></h3>
                 {item.card.summary ? <p>{item.card.summary}</p> : null}

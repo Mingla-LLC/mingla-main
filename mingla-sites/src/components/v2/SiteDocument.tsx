@@ -23,6 +23,8 @@ export function SiteDocument({ artifact, page, previewKey, live, forms, entry, d
     <>
       {design.sharedStylesheet || detail || live?.detailPages ? <link rel="stylesheet" href={design.sharedStylesheet ?? SHARED_STYLESHEET} precedence="design-shared" /> : null}
       <link rel="stylesheet" href={design.stylesheet(artifact.design.version)} precedence="design" />
+      {/* #4575 — the design's options sheet, only when the artifact carries options (a site without them links exactly what it did). */}
+      {artifact.design.options && design.optionsStylesheet ? <link rel="stylesheet" href={design.optionsStylesheet} precedence="design" /> : null}
       {/* #4453 milestone 9 — the detail template's own sheet, on detail pages only (a design without the shared library gets it too, for the template's buttons and hand-off sheet). */}
       {detail || live?.detailPages ? <link rel="stylesheet" href={DETAIL_STYLESHEET} precedence="design-shared" /> : null}
       <TokenStyle artifact={artifact} />
