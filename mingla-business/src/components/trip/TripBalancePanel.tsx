@@ -22,6 +22,14 @@ export function balanceMoney(amountMinor: number, currency: string): string {
   return formatTripBalanceMoney(amountMinor, currency, localeForCurrency(currency));
 }
 
+/**
+ * issue #4522 W-11 — the empty "Other amount" hint, by the shared money rule
+ * (a whole amount shows no decimals): "0", never "0.00" on a naira balance.
+ */
+export function otherAmountPlaceholder(currency: string): string {
+  return balanceMoney(0, currency).replace(/[^\d.,]/g, "");
+}
+
 const due = (value: string): string => {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -148,7 +156,10 @@ export function TripBalancePanel({
                 accessibilityLabel="Other payment amount"
                 variant="number"
                 onChangeText={onCustomAmount}
-                placeholder="0.00"
+                // issue #4522 W-11 — choosing "Other amount" puts the cursor
+                // here; the hint follows the shared money rule ("0").
+                autoFocus
+                placeholder={otherAmountPlaceholder(balance.currency)}
                 value={customAmount}
               />
               {customError
