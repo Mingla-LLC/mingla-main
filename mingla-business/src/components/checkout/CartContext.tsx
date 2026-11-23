@@ -36,6 +36,7 @@ import {
   type CheckoutAddOnRequest,
   type CheckoutClientAttemptInput,
   type CheckoutLinePlanChoice,
+  type HeldCheckoutAttempt,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
 import {
   type TicketCheckoutReview,
@@ -635,6 +636,13 @@ export interface CartContextValue extends CartState {
   }) => string;
   /** Clears only attempt identity; reserved for an explicit server review reset. */
   resetCheckoutAttempt: () => void;
+  /**
+   * issue #4522 E-3 — the attempt this cart last sent (saved with the web
+   * resume payload before a provider redirect) and its restore after the
+   * reload. A restored attempt is reused only for an unchanged cart.
+   */
+  heldCheckoutAttempt: () => HeldCheckoutAttempt | null;
+  restoreCheckoutAttempt: (attempt: HeldCheckoutAttempt) => void;
   /** One private intake upload draft for this cart lifetime. */
   intakeUploadSessionId: string;
   /**
@@ -673,6 +681,16 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const resetCheckoutAttempt = useCallback((): void => {
     checkoutAttemptTrackerRef.current.reset();
   }, []);
+  const heldCheckoutAttempt = useCallback(
+    (): HeldCheckoutAttempt | null => checkoutAttemptTrackerRef.current.held(),
+    [],
+  );
+  const restoreCheckoutAttempt = useCallback(
+    (attempt: HeldCheckoutAttempt): void => {
+      checkoutAttemptTrackerRef.current.restore(attempt);
+    },
+    [],
+  );
 
   const setLineQuantity = useCallback(
     (params: {
@@ -847,6 +865,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setAddonPaymentMode,
       checkoutAttemptIdFor,
       resetCheckoutAttempt,
+      heldCheckoutAttempt,
+      restoreCheckoutAttempt,
       intakeUploadSessionId: intakeUploadSessionRef.current,
       setEventDateId,
       setEventDateIds,
@@ -870,6 +890,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setAddonPaymentMode,
       checkoutAttemptIdFor,
       resetCheckoutAttempt,
+      heldCheckoutAttempt,
+      restoreCheckoutAttempt,
       setEventDateId,
       setEventDateIds,
       setBookedStartAt,

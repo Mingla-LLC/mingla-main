@@ -59,6 +59,7 @@ import { tripPublicPath } from "../../../src/constants/publicUrls";
 import {
   confirmTicketCheckout,
   createTicketCheckout,
+  getTicketCheckoutStatus,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
@@ -88,6 +89,11 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
+import {
+  restoreTripCheckout,
+  tripResumeDecision,
+  type ResumedTripCheckout,
+} from "../../../src/components/checkout/tripCheckoutResume";
 import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
 import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
 import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
@@ -196,6 +202,8 @@ function CheckoutTripPaymentScreenContent({
     setAddonPaymentMode,
     checkoutAttemptIdFor,
     resetCheckoutAttempt,
+    heldCheckoutAttempt,
+    restoreCheckoutAttempt,
   } = useCart();
   const totals = useCartQuoteTotals();
 
@@ -370,6 +378,9 @@ function CheckoutTripPaymentScreenContent({
     fingerprint: string;
     handoff: TicketCheckoutProviderHandoff;
   } | null>(null);
+  // issue #4522 E-3 — the checkout this cart was handed before a reload (the
+  // provider's Back button, a refresh, the checkout link reopened).
+  const resumedCheckoutRef = useRef<ResumedTripCheckout | null>(null);
   const cartFingerprint = JSON.stringify({
     eventId: tripEventId,
     email: buyer.email.trim().toLowerCase(),
@@ -406,23 +417,13 @@ function CheckoutTripPaymentScreenContent({
     const storage = (globalThis as unknown as { sessionStorage?: Storage })
       .sessionStorage;
     const payload = readCheckoutResumePayload(storage, tripEventId);
-    if (payload !== null && lines.length === 0) {
-      for (const l of payload.lines) {
-        setLineQuantity({
-          ticketTypeId: l.ticketTypeId,
-          ticketName: l.ticketName,
-          unitPrice: l.unitPrice,
-          unitPriceGbp: l.unitPriceGbp,
-          currency: l.currency,
-          isFree: l.isFree,
-          quantity: l.quantity,
-          paymentPlanChoice: l.paymentPlanChoice ?? "full",
-          addOns: l.addOns,
-          addonPaymentMode: l.addonPaymentMode,
-        });
-      }
-      setBuyer(payload.buyer);
-    }
+    // issue #4522 E-2 / E-3 — the lines with their plan choices (the quoted
+    // choice follows them), plus the attempt and page this cart was handed.
+    resumedCheckoutRef.current = restoreTripCheckout(
+      payload,
+      { setLineQuantity, setLinePaymentPlanChoice, setBuyer, restoreCheckoutAttempt },
+      lines.length === 0,
+    );
     setRestoreChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripEventId]);
@@ -468,6 +469,23 @@ function CheckoutTripPaymentScreenContent({
   // first adding a field — and if you add a field, migrate the container to
   // src/wrappers/SmartScrollView instead of reinstating a listener.
   const scrollViewRef = useRef<ScrollView | null>(null);
+
+  // issue #4522 E-3 — a page restored from the browser's back-forward cache
+  // keeps its memory (cart, quote, held provider page) but was left mid-Pay;
+  // un-stick the button so the next Pay re-follows the held page.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const host = globalThis as unknown as {
+      addEventListener?: (type: string, cb: (event: { persisted?: boolean }) => void) => void;
+      removeEventListener?: (type: string, cb: (event: { persisted?: boolean }) => void) => void;
+    };
+    if (typeof host.addEventListener !== "function") return;
+    const onPageShow = (event: { persisted?: boolean }): void => {
+      if (event.persisted === true) setProcessing(false);
+    };
+    host.addEventListener("pageshow", onPageShow);
+    return () => host.removeEventListener?.("pageshow", onPageShow);
+  }, []);
 
   // ----- Handlers -----
   const handleBack = useCallback((): void => {
@@ -530,6 +548,31 @@ function CheckoutTripPaymentScreenContent({
             setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
             return;
           }
+          // issue #4522 E-3 — after a reload the held checkout comes from the
+          // resume payload: a paid one goes to confirmation, a still-open one
+          // is re-followed (or its attempt sent again, so the server answers
+          // with it), an expired or failed one is forgotten first. One cart
+          // never has two payable sessions.
+          const resumed = resumedCheckoutRef.current;
+          if (resumed !== null) {
+            const decision = await tripResumeDecision(
+              resumed,
+              cartFingerprint,
+              getTicketCheckoutStatus,
+            );
+            if (decision.kind === "confirm") {
+              router.replace(`/checkout-trip/${tripEventId}/confirm` as never);
+              return;
+            }
+            if (decision.kind === "follow") {
+              if (assignLocation(globalThis, decision.url)) return;
+              setProcessing(false);
+              setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+              return;
+            }
+            if (decision.forget) resetCheckoutAttempt();
+            resumedCheckoutRef.current = null;
+          }
           // createTicketCheckout is event_type-agnostic — the RPC
           // biz_ticket_checkout_create_session branches on v_event.event_type='trip'.
           const checkout = await createTicketCheckout({
@@ -582,11 +625,21 @@ function CheckoutTripPaymentScreenContent({
           const storage = (
             globalThis as unknown as { sessionStorage?: Storage }
           ).sessionStorage;
+          const sentAttempt = heldCheckoutAttempt();
           writeCheckoutResumePayload(storage, tripEventId, {
             checkoutSessionId: handoff.checkoutSessionId,
             buyerStatusToken: handoff.buyerStatusToken,
             lines,
             buyer,
+            // issue #4522 E-3 — after the reload Back causes, an unchanged
+            // cart re-follows this page and resends this attempt.
+            providerHandoff: {
+              fingerprint: cartFingerprint,
+              redirectUrl: handoff.redirectUrl,
+              totalCents: activeQuote.buyerTotalCents,
+              currency: activeQuote.currency,
+            },
+            ...(sentAttempt !== null ? { checkoutAttempt: sentAttempt } : {}),
           });
           // ORCH-0915 T-A02 pins `const w = globalThis` as the end of the
           // persist window: the resume payload is written, THEN the host is read.
@@ -785,6 +838,8 @@ function CheckoutTripPaymentScreenContent({
       buyer,
       discountCode,
       checkoutAttemptIdFor,
+      heldCheckoutAttempt,
+      resetCheckoutAttempt,
       trip,
       tripEventId,
       lines,

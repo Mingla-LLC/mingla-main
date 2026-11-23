@@ -58,9 +58,23 @@ export interface CheckoutClientAttemptInput {
   intakeFormData: unknown;
 }
 
+/** issue #4522 E-3 — the attempt a cart already sent, kept across a reload. */
+export interface HeldCheckoutAttempt {
+  fingerprint: string;
+  id: string;
+}
+
 export interface CheckoutAttemptTracker {
   idFor(input: CheckoutClientAttemptInput): string;
   reset(): void;
+  /** issue #4522 E-3 — the attempt last used, so a web reload can keep it. */
+  held(): HeldCheckoutAttempt | null;
+  /**
+   * issue #4522 E-3 — take back an attempt saved before a provider redirect.
+   * It is reused only while the cart's fingerprint is unchanged, so the
+   * server answers with that checkout instead of opening a second one.
+   */
+  restore(attempt: HeldCheckoutAttempt): void;
 }
 
 export interface CanonicalCheckoutLine extends CheckoutV2Line {
@@ -262,6 +276,15 @@ export function createCheckoutAttemptTracker(
     },
     reset() {
       held = null;
+    },
+    held() {
+      return held === null ? null : { ...held };
+    },
+    restore(attempt) {
+      if (typeof attempt.fingerprint !== "string" || !isCheckoutAttemptId(attempt.id)) {
+        return;
+      }
+      held = { fingerprint: attempt.fingerprint, id: attempt.id };
     },
   };
 }
