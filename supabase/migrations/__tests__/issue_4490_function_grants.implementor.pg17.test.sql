@@ -39,6 +39,10 @@
 -- TEST-MOD-APPROVED #4490 (08-O1 fix 2): 20280809589490 adds the overpaid derivation and its refund
 -- trigger function, both internal (service role only); the day's money and the guest-list gate sale it
 -- patches keep their internal class.
+-- TEST-MOD-APPROVED #4490 (08-O2): 20280809599490 adds eleven functions (card prepare/start/cancel/close,
+-- code expiry, tap record, pay-code view/buyer/status/text, keep late payment), all internal (service role
+-- only: the anonymous pay page reaches view/buyer through venue-till); the finalizer it re-emits keeps
+-- its service-role-only grant.
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -485,6 +489,17 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_servers(uuid,uuid)', 'internal'),
   ('issue_4490_till_overpaid_derived(uuid)', 'internal'),
   ('issue_4490_till_refund_settles()', 'internal'),
+  ('issue_4490_till_expire_codes(uuid)', 'internal'),
+  ('issue_4490_till_card_close(uuid)', 'internal'),
+  ('issue_4490_till_card_prepare(uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_card_start(uuid,text,bigint,uuid,uuid,uuid,integer,jsonb,text)', 'internal'),
+  ('issue_4490_till_card_cancel(uuid,uuid)', 'internal'),
+  ('issue_4490_till_tap_record(text,text,bigint,text,text)', 'internal'),
+  ('issue_4490_till_pay_code_view(text)', 'internal'),
+  ('issue_4490_till_pay_code_buyer(text,text,text,text)', 'internal'),
+  ('issue_4490_till_pay_code_status(text,uuid,uuid)', 'internal'),
+  ('issue_4490_till_pay_code_text(text,uuid,uuid,text,text)', 'internal'),
+  ('issue_4490_till_keep_late_payment(uuid,uuid,integer)', 'internal'),
   ('biz_venue_tab_open(uuid)', 'signed_in'),
   ('biz_venue_tab_close(uuid,text)', 'signed_in'),
   ('biz_venue_order_transition(uuid,text,text)', 'signed_in'),

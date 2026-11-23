@@ -403,7 +403,11 @@ DECLARE
     -- one buyer_till_receipt row per channel: the text row with
     -- mingla_e164_country(phone), the email row an explicit NULL;
     -- issue_4490_ops_till_receipts.implementor.pg17 (RC-S2) asserts both.
-    'issue_4490_till_receipt_send'
+    'issue_4490_till_receipt_send',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O2 scan to pay: "Text them the link"
+    -- writes one buyer_door_pay_link SMS row with mingla_e164_country(phone);
+    -- issue_4490_ops_till_pay.implementor.pg17 (O2-DB11b) asserts it.
+    'issue_4490_till_pay_code_text'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
