@@ -8,10 +8,19 @@
 //
 // FAILS-ON-REVERT: deleting the logFormRequestRefusal call in refuse() fails
 // every case; deleting the dbState pass-through fails the 21000 case.
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleFormRequest } from "../formRequest.ts";
-import type { FormRequestRecipient, RpcResult } from "../../_shared/brandFormRequests.ts";
-import type { DispatchV2Input, DispatchV2Result } from "../../_shared/notifyV2.ts";
+import type {
+  FormRequestRecipient,
+  RpcResult,
+} from "../../_shared/brandFormRequests.ts";
+import type {
+  DispatchV2Input,
+  DispatchV2Result,
+} from "../../_shared/notifyV2.ts";
 import type { SmsRateV1 } from "../../_shared/smsPriceTable.ts";
 
 const FORM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -21,7 +30,10 @@ const ACTOR = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const PHONE = "+12025550100";
 const EMAIL = "guest@example.test";
 
-const guest = (n: number, over: Partial<FormRequestRecipient> = {}): FormRequestRecipient => ({
+const guest = (
+  n: number,
+  over: Partial<FormRequestRecipient> = {},
+): FormRequestRecipient => ({
   kind: "rsvp",
   id: `${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`,
   userId: null,
@@ -70,19 +82,29 @@ function deps(opts: {
     rpc: (fn: string): Promise<RpcResult> => {
       if (fn === "brand_form_request_audience") {
         return Promise.resolve(
-          opts.audienceResult ?? { data: audience(opts.recipients ?? [guest(1)]), error: null },
+          opts.audienceResult ??
+            { data: audience(opts.recipients ?? [guest(1)]), error: null },
         );
       }
       if (fn === "brand_form_request_enqueue") {
-        return Promise.resolve(opts.enqueue ?? { data: { queued: 1 }, error: null });
+        return Promise.resolve(
+          opts.enqueue ?? { data: { queued: 1 }, error: null },
+        );
       }
-      if (fn === "brand_forms_switched_off") return Promise.resolve({ data: false, error: null });
-      if (fn === "brand_form_request_claim_batch") return Promise.resolve({ data: [], error: null });
+      if (fn === "brand_forms_switched_off") {
+        return Promise.resolve({ data: false, error: null });
+      }
+      if (fn === "brand_form_request_claim_batch") {
+        return Promise.resolve({ data: [], error: null });
+      }
       return Promise.resolve({ data: true, error: null });
     },
     dispatch: (_input: DispatchV2Input): Promise<DispatchV2Result> =>
-      Promise.resolve({ success: true, deliveries: [] } as unknown as DispatchV2Result),
-    smsRates: () => Promise.resolve(opts.rates === undefined ? RATES : opts.rates),
+      Promise.resolve(
+        { success: true, deliveries: [] } as unknown as DispatchV2Result,
+      ),
+    smsRates: () =>
+      Promise.resolve(opts.rates === undefined ? RATES : opts.rates),
   };
 }
 
@@ -114,18 +136,32 @@ async function capture(
   }
 }
 
-const RAW = "raw database text that must never be logged guest@example.test +12025550100";
+const RAW =
+  "raw database text that must never be logged guest@example.test +12025550100";
 
-function assertOneSafeLine(lines: string[], code: string): Record<string, unknown> {
-  const refused = lines.filter((l) => l.startsWith("[brand-form-request] refused"));
+function assertOneSafeLine(
+  lines: string[],
+  code: string,
+): Record<string, unknown> {
+  const refused = lines.filter((l) =>
+    l.startsWith("[brand-form-request] refused")
+  );
   assertEquals(refused.length, 1, `exactly one refusal line for ${code}`);
   assertEquals(lines.length, 1, `nothing else is warned for ${code}`);
   const line = refused[0];
   assert(!/\+\d/.test(line), `no phone digits in ${line}`);
   assert(!line.includes("@"), `no email in ${line}`);
-  assert(!line.includes("raw database text"), `no raw database message in ${line}`);
-  assert(!line.includes(FORM) && !line.includes(EVENT) && !line.includes(ACTOR), `no ids in ${line}`);
-  const parsed = JSON.parse(line.slice("[brand-form-request] refused ".length)) as Record<string, unknown>;
+  assert(
+    !line.includes("raw database text"),
+    `no raw database message in ${line}`,
+  );
+  assert(
+    !line.includes(FORM) && !line.includes(EVENT) && !line.includes(ACTOR),
+    `no ids in ${line}`,
+  );
+  const parsed = JSON.parse(
+    line.slice("[brand-form-request] refused ".length),
+  ) as Record<string, unknown>;
   assertEquals(parsed.code, code);
   return parsed;
 }
@@ -148,7 +184,12 @@ for (const [message, code, status, dbCode] of audienceCodes) {
       handleFormRequest(
         body(),
         ACTOR,
-        deps({ audienceResult: { data: null, error: { message: `${message}: ${RAW}`, code: dbCode } } }),
+        deps({
+          audienceResult: {
+            data: null,
+            error: { message: `${message}: ${RAW}`, code: dbCode },
+          },
+        }),
       )
     );
     assertEquals(r.status, status);
@@ -157,8 +198,9 @@ for (const [message, code, status, dbCode] of audienceCodes) {
     assertEquals(line.status, status);
     assertEquals(line.dbState, dbCode);
     assertEquals(line.op, "form_send");
-    if (code === "form_request_unavailable") assertEquals(line.stage, "audience");
-    else assertEquals(line.stage, undefined);
+    if (code === "form_request_unavailable") {
+      assertEquals(line.stage, "audience");
+    } else assertEquals(line.stage, undefined);
   });
 }
 
@@ -167,7 +209,12 @@ Deno.test("#4573 SC-5: an enqueue refused by pg-safeupdate is form_request_unava
     handleFormRequest(
       body(),
       ACTOR,
-      deps({ enqueue: { data: null, error: { message: "DELETE requires a WHERE clause", code: "21000" } } }),
+      deps({
+        enqueue: {
+          data: null,
+          error: { message: "DELETE requires a WHERE clause", code: "21000" },
+        },
+      }),
     )
   );
   assertEquals(r.status, 409);
@@ -177,7 +224,10 @@ Deno.test("#4573 SC-5: an enqueue refused by pg-safeupdate is form_request_unava
   assertEquals(line.dbState, "21000");
   assertEquals(line.smsCount, 1);
   assertEquals(line.reachable, 1);
-  assert(!r.lines[0].includes("WHERE clause"), "the database message is not logged");
+  assert(
+    !r.lines[0].includes("WHERE clause"),
+    "the database message is not logged",
+  );
 });
 
 Deno.test("#4573 SC-5: enqueue text cap and an unparseable audience each log one line", async () => {
@@ -185,14 +235,23 @@ Deno.test("#4573 SC-5: enqueue text cap and an unparseable audience each log one
     handleFormRequest(
       body(),
       ACTOR,
-      deps({ enqueue: { data: null, error: { message: `form_request_text_cap ${RAW}`, code: "P0001" } } }),
+      deps({
+        enqueue: {
+          data: null,
+          error: { message: `form_request_text_cap ${RAW}`, code: "P0001" },
+        },
+      }),
     )
   );
   assertEquals(cap.body.code, "text_cap");
   assertEquals(assertOneSafeLine(cap.lines, "text_cap").dbState, "P0001");
 
   const parse = await capture(() =>
-    handleFormRequest(body(), ACTOR, deps({ audienceResult: { data: { nope: true }, error: null } }))
+    handleFormRequest(
+      body(),
+      ACTOR,
+      deps({ audienceResult: { data: { nope: true }, error: null } }),
+    )
   );
   assertEquals(parse.status, 502);
   const line = assertOneSafeLine(parse.lines, "form_request_unavailable");
@@ -202,16 +261,28 @@ Deno.test("#4573 SC-5: enqueue text cap and an unparseable audience each log one
 
 Deno.test("#4573 SC-5: no_recipients, cost_unpriced and preview_stale_cost each log one line", async () => {
   const none = await capture(() =>
-    handleFormRequest(body(), ACTOR, deps({ recipients: [guest(1, { route: [], email: null, phone: null })] }))
+    handleFormRequest(
+      body(),
+      ACTOR,
+      deps({ recipients: [guest(1, { route: [], email: null, phone: null })] }),
+    )
   );
   assertEquals(none.body.code, "no_recipients");
   assertEquals(assertOneSafeLine(none.lines, "no_recipients").reachable, 0);
 
-  const unpriced = await capture(() => handleFormRequest(body(), ACTOR, deps({ rates: null })));
+  const unpriced = await capture(() =>
+    handleFormRequest(body(), ACTOR, deps({ rates: null }))
+  );
   assertEquals(unpriced.body.code, "cost_unpriced");
   assertEquals(assertOneSafeLine(unpriced.lines, "cost_unpriced").smsCount, 1);
 
-  const stale = await capture(() => handleFormRequest(body({ expectedCostMinor: 0, currency: "EUR" }), ACTOR, deps({})));
+  const stale = await capture(() =>
+    handleFormRequest(
+      body({ expectedCostMinor: 0, currency: "EUR" }),
+      ACTOR,
+      deps({}),
+    )
+  );
   assertEquals(stale.body.code, "preview_stale_cost");
   assertOneSafeLine(stale.lines, "preview_stale_cost");
 });
@@ -221,23 +292,38 @@ Deno.test("#4573 SC-5: a database code that is not a short token is logged as nu
     handleFormRequest(
       body(),
       ACTOR,
-      deps({ enqueue: { data: null, error: { message: "x", code: "+12025550100 guest@example.test" } } }),
+      deps({
+        enqueue: {
+          data: null,
+          error: { message: "x", code: "+12025550100 guest@example.test" },
+        },
+      }),
     )
   );
-  assertEquals(assertOneSafeLine(r.lines, "form_request_unavailable").dbState, null);
+  assertEquals(
+    assertOneSafeLine(r.lines, "form_request_unavailable").dbState,
+    null,
+  );
 });
 
 Deno.test("#4573: a preview and a successful send log no refusal", async () => {
   const preview = await capture(() =>
     handleFormRequest(
-      { ...body(), operation: "form_preview", expectedCostMinor: undefined, currency: undefined },
+      {
+        ...body(),
+        operation: "form_preview",
+        expectedCostMinor: undefined,
+        currency: undefined,
+      },
       ACTOR,
       deps({}),
     )
   );
   assertEquals(preview.status, 200);
   assertEquals(preview.lines.length, 0);
-  const sent = await capture(() => handleFormRequest(body(), ACTOR, deps({}), 50));
+  const sent = await capture(() =>
+    handleFormRequest(body(), ACTOR, deps({}), 50)
+  );
   assertEquals(sent.status, 200);
   assertEquals(sent.lines.filter((l) => l.includes("refused")).length, 0);
 });
