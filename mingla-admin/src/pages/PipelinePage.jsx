@@ -734,6 +734,7 @@ function PipelinePage({ pipeline, onTabChange }) {
                     onDelete={handleDelete}
                     onOpenCard={(id) => openCard(id, { replace: true })}
                     onRefreshRegions={cfg.retry}
+                    onHygieneChanged={() => setActivityTick((n) => n + 1)}
                   />
                   </Suspense>
                 ) : null

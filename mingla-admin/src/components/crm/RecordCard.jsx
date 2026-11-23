@@ -10,6 +10,7 @@ import {
   contactRuleView,
   icpLabel,
   lastTouchWords,
+  moveBlocker,
   nextStage,
   quickLinks,
   recordInitials,
@@ -131,6 +132,8 @@ export function RecordCard({
   const openWork = Number.isFinite(Number(record.open_work)) ? Number(record.open_work) : null;
   const demoAt = record.next_demo?.call_at ? localWhen(record.next_demo.call_at) : "";
   const locked = !!record.demo_gate?.locked;
+  // #4571 rework: never offer a move the demo rule refuses; open the card to book one.
+  const nextLocked = !!next && moveBlocker(def, record, next.id)?.token === "demo_required";
   const round = cadenceWords(record);
 
   return (
@@ -155,7 +158,10 @@ export function RecordCard({
       }}
       data-record-id={record.id}
       className={[
-        "group flex min-w-0 flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--gray-200)]",
+        // #4571 rework: relative, so the card's sr-only text (absolute) is placed
+        // inside the card and clipped by the board's scroller; without it the
+        // text escaped to the page and widened a 390px phone to 675px.
+        "relative group flex min-w-0 flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--gray-200)]",
         "bg-[var(--color-background-primary)] p-3 shadow-[var(--shadow-sm)] transition-opacity duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
         pending || drag?.isDragging ? "opacity-60" : "",
@@ -172,7 +178,8 @@ export function RecordCard({
       {/* #4255 (D2): a stale card sits only in Stale and says its stage. */}
       {stageTag && (
         <p data-stage-tag={record.stage}>
-          <Badge variant="outline">{stageTag}</Badge>
+          {/* #4571 rework: long stage names ("Demo booked (Google Meet)") wrap, never clip. */}
+          <Badge variant="outline" className="max-w-full whitespace-normal break-words">{stageTag}</Badge>
         </p>
       )}
       {rule && (
@@ -203,7 +210,25 @@ export function RecordCard({
           <span>
             <DueBadge dueOn={record.due_on} today={today} />
           </span>
-          {next && (
+          {next && nextLocked && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="min-h-11 max-sm:h-11"
+              icon={Calendar}
+              data-gate-action=""
+              disabled={disabled || pending}
+              title={`${next.label} needs a linked demo. Open the card to book one.`}
+              aria-label={`${next.label} is locked for ${record.name}. Open the card to book a demo`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen(record);
+              }}
+            >
+              Book a demo
+            </Button>
+          )}
+          {next && !nextLocked && (
             <Button
               variant="secondary"
               size="sm"

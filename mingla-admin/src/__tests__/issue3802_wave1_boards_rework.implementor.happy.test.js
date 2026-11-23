@@ -436,7 +436,8 @@ describe("#3802 R-8: the smaller items", () => {
     // autoScroll is on: never switched off), and the page itself never scrolls sideways.
     assert.match(BOARD, /<DndContext sensors=\{sensors\} collisionDetection=\{collisions\}/);
     assert.doesNotMatch(BOARD, /autoScroll=\{false\}/);
-    assert.match(BOARD, /data-pipeline-board="dnd"\s+className="max-w-full overflow-x-auto/);
+    // #4571 rework: `relative`, so a card's sr-only text is clipped by this box.
+    assert.match(BOARD, /data-pipeline-board="dnd"\s+className="relative max-w-full overflow-x-auto/);
     assert.doesNotMatch(BOARD, /dataTransfer|steerScroll|onDrop=|draggable: true/, "no native drag left");
   });
 

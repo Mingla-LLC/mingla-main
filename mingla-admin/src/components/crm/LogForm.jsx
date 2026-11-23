@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../ui/Button";
 import { CONTROL_CLASS, Field, LABEL_CLASS, Segmented, Select, TEXTAREA_CLASS } from "./fields";
 import { newRequestKey } from "../../services/crmService";
@@ -25,8 +25,8 @@ const DIRECTIONS = [
  * (for Wrong number) and, optionally, the Work card it belongs to. Each is
  * its own field; nothing is written into the note.
  */
-export function LogForm({ record, config, def = null, disabled = false, onSubmit }) {
-  const [kind, setKind] = useState("note");
+export function LogForm({ record, config, def = null, disabled = false, onSubmit, callTick = 0 }) {
+  const [kind, setKind] = useState(callTick > 0 ? "touch" : "note");
   // #4255: the note being written is kept per card while panels change beside it.
   const [body, setBody, bodyDraft] = usePanelDraft(record?.id ? `record:${record.id}:log` : "", "");
   const [channel, setChannel] = useState(record.channel || "");
@@ -42,6 +42,7 @@ export function LogForm({ record, config, def = null, disabled = false, onSubmit
   const [busy, setBusy] = useState(false);
   const bodyRef = useRef(null);
   const channelRef = useRef(null);
+  const outcomesRef = useRef(null);
   // One key per distinct entry: pressing the button twice, or again after a
   // dropped connection, can never add the same line twice.
   const keyRef = useRef(newRequestKey());
@@ -125,6 +126,16 @@ export function LogForm({ record, config, def = null, disabled = false, onSubmit
     if (suggestion) setSuggestion("");
   };
   const isCall = kind === "touch" && channel === "phone" && direction === "outbound";
+  // #4571 rework: "Log call" opens the form as a phone call I made, on its six outcomes.
+  useEffect(() => {
+    if (!callTick) return;
+    setKind("touch");
+    setChannel("phone");
+    setDirection("outbound");
+  }, [callTick]);
+  useEffect(() => {
+    if (callTick && isCall) outcomesRef.current?.querySelector?.("button")?.focus?.();
+  }, [callTick, isCall]);
   const phones = usablePhones(record);
   const pickOutcome = (value) => {
     setOutcome((cur) => (cur === value ? "" : value));
@@ -231,7 +242,7 @@ export function LogForm({ record, config, def = null, disabled = false, onSubmit
         <div className="flex flex-col gap-3" data-call-fields="">
           <div>
             <span id={`${id}-outcome-label`} className={LABEL_CLASS}>Call outcome (keys 1 to 6)</span>
-            <div role="group" aria-labelledby={`${id}-outcome-label`} onKeyDown={outcomeKeys} className="flex flex-wrap gap-1.5">
+            <div ref={outcomesRef} role="group" aria-labelledby={`${id}-outcome-label`} onKeyDown={outcomeKeys} className="flex flex-wrap gap-1.5">
               {CALL_OUTCOMES.map((o) => (
                 <button
                   key={o.value}

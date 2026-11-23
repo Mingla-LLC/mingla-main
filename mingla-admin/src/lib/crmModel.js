@@ -116,9 +116,25 @@ export const MOVE_BLOCK_COPY = {
  * Why a move cannot happen, decided before the server is asked.
  * Returns null (go ahead), or { token, message, needsReason }.
  */
+/**
+ * #4571 rework: Demo booked, Onboarded and Live need a linked booked demo
+ * (W4). True when the server's demo_gate says the card is locked and the move
+ * goes into that band, so no screen offers a move the server always refuses.
+ */
+export const DEMO_BAND = ["meeting", "onboarded", "live"];
+export function demoLocked(def, record, toStageId) {
+  return def?.id === "hosts" && DEMO_BAND.includes(toStageId) && !!record?.demo_gate?.locked;
+}
+
 export function moveBlocker(def, record, toStageId) {
   const to = stageDef(def, toStageId);
   if (!to || !record || record.stage === toStageId) return { token: "same", message: "" };
+  if (demoLocked(def, record, toStageId)) {
+    return {
+      token: "demo_required",
+      message: record.demo_gate.reason || "Demo booked needs a Google Meet booked through the scheduler and linked to this card.",
+    };
+  }
   if (to.auto) return { token: "stage_sets_itself", message: MOVE_BLOCK_COPY.stage_sets_itself };
   if (stageDef(def, record.stage)?.auto && !to.terminal) {
     return { token: "stage_is_live", message: MOVE_BLOCK_COPY.stage_is_live };

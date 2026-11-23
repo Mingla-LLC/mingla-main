@@ -116,7 +116,7 @@ export function PipelineBoard({
       aria-label={`${def.label} board`}
       tabIndex={0}
       data-pipeline-board="dnd"
-      className="max-w-full overflow-x-auto rounded-[var(--radius-md)] pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+      className="relative max-w-full overflow-x-auto rounded-[var(--radius-md)] pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
     >
       <div className={BOARD_CLASS}>
         {columns.map((column) => {

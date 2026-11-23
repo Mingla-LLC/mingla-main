@@ -43,7 +43,10 @@ const inputStyle = {
   lineHeight: "18px",
   color: "var(--color-text-primary)",
   backgroundColor: "var(--color-background-primary)",
-  border: "1.5px solid var(--gray-300)",
+  // #4571 rework: longhands, so the focus style's borderColor never mixes with a border shorthand (React warning).
+  borderWidth: 1.5,
+  borderStyle: "solid",
+  borderColor: "var(--gray-300)",
   borderRadius: 8,
   outline: "none",
   transition: "border-color 0.2s, box-shadow 0.2s",

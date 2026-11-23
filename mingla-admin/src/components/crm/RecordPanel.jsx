@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ArrowRight, ExternalLink, FileText, MessageSquare, Phone, Plus } from "lucide-react";
+import { ArrowRight, Calendar, ExternalLink, FileText, Lock, MessageSquare, Phone, Plus } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { SideLink } from "../ui/PanelStack";
 import { Button } from "../ui/Button";
@@ -35,6 +35,7 @@ import {
 
   callOutcomeLabel,
   clockTime,
+  demoLocked,
   dueChoices,
   channelsUsed,
   contactRuleView,
@@ -44,6 +45,8 @@ import {
   hasUnsavedEdits,
   identifiersToSend,
   loadErrorWords,
+  localToday,
+  moveBlocker,
   nextStage,
   normalizeTyped,
   relativeTime,
@@ -289,6 +292,8 @@ export function RecordPanel({
   // #4270 W7 rework (D-1): set inside the Brand group panel; links then open
   // in that panel (or show as plain words) and the page never changes.
   onOpenSide = null,
+  // #4571 rework: archive, merge or undo changed the board's lists (Duplicate pairs, Show archived).
+  onHygieneChanged = null,
 }) {
   const { addToast } = useToast();
   const uid = useId();
@@ -366,6 +371,16 @@ export function RecordPanel({
   const [activityFilter, setActivityFilter] = useState("all");
   const [peopleBusy, setPeopleBusy] = useState(false);
   const logRef = useRef(null);
+  const demosRef = useRef(null);
+  // #4571 rework: each "Log call" opens the log form as a call, on its outcomes.
+  const [callTick, setCallTick] = useState(0);
+  const openLogCall = () => {
+    setCallTick((n) => n + 1);
+    const box = logRef.current;
+    const fold = box?.closest?.("details");
+    if (fold && !fold.open) fold.open = true;
+    box?.scrollIntoView?.({ block: "center" });
+  };
   // #4571 W3: the record's files, the Work card's files model (same bucket and limits).
   const fileUploads = useCardUploads(record?.id || null, () => setReloadTick((n) => n + 1), { record: true });
   // #4571 W3: the notes composer at the top of the timeline; Thread focuses it.
@@ -867,8 +882,11 @@ export function RecordPanel({
   const stageOptions = def.stages.map((s) => ({
     value: s.id,
     label: s.label,
-    disabled: s.id !== record.stage && (!!s.auto || (!!here?.auto && !s.terminal)),
+    disabled: s.id !== record.stage && (!!s.auto || (!!here?.auto && !s.terminal) || demoLocked(def, record, s.id)),
+    locked: s.id !== record.stage && demoLocked(def, record, s.id),
   }));
+  // #4571 rework: the next stage needs a linked demo first; offer the gate action instead.
+  const nextLocked = !!next && moveBlocker(def, record, next.id)?.token === "demo_required";
   let stageHelp = "";
   if (here?.auto) stageHelp = MOVE_BLOCK_COPY.stage_is_live;
   else if (isHosts) stageHelp = "Live sets itself when the linked brand has a public listing.";
@@ -1051,16 +1069,26 @@ export function RecordPanel({
             {(closeIt) => stageOptions.map((o) => (
               <button key={o.value} type="button" disabled={o.disabled || o.value === record.stage} aria-pressed={o.value === record.stage}
                 onClick={() => { closeIt(); onRequestMove(record, o.value); }}
-                className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)] disabled:opacity-50">{o.label}</button>
+                className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)] disabled:opacity-50">{o.label}{o.locked ? " · locked, needs a linked demo" : ""}</button>
             ))}
           </PropChip>
-          {next && (
+          {next && !nextLocked && (
             <Button size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight} disabled={locked || pending} onClick={() => onRequestMove(record, next.id)}>
               Move to {next.label}
             </Button>
           )}
-          <Button variant="secondary" size="sm" className="min-h-11" icon={Phone} disabled={locked}
-            onClick={() => { const box = logRef.current; const fold = box?.closest?.("details"); if (fold && !fold.open) fold.open = true; box?.scrollIntoView?.({ block: "center" }); box?.querySelector?.("select, textarea, input, button")?.focus?.(); }}>
+          {nextLocked && (
+            <>
+              <span data-next-locked="" className="inline-flex min-h-11 items-center gap-1 text-[12.5px] font-semibold text-[var(--color-error-700)]">
+                <Lock aria-hidden="true" className="h-3.5 w-3.5" />{next.label} locked
+              </span>
+              <Button size="sm" className="min-h-11 max-sm:h-11" icon={Calendar} data-gate-action="" disabled={locked}
+                onClick={() => { const box = demosRef.current; box?.scrollIntoView?.({ block: "center" }); box?.querySelector?.("a, button")?.focus?.(); }}>
+                Book a demo
+              </Button>
+            </>
+          )}
+          <Button variant="secondary" size="sm" className="min-h-11" icon={Phone} disabled={locked} data-log-call="" onClick={openLogCall}>
             Log call
           </Button>
           <Button variant="ghost" size="sm" className="min-h-11" icon={MessageSquare} data-thread-button="" onClick={focusNote}>Thread</Button>
@@ -1068,7 +1096,7 @@ export function RecordPanel({
         </section>
         {/* #4571 W6: archive state, merge, a reply that suggests Replied, the cadence round. */}
         <RecordHygiene record={record} pipeline={pipeline} disabled={locked || pending}
-          onChanged={() => { setReloadTick((n) => n + 1); pipe.refetch({ quiet: true }); }}
+          onChanged={() => { setReloadTick((n) => n + 1); pipe.refetch({ quiet: true }); onHygieneChanged?.(); }}
           onRequestMove={onRequestMove} onOpenCard={onOpenCard} />
         <section aria-label="People and details" data-record-section="people" className="flex min-w-0 flex-wrap items-center gap-1">
           <PeopleChip id={fid("owners-pop")} label="Owners" people={(record.owners || []).map((e) => (config.team || []).find((p) => p.email === e) || { email: e, name: e })} field={
@@ -1094,7 +1122,7 @@ export function RecordPanel({
           <PropChip label="Due" value={record.due_on ? dayLabel(record.due_on) : ""} disabled={locked} width="w-56">
             {(closeIt) => (
               <>
-                {dueChoices(new Date().toISOString().slice(0, 10)).map((c) => (
+                {dueChoices(localToday()).map((c) => (
                   <button key={c.label} type="button" onClick={() => { closeIt(); save("due_on", c.value); }}
                     className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)]">{c.label} <span className="text-[var(--color-text-tertiary)]">{dayLabel(c.value)}</span></button>
                 ))}
@@ -1125,8 +1153,8 @@ export function RecordPanel({
         )}
         {/* #4571 W3: Work for hosts and creators (crm_record_work); its Add work item keeps #4270's form. */}
         <HostToDoSection key={`record-work-${record.id}`} record={record} read={work} online={online && !locked} onAdded={() => { work.retry(); if (isHosts) hostRead.retry(); }} />
-        {isHosts && <DemosSection record={record} demos={current.data?.demos} scheduleToken={current.data?.schedule_token} disabled={locked || !online} onChanged={() => setReloadTick((n) => n + 1)} />}
-        <CallsSection activity={current.data?.activity} disabled={locked} onLogCall={() => { const box = logRef.current; const fold = box?.closest?.("details"); if (fold && !fold.open) fold.open = true; box?.scrollIntoView?.({ block: "center" }); }} />
+        {isHosts && <div ref={demosRef} className="min-w-0"><DemosSection record={record} demos={current.data?.demos} scheduleToken={current.data?.schedule_token} disabled={locked || !online} onChanged={() => setReloadTick((n) => n + 1)} /></div>}
+        <CallsSection activity={current.data?.activity} disabled={locked} onLogCall={openLogCall} />
         {isHosts && (
           <>
             {/* #4270: the plan (W3), On Mingla, Brand and team stay on the host card. */}
@@ -1301,7 +1329,7 @@ export function RecordPanel({
         <RecentTouchNotice key={`signals-${record.id}`} record={record} online={online} />
 
         <div ref={logRef} data-record-section="log" className="border-t border-[var(--gray-200)] pt-4">
-          <LogForm key={record.id} record={record} config={config} def={def} disabled={locked} onSubmit={submitLog} />
+          <LogForm key={record.id} record={record} config={config} def={def} disabled={locked} onSubmit={submitLog} callTick={callTick} />
         </div>
 
         <div data-record-section="note" className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-[var(--gray-200)] p-2">

@@ -10,10 +10,12 @@
 // bar's scroll box and widened the whole page on a phone (390px -> 670px).
 // #4571: the first three goals are pills; the rest fold into "+N more",
 // which opens a list of them (fixed, so the bar's overflow never clips it).
+// #4571 rework: on a wide screen the pills shrink (truncating their titles) so
+// "+N more" always sits inside the bar; the goals strip never scrolls there.
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { sprintLabel } from "../../lib/opsModel";
-import { goalFold, goalStateLabel, sprintDay, sprintProgress, teamCapacity } from "../../lib/workBoardModel";
+import { goalFold, goalPillsThatFit, goalStateLabel, sprintDay, sprintProgress, teamCapacity } from "../../lib/workBoardModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
@@ -29,7 +31,7 @@ function GoalPill({ g, on, onGoal, wide = false }) {
     <button type="button" data-goal-pill={g.id} aria-pressed={on ? "true" : "false"}
       title={`${g.title} · ${goalStateLabel(g.state)}${g.owner_name ? ` · ${g.owner_name}` : ""}`}
       onClick={() => onGoal(on ? null : g.id)}
-      className={`inline-flex h-8 ${wide ? "w-full" : "max-w-[15rem] shrink-0"} items-center gap-1.5 rounded-full border px-2.5 text-[12px] ${on ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"} ${FOCUS}`}>
+      className={`inline-flex h-8 ${wide ? "w-full" : "min-w-[8rem] max-w-[15rem] shrink max-sm:shrink-0"} items-center gap-1.5 rounded-full border px-2.5 text-[12px] ${on ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"} ${FOCUS}`}>
       <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${STATE_DOT[g.state] || STATE_DOT.on_track}`} />
       <span className="min-w-0 flex-1 truncate text-left font-semibold text-[var(--color-text-primary)]">{g.title}</span>
       <span className="shrink-0 tabular-nums">{Number(g.done) || 0}/{Number(g.cards) || 0}</span>
@@ -75,7 +77,21 @@ function MoreGoals({ goals, goalId, onGoal }) {
 
 export function SprintBar({ sprint, plan = null, today, late = 0, goalId = null, onGoal, onWeek, onThisWeek, isThisWeek, onPlan, online = true }) {
   const goals = Array.isArray(plan?.goals) ? plan.goals : Array.isArray(sprint?.goals) ? sprint.goals : [];
-  const fold = goalFold(goals);
+  // #4571 rework: on a wide screen, only the pills that fit; the rest fold into "+N more".
+  const stripRef = useRef(null);
+  const [stripWidth, setStripWidth] = useState(null);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el || typeof ResizeObserver === "undefined" || typeof window === "undefined" || !window.matchMedia) return undefined;
+    const wide = window.matchMedia("(min-width: 640px)");
+    const measure = () => setStripWidth(wide.matches ? el.clientWidth : null);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    wide.addEventListener?.("change", measure);
+    measure();
+    return () => { ro.disconnect(); wide.removeEventListener?.("change", measure); };
+  }, []);
+  const fold = goalFold(goals, goalPillsThatFit(stripWidth, goals.filter((g) => g && !g.archived).length));
   const day = sprintDay(sprint?.starts_on, today);
   const prog = sprintProgress(plan?.in_sprint);
   const cap = teamCapacity(plan?.capacity);
@@ -88,7 +104,7 @@ export function SprintBar({ sprint, plan = null, today, late = 0, goalId = null,
         {!isThisWeek && <button type="button" onClick={onThisWeek} className={`h-9 whitespace-nowrap rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-100)] ${FOCUS}`}>This week</button>}
         {day >= 1 && day <= 7 && <span className="hidden whitespace-nowrap pl-1 text-[12px] text-[var(--color-text-tertiary)] sm:inline">Day {day} of 7</span>}
       </div>
-      <div data-sprint-goals="" role="group" aria-label="Sprint goals" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 max-sm:min-w-max max-sm:overflow-visible">
+      <div ref={stripRef} data-sprint-goals="" role="group" aria-label="Sprint goals" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden py-1 max-sm:min-w-max max-sm:overflow-visible">
         {goals.length === 0 ? (
           <span className="whitespace-nowrap px-1 text-[12.5px] text-[var(--color-text-tertiary)]">No sprint goals yet</span>
         ) : (

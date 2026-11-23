@@ -164,6 +164,23 @@ export function goalFold(goals, shown = GOAL_PILLS) {
   return { shown: live.slice(0, shown), more: live.slice(shown) };
 }
 
+/**
+ * #4571 rework: how many goal pills fit a strip `width` px wide on a wide
+ * screen, so "+N more" always sits inside the bar and every pill keeps a
+ * readable title (at least GOAL_PILL_MIN px). No width yet (first paint, a
+ * phone where the strip scrolls): the usual GOAL_PILLS.
+ */
+export const GOAL_PILL_MIN = 128;
+export const GOAL_GAP = 6;
+export const GOAL_MORE_PILL = 96;
+export function goalPillsThatFit(width, count, max = GOAL_PILLS) {
+  const n = Math.max(0, Number(count) || 0);
+  if (!Number.isFinite(width) || width <= 0) return Math.min(n, max);
+  const per = GOAL_PILL_MIN + GOAL_GAP;
+  if (n <= max && n * per - GOAL_GAP <= width) return n;
+  return Math.max(0, Math.min(max, n, Math.floor((width - GOAL_MORE_PILL) / per)));
+}
+
 export function goalTitleProblem(title) {
   const v = String(title || "").replace(/\s+/g, " ").trim();
   return v.length < 3 || v.length > 120 ? "Say the goal in 3 to 120 characters." : "";
