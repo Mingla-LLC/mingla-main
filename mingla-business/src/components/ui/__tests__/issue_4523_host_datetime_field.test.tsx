@@ -107,3 +107,16 @@ describe("#4522 Host calendar fields share one body loader", () => {
     }
   });
 });
+
+// #4523 S-20 — the open Host calendar is a dialog with a name (it had none).
+// FAILS ON REVERT: no role="dialog" with an aria-label around the surface.
+describe("issue #4523 S-20 the open calendar is a named dialog", () => {
+  it("names the dialog after what it picks", async () => {
+    const tree = await mount({});
+    await press(tree, "dt");
+    const dialog = tree.root.findAll((n) => n.props.role === "dialog")[0];
+    expect(dialog).toBeDefined();
+    expect(typeof dialog.props["aria-label"]).toBe("string");
+    expect((dialog.props["aria-label"] as string).length).toBeGreaterThan(0);
+  });
+});

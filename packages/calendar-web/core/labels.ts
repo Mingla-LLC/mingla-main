@@ -149,11 +149,13 @@ export function formatRangeLong(
   return `${startText} – ${formatLongDate(end, locale)} · ${lengthText}`;
 }
 
-/** "12 – 16 Mar" readout while a range is being picked. */
+/**
+ * "Mar 12 – Mar 16" (en-GB "12 Mar – 16 Mar") readout while a range is being
+ * picked: both ends in one format (#4523 S-20 — "12 – Mar 16" mixed a bare day
+ * with a month-first date). One day reads once: "Mar 12".
+ */
 export function formatRangeShort(start: CalendarDate, end: CalendarDate, locale?: string): string {
-  if (start.slice(0, 7) === end.slice(0, 7)) {
-    return `${fmt(locale, { day: "numeric" }, utcDate(start))} – ${shortDayMonth(end, locale)}`;
-  }
+  if (start === end) return shortDayMonth(start, locale);
   return `${shortDayMonth(start, locale)} – ${shortDayMonth(end, locale)}`;
 }
 

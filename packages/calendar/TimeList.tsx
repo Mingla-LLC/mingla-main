@@ -12,6 +12,8 @@ export interface TimeListProps {
   max?: WallTime;
   styles: CalendarStyles;
   testIDPrefix?: string;
+  /** Beside the grid (wide datetime): as tall as the grid. */
+  tall?: boolean;
 }
 
 const pad = (n: number): string => String(n).padStart(2, "0");
@@ -28,10 +30,10 @@ export function timeSlots(step: number, min?: WallTime, max?: WallTime): WallTim
 }
 
 /** Scrollable HH:mm slots. Disabled slots are simply not offered. */
-export function TimeList({ value, onChange, stepMinutes = 15, min, max, styles, testIDPrefix = "time" }: TimeListProps): React.ReactElement {
+export function TimeList({ value, onChange, stepMinutes = 15, min, max, styles, testIDPrefix = "time", tall = false }: TimeListProps): React.ReactElement {
   const slots = useMemo(() => timeSlots(stepMinutes, min, max), [stepMinutes, min, max]);
   return (
-    <ScrollView style={styles.timeList} nestedScrollEnabled testID={`${testIDPrefix}-list`}>
+    <ScrollView style={tall ? styles.timeListTall : styles.timeList} nestedScrollEnabled testID={`${testIDPrefix}-list`}>
       <View style={styles.timeWrap}>
         {slots.map((slot) => {
           const selected = slot === value;

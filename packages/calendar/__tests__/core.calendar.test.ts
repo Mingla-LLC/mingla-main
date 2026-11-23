@@ -9,7 +9,7 @@ import {
   weekdayOf,
 } from "../core/calendarDate";
 import { reduceKeyboard } from "../core/keyboard";
-import { formatRangeLong, formatTimezoneLabel, lengthLabel, DEFAULT_CALENDAR_LABELS } from "../core/labels";
+import { formatRangeLong, formatRangeShort, formatTimezoneLabel, lengthLabel, DEFAULT_CALENDAR_LABELS } from "../core/labels";
 import { isDisabled, monthMatrix } from "../core/monthGrid";
 import { clampToBounds, isRangeComplete, nextRange, nights } from "../core/rangeRules";
 import { timeSlots } from "../TimeList";
@@ -131,6 +131,14 @@ describe("labels", () => {
   it("formats a same-month range with its nights", () => {
     const text = formatRangeLong("2027-03-12", "2027-03-16", lengthLabel(4, "nights", DEFAULT_CALENDAR_LABELS), "en-GB");
     expect(text).toMatch(/^Fri 12 – Tue,? 16 Mar 2027 · 4 nights$/);
+  });
+
+  // #4523 S-20 — one format on both ends ("12 – Mar 16" mixed two).
+  it("the picking read-out uses one format on both ends", () => {
+    expect(formatRangeShort("2027-03-12", "2027-03-16", "en-US")).toBe("Mar 12 – Mar 16");
+    expect(formatRangeShort("2027-03-12", "2027-03-16", "en-GB")).toBe("12 Mar – 16 Mar");
+    expect(formatRangeShort("2027-03-30", "2027-04-02", "en-US")).toBe("Mar 30 – Apr 2");
+    expect(formatRangeShort("2027-03-12", "2027-03-12", "en-US")).toBe("Mar 12");
   });
 
   it("singularises", () => {

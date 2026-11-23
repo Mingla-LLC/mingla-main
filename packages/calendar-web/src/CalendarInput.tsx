@@ -153,7 +153,12 @@ export const CalendarInput = React.forwardRef<HTMLButtonElement, CalendarInputPr
         aria-describedby={props["aria-describedby"]}
         aria-required={props.required}
         aria-expanded={open}
-        aria-label={`${props["aria-label"] ?? ""}${props["aria-label"] !== undefined ? ", " : ""}${text !== "" ? text : labels.not_set}`}
+        // #4523 S-20 — with no aria-label the button is named by its <label
+        // for> and its own text ("Choose a date" / the value), never a bare
+        // "not set".
+        aria-label={props["aria-label"] !== undefined
+          ? `${props["aria-label"]}, ${text !== "" ? text : labels.not_set}`
+          : undefined}
         disabled={disabled}
         onBlur={props.onBlur}
         onFocus={props.onFocus}

@@ -20,10 +20,9 @@ import { timezoneCityName } from "../../utils/timezones";
 import { HostDateTimeField } from "../ui/HostCalendarFields";
 import { Switch } from "../ui/Switch";
 import {
+  deadlineBounds,
   deadlineProblem,
   instantFromWall,
-  todayInZoneDay,
-  tripDayOf,
   wallInZone,
 } from "./tripBuilderV2Model";
 
@@ -58,7 +57,8 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
     [value, zone],
   );
   const tzLabel = timezoneCityName(brandTimezone ?? "UTC");
-  const maxDay = tripDayOf(tripStartIso);
+  // #4523 S-8 — offer only what can be saved: from now to before the start.
+  const bounds = deadlineBounds(tripStartIso, zone);
 
   const handleToggle = useCallback(
     (next: boolean): void => {
@@ -111,8 +111,10 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
             accessibilityLabel="Booking deadline date and time"
             value={wall}
             onChangeValue={handlePick}
-            min={todayInZoneDay(zone)}
-            max={maxDay.length > 0 ? maxDay : undefined}
+            min={bounds.min}
+            minTime={bounds.minTime}
+            max={bounds.max}
+            maxTime={bounds.maxTime}
             timeZone={zone}
             hasError={problem !== null}
             placeholder="Pick a deadline"

@@ -8,7 +8,7 @@
  * visible month; they never call onChange, onDone or onCancel.
  */
 import React, { useCallback, useMemo, useState } from "react";
-import { Platform, Pressable, Text, View, type ViewProps } from "react-native";
+import { Platform, Pressable, Text, useWindowDimensions, View, type ViewProps } from "react-native";
 
 import { CalendarGrid, type GridSelection } from "./CalendarGrid";
 import { useCalendarConfig } from "./config";
@@ -199,7 +199,7 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
       props.onChange({ start: rangeDraft.start, end: rangeDraft.end });
       props.onDone();
     } else if (props.mode === "datetime") {
-      if (dateTimeDraft.date === "" || dateTimeDraft.time === "") return;
+      if (dateTimeDraft.date === "" || !timeOffered) return;
       props.onChange({ date: dateTimeDraft.date, time: dateTimeDraft.time });
       props.onDone();
     }
@@ -293,18 +293,27 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
   const tzDate = selectedForFocus !== "" && parseCalendarDate(selectedForFocus) !== null ? selectedForFocus : firstOf(visible);
   const tzLabel = formatTimezoneLabel(timeZone, tzDate, locale);
 
-  const doneEnabled =
-    props.mode === "range"
-      ? isRangeComplete(rangeDraft, unit, props.minLength, props.maxLength)
-      : props.mode === "datetime"
-        ? dateTimeDraft.date !== "" && dateTimeDraft.time !== ""
-        : false;
+  // #4523 S-8 — wide enough to put the time list beside the grid.
+  const { width: windowWidth } = useWindowDimensions();
+  const dateTimeSideBySide = props.mode === "datetime" && windowWidth >= 720;
   const showClear =
     props.mode === "range" || props.mode === "datetime" || (props.mode === "single" && props.clearable === true);
   const showDone = props.mode === "range" || props.mode === "datetime";
 
   const timeMin = props.mode === "datetime" && min !== undefined && dateTimeDraft.date === min ? props.minTime : undefined;
   const timeMax = props.mode === "datetime" && max !== undefined && dateTimeDraft.date === max ? props.maxTime : undefined;
+  // #4523 S-8 — a time kept from another day that this day does not offer
+  // (after the bound) is not a choice: Done stays off until a time that is.
+  const timeOffered =
+    dateTimeDraft.time !== "" &&
+    (timeMin === undefined || dateTimeDraft.time >= timeMin) &&
+    (timeMax === undefined || dateTimeDraft.time <= timeMax);
+  const doneEnabled =
+    props.mode === "range"
+      ? isRangeComplete(rangeDraft, unit, props.minLength, props.maxLength)
+      : props.mode === "datetime"
+        ? dateTimeDraft.date !== "" && timeOffered
+        : false;
 
   const glyph = (name: "chevron-left" | "chevron-right" | "clock", fallback: string): React.ReactNode =>
     renderIcon !== undefined ? renderIcon(name, tokens.text, 18) : <Text style={styles.navGlyph}>{fallback}</Text>;
@@ -447,8 +456,12 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
         </Pressable>
       </View>
 
+      {/* #4523 S-8 — on a wide screen the date grid and the time list sit side
+          by side, so Clear and Done stay on screen without scrolling the
+          dialog (1280×860). Narrow screens keep the stacked order. */}
+      <View style={dateTimeSideBySide ? styles.dateTimeRow : undefined}>
       {dobGrid ?? (
-        <View style={styles.months}>
+        <View style={[styles.months, dateTimeSideBySide && styles.dateTimeGrid]}>
           {Array.from({ length: monthsShown }, (_, i) => {
             const ym = shiftMonth(visible, i);
             return (
@@ -476,9 +489,10 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
       )}
 
       {props.mode === "datetime" ? (
-        <View>
+        <View style={dateTimeSideBySide ? styles.dateTimeTimes : undefined}>
           <Text style={styles.sectionLabel}>{labels.time_heading}</Text>
           <TimeList
+            tall={dateTimeSideBySide}
             value={dateTimeDraft.time}
             onChange={(time) => setDateTimeDraft((cur) => ({ ...cur, time }))}
             stepMinutes={props.timeStepMinutes ?? 15}
@@ -489,6 +503,7 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
           />
         </View>
       ) : null}
+      </View>
 
       <View style={styles.footer}>
         <Text accessibilityLiveRegion="polite" style={styles.readout} testID={`${testID}-readout`}>

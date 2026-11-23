@@ -70,6 +70,11 @@ export function createCalendarStyles(t: CalendarTokens) {
     },
     gridPickText: { color: t.text, fontSize: 15, fontWeight: "600" },
     timeList: { maxHeight: 168 },
+    // #4523 S-8 — wide datetime: grid and times side by side.
+    timeListTall: { maxHeight: 296 },
+    dateTimeRow: { flexDirection: "row", alignItems: "flex-start", gap: 16 },
+    dateTimeGrid: { flex: 3 },
+    dateTimeTimes: { flex: 2, minWidth: 168 },
     timeWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     timeItem: {
       minWidth: 72,

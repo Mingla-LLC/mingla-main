@@ -46,6 +46,7 @@ import {
 import { TripCreatorWizard } from "../../../src/components/trip/TripCreatorWizard";
 import { TripStartGate } from "../../../src/components/trip/TripStartGate";
 import { isFeatureEnabled } from "../../../src/config/featureFlags";
+import { defaultTimezoneForBrand, detectDeviceTimezone } from "../../../src/utils/timezones";
 import { EditPublishedTripScreen } from "../../../src/components/trip/EditPublishedTripScreen";
 import { Button } from "../../../src/components/ui/Button";
 import { TRIP_DRAFT_PLACEHOLDER_TITLE } from "../../../src/services/tripsService";
@@ -107,6 +108,14 @@ export default function TripEditRoute(): React.ReactElement {
       const trip = await createTripDraftMutation.mutateAsync({
         brandId: currentBrand.id,
         ...(initialTitle !== undefined ? { initialTitle } : {}),
+        // #4523 S-9 — a new trip lives in the brand's zone (its payout country
+        // or currency), else the host's device zone; never UTC by default, so
+        // the calendar's "today" is the host's today.
+        timezone: defaultTimezoneForBrand({
+          payoutCountry: currentBrand.payoutCountry ?? currentBrand.paymentCountry ?? null,
+          currency: currentBrand.defaultCurrency ?? null,
+          deviceZone: detectDeviceTimezone(),
+        }),
       });
       if (user !== null) {
         promoteBusinessRecentDraft({

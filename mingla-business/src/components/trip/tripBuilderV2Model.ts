@@ -560,6 +560,43 @@ export function todayInZoneDay(timeZone: string, now: Date = new Date()): string
   return wallInZone(now.toISOString(), timeZone)?.date ?? now.toISOString().slice(0, 10);
 }
 
+const shiftDay = (day: string, delta: number): string =>
+  new Date(Date.parse(`${day}T00:00:00.000Z`) + delta * MS_PER_DAY).toISOString().slice(0, 10);
+
+const minusOneMinute = (time: string): string => {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m - 1;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+};
+
+/**
+ * #4523 S-8 — what the booking-deadline picker may offer, in the trip's zone:
+ * from now to just before the trip starts. On the start day only times
+ * before the start are offered (a trip starting at 00:00 ends the choice the
+ * day before); on today only times from now on. The trip day is read in the
+ * trip's zone, never in UTC.
+ */
+export function deadlineBounds(
+  tripStartIso: string | null,
+  timeZone: string,
+  now: Date = new Date(),
+): { min: string; minTime?: string; max?: string; maxTime?: string } {
+  const today = wallInZone(now.toISOString(), timeZone);
+  const min = today?.date ?? now.toISOString().slice(0, 10);
+  const bounds: { min: string; minTime?: string; max?: string; maxTime?: string } = { min };
+  if (today !== null) bounds.minTime = today.time;
+  const start = tripStartIso === null ? null : wallInZone(tripStartIso, timeZone);
+  if (start !== null) {
+    if (start.time === "00:00") {
+      bounds.max = shiftDay(start.date, -1);
+    } else {
+      bounds.max = start.date;
+      bounds.maxTime = minusOneMinute(start.time);
+    }
+  }
+  return bounds;
+}
+
 /** Why a deadline cannot be saved, or null. `now` is the real current time. */
 export function deadlineProblem(
   deadlineIso: string,

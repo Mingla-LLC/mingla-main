@@ -468,6 +468,11 @@ export interface Trip {
 export interface CreateTripDraftInput {
   brandId: string;
   initialTitle?: string;
+  /**
+   * #4523 S-9 — the new trip's IANA zone (spec §4.6: the brand's zone, the
+   * device's as the fallback). Absent: the server default (UTC), as before.
+   */
+  timezone?: string;
 }
 
 export interface TripBasicsPatch {
@@ -1022,7 +1027,12 @@ export async function createTripDraft(
 
   const { data, error } = await supabase.rpc("biz_create_trip_draft", {
     p_brand_id: input.brandId,
-    p_seed: { title: tempTitle },
+    p_seed: {
+      title: tempTitle,
+      ...(input.timezone !== undefined && input.timezone.trim().length > 0
+        ? { timezone: input.timezone.trim() }
+        : {}),
+    },
     p_operation_id: options?.operationId ?? newTripOperationId(),
   });
   if (error) {

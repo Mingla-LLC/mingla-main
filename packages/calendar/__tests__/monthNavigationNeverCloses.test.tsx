@@ -218,3 +218,57 @@ describe("issue #4523 month navigation never closes the calendar", () => {
     expect(spies.onDone).toHaveBeenCalledTimes(1);
   });
 });
+
+// #4523 first screen test S-8 — a booking deadline must be before the trip
+// starts: on the last allowed day only earlier times are offered, a time kept
+// from another day that this day does not offer cannot be committed, and on a
+// wide screen the times sit beside the grid so Clear / Done stay on screen.
+// FAILS ON REVERT: Done commits 20:30 on the max day although maxTime is
+// 08:59; the time list is stacked under the grid at any width.
+describe("issue #4523 S-8 date-and-time bounds and layout", () => {
+  const bounded = (spies: Spies): React.ReactElement => (
+    <CalendarSurface
+      label="Bookings close"
+      timeZone="Africa/Lagos"
+      testID="cal"
+      mode="datetime"
+      value={{ date: "2027-03-10", time: "20:30" }}
+      min="2027-03-01"
+      max="2027-03-12"
+      maxTime="08:59"
+      onChange={spies.onChange}
+      onDone={spies.onDone}
+      onCancel={spies.onCancel}
+      config={config}
+    />
+  );
+  it("the start day offers only times before the start; a kept later time cannot be committed", () => {
+    const spies: Spies = { onChange: jest.fn(), onDone: jest.fn(), onCancel: jest.fn() };
+    const tree = mount(bounded(spies));
+    pressId(tree, "cal-day-2027-03-12");
+    expect(tree.root.findAll((n) => n.props.testID === "cal-time-09:00")).toHaveLength(0);
+    expect(tree.root.findAll((n) => n.props.testID === "cal-time-08:45").length).toBeGreaterThan(0);
+    const done = tree.root.findAll((n) => n.props.testID === "cal-done" && typeof n.props.onPress === "function")[0];
+    expect(done.props.disabled).toBe(true);
+    TestRenderer.act(() => (done.props.onPress as () => void)());
+    expect(spies.onChange).not.toHaveBeenCalled();
+    pressId(tree, "cal-time-08:30");
+    pressId(tree, "cal-done");
+    expect(spies.onChange).toHaveBeenCalledWith({ date: "2027-03-12", time: "08:30" });
+  });
+  it("wide screens put the time list beside the grid", () => {
+    const spies: Spies = { onChange: jest.fn(), onDone: jest.fn(), onCancel: jest.fn() };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const RN = require("react-native") as typeof import("react-native");
+    const spy = jest.spyOn(RN, "useWindowDimensions").mockReturnValue({ width: 1280, height: 860, scale: 1, fontScale: 1 });
+    try {
+      const tree = mount(bounded(spies));
+      const rows = tree.root.findAll(
+        (n) => JSON.stringify(n.props.style ?? null).includes('"flexDirection":"row","alignItems":"flex-start","gap":16'),
+      );
+      expect(rows.length).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

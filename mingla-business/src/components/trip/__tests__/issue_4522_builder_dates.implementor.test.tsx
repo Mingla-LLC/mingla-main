@@ -21,6 +21,7 @@ import { describe, expect, jest, test } from "@jest/globals";
 
 import * as designSystem from "../../../constants/designSystem";
 import {
+  deadlineBounds,
   deadlineProblem,
   describeTripLength,
   dragTargetIndex,
@@ -323,7 +324,29 @@ describe("the booking deadline picker", () => {
     // Today, read in the trip's zone (not the phone's): a real date, YYYY-MM-DD.
     expect(f.props.min).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(f.props.max).toBe("2099-06-01");
+    // #4523 S-8 — the start is 01:00 Lagos time: nothing from 01:00 on.
+    expect(f.props.maxTime).toBe("00:59");
     expect(texts(t)).toContain("In Lagos time");
+  });
+
+  // #4523 S-8 — the picker offers only what can be saved, read in the trip's
+  // zone. FAILS ON REVERT: the max day is the UTC day and every time on it is
+  // offered (a pick after the start was refused after the fact).
+  test("deadline bounds: before the start, in the trip's zone, from now on", () => {
+    const now = new Date("2099-01-10T21:30:00.000Z");
+    // 00:00 Lagos on 1 June is 23:00 UTC on 31 May: the last day is 31 May (Lagos), any time.
+    expect(deadlineBounds("2099-05-31T23:00:00.000Z", "Africa/Lagos", now)).toEqual({
+      min: "2099-01-10",
+      minTime: "22:30",
+      max: "2099-05-31",
+    });
+    // A 09:00 start: the start day, times before 09:00.
+    expect(deadlineBounds("2099-06-01T08:00:00.000Z", "Africa/Lagos", now)).toMatchObject({
+      max: "2099-06-01",
+      maxTime: "08:59",
+    });
+    // Today is read in the trip's zone: 21:30 UTC is already tomorrow in Tokyo.
+    expect(deadlineBounds(null, "Asia/Tokyo", now)).toEqual({ min: "2099-01-11", minTime: "06:30" });
   });
 
   test("a pick commits the instant of that wall clock in the trip zone", () => {

@@ -139,9 +139,19 @@ describe("issue #4523 calendar-web", () => {
   });
 
   it("an unset field shows a placeholder, never today's date", () => {
-    const tree = mount(<CalendarInput mode="datetime" value="" timeZone="Africa/Lagos" id="p" />);
+    const tree = mount(<CalendarInput mode="datetime" value="" timeZone="Africa/Lagos" id="p" aria-label="Publish at" />);
     const label = byId(tree, "p-button")[0].props["aria-label"] as string;
-    expect(label).toContain("not set");
+    expect(label).toBe("Publish at, not set");
+  });
+
+  // #4523 S-20 — with no aria-label the trigger is named by its <label for>
+  // and its own text, never a bare "not set". FAILS ON REVERT: "not set".
+  it("a trigger without aria-label is not named 'not set'", () => {
+    const tree = mount(<CalendarInput mode="date" value="" timeZone="Africa/Lagos" id="q" />);
+    const button = byId(tree, "q-button")[0];
+    expect(button.props["aria-label"]).toBeUndefined();
+    const spans = tree.root.findAll((n) => n.type === "span" && n.props.children === "Choose a date");
+    expect(spans.length).toBeGreaterThan(0);
   });
 
   it("popover placement: below when it fits, above when only that fits, never off the right edge", () => {

@@ -117,7 +117,10 @@ function Shell(props: ShellProps): React.ReactElement {
                 </View>
               }
             >
-              {props.renderSurface(close)}
+              {/* #4523 S-20 — the open calendar is a named dialog. */}
+              <View role="dialog" aria-label={title} testID={testID === undefined ? undefined : `${testID}-dialog`}>
+                {props.renderSurface(close)}
+              </View>
             </Suspense>
           </ScrollView>
         ) : null}
