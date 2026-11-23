@@ -93,7 +93,8 @@ Deno.test("#4561 both sendOtp callers use the shared fallback rules", () => {
   for (const source of [onboarding, rsvp]) {
     assertStringIncludes(source, "phoneStepPresentation(");
     assertStringIncludes(source, "withRefusedChannel(");
-    assertStringIncludes(source, "SUPPORT_MAILTO");
+    // A mailto literal the #4261 links gate can read, built from the one address.
+    assertStringIncludes(source, "Linking.openURL(`mailto:${SUPPORT_EMAIL}`)");
     assertStringIncludes(source, "Phone Code Send Failed");
   }
   // The picker hides refused channels; the CTA calls once SMS is refused.

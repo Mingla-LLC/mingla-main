@@ -45,7 +45,6 @@ import {
   refusedForNumber,
   shouldDismissKeyboardFor,
   SUPPORT_EMAIL,
-  SUPPORT_MAILTO,
   withRefusedChannel,
 } from '../utils/edgeFunctionError'
 // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent writer + verbatim disclosure.
@@ -1547,7 +1546,7 @@ const OnboardingFlow = ({
   }, [trackSendFailure, recordRefusal, refusalMessages, announceError])
   const openSupportEmail = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    Linking.openURL(SUPPORT_MAILTO).catch((err: unknown) => {
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch((err: unknown) => {
       // The address is printed under the button for phones with no mail app.
       logger.onboarding('Support email could not open', { error: String(err) })
     })

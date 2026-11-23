@@ -38,7 +38,6 @@ import {
   refusedForNumber,
   shouldDismissKeyboardFor,
   SUPPORT_EMAIL,
-  SUPPORT_MAILTO,
   withRefusedChannel,
 } from "../../utils/edgeFunctionError";
 import { mixpanelService } from "../../services/mixpanelService";
@@ -295,7 +294,7 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
 
   const emailSupport = useCallback((): void => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Linking.openURL(SUPPORT_MAILTO).catch((e: unknown) => {
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch((e: unknown) => {
       // The address is printed under the button for phones with no mail app.
       logger.error("[RsvpGuestClaim] support email could not open", { error: String(e) });
     });
