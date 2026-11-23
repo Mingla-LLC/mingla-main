@@ -245,7 +245,6 @@ export interface PublicEventCallbacks {
   onBuyTicket: (ticketId: string) => void;
   onClaimFreeTicket: (ticketId: string) => void;
   onJoinWaitlist: (ticketId: string) => void;
-  onRequestApproval: (ticketId: string) => void;
   onOpenBrand?: (brandSlug: string) => void;
   /**
    * issue #2468 — carries the COORDINATE alongside the label. The old
