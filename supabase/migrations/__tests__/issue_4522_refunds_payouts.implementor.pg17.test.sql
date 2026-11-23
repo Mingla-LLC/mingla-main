@@ -847,7 +847,8 @@ END $$;
 --     (found on the real path: the debt was booked by both the owner and
 --     record_paystack_refund_outcome, 97,750,000 for a 47,740,000 payout).
 --     Two paid sales of one trip, so the debt is not capped by the payout.
---     FAILS ON REVERT of the owner's set-not-add: principal 58,650,000.
+--     The debt is what the host was paid for the sale (28,650,000), not the
+--     refund (30,000,000, G-2). FAILS ON REVERT: 57,280,000.
 CREATE FUNCTION pg_temp.pay_naira(p_order uuid, p_ref text) RETURNS public.brand_payout_releases
 LANGUAGE plpgsql AS $$
 DECLARE v_r public.brand_payout_releases; v_claim record; v_leg uuid;
@@ -896,13 +897,126 @@ BEGIN
   SET CONSTRAINTS ALL IMMEDIATE;
   SET CONSTRAINTS ALL DEFERRED;
   IF (SELECT sum(principal_cents) FROM public.organiser_payout_debts
-       WHERE origin_release_id = v_r.id AND kind = 'post_release_refund') <> 30000000 THEN
-    RAISE EXCEPTION 'I6-2 the refund after payout is owed once (main''s full refund amount): %',
+       WHERE origin_release_id = v_r.id AND kind = 'post_release_refund') <> 28650000 THEN
+    RAISE EXCEPTION 'I6-2 the refund after payout is owed once, what the host was paid for it: %',
       (SELECT sum(principal_cents) FROM public.organiser_payout_debts WHERE origin_release_id = v_r.id);
   END IF;
   IF (SELECT count(*) FROM public.payout_release_alert_outbox
        WHERE release_id = v_r.id AND error_message LIKE 'payout_refund_debt_opened:%') <> 1 THEN
     RAISE EXCEPTION 'I6-3 ops are told once';
+  END IF;
+END $$;
+
+-- I7. G-2 (sixth pass, B755E91F): a naira trip cancel after the deposit was
+--     paid out and the first instalment was not. The second provider's
+--     outcome books the whole cancel (deposit + instalment) against the
+--     order's payout; the host owes back only what it was paid for the
+--     deposit, and the unpaid instalment comes off its own payout.
+--     FAILS ON REVERT: debt 60,600,000 for a 28,650,000 payout.
+CREATE FUNCTION pg_temp.pay_out(p_release uuid) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE v_claim record; v_leg uuid;
+BEGIN
+  SELECT * INTO v_claim FROM public.claim_paystack_payout_releases(100, now()) c WHERE c.release_id = p_release;
+  PERFORM public.record_paystack_leg_plan(p_release, v_claim.claim_id, jsonb_build_array(jsonb_build_object(
+    'chunk_index', 0, 'principal_cents', v_claim.net_release_cents - 10000, 'estimated_fee_cents', 5000,
+    'stamp_duty_cents', 5000, 'fee_schedule_version', 'i4522')), now());
+  IF NOT public.authorize_paystack_payout_execution(p_release, v_claim.claim_id, now()) THEN
+    RAISE EXCEPTION 'pay_out: not authorized';
+  END IF;
+  SELECT id INTO v_leg FROM public.payout_transfer_legs WHERE release_id = p_release AND kind = 'organiser';
+  PERFORM public.record_paystack_transfer_leg_outcome(v_leg, p_release, 'succeeded', 'TRF_' || p_release, 'ref-' || p_release, NULL, now());
+  PERFORM public.reconcile_paystack_transfer_leg_fee(v_leg, 5000, 5000, now());
+END $$;
+UPDATE public.brands SET payout_hold_cutover_at = now() - interval '30 days' WHERE id = '45220008-0000-4000-8000-000000000010';
+INSERT INTO public.brand_paystack_recipients(brand_id, recipient_code, bank_code, account_fingerprint,
+  account_number_masked, account_name, is_active)
+VALUES ('45220008-0000-4000-8000-000000000010', 'RCP_i4522g7', '058', 'hmac-sha256:' || repeat('c6', 32), '••••5678', 'Refund Host', true);
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000007a1',
+  '{"v":2,"deposit_minor":30000000,"deposit_non_refundable":false,"flex_enabled":true,"auto_adjust":true}', NULL);
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000007a2',
+  '{"v":2,"deposit_minor":30000000,"deposit_non_refundable":false,"flex_enabled":true,"auto_adjust":true}', NULL);
+INSERT INTO public.order_line_items(order_id, ticket_type_id, unit_price_cents, total_cents, quantity, payment_plan_choice)
+VALUES ('45220008-0000-4000-8000-0000000007a1', '45220008-0000-4000-8000-000000000030', 120000000, 120000000, 1, 'installments');
+UPDATE public.orders SET created_at = now() - interval '2 days', stripe_application_fee_amount_cents = 1350000
+ WHERE id IN ('45220008-0000-4000-8000-0000000007a1', '45220008-0000-4000-8000-0000000007a2');
+INSERT INTO public.payout_source_fee_snapshots(source_type, source_id, provider_fee_cents)
+VALUES ('order', '45220008-0000-4000-8000-0000000007a1', 450000), ('order', '45220008-0000-4000-8000-0000000007a2', 450000);
+DO $$
+DECLARE v_dep public.brand_payout_releases; v_row uuid; v_row_rel public.brand_payout_releases; v_b jsonb; v_refund uuid;
+BEGIN
+  -- both deposits paid out (two payouts of the trip)
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_dep := pg_temp.rel('45220008-0000-4000-8000-0000000007a1');
+  PERFORM pg_temp.pay_out(v_dep.id);
+  IF (pg_temp.rel('45220008-0000-4000-8000-0000000007a2')).status = 'pending' THEN
+    PERFORM pg_temp.pay_out((pg_temp.rel('45220008-0000-4000-8000-0000000007a2')).id);
+  END IF;
+  v_dep := pg_temp.rel('45220008-0000-4000-8000-0000000007a1');
+  IF v_dep.status <> 'released' THEN RAISE EXCEPTION 'I7-0 the deposit is paid out: %', v_dep.status; END IF;
+  -- the first instalment is collected and attached, not paid out
+  SELECT id INTO v_row FROM public.order_installments WHERE order_id = '45220008-0000-4000-8000-0000000007a1' AND ordinal = 1;
+  UPDATE public.order_installments SET status = 'collected', collected_at = now() - interval '2 days',
+         stripe_payment_intent_id = 'mingla-inst-7a1-a1', provider_transaction_id = '4522977001',
+         application_fee_amount_cents = 1350000, payout_accounting_state = 'ready'
+   WHERE id = v_row;
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  SELECT r.* INTO v_row_rel FROM public.payout_release_items i JOIN public.brand_payout_releases r ON r.id = i.release_id
+   WHERE i.source_type = 'order_installment' AND i.source_id = v_row;
+  IF v_row_rel.status <> 'pending' OR v_row_rel.net_release_cents <= 0 THEN
+    RAISE EXCEPTION 'I7-1 the instalment waits in its own payout: % %', v_row_rel.status, v_row_rel.net_release_cents;
+  END IF;
+  -- the host cancels: deposit + instalment refunded, the outcome booked on the order (main's router)
+  v_b := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000007a1', 'operator',
+    '45220008-0000-4000-8000-000000000001', 'Host cancelled the trip');
+  v_refund := (v_b->>'refund_id')::uuid;
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000007a1', v_refund,
+    'ps_deposit_45220008-0000-4000-8000-0000000007a1', 'mingla_trip_refund:' || v_refund, 'ps_rf_i7',
+    (v_b->>'refund_total_cents')::integer, 'processed', NULL, now());
+  PERFORM public.issue_3645_mark_installment_refunded(v_row, v_refund, 30600000);
+  PERFORM public.biz_cancel_trip_booking_commit(v_refund, ARRAY['ps_rf_i7'], 0, now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (SELECT sum(principal_cents) FROM public.organiser_payout_debts
+       WHERE origin_release_id = v_dep.id AND kind = 'post_release_refund') <> 28650000 THEN
+    RAISE EXCEPTION 'I7-2 the host owes back only what it was paid for the deposit (28,650,000): %',
+      (SELECT sum(principal_cents) FROM public.organiser_payout_debts WHERE origin_release_id = v_dep.id);
+  END IF;
+  IF (SELECT net_release_cents FROM public.brand_payout_releases WHERE id = v_row_rel.id) <> 0 THEN
+    RAISE EXCEPTION 'I7-3 the unpaid instalment comes off its own payout';
+  END IF;
+  IF (SELECT count(*) FROM public.payout_release_alert_outbox
+       WHERE release_id = v_dep.id AND error_message LIKE 'payout_refund_debt_opened:%') <> 1 THEN
+    RAISE EXCEPTION 'I7-4 ops are told once';
+  END IF;
+END $$;
+
+-- I8. G-4 (sixth pass): a cancel whose refund was refused before any money
+--     moved leaves the booking cancelled with its refund failed; every sale
+--     of it is held from payouts until a refund is recorded.
+--     FAILS ON REVERT: the deposit stayed due (28,650,000).
+DO $$
+DECLARE v_r public.brand_payout_releases;
+BEGIN
+  PERFORM pg_temp.sale('45220008-0000-4000-8000-0000000000e9', '45220008-0000-4000-8000-000000000026', 'USD', 30000, 'pi_i9', true);
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (pg_temp.rel('45220008-0000-4000-8000-0000000000e9')).net_release_cents <> 28650 THEN
+    RAISE EXCEPTION 'I8-0 the deposit attached at 28,650';
+  END IF;
+  UPDATE public.orders SET cancelled_at = now() WHERE id = '45220008-0000-4000-8000-0000000000e9';
+  INSERT INTO public.refunds(order_id, amount_cents, currency, status, reason)
+  VALUES ('45220008-0000-4000-8000-0000000000e9', 30000, 'USD', 'pending', 'i8 cancel refund');
+  UPDATE public.refunds SET status = 'failed' WHERE order_id = '45220008-0000-4000-8000-0000000000e9';
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (pg_temp.rel('45220008-0000-4000-8000-0000000000e9')).net_release_cents <> 0 THEN
+    RAISE EXCEPTION 'I8-1 a cancelled booking whose refund failed is held from payouts: %',
+      (pg_temp.rel('45220008-0000-4000-8000-0000000000e9')).net_release_cents;
   END IF;
 END $$;
 

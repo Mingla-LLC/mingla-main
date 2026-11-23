@@ -1017,6 +1017,25 @@ CREATE TRIGGER issue_4522_refund_payout_hold
 --    the guard at execution is the backstop.
 -- ---------------------------------------------------------------------------
 
+-- 8a0. A cancelled booking whose last refund did not go through (G-4: the
+--      provider refused it before any money moved, the booking stays
+--      cancelled): every sale of it is held from payouts until a refund is
+--      recorded. A cancel that refunds nothing writes no refund row.
+CREATE FUNCTION public.issue_4522_cancel_refund_unsettled(p_order_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+  SELECT EXISTS (
+    SELECT 1 FROM public.orders o
+     WHERE o.id = p_order_id AND o.cancelled_at IS NOT NULL
+       AND (SELECT r.status FROM public.refunds r WHERE r.order_id = o.id
+             ORDER BY r.created_at DESC, r.id DESC LIMIT 1) IN ('failed', 'cancelled'))
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_cancel_refund_unsettled(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
 -- 8a. What one payout item is worth now: (refunded, net, settled net).
 --     net is 0 while a refund of its charge is pending or unrecorded;
 --     settled net counts recorded refunds only (what a paid release owes back).
@@ -1057,14 +1076,16 @@ BEGIN
                   WHERE pa.source_type = 'order' AND pa.source_id = p_source_id
                     AND pa.status <> 'failed'
                     AND (pa.status IN ('accepted', 'processed') OR pa.provider_refund_id IS NOT NULL)
-                    AND r.status IS DISTINCT FROM 'succeeded');
+                    AND r.status IS DISTINCT FROM 'succeeded')
+      OR public.issue_4522_cancel_refund_unsettled(p_source_id);
   ELSIF p_source_type = 'order_installment' THEN
     SELECT oi.order_id, oi.refunded_amount_cents INTO v_order, v_refunded
       FROM public.order_installments oi WHERE oi.id = p_source_id;
     v_held := EXISTS (SELECT 1 FROM public.refunds r
                        WHERE r.order_id = v_order AND r.status = 'pending'
                          AND (r.order_installment_id IS NULL OR r.order_installment_id = p_source_id))
-      OR public.issue_4522_row_refund_unrecorded(p_source_id);
+      OR public.issue_4522_row_refund_unrecorded(p_source_id)
+      OR public.issue_4522_cancel_refund_unsettled(v_order);
   END IF;
   IF v_order IS NULL THEN
     RETURN QUERY SELECT p_refunded::bigint, p_net::bigint, p_net::bigint;
@@ -1347,6 +1368,42 @@ CREATE TRIGGER issue_4522_release_outcome_sync
   FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status AND NEW.status <> 'in_flight')
   EXECUTE FUNCTION public.issue_4522_release_outcome_sync_trigger();
 
+-- 8e2. G-2: a refund debt on an order payout never exceeds what the host
+--      was paid for the sales since refunded (main's second-provider outcome
+--      books every trip refund, instalments included, against the order's
+--      payout at the full refunded amount). Charges never paid out come off
+--      their own unpaid release instead (the owner above). Never below what
+--      was already recovered.
+CREATE FUNCTION public.issue_4522_refund_debt_cap_trigger()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_cap bigint;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.brand_payout_releases r
+                  WHERE r.id = NEW.origin_release_id AND r.surface IN ('order', 'order_installment')) THEN
+    RETURN NEW;
+  END IF;
+  v_cap := greatest(public.issue_4522_release_refund_liability(NEW.origin_release_id), NEW.recovered_cents);
+  IF NEW.principal_cents > v_cap THEN
+    NEW.principal_cents := v_cap::integer;
+    IF NEW.principal_cents <= NEW.recovered_cents THEN
+      NEW.status := 'closed';
+      NEW.closed_at := coalesce(NEW.closed_at, now());
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_refund_debt_cap_trigger() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER issue_4522_refund_debt_cap
+  BEFORE INSERT OR UPDATE OF principal_cents ON public.organiser_payout_debts
+  FOR EACH ROW WHEN (NEW.kind = 'post_release_refund')
+  EXECUTE FUNCTION public.issue_4522_refund_debt_cap_trigger();
+
 -- 8f. One ops alert when a refund after payout becomes a payout debt
 --     (whichever #3645 path opened it).
 CREATE FUNCTION public.issue_4522_refund_debt_alert_trigger()
@@ -1364,8 +1421,8 @@ END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_refund_debt_alert_trigger() FROM PUBLIC, anon, authenticated, service_role;
 CREATE TRIGGER issue_4522_refund_debt_alert
-  AFTER INSERT ON public.organiser_payout_debts
-  FOR EACH ROW WHEN (NEW.kind = 'post_release_refund')
+  AFTER INSERT OR UPDATE OF principal_cents ON public.organiser_payout_debts
+  FOR EACH ROW WHEN (NEW.kind = 'post_release_refund' AND NEW.principal_cents > 0)
   EXECUTE FUNCTION public.issue_4522_refund_debt_alert_trigger();
 
 -- 8g. The projection reads what each sale is worth now (body as
