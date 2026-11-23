@@ -20,7 +20,8 @@ import {
   type ChargePaystackDeps,
   notifyPaystackInstallmentFailure,
 } from "./chargePaystackInstallment.ts";
-import { sendInstallmentPayLink } from "./installmentPayLinks.ts";
+import { defaultDispatchBuyerEmail, sendInstallmentPayLink } from "./installmentPayLinks.ts";
+import { claimPaidInFullNotice } from "./paidInFullNotice.ts";
 
 export type ChargeInstallmentOutcome =
   | "collected"
@@ -37,6 +38,23 @@ export interface ChargeDeps extends ChargePaystackDeps {
   now: () => Date;
 }
 
+/**
+ * issue #4522 (T5-3): a claim that settled the order by writing off a balance
+ * below the provider's minimum (reason waived_below_provider_minimum) sends
+ * the paid-in-full email like every other settle, claimed once per order.
+ */
+async function paidInFullAfterWaiver(
+  supabase: SupabaseClient,
+  orderId: string,
+  reason: string | undefined,
+  deps: Partial<ChargeDeps>,
+): Promise<void> {
+  if (reason !== "waived_below_provider_minimum") return;
+  if (await claimPaidInFullNotice(supabase, orderId, "charge_claim_waiver")) {
+    await (deps.dispatchBuyerEmail ?? defaultDispatchBuyerEmail)("installment_plan_paid_in_full", { orderId });
+  }
+}
+
 export async function chargeInstallment(input: {
   supabase: SupabaseClient;
   installmentId: string;
@@ -51,7 +69,7 @@ export async function chargeInstallment(input: {
 
   const { data, error } = await supabase
     .from("order_installments")
-    .select("id, provider, collection_method, status, due_at, next_retry_at, orders!inner(event_id, events!inner(brand_id))")
+    .select("id, order_id, provider, collection_method, status, due_at, next_retry_at, orders!inner(event_id, events!inner(brand_id))")
     .eq("id", input.installmentId)
     .maybeSingle();
   if (error !== null) throw new Error(`instalment load failed: ${error.message}`);
@@ -61,6 +79,7 @@ export async function chargeInstallment(input: {
   const brandId = String(one(one(row.orders).events).brand_id);
   const provider = String(row.provider);
   const method = String(row.collection_method);
+  const orderId = typeof row.order_id === "string" ? row.order_id : "";
 
   if (input.dryRun === true) return { outcome: "skipped", reason: `dry_run:${provider}:${method}` };
 
@@ -72,6 +91,7 @@ export async function chargeInstallment(input: {
       supabase,
       override: input.atRiskOverride ? { atRisk: true } : undefined,
     });
+    await paidInFullAfterWaiver(supabase, orderId, result.reason, deps);
     return {
       outcome: (result.outcome ?? (result.ok ? "collected" : "skipped")) as ChargeInstallmentOutcome,
       reason: result.reason ?? result.error,
@@ -83,7 +103,9 @@ export async function chargeInstallment(input: {
 
   if (method === "auto_card") {
     const run = deps.chargePaystackInstallment ?? chargePaystackInstallment;
-    return await run({ supabase, installmentId: input.installmentId, atRiskOverride: input.atRiskOverride, deps });
+    const charged = await run({ supabase, installmentId: input.installmentId, atRiskOverride: input.atRiskOverride, deps });
+    await paidInFullAfterWaiver(supabase, orderId, charged.reason, deps);
+    return charged;
   }
 
   // pay_link: a reached checkpoint counts one failure and resends the link.

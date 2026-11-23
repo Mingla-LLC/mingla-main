@@ -28,10 +28,12 @@ import {
 } from "../_shared/installments/installmentFeeRate.ts";
 import { flexPaymentIdempotencyKey } from "../_shared/installments/installmentIdempotencyKey.ts";
 import {
+  defaultDispatchBuyerEmail,
   mintPayLinkToken,
   PAY_LINK_TOKEN_PATTERN,
   payLinkTokenHashHex,
 } from "../_shared/installments/installmentPayLinks.ts";
+import { claimPaidInFullNotice } from "../_shared/installments/paidInFullNotice.ts";
 import { chargePaystackInstallment } from "../_shared/installments/chargePaystackInstallment.ts";
 import {
   createFlexPaymentIntent,
@@ -569,8 +571,11 @@ export async function handleTripBalancePay(
   if (refused !== null) return refused;
   const flex = (begun ?? {}) as Record<string, unknown>;
   // T4-3: a whole balance below the provider's minimum is settled by waiver;
-  // nothing is charged.
+  // nothing is charged. T5-3: the paid-in-full email, once per order.
   if (flex.waived === true) {
+    if (await claimPaidInFullNotice(supabase, String(orderId), "flex_payment_waiver")) {
+      await defaultDispatchBuyerEmail("installment_plan_paid_in_full", { orderId: String(orderId) });
+    }
     return jsonResponse({ error: "balance_settled", waivedMinor: Number(flex.waivedMinor ?? 0) }, 409);
   }
   const installmentId = String(flex.installmentId ?? "");
