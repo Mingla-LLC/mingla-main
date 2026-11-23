@@ -316,14 +316,29 @@ export function mapPublishErrorToState(
           "Connect your bank to set a payout currency before publishing a paid trip. Free trips publish any time.",
         pointsToStep: 5,
       };
+    // issue #4522 W-11 — the cover's picture, poster and type disagree (the
+    // server's code); say it as the brand and venue editors already do.
+    case "invalid_cover_media_triplet":
+      return {
+        code,
+        message: "Choose a cover with a stable preview image before publishing.",
+        pointsToStep: 1,
+      };
     default:
       return {
         code,
-        message: rawMessage || "Couldn't publish. Tap Publish to try again.",
+        // A bare server code (snake_case, no spaces) is never copy for a host.
+        message:
+          rawMessage && !SERVER_CODE_ONLY.test(rawMessage)
+            ? rawMessage
+            : "Couldn't publish. Tap Publish to try again.",
         pointsToStep: 5,
       };
   }
 }
+
+/** A refusal that is only a server code, e.g. `invalid_cover_media_triplet`. */
+const SERVER_CODE_ONLY = /^[a-z0-9]+(?:_[a-z0-9]+)+$/;
 
 const styles = StyleSheet.create({
   host: {
