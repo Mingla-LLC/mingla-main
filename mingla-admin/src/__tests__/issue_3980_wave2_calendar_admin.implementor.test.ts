@@ -143,7 +143,8 @@ Deno.test("#3980 W2 the host card's On Mingla section: hosts only, its words, no
     "Cancel this promised event",
   ]) assert(section.includes(words), words);
   for (const gone of ["Save. Steps and Calendar fill in by themselves", "Work on this host", "Brand linked"]) assert(!section.includes(gone), gone);
-  assert(read("components/crm/HostToDoSection.jsx").includes("Nothing open."), "To do says Nothing open.");
+  // #4571 W3: To do became the Work section (hosts and creators); an empty one says what to do.
+  assert(read("components/crm/HostToDoSection.jsx").includes("yet. Add a work item, or link this card from any Work card."), "Work says how to add one");
   for (const banned of ["Drafts to send", "Draft, not sent", "@mention", "mention", "will get an email", "Getting started"]) {
     assert(!section.includes(banned), banned);
   }
@@ -151,6 +152,7 @@ Deno.test("#3980 W2 the host card's On Mingla section: hosts only, its words, no
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (artifact hostCard()): On Mingla now opens the host card,
   // above its fields, with Assign to me and Fill in; hosts only.
   // #4270 W2: To do comes first, then On Mingla (hosts only).
-  assertMatch(drawer, /\{isHosts && \(\s*<>[\s\S]*?<HostToDoSection[\s\S]*?<OnMinglaSection key=\{`on-mingla-\$\{record\.id\}`\} record=\{record\}/);
+  // #4571 W3: Work (hosts and creators) comes first, then the hosts-only Plan and On Mingla.
+  assertMatch(drawer, /<HostToDoSection[\s\S]*?\{isHosts && \(\s*<>[\s\S]*?<OnMinglaSection key=\{`on-mingla-\$\{record\.id\}`\} record=\{record\}/);
   assert(drawer.indexOf("<OnMinglaSection") < drawer.indexOf("<RecentTouchNotice"), "On Mingla comes before the touch notice");
 });

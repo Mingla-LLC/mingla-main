@@ -67,25 +67,33 @@ export function avatar(props) { return renderToStaticMarkup(<HostAvatarButton on
 
 describe("C-1 the host card's order", () => {
   const drawer = code("components/crm/RecordPanel.jsx");
-  it("To do, Plan, On Mingla, Brand and team, Status, then Details", () => {
+  // #4571 W3: the card is built like a Work card: stage row and people chips
+  // first, then Work (the old To do, for hosts and creators), Demos, Calls,
+  // the Plan, On Mingla, Brand and team, then Details.
+  it("Stage, people, Needs attention, Work, Demos, Calls, Plan, On Mingla, Brand and team, then Details", () => {
     const at = (needle) => { const i = drawer.indexOf(needle); assert.ok(i > 0, `missing ${needle}`); return i; };
     const order = [
+      at('data-record-section="stage"'),
+      at('data-record-section="people"'),
+      at('data-needs-attention=""'),
       at("<HostToDoSection"),
+      at("<DemosSection record={record}"),
+      at("<CallsSection activity="),
       at("<HostPlanSection"),
       at("<OnMinglaSection"),
       at("<HostTeamSection"),
-      at('data-host-section="status"'),
-      at("<DetailsFold isHosts={isHosts}"),
+      at("<DetailsFold isHosts detailsRef"),
     ];
     assert.deepEqual(order, [...order].sort((a, b) => a - b));
     // Wave 3: the Plan block shows (HostPlanSection, data-host-section="plan").
     assert.match(code("components/crm/HostPlanSection.jsx"), /data-host-section="plan"/);
   });
-  it("Status holds stage, next action, due, Move to and Needs attention; Details folds the rest", () => {
-    const status = drawer.slice(drawer.indexOf('data-host-section="status"'), drawer.indexOf("<DetailsFold isHosts={isHosts}"));
-    for (const words of ['label="Stage"', 'label="Next action"', 'label="Due"', "Move to {next.label}", "Needs attention", "Assign to me", "Fill in"]) assert.ok(status.includes(words), words);
-    const fold = drawer.slice(drawer.indexOf("<DetailsFold isHosts={isHosts}"), drawer.indexOf("</DetailsFold>"));
-    for (const words of ['label="ICP"', 'label="Region"', "<OwnersField", "<IdentifiersField", "<ContactRuleField", "Preferred channel", 'label="Source"', "Channels used", "<MinglaLinkField", "Imported from ClickUp", "<RecentTouchNotice", "<LogForm", "<ActivityLog"]) assert.ok(fold.includes(words), words);
+  it("the stage row and people chips hold stage, Move to, next follow-up, due, owners and watchers; Details folds the rest", () => {
+    const top = drawer.slice(drawer.indexOf('data-record-section="stage"'), drawer.indexOf("<HostToDoSection"));
+    for (const words of ['label="Stage"', 'label="Next follow-up"', 'label="Due"', "Move to {next.label}", 'label="Owners"', 'label="Watching"', "Needs attention", "Assign to me", "Fill in", "Log call"]) assert.ok(top.includes(words), words);
+    assert.doesNotMatch(drawer, /type="date"/, "#4523: no typed date field");
+    const fold = drawer.slice(drawer.indexOf("<DetailsFold isHosts detailsRef"), drawer.indexOf("</DetailsFold>"));
+    for (const words of ['label="ICP"', 'label="Region"', "<IdentifiersField", "<ContactRuleField", "Preferred channel", 'label="Source"', "Channels used", "<MinglaLinkField", "Imported from ClickUp", "<RecentTouchNotice", "<LogForm", "<ActivityLog"]) assert.ok(fold.includes(words), words);
     assert.match(drawer, /Details · contact rule, imports, log and activity/);
   });
   it("a deep link to a folded field opens Details first", () => {

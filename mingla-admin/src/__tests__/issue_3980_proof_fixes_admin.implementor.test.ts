@@ -100,7 +100,8 @@ Deno.test("#3980 P2-3: the counted-from line of a series names its next date tha
 Deno.test("#3980 P2-5: a host or creator card that has owners keeps one in the people field", () => {
   assertMatch(code("components/crm/OwnersField.jsx"), /export function OwnersField\(\{ team, value, onChange, disabled = false, labelId, min = 0 \}\)/);
   assertMatch(code("components/crm/OwnersField.jsx"), /<PeopleField[\s\S]*min=\{min\}/);
-  assertMatch(code("components/crm/RecordPanel.jsx"), /<OwnersField[\s\S]*min=\{\(record\.owners \|\| \[\]\)\.length \? 1 : 0\}[\s\S]*onChange=\{\(owners\) => save\("owners", owners\)\}/);
+  // #4571 W3: the card's Owners chip is the people field itself, kept at one once there is one; it saves owners and watchers together.
+  assertMatch(code("components/crm/RecordPanel.jsx"), /<PeopleField id=\{fid\("owners"\)\} label="Owners"[\s\S]*?min=\{\(record\.owners \|\| \[\]\)\.length \? 1 : 0\}[\s\S]*?onChange=\{\(nextOwners\) => savePeople\(nextOwners, record\.watchers \|\| \[\], "Owners changed"\)\}/);
   // The field's own rule with min 1: the last owner stays, with the words.
   const r = removePerson(["ada@x.test"], "ada@x.test", 1);
   assertEquals(r.value, ["ada@x.test"]);

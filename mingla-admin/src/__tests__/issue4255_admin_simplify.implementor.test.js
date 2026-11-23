@@ -320,7 +320,11 @@ describe("S-2 Hosts and creators: one honest board", () => {
 
   it("the page: board only, no list or By region, no agent strip, dropdown filters, the board built from every filtered card", () => {
     const page = code("pages/PipelinePage.jsx");
-    assert.ok(!/PipelineList|PipelineByRegion|lateStage|AgentPromptStrip|state\.view/.test(page));
+    assert.ok(!/PipelineList|PipelineByRegion|lateStage|AgentPromptStrip/.test(page));
+    // #4571 W3: the one other view is Hosts' My calls today; every other address is the board.
+    assert.deepEqual([...page.matchAll(/state\.view === "([a-z]+)"/g)].map((m) => m[1]), ["calls"]);
+    assert.match(page, /pipeline === "hosts" && state\.view === "calls" \? \(\s*<CallsQueue /);
+    assert.equal(buildCrmSearch(parseCrmSearch("view=calls&mine=1")), "mine=1&view=calls");
     assert.ok(!fs.existsSync(path.join(SRC, "components/crm/PipelineList.jsx")));
     assert.ok(!fs.existsSync(path.join(SRC, "components/crm/PipelineByRegion.jsx")));
     assert.match(page, /const columns = useMemo\(\(\) => \(def \? boardColumns\(def, dueShown\.map\(forDisplay\), today\) : \[\]\), \[def, dueShown, today\]\);/);

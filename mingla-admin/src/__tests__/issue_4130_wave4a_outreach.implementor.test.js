@@ -199,9 +199,11 @@ describe("#4130 W4A-3: Hosts and creators", () => {
     { id: "r", stage: "replied", due_on: null, region_id: "r" },
   ];
 
-  it("#4255: the board is the only view; the due filter has its own address", () => {
-    assert.equal(Object.hasOwn(EMPTY_CRM_STATE, "view"), false);
+  it("#4255: the board is the default view (#4571 W3: Hosts also has My calls today); the due filter has its own address", () => {
+    assert.equal(EMPTY_CRM_STATE.view, "");
     assert.equal(buildCrmSearch({ view: "list" }), "");
+    assert.equal(buildCrmSearch({ view: "calls" }), "view=calls");
+    assert.equal(parseCrmSearch("view=list").view, "");
     assert.equal(buildCrmSearch({ view: "board", due: "stale" }), "due=stale");
     assert.equal(parseCrmSearch("due=stale").due, "stale");
     assert.equal(parseCrmSearch("due=__proto__").due, "");

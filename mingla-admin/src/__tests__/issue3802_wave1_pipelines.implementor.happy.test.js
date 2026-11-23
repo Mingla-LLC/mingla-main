@@ -464,15 +464,12 @@ describe("#3802 P-8: source contracts", () => {
   it("crmService.js calls exactly nineteen of the twenty client functions (never bulk add)", () => {
     const called = [...SERVICE.matchAll(/rpc\(\s*"(crm_[a-z_]+)"/g)].map((m) => m[1]).sort();
     assert.deepEqual(called, [
-      // #4571 W3: people on a card, its Work, My calls today, follower counts.
       "crm_beta_lead_to_host",
       "crm_beta_leads_list",
-      "crm_calls_queue",
       "crm_config",
       "crm_contact_check",
       "crm_duplicate_check",
       "crm_home_summary",
-      "crm_identifier_set_followers",
       "crm_link_search",
       "crm_record_create",
       "crm_record_delete",
@@ -481,16 +478,241 @@ describe("#3802 P-8: source contracts", () => {
       "crm_record_move_stage",
       "crm_record_restore",
       "crm_record_set_owners",
-      "crm_record_set_people",
       "crm_record_undo_stage_move",
       "crm_record_update",
-      "crm_record_work",
-      "crm_records_bulk_create",
       "crm_records_list",
       "crm_target_set",
-      "crm_team_pulse",
       "crm_team_summary",
-    ]);
+      // #4130: the Team dashboard's row of numbers (read-only, owner and admin).
+      "crm_team_pulse",
+      // #4571 W3: people on a card, its Work, My calls today, follower counts.
+      "crm_record_set_people",
+      "crm_record_work",
+      "crm_calls_queue",
+      "crm_identifier_set_followers",
+    ].sort());
+    // Bulk add is for the agent connector (a later wave); the screen never calls it.
+    assert.ok(!SERVICE.includes("crm_records_bulk_create"));
+  });
+  it("no file reads or writes a pipeline table directly", () => {
+    for (const f of files) {
+      const src = fs.readFileSync(f, "utf8");
+      assert.ok(!/from\(\s*["'`]crm_/.test(src), `${path.relative(SRC, f)} touches a crm_ table`);
+    }
+  });
+  it("the page and the board components never import the Supabase client", () => {
+    assert.ok(!/from\s+["'][^"']*lib\/supabase["']/.test(PAGE));
+    assert.ok(!PAGE.includes("supabase"));
+    for (const f of walk(path.join(SRC, "components", "crm"))) {
+      assert.ok(!/lib\/supabase/.test(fs.readFileSync(f, "utf8")), path.relative(SRC, f));
+    }
+    // #4255: crmUrl reads the side-panel value from lib/panelStack.js, itself a
+    // pure module; nothing else may be imported.
+    for (const rel of ["lib/crmModel.js", "lib/crmUrl.js"]) {
+      const src = read(rel);
+      const imports = src.match(/^import\s.*$/gm) || [];
+      assert.ok(imports.every((line) => /from "\.\/panelStack\.js";$/.test(line)), `${rel} must stay a pure module (only lib/panelStack.js)`);
+    }
+    assert.ok(!/^import\s/m.test(read("lib/panelStack.js")), "lib/panelStack.js has no imports");
+  });
+  it("a write never goes out while offline, and every failure is turned into a token", () => {
+    assert.ok(/navigator\.onLine === false\)\s*\{\s*throw new CrmError\(\{ token: "network"/.test(SERVICE));
+    assert.ok(SERVICE.includes("throw new CrmError(parseServerError(err))"));
+    assert.ok(SERVICE.includes("throw new CrmError(parsed)"));
+  });
+  it("create and log always carry a request key", () => {
+    assert.ok(/crm_record_create[\s\S]{0,160}p_request_key: requestKey \|\| newRequestKey\(\)/.test(SERVICE));
+    assert.ok(/crm_record_log[\s\S]{0,160}p_request_key: requestKey \|\| newRequestKey\(\)/.test(SERVICE));
+  });
+  it("a toast can carry an action and its own lifetime", () => {
+    assert.ok(TOAST.includes("toast.action?.label"));
+    assert.ok(TOAST.includes("toast.action.onClick?.()"));
+    assert.ok(TOAST.includes("onDismiss(toast.id)"));
+    assert.ok(TOAST_CONTEXT.includes("{ variant = \"info\", title, description, action, duration }"));
+    assert.ok(/typeof duration === "number" && duration > 0 \? duration : AUTO_DISMISS_MS\[variant\]/.test(TOAST_CONTEXT));
+  });
+  it("nothing from a later wave is on these screens", () => {
+    const banned = ["Drafts to send", "Draft, not sent", "@mention", "mention", "will get an email", "Getting started"];
+    const sources = [PAGE, ...walk(path.join(SRC, "components", "crm")).map((f) => fs.readFileSync(f, "utf8"))];
+    for (const src of sources) for (const word of banned) assert.ok(!src.includes(word), `found "${word}"`);
+  });
+  it("Lost and Passed ask for the reason before anything moves", () => {
+    const at = PAGE.indexOf("setReasonFor({ record, to });");
+    assert.ok(at > 0);
+    assert.ok(/if \(stageDef\(def, to\)\?\.terminal\) \{[\s\S]{0,160}setReasonFor\(\{ record, to \}\);\s*return;/.test(PAGE));
+    const prompt = read("components/crm/ReasonPrompt.jsx");
+    assert.ok(prompt.includes("Why is this lost?") && prompt.includes("Why did we pass?"));
+    assert.ok(prompt.includes("disabled={!trimmed}"));
+  });
+  it("Undo after an add is offered only to people who may delete", () => {
+    assert.ok(/action: canDelete\s*\? \{ label: "Undo", onClick: \(\) => handleDelete\(record\) \}\s*: \{ label: "Open"/.test(PAGE));
+    assert.ok(PAGE.includes("const canDelete = !!config?.me?.can_delete;"));
+  });
+  it("the pipeline actions have plain-English labels in the activity list", () => {
+    for (const [action, label] of Object.entries({
+      "crm.record_create": "Added a host or creator",
+      "crm.record_update": "Edited a host or creator",
+      "crm.stage_move": "Moved a card",
+      "crm.stage_undo": "Undid a move",
+      "crm.stage_auto_live": "A host went live",
+      "crm.owners_set": "Changed owners",
+      "crm.log_add": "Logged activity",
+      "crm.record_delete": "Deleted a host or creator",
+      "crm.record_restore": "Restored a host or creator",
+      "crm.bulk_create": "Added records in bulk",
+    })) {
+      assert.ok(AUDIT_LOG_SRC.includes(`"${action}": "${label}"`), action);
+    }
+  });
+});
+
+describe("#3802 P-9: the route gate still never mounts a refused page", () => {
+  it("the page shown is chosen from the resolved route, not from the address", () => {
+    assert.ok(APP_JSX.includes("const ActivePage = PAGES[route.pageId];"));
+    assert.ok(APP_JSX.includes("? resolveRoute(nav.requested, access, PAGE_IDS)"));
+    assert.equal((APP_JSX.match(/<ActivePage\b/g) || []).length, 1);
+    assert.ok(!/PAGES\[nav\.requested\]|PAGES\[requestedPageId\(\)\]/.test(APP_JSX.replace(/PAGES\[hash\] \? hash/, "")));
+  });
+  it("the address is read by its first segment, so a board's filters survive the guard", () => {
+    assert.ok(APP_JSX.includes('window.location.hash.replace("#/", "").split("?")[0].split("/")[0]'));
+    assert.ok(APP_JSX.includes("if (requestedPageId() !== route.pageId) {"));
+  });
+  it("the two board pages are registered once each", () => {
+    // #4130: registered once each as tabs of Hosts and creators.
+    assert.equal(PAGE_IDS.filter((id) => id === "outreach").length, 1);
+    // #4130 (Wave 4a): the page is built (pages/HostsAndCreatorsHub.jsx), not a shell hub.
+    const hub = read("pages/HostsAndCreatorsHub.jsx");
+    assert.ok(hub.includes('import { HostsPage, CreatorsPage } from "./PipelinePage";'));
+    assert.ok(hub.includes("const COMPONENTS = { hosts: HostsPage, creators: CreatorsPage };"));
+  });
+});
+
+describe("#3802 P-10: server answers are shown in plain words", () => {
+  it("a function's own refusal keeps its token and words", () => {
+    const e = parseServerError({ code: "22023", message: "reason_required: Add one line saying why, so the next person knows.", details: null });
+    assert.deepEqual(e, { token: "reason_required", message: "Add one line saying why, so the next person knows.", detail: "" });
+    assert.equal(errorCopy(e.token, e.message), "Add one line saying why, so the next person knows.");
+  });
+  it("try_again is recognised by its token, whatever code it arrives with", () => {
+    for (const code of ["PT409", "40001", "22023", "", undefined]) {
+      const e = parseServerError({ code, message: "try_again: Another change to the same record happened at the same moment, so nothing was saved. Send the same request again." });
+      assert.equal(e.token, "try_again");
+      assert.ok(!errorCopy(e.token, e.message).includes("request"));
+    }
+  });
+  it("the tokens the merged server contract added are covered", () => {
+    const undo = "This host is no longer linked to a brand with a public listing, so it cannot go back to Live. Move the card to Onboarded by hand; Live sets itself once the linked brand has a public listing.";
+    assert.equal(errorCopy("undo_not_live", undo), undo);
+    assert.equal(errorCopy("agreement_required", "Mark the agreement as signed before moving to Posted."), "Mark the agreement as signed before moving to Posted.");
+    assert.equal(errorCopy("undo_expired", "That move can no longer be undone. Move the card back by hand."), "That move can no longer be undone. Move the card back by hand.");
+    const dup = parseServerError({ code: "22023", message: 'duplicate_name: "Palm Court Kitchen" is already in Hosts. Open it instead.', details: "5a1f0c3e-1111-4222-8333-444455556666" });
+    assert.equal(dup.token, "duplicate_name");
+    assert.equal(dup.detail, "5a1f0c3e-1111-4222-8333-444455556666");
+  });
+  it("messages written for a caller of the function never reach the screen", () => {
+    const technical = [
+      ["unknown_field", '"stage" cannot be changed here. Use crm_record_move_stage for stage and crm_record_set_owners for owners.'],
+      ["unknown_owner", "x@y.z is not on the team. Use an address from crm_config().team."],
+      ["invalid_brand", "That brand is not on Mingla, or was deleted. Pick one with crm_link_search('brand', name)."],
+      ["invalid_region", "That region is not in the Launch Cities list. Use an id from crm_config().regions."],
+      ["request_key_required", "Send a request key (8 to 80 letters, digits, - or _) so a repeat changes nothing."],
+      ["invalid_due_on", "Send the date as YYYY-MM-DD, for example 2026-10-31."],
+      ["invalid_icp", "x is not an ICP for hosts. Use one of: restaurant_bar."],
+      ["invalid_stage", "x is not a stage of hosts. Use one of: prospect."],
+    ];
+    for (const [token, message] of technical) {
+      const words = errorCopy(token, message);
+      assert.ok(words.length > 10, token);
+      assert.ok(!/crm_|\(\)|YYYY|request key|restaurant_bar|prospect\./.test(words), `${token}: ${words}`);
+    }
+  });
+  it("anything that is not one of the functions' answers gets a calm line, never the raw text", () => {
+    const raw = [
+      { code: "PGRST202", message: "Could not find the function public.crm_config without parameters in the schema cache" },
+      { code: "42883", message: "function public.crm_config() does not exist" },
+      { code: "PGRST301", message: "JWT expired" },
+      { code: "42501", message: "permission denied for function crm_config" },
+      { code: "XX000", message: 'null value in column "x" violates not-null constraint' },
+      { message: "TypeError: Failed to fetch" },
+      new TypeError("Load failed"),
+      { message: "upstream down" },
+      null,
+      undefined,
+      "boom",
+    ];
+    for (const err of raw) {
+      const words = errorWords(err);
+      assert.ok(typeof words === "string" && words.length > 10);
+      assert.ok(!/PGRST|JWT|schema cache|permission denied|violates|TypeError|fetch|upstream|boom|function/i.test(words), words);
+    }
+    assert.equal(parseServerError(raw[0]).token, "not_ready");
+    assert.equal(parseServerError(raw[2]).token, "signed_out");
+    assert.equal(parseServerError(raw[3]).token, "forbidden");
+    assert.equal(parseServerError(raw[5]).token, "network");
+    assert.equal(parseServerError(raw[6]).token, "network");
+    assert.equal(parseServerError(raw[7]).token, "unknown");
+  });
+  it("a token this screen has never seen gets the generic line, not the server text", () => {
+    assert.equal(errorCopy("some_future_token", "SELECT * FROM secrets"), errorCopy("unknown", ""));
+    assert.equal(errorCopy("constructor", "x"), errorCopy("unknown", ""));
+    assert.equal(errorCopy("__proto__", "x"), errorCopy("unknown", ""));
+  });
+  it("forbidden says who can, in the server's words when it has them", () => {
+    assert.equal(errorCopy("forbidden", "Only an owner or admin can delete. Mark it as lost instead."), "Only an owner or admin can delete. Mark it as lost instead.");
+    assert.ok(errorCopy("forbidden", "").includes("Ask the owner"));
+  });
+  it("an error the service already parsed is used as it is", () => {
+    assert.equal(errorWords({ token: "not_found", message: "anything" }), errorCopy("not_found", ""));
+    assert.equal(errorWords({ token: "stage_is_live", message: MOVE_BLOCK_COPY.stage_is_live }), MOVE_BLOCK_COPY.stage_is_live);
+  });
+});
+
+describe("#3802 P-11: moves the screen stops before asking the server", () => {
+  it("dropping on Live explains that Live sets itself", () => {
+    const b = moveBlocker(HOSTS, rec({ stage: "onboarded" }), "live");
+    assert.equal(b.token, "stage_sets_itself");
+    assert.equal(b.message, "Live sets itself when the linked brand has a public listing. Move the card to Onboarded and link the brand instead.");
+  });
+  it("a Live host moves only to Lost", () => {
+    for (const to of ["prospect", "contacted", "replied", "meeting", "onboarded"]) {
+      assert.equal(moveBlocker(HOSTS, rec({ stage: "live" }), to).token, "stage_is_live", to);
+    }
+    assert.equal(moveBlocker(HOSTS, rec({ stage: "live" }), "lost"), null);
+  });
+  it("a creator needs a signed agreement for Booked and for Posted, from any stage", () => {
+    for (const from of ["identified", "contacted", "replied", "negotiating", "passed"]) {
+      for (const agreement of [null, "none", "sent"]) {
+        assert.equal(moveBlocker(CREATORS, rec({ pipeline: "creators", stage: from, agreement }), "booked").token, "agreement_required");
+        assert.equal(moveBlocker(CREATORS, rec({ pipeline: "creators", stage: from, agreement }), "posted").token, "agreement_required");
+      }
+      assert.equal(moveBlocker(CREATORS, rec({ pipeline: "creators", stage: from, agreement: "signed" }), "booked"), null);
+    }
+    assert.equal(moveBlocker(CREATORS, rec({ pipeline: "creators", stage: "negotiating", agreement: null }), "passed"), null);
+    assert.ok(moveBlocker(CREATORS, rec({ pipeline: "creators", stage: "negotiating" }), "posted").message.includes("Posted"));
+  });
+  it("the agreement rule is a creators rule only", () => {
+    assert.equal(stageNeedsSignedAgreement(CREATORS, "booked"), true);
+    assert.equal(stageNeedsSignedAgreement(CREATORS, "posted"), true);
+    assert.equal(stageNeedsSignedAgreement(CREATORS, "passed"), false);
+    assert.equal(stageNeedsSignedAgreement(CREATORS, "negotiating"), false);
+    assert.equal(stageNeedsSignedAgreement(HOSTS, "onboarded"), false);
+  });
+  it("an ordinary move is not stopped; the same stage is a no-op", () => {
+    assert.equal(moveBlocker(HOSTS, rec({ stage: "prospect" }), "meeting"), null);
+    assert.equal(moveBlocker(HOSTS, rec({ stage: "meeting" }), "prospect"), null);
+    assert.equal(moveBlocker(HOSTS, rec({ stage: "prospect" }), "prospect").token, "same");
+    assert.equal(moveBlocker(HOSTS, rec({ stage: "prospect" }), "nope").token, "same");
+  });
+});
+
+describe("#3802 P-12: duplicates, counts, owners, order", () => {
+  it("an exact duplicate is found whatever the spelling", () => {
+    for (const typed of ["palm court kitchen", "@PalmCourtKitchen", "Palm-Court  Kitchen."]) {
+      assert.equal(findDuplicates(RECORDS, typed).exact?.id, "1", typed);
+    }
+  });
+  it("a shorter or longer name finds the similar one; two letters find nothing", () => {
+    assert.deepEqual(findDuplicates(RECORDS, "Palm Court").similar.map((r) => r.id), ["1"]);
     assert.deepEqual(findDuplicates(RECORDS, "Palm Court Kitchen Lagos").similar.map((r) => r.id), ["1"]);
     assert.equal(findDuplicates(RECORDS, "Palm Court").exact, null);
     assert.deepEqual(findDuplicates(RECORDS, "pa"), { exact: null, similar: [] });

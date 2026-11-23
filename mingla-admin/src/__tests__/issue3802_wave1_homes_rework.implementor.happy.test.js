@@ -73,8 +73,11 @@ describe("#3802 W-1 (D-1): one stacking order, in one place", () => {
     assert.match(code, /<PipelineOverlays\s+card=\{/);
     assert.match(code, /dialog=\{\s*reasonFor \? \(\s*<ReasonPrompt/);
     const overlays = code.slice(code.indexOf("<PipelineOverlays"));
-    for (const tag of ["<Drawer ", "<RecordPanel", "<ReasonPrompt"]) {
-      assert.equal(code.split(tag).length - 1, 1, `${tag} is drawn once`);
+    // #4571 W3: the card is RecordPanel, lazy-loaded; while it loads the card
+    // layer shows a Drawer that says Loading, so a Drawer is drawn twice (the
+    // new-card form and that frame), both inside the layers.
+    for (const [tag, times] of [["<Drawer ", 2], ["<RecordPanel", 1], ["<ReasonPrompt", 1]]) {
+      assert.equal(code.split(tag).length - 1, times, `${tag} is drawn ${times === 1 ? "once" : `${times} times`}`);
       assert.ok(overlays.includes(tag), `${tag} is drawn outside the layers`);
     }
     assert.ok(!/createPortal|zIndex|z-\[|z-\d/.test(code), "the page sets a stacking number or a portal of its own");

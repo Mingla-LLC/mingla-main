@@ -330,7 +330,9 @@ describe("#3802 A-5: addresses under seeded random hostile input", () => {
       assert.doesNotThrow(() => {
         state = parseCrmSearch(search);
       }, search);
-      assert.equal(Object.hasOwn(state, "view"), false, "#4255: the board is the only view");
+      // #4571 W3: the one other view is My calls today; anything else is the board.
+      assert.ok(state.view === "" || state.view === "calls", `view kept junk: ${search}`);
+      assert.equal(state.view === "calls", /(?:^|[?&])view=calls(?:&|$)/.test(search) && new URLSearchParams(search).get("view") === "calls", search);
       assert.equal(typeof state.mine, "boolean");
       assert.ok(state.q.length <= 80, search);
       assert.match(state.icp, /^$|^[a-z][a-z0-9_]{0,39}$/, search);
