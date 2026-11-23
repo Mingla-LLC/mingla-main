@@ -1,6 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-10 | issue #4522 | A non-refundable deposit frozen in v2 terms is kept only on a traveler's own cancel; an operator or host cancel refunds it, and collected flexible payments refund and pay out like planned ones.
 -- MINGLA-INVARIANT: I-4522-HOST-NEVER-PAID-REFUNDS | issue #4522 | A host is never paid money that went back to a traveler: no payout sends more than its sales are worth after their refunds, and a refund after payout becomes the host's payout debt.
 -- MINGLA-INVARIANT: I-4522-CANCEL-COMPLETABLE | issue #4522 | One trip cancel is one refund operation: until every refund it intends is made and recorded it stays in progress, a host retry and the instalment run resume it, no refund is sent twice, and the booking's sales stay held from payouts.
+-- MINGLA-INVARIANT: I-4522-TRIP-CALENDAR-DAYS | issue #4522 | Trip refund tiers count calendar days from the cancel date in the trip's zone to the stored departure date, and a trip stops taking bookings when its departure day begins in its zone.
 \set ON_ERROR_STOP on
 
 -- Issue #4522 slice 8 (M4, 20281129064522): refunds and payouts for v2
@@ -1172,6 +1173,68 @@ BEGIN
   END IF;
 END $$;
 
+-- K. G-6: refund tiers count CALENDAR days in the trip's zone. Trips as the
+--    builder stores them (each date at UTC midnight, #4420): departure
+--    20 Mar 2027 in New York (DST starts 14 Mar), Lagos and Tokyo; 100% from
+--    7 days before, 50% from 3. Each row: the cancel moment as a local wall
+--    clock, the days and percent expected. FAILS ON REVERT: whole 24-hour
+--    blocks to the stored instant (New York 13 Mar 23:59 gave 5 days / 50%,
+--    the eve of departure gave -1 / 0%).
+CREATE FUNCTION pg_temp.k_trip(p_event uuid, p_tz text) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone,
+    currency, refund_policy)
+  VALUES (p_event, '45220008-0000-4000-8000-000000000011', '45220008-0000-4000-8000-000000000001',
+    'Zone trip ' || p_tz, 'zone-trip-' || lower(replace(p_tz, '/', '-')), 'trip', 'scheduled', 'public', p_tz, 'USD',
+    '{"kind":"custom","tiers":[{"days_before_start":7,"refund_pct":100},{"days_before_start":3,"refund_pct":50}]}');
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+  VALUES (p_event, '2027-03-20 00:00:00+00', '2027-03-24 23:59:59+00', p_tz, true);
+  INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, buyer_total_cents,
+    list_subtotal_cents, net_subtotal_cents, buyer_fees_cents, tax_cents, pricing_source,
+    currency, payment_method, payment_status, source, installment_plan_root, stripe_payment_intent_id)
+  VALUES (p_event, p_event, 'zone@example.test', 'Zone Buyer', '+12025550113', 10000, 10000,
+    10000, 10000, 0, 0, 'provider_reconciled',
+    'USD', 'online_card', 'paid', 'online_checkout', false, 'pi_zone_' || p_event::text);
+END $$;
+DO $$
+DECLARE r record; v jsonb;
+BEGIN
+  PERFORM pg_temp.k_trip('45220008-0000-4000-8000-00000000a0a1', 'America/New_York');
+  PERFORM pg_temp.k_trip('45220008-0000-4000-8000-00000000a0a2', 'Africa/Lagos');
+  PERFORM pg_temp.k_trip('45220008-0000-4000-8000-00000000a0a3', 'Asia/Tokyo');
+  FOR r IN SELECT * FROM (VALUES
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-13 23:59', 7, 100),
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-14 00:00', 6, 50),
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-14 03:30', 6, 50),
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-17 00:00', 3, 50),
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-17 23:59', 3, 50),
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-18 00:00', 2, 0),
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-19 23:45', 1, 0),
+    ('45220008-0000-4000-8000-00000000a0a1'::uuid, 'America/New_York', '2027-03-20 10:00', 0, 0),
+    ('45220008-0000-4000-8000-00000000a0a2'::uuid, 'Africa/Lagos', '2027-03-13 23:59', 7, 100),
+    ('45220008-0000-4000-8000-00000000a0a2'::uuid, 'Africa/Lagos', '2027-03-14 00:00', 6, 50),
+    ('45220008-0000-4000-8000-00000000a0a2'::uuid, 'Africa/Lagos', '2027-03-17 00:00', 3, 50),
+    ('45220008-0000-4000-8000-00000000a0a2'::uuid, 'Africa/Lagos', '2027-03-17 23:59', 3, 50),
+    ('45220008-0000-4000-8000-00000000a0a2'::uuid, 'Africa/Lagos', '2027-03-18 00:00', 2, 0),
+    ('45220008-0000-4000-8000-00000000a0a3'::uuid, 'Asia/Tokyo', '2027-03-13 23:59', 7, 100),
+    ('45220008-0000-4000-8000-00000000a0a3'::uuid, 'Asia/Tokyo', '2027-03-14 00:00', 6, 50),
+    ('45220008-0000-4000-8000-00000000a0a3'::uuid, 'Asia/Tokyo', '2027-03-17 23:59', 3, 50),
+    ('45220008-0000-4000-8000-00000000a0a3'::uuid, 'Asia/Tokyo', '2027-03-18 00:00', 2, 0)
+  ) k(event_id, tz, wall, days, pct) LOOP
+    v := public.issue_4522_compute_refund_for_cancel_as(r.event_id, (r.wall::timestamp AT TIME ZONE r.tz), 'buyer');
+    IF (v->>'days_remaining')::int <> r.days OR (v->>'tier_pct')::int <> r.pct
+       OR (v->>'refund_total_cents')::bigint <> 10000 * r.pct / 100 THEN
+      RAISE EXCEPTION 'K-0 % at % local: expected % days at % pct, got % at %', r.tz, r.wall, r.days, r.pct,
+        v->>'days_remaining', v->>'tier_pct';
+    END IF;
+  END LOOP;
+  -- the refund begin writes is the preview's (same moment, same rule)
+  v := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-00000000a0a1', 'buyer', NULL, NULL,
+    '2027-03-13 23:59'::timestamp AT TIME ZONE 'America/New_York');
+  IF (v->>'refund_total_cents')::bigint <> 10000 OR (v->>'tier_pct')::int <> 100 THEN
+    RAISE EXCEPTION 'K-1 the refund equals the preview at the boundary: %', v;
+  END IF;
+END $$;
 
 
 ROLLBACK;

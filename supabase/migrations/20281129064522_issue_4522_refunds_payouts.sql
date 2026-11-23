@@ -15,7 +15,8 @@
 --   biz_compute_refund_for_cancel (20280204003645) — a traveler's cancel keeps
 --     the deposit's trip part when the v2 terms froze deposit_non_refundable;
 --     every percentage calculation widens before multiplying, so large legacy
---     and v2 refunds cannot overflow the orders integer column.
+--     and v2 refunds cannot overflow the orders integer column; days before
+--     departure are calendar days in the trip's zone (G-6).
 --   biz_cancel_trip_booking_begin (20280204003645) — marks the actor so an
 --     operator cancel refunds that deposit (D-9); writes the refunds the
 --     cancel intends on its refunds row and resumes an unfinished cancel
@@ -158,8 +159,13 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'no_trip_start_date');
   END IF;
 
-  -- Days remaining (floor to whole days; negative when after trip start).
-  v_days_remaining := FLOOR(EXTRACT(EPOCH FROM (v_event_start - p_cancel_at)) / 86400)::int;
+  -- issue #4522 G-6 — days before departure are CALENDAR days: a trip date
+  -- is its stored calendar date (UTC Y-M-D, #4420, the rule of
+  -- issue_4522_plan_v2_schedule); the cancel moment is read as a date in the
+  -- trip's zone. Before this, whole 24-hour blocks to the stored UTC-midnight
+  -- instant lost a New York tier about 28 hours early (negative after start).
+  v_days_remaining := (v_event_start AT TIME ZONE 'UTC')::date
+    - (p_cancel_at AT TIME ZONE COALESCE(NULLIF(v_event.timezone, ''), 'UTC'))::date;
 
   -- Resolve refund policy. Trip-level overrides absent → tier_pct = 0 (no refund).
   v_policy := COALESCE(v_event.refund_policy, '{}'::jsonb);
