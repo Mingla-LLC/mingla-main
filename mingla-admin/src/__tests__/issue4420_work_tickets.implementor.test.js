@@ -253,7 +253,7 @@ describe("T-3 the ticket form: the creator chooses the owner", () => {
     assert.doesNotMatch(src, /read-only|readOnly|owner is fixed|assigned to Seth|Seth owns|always owned|automatically assigned|Owner is locked/i);
     const form = code("components/ops/TicketForm.jsx");
     // [TEST-MOD #4420] rework 3 (G8): the field also asks for a fitted pick list.
-    assert.match(form, /<PeopleField id="new-ticket-owner" label="Owner" single fitMenu value=\{owners\}/);
+    assert.match(form, /<PeopleField id="new-ticket-owner" label="Owners" max=\{10\} fitMenu value=\{owners\}/);  // #4571: a list
     assert.doesNotMatch(form, /<PeopleField[^>]*(disabled|readOnly)/, "the owner field is a live picker");
     assert.match(form, /const \[owners, setOwners\] = useState\(me \? \[me\] : \[\]\)/, "the creator is the usual suggestion, like the card form");
   });
@@ -367,8 +367,8 @@ describe("T-6 ordinary cards behave as before", () => {
     assert.match(src, /ops\.addWork\(\[item\], keyRef\.current\.key\)/);
     assert.match(src, /const out = \{ title, instructions, done_means: doneMeans, owners, watchers, links: links\.map/);
     for (const label of ["Title", "Instructions", "Done means", "Linked records", "GitHub", "Files link", "Due date"]) assert.ok(src.includes(`>${label}<`), label);
-    assert.match(src, /label="Owner"/);
-    assert.match(src, /label="Watcher"/);
+    assert.match(src, /label="Owners"/);  // #4571
+    assert.match(src, /label="Watching"/);
     assert.match(src, /<RecordPicker onClose=\{\(\) => setLinking\(false\)\}/, "its picker takes the default kinds");
   });
   it("the add form's linked-record kinds are the original six; only a card's detail also offers Support conversation", () => {
@@ -541,20 +541,20 @@ describe("T-3b the ticket form's default request meets the server's watcher rule
   const peopleFile = newest("ops_people_check");
   const people = fnBody(peopleFile, "ops_people_check");
   const ticket = fnBody(newest("ops_ticket_create"), "ops_ticket_create");
-  const ruleWords = /'watchers', 'message', '(A card has one watcher[^']*)'/.exec(people)?.[1];
+  const ruleWords = /'watchers', 'message', '(A card needs at least one watcher[^']*)'/.exec(people)?.[1];
   const allowedKeys = /k NOT IN \(([^)]*)\)/.exec(ticket)?.[1].match(/'([a-z_]+)'/g).map((k) => k.slice(1, -1));
   const ME = "seth@x.test";
   const filled = { type: "bug", title: "Payout shows twice", whatIsWrong: "A host sees the same payout twice in the list.", productArea: "Host app · Payouts", due: "2026-11-28" };
-  // The rule as read from ops_people_check: exactly one watcher, never the owner.
+  // The rule as read from ops_people_check (#4571): one or more watchers, never an owner.
   const meetsServerRule = (p) => {
     const w = (p.watchers || []).filter((x) => !(p.owners || []).includes(x));
-    return w.length === 1;
+    return w.length >= 1 && w.length <= 10;
   };
 
-  it("reads the rule from the newest ops_people_check: one watcher, who is not the owner", () => {
+  it("reads the rule from the newest ops_people_check: at least one watcher, none an owner (#4571)", () => {
     assert.ok(peopleFile, "ops_people_check is defined in a migration");
-    assert.match(people, /cardinality\(v_watchers\) <> 1/, "exactly one watcher");
-    assert.match(people, /NOT v_email = ANY \(v_owners\) AND NOT v_email = ANY \(v_watchers\)/, "an owner is never counted as the watcher");
+    assert.match(people, /cardinality\(v_watchers\) = 0/, "at least one watcher");
+    assert.match(people, /ELSIF v_email = ANY \(v_owners\) THEN/, "an owner named as a watcher is refused, never counted");
     assert.equal(ruleWords, WATCHER_RULE_WORDS, "the form says what the server says");
   });
   it("ops_ticket_create takes the watcher from the request and checks it with the card validator", () => {
@@ -593,8 +593,8 @@ describe("T-3b the ticket form's default request meets the server's watcher rule
   });
   it("the form draws the card form's Watcher field and routes owner changes through the rule", () => {
     const src = code("components/ops/TicketForm.jsx");
-    assert.match(src, /label="Watcher" single fitMenu min=\{0\} hint="One watcher, who is not the owner\. They confirm the card is done\."/);
-    assert.match(code("components/ops/WorkAddForm.jsx"), /hint="One watcher, who is not the owner\. They confirm the card is done\."/, "same words as the card form");
+    assert.match(src, /label="Watching" max=\{10\} fitMenu min=\{0\} hint=\{WATCHERS_HINT\}/);  // #4571: a list
+    assert.match(code("components/ops/WorkAddForm.jsx"), /hint=\{WATCHERS_HINT\}/, "same words as the card form");
     assert.match(src, /onChange=\{changeOwners\}/);
     assert.match(src, /words=\{wordsFor\("watchers"\)\}/);
     assert.doesNotMatch(src, /You watch it unless you own it/);
@@ -680,8 +680,8 @@ describe("T-11 the Title box is named like the other fields", () => {
 describe("T-12 the ticket form's people lists stay inside the field", () => {
   it("both ticket people fields ask for a fitted list, and the list then takes the field's width", () => {
     const form = read("components/ops/TicketForm.jsx");
-    assert.match(form, /<PeopleField id="new-ticket-owner" label="Owner" single fitMenu /);
-    assert.match(form, /<PeopleField id="new-ticket-watcher" label="Watcher" single fitMenu /);
+    assert.match(form, /<PeopleField id="new-ticket-owner" label="Owners" max=\{10\} fitMenu /);  // #4571: lists
+    assert.match(form, /<PeopleField id="new-ticket-watcher" label="Watching" max=\{10\} fitMenu /);
     const field = read("components/people/PeopleField.jsx");
     // [TEST-MOD #4420] the width is chosen in menuWidth, so the 300px scroll
     // classes stay together for #3980 W3 R9; the listbox still uses it.

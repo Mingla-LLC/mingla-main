@@ -12,6 +12,7 @@ import { SideLink } from "../ui/PanelStack";
 import { Avatars } from "../ops/OpsChip";
 import { FixesList } from "../ops/FixesList";
 import { PeopleField } from "../people/PeopleField";
+import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords } from "../../lib/peopleField";
 import { useToast } from "../../context/ToastContext";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import * as ops from "../../services/opsService";
@@ -33,8 +34,8 @@ const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--col
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
 
 function emptyForm(owners) {
-  // #4398: one owner to start with (the host card's first owner); the watcher is picked.
-  return { title: "", owners: (owners || []).slice(0, 1), watchers: [], due: "", filesUrl: "", hostSees: false };
+  // #4571: every owner of the host card to start with (up to 10); the watchers are picked.
+  return { title: "", owners: (owners || []).slice(0, 10), watchers: [], due: "", filesUrl: "", hostSees: false };
 }
 
 /** One open card: title, due chip, owners, tag, Host sees. Opens the card beside. */
@@ -90,7 +91,7 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
   const data = read?.data;
   const cards = sortColumn((Array.isArray(data?.todo) ? data.todo : []).filter((c) => c && c.status !== "done"), "todo");
   const doneCount = Number(data?.done_count) || 0;
-  const problems = quickAddProblems(form, today);
+  const problems = quickAddProblems(form, today, (email) => (team || []).find((p) => p.email === email)?.name || email);
   const problemFor = (field) => (tried ? problems.find((p) => p.field === field)?.message || "" : "");
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const fid = (key) => `host-todo-${id}-${key}`;
@@ -168,12 +169,12 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
           </label>
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-1">
-              {/* #4398: one owner and one watcher, who is not the owner. */}
-              <PeopleField id={fid("owners")} label="Owner" single value={form.owners} team={team} me={me} suggested={defaultOwners} exclude={form.watchers} onChange={(owners) => set({ owners })} />
+              {/* #4571: 1 to 10 owners and 1 to 10 watchers, nobody in both. */}
+              <PeopleField id={fid("owners")} label="Owners" max={10} min={1} minWords={lastOwnerWords} hint={OWNERS_HINT} value={form.owners} team={team} me={me} suggested={defaultOwners} exclude={form.watchers} onChange={(owners) => set({ owners })} />
               {problemFor("owners") && <span role="alert" className="text-[12px] text-[var(--color-error-700)]">{problemFor("owners")}</span>}
             </div>
             <div className="flex min-w-0 flex-col gap-1">
-              <PeopleField id={fid("watchers")} label="Watcher" single value={form.watchers} team={team} me={me} suggested={[me].filter(Boolean)} exclude={form.owners} onChange={(watchers) => set({ watchers })} />
+              <PeopleField id={fid("watchers")} label="Watching" max={10} hint={WATCHERS_HINT} minWords={lastWatcherWords} value={form.watchers} team={team} me={me} suggested={[me].filter(Boolean)} exclude={form.owners} onChange={(watchers) => set({ watchers })} />
               {problemFor("watchers") && <span role="alert" className="text-[12px] text-[var(--color-error-700)]">{problemFor("watchers")}</span>}
             </div>
           </div>

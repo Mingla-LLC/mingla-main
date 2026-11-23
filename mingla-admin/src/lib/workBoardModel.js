@@ -18,7 +18,6 @@ export const GROUPS = Object.freeze(["todo", "doing", "done"]);
 /** Colours offered for a new or recoloured column (stored as data on the column). */
 export const COLUMN_COLORS = Object.freeze(["#8a847b", "#2f6fd6", "#f97316", "#7a4fd1", "#c2367a", "#c27a12", "#1f8a5b", "#c42b1c"]);
 
-export const GOAL_LIMIT = 5;
 export const MAX_DEPTH = 2;
 export const FILE_MAX_BYTES = 26214400;
 export const FILES_PER_CARD = 50;
@@ -152,13 +151,22 @@ export function goalStateLabel(state) {
 }
 
 /** A sprint takes up to five live goals. */
-export function canAddGoal(goals) {
-  return (Array.isArray(goals) ? goals.filter((g) => g && !g.archived) : []).length < GOAL_LIMIT;
+/** #4571: a sprint takes any number of goals. */
+export function canAddGoal() {
+  return true;
+}
+
+export const GOAL_NOTE_MAX = 500;
+/** #4571: SprintBar shows the first three goals, then "+N more". */
+export const GOAL_PILLS = 3;
+export function goalFold(goals, shown = GOAL_PILLS) {
+  const live = (Array.isArray(goals) ? goals : []).filter((g) => g && !g.archived);
+  return { shown: live.slice(0, shown), more: live.slice(shown) };
 }
 
 export function goalTitleProblem(title) {
   const v = String(title || "").replace(/\s+/g, " ").trim();
-  return v.length < 3 || v.length > 80 ? "Say the goal in 3 to 80 characters." : "";
+  return v.length < 3 || v.length > 120 ? "Say the goal in 3 to 120 characters." : "";
 }
 
 /** "6 h", "1.5 h", "45 min"; nothing for no estimate. */

@@ -138,10 +138,12 @@ describe("C-3 To do and Add work item (D4)", () => {
     const fields = (form) => quickAddProblems(form, today).map((p) => p.field);
     // #4398: one owner and one watcher, who is not the owner.
     assert.deepEqual(fields({ title: "ok", owners: [], due: "", filesUrl: "http://x.test" }), ["title", "owners", "watchers", "due_on", "files_url"]);
-    assert.equal(quickAddProblems({ title: "Chase it", owners: [], watchers: ["w@x.test"], due: today }, today)[0].message, "A card has one owner. Pick one person.");
+    assert.equal(quickAddProblems({ title: "Chase it", owners: [], watchers: ["w@x.test"], due: today }, today)[0].message, "A card needs at least one owner.");  // #4571 words
     assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], watchers: ["w@x.test"], due: "2026-11-03" }), ["due_on"]);
     assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], watchers: ["w@x.test"], due: today, filesUrl: "https://drive.google.com/x" }), []);
-    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test", "b@x.test"], watchers: ["w@x.test"], due: today }), ["owners"]);
+    // #4571: two owners are fine now; eleven are not.
+    assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test", "b@x.test"], watchers: ["w@x.test"], due: today }), []);
+    assert.deepEqual(fields({ title: "Chase it", owners: Array.from({ length: 11 }, (_, i) => `p${i}@x.test`), watchers: ["w@x.test"], due: today }), ["owners"]);
     assert.deepEqual(fields({ title: "Chase it", owners: ["a@x.test"], watchers: ["a@x.test"], due: today }), ["watchers"]);
   });
   it("the item is a quick add linked to this host; Host can see this is off unless ticked", () => {

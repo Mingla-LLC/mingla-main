@@ -30,6 +30,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dn
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarDays, GripVertical, MessageSquare, MoreHorizontal, Paperclip, Plus } from "lucide-react";
 import { Avatars } from "./OpsChip";
+import { peopleLine } from "../../lib/workReview";
 import { MenuItem, Popover } from "./Popover";
 import { cardReasons, isTagged, personReasonLabel, sortColumn } from "../../lib/opsModel";
 import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
@@ -103,7 +104,10 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
       )}
       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-[var(--color-text-tertiary)]">
         {(card.owners || []).length
-          ? <Avatars people={card.owners} />
+          ? <span className="inline-flex shrink-0 items-center">{/* #4571: two faces, then +N */}
+              <Avatars people={card.owners.slice(0, 2)} />
+              {card.owners.length > 2 && <span data-owners-more="" aria-label={`and ${card.owners.length - 2} more`} className="-ml-1.5 inline-grid h-6 min-w-6 place-items-center rounded-full bg-[var(--gray-100)] px-1 text-[10px] font-semibold text-[var(--color-text-secondary)] ring-2 ring-[var(--color-background-primary)]">+{card.owners.length - 2}</span>}
+            </span>
           : <span aria-label={reasons.length ? "No owner" : "Nobody yet"} className="inline-grid h-6 w-6 place-items-center rounded-full border border-dashed border-[var(--color-error-500)] text-[10px] text-[var(--color-error-700)]">?</span>}
         {sub.total > 0 && <span className="inline-flex items-center gap-1 tabular-nums" aria-label={`${sub.done} of ${sub.total} subtasks done`}><Ring done={sub.done} total={sub.total} />{sub.done}/{sub.total}</span>}
         {Number(card.thread_count) > 0 && <span className="inline-flex items-center gap-0.5 tabular-nums" aria-label={`${card.thread_count} messages`}><MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />{card.thread_count}</span>}
@@ -112,7 +116,7 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
         {card.working && card.status !== "done" && <span className="font-semibold text-[var(--color-brand-700)]"><span aria-hidden="true">● </span>{card.working.name || "An agent"} on it</span>}
       </span>
       {(card.owners?.[0] || card.watchers?.[0]) && (
-        <span className={`text-[11.5px] text-[var(--color-text-secondary)] ${WORDS}`}>{card.owners?.[0]?.name || "Nobody"} owns · {card.watchers?.[0]?.name || "nobody"} watches</span>
+        <span data-people-words="" className={`text-[11.5px] text-[var(--color-text-secondary)] ${WORDS}`}>{peopleLine(card)}</span>
       )}
       <ReviewLine card={card} />
       {showPill && onMove && (

@@ -777,15 +777,19 @@ export const BRAND_ROLE_WORDS = Object.freeze({
  * #4270 W2 (D4): what is wrong with a host card's "Add work item" before it
  * is sent, field by field, in the form's words. The server checks it again.
  */
-export function quickAddProblems({ title = "", owners = [], watchers = [], due = "", filesUrl = "" } = {}, today = todayIso()) {
+export function quickAddProblems({ title = "", owners = [], watchers = [], due = "", filesUrl = "" } = {}, today = todayIso(), nameOf = (email) => email) {
   const out = [];
   const t = String(title || "").trim();
   if (t.length < 3 || t.length > 160) out.push({ field: "title", message: "Say what the work is in 3 to 160 characters." });
-  // #4398: one owner and one watcher, who is not the owner (the server refuses anything else).
-  if (!Array.isArray(owners) || owners.length !== 1) out.push({ field: "owners", message: "A card has one owner. Pick one person." });
-  if (!Array.isArray(watchers) || watchers.length !== 1 || (Array.isArray(owners) && watchers[0] === owners[0])) {
-    out.push({ field: "watchers", message: "A card has one watcher, who is not the owner." });
-  }
+  // #4571: 1 to 10 owners and 1 to 10 watchers, nobody in both, in the server's words (ops_people_check).
+  const o = Array.isArray(owners) ? owners : [];
+  const w = Array.isArray(watchers) ? watchers : [];
+  if (!o.length) out.push({ field: "owners", message: "A card needs at least one owner." });
+  else if (o.length > 10) out.push({ field: "owners", message: "A card has at most 10 owners." });
+  const both = w.filter((e) => o.includes(e));
+  if (both.length) both.forEach((e) => out.push({ field: "watchers", message: `${nameOf(e)} owns this card, so they cannot also watch it.` }));
+  else if (!w.length) out.push({ field: "watchers", message: "A card needs at least one watcher, who is not an owner." });
+  else if (w.length > 10) out.push({ field: "watchers", message: "A card has at most 10 watchers." });
   if (!DATE_RE.test(String(due || ""))) out.push({ field: "due_on", message: "Pick a due date." });
   else if (String(due) < today) out.push({ field: "due_on", message: "The due date can’t be in the past." });
   const files = filesUrlProblem(filesUrl);

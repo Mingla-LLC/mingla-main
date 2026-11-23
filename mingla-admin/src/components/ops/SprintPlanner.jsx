@@ -20,7 +20,7 @@ import { useToast } from "../../context/ToastContext";
 import { useSprintPlan } from "../../hooks/useWorkBoard";
 import * as ops from "../../services/opsService";
 import { dayLabel, opsErrorWords, sprintLabel } from "../../lib/opsModel";
-import { GOAL_LIMIT, GOAL_STATES, canAddGoal, capacityUse, goalTitleProblem, hoursLabel, parseEstimate, sprintProgress } from "../../lib/workBoardModel";
+import { GOAL_NOTE_MAX, GOAL_STATES, capacityUse, goalTitleProblem, hoursLabel, parseEstimate, sprintProgress } from "../../lib/workBoardModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-9 rounded-md border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
@@ -41,6 +41,7 @@ export function SprintPlanner({ sprintId = null, team = [], online = true, onClo
   const [busy, setBusy] = useState("");
   const [goalTitle, setGoalTitle] = useState("");
   const [goalOwner, setGoalOwner] = useState("");
+  const [goalNote, setGoalNote] = useState("");  // #4571
   const [goalError, setGoalError] = useState("");
   const plan = read.data;
   const people = team.filter((p) => !p.invited);
@@ -138,14 +139,27 @@ export function SprintPlanner({ sprintId = null, team = [], online = true, onClo
           </Section>
         )}
 
-        <Section title={`Goals · ${goals.length} of ${GOAL_LIMIT}`}>
-          {goals.length === 0 && <p className="text-[13px] text-[var(--color-text-tertiary)]">No goals yet. Add up to five.</p>}
+        {/* #4571: no goal cap; a met tick (the goal's manual Done state) and a note. */}
+        <Section title={`Goals · ${goals.length}`}>
+          {goals.length === 0 && <p className="text-[13px] text-[var(--color-text-tertiary)]">No goals yet. Add as many as the week needs.</p>}
+          {goals.length > 0 && <p data-goal-count="" className="text-[12px] text-[var(--color-text-tertiary)]">{goals.length} {goals.length === 1 ? "goal" : "goals"} · {goals.filter((x) => x.state === "done" && x.set_by_hand).length} met · no limit</p>}
           <ul className="flex min-w-0 flex-col gap-1.5">
             {goals.map((g) => (
               <li key={g.id} data-goal-row={g.id} className="flex min-w-0 flex-wrap items-center gap-2">
+                {(() => {
+                  const met = g.state === "done" && !!g.set_by_hand;
+                  return (
+                    <button type="button" data-goal-met={g.id} aria-pressed={met ? "true" : "false"} disabled={!canPlan || busy === `goal:${g.id}`}
+                      aria-label={`${met ? "Mark not met" : "Mark met"}: ${g.title}`}
+                      onClick={() => act(`goal:${g.id}`, () => ops.updateSprintGoal(g.id, { state: met ? null : "done" }, g.revision), met ? "Goal back to its numbers" : "Goal met")}
+                      className={`inline-grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-[13px] font-bold disabled:opacity-50 ${met ? "border-[var(--color-success-600)] bg-[var(--color-success-600)] text-white" : "border-[var(--gray-300)] text-transparent hover:bg-[var(--gray-50)]"}`}>
+                      <span aria-hidden="true">✓</span>
+                    </button>
+                  );
+                })()}
                 <label className="min-w-0 flex-1 basis-[14rem]">
                   <span className="sr-only">Goal title</span>
-                  <input key={g.title} defaultValue={g.title} maxLength={80} disabled={!canPlan}
+                  <input key={g.title} defaultValue={g.title} maxLength={120} disabled={!canPlan}
                     onBlur={(e) => { const v = e.target.value.replace(/\s+/g, " ").trim(); if (v === g.title) return; const p = goalTitleProblem(v); if (p) { addToast({ variant: "error", title: p }); e.target.value = g.title; return; } act(`goal:${g.id}`, () => ops.updateSprintGoal(g.id, { title: v }, g.revision), "Goal saved"); }}
                     className={`${INPUT} w-full`} />
                 </label>
@@ -163,20 +177,25 @@ export function SprintPlanner({ sprintId = null, team = [], online = true, onClo
                 </label>
                 <span className="text-[12px] tabular-nums text-[var(--color-text-tertiary)]">{Number(g.done) || 0}/{Number(g.cards) || 0} cards</span>
                 <Button variant="ghost" size="sm" disabled={!canPlan || !!busy} onClick={() => act(`goal:${g.id}`, () => ops.archiveSprintGoal(g.id, g.revision), "Goal archived. Its cards keep their place.")}>Archive</Button>
+                <label className="w-full min-w-0"><span className="sr-only">Note on {g.title}</span>
+                  <input key={`note:${g.note || ""}`} defaultValue={g.note || ""} maxLength={GOAL_NOTE_MAX} disabled={!canPlan} placeholder="Add a note (optional)"
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v === (g.note || "")) return; act(`goal:${g.id}`, () => ops.updateSprintGoal(g.id, { note: v || null }, g.revision), v ? "Note saved" : "Note cleared"); }}
+                    className={`${INPUT} w-full`} />
+                </label>
               </li>
             ))}
           </ul>
-          {canAddGoal(goals) ? (
+          {(
             <form className="flex min-w-0 flex-wrap items-center gap-2" onSubmit={async (e) => {
               e.preventDefault();
               const v = goalTitle.replace(/\s+/g, " ").trim();
               const p = goalTitleProblem(v);
               if (p) { setGoalError(p); return; }
-              const ok = await act("goal-add", () => ops.addSprintGoal(sprint.id, v, goalOwner || null), "Goal added");
-              if (ok) { setGoalTitle(""); setGoalOwner(""); }
+              const ok = await act("goal-add", () => ops.addSprintGoal(sprint.id, v, goalOwner || null, goalNote.trim() || null), "Goal added");
+              if (ok) { setGoalTitle(""); setGoalOwner(""); setGoalNote(""); }
             }}>
               <label className="min-w-0 flex-1 basis-[14rem]"><span className="sr-only">New goal</span>
-                <input value={goalTitle} maxLength={80} disabled={!canPlan} placeholder="A goal for this sprint" onChange={(e) => { setGoalTitle(e.target.value); setGoalError(""); }} className={`${INPUT} w-full`} />
+                <input value={goalTitle} maxLength={120} disabled={!canPlan} placeholder="A goal for this sprint" onChange={(e) => { setGoalTitle(e.target.value); setGoalError(""); }} className={`${INPUT} w-full`} />
               </label>
               <label><span className="sr-only">New goal owner</span>
                 <select value={goalOwner} disabled={!canPlan} onChange={(e) => setGoalOwner(e.target.value)} className={INPUT}>
@@ -185,9 +204,12 @@ export function SprintPlanner({ sprintId = null, team = [], online = true, onClo
                 </select>
               </label>
               <Button type="submit" variant="secondary" size="sm" disabled={!canPlan || busy === "goal-add"}>Add goal</Button>
+              <label className="w-full min-w-0"><span className="sr-only">Note on the new goal</span>
+                <input value={goalNote} maxLength={GOAL_NOTE_MAX} disabled={!canPlan} placeholder="Add a note (optional)" onChange={(e) => setGoalNote(e.target.value)} className={`${INPUT} w-full`} />
+              </label>
               {goalError && <span role="alert" className="w-full text-[12px] text-[var(--color-error-700)]">{goalError}</span>}
             </form>
-          ) : <p data-goal-limit="" className="text-[12.5px] text-[var(--color-text-tertiary)]">A sprint has at most five goals. Archive one to add another.</p>}
+          )}
         </Section>
 
         <Section title="Capacity">

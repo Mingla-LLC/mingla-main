@@ -59,10 +59,10 @@ import {
 } from "../../lib/opsModel";
 import { GROUP_LABELS, hoursLabel, liveColumns, parseEstimate, writeShowChanges } from "../../lib/workBoardModel";
 import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
-import { closeFormWords, reviewRole, SEND_BACK_MAX, SEND_BACK_MIN } from "../../lib/workReview";
+import { andWords, closeFormWords, reviewRole, SEND_BACK_MAX, SEND_BACK_MIN } from "../../lib/workReview";
 import { OpsChip } from "./OpsChip";
 import { PeopleField, PersonAvatar } from "../people/PeopleField";
-import { suggestedPeople } from "../../lib/peopleField";
+import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords, suggestedPeople } from "../../lib/peopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { RecordPicker } from "./RecordPicker";
 import { ProofForm } from "./ProofForm";
@@ -114,8 +114,10 @@ function troubleWords(card, today) {
   if (card.blocked) parts.push(`Blocked${card.blocked_reason ? `: ${card.blocked_reason}` : ""}`);
   if (card.status !== "done" && !(card.owners || []).length) parts.push("No owner");
   if (!parts.length) return "";
-  const owner = (card.owners || [])[0];
-  return `${parts.join(" · ")}${owner && card.status !== "done" ? ` · next: ${owner.name} ${nextVerb(card)}` : ""}`;
+  // #4571: "next: Ada and 1 more finishes it" when a card has several owners.
+  const owners = card.owners || [];
+  const next = owners.length > 1 ? `${owners[0].name} and ${owners.length - 1} more` : owners[0]?.name;
+  return `${parts.join(" · ")}${next && card.status !== "done" ? ` · next: ${next} ${nextVerb(card)}` : ""}`;
 }
 
 /** A property chip: its value, or a faint "+ Due" when empty; it opens a small picker. */
@@ -340,15 +342,16 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const reopen = async () => {
     setBusy("reopen");
     try {
-      const answer = await ops.reopenWork(card.id, null, card.revision, reopenNeed ? { owner: reopenOwner[0], watcher: reopenWatcher[0] } : {});
+      // #4571: lists; blank means the card keeps its own people, else takes its parent's.
+      const answer = await ops.reopenWork(card.id, null, card.revision, reopenNeed ? { owners: reopenOwner, watchers: reopenWatcher } : {});
       setReopenNeed("");
       await refresh();
       offerUndo(answer, "Reopened");
     } catch (error) {
       if (error?.token === "card_people") {
         setReopenNeed(opsErrorWords(error));
-        setReopenOwner(ownerEmails.length === 1 ? ownerEmails : []);
-        setReopenWatcher(watcherEmails.length === 1 ? watcherEmails : []);
+        setReopenOwner(ownerEmails);
+        setReopenWatcher(watcherEmails.filter((e) => !ownerEmails.includes(e)));
       } else await failed(error);
     } finally { setBusy(""); }
   };
@@ -502,12 +505,12 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             {closed && reopenNeed && (
               <div data-reopen-people="" className="flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--color-warning-100)] bg-[var(--color-warning-50)] p-3">
                 <p role="alert" className="break-words text-[13px] font-semibold text-[var(--color-warning-700)]">{reopenNeed}</p>
-                <PeopleField id={`card-${card.id}-reopen-owner`} label="Owner" single min={0} value={reopenOwner} team={team} me={directory.me}
+                <PeopleField id={`card-${card.id}-reopen-owner`} label="Owners" min={0} value={reopenOwner} team={team} me={directory.me}
                   exclude={reopenWatcher} disabled={locked} busy={!!busy} onChange={(next) => setReopenOwner(next)} />
-                <PeopleField id={`card-${card.id}-reopen-watcher`} label="Watcher" single min={0} value={reopenWatcher} team={team} me={directory.me}
+                <PeopleField id={`card-${card.id}-reopen-watcher`} label="Watching" min={0} value={reopenWatcher} team={team} me={directory.me}
                   exclude={reopenOwner} disabled={locked} busy={!!busy} onChange={(next) => setReopenWatcher(next)} />
                 <div className="flex flex-wrap gap-2">
-                  <Button className="min-h-11" data-reopen-with-people="" disabled={locked || !!busy || reopenOwner.length !== 1 || reopenWatcher.length !== 1} onClick={reopen}>Reopen with these people</Button>
+                  <Button className="min-h-11" data-reopen-with-people="" disabled={locked || !!busy || (!reopenOwner.length && !card.parent_id) || (!reopenWatcher.length && !card.parent_id)} onClick={reopen}>Reopen with these people</Button>
                   <Button variant="ghost" className="min-h-11" onClick={() => setReopenNeed("")}>Cancel</Button>
                 </div>
               </div>
@@ -515,12 +518,12 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             {closed && card.confirmed_by_name && <p className="text-[12.5px] text-[var(--color-text-secondary)]">Closed by {card.closed_by_name}, confirmed by {card.confirmed_by_name}.</p>}
             {form === "reviewback" && card.review && (
               <div data-send-back-form="" className="flex min-w-0 flex-col gap-1.5">
-                <label htmlFor={`card-${card.id}-backwhy`} className="text-[12px] font-semibold text-[var(--color-text-primary)]">What is missing? {owners[0]?.name || "The owner"} sees this.</label>
+                <label htmlFor={`card-${card.id}-backwhy`} className="text-[12px] font-semibold text-[var(--color-text-primary)]">What is missing? {andWords(owners.map((o) => o.name)) || "The owner"} {owners.length > 1 ? "see" : "sees"} it.</label>
                 <textarea id={`card-${card.id}-backwhy`} value={backReason} maxLength={SEND_BACK_MAX} rows={3} onChange={(e) => setBackReason(e.target.value)}
                   placeholder="For example: post the link to the published video" className={`${INPUT} min-h-16`} />
                 <div className="flex flex-wrap items-center gap-2">
                   <Button className="min-h-11" disabled={locked || !!busy || backReason.trim().length < SEND_BACK_MIN} onClick={async () => {
-                    const a = await run("reviewback", () => ops.sendBackWork(card.id, backReason.trim(), card.revision), `Sent back to ${owners[0]?.name || "the owner"}`);
+                    const a = await run("reviewback", () => ops.sendBackWork(card.id, backReason.trim(), card.revision), `Sent back to ${andWords(owners.map((o) => o.name)) || "the owner"}`);
                     if (a) { setForm(""); setBackReason(""); }
                   }}>Send back</Button>
                   <Button variant="ghost" className="min-h-11" onClick={() => { setForm(""); setBackReason(""); }}>Cancel</Button>
@@ -623,19 +626,19 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           <section aria-label="People and dates" className="flex min-w-0 flex-col gap-1">
             <div data-people-line="" className="flex min-w-0 flex-wrap items-center gap-1">
               <PeopleChip id={`card-${card.id}-owners-pop`} label="Owners" people={owners} field={
-                <PeopleField id={`card-${card.id}-owners`} label="Owner" single value={ownerEmails} team={team} me={directory.me}
-                  suggested={suggestedPeople(directory.me, ownerEmails)} exclude={watcherEmails} min={1}
-                  disabled={!canEdit} busy={!!busy}
+                <PeopleField id={`card-${card.id}-owners`} label="Owners" value={ownerEmails} team={team} me={directory.me}
+                  suggested={suggestedPeople(directory.me, ownerEmails)} exclude={watcherEmails} min={1} max={10}
+                  minWords={lastOwnerWords} hint={OWNERS_HINT} disabled={!canEdit} busy={!!busy}
                   onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} owns it now and was told.` : `${nameOf(change.removed)} removed.`)} />
               } />
               <PeopleChip id={`card-${card.id}-watchers-pop`} label="Watching" people={watchers} field={
-                <PeopleField id={`card-${card.id}-watchers`} label="Watcher" single value={watcherEmails} team={team} me={directory.me}
-                  suggested={[directory.me].filter(Boolean)} exclude={ownerEmails} min={1} disabled={!canEdit} busy={!!busy}
-                  minWords="A card has one watcher, who is not the owner. Pick someone else to change it."
+                <PeopleField id={`card-${card.id}-watchers`} label="Watching" value={watcherEmails} team={team} me={directory.me}
+                  suggested={[directory.me].filter(Boolean)} exclude={ownerEmails} min={1} max={10} disabled={!canEdit} busy={!!busy}
+                  minWords={lastWatcherWords} hint={WATCHERS_HINT}
                   onChange={(next, change) => update({ watchers: next }, change.added ? `${nameOf(change.added)} watches it now and was told.` : `${nameOf(change.removed)} removed.`)} />
               } />
               {directory.me && !ownerEmails.includes(directory.me) && !watcherEmails.includes(directory.me) && canEdit && (
-                <button type="button" data-assign-me="" disabled={!!busy} onClick={() => update({ owners: [directory.me] }, "You own it now.")} className={`${CHIP} font-semibold text-[var(--color-text-secondary)]`}>Assign to me</button>
+                <button type="button" data-assign-me="" disabled={!!busy} onClick={() => update({ owners: [...ownerEmails, directory.me].slice(0, 10) }, "You own it too now.")} className={`${CHIP} font-semibold text-[var(--color-text-secondary)]`}>Assign to me</button>
               )}
             </div>
             <div data-dates-line="" className="flex min-w-0 flex-wrap items-center gap-1">

@@ -88,10 +88,10 @@ export const pushBackWork = (id, kind, reason, proof, revision) =>
 export const confirmWork = (id, revision) => call(() => supabase.rpc("ops_work_confirm", { p_id: id, p_expected_revision: revision }));
 export const sendBackWork = (id, reason, revision) =>
   call(() => supabase.rpc("ops_work_send_back", { p_id: id, p_reason: reason, p_expected_revision: revision }));
-// #4398: a card reopens with one owner and one watcher; when it has neither, the person picks them here.
+// #4571: a card reopens with its owners and watchers (lists); when it has none, the person picks them here.
 export const reopenWork = (id, reason, revision, people = {}) =>
   call(() => supabase.rpc("ops_work_reopen", { p_id: id, p_reason: reason || null, p_expected_revision: revision,
-    ...(people.owner ? { p_owner: people.owner } : {}), ...(people.watcher ? { p_watcher: people.watcher } : {}) }));
+    ...(people.owners?.length ? { p_owners: people.owners } : {}), ...(people.watchers?.length ? { p_watchers: people.watchers } : {}) }));
 export const noteWork = (id, body, mentionEmails, requestKey) =>
   call(() => supabase.rpc("ops_work_note", { p_id: id, p_body: body, p_mention_emails: mentionEmails || [], p_request_key: requestKey || null }));
 export const personAction = (id, action, note, revision) =>
@@ -123,7 +123,6 @@ export const allowOneMore = (recordId, reason) => call(() => supabase.rpc("ops_c
 export const listLog = (query = {}) => call(() => supabase.rpc("ops_log_list", { p_query: query }));
 export const releaseClaims = (cardId, claimIds) =>
   call(() => supabase.rpc("ops_release", { p_card_id: cardId || null, p_claim_ids: claimIds || null }));
-export const setSprintGoal = (week, goal) => call(() => supabase.rpc("ops_sprint_set_goal", { p_week: week, p_goal: goal }));
 
 // Wave 2 — the Calendar, runway and host sync.
 export const fetchCalendar = (from, to, today) =>
@@ -246,7 +245,8 @@ export const editMessage = (id, body, revision) => call(() => supabase.rpc("ops_
 export const deleteMessage = (id, revision) => call(() => supabase.rpc("ops_message_delete", { p_message_id: id, p_expected_revision: revision }));
 export const reactMessage = (id, emoji, on) => call(() => supabase.rpc("ops_message_react", { p_message_id: id, p_emoji: emoji, p_on: on !== false }));
 export const fetchSprintPlan = (sprintId, today) => call(() => supabase.rpc("ops_sprint_plan_get", { p_sprint_id: sprintId || null, p_today: today || null }));
-export const addSprintGoal = (sprintId, title, owner) => call(() => supabase.rpc("ops_sprint_goal_add", { p_sprint_id: sprintId, p_title: title, p_owner_email: owner || null }));
+// #4571: any number of goals, 3 to 120 characters, an optional note.
+export const addSprintGoal = (sprintId, title, owner, note) => call(() => supabase.rpc("ops_sprint_goal_add", { p_sprint_id: sprintId, p_title: title, p_owner_email: owner || null, p_note: note || null }));
 export const updateSprintGoal = (goalId, changes, revision) => call(() => supabase.rpc("ops_sprint_goal_update", { p_goal_id: goalId, p_changes: changes, p_expected_revision: revision }));
 export const archiveSprintGoal = (goalId, revision) => call(() => supabase.rpc("ops_sprint_goal_archive", { p_goal_id: goalId, p_expected_revision: revision }));
 export const setSprintCapacity = (sprintId, email, hours) => call(() => supabase.rpc("ops_sprint_capacity_set", { p_sprint_id: sprintId, p_email: email, p_hours: hours }));

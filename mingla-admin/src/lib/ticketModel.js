@@ -74,10 +74,10 @@ export function ticketChipWords(card) {
 }
 
 /**
- * The #4398 watcher rule, worded exactly as the server's ops_people_check
- * fix for the watchers field.
+ * The watcher rule (#4571: one or more watchers, none of them an owner),
+ * worded exactly as the server's ops_people_check fix for the watchers field.
  */
-export const WATCHER_RULE_WORDS = "A card has one watcher, who is not the owner.";
+export const WATCHER_RULE_WORDS = "A card needs at least one watcher, who is not an owner.";
 
 const clean = (list) => (Array.isArray(list) ? list.filter(Boolean) : []);
 const same = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
@@ -132,8 +132,10 @@ export function ticketFormProblems(form) {
   if (String(f.whatIsWrong || "").trim().length < WRONG_MIN) problems.what_is_wrong = `Say what is wrong in at least ${WRONG_MIN} characters.`;
   if (!String(f.productArea || "").trim()) problems.product_area = "Pick the product area.";
   if (!Array.isArray(f.owners) || f.owners.filter(Boolean).length < 1) problems.owner = "Choose who owns this ticket.";
-  const w = clean(f.watchers);
-  if (w.length !== 1 || clean(f.owners).some((o) => same(o, w[0]))) problems.watchers = WATCHER_RULE_WORDS;
+  // #4571: 1 to 10 watchers, none of them an owner (the server refuses an overlap by name).
+  const w = clean(f.watchers).filter((x) => !clean(f.owners).some((o) => same(o, x)));
+  if (w.length < 1) problems.watchers = WATCHER_RULE_WORDS;
+  else if (w.length > 10) problems.watchers = "A card has at most 10 watchers.";
   return problems;
 }
 

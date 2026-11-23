@@ -71,7 +71,9 @@ function SubtaskRow({ sub, columns, depth, disabled, onTick, onOpen, canReorder,
                 <input type="checkbox" checked={k.status === "done"} disabled={disabled} onChange={async () => { await onTick(k); try { const r = await ops.getWork(sub.id, todayIso()); setKids(r?.subtasks || []); } catch { setKids(null); } }} aria-label={k.status === "done" ? `Reopen ${k.title}` : `Tick ${k.title} done`} className="h-4 w-4 shrink-0 accent-[var(--color-success-600)]" />
                 <button type="button" onClick={() => onOpen(k.id)} className={`min-w-0 flex-1 truncate text-left text-[12.5px] ${k.status === "done" ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]"} hover:underline ${FOCUS}`}>{k.title}</button>
                 {(() => { const d = dueLabel(k, todayIso()); return d.tone !== "none" ? <span data-due={d.tone} className={`shrink-0 rounded-full px-1.5 py-px text-[11px] tabular-nums ${DUE_TONE[d.tone]}`}>{d.text}</span> : null; })()}
-                {(k.owners || [])[0] && <PersonAvatar person={k.owners[0]} size="sm" />}
+                {/* #4571: every owner, two faces then +N */}
+                {(k.owners || []).slice(0, 2).map((o) => <PersonAvatar key={o.email} person={o} size="sm" />)}
+                {(k.owners || []).length > 2 && <span aria-label={`and ${k.owners.length - 2} more owners`} className="shrink-0 text-[11px] font-semibold text-[var(--color-text-tertiary)]">+{k.owners.length - 2}</span>}
               </li>
             ))}
         </ul>
