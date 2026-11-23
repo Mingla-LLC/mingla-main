@@ -145,6 +145,8 @@ import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandG
 import { syncBusinessMediaLanguage } from "../src/i18n";
 import { installFieldFocusCss } from "../src/components/ui/fieldFocusCss";
 import { installAppBackgroundCss } from "../src/components/ui/appBackgroundCss";
+import { NativeTabletColumn } from "../src/components/ui/NativeTabletColumn";
+import { usePhonePortraitLock } from "../src/hooks/usePhonePortraitLock";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -875,7 +877,9 @@ function RootLayoutInner(): React.ReactElement {
           outside (tabs); a passthrough everywhere else (phones, native,
           public buyer routes, auth, door / scanner). */}
       <HostDesktopShell>
-        <Stack screenOptions={{ headerShown: false }} />
+        {/* #4490 O3B: native tablets keep the phone layout in a centred
+            column (floor screens full width); web and phones pass through. */}
+        <NativeTabletColumn><Stack screenOptions={{ headerShown: false }} /></NativeTabletColumn>
       </HostDesktopShell>
       {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
       <TapToPayTerminalHost />
@@ -900,6 +904,8 @@ const authRoutingStyles = StyleSheet.create({
 export default function RootLayout(): React.ReactElement {
   // issue #1023 — DEV-ONLY `motion=<slug>` link switch (no-op in production).
   useMotionDeepLink();
+  // #4490 O3B: phones (shortest side < 600) stay portrait; tablets rotate.
+  usePhonePortraitLock();
   const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   const versionForegroundStateRef = useRef(new VersionForegroundStateMachine());
   const updateRequiredRef = useRef(false);

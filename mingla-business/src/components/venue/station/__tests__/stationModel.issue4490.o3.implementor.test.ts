@@ -215,24 +215,25 @@ describe("08-O3 copy and entry", () => {
   });
 });
 
-describe("08-O3 sound: web only, one interface, native labelled transitional", () => {
-  test("the native player is unsupported and says why and when it ends", async () => {
-    const { createStationSoundPlayer } = await import("../stationSound");
-    const player = createStationSoundPlayer();
-    expect(player.support()).toBe("unsupported");
-    await expect(player.play()).resolves.toBe(false);
+// TEST-MOD-APPROVED #4490 (O3 part B): the native player is no longer the
+// transitional stub. These two tests now pin the part B contract; the native
+// player's behaviour is in stationSound.native.issue4490.o3b.implementor.test.ts.
+describe("08-O3 sound: one interface, web player and native expo-audio player", () => {
+  test("the native player loads expo-audio only on use, after asking for the native module", () => {
     const native = read("stationSound.ts");
-    expect(native).toContain("[TRANSITIONAL]");
-    expect(native).toMatch(/store build that\s+\*?\s*carries `expo-audio`/);
-    expect(native).not.toMatch(/from ["']expo-audio["']|require\(["']expo-audio/);
+    expect(native).not.toContain("[TRANSITIONAL]");
+    expect(native).not.toMatch(/^import [^;]*["']expo-audio["']/m);
+    expect(native).toContain('requireOptionalNativeModule("ExpoAudio")');
+    expect(native).toContain("playsInSilentMode: true");
   });
-  test("no audio package is a dependency (the store build adds it)", () => {
+  test("the approved SDK 54 native modules are dependencies; no expo-av", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../../../package.json"), "utf8")) as {
       dependencies: Record<string, string>;
     };
-    expect(pkg.dependencies["expo-audio"]).toBeUndefined();
+    expect(pkg.dependencies["expo-audio"]).toBe("~1.1.1");
+    expect(pkg.dependencies["expo-screen-orientation"]).toBe("~9.0.9");
+    expect(pkg.dependencies["expo-asset"]).toBe("~12.0.14");
     expect(pkg.dependencies["expo-av"]).toBeUndefined();
-    expect(pkg.dependencies["expo-screen-orientation"]).toBeUndefined();
   });
   test("the web chime data is byte-identical to assets/sounds/new-order.mp3 and small", async () => {
     const { STATION_CHIME_DATA_URL } = await import("../stationChime.web");

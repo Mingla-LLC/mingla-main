@@ -14,9 +14,15 @@ export function floorLayoutFor(width: number): FloorLayout {
 }
 
 /**
- * The station board (spec 08 §2 screen 12): Tabs on a phone, three columns
- * (New · Cooking · Ready) at tablet and desk widths.
+ * The station board (spec 08 §2 screen 12, floor-design "Landscape tablet and
+ * desktop: three columns. Phone: tabs."): three columns (New · Cooking ·
+ * Ready) at desk widths and on a tablet held in landscape; Tabs on a phone and
+ * on a tablet in portrait (O3 part B; part A gave a tablet columns in both).
+ * Without a height (older callers) a tablet keeps columns.
  */
-export function stationBoardColumns(layout: FloorLayout): boolean {
-  return layout !== "phone";
+export function stationBoardColumns(layout: FloorLayout, width?: number, height?: number): boolean {
+  if (layout === "phone") return false;
+  if (layout === "desk") return true;
+  if (width === undefined || height === undefined) return true;
+  return width > height;
 }

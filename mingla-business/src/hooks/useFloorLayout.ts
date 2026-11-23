@@ -11,12 +11,12 @@ export interface FloorLayoutState {
   layout: FloorLayout;
   width: number;
   height: number;
-  /** Station board: three columns (true) or Tabs (false). */
+  /** Station board: three columns (true; desk, or a tablet in landscape) or Tabs (false). */
   boardColumns: boolean;
 }
 
 export function useFloorLayout(): FloorLayoutState {
   const { width, height } = useWindowDimensions();
   const layout = floorLayoutFor(width);
-  return { layout, width, height, boardColumns: stationBoardColumns(layout) };
+  return { layout, width, height, boardColumns: stationBoardColumns(layout, width, height) };
 }
