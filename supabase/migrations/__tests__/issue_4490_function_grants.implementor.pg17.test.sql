@@ -53,6 +53,12 @@
 -- pg_venue_order_escalation_scan (still service role only), both internal.
 -- TEST-MOD-APPROVED #4490 (08-O3 fix 1): 20280809604490 adds the station screen check
 -- issue_4490_station_screened (internal) and re-emits seven functions, each keeping its class.
+-- TEST-MOD-APPROVED #4490 (08-O4): the split (20280809606490) adds eleven functions (the share context,
+-- the service charge left, the share state, the shares-follow-the-check and paid-share line triggers,
+-- set split, the three share wrappers, the sale extras) and re-emits take_payment, card_prepare and
+-- card_start (same signatures); tables and by the hour (20280809607490) add nine (the deposit refund
+-- guard, the line-voided trigger, session book / span / start / extend, seat, the catalog extras) and
+-- re-emit the service charge left and the sale extras; all internal (service role only).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -514,6 +520,24 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_pay_code_lookup(text,uuid,uuid)', 'internal'),
   ('issue_4490_till_text_limits()', 'internal'),
   ('issue_4490_till_code_guess_budget(boolean,integer)', 'internal'),
+  ('issue_4490_till_share_context()', 'internal'),
+  ('issue_4490_till_sc_left(uuid)', 'internal'),
+  ('issue_4490_till_share_state_sync()', 'internal'),
+  ('issue_4490_till_shares_follow_sale()', 'internal'),
+  ('issue_4490_till_share_line_guard()', 'internal'),
+  ('issue_4490_till_set_split(uuid,text,jsonb,uuid,integer)', 'internal'),
+  ('issue_4490_till_pay_share(uuid,uuid,text,bigint,bigint,bigint,uuid,uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_card_prepare_share(uuid,uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_card_start_share(uuid,uuid,text,bigint,uuid,uuid,uuid,integer,jsonb,text)', 'internal'),
+  ('issue_4490_till_sale_extras(uuid)', 'internal'),
+  ('issue_4490_reservation_deposit_refund_guard()', 'internal'),
+  ('issue_4490_till_line_voided()', 'internal'),
+  ('issue_4490_till_session_book(uuid,uuid,uuid,uuid,integer,uuid,text,tstzrange,uuid)', 'internal'),
+  ('issue_4490_till_session_span(uuid)', 'internal'),
+  ('issue_4490_till_start_session(uuid,uuid,uuid,integer,integer,uuid,text,integer)', 'internal'),
+  ('issue_4490_till_extend_session(uuid,uuid,integer,uuid,text,integer)', 'internal'),
+  ('issue_4490_till_seat(uuid,uuid,uuid,integer,uuid,text,uuid,text)', 'internal'),
+  ('issue_4490_till_catalog_extras(uuid)', 'internal'),
   -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),
