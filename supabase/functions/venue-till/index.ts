@@ -39,9 +39,10 @@
 //   code_pay       { code, buyer:{name,email,phone,phoneCountryIso} } (ANONYMOUS) → provider page
 //   confirm_return { code }                         (ANONYMOUS) verifies with the provider
 //   The three anonymous code actions are rate-limited per IP and per code,
-//   and share one global budget of unknown-code answers per minute (O2 fix 1);
-//   a code is 8 characters of a 31-letter alphabet (≈ 8.5 × 10^11), and an
-//   unknown code answers the same 404 as a malformed one.
+//   and unknown or malformed codes share one global budget per minute (O2
+//   fixes 1-2): past it they answer 429 instead of 404, while a real code
+//   always answers as usual. A code is 8 characters of a 31-letter alphabet
+//   (≈ 8.5 × 10^11); that space and the per-address limit are the protection.
 //
 // verify_jwt = false (the gateway does not check it) with the bearer REQUIRED
 // and verified here for every staff action. `receipt_view` is the one
@@ -191,12 +192,16 @@ export type VenueTillDeps = {
 export const TILL_CODE_IP_LIMIT = 60;
 export const TILL_CODE_PAY_LIMIT = 10;
 /**
- * #4490 O2 fix 1 (O2-T2): unknown pay-code answers per minute across every
- * caller (issue_4490_till_code_guess_budget). No header is part of the key, so
- * changing X-Forwarded-For does not buy more guesses. Real guests reach a code
- * by its QR or text link; a typo is rare, so 300 a minute is never reached by
- * guests (with 1,000 live codes a guesser at this rate expects one hit in
- * about 5 years). While spent, every anonymous code answer is 429.
+ * #4490 O2 fixes 1-2 (O2-T2): unknown or malformed pay-code answers per minute
+ * across every caller (issue_4490_till_code_guess_budget; no header in the
+ * key). Once 300 unknown answers were given in a minute, further unknown codes
+ * answer 429 instead of 404 for the rest of that minute, and the spent budget
+ * is logged. A REAL code is never refused because of it (guests paying come
+ * first): the lookup runs first and a hit answers exactly as without the
+ * budget. What it does: it slows blind enumeration answers (a guesser stops
+ * learning "not found" at speed) and makes a guessing run visible in the logs.
+ * What it does not: it cannot stop a correct guess. The code space (8.5e11)
+ * and the per-address limit are the protection.
  */
 export const TILL_UNKNOWN_CODE_LIMIT = 300;
 
@@ -1333,16 +1338,19 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
     if (await limited(client, `till_code_ip:${ip}`, TILL_CODE_IP_LIMIT)) {
       return json(429, { code: "rate_limited" });
     }
-    // #4490 O2 fix 1 (O2-T2): the global unknown-code budget, checked before
-    // any lookup so a known and an unknown code answer alike while it is spent.
-    if (await guessBudgetSpent(client, false)) {
-      return json(429, { code: "rate_limited" });
-    }
-    if (!TILL_CODE_RE.test(code)) return json(404, { code: "pay_code_not_found" });
+    // #4490 O2 fix 2 (O2-T2): the global budget applies only to codes the
+    // lookup did not find (or that are malformed). A real code never meets it.
     const unknownCode = async (): Promise<Response> => {
+      const spent = await guessBudgetSpent(client, false);
       await guessBudgetSpent(client, true);
+      if (spent) {
+        // Audible, without the code or the caller's address.
+        console.error("[venue-till] unknown pay-code budget spent this minute: answering 429 to unknown codes");
+        return json(429, { code: "rate_limited" });
+      }
       return json(404, { code: "pay_code_not_found" });
     };
+    if (!TILL_CODE_RE.test(code)) return await unknownCode();
     if (action !== "code_view" && await limited(client, `till_code_pay:${code}`, TILL_CODE_PAY_LIMIT)) {
       return json(429, { code: "rate_limited" });
     }

@@ -674,9 +674,9 @@ Deno.test("O2F1-E1 guessing codes with a new X-Forwarded-For (and cf-connecting-
   assertEquals(statuses.indexOf(429), TILL_UNKNOWN_CODE_LIMIT);
   // Every unknown answer is the same 404.
   assertEquals([...bodies], [JSON.stringify({ code: "pay_code_not_found" })]);
-  // While the budget is spent a REAL code answers the same 429 (no oracle).
+  // 08-O2 fix 2: while the budget is spent a REAL code is still served.
   const known = await w.handler(anonPost({ action: "code_view", code: CODE }, { "x-forwarded-for": "192.0.2.7" }));
-  assertEquals(known.status, 429);
+  assertEquals(known.status, 200);
   // A real code before the budget is spent is served and never counted.
   let hits = 0;
   const fresh = world({
@@ -777,4 +777,51 @@ Deno.test("O2F1-E4 a pay-link text past the hourly window is refused with its ow
   const res = await w.handler(post({ action: "pay_code_text", venueId: VENUE, code: CODE, phone: "+2348031234567" }));
   assertEquals(res.status, 409);
   assertEquals((await res.json()).code, "pay_code_text_window");
+});
+
+Deno.test("O2F2-E5 a spent unknown-code budget never refuses a real code: view, pay and confirm_return answer as usual; unknown and malformed codes get 429; unspent, unknown is 404", async () => {
+  const errors: string[] = [];
+  const realError = console.error;
+  console.error = (...a: unknown[]) => void errors.push(a.map(String).join(" "));
+  try {
+    const budget = (spent: boolean) => (name: string, params: Record<string, unknown>) => {
+      if (name === "issue_4490_till_pay_code_buyer" && params.p_code !== CODE) {
+        return Promise.resolve({ data: null, error: { message: "pay_code_not_found", code: "P0002" } });
+      }
+      return name === "issue_4490_till_code_guess_budget"
+        ? Promise.resolve({ data: spent, error: null })
+        : undefined;
+    };
+    const buyer = { name: "Ada Guest", email: "ada@gmail.com", phone: "+2348031234567" };
+    const spent = world({ rpcOverride: budget(true) });
+    // (a) the real code, budget spent.
+    const view = await spent.handler(anonPost({ action: "code_view", code: CODE }, {}));
+    assertEquals(view.status, 200);
+    const pay = await spent.handler(anonPost({ action: "code_pay", code: CODE, buyer }, {}));
+    assertEquals(pay.status, 200);
+    assertEquals((await pay.json()).data.redirectUrl, "https://checkout.paystack.com/abc");
+    const ret = await spent.handler(anonPost({ action: "confirm_return", code: CODE }, {}));
+    assertEquals(ret.status, 200);
+    assertEquals(errors.length, 0);
+    // (b) unknown and malformed codes, budget spent: 429, still counted, logged without the code.
+    for (const action of ["code_view", "code_pay", "confirm_return"]) {
+      for (const code of ["ZZZZ2223", "abc"]) {
+        const r = await spent.handler(anonPost({ action, code, buyer }, {}));
+        assertEquals(r.status, 429);
+        assertEquals((await r.json()).code, "rate_limited");
+      }
+    }
+    assertEquals(spent.calls.filter((c) => c.name === "issue_4490_till_code_guess_budget" && c.params.p_record === true).length, 6);
+    assertEquals(errors.length, 6);
+    assertFalse(errors.some((e) => e.includes("ZZZZ2223") || e.includes("ABC")));
+    // (c) budget not spent: unknown is the usual 404.
+    const fresh = world({ rpcOverride: budget(false) });
+    for (const action of ["code_view", "code_pay", "confirm_return"]) {
+      const r = await fresh.handler(anonPost({ action, code: "ZZZZ2223", buyer }, {}));
+      assertEquals(r.status, 404);
+      assertEquals((await r.json()).code, "pay_code_not_found");
+    }
+  } finally {
+    console.error = realError;
+  }
 });
