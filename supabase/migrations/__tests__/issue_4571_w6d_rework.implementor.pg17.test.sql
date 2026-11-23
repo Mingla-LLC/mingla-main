@@ -18,6 +18,7 @@
 --   CONFIG     the report card is kept when not passed; the cron entry exists
 --              only in Dry run or On (ships unscheduled).
 --   INGEST     a bad email identifier still matches (Mac script parity).
+--   LINKS      the link picker shows stage labels.
 --
 -- FAILS-ON-REVERT: without the demo_in_use block UNDO-DEMO fails (K left in
 -- meeting with no demo); without the crm_email_log UPDATEs MAIL fails;
@@ -390,6 +391,17 @@ begin
    where record_id = pg_temp.id('ib');
   v := pg_temp.mail('w6d-i1', 'gone@bounced-w6d.test');
   perform pg_temp.chk('INGEST', 'mail to a bad address is still logged, as cadence_sweep.py counts it', pg_temp.n_mail('ib'), '1');
+end;
+$t$;
+
+-- ───────────────────────────── LINKS ─────────────────────────────
+do $t$
+declare v text;
+begin
+  perform pg_temp.host('ls', 'Link Search Label W6d', 'replied');
+  v := pg_temp.person('tao', $q$select public.ops_link_search('host', 'Link Search Label W6d')::text$q$);
+  perform pg_temp.chk('LINKS', 'Pick another host shows the stage label, not its id',
+    (select r->>'sub' from jsonb_array_elements((v::jsonb)->'results') r where (r->>'id')::uuid = pg_temp.id('ls')), 'Replied');
 end;
 $t$;
 

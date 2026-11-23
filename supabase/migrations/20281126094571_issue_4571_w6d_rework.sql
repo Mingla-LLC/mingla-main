@@ -1,5 +1,5 @@
 -- Issue #4571 (Work pipeline redesign), rework after the final test (FAIL,
--- tip ffcb44bc6d). Replaces five functions; adds no table, column or function.
+-- tip ffcb44bc6d). Replaces six functions; adds no table, column or function.
 --
 --   1. crm_record_merge moves the duplicate's crm_email_log rows to the kept
 --      card (skipping a message the kept card already has), and lists them in
@@ -28,6 +28,7 @@
 --      migration unschedules it, so the sweep ships unscheduled (the spec's
 --      cutover). RUNBOOK change to 20281126084571: step 1 is "it ships with no
 --      cron entry"; step 2 (Dry run) creates it; Switch-off removes it.
+--   6. ops_link_search shows stage labels, not stage ids.
 --
 -- Email identifiers (tester P3, kept on purpose): crm_email_log_ingest matches
 -- every email identifier on a card, ok or bad, not only ok ones. The Mac
@@ -517,5 +518,72 @@ BEGIN
   END IF;
 END
 $cron$;
+
+-- From 20281126024571 (ops_link_search, as replayed). #4571 rework: a host or
+-- creator result, and a call's card, show the stage's label ("Replied"), not
+-- its id ("replied"), in Pick another host and every link picker.
+CREATE OR REPLACE FUNCTION public.ops_link_search(p_kind text, p_query text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'pg_temp'
+AS $function$
+DECLARE v record; v_q text := public.ops_one_line(p_query); v_like text; v_rows jsonb;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  IF p_kind IS NULL OR p_kind NOT IN ('host','creator','brand','event','content','expected','card','call','booking') THEN
+    RAISE EXCEPTION 'invalid_kind: Search for a host, creator, brand, event, content, expected event, card, call or demo booking.' USING ERRCODE = '22023';
+  END IF;
+  IF char_length(COALESCE(v_q, '')) < 2 THEN RETURN jsonb_build_object('kind', p_kind, 'results', '[]'::jsonb); END IF;
+  v_q := left(v_q, 160);
+  -- %, _ and \ are searched for as typed, never as wildcards.
+  v_like := replace(replace(replace(v_q, E'\\', E'\\\\'), '%', E'\\%'), '_', E'\\_');
+  IF p_kind IN ('host','creator') THEN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', x.name, 'sub', COALESCE(public.crm_stage_def(p_kind || 's', x.stage)->>'label', x.stage)) ORDER BY x.prefix DESC, x.name, x.id), '[]'::jsonb) INTO v_rows
+    FROM (SELECT c.id, c.name, c.stage, (c.name ILIKE v_like || '%' ESCAPE E'\\') AS prefix FROM public.crm_records c
+           WHERE c.deleted_at IS NULL AND c.pipeline = p_kind || 's' AND c.name ILIKE '%' || v_like || '%' ESCAPE E'\\'
+           ORDER BY (c.name ILIKE v_like || '%' ESCAPE E'\\') DESC, c.name, c.id LIMIT 10) x;
+  ELSIF p_kind = 'brand' THEN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', x.name, 'sub', x.city) ORDER BY x.prefix DESC, x.name, x.id), '[]'::jsonb) INTO v_rows
+    FROM (SELECT b.id, b.name, b.city, (b.name ILIKE v_like || '%' ESCAPE E'\\') AS prefix FROM public.brands b
+           WHERE b.deleted_at IS NULL AND b.name ILIKE '%' || v_like || '%' ESCAPE E'\\'
+           ORDER BY (b.name ILIKE v_like || '%' ESCAPE E'\\') DESC, b.name, b.id LIMIT 10) x;
+  ELSIF p_kind = 'event' THEN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', x.title,
+        'sub', concat_ws(' · ', x.city, CASE WHEN x.start_at IS NOT NULL THEN to_char(x.start_at AT TIME ZONE COALESCE(NULLIF(x.timezone, ''), 'UTC'), 'FMDD Mon YYYY') END,
+                         CASE WHEN public.ops_event_public(x.id) THEN 'public' ELSE 'draft' END)) ORDER BY x.start_at NULLS LAST, x.title), '[]'::jsonb) INTO v_rows
+    FROM (SELECT e.id, e.title, e.city, e.timezone, public.ops_event_first_start(e.id) AS start_at FROM public.events e
+           WHERE e.deleted_at IS NULL AND e.title ILIKE '%' || v_like || '%' ESCAPE E'\\' AND public.ops_event_in_scope(e.id)
+           ORDER BY e.created_at DESC LIMIT 10) x;
+  ELSIF p_kind = 'content' THEN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', x.title, 'sub', x.stage) ORDER BY x.title, x.id), '[]'::jsonb) INTO v_rows
+    FROM (SELECT i.id, i.title, i.stage FROM public.content_calendar_items i
+           WHERE i.deleted_at IS NULL AND i.title ILIKE '%' || v_like || '%' ESCAPE E'\\' ORDER BY i.title, i.id LIMIT 10) x;
+  ELSIF p_kind = 'expected' THEN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', x.title, 'sub', to_char(x.expected_on, 'FMDD Mon YYYY')) ORDER BY x.expected_on, x.title), '[]'::jsonb) INTO v_rows
+    FROM (SELECT z.id, z.title, z.expected_on FROM public.ops_expected_events z
+           WHERE z.status = 'open' AND z.title ILIKE '%' || v_like || '%' ESCAPE E'\\' ORDER BY z.expected_on, z.title LIMIT 10) x;
+  ELSIF p_kind = 'call' THEN
+    -- #4571 W2: the latest calls (phone touches) of records whose name matches.
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', public.ops_link_label('call', x.id),
+        'sub', concat_ws(' · ', CASE x.pipeline WHEN 'hosts' THEN 'Host' ELSE 'Creator' END, COALESCE(public.crm_stage_def(x.pipeline, x.stage_at)->>'label', x.stage_at))) ORDER BY x.occurred_at DESC, x.id), '[]'::jsonb) INTO v_rows
+    FROM (SELECT a.id, a.occurred_at, a.stage_at, c.pipeline FROM public.crm_activity a JOIN public.crm_records c ON c.id = a.record_id
+           WHERE c.deleted_at IS NULL AND a.kind = 'touch' AND a.channel = 'phone' AND c.name ILIKE '%' || v_like || '%' ESCAPE E'\\'
+           ORDER BY a.occurred_at DESC, a.id LIMIT 10) x;
+  ELSIF p_kind = 'booking' THEN
+    -- #4571 W2: host demo bookings by venue or booker name; no contact details.
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', public.ops_link_label('booking', x.id), 'sub', x.status) ORDER BY x.call_at DESC, x.id), '[]'::jsonb) INTO v_rows
+    FROM (SELECT b.id, b.call_at, b.status FROM public.book_call_leads b
+           WHERE b.audience = 'host' AND (COALESCE(b.venue, '') ILIKE '%' || v_like || '%' ESCAPE E'\\' OR b.name ILIKE '%' || v_like || '%' ESCAPE E'\\')
+           ORDER BY b.call_at DESC, b.id LIMIT 10) x;
+  ELSE
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', x.id, 'label', x.title, 'sub', 'Card ' || x.number) ORDER BY x.number DESC), '[]'::jsonb) INTO v_rows
+    FROM (SELECT w.id, w.title, w.number FROM public.ops_work_cards w
+           WHERE w.archived_at IS NULL AND (w.title ILIKE '%' || v_like || '%' ESCAPE E'\\' OR w.number::text = v_q)
+           ORDER BY w.number DESC LIMIT 10) x;
+  END IF;
+  RETURN jsonb_build_object('kind', p_kind, 'results', v_rows);
+END;
+$function$;
 
 COMMIT;
