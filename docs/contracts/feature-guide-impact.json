@@ -103,6 +103,8 @@
         "app-mobile/src/services/postHogService.ts",
         "app-mobile/src/services/screenTracking.ts",
         "app-mobile/src/services/signupSourceHints.ts",
+        "app-mobile/src/contexts/CoachMarkContext.tsx",
+        "app-mobile/src/services/mixpanelService.ts",
         "app-mobile/src/i18n/locales/en/onboarding.json",
         "app-mobile/src/utils/edgeFunctionError.ts",
         "supabase/functions/send-otp/classifySendFailure.ts",
