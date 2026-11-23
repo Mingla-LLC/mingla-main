@@ -149,7 +149,8 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
   assert.equal(init.json.result.serverInfo.version, "4.4.0");
   assert.match(init.json.result.instructions, /Run check_contactable before/);
   const listed = (await s.rpc(key, "tools/list")).json.result.tools;
-  assert.equal(listed.length, 25);
+  // #4571 W6b: the log_emails connector tool makes 25 into 26.
+  assert.equal(listed.length, 26);
 
   const started = out(await call(key, "get_started"));
   assert.equal(started.me.email, s.emails.growth);
@@ -402,7 +403,8 @@ test("#3802 WP-4: a growth key and an admin key see the same tools but one, and 
     ) => t.name);
   const growth = await names(key);
   const admin = await names(s.keys["admin.claude"]);
-  assert.equal(growth.length, 25);
+  // #4571 W6b: the log_emails connector tool makes 25 into 26.
+  assert.equal(growth.length, 26);
   assert.deepEqual(admin.filter((n: string) => !growth.includes(n)), [
     "team_summary",
   ]);

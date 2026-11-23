@@ -49,6 +49,15 @@ secret:
     - name: "CI batch ephemeral database credential (shell form)"
       match: "ci-batch-${{ github.run_id }}-${{ github.run_attempt }}"
 
+    # toward #4571 — a made-up card scheduler-link token used only in three
+    # tests (marketing schedule-for, growth-tools-book for-token, Admin demo
+    # inbox). GitGuardian's Generic High Entropy detector flagged it on PR #4584.
+    # It is not a credential: the real token is a per-card random UUID in the
+    # database. The tip now uses the issue-scoped 45710000-… fixture; this match
+    # keeps the earlier commits from red-failing the PR's full-history scan.
+    - name: "Issue 4571 test-only scheduler token fixture"
+      match: "3f1c2b8e-9a47-4d1e-b6a2-0c9e7d5f4a31"
+
     # toward #3697 Wave 6 — deterministic PG17 fixture UUIDs. GitGuardian's
     # Generic High Entropy detector flagged one of these in PR #3814 as if it
     # were a live secret; they are issue-scoped test ids only (same class as

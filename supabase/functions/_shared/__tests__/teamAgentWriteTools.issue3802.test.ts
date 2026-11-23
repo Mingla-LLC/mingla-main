@@ -54,6 +54,8 @@ const NEW_TOOLS = [
   "set_owners",
   "log_activity",
   "record_reply",
+  // #4571 W6b: email an agent read with its own Gmail access.
+  "log_emails",
 ];
 const DRAFT_TOOLS = [
   "save_drafts",
@@ -109,16 +111,17 @@ Deno.test("#3802 W-1: twenty-six tools, each group together, each saying what it
     ...CONTENT_TOOLS,
   ]);
   // [TEST-MOD-APPROVED #3802] Four approved draft tools extend the catalog.
-  assertEquals(TEAM_AGENT_TOOLS.length, 26);
+  // #4571 W6b: log_emails makes 27.
+  assertEquals(TEAM_AGENT_TOOLS.length, 27);
   assertEquals(
     TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name),
     WRITES,
   );
-  assertEquals(toolsForRole("growth").length, 25);
+  assertEquals(toolsForRole("growth").length, 26);
   // #4255 (D3): a Founding partner holds a full-admin seat, so it is offered the admin tool too.
-  assertEquals(toolsForRole("partner").length, 26);
-  assertEquals(toolsForRole("admin").length, 26);
-  assertEquals(toolsForRole("owner").length, 26);
+  assertEquals(toolsForRole("partner").length, 27);
+  assertEquals(toolsForRole("admin").length, 27);
+  assertEquals(toolsForRole("owner").length, 27);
   assertEquals(
     toolsForRole("growth").map((t) => t.name),
     toolsForRole("owner").map((t) => t.name).filter((n) =>
@@ -135,6 +138,7 @@ Deno.test("#3802 W-1: twenty-six tools, each group together, each saying what it
     set_owners: "Add and change",
     log_activity: "Log",
     record_reply: "Log",
+    log_emails: "Log",
   };
   const reaches: Record<string, string[]> = {
     check_contactable: ["crm_contact_check"],
@@ -142,9 +146,10 @@ Deno.test("#3802 W-1: twenty-six tools, each group together, each saying what it
     upsert_record: ["crm_record_create", "crm_record_log"],
     update_records: ["crm_record_update"],
     move_stage: ["crm_record_move_stage"],
-    set_owners: ["crm_record_set_owners"],
+    set_owners: ["crm_record_set_owners", "crm_record_set_people"],  // #4571 W3: watcher_emails
     log_activity: ["crm_record_log"],
     record_reply: ["crm_record_log", "crm_record_move_stage"],
+    log_emails: ["crm_email_log_ingest"],
   };
   for (const name of NEW_TOOLS) {
     const t = tool(name);
@@ -714,9 +719,34 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
       "content_calendar_duplicate_check",
       "content_calendar_undo",
       "crm_beta_lead_to_host",
+      // #4571 W6c: the nightly sweep's panel, dry run and switch are people's.
+      "crm_cadence_sweep_configure",
+      "crm_cadence_sweep_preview",
+      "crm_cadence_sweep_status",
+      // #4571 W4: linking a booked demo is a person's decision (excluded in SCREEN_FUNCTION_PARITY).
+      "crm_demo_create_record",
+      "crm_demo_inbox",
+      "crm_demo_inbox_count",
+      "crm_demo_link",
+      "crm_demo_not_a_host",
+      "crm_demo_suggestions",
+      "crm_demo_unlink",
+      // #4571 W6a: archive and merge are people's (excluded in SCREEN_FUNCTION_PARITY).
+      "crm_duplicate_pairs",
+      // #4571 W3: follower counts (read by a person) and the card's Work list (agents use list_work).
+      "crm_identifier_set_followers",
+      // #4571 W6b: the weekly numbers are read by people.
+      "crm_outreach_numbers",
+      "crm_record_archive",
       "crm_record_delete",
+      "crm_record_merge",
+      "crm_record_merges_json",
       "crm_record_restore",
+      "crm_record_unarchive",
       "crm_record_undo_stage_move",
+      "crm_record_unmerge",
+      "crm_record_work",
+      "crm_records_archived_list",
       "crm_target_set",
       // #4130: the Team dashboard's numbers are read by people; agents use team_summary.
       "crm_team_pulse",
@@ -754,8 +784,16 @@ Deno.test("#3802 W-6: the manifest and the gateway's list in this migration are 
     gateway[0],
   );
   assert(list);
+  // #4571 W6b: the latest gateway body (20281130074571) adds log_emails after
+  // record_reply; every other name and its order are the 3802 list's.
+  const w6bFile = Deno.readTextFileSync(new URL("../../../migrations/20281130074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url));
+  const w6bGateway = w6bFile.slice(w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), w6bFile.indexOf("\n$function$", w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
+  assert(w6bGateway.length > 1000, "the W6b gateway body was found");
+  const names3802 = [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  assertEquals([...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(w6bGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+    [...names3802.slice(0, names3802.indexOf("record_reply") + 1), "log_emails", ...names3802.slice(names3802.indexOf("record_reply") + 1)]);
   assertEquals(
-    [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).concat(
+    [...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(w6bGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).concat(
       [...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(
         contentGateway[0],
       )?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
@@ -767,17 +805,26 @@ Deno.test("#3802 W-6: the manifest and the gateway's list in this migration are 
   );
   assert(writes);
   assertEquals(
-    [...writes[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).concat(
+    [...(/c_writes constant text\[\] := ARRAY\[([^\]]+)\]/.exec(w6bGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).concat(
       [...(/c_writes constant text\[\] := ARRAY\[([^\]]+)\]/.exec(
         contentGateway[0],
       )?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
     ),
     TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name),
   );
+  // #4571 W3: the gateway's latest body (20281130034571) adds watcher_emails to
+  // set_owners and calls_due to my_day; it keeps the same tool list.
+  const latestFile = Deno.readTextFileSync(new URL("../../../migrations/20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql", import.meta.url));
+  const latestGateway = latestFile.slice(latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), latestFile.indexOf("\n$function$", latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
+  assert(latestGateway.length > 1000, "the W3 gateway body was found");
+  assertEquals([...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(latestGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+    [...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(gateway[0])?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
   for (const t of TEAM_AGENT_TOOLS) {
     for (const fn of t.reaches) {
       assert(
         gateway[0].includes(`public.${fn}(`) ||
+          latestGateway.includes(`public.${fn}(`) ||
+          w6bGateway.includes(`public.${fn}(`) ||
           contentGateway[0].includes(`public.${fn}(`),
         `the gateway never calls ${fn}`,
       );

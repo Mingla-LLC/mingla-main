@@ -271,7 +271,7 @@ function CardSearch({ label, onPick, onCancel, disabled }) {
               <li key={c.id}><button type="button" disabled={disabled} onClick={() => onPick(c)} className={`flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left text-[13px] hover:bg-[var(--gray-100)] ${FOCUS}`}>
                 <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">#{c.number}</span>
                 <span className="min-w-0 flex-1 truncate text-[var(--color-text-primary)]">{c.title}</span>
-                <span className="shrink-0 text-[12px] text-[var(--color-text-tertiary)]">{c.owners?.[0]?.name || "No owner"} · {c.watchers?.[0]?.name || "no watcher"}</span>
+                <span className="shrink-0 text-[12px] text-[var(--color-text-tertiary)]">{(c.owners || []).map((o) => o.name).join(", ") || "No owner"} · {(c.watchers || []).map((w) => w.name).join(", ") || "no watcher"}</span>
               </button></li>
             ))}
           </ul>
@@ -301,7 +301,7 @@ export function AutomaticCardRoutes({ online }) {
     try {
       await ops.setOpsSetting("auto_card_routes", next);
       await read.refetch({ quiet: true });
-      addToast({ variant: "success", title: `Now goes under #${card.number}`, description: "New automatic cards take its owner and watcher." });
+      addToast({ variant: "success", title: `Now goes under #${card.number}`, description: "New automatic cards take all of its owners and watchers." });
       setEditing("");
     } catch (error) { addToast({ variant: "error", title: "Not changed", description: opsErrorWords(error) }); }
     finally { setBusy(false); }
@@ -314,7 +314,7 @@ export function AutomaticCardRoutes({ online }) {
         <Button variant="secondary" className="min-h-11" disabled={!online || busy} onClick={() => setEditing(editing === key ? "" : key)}>Change</Button>
       </div>
       <p className="break-words text-[12.5px] text-[var(--color-text-secondary)]">
-        {card ? <>Goes under <b>#{card.number} {card.title}</b> · {card.owner || "no owner"} owns · {card.watcher || "no watcher"} watches</> : "No card set: uses the fallback."}
+        {card ? <>Goes under <b>#{card.number} {card.title}</b> · {(card.owners || []).join(", ") || "no owner"} {(card.owners || []).length > 1 ? "own" : "owns"} · {(card.watchers || []).join(", ") || "no watcher"} {(card.watchers || []).length > 1 ? "watch" : "watches"}</> : "No card set: uses the fallback."}
       </p>
       {editing === key && <CardSearch label={`Pick the main task for ${words}`} disabled={!online || busy} onCancel={() => setEditing("")} onPick={(c) => save(key, c)} />}
     </li>

@@ -498,6 +498,26 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
     assert.equal((between.match(/cron\.unschedule/gi) ?? []).length, 1, `${file} must remove exactly one job between ${job}'s lookup and reschedule`);
     assert.doesNotMatch(between, /\bCOMMIT\s*;|\bEND\s*\$cron\$/i, `${file} must keep ${job}'s unschedule and reschedule in one DO block`);
   }
+  // #4571 W6c/W6d cadence sweep (+3 → 32): every dynamic unschedule removes only
+  // issue_4571_crm_cadence_sweep, looked up by name. (1) W6c's guarded
+  // unschedule-then-reschedule; (2) crm_cadence_sweep_configure's Off switch,
+  // which Dry run / On reschedules (the sweep ships OFF by design, the Mac
+  // script runs until cutover); (3) W6d's ship-state removal so it ships
+  // unscheduled. Proven here so a different job can never slip in.
+  {
+    const job = "issue_4571_crm_cadence_sweep";
+    const w6c = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT,
+      "supabase/migrations/20281130084571_issue_4571_w6c_cadence_sweep.sql"), "utf8"));
+    const lookup = w6c.search(new RegExp(`WHERE\\s+jobname\\s*=\\s*'${job}'`, "i"));
+    const schedule = w6c.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
+    assert.ok(lookup >= 0 && schedule > lookup, `W6c must look up ${job} by name, then reschedule it`);
+    assert.equal((w6c.slice(lookup, schedule).match(/cron\.unschedule/gi) ?? []).length, 1, `W6c must remove exactly ${job} between lookup and reschedule`);
+    const w6d = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT,
+      "supabase/migrations/20281130094571_issue_4571_w6d_rework.sql"), "utf8"));
+    const calls = w6d.match(/cron\.unschedule\([^;]*;/gi) ?? [];
+    assert.equal(calls.length, 2, "W6d must have exactly its two sweep unschedules");
+    for (const c of calls) assert.match(c, new RegExp(`jobname\\s*=\\s*'${job}'`, "i"), `W6d may only unschedule ${job}`);
+  }
   // A NEW one must force a human to confirm it is not a permanent kill.
   const repo = cronReachability(loadMigrations());
   assert.ok(
@@ -506,7 +526,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    29,
+    32,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

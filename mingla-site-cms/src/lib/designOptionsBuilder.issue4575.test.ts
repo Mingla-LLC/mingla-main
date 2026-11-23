@@ -56,15 +56,21 @@ const offlineFonts: FontPipelineDeps = {
   saveFaces: async () => {},
 };
 
-async function build(look: Record<string, unknown>) {
+const heroMedia = {
+  id: "11111111-1111-4111-8111-000000000888", tenant: "t1", state: "READY", detected_mime: "image/jpeg", width: 1600, height: 900,
+  rendition_manifest: { renditions: [{ width: 1600, target_width: 1600, digest: "c".repeat(64), key: `approved/${SITE}/11111111-1111-4111-8111-000000000888/1600.webp` }] },
+};
+
+async function build(look: Record<string, unknown>, blocks: Array<Record<string, unknown>> = [{ blockType: "offering_grid", heading: "Experiences", offering_ids: [{ offering_id: FIXED_ID }] }]) {
   const tenant = { id: "t1", core_site_id: SITE, core_brand_id: BRAND, primary_hostname: "brand.sites.localhost" };
   const settings = { id: "settings-1", tenant: "t1", display_name: "Brand", ...look };
-  const page = { id: "page-home", tenant: "t1", slug: "", title: "Home", enabled: true, blocks: [{ blockType: "offering_grid", heading: "Experiences", offering_ids: [{ offering_id: FIXED_ID }] }] };
+  const page = { id: "page-home", tenant: "t1", slug: "", title: "Home", enabled: true, blocks };
   const collections: Record<string, unknown[]> = {
     pages: [page], navigation: [{ id: "nav-1", tenant: "t1", items: [] }], footer: [{ id: "footer-1", tenant: "t1" }],
-    "site-settings": [settings], media: [],
+    "site-settings": [settings],
+    media: [heroMedia],
   };
-  const sourceDigest = await publicationDraftDigest({ pages: [page], navigation: collections.navigation![0] ?? null, footer: collections.footer![0] ?? null, settings, media: [] });
+  const sourceDigest = await publicationDraftDigest({ pages: [page], navigation: collections.navigation![0] ?? null, footer: collections.footer![0] ?? null, settings, media: [heroMedia] });
   const req = { context: {}, payload: { find: async ({ collection }: { collection: string }) => ({ docs: collections[collection] ?? [] }) } } as never;
   const built = await buildPublicationArtifact(req, {
     tenant: tenant as never, operationId: "op-4575", publicationId: PUBLICATION,
@@ -102,6 +108,33 @@ describe("#4575 the builder freezes Grid's options only when set (SC-2)", () => 
     for (const design of ["voyage", "terra", "atelier"]) {
       const built = await build({ design, design_options: { cover: "full", photos: "colour" } });
       expect(built.artifact.design).toStrictEqual({ key: design, version: 1 });
+    }
+  });
+});
+
+describe("#4575 cover gap SC-5: a grid-index hero keeps its facts under the cover", () => {
+  const hero = {
+    blockType: "hero", variant: "grid-index", heading: "Kolanut", media: "11111111-1111-4111-8111-000000000888", ctas: [],
+    fact_badges: [{ big: "Next", small: "Opening" }, { big: "Open", small: "Tue to Sun" }, { big: "Where", small: "Abuja" }],
+    booking_bar: "venue_table", booking_target_id: FIXED_ID, show_rating: true,
+  };
+  const heroOf = (built: Awaited<ReturnType<typeof build>>) =>
+    (built.artifact.pages.find((page: { path: string }) => page.path === "")!.blocks as Array<Record<string, unknown>>).find((block) => block.type === "hero")!;
+
+  it("with the cover on, the facts, booking bar and rating publish", async () => {
+    const published = heroOf(await build({ design: "grid", design_options: { cover: "full" } }, [hero]));
+    expect(published.variant).toBe("grid-index");
+    expect(published.fact_badges).toHaveLength(3);
+    expect(published.booking_bar).toBe("venue_table");
+    expect(published.show_rating).toBe(true);
+  });
+
+  it("with the cover off (or photos alone), they are stripped as before", async () => {
+    for (const look of [{ design: "grid" }, { design: "grid", design_options: { photos: "colour" } }]) {
+      const published = heroOf(await build(look, [hero]));
+      expect(published.fact_badges).toBeUndefined();
+      expect(published.booking_bar).toBeUndefined();
+      expect(published.show_rating).toBeUndefined();
     }
   });
 });

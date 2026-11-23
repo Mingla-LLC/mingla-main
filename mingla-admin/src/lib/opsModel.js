@@ -2,6 +2,7 @@
 // To review. No React and no Supabase here, so every rule is testable alone.
 
 import { planLinkProblem } from "./brandPlan.js";
+import { CALL_STATUS_LABELS } from "./inboundLeads.js";
 
 // #4270: three statuses. "Needs a person" is no longer a status: it is a
 // Send, Spend or Publish tag (person_reason) on a To do or In progress card.
@@ -146,8 +147,52 @@ export const LINK_KINDS = [
 // form keeps LINK_KINDS as it was.
 export const DETAIL_LINK_KINDS = [
   ...LINK_KINDS,
+  // #4571 W2: a call (a phone touch, searched by the record's name) and a host demo booking.
+  { value: "call", label: "Call" },
+  { value: "booking", label: "Demo booking" },
   { value: "support_conversation", label: "Support conversation" },
 ];
+
+/** #4571 W2: the open subtasks that carry the same link (the ones "Also remove" would change). */
+export function subtasksWithLink(subtasks, link) {
+  return (Array.isArray(subtasks) ? subtasks : []).filter((s) => s && s.status !== "done"
+    && (s.links || []).some((x) => x.kind === link?.kind && x.id === link?.id));
+}
+
+/** #4571 W2: at most two link chips on a tile or a subtask row, then "+N". */
+export function linkChips(links, max = 2) {
+  const list = (Array.isArray(links) ? links : []).filter((l) => l && l.kind && l.id && l.label)
+    .map((l) => ({ ...l, label: linkLabelWords(l.label) }));  // #4571 W3: a demo's time in the viewer's zone
+  return { shown: list.slice(0, max), more: Math.max(0, list.length - max) };
+}
+
+/**
+ * #4571 W3: a booking or demo time in the viewer's own time zone, "24 Nov,
+ * 15:30". `timeZone` is for tests; the browser's zone otherwise. "" when the
+ * value is not a time.
+ */
+export function localWhen(iso, timeZone = undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const opts = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+  if (timeZone) opts.timeZone = timeZone;
+  return d.toLocaleString("en-GB", opts);
+}
+
+/**
+ * #4571 W3: a link label as people read it. A demo booking's label ends in
+ * its UTC instant ("Demo · Island Vinyl Bar · 2026-11-24T14:30Z", from
+ * ops_link_label); that instant is shown in the viewer's zone. Any other
+ * label is returned as it is.
+ */
+export function linkLabelWords(label, timeZone = undefined) {
+  const text = String(label || "");
+  const m = /^(.*· )(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z)$/.exec(text);
+  if (!m) return text;
+  const when = localWhen(m[2].replace("Z", ":00Z"), timeZone);
+  return when ? `${m[1]}${when}` : text;
+}
 
 /** The eleven rules every agent follows, as people read them. */
 export const AGENT_RULES = [
@@ -777,15 +822,19 @@ export const BRAND_ROLE_WORDS = Object.freeze({
  * #4270 W2 (D4): what is wrong with a host card's "Add work item" before it
  * is sent, field by field, in the form's words. The server checks it again.
  */
-export function quickAddProblems({ title = "", owners = [], watchers = [], due = "", filesUrl = "" } = {}, today = todayIso()) {
+export function quickAddProblems({ title = "", owners = [], watchers = [], due = "", filesUrl = "" } = {}, today = todayIso(), nameOf = (email) => email) {
   const out = [];
   const t = String(title || "").trim();
   if (t.length < 3 || t.length > 160) out.push({ field: "title", message: "Say what the work is in 3 to 160 characters." });
-  // #4398: one owner and one watcher, who is not the owner (the server refuses anything else).
-  if (!Array.isArray(owners) || owners.length !== 1) out.push({ field: "owners", message: "A card has one owner. Pick one person." });
-  if (!Array.isArray(watchers) || watchers.length !== 1 || (Array.isArray(owners) && watchers[0] === owners[0])) {
-    out.push({ field: "watchers", message: "A card has one watcher, who is not the owner." });
-  }
+  // #4571: 1 to 10 owners and 1 to 10 watchers, nobody in both, in the server's words (ops_people_check).
+  const o = Array.isArray(owners) ? owners : [];
+  const w = Array.isArray(watchers) ? watchers : [];
+  if (!o.length) out.push({ field: "owners", message: "A card needs at least one owner." });
+  else if (o.length > 10) out.push({ field: "owners", message: "A card has at most 10 owners." });
+  const both = w.filter((e) => o.includes(e));
+  if (both.length) both.forEach((e) => out.push({ field: "watchers", message: `${nameOf(e)} owns this card, so they cannot also watch it.` }));
+  else if (!w.length) out.push({ field: "watchers", message: "A card needs at least one watcher, who is not an owner." });
+  else if (w.length > 10) out.push({ field: "watchers", message: "A card has at most 10 watchers." });
   if (!DATE_RE.test(String(due || ""))) out.push({ field: "due_on", message: "Pick a due date." });
   else if (String(due) < today) out.push({ field: "due_on", message: "The due date can’t be in the past." });
   const files = filesUrlProblem(filesUrl);
@@ -794,9 +843,10 @@ export function quickAddProblems({ title = "", owners = [], watchers = [], due =
 }
 
 /** #4270 W2: the item ops_work_add gets from a host card's "Add work item". */
-export function quickAddItem({ title, owners, watchers = [], due, filesUrl = "", hostSees = false, recordId }) {
+export function quickAddItem({ title, owners, watchers = [], due, filesUrl = "", hostSees = false, recordId, linkKind = "host" }) {
   const item = { quick: true, title: String(title || "").trim(), owners, watchers, due_on: due,
-    links: [{ kind: "host", id: recordId }], on_brand_plan: !!hostSees };
+    // #4571 W3: a creator card links its new task to the creator (only a host card offers "Host can see").
+    links: [{ kind: linkKind === "creator" ? "creator" : "host", id: recordId }], on_brand_plan: linkKind === "creator" ? false : !!hostSees };
   if (String(filesUrl || "").trim()) item.files_url = String(filesUrl).trim();
   return item;
 }
@@ -1461,4 +1511,15 @@ export function cardAnchorWords(anchor) {
     };
   }
   return { lead: "Counted from", title: anchor.title || "", rest: `${day ? ` · ${day}` : ""} · ${runwayLabel(anchor.runway)}` };
+}
+
+/**
+ * The second line of a link-picker result. A demo booking's server value is its
+ * status id ("booked", "moved"); show the one label map's word ("Booked",
+ * "Moved"), never the id. Every other kind's line is already words.
+ */
+export function linkSubWords(kind, sub) {
+  const text = String(sub || "");
+  if (kind !== "booking") return text;
+  return Object.hasOwn(CALL_STATUS_LABELS, text) ? CALL_STATUS_LABELS[text] : text;
 }

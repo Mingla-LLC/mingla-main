@@ -1,11 +1,12 @@
-// Issue #4270 (Wave 2) — the first block of a host card: To do. The open
+// #4571 W3: the Work section of a host or creator card, fed by
+// crm_record_work (every open or recently closed card and subtask that points
+// at the record; for hosts also what To do read). Before: Issue #4270 (Wave 2) — the first block of a host card: To do. The open
 // Work cards for this host (any host record of its brand), oldest due first,
 // each with its due date (red when late), owners, Send/Spend/Publish tag and
 // "Host sees" when the host can see it on their plan. "+ Add work item"
 // opens a short form: what, assignees, watchers, due, Files link and "Host
 // can see this task on their plan" (off by default, D4). Mingla writes the
 // card's instructions and done means (C-6); staff can edit them on the card.
-import { CalendarInput } from "@mingla/calendar-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../ui/Button";
@@ -13,8 +14,10 @@ import { SideLink } from "../ui/PanelStack";
 import { Avatars } from "../ops/OpsChip";
 import { FixesList } from "../ops/FixesList";
 import { PeopleField } from "../people/PeopleField";
+import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords } from "../../lib/peopleField";
 import { useToast } from "../../context/ToastContext";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
+import { dueChoices } from "../../lib/crmModel";
 import * as ops from "../../services/opsService";
 import {
   dayLabel,
@@ -34,13 +37,14 @@ const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--col
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
 
 function emptyForm(owners) {
-  // #4398: one owner to start with (the host card's first owner); the watcher is picked.
-  return { title: "", owners: (owners || []).slice(0, 1), watchers: [], due: "", filesUrl: "", hostSees: false };
+  // #4571: every owner of the host card to start with (up to 10); the watchers are picked.
+  return { title: "", owners: (owners || []).slice(0, 10), watchers: [], due: "", filesUrl: "", hostSees: false };
 }
 
 /** One open card: title, due chip, owners, tag, Host sees. Opens the card beside. */
 export function HostToDoRow({ card, today = todayIso() }) {
-  const late = card.due_on && String(card.due_on).slice(0, 10) < today;
+  const done = card.status === "done";
+  const late = !done && card.due_on && String(card.due_on).slice(0, 10) < today;
   return (
     <SideLink
       side={{ kind: "card", id: card.id }}
@@ -49,7 +53,10 @@ export function HostToDoRow({ card, today = todayIso() }) {
       className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-[var(--gray-200)] px-3 py-2 hover:bg-[var(--gray-50)] ${FOCUS}`}
     >
       <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className={`text-[13px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
+        <span className={`text-[13px] font-semibold text-[var(--color-text-primary)] ${WORDS} ${done ? "line-through opacity-70" : ""}`}>
+          {card.parent_number ? <span className="mr-1 text-[var(--color-text-tertiary)]">↳ #{card.parent_number}</span> : card.number ? <span className="mr-1 text-[var(--color-text-tertiary)]">#{card.number}</span> : null}
+          {card.title}
+        </span>
         <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] text-[var(--color-text-tertiary)]">
           {(card.owners || []).length
             ? <Avatars people={card.owners} />
@@ -57,10 +64,11 @@ export function HostToDoRow({ card, today = todayIso() }) {
           {isTagged(card) && <span className="rounded-full bg-[var(--color-brand-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-brand-700)]">{personReasonLabel(card)}</span>}
           {card.on_brand_plan && <span data-host-sees="" className="rounded-full bg-[var(--color-success-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-success-700)]">Host sees</span>}
           {card.brand_plan_source === "host_app" && <span data-from-host-app="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">From Host app</span>}
+          {done && <span className="rounded-full bg-[var(--color-success-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-success-700)]">Done</span>}
           {card.status === "doing" && <span className="rounded-full bg-[var(--gray-100)] px-2 py-px text-[11px] font-semibold text-[var(--color-text-secondary)]">In progress</span>}
         </span>
       </span>
-      {card.due_on && (
+      {card.due_on && !done && (
         <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-semibold tabular-nums ${late ? "bg-[var(--color-error-50)] text-[var(--color-error-700)]" : "bg-[var(--gray-100)] text-[var(--color-text-secondary)]"}`}>
           {late ? "Late · " : ""}{dayLabel(card.due_on)}
         </span>
@@ -74,6 +82,7 @@ export function HostToDoRow({ card, today = todayIso() }) {
  * Add work item form with that title (Host can see stays off).
  */
 export function HostToDoSection({ record, read, online, onAdded, prefill = null }) {
+  const isCreator = record?.pipeline === "creators";
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
   const team = directory.people;
@@ -89,9 +98,12 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
   const today = todayIso();
 
   const data = read?.data;
-  const cards = sortColumn((Array.isArray(data?.todo) ? data.todo : []).filter((c) => c && c.status !== "done"), "todo");
-  const doneCount = Number(data?.done_count) || 0;
-  const problems = quickAddProblems(form, today);
+  // #4571 W3: crm_record_work's rows, open first (the server's order), then those closed in the last 14 days.
+  const all = Array.isArray(data?.cards) ? data.cards.filter(Boolean) : [];
+  const cards = sortColumn(all.filter((c) => c.status !== "done"), "todo");
+  const closed = all.filter((c) => c.status === "done");
+  const doneCount = closed.length;
+  const problems = quickAddProblems(form, today, (email) => (team || []).find((p) => p.email === email)?.name || email);
   const problemFor = (field) => (tried ? problems.find((p) => p.field === field)?.message || "" : "");
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const fid = (key) => `host-todo-${id}-${key}`;
@@ -107,7 +119,7 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
     e.preventDefault();
     setTried(true);
     if (!online || busy || problems.length) return;
-    const item = quickAddItem({ ...form, recordId: id });
+    const item = quickAddItem({ ...form, recordId: id, linkKind: isCreator ? "creator" : "host" });
     const value = JSON.stringify(item);
     if (keyRef.current.value !== value) keyRef.current = { key: requestKey("web_host_todo"), value };
     setBusy(true);
@@ -137,21 +149,21 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
   return (
     <section aria-labelledby={`host-todo-${id}`} data-host-section="todo" className="flex min-w-0 flex-col gap-2">
       <h3 id={`host-todo-${id}`} className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[14px] font-semibold text-[var(--color-text-primary)]">
-        <span>To do</span>
-        {!read?.loading && data && <span className="text-[12.5px] font-medium text-[var(--color-text-tertiary)]">{cards.length} open · {doneCount} done this week</span>}
+        <span>Work</span>
+        {!read?.loading && data && <span className="text-[12.5px] font-medium text-[var(--color-text-tertiary)]">{cards.length} open · {doneCount} done in the last 14 days</span>}
       </h3>
       {read?.loading ? (
-        <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading this host’s work…</span><div className="h-11 animate-pulse rounded-lg bg-[var(--gray-100)]" /><div className="h-11 animate-pulse rounded-lg bg-[var(--gray-100)]" /></div>
+        <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading this card’s work…</span><div className="h-11 animate-pulse rounded-lg bg-[var(--gray-100)]" /><div className="h-11 animate-pulse rounded-lg bg-[var(--gray-100)]" /></div>
       ) : read?.error && !data ? (
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] text-[var(--color-error-700)]">
-          <span className={`min-w-0 ${WORDS}`}>Couldn’t load this host’s work. {opsErrorWords(read.error)}</span>
+          <span className={`min-w-0 ${WORDS}`}>Couldn’t load the work for {record?.name || "this card"}. {opsErrorWords(read.error)}</span>
           <Button variant="secondary" size="sm" className="min-h-11" onClick={read.retry}>Try again</Button>
         </div>
-      ) : cards.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-tertiary)]">Nothing open.</p>
+      ) : all.length === 0 ? (
+        <p className="text-[13px] text-[var(--color-text-tertiary)]">No Work points at this {isCreator ? "creator" : "host"} yet. Add a work item, or link this card from any Work card.</p>
       ) : (
         <ul className="flex min-w-0 flex-col gap-1.5">
-          {cards.map((c) => <li key={c.id} className="min-w-0"><HostToDoRow card={c} today={today} /></li>)}
+          {[...cards, ...closed].map((c) => <li key={c.id} className="min-w-0"><HostToDoRow card={c} today={today} /></li>)}
         </ul>
       )}
 
@@ -169,22 +181,27 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
           </label>
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex min-w-0 flex-col gap-1">
-              {/* #4398: one owner and one watcher, who is not the owner. */}
-              <PeopleField id={fid("owners")} label="Owner" single value={form.owners} team={team} me={me} suggested={defaultOwners} exclude={form.watchers} onChange={(owners) => set({ owners })} />
+              {/* #4571: 1 to 10 owners and 1 to 10 watchers, nobody in both. */}
+              <PeopleField id={fid("owners")} label="Owners" max={10} min={1} minWords={lastOwnerWords} hint={OWNERS_HINT} value={form.owners} team={team} me={me} suggested={defaultOwners} exclude={form.watchers} onChange={(owners) => set({ owners })} />
               {problemFor("owners") && <span role="alert" className="text-[12px] text-[var(--color-error-700)]">{problemFor("owners")}</span>}
             </div>
             <div className="flex min-w-0 flex-col gap-1">
-              <PeopleField id={fid("watchers")} label="Watcher" single value={form.watchers} team={team} me={me} suggested={[me].filter(Boolean)} exclude={form.owners} onChange={(watchers) => set({ watchers })} />
+              <PeopleField id={fid("watchers")} label="Watching" max={10} hint={WATCHERS_HINT} minWords={lastWatcherWords} value={form.watchers} team={team} me={me} suggested={[me].filter(Boolean)} exclude={form.owners} onChange={(watchers) => set({ watchers })} />
               {problemFor("watchers") && <span role="alert" className="text-[12px] text-[var(--color-error-700)]">{problemFor("watchers")}</span>}
             </div>
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="flex min-w-0 flex-col gap-1" htmlFor={fid("due")}>
-              <span className={LABEL}>Due</span>
-              <CalendarInput id={fid("due")} mode="date" min={today} value={form.due} disabled={busy}
-                aria-invalid={!!problemFor("due_on") || undefined} onChange={(e) => set({ due: e.target.value })} className={INPUT} />
+            {/* #4571 W3: quick due choices, not a typed date. */}
+            <div className="flex min-w-0 flex-col gap-1" role="group" aria-labelledby={fid("due")}>
+              <span id={fid("due")} className={LABEL}>Due</span>
+              <span className="flex min-w-0 flex-wrap gap-1">
+                {dueChoices(today).map((c) => (
+                  <button key={c.value} type="button" aria-pressed={form.due === c.value} disabled={busy} onClick={() => set({ due: c.value })}
+                    className={`min-h-9 rounded-full border px-2.5 text-[12px] font-semibold ${form.due === c.value ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)]"}`}>{c.label}</button>
+                ))}
+              </span>
               {problemFor("due_on") && <span className="text-[12px] text-[var(--color-error-700)]">{problemFor("due_on")}</span>}
-            </label>
+            </div>
             <label className="flex min-w-0 flex-col gap-1" htmlFor={fid("files")}>
               <span className={LABEL}>Files link (optional)</span>
               <input id={fid("files")} type="url" inputMode="url" maxLength={2000} value={form.filesUrl} disabled={busy} placeholder="https://"
@@ -192,10 +209,10 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
               {problemFor("files_url") && <span className="text-[12px] text-[var(--color-error-700)]">{problemFor("files_url")}</span>}
             </label>
           </div>
-          <label className="flex min-h-11 min-w-0 items-center gap-2 text-[13px] text-[var(--color-text-primary)]" htmlFor={fid("host-sees")}>
+          {!isCreator && <label className="flex min-h-11 min-w-0 items-center gap-2 text-[13px] text-[var(--color-text-primary)]" htmlFor={fid("host-sees")}>
             <input id={fid("host-sees")} type="checkbox" checked={form.hostSees} disabled={busy} onChange={(e) => set({ hostSees: e.target.checked })} className="h-4 w-4" />
             Host can see this task on their plan
-          </label>
+          </label>}
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" variant="ghost" className="min-h-11" disabled={busy} onClick={() => setAdding(false)}>Cancel</Button>
             <Button type="submit" className="min-h-11" loading={busy} disabled={!online || busy}>{busy ? "Adding…" : "Add work item"}</Button>

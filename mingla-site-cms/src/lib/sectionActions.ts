@@ -642,14 +642,15 @@ const STARTER_ROWS: Readonly<Record<string, number>> = { "faq.items": 2, "featur
 
 /** Section types an owner may add from the workspace, in the order they are offered. */
 export const ADDABLE_SECTION_TYPES: readonly BlockType[] = [
-  "rich_text", "media_feature", "gallery", "feature_cards", "faq", "pull_quote", "testimonials", "offering_grid",
+  "hero", "rich_text", "media_feature", "gallery", "feature_cards", "faq", "pull_quote", "testimonials", "offering_grid",
   "cta", "team", "facts_table", "marquee", "contact_form", "newsletter_signup", "destination_grid", "story_grid",
   "page_links", "divider", "spacer",
 ];
 /** These start from one of the owner's own photos (`media_id` on add_section). */
-export const SECTION_TYPES_NEEDING_PHOTO: ReadonlySet<string> = new Set(["media_feature", "gallery"]);
+export const SECTION_TYPES_NEEDING_PHOTO: ReadonlySet<string> = new Set(["media_feature", "gallery", "hero"]);
 
 const ADD_DESCRIPTIONS: Readonly<Partial<Record<BlockType, string>>> = {
+  hero: "The cover: one of your photos across the top of the page, with a headline, a line under it and up to three short facts. It replaces the page title.",
   rich_text: "A heading and a few paragraphs.",
   media_feature: "One of your photos beside a heading and a few words.",
   gallery: "A set of your photos.",
@@ -678,6 +679,8 @@ export function sectionCatalog(design: DesignKey, actor: SectionActor): AddableS
     .filter((type) => DESIGNS[design].variants[type].length > 0)
     // Ari adds only the kinds its own tools may write.
     .filter((type) => actor === "user" || ARI_BLOCK_TYPES.includes(type))
+    // #4575: the cover is the owner's to add; Ari's addable list is unchanged.
+    .filter((type) => actor === "user" || type !== "hero")
     .map((type) => ({
       type,
       label: SECTION_WORDS[type],
@@ -703,6 +706,9 @@ export function starterSection(type: BlockType, design: DesignKey, mediaId: stri
       starters.set(key, STARTER_BODY);
     } else if (spec.kind === "enum" && spec.required) {
       block[key] = spec.values[0];
+    } else if (type === "hero" && key === "ctas") {
+      // #4575: a button row needs a link, which an owner cannot set here: the cover starts with no buttons.
+      continue;
     } else if (spec.kind === "list" && (spec.required || STARTER_ROWS[`${type}.${key}`])) {
       const texts = (Object.entries(spec.item) as Array<[string, FieldSpec]>).filter(([, child]) => child.kind === "text" && child.required);
       // A list of Mingla records (offerings, reviews) starts empty: Mingla fills it.
@@ -730,6 +736,7 @@ export function starterSection(type: BlockType, design: DesignKey, mediaId: stri
   if (type === "offering_grid") { block.mode = "upcoming"; block.kind = "all"; fills("offerings"); }
   if (type === "page_links") { block.mode = "teaser"; fills("items"); }
   if (type === "media_feature") { block.media = mediaId; block.alignment = "left"; }
+  if (type === "hero") { block.media = mediaId; block.ctas = []; }
   if (type === "gallery") block.images = [{ id: newRowId(), media: mediaId }];
   return { block, starters };
 }
@@ -881,9 +888,14 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
   if (typeof type !== "string" || !sectionCatalog(design, ctx.actor).some((entry) => entry.type === type) || !isBlockType(type)) {
     refuse("SECTION_TYPE_NOT_AVAILABLE");
   }
-  if (blocks.length >= MAX_BLOCKS_PER_PAGE) refuse("SECTION_LIMIT_REACHED", { max: MAX_BLOCKS_PER_PAGE });
+  const isCover = type === "hero";
+  // #4575: the cover is the top of the page, once.
+  if (isCover && blocks.some((existing) => existing.blockType === "hero")) refuse("VALIDATION_FAILED", { problems: ["This page already has a big picture."] });
+  // Replacing a page title does not add a section, so it needs no room.
+  const replacesTitle = isCover && blocks[0]?.blockType === "page_header";
+  if (blocks.length >= MAX_BLOCKS_PER_PAGE && !replacesTitle) refuse("SECTION_LIMIT_REACHED", { max: MAX_BLOCKS_PER_PAGE });
   const after = args.after_section_id;
-  const at = after === null || after === undefined ? 0 : findSection(blocks, after) + 1;
+  const at = isCover || after === null || after === undefined ? 0 : findSection(blocks, after) + 1;
   let mediaId: string | null = null;
   if (SECTION_TYPES_NEEDING_PHOTO.has(type)) {
     if (typeof args.media_id !== "string" || !args.media_id) refuse("MEDIA_REQUIRED");
@@ -891,6 +903,14 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
     mediaId = args.media_id;
   }
   const starter = starterSection(type, design, mediaId);
+  if (replacesTitle) {
+    // #4575: the page title's own words carry over (the owner wrote them, they are not starter text).
+    const title = blocks[0]!;
+    const heading = typeof title.heading === "string" ? title.heading.trim() : "";
+    if (heading) { starter.block.heading = heading; starter.starters.delete("heading"); }
+    const lines = typeof title.subheading === "string" ? title.subheading.split("\n").map((line) => line.trim()).filter(Boolean) : [];
+    if (lines.length) starter.block.subheading = lines.join(" · ").slice(0, 300);
+  }
   const edits = parseEdits(args.edits);
   const { block, texts } = applyEdits(starter.block, edits, ctx.actor);
   if (ctx.actor === "ari") {
@@ -900,6 +920,7 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
     if (missing.length) refuse("VALIDATION_FAILED", { problems: missing.slice(0, 20).map((key) => `add_section needs words for ${key}`) });
   }
   check?.(block, texts);
+  if (replacesTitle) blocks.splice(0, 1);
   blocks.splice(at, 0, block);
   const updated = await savePage(ctx, page, { blocks });
   const stored = (Array.isArray(updated.blocks) ? updated.blocks as AnyDoc[] : [])[at];

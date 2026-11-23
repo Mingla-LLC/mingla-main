@@ -58,7 +58,9 @@
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below
 -- check growth only for admin areas and accept the team_manage gate.
-\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W2: crm_record_log marks a wrong number bad, so it is one of the functions that write identifiers.
+-- #4571 W3: crm_identifier_set_followers writes a handle's follower count.
+\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "s/'crm_record_create_core,crm_record_update'/'crm_identifier_set_followers,crm_record_create_core,crm_record_log,crm_record_merge,crm_record_unmerge,crm_record_update'/" -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
 \set t3802k_file `cat supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_selfcheck_a `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_oldmember `sed -n '/^CREATE OR REPLACE FUNCTION public.admin_team_set_member/,/^\$\$;/p' supabase/migrations/20270818003802_issue_3802_wave0_invite_binding.sql`
@@ -320,9 +322,9 @@ begin
   -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
   -- #4130: the separately guarded Team dashboard aggregate adds exactly one
   -- crm_ reader and does not broaden the agent gateway.
-  perform pg_temp.t3802k_check('K-1', 'there are exactly 53 crm_ functions',
+  perform pg_temp.t3802k_check('K-1', 'there are exactly 108 crm_ functions (#4571 W3 adds seven, W4 twenty, W6 twenty-six, W7 two)',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname like 'crm\_%'), '53');
+      where n.nspname = 'public' and p.proname like 'crm\_%'), '108');
 
   foreach t in array array['public.team_agent_keys', 'public.team_agent_calls'] loop
     perform pg_temp.t3802k_check('K-1', t || ': row security on, no policy, no trigger',
@@ -591,7 +593,9 @@ begin
   v_all := v_all || v;
   perform pg_temp.t3802k_check('K-4', 'my_day is the home summary of the key''s owner',
     (v::jsonb -> 'result')::text,
-    pg_temp.t3802k_as('growth', $q$select (public.crm_home_summary(null) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting'))::text$q$));
+    -- #4571 W3: and calls_due, the count of the person's My calls today.
+    pg_temp.t3802k_as('growth', $q$select (public.crm_home_summary(null) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting')
+                                          || jsonb_build_object('calls_due', public.crm_calls_queue(null)->'count'))::text$q$));
   perform pg_temp.t3802k_like('K-4', 'my_day refuses a date that is not a date',
     pg_temp.t3802k_gw('growth.claude', 'my_day', '{"today":"2026-13-45"}'), '%"token": "invalid_arguments"%today%2026-10-13%');
 
@@ -1434,7 +1438,8 @@ begin
     d_west || '/' || d_west || '/' || c_west);
   perform pg_temp.t3802k_check('K-14', 'that is what the same person''s browser asks for: its own date',
     (pg_temp.t3802k_gw('east', 'my_day')::jsonb -> 'result')::text,
-    pg_temp.t3802k_as('growth2', format($q$select (public.crm_home_summary(%L) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting'))::text$q$, d_east)));
+    pg_temp.t3802k_as('growth2', format($q$select (public.crm_home_summary(%L) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting')
+                                                   || jsonb_build_object('calls_due', public.crm_calls_queue(%L)->'count'))::text$q$, d_east, d_east)));
   v := pg_temp.t3802k_gw('nozone', 'my_day');
   perform pg_temp.t3802k_check('K-14', 'a key with no zone answers in UTC and says no zone is recorded',
     (v::jsonb -> 'dates')::text,

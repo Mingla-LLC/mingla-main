@@ -53,7 +53,8 @@
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below
 -- check growth only for admin areas and accept the team_manage gate.
-\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W3: the pr3 self-check also checks the four new client functions, the three new internal helpers and crm_record_watchers.
+\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/" | sed -e "s/^    'public.crm_contact_check(text,jsonb)'$/    'public.crm_contact_check(text,jsonb)', 'public.crm_record_set_people(uuid,text\\[\\],text\\[\\],timestamp with time zone)', 'public.crm_record_work(uuid)', 'public.crm_calls_queue(date)', 'public.crm_identifier_set_followers(uuid,integer)', 'public.crm_demo_suggestions(uuid)', 'public.crm_demo_link(uuid,uuid,text)', 'public.crm_demo_create_record(uuid)', 'public.crm_demo_not_a_host(uuid)', 'public.crm_demo_unlink(uuid)', 'public.crm_demo_inbox()', 'public.crm_demo_inbox_count()', 'public.crm_records_archived_list(text)', 'public.crm_record_archive(uuid,text)', 'public.crm_record_unarchive(uuid)', 'public.crm_record_merge(uuid,uuid,text)', 'public.crm_record_unmerge(uuid)', 'public.crm_record_merges_json(uuid)', 'public.crm_duplicate_pairs(text)', 'public.crm_email_log_ingest(text,jsonb)', 'public.crm_outreach_numbers(date,date)', 'public.crm_cadence_state(uuid)', 'public.crm_cadence_sweep_status(uuid)', 'public.crm_cadence_sweep_preview()', 'public.crm_cadence_sweep_configure(text,uuid,text\\[\\],date)'/" -e "s/^    'public.admin_team_directory()',$/    'public.admin_team_directory()', 'public.crm_4571_people_overlap(uuid,text\\[\\],text\\[\\])', 'public.crm_notify_watchers(uuid,uuid,text,text,text)', 'public.crm_record_work_ids(uuid)', 'public.crm_record_has_demo(uuid)', 'public.crm_4571_demo_move_ok(uuid,text,text,text,timestamp with time zone)', 'public.crm_demo_stage_allowed(uuid,text)', 'public.crm_4571_demo_stage_guard()', 'public.crm_record_demos_json(uuid)', 'public.crm_demo_gate(public.crm_records)', 'public.crm_demo_needs_linking(uuid)', 'public.crm_demo_calendar_bits(uuid)', 'public.crm_4571_demo_candidates(uuid,text)', 'public.crm_4571_demo_link_core(public.book_call_leads,public.crm_records,text,text,text)', 'public.crm_demo_link_from_token(text,uuid)', 'public.crm_4571_demo_booking(uuid)', 'public.crm_4571_booking_icp(text)', 'public.crm_4571_w6_json(public.crm_records)', 'public.crm_4571_person_ctx()', 'public.crm_4571_email_of(text)', 'public.crm_4571_stage_at(uuid,timestamp with time zone)', 'public.crm_4571_suggest_replied(public.crm_records)', 'public.crm_4571_numbers_row(integer,integer,integer,integer,integer,integer)', 'public.crm_4571_cadence_config()', 'public.crm_4571_working_days_after(date,integer)', 'public.crm_4571_cadence(public.crm_records,date)', 'public.crm_4571_system_move(uuid,text,text,text)', 'public.crm_cadence_sweep(boolean,text)', 'public.crm_cadence_sweep_cron()', 'public.crm_4571_sweep_reader()', 'public.crm_4571_stage_move_ok(uuid,text,text,text,timestamp with time zone,uuid)', 'public.crm_4571_stage_refusal(text)',/" -e "s/^    'public.crm_import_receipts'$/    'public.crm_import_receipts', 'public.crm_record_watchers', 'public.crm_record_demos', 'public.crm_record_merges', 'public.crm_email_log', 'public.crm_cadence_sweep_runs', 'public.crm_cadence_sweep_actions'/"`
 \set t3802h_rekey `sed -n '/^-- issue-3802-pr3 rekey: begin/,/^-- issue-3802-pr3 rekey: end/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
 \set t3802h_oldkey `sed -n '/^CREATE FUNCTION public.crm_name_key/,/^\$\$;/p' supabase/migrations/20270820003802_issue_3802_wave1_crm_pipelines.sql`
 
@@ -61,6 +62,17 @@
 -- PART 1 — one transaction, rolled back.
 -- ===========================================================================
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
+-- #4571 W4: this suite proves brand linking and Live, which predate the Demo
+-- booked rule; the rule (tested in issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql
+-- and, for the brand path, issue_3980_synced_w3.implementor.happy.pg17.test.sql)
+-- is answered yes inside this rolled-back transaction only.
+create or replace function public.crm_4571_demo_move_ok(p_record_id uuid, p_pipeline text, p_from text, p_to text, p_exempt_at timestamptz) returns boolean
+language sql stable set search_path = '' as $ov$ select true $ov$;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
@@ -406,7 +418,7 @@ begin
 
   -- A move into a stage that needs a reason is still refused first for the stale stage.
   r := pg_temp.t3802h_move('growth', 'h2', 'lost', 'No budget', 'meeting');
-  perform pg_temp.t3802h_like('H-2', 'a stale move to Lost is refused the same way', r, 'ERR:22023:stage_changed: This card is in Contacted now, not Meeting,%');
+  perform pg_temp.t3802h_like('H-2', 'a stale move to Lost is refused the same way', r, 'ERR:22023:stage_changed: This card is in Contacted now, not Demo booked (Google Meet),%');  -- #4571 W4: the meeting stage's label
 
   -- "Already there" stays an answer whatever stage was named.
   r := pg_temp.t3802h_move('growth', 'h2', 'contacted', null, 'meeting');
@@ -1749,6 +1761,11 @@ create table t3802h_race.results (seq serial primary key, label text, ok boolean
 -- admins: that role needs no confirmed-mailbox column, which this image lacks
 -- outside part 1.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 delete from public.crm_activity where actor_email like 'issue3802h-race-%'
    or record_id in (select id from public.crm_records where created_by like 'issue3802h-race-%');
 delete from public.crm_record_owners where owner_email like 'issue3802h-race-%'
@@ -1777,6 +1794,7 @@ insert into public.seeding_cities (id, google_place_id, name, country, country_c
                                    bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng, is_live_for_consumers) values
   ('38020000-0000-4000-d930-000000000001', 'issue3802h-race-city', 'Issue3802h Race City', 'Nigeria', 'NG', 1, 1, 0, 0, 2, 2, false);
 set local session_replication_role = origin;
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 
 do $race$
@@ -1982,6 +2000,11 @@ select count(*) as t3802h_race_total,
 
 -- Remove the committed rows, whatever the verdict.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 delete from public.crm_activity where actor_email like 'issue3802h-race-%'
    or record_id in (select id from public.crm_records where created_by like 'issue3802h-race-%');
 delete from public.crm_record_owners where owner_email like 'issue3802h-race-%'
@@ -1995,6 +2018,7 @@ delete from public.seeding_cities where google_place_id = 'issue3802h-race-city'
 delete from public.admin_audit_log where admin_email like 'issue3802h-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802h-race-%';
 delete from auth.users where email like 'issue3802h-race-%';
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 reset search_path;
 \if :t3802h_made_dblink

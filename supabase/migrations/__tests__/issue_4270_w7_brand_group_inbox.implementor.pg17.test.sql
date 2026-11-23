@@ -27,6 +27,11 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 -- A Support teammate without Hosts and Creators access: every real team role

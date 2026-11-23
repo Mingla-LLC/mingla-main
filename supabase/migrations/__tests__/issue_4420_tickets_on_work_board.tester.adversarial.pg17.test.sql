@@ -61,12 +61,12 @@ begin
     perform set_config('request.jwt.claims', json_build_object('sub', v_id, 'email', v_email, 'role', 'authenticated')::text, true);
     perform set_config('request.jwt.claim.role', '', true);
     execute p_sql into v_out;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards immediate;
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards immediate;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     return v_out;
   exception when others then
-    set constraints ops_4398_card_people_people, ops_4398_card_people_cards deferred;
+    set constraints ops_4571_card_people_people, ops_4571_card_people_cards deferred;
     reset role;
     return 'ERR:' || sqlstate || ':' || sqlerrm;
   end;

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
+import { pageOfHash, toastsForPage } from "../lib/toastPage";
 
 const ToastContext = createContext(null);
 
@@ -25,6 +26,23 @@ export function ToastProvider({ children }) {
     };
   }, []);
 
+  // #4571 rework: an error toast belongs to its page; another page drops it.
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onRoute = () => {
+      const page = pageOfHash(window.location.hash);
+      setToasts((prev) => {
+        const keep = toastsForPage(prev, page);
+        prev.filter((t) => !keep.includes(t)).forEach((t) => {
+          if (timersRef.current[t.id]) { clearTimeout(timersRef.current[t.id]); delete timersRef.current[t.id]; }
+        });
+        return keep.length === prev.length ? prev : keep;
+      });
+    };
+    window.addEventListener("hashchange", onRoute);
+    return () => window.removeEventListener("hashchange", onRoute);
+  }, []);
+
   const removeToast = useCallback((id) => {
     if (timersRef.current[id]) {
       clearTimeout(timersRef.current[id]);
@@ -39,7 +57,8 @@ export function ToastProvider({ children }) {
     // dismisses the toast. A duration replaces the variant's own lifetime.
     ({ variant = "info", title, description, action, duration }) => {
       const id = ++toastIdCounter;
-      const toast = { id, variant, title, description, action };
+      const page = typeof window === "undefined" ? "" : pageOfHash(window.location.hash);
+      const toast = { id, variant, title, description, action, page };
 
       setToasts((prev) => {
         const next = [toast, ...prev];
