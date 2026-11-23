@@ -281,6 +281,29 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM = 'sites_validation_failed'; END;
   IF NOT v_failed THEN RAISE EXCEPTION 'an unknown claim kind was accepted'; END IF;
 
+  -- Retest P3-A: a release that carries a stale prior (not the value this
+  -- claim wrote) never re-opens a delivered unproven claim.
+  DELETE FROM public.brand_site_recovery_watch_state;
+  v_c := public.brand_site_recovery_watch_claim('unproven', NULL, NULL);
+  IF v_c->'prior'->>'claim_written_at' IS NULL THEN
+    RAISE EXCEPTION 'an unproven claim did not return the value it wrote';
+  END IF;
+  PERFORM public.brand_site_recovery_watch_release('unproven', NULL, NULL, '{"unproven_sent_at":null}'::jsonb);
+  PERFORM public.brand_site_recovery_watch_release('unproven', NULL, NULL,
+    jsonb_build_object('unproven_sent_at', NULL, 'claim_written_at', clock_timestamp() - interval '1 hour'));
+  IF (SELECT unproven_sent_at FROM public.brand_site_recovery_watch_state) IS NULL
+    OR (public.brand_site_recovery_watch_claim('unproven', NULL, NULL)->>'claimed')::boolean THEN
+    RAISE EXCEPTION 'a stale unproven release re-opened a delivered claim';
+  END IF;
+
+  -- Retest P3-B: a sent warn with no stored closing time (written by no
+  -- shipped code) must still let a warn be claimed, never answer NULL.
+  UPDATE public.brand_site_recovery_watch_state SET last_sent_level = 'warn', incident_closes_at = NULL;
+  v_c := public.brand_site_recovery_watch_claim('warn', v_closes, NULL);
+  IF (v_c->>'claimed') IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'a warn claim over a NULL incident answered % (warn skipped)', COALESCE(v_c->>'claimed', 'NULL');
+  END IF;
+
   RAISE NOTICE 'ISSUE_4574_SITES_RECOVERY_CLAIM_OK';
 END;
 $t4574_claim$;

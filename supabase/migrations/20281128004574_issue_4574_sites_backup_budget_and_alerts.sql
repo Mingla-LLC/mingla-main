@@ -340,6 +340,7 @@ DECLARE
   v_rank_old integer;
   v_rank_new integer;
   v_ok boolean;
+  v_now timestamptz := clock_timestamp();
 BEGIN
   IF p_kind IS NULL OR p_kind NOT IN ('warn','critical','expired','recovered','heartbeat','unproven')
     OR (p_kind IN ('warn','critical','expired','recovered') AND p_closes_at IS NULL)
@@ -353,7 +354,7 @@ BEGIN
   IF p_kind IN ('warn','critical','expired') THEN
     v_rank_new := CASE p_kind WHEN 'warn' THEN 1 WHEN 'critical' THEN 2 ELSE 3 END;
     v_rank_old := CASE v_old.last_sent_level WHEN 'warn' THEN 1 WHEN 'critical' THEN 2 WHEN 'expired' THEN 3 ELSE 0 END;
-    v_ok := NOT (v_old.incident_closes_at = p_closes_at AND v_rank_old >= v_rank_new);
+    v_ok := NOT (v_old.incident_closes_at IS NOT DISTINCT FROM p_closes_at AND v_rank_old >= v_rank_new);
     IF v_ok THEN
       UPDATE public.brand_site_recovery_watch_state SET
         last_sent_level = p_kind, incident_closes_at = p_closes_at, last_sent_at = clock_timestamp()
@@ -375,10 +376,13 @@ BEGIN
     v_ok := v_old.unproven_sent_at IS NULL
       OR v_old.unproven_sent_at <= clock_timestamp() - interval '2 hours';
     IF v_ok THEN
-      UPDATE public.brand_site_recovery_watch_state SET unproven_sent_at = clock_timestamp() WHERE id;
+      UPDATE public.brand_site_recovery_watch_state SET unproven_sent_at = v_now WHERE id;
     END IF;
   END IF;
-  RETURN jsonb_build_object('claimed', v_ok, 'prior', to_jsonb(v_old) - 'id');
+  -- prior.claim_written_at lets the release of an unproven claim restore only
+  -- the value THIS claim wrote (#4574 retest P3-A).
+  RETURN jsonb_build_object('claimed', v_ok,
+    'prior', (to_jsonb(v_old) - 'id') || jsonb_build_object('claim_written_at', CASE WHEN v_ok AND p_kind = 'unproven' THEN v_now END));
 END;
 $function$;
 COMMENT ON FUNCTION public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz) IS
@@ -417,7 +421,7 @@ BEGIN
   ELSE
     UPDATE public.brand_site_recovery_watch_state SET
       unproven_sent_at = (p_prior->>'unproven_sent_at')::timestamptz
-    WHERE id AND unproven_sent_at IS DISTINCT FROM (p_prior->>'unproven_sent_at')::timestamptz;
+    WHERE id AND unproven_sent_at = (p_prior->>'claim_written_at')::timestamptz;
   END IF;
 END;
 $function$;
