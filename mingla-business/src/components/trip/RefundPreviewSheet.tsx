@@ -197,6 +197,12 @@ export const RefundPreviewSheet: React.FC<RefundPreviewSheetProps> = ({
               tripDateRange={tripDateRange}
               density="concise"
             />
+            {preview.inProgress === true ? (
+              <Text style={styles.reasonHelper}>
+                This booking is already cancelled. Part of this refund isn't
+                finished yet; confirming finishes it. Nothing is refunded twice.
+              </Text>
+            ) : null}
 
             <View style={styles.reasonWrap}>
               <Text style={styles.reasonLabel}>

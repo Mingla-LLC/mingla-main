@@ -69,7 +69,7 @@ import {
   handleInstallmentPaymentSucceeded,
 } from "../_shared/installmentWebhookHandlers.ts";
 import { stripeTicketCheckout, stripeTicketRefund } from "../_shared/stripe.ts";
-import { finishUnrecordedPlanRefunds } from "../_shared/installments/unrecordedRefunds.ts";
+import { finishUnrecordedPlanRefunds, resumeTripCancels } from "../_shared/installments/unrecordedRefunds.ts";
 import { sendUnsentPaidInFullNotices } from "../_shared/installments/paidInFullNotice.ts";
 
 const DEFAULT_BATCH_LIMIT = 500 as const;
@@ -94,6 +94,8 @@ type SchedulerResult = {
   overpayments?: Record<string, number>;
   /** issue #4522 pass 6 (S9-1) — card refunds made but not yet recorded, finished by read-back. */
   unrecorded_refunds?: { finished: number; waiting: number; error: number };
+  /** issue #4522 G-3 / G-4 — trip cancels in progress, resumed. */
+  trip_cancels?: { completed: number; in_progress: number; error: number };
   /** issue #4522 pass 6 (S9-2) — paid-in-full emails sent by this run after an unanswered claim. */
   paid_in_full_retried?: number;
   /** issue #4522 (N10) — the v2 steps this run skipped because the schema probe failed. */
@@ -120,6 +122,11 @@ export interface SchedulerDeps {
   /** issue #4522 pass 6 (S9-1) — the Stripe surface that reads refunds back (never creates one). */
   refundStripe: () => unknown;
   alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
+  /** issue #4522 G-3 / G-4 — trip cancels in progress (default: the cancel function's resume mode). */
+  resumeTripCancels?: (
+    supabase: SupabaseClient,
+    limit: number,
+  ) => Promise<{ completed: number; in_progress: number; error: number }>;
 }
 
 function rowObject(value: unknown): Record<string, unknown> {
@@ -656,6 +663,14 @@ export async function processScheduledInstallments(
       result.errors.push({
         installment_id: "scheduler",
         reason: "overpayment_sweep_failed",
+      });
+    }
+    try {
+      result.trip_cancels = await (deps.resumeTripCancels ?? resumeTripCancels)(supabase, limit);
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "trip_cancel_resume_failed",
       });
     }
     try {

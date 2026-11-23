@@ -87,9 +87,121 @@ export async function alertUnrecordedTripRefund(
     ),
     `What failed: ${input.detail.slice(0, 300)}`,
     card
-      ? "Card refunds are finished automatically by the next instalment run, by reading back the same provider refund; nothing is sent again."
+      // issue #4522 G-3 — this alert is sent only where the cancel cannot be
+      // resumed (a database without the #4522 schema): nothing finishes it.
+      ? "Nothing finishes this automatically: please record this refund against the booking. Mingla will not send it again; nothing is sent again."
       : "Second-provider refunds are never re-sent automatically; please reconcile this refund.",
   ]);
+}
+
+/** One intended refund of a cancel, as begin wrote it. */
+export interface IntendedTripRefund {
+  installment_id: string | null;
+  source_pi: string | null;
+  refund_cents: number;
+}
+
+/**
+ * issue #4522 G-3 / G-4 — the one ops alert for a trip cancel that cannot
+ * finish on its own: after its 3rd failed attempt, or (second provider) when
+ * a refund was sent and the provider never answered. It says, per intended
+ * refund, what is true now and what happens next.
+ */
+export async function alertTripCancelNotFinished(
+  alert: (subject: string, paragraphs: string[]) => Promise<void>,
+  input: {
+    orderId: string;
+    refundId: string;
+    currency: string;
+    detail: string;
+    made: ProviderRefundMade[];
+    intended: IntendedTripRefund[];
+    unconfirmed: string[];
+    cause: "failure" | "unconfirmed";
+  },
+): Promise<void> {
+  const cur = input.currency.toUpperCase();
+  const lines = input.intended.filter((e) => e.refund_cents > 0).map((e) => {
+    const which = e.installment_id === null ? "deposit" : `instalment ${e.installment_id}`;
+    const made = input.made.find((m) => m.charge === e.source_pi);
+    const sentNoAnswer = input.unconfirmed.some((n) => n.endsWith(`:${e.installment_id ?? "deposit"}`));
+    const state = made && made.recorded
+      ? `refunded and recorded (provider refund ${made.providerRefundId})`
+      : made
+      ? `refunded at the provider, not yet recorded (provider refund ${made.providerRefundId})`
+      : sentNoAnswer
+      ? "sent to the provider, no answer yet (never re-sent automatically)"
+      : "not refunded yet";
+    return `Charge ${e.source_pi ?? "?"} (${which}): ${e.refund_cents} ${cur} (minor units): ${state}`;
+  });
+  await alert("A trip cancel refund could not be finished", [
+    input.cause === "unconfirmed"
+      ? "A cancelled trip booking's refund was sent to the second payment provider, which has not confirmed it. Mingla never sends it again automatically. The booking's payouts stay held until the refund is recorded."
+      : "A cancelled trip booking still owes the traveler a refund, and three attempts to finish it failed, so Mingla has stopped retrying it automatically. The booking's payouts stay held until it is finished. The traveler has not been told the refund is done.",
+    `Order: ${input.orderId}; refund: ${input.refundId}`,
+    ...lines,
+    `What failed: ${input.detail.slice(0, 300)}`,
+    input.cause === "unconfirmed"
+      ? "Next: check this refund with the provider. When the provider shows it, the next instalment run or the host pressing Cancel & refund again records it."
+      : "Next: fix the cause, then the host can press Cancel & refund again on this booking to finish it; refunds already made are never sent again.",
+  ]);
+}
+
+/**
+ * issue #4522 G-3 / G-4 — the instalment run's read-back of trip cancels in
+ * progress: each is resumed by the cancel function itself (mode 'resume',
+ * service role), which records what the provider already refunded and sends
+ * only what was never sent. It never starts a cancel.
+ */
+export async function resumeTripCancels(
+  supabase: Client,
+  limit: number,
+  invoke: (body: Record<string, unknown>, key: string) => Promise<Response> = defaultResumeInvoke,
+): Promise<{ completed: number; in_progress: number; error: number }> {
+  const out = { completed: 0, in_progress: 0, error: 0 };
+  const { data, error } = await supabase.rpc("issue_4522_trip_cancels_to_resume", {
+    p_limit: Math.min(Math.max(limit, 1), 10),
+  });
+  if (error) throw new Error(`trip_cancel_resume_query_failed:${error.message}`);
+  for (const row of (Array.isArray(data) ? data : []) as unknown[]) {
+    const orderId = typeof row === "string" ? row : String((row as Record<string, unknown>)?.issue_4522_trip_cancels_to_resume ?? "");
+    if (orderId.length === 0) continue;
+    try {
+      const { data: op } = await supabase.rpc("issue_4522_trip_cancel_operation", { p_order_id: orderId });
+      if (op === null || op === undefined) continue;
+      const res = await invoke({
+        mode: "resume",
+        orderId,
+        expectedRefundTotalCents: Number((op as Record<string, unknown>).amount_cents ?? 0),
+      }, `trip-cancel-resume:${String((op as Record<string, unknown>).refund_id)}`);
+      if (res.ok) out.completed += 1;
+      else if (res.status === 409) out.in_progress += 1;
+      else out.error += 1;
+      await res.body?.cancel();
+    } catch (err) {
+      out.error += 1;
+      console.error(JSON.stringify({
+        event: "trip_cancel_resume_failed",
+        orderId,
+        reason: err instanceof Error ? err.message.slice(0, 200) : "unknown",
+      }));
+    }
+  }
+  return out;
+}
+
+function defaultResumeInvoke(body: Record<string, unknown>, key: string): Promise<Response> {
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  return fetch(`${url}/functions/v1/cancel-trip-booking`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${serviceKey}`,
+      "content-type": "application/json",
+      "Idempotency-Key": key,
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 /**

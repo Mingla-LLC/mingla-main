@@ -56,8 +56,10 @@ import {
   PAYSTACK_MIN_REFUND_SUBUNITS,
   paystackRefundOutcomeStatus,
   persistPaystackRefundOutcome,
+  reconcilePaystackRefund,
 } from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
+import { PaystackApiError } from "../_shared/paystack.ts";
 import {
   dispatchTicketConfirmation,
   jsonResponse,
@@ -77,6 +79,7 @@ import { returnOrderOverpaymentsBestEffort } from "../_shared/installments/overp
 import { overpaymentReturnCents } from "./refundEntries.ts";
 import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
 import {
+  alertTripCancelNotFinished,
   alertUnrecordedTripRefund,
   providerRefundsMade,
 } from "../_shared/installments/unrecordedRefunds.ts";
@@ -85,7 +88,9 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-type CancelMode = "buyer" | "operator" | "preview";
+// issue #4522 G-3 / G-4 — 'resume': the instalment run (service role only)
+// finishes a cancel already in progress; it never starts one.
+type CancelMode = "buyer" | "operator" | "preview" | "resume";
 
 interface PerPaymentRefund {
   installment_id: string | null;
@@ -109,6 +114,14 @@ interface BeginRpcResult {
   installments_to_cancel?: Array<
     { installment_id: string; ordinal: number; due_at: string }
   >;
+  /** issue #4522 G-3 / G-4 — the refunds row carries the intended refunds. */
+  operation?: boolean;
+  /** issue #4522 G-3 / G-4 — an unfinished cancel resumed (who cancelled, why). */
+  resume?: boolean;
+  actor_kind?: string;
+  cancel_reason?: string | null;
+  /** issue #4522 G-4 — card refunds refused with no money moved, per charge. */
+  card_tries?: Record<string, number>;
 }
 
 interface ComputeRpcResult {
@@ -353,6 +366,8 @@ serve(async (req: Request): Promise<Response> => {
     ? "buyer"
     : body.mode === "operator"
     ? "operator"
+    : body.mode === "resume"
+    ? "resume"
     : "preview";
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
   const token = typeof body.token === "string" ? body.token : "";
@@ -395,6 +410,25 @@ serve(async (req: Request): Promise<Response> => {
       actorKind = "buyer";
       actorUserId = null; // buyer-self has no auth.users row
     }
+  } else if (mode === "resume") {
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (
+      serviceKey.length === 0 ||
+      req.headers.get("authorization") !== `Bearer ${serviceKey}`
+    ) {
+      return jsonResponse({ error: "forbidden" }, 403);
+    }
+    const { data: op } = await supabase.rpc(
+      "issue_4522_trip_cancel_operation",
+      { p_order_id: orderId },
+    );
+    if (op === null || op === undefined) {
+      return jsonResponse({ error: "no_cancel_in_progress" }, 409);
+    }
+    const opActor = (op as { actor_kind?: unknown }).actor_kind;
+    actorKind = opActor === "buyer" ? "buyer" : "operator";
+    const opUser = (op as { actor_user_id?: unknown }).actor_user_id;
+    actorUserId = typeof opUser === "string" ? opUser : null;
   } else if (mode === "operator") {
     const userId = await userIdFromAuthHeader(req);
     if (!userId) return jsonResponse({ error: "unauthenticated" }, 401);
@@ -466,6 +500,44 @@ serve(async (req: Request): Promise<Response> => {
       }, 500);
     }
     const compute = (computeData as ComputeRpcResult | null) ?? { ok: false };
+    // issue #4522 G-3 / G-4 — a cancel still in progress answers with what it
+    // still owes back (the refunds it intended), never a bare "already
+    // cancelled"; confirming it resumes the same operation.
+    if (!compute.ok && compute.reason === "already_cancelled") {
+      const { data: op } = await supabase.rpc(
+        "issue_4522_trip_cancel_operation",
+        { p_order_id: orderId },
+      );
+      if (op !== null && op !== undefined) {
+        const o = op as Record<string, unknown>;
+        const entries = paymentRefundEntries(o.per_payment_refund);
+        const { data: tripRow } = await supabase.from("orders")
+          .select("event_id").eq("id", orderId).maybeSingle();
+        const opEventId = typeof tripRow?.event_id === "string"
+          ? tripRow.event_id
+          : "";
+        const slugs = await resolveTripPublicSlugs(supabase, opEventId);
+        return jsonResponse({
+          mode: "preview",
+          inProgress: true,
+          orderId,
+          eventId: opEventId,
+          brandSlug: slugs.brandSlug,
+          tripSlug: slugs.tripSlug,
+          quotedAt: o.created_at,
+          tierPct: Number(o.tier_pct ?? 0),
+          tierKind: "computed",
+          paidTotalCents: entries.reduce((s, e) => s + e.paid_cents, 0),
+          refundTotalCents: Number(o.amount_cents ?? 0),
+          currency: String(o.currency ?? "GBP"),
+          perPaymentRefund: entries,
+          installmentsToCancel: 0,
+          ...(depositKeptCents(o) > 0
+            ? { depositKeptCents: depositKeptCents(o) }
+            : {}),
+        });
+      }
+    }
     if (!compute.ok) {
       const mapped = mapComputeReasonToHttp(compute.reason ?? "rpc_error");
       return jsonResponse(
@@ -555,18 +627,55 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  const planV2 = await planV2SchemaAvailable(supabase);
+  // One computation before anything changes: the Paystack floor below and,
+  // with the #4522 schema, the G-4 checks.
+  const { data: floorData, error: floorError } =
+    paymentProvider === "paystack" || (planV2 && mode !== "resume")
+      ? await computeRefundForActor(
+        supabase,
+        planV2,
+        { orderId, cancelAt, actorKind },
+      )
+      : { data: null, error: null };
+  const floorCompute = (floorData as ComputeRpcResult | null) ?? {
+    ok: false,
+  };
+  // issue #4522 G-4 — with the #4522 schema nothing that can be checked is
+  // checked after the booking is cancelled: the quoted amount, the card
+  // account and the line items are checked first, with no side effect, so a
+  // cancel never stops part-way on them (main's database: as before).
+  if (planV2 && mode !== "resume" && floorError === null && floorCompute.ok) {
+    const preTotal = Number(floorCompute.refund_total_cents ?? 0);
+    if (preTotal !== expectedRefundTotalCents) {
+      return jsonResponse({
+        error: "policy_updated",
+        detail:
+          "Cancellation policy was updated — refresh to see your new refund amount",
+        currentRefundTotalCents: preTotal,
+        currency: (floorCompute.currency ?? "GBP").toLowerCase(),
+      }, 409);
+    }
+    if (preTotal > 0 && paymentProvider === "stripe" && !connectedAccountId) {
+      return jsonResponse({
+        error: "missing_connected_account",
+        detail: "brand has no Stripe connected account",
+      }, 422);
+    }
+    const { count: lineCount } = await supabase.from("order_line_items")
+      .select("id", { count: "exact", head: true }).eq("order_id", orderId);
+    if (preTotal > 0 && (lineCount ?? 0) === 0) {
+      return jsonResponse({
+        error: "no_order_line_items",
+        detail: "order has no line items to attribute refund against",
+      }, 500);
+    }
+  }
+
   // Paystack rejects explicit partial-refund amounts below NGN 50. Validate
   // before the cancellation state flips. True full refunds omit `amount` and
   // therefore retain Paystack's full-reversal/replay shape.
   if (paymentProvider === "paystack") {
-    const { data: floorData, error: floorError } = await computeRefundForActor(
-      supabase,
-      await planV2SchemaAvailable(supabase),
-      { orderId, cancelAt, actorKind },
-    );
-    const floorCompute = (floorData as ComputeRpcResult | null) ?? {
-      ok: false,
-    };
     if (
       floorError === null && floorCompute.ok &&
       paymentRefundEntries(floorCompute.per_payment_refund).some((entry) =>
@@ -609,6 +718,23 @@ serve(async (req: Request): Promise<Response> => {
   const begin = (beginData as BeginRpcResult | null) ?? { ok: false };
   if (!begin.ok) {
     const mapped = mapComputeReasonToHttp(begin.reason ?? "rpc_error");
+    // issue #4522 G-3 / G-4 — a cancel that finished says so: its refund is
+    // complete (an unfinished one is resumed by begin, never answered here).
+    if (planV2 && mapped.code === "already_cancelled") {
+      const { data: done } = await supabase.from("refunds")
+        .select("amount_cents")
+        .eq("order_id", orderId).eq("status", "succeeded")
+        .not("metadata->trip_cancel->>completed_at", "is", null)
+        .limit(1).maybeSingle();
+      if (done) {
+        return jsonResponse({
+          error: mapped.code,
+          detail: "Order is already cancelled and its refund is complete",
+          operation: "completed",
+          refundTotalCents: Number(done.amount_cents ?? 0),
+        }, mapped.status);
+      }
+    }
     return jsonResponse(
       { error: mapped.code, detail: mapped.detail },
       mapped.status,
@@ -617,6 +743,27 @@ serve(async (req: Request): Promise<Response> => {
 
   const refundId = begin.refund_id ?? "";
   const computedRefundTotalCents = Number(begin.refund_total_cents ?? 0);
+  // issue #4522 G-3 / G-4 — begin wrote this cancel's intended refunds on its
+  // refunds row (or resumed them): every failure below leaves it in
+  // progress for a host retry and the instalment run, never rolled back.
+  const resumable = begin.operation === true;
+  const resumed = begin.resume === true;
+  if (resumed) {
+    actorKind = begin.actor_kind === "buyer" ? "buyer" : "operator";
+  }
+  const cancelReason = resumed
+    ? (typeof begin.cancel_reason === "string" ? begin.cancel_reason : "")
+    : reasonRaw;
+  if (resumed && mode !== "resume" && computedRefundTotalCents !== expectedRefundTotalCents) {
+    // The cancel in progress refunds what it intended; nothing changes here.
+    return jsonResponse({
+      error: "policy_updated",
+      detail: "Refresh to see the refund still being finished",
+      currentRefundTotalCents: computedRefundTotalCents,
+      currency: (begin.currency ?? "GBP").toLowerCase(),
+      refundId,
+    }, 409);
+  }
   // issue #4522 (E-6) — a cancel whose refund comes to nothing has no refund
   // row (begin returns refund_id NULL): no provider, ledger or commit step
   // runs, and the notices are keyed by the order instead.
@@ -627,6 +774,53 @@ serve(async (req: Request): Promise<Response> => {
   const perPaymentRefund = paymentRefundEntries(begin.per_payment_refund);
   const installmentsCancelled = (begin.installments_to_cancel ?? []).length;
 
+  // issue #4522 G-3 / G-4 — one step of the cancel in progress, recorded on
+  // its refunds row; ops are told once, only when it cannot finish (the 3rd
+  // failure) or a second-provider refund was sent with no answer.
+  let refusedCardCharge: string | null = null;
+  const noteTripCancel = async (
+    kind: "failure" | "waiting" | "unconfirmed" | "completed",
+    detail: string | null,
+    unconfirmed: string[] = [],
+  ): Promise<{ alert: boolean; first_completion: boolean }> => {
+    const { data, error } = await supabase.rpc("issue_4522_trip_cancel_note", {
+      p_refund_id: refundId,
+      p_kind: kind,
+      p_detail: detail,
+      p_refused_charge: refusedCardCharge,
+    });
+    if (error) {
+      console.error("[cancel-trip-booking] cancel note failed", error.message);
+      return { alert: false, first_completion: false };
+    }
+    const note = (data ?? {}) as { alert?: boolean; first_completion?: boolean };
+    if (note.alert === true) {
+      const made = await providerRefundsMade(supabase, refundId).catch(() => []);
+      await alertTripCancelNotFinished(installmentOpsAlert, {
+        orderId,
+        refundId,
+        currency,
+        detail: detail ?? kind,
+        made,
+        intended: perPaymentRefund,
+        unconfirmed,
+        cause: kind === "unconfirmed" ? "unconfirmed" : "failure",
+      });
+    }
+    return {
+      alert: note.alert === true,
+      first_completion: note.first_completion === true,
+    };
+  };
+  const inProgressResponse = (detail: string) =>
+    jsonResponse({
+      error: "refund_in_progress",
+      detail,
+      refundId,
+      refundTotalCents: computedRefundTotalCents,
+      currency,
+    }, 409);
+
   // SC-22 freshness re-check — if policy changed between preview and confirm,
   // the computed amount may differ from expectedRefundTotalCents.
   // CRITICAL: at this point we have already begun (orders.cancelled_at flipped,
@@ -634,11 +828,15 @@ serve(async (req: Request): Promise<Response> => {
   // refund at the wrong amount. Rollback the begin via _rollback (marks refund
   // failed; orders.cancelled_at + installment cancels stay per v1 design).
   if (computedRefundTotalCents !== expectedRefundTotalCents) {
-    await supabase.rpc("biz_cancel_trip_booking_rollback", {
-      p_refund_id: refundId,
-      p_failure_reason:
-        `sc22_freshness_divergence: expected=${expectedRefundTotalCents}, computed=${computedRefundTotalCents}`,
-    });
+    // issue #4522 G-4 — checked before begin with the #4522 schema; a change
+    // landing in between leaves the cancel in progress at begin's amount.
+    if (!resumable) {
+      await supabase.rpc("biz_cancel_trip_booking_rollback", {
+        p_refund_id: refundId,
+        p_failure_reason:
+          `sc22_freshness_divergence: expected=${expectedRefundTotalCents}, computed=${computedRefundTotalCents}`,
+      });
+    }
     return jsonResponse(
       {
         error: "policy_updated",
@@ -654,10 +852,14 @@ serve(async (req: Request): Promise<Response> => {
 
   // Step 2: connected-account lookup for Stripe refund calls.
   if (paymentProvider === "stripe" && !connectedAccountId && !noRefund) {
-    await supabase.rpc("biz_cancel_trip_booking_rollback", {
-      p_refund_id: refundId,
-      p_failure_reason: "missing_connected_account",
-    });
+    if (resumable) {
+      await noteTripCancel("failure", "missing_connected_account");
+    } else {
+      await supabase.rpc("biz_cancel_trip_booking_rollback", {
+        p_refund_id: refundId,
+        p_failure_reason: "missing_connected_account",
+      });
+    }
     return jsonResponse(
       {
         error: "missing_connected_account",
@@ -705,10 +907,14 @@ serve(async (req: Request): Promise<Response> => {
     quantity: number;
   }>;
   if (orderLineItems.length === 0) {
-    await supabase.rpc("biz_cancel_trip_booking_rollback", {
-      p_refund_id: refundId,
-      p_failure_reason: "no_order_line_items",
-    });
+    if (resumable) {
+      await noteTripCancel("failure", "no_order_line_items");
+    } else {
+      await supabase.rpc("biz_cancel_trip_booking_rollback", {
+        p_refund_id: refundId,
+        p_failure_reason: "no_order_line_items",
+      });
+    }
     return jsonResponse(
       {
         error: "no_order_line_items",
@@ -723,6 +929,39 @@ serve(async (req: Request): Promise<Response> => {
   const expectedStripeAttemptCount = perPaymentRefund.filter((entry) =>
     entry.refund_cents > 0 && entry.source_pi
   ).length;
+
+  // issue #4522 G-3 — a resumed card refund replays its own attempt (same
+  // fingerprint, same provider idempotency key): one made is read back, one
+  // never sent is sent once. An attempt left unanswered for 20 hours is never
+  // sent again (the provider forgets idempotency keys after 24): it waits for
+  // ops. A new operation keys its attempts by the refund, not the request.
+  const priorCardAttempts = new Map<
+    string,
+    { fingerprint: string; answered: boolean; createdAt: number }
+  >();
+  if (resumable && paymentProvider === "stripe" && refundId.length > 0) {
+    const { data: prior } = await supabase.from("ticket_refund_attempts")
+      .select("payment_intent_id, request_fingerprint, buyer_refund_id, created_at")
+      .eq("refund_id", refundId);
+    for (const a of (prior ?? []) as Record<string, unknown>[]) {
+      priorCardAttempts.set(String(a.payment_intent_id), {
+        fingerprint: String(a.request_fingerprint),
+        answered: typeof a.buyer_refund_id === "string",
+        createdAt: Date.parse(String(a.created_at)),
+      });
+    }
+  }
+  const unconfirmedPaystack: string[] = [];
+  let providerStillAnswering = false;
+  // issue #4522 G-4 — a card refund the provider refused (no money moved) is
+  // tried again under a new provider key; one with no answer keeps its key.
+  const cardTries = begin.card_tries ?? {};
+  const cardProviderKey = (suffix: string): string => {
+    const n = Number(cardTries[suffix] ?? 0);
+    return n > 0
+      ? `tr4_cancel:${refundId}:${suffix}:t${n}`
+      : `tr4_cancel:${refundId}:${suffix}`;
+  };
 
   for (const entry of perPaymentRefund) {
     if (entry.refund_cents <= 0) {
@@ -751,48 +990,124 @@ serve(async (req: Request): Promise<Response> => {
         const amountSubunits = entry.refund_cents === entry.paid_cents
           ? undefined
           : entry.refund_cents;
-        const { error: attemptError } = await supabase.rpc(
-          "record_paystack_refund_outcome",
-          {
-            p_source_type: entry.installment_id === null
-              ? "order"
-              : "order_installment",
-            p_source_id: entry.installment_id ?? orderId,
-            p_local_refund_id: refundId,
-            p_transaction_reference: transaction,
-            p_merchant_note: merchantNote,
-            p_provider_refund_id: null,
-            p_amount_cents: entry.refund_cents,
-            p_status: "pending",
-          },
-        );
-        if (attemptError) {
-          throw new Error(
-            `paystack_refund_attempt_persist_failed: ${attemptError.message}`,
+        const persistOutcome = (made: { id: string; status: string }) =>
+          persistPaystackRefundOutcome(
+            () =>
+              supabase.rpc("record_paystack_refund_outcome", {
+                p_source_type: entry.installment_id === null
+                  ? "order"
+                  : "order_installment",
+                p_source_id: entry.installment_id ?? orderId,
+                p_local_refund_id: refundId,
+                p_transaction_reference: transaction,
+                p_merchant_note: merchantNote,
+                p_provider_refund_id: made.id,
+                p_amount_cents: entry.refund_cents,
+                p_status: paystackRefundOutcomeStatus(made.status),
+              }),
+            "cancel-trip-booking",
           );
+        // issue #4522 G-3 / G-4 — a refund of this cancel already made is
+        // recorded, never sent again; one sent with no answer is only read
+        // back (never re-sent: ops get it once if the provider has none).
+        let created: { id: string; status: string } | null = null;
+        let attemptRow: Record<string, unknown> | null = null;
+        if (resumable) {
+          const { data: att } = await supabase.from("paystack_refund_attempts")
+            .select("status, provider_refund_id, error_message")
+            .eq("local_refund_id", refundId).eq("merchant_note", merchantNote)
+            .maybeSingle();
+          attemptRow = (att ?? null) as Record<string, unknown> | null;
+          if (attemptRow?.status === "failed") {
+            throw new Error("paystack_refund_refused_at_provider");
+          }
+          if (
+            attemptRow !== null &&
+            (attemptRow.status === "processed" ||
+              attemptRow.status === "accepted" ||
+              typeof attemptRow.provider_refund_id === "string")
+          ) {
+            created = {
+              id: String(attemptRow.provider_refund_id ?? ""),
+              status: String(attemptRow.status),
+            };
+          } else if (attemptRow?.error_message === "provider_call_started") {
+            const found = await reconcilePaystackRefund({
+              transaction,
+              merchantNote,
+              amountSubunits,
+              currency: "NGN",
+            }).catch(() => null);
+            if (found === null) {
+              unconfirmedPaystack.push(merchantNote);
+              continue;
+            }
+            created = found;
+            await persistOutcome(found);
+          }
         }
-        const created = await createPaystackRefund({
-          transaction,
-          merchantNote,
-          amountSubunits,
-          currency: "NGN",
-        });
-        await persistPaystackRefundOutcome(
-          () =>
-            supabase.rpc("record_paystack_refund_outcome", {
-              p_source_type: entry.installment_id === null
-                ? "order"
-                : "order_installment",
-              p_source_id: entry.installment_id ?? orderId,
-              p_local_refund_id: refundId,
-              p_transaction_reference: transaction,
-              p_merchant_note: merchantNote,
-              p_provider_refund_id: created.id,
-              p_amount_cents: entry.refund_cents,
-              p_status: paystackRefundOutcomeStatus(created.status),
-            }),
-          "cancel-trip-booking",
-        );
+        if (created === null) {
+          if (attemptRow === null) {
+            const { error: attemptError } = await supabase.rpc(
+              "record_paystack_refund_outcome",
+              {
+                p_source_type: entry.installment_id === null
+                  ? "order"
+                  : "order_installment",
+                p_source_id: entry.installment_id ?? orderId,
+                p_local_refund_id: refundId,
+                p_transaction_reference: transaction,
+                p_merchant_note: merchantNote,
+                p_provider_refund_id: null,
+                p_amount_cents: entry.refund_cents,
+                p_status: "pending",
+              },
+            );
+            if (attemptError) {
+              throw new Error(
+                `paystack_refund_attempt_persist_failed: ${attemptError.message}`,
+              );
+            }
+          }
+          if (resumable) {
+            const { data: claimed, error: claimError } = await supabase.rpc(
+              "issue_4522_claim_trip_paystack_send",
+              { p_refund_id: refundId, p_merchant_note: merchantNote },
+            );
+            if (claimError) {
+              throw new Error(`paystack_refund_claim_failed: ${claimError.message}`);
+            }
+            if (claimed !== true) {
+              unconfirmedPaystack.push(merchantNote);
+              continue;
+            }
+          }
+          try {
+            created = await createPaystackRefund({
+              transaction,
+              merchantNote,
+              amountSubunits,
+              currency: "NGN",
+            });
+          } catch (sendErr) {
+            // The provider refused it (no money moved): it may be sent later.
+            if (
+              resumable && sendErr instanceof PaystackApiError &&
+              !isRetryablePaystackRefundError(sendErr)
+            ) {
+              await supabase.rpc("issue_4522_claim_trip_paystack_send", {
+                p_refund_id: refundId,
+                p_merchant_note: merchantNote,
+                p_release: true,
+              });
+            }
+            throw sendErr;
+          }
+          await persistOutcome(created);
+        }
+        if (resumable && paystackRefundOutcomeStatus(created.status) === "failed") {
+          throw new Error("paystack_refund_refused_at_provider");
+        }
         if (entry.installment_id !== null) {
           const { error: markError } = await supabase.rpc(
             "issue_3645_mark_installment_refunded",
@@ -822,7 +1137,15 @@ serve(async (req: Request): Promise<Response> => {
       if (!stripe || !connectedAccountId) {
         throw new Error("stripe_missing_connected_account");
       }
+      const prior = priorCardAttempts.get(entry.source_pi);
+      const cardFingerprint = !resumable
+        ? `${idempotencyKey}:${entry.installment_id ?? "deposit"}`
+        : prior?.fingerprint ??
+          `tr4_cancel:${refundId}:${entry.installment_id ?? "deposit"}`;
+      const staleUnanswered = prior !== undefined && !prior.answered &&
+        Date.now() - prior.createdAt > 20 * 3600 * 1000;
       const feeTruth = await executeTicketRefundWithFeeTruth({
+        ...(staleUnanswered ? { allowProviderMutation: false } : {}),
         supabase,
         stripe,
         refundId,
@@ -835,12 +1158,8 @@ serve(async (req: Request): Promise<Response> => {
         // it never estimates a percentage.
         expectedApplicationFeeAmount: null,
         requestedRefundAmount: entry.refund_cents,
-        requestFingerprint: `${idempotencyKey}:${
-          entry.installment_id ?? "deposit"
-        }`,
-        providerIdempotencyKey: `tr4_cancel:${refundId}:${
-          entry.installment_id ?? "deposit"
-        }`,
+        requestFingerprint: cardFingerprint,
+        providerIdempotencyKey: cardProviderKey(entry.installment_id ?? "deposit"),
         expectedAttemptCount: expectedStripeAttemptCount,
         createBuyerRefund: () =>
           stripe.refunds.create(
@@ -853,14 +1172,15 @@ serve(async (req: Request): Promise<Response> => {
                 mingla_refund_id: refundId,
                 mingla_order_id: orderId,
                 mingla_installment_id: entry.installment_id ?? "",
-                mingla_idempotency_key: idempotencyKey,
+                // same parameters on every replay of this refund's key
+                mingla_idempotency_key: resumable
+                  ? `tr4_cancel:${refundId}`
+                  : idempotencyKey,
                 mingla_tr4_cancel: "true",
               },
             },
             {
-              idempotencyKey: `tr4_cancel:${refundId}:${
-                entry.installment_id ?? "deposit"
-              }`,
+              idempotencyKey: cardProviderKey(entry.installment_id ?? "deposit"),
               stripeAccount: connectedAccountId,
             },
           ),
@@ -878,6 +1198,9 @@ serve(async (req: Request): Promise<Response> => {
         feeTruth.status !== "not_applicable"
       ) {
         stripeFailureDetail = `fee_truth_${feeTruth.status}`;
+        // the provider is still answering (its own read-back finishes it)
+        providerStillAnswering = feeTruth.status === "pending_visibility" ||
+          feeTruth.status === "awaiting_application_fee";
         break;
       }
       if (result.status === "failed" || result.status === "canceled") {
@@ -914,10 +1237,43 @@ serve(async (req: Request): Promise<Response> => {
       totalApplicationFeeRefunded += feeTruth.applicationFeeRefundedCents ?? 0;
     } catch (err) {
       stripeFailureDetail = err instanceof Error ? err.message : String(err);
+      const status = Number((err as { statusCode?: unknown })?.statusCode ?? 0);
+      if (
+        resumable && paymentProvider === "stripe" && status >= 400 &&
+        status < 500 && status !== 409 && status !== 429
+      ) {
+        refusedCardCharge = entry.installment_id ?? "deposit";
+      }
       paystackFailureRetryable = paymentProvider === "paystack" &&
         isRetryablePaystackRefundError(err);
       break;
     }
+  }
+
+  // issue #4522 G-3 / G-4 — the cancel stays in progress: nothing is rolled
+  // back; the next host retry or instalment run resumes it from here.
+  if (resumable && (stripeFailureDetail !== null || unconfirmedPaystack.length > 0)) {
+    console.error("[cancel-trip-booking] cancel in progress", {
+      refundId,
+      stripeFailureDetail,
+      unconfirmed: unconfirmedPaystack.length,
+    });
+    if (stripeFailureDetail !== null) {
+      await noteTripCancel(
+        providerStillAnswering ? "waiting" : "failure",
+        stripeFailureDetail,
+      );
+    }
+    if (unconfirmedPaystack.length > 0) {
+      await noteTripCancel(
+        "unconfirmed",
+        `second_provider_refund_unanswered: ${unconfirmedPaystack.join(",")}`,
+        unconfirmedPaystack,
+      );
+    }
+    return inProgressResponse(
+      stripeFailureDetail ?? "second_provider_refund_unanswered",
+    );
   }
 
   if (stripeFailureDetail !== null) {
@@ -962,9 +1318,17 @@ serve(async (req: Request): Promise<Response> => {
   // Trigger tg_refund_line_items_installment_parity enforces
   // I-PROPOSED-TR4-INSTALLMENT-REFUND-LEDGER-PARITY at write time.
   if (refundLineRowsToInsert.length > 0) {
-    const { error: insertError } = await supabase
-      .from("refund_line_items")
-      .insert(refundLineRowsToInsert);
+    // issue #4522 G-3 — a resumed cancel writes only the lines not yet written.
+    const { error: insertError } = await (resumable
+      ? supabase.from("refund_line_items").upsert(refundLineRowsToInsert, {
+        onConflict: "refund_id,order_line_item_id,installment_id",
+        ignoreDuplicates: true,
+      })
+      : supabase.from("refund_line_items").insert(refundLineRowsToInsert));
+    if (insertError && resumable) {
+      await noteTripCancel("failure", `ledger_insert_failed: ${insertError.message}`);
+      return inProgressResponse(`ledger_insert_failed: ${insertError.message}`);
+    }
     if (insertError) {
       // Stripe refund succeeded but local ledger insert failed.
       // Webhook reconciliation will catch this; refunds.status=failed surfaces
@@ -1014,7 +1378,24 @@ serve(async (req: Request): Promise<Response> => {
       p_provider_refund_id: stripeRefundIds.join(","),
     });
   }
-  if (commitErr || !commitData || !(commitData as { ok: boolean }).ok) {
+  // issue #4522 G-3 / G-4 — the cancel completes only when its refund is
+  // settled in our books (card: the last attempt's finalize; second provider:
+  // the commit, or the commit of an earlier run of this same cancel). Then
+  // it is marked complete exactly once.
+  let firstCompletion = !resumable;
+  if (resumable && !noRefund) {
+    if (commitErr) {
+      await noteTripCancel("failure", `commit_failed: ${commitErr.message}`);
+      return inProgressResponse(`commit_failed: ${commitErr.message}`);
+    }
+    const { data: settledRow } = await supabase.from("refunds")
+      .select("status").eq("id", refundId).maybeSingle();
+    if (settledRow?.status !== "succeeded") {
+      await noteTripCancel("waiting", "refund_not_yet_settled");
+      return inProgressResponse("refund_not_yet_settled");
+    }
+    firstCompletion = (await noteTripCancel("completed", null)).first_completion;
+  } else if (commitErr || !commitData || !(commitData as { ok: boolean }).ok) {
     // Critical: Stripe succeeded + ledger rows written but refund commit failed.
     // The refund-status reconciliation cron can recover; surface to caller.
     console.error(
@@ -1060,7 +1441,7 @@ serve(async (req: Request): Promise<Response> => {
         refund_cents: p.refund_cents,
         currency: p.currency,
       })),
-      reason: reasonRaw.length > 0 ? reasonRaw : null,
+      reason: cancelReason.length > 0 ? cancelReason : null,
       refundIssued: computedRefundTotalCents > 0,
       refund_record_id: refundId,
     };
@@ -1131,9 +1512,10 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // Step 7: audit row.
+  // Step 7: audit row (once per cancel: a resumed one that another run
+  // already completed writes none).
   try {
-    await writeAudit(supabase, {
+    if (firstCompletion) await writeAudit(supabase, {
       user_id: actorUserId,
       brand_id: brandId,
       event_id: eventId,
@@ -1149,7 +1531,7 @@ serve(async (req: Request): Promise<Response> => {
         stripe_refund_ids: stripeRefundIds,
         payment_provider: paymentProvider,
         installments_cancelled: installmentsCancelled,
-        reason: reasonRaw.length > 0 ? reasonRaw : null,
+        reason: cancelReason.length > 0 ? cancelReason : null,
       },
     });
   } catch (auditError) {

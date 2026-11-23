@@ -1,5 +1,6 @@
 -- MINGLA-INVARIANT: I-4522-10 | issue #4522 | A non-refundable deposit frozen in v2 terms is kept only on a traveler's own cancel; an operator or host cancel refunds it, and collected flexible payments refund and pay out like planned ones.
 -- MINGLA-INVARIANT: I-4522-HOST-NEVER-PAID-REFUNDS | issue #4522 | A host is never paid money that went back to a traveler: no payout sends more than its sales are worth after their refunds, and a refund after payout becomes the host's payout debt.
+-- MINGLA-INVARIANT: I-4522-CANCEL-COMPLETABLE | issue #4522 | One trip cancel is one refund operation: until every refund it intends is made and recorded it stays in progress, a host retry and the instalment run resume it, no refund is sent twice, and the booking's sales stay held from payouts.
 \set ON_ERROR_STOP on
 
 -- Issue #4522 slice 8 (M4, 20281129064522): refunds and payouts for v2
@@ -1019,5 +1020,135 @@ BEGIN
       (pg_temp.rel('45220008-0000-4000-8000-0000000000e9')).net_release_cents;
   END IF;
 END $$;
+
+-- J. G-3 / G-4: one trip cancel is one refund operation, always completable.
+--    A card plan order shaped like a real one (deposit on the order, each
+--    collected instalment its own charge), on the card trip of section G.
+INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, buyer_total_cents,
+  list_subtotal_cents, net_subtotal_cents, buyer_fees_cents, tax_cents, pricing_source,
+  currency, payment_method, payment_status, source, installment_plan_root, payment_plan_terms, stripe_payment_intent_id)
+VALUES ('45220008-0000-4000-8000-0000000004f1', '45220008-0000-4000-8000-000000000022', 'card-op@example.test',
+  'Card Op', '+12025550112', 30000, 30000, 30000, 30000, 0, 0, 'provider_reconciled',
+  'USD', 'online_card', 'paid', 'online_checkout', true,
+  '{"v":2,"deposit_minor":30000,"deposit_non_refundable":true,"flex_enabled":true,"auto_adjust":true}', 'pi_j_deposit');
+INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+  collection_method, plan_bound_at, collected_at, stripe_payment_intent_id, application_fee_amount_cents, payout_accounting_state)
+SELECT '45220008-0000-4000-8000-0000000004f1', g, 30000, 'USD', now() - interval '1 day',
+       CASE WHEN g < 3 THEN 'collected' ELSE 'scheduled' END, 'stripe', 'auto_card', now() - interval '2 days',
+       CASE WHEN g < 3 THEN now() - interval '1 day' END, CASE WHEN g < 3 THEN 'pi_j_row' || g END,
+       CASE WHEN g < 3 THEN 1350 END, CASE WHEN g < 3 THEN 'ready' ELSE 'pending' END
+  FROM generate_series(1, 3) g;
+
+-- J1. Begin writes the refunds the cancel intends on its refunds row; a host
+--     retry of the cancelled booking resumes that same operation (same refund,
+--     same amounts, who cancelled and why). FAILS ON REVERT: the retry answered
+--     "already_cancelled" with the deposit refund never sent (G-3).
+DO $$
+DECLARE v_b jsonb; v_r jsonb; v_op jsonb;
+BEGIN
+  v_b := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000004f1', 'operator',
+    '45220008-0000-4000-8000-000000000001', 'Host cancelled: weather');
+  IF NOT COALESCE((v_b->>'operation')::boolean, false) OR (v_b->>'refund_total_cents')::bigint <> 90000 THEN
+    RAISE EXCEPTION 'J1-0 the cancel is one operation refunding 90,000: %', v_b;
+  END IF;
+  v_op := public.issue_4522_trip_cancel_operation('45220008-0000-4000-8000-0000000004f1');
+  IF v_op IS NULL OR jsonb_array_length(v_op->'per_payment_refund') <> 3
+     OR v_op->>'actor_kind' <> 'operator' OR v_op->>'reason' <> 'Host cancelled: weather' THEN
+    RAISE EXCEPTION 'J1-1 the operation lists the three intended refunds and its actor: %', v_op;
+  END IF;
+  v_r := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000004f1', 'operator',
+    '45220008-0000-4000-8000-000000000001', 'Host pressed it again');
+  IF NOT COALESCE((v_r->>'resume')::boolean, false) OR v_r->>'refund_id' <> v_b->>'refund_id'
+     OR (v_r->>'refund_total_cents')::bigint <> 90000 OR v_r->>'cancel_reason' <> 'Host cancelled: weather'
+     OR jsonb_array_length(v_r->'per_payment_refund') <> 3 THEN
+    RAISE EXCEPTION 'J1-2 a retry resumes the same operation: %', v_r;
+  END IF;
+  IF (SELECT count(*) FROM public.refunds WHERE order_id = '45220008-0000-4000-8000-0000000004f1') <> 1 THEN
+    RAISE EXCEPTION 'J1-3 a resume never opens a second refund';
+  END IF;
+  -- while it is in progress every sale of the booking counts 0 for payouts
+  IF (SELECT n.net_cents FROM public.issue_4522_payout_item_now('order', '45220008-0000-4000-8000-0000000004f1',
+        30000, 0, 0, 1350, 28650) n) <> 0
+     OR (SELECT n.net_cents FROM public.order_installments oi
+           CROSS JOIN LATERAL public.issue_4522_payout_item_now('order_installment', oi.id, 30000, 0, 0, 1350, 28650) n
+          WHERE oi.order_id = '45220008-0000-4000-8000-0000000004f1' AND oi.ordinal = 1) <> 0 THEN
+    RAISE EXCEPTION 'J1-4 a cancel in progress holds its sales from payouts';
+  END IF;
+END $$;
+
+-- J2. The read-back and the one alert: listed once untouched for 2 minutes;
+--     ops alerted exactly once, at the 3rd failure (then no longer listed);
+--     completed once. FAILS ON REVERT: no read-back (functions absent).
+DO $$
+DECLARE v_refund uuid; v_n jsonb; v_alerts int := 0; i int;
+BEGIN
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id = '45220008-0000-4000-8000-0000000004f1';
+  IF '45220008-0000-4000-8000-0000000004f1'::uuid IN (SELECT public.issue_4522_trip_cancels_to_resume(50)) THEN
+    RAISE EXCEPTION 'J2-0 a cancel just begun is left to its own call';
+  END IF;
+  UPDATE public.refunds SET metadata = jsonb_set(metadata, '{trip_cancel,last_attempt_at}', to_jsonb(now() - interval '3 minutes'))
+   WHERE id = v_refund;
+  IF '45220008-0000-4000-8000-0000000004f1'::uuid NOT IN (SELECT public.issue_4522_trip_cancels_to_resume(50)) THEN
+    RAISE EXCEPTION 'J2-1 an operation untouched for 2 minutes is resumed by the instalment run';
+  END IF;
+  v_n := public.issue_4522_trip_cancel_note(v_refund, 'waiting', 'fee_truth_pending_visibility');
+  IF (v_n->>'failures')::int <> 0 OR (v_n->>'alert')::boolean THEN
+    RAISE EXCEPTION 'J2-2 waiting on the provider is no failure: %', v_n;
+  END IF;
+  FOR i IN 1..4 LOOP
+    v_n := public.issue_4522_trip_cancel_note(v_refund, 'failure', 'refund refused', CASE WHEN i = 1 THEN 'deposit' END);
+    IF (v_n->>'alert')::boolean THEN v_alerts := v_alerts + 1; END IF;
+    IF i = 3 AND NOT (v_n->>'alert')::boolean THEN RAISE EXCEPTION 'J2-3 the 3rd failure alerts ops'; END IF;
+  END LOOP;
+  IF v_alerts <> 1 THEN RAISE EXCEPTION 'J2-4 ops are alerted exactly once (%)', v_alerts; END IF;
+  IF (SELECT metadata #>> '{trip_cancel,card_tries,deposit}' FROM public.refunds WHERE id = v_refund) <> '1' THEN
+    RAISE EXCEPTION 'J2-5 a refused card refund takes a new provider key next time';
+  END IF;
+  UPDATE public.refunds SET metadata = jsonb_set(metadata, '{trip_cancel,last_attempt_at}', to_jsonb(now() - interval '3 minutes'))
+   WHERE id = v_refund;
+  IF '45220008-0000-4000-8000-0000000004f1'::uuid IN (SELECT public.issue_4522_trip_cancels_to_resume(50)) THEN
+    RAISE EXCEPTION 'J2-6 past the budget the run stops (ops have it; a host retry still resumes)';
+  END IF;
+  IF NOT (public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000004f1', 'operator', NULL, 'again')->>'resume')::boolean THEN
+    RAISE EXCEPTION 'J2-7 a host retry still resumes past the budget';
+  END IF;
+  IF NOT (public.issue_4522_trip_cancel_note(v_refund, 'completed', NULL)->>'first_completion')::boolean
+     OR (public.issue_4522_trip_cancel_note(v_refund, 'completed', NULL)->>'first_completion')::boolean THEN
+    RAISE EXCEPTION 'J2-8 an operation completes exactly once';
+  END IF;
+  IF public.issue_4522_trip_cancel_operation('45220008-0000-4000-8000-0000000004f1') IS NOT NULL
+     OR public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000004f1', 'operator', NULL, 'again')->>'reason'
+        <> 'already_cancelled' THEN
+    RAISE EXCEPTION 'J2-9 a completed cancel is no longer in progress';
+  END IF;
+END $$;
+
+-- J3. A second-provider refund of an operation is sent at most once: one
+--     claim wins; a provider refusal (no money moved) releases it. FAILS ON
+--     REVERT: nothing marked a sent refund, so a resume could send it again.
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000004f3', NULL, NULL);
+DO $$
+DECLARE v_b jsonb; v_note text;
+BEGIN
+  v_b := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000004f3', 'operator', NULL, 'Host cancelled');
+  v_note := 'mingla_trip_refund:' || (v_b->>'refund_id') || ':deposit';
+  IF NOT public.issue_4522_claim_trip_paystack_send((v_b->>'refund_id')::uuid, v_note)
+     OR public.issue_4522_claim_trip_paystack_send((v_b->>'refund_id')::uuid, v_note) THEN
+    RAISE EXCEPTION 'J3-0 exactly one caller may send it';
+  END IF;
+  IF NOT public.issue_4522_claim_trip_paystack_send((v_b->>'refund_id')::uuid, v_note, true)
+     OR NOT public.issue_4522_claim_trip_paystack_send((v_b->>'refund_id')::uuid, v_note) THEN
+    RAISE EXCEPTION 'J3-1 a refused refund may be sent once more';
+  END IF;
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000004f3', (v_b->>'refund_id')::uuid,
+    'ps_deposit_45220008-0000-4000-8000-0000000004f3', v_note, '4522001', 30000000, 'accepted');
+  IF public.issue_4522_claim_trip_paystack_send((v_b->>'refund_id')::uuid, v_note)
+     OR public.issue_4522_claim_trip_paystack_send((v_b->>'refund_id')::uuid, v_note, true) THEN
+    RAISE EXCEPTION 'J3-2 a refund the provider answered is never sent again';
+  END IF;
+END $$;
+
+
+
 
 ROLLBACK;

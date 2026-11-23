@@ -15,8 +15,10 @@ import {
 
 import { computeRefundForActor } from "../refundEntries.ts";
 import {
+  alertTripCancelNotFinished,
   alertUnrecordedTripRefund,
   providerRefundsMade,
+  resumeTripCancels,
 } from "../../_shared/installments/unrecordedRefunds.ts";
 
 const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
@@ -150,3 +152,87 @@ Deno.test("S9-1: the instalment run finishes such a card refund by reading it ba
   // only with the #4522 schema (on main's database the run behaves as main)
   assertEquals(cron.lastIndexOf("if (planV2 && input.dryRun !== true) {", at) > 0, true);
 });
+
+// ---------------------------------------------------------------------------
+// issue #4522 G-3 / G-4 — a part-done cancel is always completable.
+// ---------------------------------------------------------------------------
+
+Deno.test("G-3/G-4: a cancel with the #4522 operation is never rolled back part-way; it answers in progress", () => {
+  // every failure with the operation records a step on it and answers 409 refund_in_progress
+  const arm = source.slice(source.indexOf("if (resumable && (stripeFailureDetail !== null || unconfirmedPaystack.length > 0)) {"));
+  const block = arm.slice(0, arm.indexOf("return inProgressResponse("));
+  assertStringIncludes(block, 'providerStillAnswering ? "waiting" : "failure"');
+  assertEquals(block.includes("biz_cancel_trip_booking_rollback"), false);
+  assertStringIncludes(source, 'error: "refund_in_progress",');
+  // completion is decided by the settled refund row, and is marked once
+  assertStringIncludes(source, 'firstCompletion = (await noteTripCancel("completed", null)).first_completion;');
+  // a second-provider refund with no answer is read back, never sent again
+  assertStringIncludes(source, "await reconcilePaystackRefund({");
+  assertStringIncludes(source, '"issue_4522_claim_trip_paystack_send"');
+  // the instalment run's resume mode is service-role only and never starts a cancel
+  const resume = source.slice(source.indexOf('} else if (mode === "resume") {'));
+  assertStringIncludes(resume.slice(0, 600), "`Bearer ${serviceKey}`");
+  assertStringIncludes(resume.slice(0, 900), '"issue_4522_trip_cancel_operation"');
+  assertStringIncludes(resume.slice(0, 1100), 'error: "no_cancel_in_progress"');
+});
+
+Deno.test("G-3/G-4: the instalment run resumes each cancel in progress through the cancel function", async () => {
+  const sent: Array<{ body: Record<string, unknown>; key: string }> = [];
+  const rpcs: string[] = [];
+  const client = {
+    rpc(fn: string, args: Record<string, unknown>) {
+      rpcs.push(fn);
+      if (fn === "issue_4522_trip_cancels_to_resume") {
+        return Promise.resolve({ data: ["o_done", "o_wait", "o_gone"], error: null });
+      }
+      if (fn === "issue_4522_trip_cancel_operation") {
+        return Promise.resolve({
+          data: args.p_order_id === "o_gone" ? null : { refund_id: `rf_${args.p_order_id}`, amount_cents: 60000 },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  const out = await resumeTripCancels(client, 20, (body, key) => {
+    sent.push({ body, key });
+    return Promise.resolve(new Response("{}", { status: body.orderId === "o_done" ? 200 : 409 }));
+  });
+  assertEquals(out, { completed: 1, in_progress: 1, error: 0 });
+  assertEquals(sent.map((s) => [s.body.mode, s.body.orderId, s.body.expectedRefundTotalCents, s.key]), [
+    ["resume", "o_done", 60000, "trip-cancel-resume:rf_o_done"],
+    ["resume", "o_wait", 60000, "trip-cancel-resume:rf_o_wait"],
+  ]);
+});
+
+Deno.test("G-3/G-4: the one alert says per charge what is true now and what happens next", async () => {
+  const sent: Array<{ subject: string; paragraphs: string[] }> = [];
+  const alert = async (subject: string, paragraphs: string[]) => {
+    sent.push({ subject, paragraphs });
+  };
+  await alertTripCancelNotFinished(alert, {
+    orderId: "o_1", refundId: "rf_1", currency: "usd", detail: "refund refused",
+    made: [{ provider: "stripe", charge: "pi_row1", providerRefundId: "re_1", amountMinor: 30000, recorded: true }],
+    intended: [
+      { installment_id: "row1", source_pi: "pi_row1", refund_cents: 30000 },
+      { installment_id: null, source_pi: "pi_dep", refund_cents: 30000 },
+    ],
+    unconfirmed: [],
+    cause: "failure",
+  });
+  const text = sent[0].paragraphs.join("\n");
+  assertEquals(sent[0].subject, "A trip cancel refund could not be finished");
+  for (const want of ["o_1", "rf_1", "pi_row1", "refunded and recorded", "pi_dep (deposit): 30000 USD (minor units): not refunded yet",
+    "three attempts", "payouts stay held", "press Cancel & refund again", "never sent again"]) {
+    assertStringIncludes(text, want);
+  }
+  await alertTripCancelNotFinished(alert, {
+    orderId: "o_2", refundId: "rf_2", currency: "ngn", detail: "no answer",
+    made: [], intended: [{ installment_id: null, source_pi: "ref_dep", refund_cents: 3000000 }],
+    unconfirmed: ["mingla_trip_refund:rf_2:deposit"], cause: "unconfirmed",
+  });
+  const text2 = sent[1].paragraphs.join("\n");
+  assertStringIncludes(text2, "sent to the provider, no answer yet (never re-sent automatically)");
+  assertStringIncludes(text2, "never sends it again automatically");
+});
+

@@ -97,11 +97,17 @@ Deno.test("ORCH-0843 proportional application-fee refund: refund_application_fee
 Deno.test("ORCH-0875 per-PI idempotency key carries refund_id + installment_id (or 'deposit')", () => {
   // Pins the per-PI idempotency-key contract so retry attempts hit the same
   // Stripe refund (vs creating duplicates).
+  // issue #4522 G-4 — the key is the refund's and the charge's; only a
+  // refund the provider refused (no money moved) is tried under a numbered
+  // key, so a retry of one with no answer always hits the same refund.
   assert(
-    /idempotencyKey:\s*`tr4_cancel:\$\{refundId\}:\$\{\s*entry\.installment_id\s*\?\?\s*"deposit"\s*\}`/.test(
-      SOURCE,
-    ),
-    "expected per-PI idempotency key `tr4_cancel:${refundId}:${entry.installment_id ?? 'deposit'}`",
+    /idempotencyKey:\s*cardProviderKey\(entry\.installment_id\s*\?\?\s*"deposit"\)/.test(SOURCE),
+    "expected the per-PI key cardProviderKey(entry.installment_id ?? 'deposit')",
+  );
+  assert(
+    SOURCE.includes("`tr4_cancel:${refundId}:${suffix}`") &&
+      SOURCE.includes("`tr4_cancel:${refundId}:${suffix}:t${n}`"),
+    "expected the per-PI key tr4_cancel:${refundId}:${suffix} (try n after a refusal)",
   );
 });
 
