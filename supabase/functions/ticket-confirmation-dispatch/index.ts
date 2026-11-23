@@ -1501,8 +1501,12 @@ export const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // issue #4522 E-7 — a trip's dates are its stored calendar dates (UTC
+    // midnight, #4420): read them at UTC, never in the trip zone (which put a
+    // 12–16 Mar New York trip on "Thu 11 Mar"). Events keep their own zone.
+    const dateZone = isTrip ? "UTC" : context.bodyInput.event.timezone;
     const messageTime = typeof startAt === "string"
-      ? formatMessageTime(startAt, context.bodyInput.event.timezone)
+      ? formatMessageTime(startAt, dateZone)
       : null;
     // Legacy and draft events can predate a materialised occurrence. That
     // must not hold a paid buyer's delivery hostage, so say what is known
@@ -1557,7 +1561,7 @@ export const handler = async (req: Request): Promise<Response> => {
         when: typeof startAt !== "string"
           ? "Date TBD"
           : isTrip || (chosenDays !== null && chosenDays.length >= 2)
-          ? formatDateRange(startAt, endAt, context.bodyInput.event.timezone)
+          ? formatDateRange(startAt, endAt, dateZone)
           : `${messageDate}, ${messageClock}`,
         place,
         detailLines: partyLine === null ? undefined : [partyLine],

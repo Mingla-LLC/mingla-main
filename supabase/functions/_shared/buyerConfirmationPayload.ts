@@ -5,7 +5,7 @@ import {
   resolveChosenOccurrence,
   ticketDaysForOrder,
 } from "./chosenOccurrence.ts";
-import { formatMessageTime } from "./messageTime.ts";
+import { formatDateRange, formatMessageTime } from "./messageTime.ts";
 
 export interface BuyerConfirmationTicket {
   ticketId: string;
@@ -185,6 +185,35 @@ export function receiptDateLine(
   return formatted === null ? null : `${formatted.date}, ${formatted.time}`;
 }
 
+/**
+ * issue #4522 E-7 — a trip's dates are its stored calendar dates (UTC
+ * midnight, #4420): "Fri 12 Mar 2027 – Tue 16 Mar 2027", never the start
+ * instant in the trip zone ("Thu 11 Mar 2027, 7:00 PM" in New York).
+ */
+export function tripReceiptDateLine(
+  occurrence: ChosenOccurrence | null,
+): string | null {
+  if (typeof occurrence?.start_at !== "string") return null;
+  const line = formatDateRange(
+    occurrence.start_at,
+    typeof occurrence.end_at === "string" ? occurrence.end_at : null,
+    "UTC",
+  );
+  return line.length > 0 ? line : null;
+}
+
+async function isTripEvent(
+  client: BuyerConfirmationClient,
+  eventId: string,
+): Promise<boolean> {
+  const { data, error } = (await client
+    .from("events")
+    .select("event_type")
+    .eq("id", eventId)
+    .maybeSingle()) as QueryResult<{ event_type: string | null }>;
+  return error === null && data?.event_type === "trip";
+}
+
 function receiptLines(
   rows: readonly LineRow[],
 ): BuyerConfirmationReceipt["lines"] {
@@ -326,6 +355,7 @@ export async function buildBuyerConfirmationPayload(
       order.booked_start_at,
     ));
   const occurrence = chosen ?? (await masterOccurrence(client, eventId));
+  const trip = await isTripEvent(client, eventId);
   const claim = await mintClaimLink(client, "order", orderId);
 
   return {
@@ -343,8 +373,9 @@ export async function buildBuyerConfirmationPayload(
           ? safeCents(order.total_cents) + safeCents(order.tax_amount_cents)
           : safeCents(order.buyer_total_cents),
       currency: currency.trim(),
-      dateLine:
-        chosenDays !== null && chosenDays.length >= 2
+      dateLine: trip
+        ? tripReceiptDateLine(occurrence)
+        : chosenDays !== null && chosenDays.length >= 2
           ? receiptDateLine(chosenDays)
           : receiptDateLine(occurrence),
       orderRef: compactOrderRef(orderId),
