@@ -17,7 +17,7 @@ import {
 // #4453 I-SITES-DESIGN-KEYS-ONE-LIST — design keys come from site-contracts (types only).
 import type { DesignKey } from "../../../packages/site-contracts/src/designs.ts";
 import type { FaqItem, ProcessStep, QuickFacts, ValuePoint } from "../../../packages/site-contracts/src/sitePlan.ts";
-import { brandSiteKeys } from "./brandSiteKeys";
+import { brandSiteKeys, isSitePreviewKey } from "./brandSiteKeys";
 import { keepCoreFlags, normalizeSitePlan, type SitePlanState } from "./sitePlanState";
 import { useEnsureBrandSiteDraft } from "../hooks/useBrandSite";
 
@@ -210,6 +210,8 @@ export function useComposeBrandSiteFromPlan(brandId: string) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId) }),
         queryClient.invalidateQueries({ queryKey: brandSiteKeys.detail(brandId) }),
+        // #4572 item 1 — Rebuild my pages changes the draft: the old preview grant is stale.
+        queryClient.invalidateQueries({ predicate: (query) => isSitePreviewKey(query.queryKey) }),
       ]);
     },
   });

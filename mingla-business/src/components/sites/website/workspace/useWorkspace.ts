@@ -51,6 +51,8 @@ import type { PreviewCommands } from "./usePreviewFrames";
  * to the server on its own.
  */
 export const CONFLICT_MESSAGE = "Someone changed this while you were editing. Showing the latest.";
+/** #4572 item 11 — the "Not saved" line after a teammate saved the page first. */
+export const UNSAVED_AFTER_CONFLICT = "Your words weren’t saved. Try again on the latest version.";
 const PREVIEW_REFRESH_MS = 350;
 
 /** Whether the draft preview has a page to draw for this one (as the site runtime resolves it). */
@@ -212,12 +214,28 @@ export function useWorkspace(input: {
       onState: setSaveState,
       // Sections are not re-read after a save: what is on screen already matches,
       // and a re-read landing mid-typing would put older words back.
-      onSaved: () => {
+      onSaved: (job) => {
+        // #4572 item 11 — words that were "Not saved" are saved now.
+        if (job.kind === "edit") clearUnsaved(job.pageId, job.sectionId, job.edits.map((edit) => edit.key));
         // Everything shown is saved: what is on screen is the page again.
         if (writerRef.current?.pending() === 0) beforeUnsaved.current.clear();
         live.current.afterChange();
       },
-      onError: (error, job) => {
+      keepsQueue: (error) => error instanceof BrandSitesError && !(error instanceof BrandSiteContentConflict),
+      onError: (error, job, _dropped, kind) => {
+        const reason = error instanceof BrandSiteContentConflict
+          ? UNSAVED_AFTER_CONFLICT
+          : error instanceof BrandSitesError ? error.message : `${job.label} didn’t save. Check your connection and try again.`;
+        // #4572 item 11 — typed words are never wiped: they stay on screen,
+        // marked "Not saved", with Try again (also after a teammate's change).
+        if (job.kind === "edit") keepUnsaved(job.pageId, job.sectionId, job.edits, reason);
+        if (kind === "refused") {
+          // The draft did not move: only this job's own change is undone (a
+          // typing job keeps its words above); the rest of the queue goes on.
+          if (job.kind !== "edit") void client.invalidateQueries({ queryKey: sectionsKey(job.pageId) });
+          live.current.notify({ message: `${reason} (${job.label} wasn’t saved.)`, kind: "error" });
+          return;
+        }
         // Put the page back to what the server holds: nothing optimistic survives a refusal.
         // First to the page as it was before the unsaved changes (it may not be readable right now)...
         const before = beforeUnsaved.current.get(job.pageId);
@@ -242,8 +260,35 @@ export function useWorkspace(input: {
       },
     });
   }
+  function keepUnsaved(pageId: string, sectionId: string, edits: readonly { key: string; value: string }[], message: string): void {
+    setUnsaved((current) => {
+      const next = new Map(current);
+      for (const edit of edits) next.set(`${pageId}:${sectionId}:${edit.key}`, { value: edit.value, message });
+      return next;
+    });
+  }
+  function clearUnsaved(pageId: string, sectionId: string, keys: readonly string[]): void {
+    setUnsaved((current) => {
+      if (!keys.some((key) => current.has(`${pageId}:${sectionId}:${key}`))) return current;
+      const next = new Map(current);
+      for (const key of keys) next.delete(`${pageId}:${sectionId}:${key}`);
+      return next;
+    });
+  }
   const writer = writerRef.current;
   const writerOwners = useRef(0);
+
+  /* ── #4572 item 11 — words that did not save ─────────────────────────── */
+  // (keepUnsaved / clearUnsaved are hoisted: the writer above calls them after a save settles.)
+  const [unsaved, setUnsaved] = useState<ReadonlyMap<string, { value: string; message: string }>>(() => new Map());
+  const unsavedValue = useCallback((sectionId: string, key: string): string | null => {
+    for (const [id, entry] of unsaved) if (id.endsWith(`:${sectionId}:${key}`)) return entry.value;
+    return null;
+  }, [unsaved]);
+  const unsavedMessage = useCallback((sectionId: string, key: string): string | null => {
+    for (const [id, entry] of unsaved) if (id.endsWith(`:${sectionId}:${key}`)) return entry.message;
+    return null;
+  }, [unsaved]);
   useEffect(() => {
     // The writer lives as long as this screen: if the effect is run again for the same
     // screen, the writer takes changes again (a disposed one drops them silently).
@@ -330,8 +375,20 @@ export function useWorkspace(input: {
       shownText.current.set(id, value);
     }
     patchSections(activePageId, (list) => applyFieldEdits(list, section.id, [{ key, value }]));
+    // #4572 item 11 — the newest keystroke wins over the kept words.
+    clearUnsaved(activePageId, section.id, [key]);
     writer.typeField(activePageId, section.id, key, value, changeLabel.edit(section.label));
   }, [activePageId, guard, patchSections, writer]);
+
+  /** #4572 item 11 — Try again: send the kept words once more (they stay until that save lands). */
+  const retryField = useCallback((section: WorkspaceSection, key: string) => {
+    if (!activePageId || !guard()) return;
+    const value = unsavedValue(section.id, key);
+    if (value === null) return;
+    patchSections(activePageId, (list) => applyFieldEdits(list, section.id, [{ key, value }]));
+    writer.typeField(activePageId, section.id, key, value, changeLabel.edit(section.label));
+    void writer.flush();
+  }, [activePageId, guard, patchSections, unsavedValue, writer]);
 
   const setLayout = useCallback((section: WorkspaceSection, layout: string) => {
     if (!activePageId || section.layout === layout || !guard()) return;
@@ -456,6 +513,10 @@ export function useWorkspace(input: {
 
   return {
     siteId,
+    // #4572 item 11 — typed words a refused save kept ("Not saved").
+    unsavedValue,
+    unsavedMessage,
+    retryField,
     readOnly,
     readOnlyReason: input.readOnlyReason,
     mode,

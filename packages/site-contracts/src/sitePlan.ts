@@ -235,7 +235,8 @@ export type PlanBlockerField = {
 /** The parts that must be done before "Build your pages" (`proof` never blocks). */
 export const BUILD_REQUIRED_PARTS: readonly PlanPartKey[] = ["offer", "brand", "look", "story", "approve"];
 
-export type PlanBuildBlocker = { readonly key: string; readonly label: string };
+/** #4572 item 4 — `requirement` says whether the owner may mark it "Doesn't apply" (recommended fields only). */
+export type PlanBuildBlocker = { readonly key: string; readonly label: string; readonly requirement?: "required" | "recommended" };
 
 /**
  * #2830 — what still stands between a plan and "Build your pages", in order:
@@ -255,14 +256,14 @@ export function planBuildBlockers(input: {
   const out: PlanBuildBlocker[] = [];
   // #4453 — an explicit list (a slice would drop `approve` once `proof` sits before it).
   for (const part of PLAN_PARTS.filter((entry) => BUILD_REQUIRED_PARTS.includes(entry.key))) {
-    if (!input.partDone(part.key)) out.push({ key: `part:${part.key}`, label: part.label });
+    if (!input.partDone(part.key)) out.push({ key: `part:${part.key}`, label: part.label, requirement: "required" });
   }
   if (input.contextComplete) return out;
   for (const field of input.fields) {
     if (typeof field.key !== "string" || field.key === "approved_plan") continue;
     if (field.requirement === "optional") continue;
     if (field.state === "verified" || field.state === "not_applicable") continue;
-    out.push({ key: field.key, label: input.labelOf(field, field.key) });
+    out.push({ key: field.key, label: input.labelOf(field, field.key), requirement: field.requirement === "recommended" ? "recommended" : "required" });
   }
   return out;
 }

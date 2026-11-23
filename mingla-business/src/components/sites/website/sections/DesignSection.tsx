@@ -338,7 +338,13 @@ export function CoverCard({ disabled }: { disabled: boolean }): React.ReactEleme
       <CardTitle>Cover</CardTitle>
       <Hint style={styles.cardHint}>The big photo or video at the top of your home page. Videos play muted, on a loop, with a pause button; phones in low-data or reduced-motion mode see a still frame.</Hint>
       {cover.isLoading ? <Skeleton height={140} /> : !data?.available ? (
-        <Hint>Your home page has no cover section. Add one in the page editor.</Hint>
+        // #4572 item 8 (D4) — the truth, with a way forward: a photo makes the colour panel a cover.
+        <View style={styles.coverRow} testID="design-cover-colour-panel">
+          <Hint>Your home page opens with a colour panel. Add a photo, and a video if you like, to make it a cover.</Hint>
+          <View style={styles.coverActions}>
+            <WButton label="Add a cover" icon="image" variant="primary" size="sm" onPress={() => setChoosing("image")} disabled={disabled || setCover.isPending || !data?.revision} testID="cover-add" />
+          </View>
+        </View>
       ) : (
         <View style={styles.coverRow}>
           <View style={styles.coverSlot}>
@@ -369,7 +375,7 @@ export function CoverCard({ disabled }: { disabled: boolean }): React.ReactEleme
           const kind = choosing;
           setChoosing(null);
           if (kind === "video") apply({ videoMediaId: picked.id }, "Cover video saved to your draft.");
-          else apply({ photoMediaId: picked.id }, "Cover photo saved to your draft.");
+          else apply({ photoMediaId: picked.id }, data?.available === false ? "Cover added to the top of your home page." : "Cover photo saved to your draft.");
         }}
       />
     </Card>

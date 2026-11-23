@@ -210,20 +210,32 @@ function SectionEditor({ ws, section, onAskAri, madeByTeam }: { ws: Workspace; s
   }, [section.id]);
   const note = feedNote(section);
   const split = splitRows(section);
-  const fieldInput = (field: SectionField, first: boolean) => (
-    <Field
-      key={field.key}
-      ref={first ? firstField : undefined}
-      label={field.label}
-      value={field.value}
-      onChangeText={(value) => ws.typeField(section, field.key, value)}
-      multiline={field.kind !== "text"}
-      max={field.max ?? undefined}
-      editable={!readOnly}
-      help={field.kind === "richtext" ? "Plain paragraphs. Leave a blank line between them." : null}
-      testID={`field-${section.id}-${field.key}`}
-    />
-  );
+  const fieldInput = (field: SectionField, first: boolean) => {
+    // #4572 item 11 — words a refused save kept are shown first, never wiped.
+    const kept = ws.unsavedValue(section.id, field.key);
+    const reason = kept === null ? null : ws.unsavedMessage(section.id, field.key);
+    return (
+      <View key={field.key}>
+        <Field
+          ref={first ? firstField : undefined}
+          label={field.label}
+          value={kept ?? field.value}
+          onChangeText={(value) => ws.typeField(section, field.key, value)}
+          multiline={field.kind !== "text"}
+          max={field.max ?? undefined}
+          editable={!readOnly}
+          help={field.kind === "richtext" ? "Plain paragraphs. Leave a blank line between them." : null}
+          testID={`field-${section.id}-${field.key}`}
+        />
+        {kept !== null ? (
+          <View style={styles.unsaved} role="alert" testID={`field-${section.id}-${field.key}-unsaved`}>
+            <Text style={styles.unsavedText}>{`Not saved. ${reason ?? ""}`.trim()}</Text>
+            <WButton label="Try again" size="sm" onPress={() => ws.retryField(section, field.key)} testID={`field-${section.id}-${field.key}-retry`} />
+          </View>
+        ) : null}
+      </View>
+    );
+  };
   const cannotRemove = ws.readOnlyReason ?? removeBlocked(section);
   const draft = section.review?.state === "draft";
   return (
@@ -403,6 +415,9 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
 }
 
 const styles = StyleSheet.create({
+  // #4572 item 11 — the "Not saved" row under a field (error tint, a 44 px Try again).
+  unsaved: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[2], paddingVertical: space[2], paddingHorizontal: space[3], borderRadius: radius.sm, backgroundColor: color.errorTint, borderWidth: 1, borderColor: color.errorLine },
+  unsavedText: { flex: 1, minWidth: 160, color: color.text1, fontSize: 13, lineHeight: 18 },
   label: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ui.t3, marginBottom: 6 },
   picker: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 14, borderRadius: radius.sm, borderWidth: 1, borderColor: ui.border2, backgroundColor: ui.card },
   pickerText: { fontSize: 16, fontWeight: "600", color: ui.t1 },

@@ -175,7 +175,8 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
       });
     },
     enabled: workReady && siteId !== null,
-    staleTime: 4 * 60_000,
+    // #4572 item 1 — a grant older than one draft change is useless; refetch sooner.
+    staleTime: 60_000,
     retry: false,
   });
   const refreshPreview = useCallback(() => {

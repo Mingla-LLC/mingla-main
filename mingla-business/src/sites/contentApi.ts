@@ -517,6 +517,9 @@ export function useMediaLibrary(siteId: string | null, enabled: boolean) {
     queryKey: brandSiteKeys.siteData(siteId, "media"),
     queryFn: () => contentCall<{ media: MediaItem[] }>(siteId!, "media_library").then((result) => result.media),
     enabled: siteId !== null && enabled,
+    // #4572 item 12 — opening "Choose a photo" always reads the list fresh.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
@@ -567,14 +570,17 @@ export async function uploadSitePhoto(input: {
   const done = await contentCall<{ media_id: string; state: string }>(input.siteId, "media_complete", {
     media_id: grant.media_id, checksum, bytes: bytes.byteLength,
   });
+  // #4572 item 12 (D12) — the same file again answers with the photo already
+  // there: follow the id the server reports, never the grant's.
+  const mediaId = typeof done.media_id === "string" && done.media_id ? done.media_id : grant.media_id;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const status = attempt === 0 && done.state === "READY"
       ? { state: "READY", thumb_url: null as string | null }
-      : await contentCall<{ state: string; thumb_url: string | null; rejection_code: string | null }>(input.siteId, "media_status", { media_id: grant.media_id });
+      : await contentCall<{ state: string; thumb_url: string | null; rejection_code: string | null }>(input.siteId, "media_status", { media_id: mediaId });
     if (status.state === "READY") {
       const ready = status.thumb_url !== null ? status
-        : await contentCall<{ state: string; thumb_url: string | null }>(input.siteId, "media_status", { media_id: grant.media_id });
-      return { mediaId: grant.media_id, thumbUrl: ready.thumb_url };
+        : await contentCall<{ state: string; thumb_url: string | null }>(input.siteId, "media_status", { media_id: mediaId });
+      return { mediaId, thumbUrl: ready.thumb_url };
     }
     if (status.state === "REJECTED" || status.state === "TOMBSTONED") {
       throw new BrandSitesError("MEDIA_REJECTED", CONTENT_MESSAGES.MEDIA_REJECTED ?? "That file couldn’t be accepted. Photos must be JPEG, PNG or WebP under 20 MB.", false);

@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useWebsite } from "./WebsiteContext";
@@ -17,6 +19,7 @@ import { color, scrim } from "../../../constants/designSystem";
 export function usePhotoPicker() {
   const { controller, toast } = useWebsite();
   const siteId = controller.siteId;
+  const client = useQueryClient();
   const [busy, setBusy] = useState<null | "uploading" | "checking">(null);
 
   const upload = async (kind: "image" | "video"): Promise<PictureRef | null> => {
@@ -41,6 +44,8 @@ export function usePhotoPicker() {
         file: { uri: asset.uri, name: asset.fileName ?? (kind === "video" ? "cover.mp4" : "photo.jpg"), type, size },
         onStatus: setBusy,
       });
+      // #4572 item 12 — the new photo is in the list straight away (no 5-minute wait).
+      void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "media") });
       return { id: uploaded.mediaId, thumb_url: uploaded.thumbUrl };
     } catch (error) {
       toast(error instanceof BrandSitesError ? error.message : "That photo couldn’t be added. Try again.", "error");

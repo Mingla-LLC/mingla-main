@@ -295,6 +295,27 @@ export async function clearProvisionOperation(brandId: string): Promise<void> {
  */
 const UNAVAILABLE_MESSAGE = "Website tools are temporarily unavailable.";
 
+/**
+ * #4572 item 15 — a NEW site's first Go live waits while Mingla finishes a
+ * routine safety backup (Core's brand_site_first_publish_ready()). The same
+ * sentence the server sends with `reason_code: "PUBLISHING_PAUSED"`.
+ */
+export const PUBLISHING_PAUSED_TITLE = "Publishing is paused for a few minutes";
+export const PUBLISHING_PAUSED_MESSAGE =
+  "Mingla is finishing a routine safety backup. Your draft is saved and nothing is lost. Try again shortly.";
+
+/**
+ * #4572 item 15 — is this never-published site's first Go live paused? Read
+ * from Core's brand_site_publishing_paused() (the one owner, shared with the
+ * server's gate). A missing function (the migration not applied yet) or a
+ * failed read is "not paused": the server still refuses, with the same words.
+ */
+export async function getBrandSitePublishingPaused(siteId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("brand_site_publishing_paused", { p_site_id: siteId });
+  if (error) return false;
+  return data === true;
+}
+
 export const SITES_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   FORBIDDEN: "Only brand admins and owners can do this.",
   NOT_FOUND: "Mingla couldn\u2019t find this website.",
@@ -339,6 +360,9 @@ export function brandSitesErrorFrom(
   // address, too many pages) as VALIDATION_FAILED + reason_code; the reason is
   // the more useful code to show and act on.
   const reason = (failure as { reason_code?: unknown } | undefined)?.reason_code;
+  if (reason === "PUBLISHING_PAUSED") {
+    return new BrandSitesError("PUBLISHING_PAUSED", PUBLISHING_PAUSED_MESSAGE, true);
+  }
   if ((reason === "PATH_COLLISION" || reason === "PAGE_LIMIT_EXCEEDED") &&
     (status === null || status < 500)) {
     return new BrandSitesError(reason, SITES_ERROR_MESSAGES[reason]!, false);
