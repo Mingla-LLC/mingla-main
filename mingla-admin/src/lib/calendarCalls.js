@@ -120,6 +120,8 @@ export function callEntriesOn(dayKey, calls, timeZone) {
       off: callIsOff(status),
       // #4571 W4: a host booking not linked to a card yet (crm_demo_needs_linking).
       needsLinking: call.needs_linking === true,
+      // #4571 W5: the host card a demo is linked to, for the Week view.
+      record: call.record && typeof call.record.id === "string" ? { id: call.record.id, name: call.record.name || "Host card" } : null,
     });
   }
   return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));

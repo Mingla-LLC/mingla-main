@@ -104,7 +104,8 @@ Deno.test("#3980 W2 the Calendar: new title, layer chips, two columns, the panel
   assertMatch(page, /<PanelStack stack=\{stack\} first=\{first\} second=\{second\} \/>/);
   assertMatch(page, /<MonthGrid [\s\S]*<Legend /);
   assertNotMatch(page, /RunwayTable|PostsList|TwoColumn/);
-  assertMatch(page, /view: p\.get\("view"\) === "board" \? "board" : "calendar"/);
+  // [TEST-MOD-APPROVED #4571] W5 adds the Week view: Month, Week and Board; an unknown view still opens Month.
+  assertMatch(page, /view: p\.get\("view"\) === "board" \? "board" : p\.get\("view"\) === "week" \? "week" : "calendar"/);
   assertMatch(page, /<BoardView items=\{boardItems\}/);
   assertMatch(page, /Nothing on this day\./);
   assertNotMatch(page, /ad_plans|ad_campaigns/);

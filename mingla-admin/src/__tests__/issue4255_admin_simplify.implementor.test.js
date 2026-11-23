@@ -484,8 +484,9 @@ describe("S-3 Work: one filter, four tabs, one layout", () => {
 describe("S-4 Calendar: Month and Board only", () => {
   const page = code("pages/ContentCalendarPage.jsx");
   it("no list view: Month (default) and Board, an old list address opens Month", () => {
-    assert.match(page, /const VIEW_OPTIONS = \[\s*\{ value: "calendar", label: "Month" \},\s*\{ value: "board", label: "Board" \},\s*\];/);
-    assert.match(page, /view: p\.get\("view"\) === "board" \? "board" : "calendar"/);
+    // [TEST-MOD-APPROVED #4571] W5 adds a Week view between Month and Board; the old list address still opens Month.
+    assert.match(page, /const VIEW_OPTIONS = \[\s*\{ value: "calendar", label: "Month" \},\s*\{ value: "week", label: "Week" \},\s*\{ value: "board", label: "Board" \},\s*\];/);
+    assert.match(page, /view: p\.get\("view"\) === "board" \? "board" : p\.get\("view"\) === "week" \? "week" : "calendar"/);
     assert.ok(!/RunwayTable|PostsList|value: "list"|route\.view === "list"/.test(page));
   });
   it("Make a card and Plan a post sit in the event panel and the header; the tiles filter the month", () => {

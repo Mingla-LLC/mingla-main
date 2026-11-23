@@ -143,7 +143,8 @@ Deno.test("#3980 W3 rework D9: nothing sits under the month, every list follows 
   const page = code("pages/ContentCalendarPage.jsx");
   const panel = code("components/ops/EventPanel.jsx");
   // With nothing open, only the calendar box: no right column, no runway list.
-  assertMatch(page, /: <div className="flex min-w-0 flex-col gap-4">\{box\}<\/div>\}/);
+  // [TEST-MOD-APPROVED #4571] W5: the Week view takes the same place as the month box.
+  assertMatch(page, /: <div className="flex min-w-0 flex-col gap-4">\{isWeek \? weekBox : box\}<\/div>\}/);
   assertNotMatch(page, /TwoColumn/);
   assertNotMatch(panel, /RunwayList|useOpsRunway/);
   assertMatch(panel, /: null;/);
