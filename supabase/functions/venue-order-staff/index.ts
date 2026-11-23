@@ -211,7 +211,6 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
     case "ticket_ready":
     case "recall":
     case "picked_up":
-    case "printed":
       return await handleStationAction(
         supabase,
         action,

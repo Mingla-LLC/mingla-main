@@ -1,6 +1,8 @@
 // #4490 spec 08 O3 part A — venue-order-staff's station actions.
 // Run: deno test --allow-env --allow-read --no-check \
 //   supabase/functions/venue-order-staff/__tests__/issue_4490_o3_station_actions.implementor.test.ts
+// TEST-MOD-APPROVED #4490 (08-O3 fix 1, O3-T4): the `printed` action is gone; ST1 no longer
+// lists it and ST6 proves a request for it reaches no RPC.
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleStationAction, STATION_ACTIONS } from "../stationActions.ts";
 
@@ -31,7 +33,6 @@ Deno.test("ST1 each action calls its service-only RPC with the verified user as 
     ["ticket_ready", { orderId: ORDER, station: "bar" }, "issue_4490_station_ticket_ready", { p_order_id: ORDER, p_station: "bar", p_actor: USER }],
     ["recall", { orderId: ORDER, station: "bar" }, "issue_4490_station_recall", { p_order_id: ORDER, p_station: "bar", p_actor: USER }],
     ["picked_up", { orderId: ORDER, station: "kitchen" }, "issue_4490_order_picked_up", { p_order_id: ORDER, p_station: "kitchen", p_actor: USER }],
-    ["printed", { orderId: ORDER, station: "kitchen" }, "issue_4490_station_mark_printed", { p_order_id: ORDER, p_station: "kitchen", p_actor: USER }],
   ];
   for (const [action, body, rpc, params] of cases) {
     const c = client();
@@ -88,4 +89,16 @@ Deno.test("ST5 the function routes every station action here after the bearer ch
   const route = index.indexOf("return await handleStationAction(");
   for (const action of STATION_ACTIONS) assertStringIncludes(index, `case "${action}":`);
   assertEquals(bearer > 0 && route > bearer, true);
+});
+
+Deno.test("ST6 O3-T4: there is no printed action — the count rises only when venue-floor-pdf makes the PDF", async () => {
+  assertEquals(STATION_ACTIONS.has("printed"), false);
+  const c = client();
+  const res = await handleStationAction(c, "printed", { orderId: ORDER, station: "kitchen" }, USER, respond);
+  assertEquals(res.status, 400);
+  assertEquals(await res.json(), { error: "unknown_action" });
+  assertEquals(c.calls.length, 0);
+  const index = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assertEquals(index.includes('case "printed":'), false);
+  assertEquals(index.includes("issue_4490_station_mark_printed"), false);
 });

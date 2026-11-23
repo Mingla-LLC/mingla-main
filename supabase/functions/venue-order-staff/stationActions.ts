@@ -6,7 +6,10 @@
 //   ticket_ready   { orderId, station }                    -> { ticket, already, orderReady }
 //   recall         { orderId, station }                    -> { ticket }
 //   picked_up      { orderId, station }                    -> { ticket, already, delivered }
-//   printed        { orderId, station }                    -> { ticket }
+//
+// There is no `printed` action (#4490 O3 fix 1, O3-T4): a ticket's printed
+// count rises only when venue-floor-pdf makes that ticket's PDF, under the
+// PDF's own rights. A request for it answers 400 unknown_action.
 //
 // The caller's bearer is verified by the function before this runs; the
 // verified user is passed as p_actor to service-only RPCs that check the
@@ -25,7 +28,6 @@ export const STATION_ACTIONS = new Set([
   "ticket_ready",
   "recall",
   "picked_up",
-  "printed",
 ]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -117,8 +119,7 @@ export async function handleStationAction(
     case "station_accept":
     case "ticket_ready":
     case "recall":
-    case "picked_up":
-    case "printed": {
+    case "picked_up": {
       if (!UUID.test(orderId) || (station !== "kitchen" && station !== "bar")) {
         return respond({ error: "invalid_request" }, 400);
       }
@@ -127,7 +128,6 @@ export async function handleStationAction(
         ticket_ready: "issue_4490_station_ticket_ready",
         recall: "issue_4490_station_recall",
         picked_up: "issue_4490_order_picked_up",
-        printed: "issue_4490_station_mark_printed",
       }[action] as string;
       params = { p_order_id: orderId, p_station: station, p_actor: userId };
       break;
