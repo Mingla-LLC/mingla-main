@@ -54,7 +54,17 @@ export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, cur
       : typeof eventId === "string" && SAVED_OFFERING.test(eventId)
         ? eventId
         : null;
-  if (!isFeatureEnabled("extras") || offeringId === null) return null;
+  const extrasOn = isFeatureEnabled("extras");
+  // issue #3281 G-9 — on a server with no add-on reader yet (web deploys before
+  // its migrations) there are no add-ons to manage: hide the card rather than
+  // leave a sheet that can only spin or fail. Same key the card's line and the
+  // sheet read, so this is one request. A saved offering only; a draft reads
+  // nothing from the server.
+  const reader = useOfferingAddOns(
+    extrasOn && draft === undefined && offeringId !== null ? offeringId : "",
+  );
+  if (!extrasOn || offeringId === null) return null;
+  if (reader.error?.code === "add_ons_unavailable") return null;
   return (
     <View style={styles.wrap}>
       <Pressable

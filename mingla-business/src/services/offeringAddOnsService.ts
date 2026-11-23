@@ -32,9 +32,27 @@ interface RpcError {
   message?: string | null;
 }
 
+/**
+ * issue #3281 G-9 — the database has no add-on reader yet (web deploys before
+ * its migrations): the function, table or column does not exist. Same codes
+ * the plan-v2 schema probe treats as "not applied" (kept inline: this service
+ * loads with every offering editor).
+ */
+const READER_ABSENT_CODES: ReadonlySet<string> = new Set([
+  "42703",
+  "42883",
+  "42P01",
+  "PGRST202",
+  "PGRST204",
+  "PGRST205",
+]);
+
 const toError = (error: RpcError): OfferingAddOnsError => {
   const message = typeof error.message === "string" ? error.message.trim() : "";
   const sqlState = typeof error.code === "string" ? error.code : null;
+  if (sqlState !== null && READER_ABSENT_CODES.has(sqlState)) {
+    return new OfferingAddOnsError("add_ons_unavailable", sqlState);
+  }
   // The SQL raises bare snake_case codes; anything else is a transport error.
   const code = /^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(message)
     ? message
