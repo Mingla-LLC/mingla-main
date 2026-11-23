@@ -24,7 +24,7 @@ import { listOrders, getOrder, getOrdersOverview, getOrderAddOnLines, getTripOrd
 import { overpaymentRows } from "../lib/orderOverpayments";
 import { tripOrderBalanceView } from "../lib/tripOrderBalance";
 import { addOnRows, addOnLinesBody, addOnSummary, planRemovalNotice, SPREAD_ADD_ON_NOTE } from "../lib/orderAddOnRefunds";
-import { formatMoneyMinor } from "../lib/moneyFormat";
+import { formatMoneyMinorWhole } from "../lib/moneyFormat";
 import { describeAdminRefundError } from "../lib/adminRefundError";
 import { LoadError } from "../components/ui/LoadError";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -38,10 +38,10 @@ import { PageHeader } from "../components/ui/PageHeader";
 // Order payment_status values (DB enum) an admin may refund.
 const REFUNDABLE_STATUSES = ["paid", "partial_refund"];
 
-// ── Money formatter: the shared one (#4130; never falls back to USD) ─────────
+// ── Money formatter: the shared one (#4130; never falls back to USD), whole amounts without decimals (#4522 S-16) ─
 
 function formatMoney(cents, currency) {
-  return formatMoneyMinor(cents, currency);
+  return formatMoneyMinorWhole(cents, currency);
 }
 
 /** #4130: a free order reads "Free", never "$0.00". */

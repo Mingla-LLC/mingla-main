@@ -31,6 +31,29 @@ export function formatMoneyMinor(minor, currency) {
 }
 
 /**
+ * #4522 S-16 — the whole-amount rule the buyer pages use: a whole amount shows
+ * no decimals ("₦3,899,700", "$1,200"); anything else keeps the currency's own
+ * decimals ("$7,798.50"). Display only; the amount itself is untouched.
+ */
+export function formatMoneyMinorWhole(minor, currency) {
+  if (minor == null || typeof currency !== "string" || currency.trim() === "") return "—";
+  const code = currency.trim().toUpperCase();
+  const numeric = Number(minor);
+  if (!Number.isFinite(numeric)) return "—";
+  const amount = numeric / (ZERO_DECIMAL_CURRENCIES.has(code) ? 1 : 100);
+  try {
+    return new Intl.NumberFormat(LOCALE_BY_CURRENCY[code], {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+      ...(Number.isInteger(amount) ? { minimumFractionDigits: 0 } : {}),
+    }).format(amount);
+  } catch {
+    return `${amount.toLocaleString()} ${code}`;
+  }
+}
+
+/**
  * #4130: several currencies in one line, never "₦150.00 + -$0.01". A negative
  * amount after the first reads "₦150.00 − $0.01"; a negative first amount
  * reads "−$0.01". Each part is { cents, currency }; currencies are never summed.
