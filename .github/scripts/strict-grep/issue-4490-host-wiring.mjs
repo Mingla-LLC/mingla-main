@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing, the Till's client request ids made as UUIDs that venue-till accepts, one per payment or refund attempt, with the paid step showing the server's recorded amount) keeps its load-bearing lines.
+// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing, the Till's client request ids made as UUIDs that venue-till accepts, one per payment or refund attempt, with the paid step showing the server's recorded amount, the split step inside the one pay sheet with one attempt per share, and the session and seat sheets opened from the catalog) keeps its load-bearing lines.
 /**
  * #4490 W3 fix 1 — the structural pins of eight #4490 mingla-business jest
  * suites, moved here as the additive strict-grep gate that
@@ -56,6 +56,8 @@ const PINS = [
       "disabled: !shareReady",
       "Turn on Minimum spend tables and set a minimum spend first.",
       "Paid when they book. Take it off their bill at the venue.",
+      // 08 O4 (spec 07 §11 B1): the short hint where the Till credits the deposit.
+      'features.till === true ? "Comes off their bill."',
       "step={5}",
     ],
     why: "the four deposit modes are visible and the share option explains why it is disabled",
@@ -311,7 +313,8 @@ const PINS = [
     id: "till-pay-sheet-resume",
     file: `${BIZ}/src/components/venue/till/PaymentSheet.tsx`,
     matches: [
-      /resumeLivePayment\(sale, Date\.now\(\)\)/,
+      // 08-O4: a share's own live payment is resumed by its share id (TEST-MOD-APPROVED #4490).
+      /resumeLivePayment\(sale, Date\.now\(\), share\?\.id \?\? null\)/,
       /scanApi\s*\n?\s*\.fetchStatus\(live\.code\)/,
       /setStep\("scan"\)/,
       /setTapResumed\(true\)/,
@@ -370,6 +373,40 @@ const PINS = [
     ],
     absentMatches: [/<PaymentSheet[\s\S]*<PaymentSheet/, /<RefundSheet[\s\S]*<RefundSheet/, /onPick=\{\(next\) => setCheckSheet\(next\)\}/],
     why: "on an iPhone the sheets the basket opens present from the basket's own modal, and Move / Hand over / Rename open only once the actions sheet has gone: iOS refuses a second modal from one presenter (O3-S1)",
+  },
+  // #4490 08-O4: the split is a step INSIDE the one pay sheet (never a second
+  // native sheet); a share payment carries its share and its own request id;
+  // the session and seat sheets open from the catalog, never from the basket.
+  {
+    id: "till-split-inside-pay-sheet",
+    file: `${BIZ}/src/components/venue/till/PaymentSheet.tsx`,
+    contains: [
+      "<SplitSheet",
+      "shareId: share?.id ?? null,",
+      "tillAttemptKey({ method, amountMinor: payAmount, tipMinor, cashGivenMinor, shareId: share?.id ?? null })",
+      "tillAttemptKey({ method, tipMinor, shareId: share?.id ?? null })",
+    ],
+    matches: [/\} else if \(step === "split"\) \{\s*body = \(\s*<SplitSheet/],
+    absentMatches: [/<Sheet[\s\S]*<Sheet\b/],
+    why: "the split sheet is a step of the pay sheet and each share payment is its own attempt with its shareId (08-O4)",
+  },
+  {
+    id: "till-split-sheet-no-modal",
+    file: `${BIZ}/src/components/venue/till/SplitSheet.tsx`,
+    contains: ["export function SplitSheet(", "onSetSplit({ mode: \"by_item\", shares: byItemPayload(units, assign) })"],
+    absentMatches: [/<Sheet\b/, /\bModal\b/, /amountMinor: (evenAmounts|itemAmounts)/],
+    why: "the split step presents no native sheet of its own and sends units or a head count, never an amount (08-O4)",
+  },
+  {
+    id: "till-o4-sheets-outside-basket",
+    file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
+    contains: ["<SessionSheet\n        offer={sessionFor}", "<SeatSheet\n        table={seatFor}"],
+    absentMatches: [
+      /const basketLaunchedSheets = \(\s*<>(?:(?!<\/>\s*\);)[\s\S])*<(SessionSheet|SeatSheet)/,
+      /<SessionSheet\n[\s\S]*<SessionSheet\n/,
+      /<SeatSheet\n[\s\S]*<SeatSheet\n/,
+    ],
+    why: "Start a session and Seat open from the catalog at the screen root, one sheet at a time (08-O3 fix 3 rule, 08-O4)",
   },
   {
     id: "till-hears-station-changes",

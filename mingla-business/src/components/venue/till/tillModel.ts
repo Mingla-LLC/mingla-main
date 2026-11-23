@@ -98,7 +98,8 @@ export interface DraftLine {
 
 export interface BasketRow {
   key: string;
-  kind: "item" | "offer" | "balance";
+  /** 08-O4: "deposit" = a booking's paid deposit (money off); "session" = by the hour. */
+  kind: "item" | "offer" | "balance" | "deposit" | "session";
   label: string;
   detail: string | null;
   quantity: number;
@@ -141,11 +142,18 @@ export function basketRows(sale: TillSale | null, nowMs: number = Date.now()): B
     } else {
       rows.push({
         key: `line:${line.id}`,
-        kind: line.kind === "balance" ? "balance" : "offer",
+        kind: line.kind === "balance"
+          ? "balance"
+          : line.kind === "deposit_credit"
+          ? "deposit"
+          : line.kind === "by_the_hour"
+          ? "session"
+          : "offer",
         label: line.label ?? "",
         detail: null,
         quantity: 1,
-        amountMinor: line.amountMinor,
+        // 08-O4 (T12): the deposit is shown as money off the bill.
+        amountMinor: line.kind === "deposit_credit" ? -line.amountMinor : line.amountMinor,
         sent: true,
         voided: line.state === "voided",
         orderItemId: null,
@@ -399,4 +407,52 @@ export function tillSaleChangeMatches(payload: unknown, saleId: string): boolean
   if (payload === null || typeof payload !== "object") return false;
   const row = (payload as { new?: unknown; old?: unknown }).new ?? (payload as { old?: unknown }).old;
   return row !== null && typeof row === "object" && (row as { id?: unknown }).id === saleId;
+}
+
+/**
+ * #4490 spec 08 O4 (A10): a by-the-hour session's clock on the check, from the
+ * server's booked end. Before the end: "{n} min left"; after: "Over by {n} min".
+ */
+export interface SessionClock {
+  lineId: string;
+  rootLineId: string;
+  unitName: string;
+  endsAt: string | null;
+  stepMinutes: number;
+  minutesLeft: number | null;
+  overBy: number | null;
+}
+
+export function sessionClocks(sale: TillSale | null, nowMs: number): SessionClock[] {
+  if (sale === null) return [];
+  // One clock per session (its root line), ending where its last block ends.
+  const byRoot = new Map<string, SessionClock>();
+  for (const s of sale.hourSessions ?? []) {
+    const end = s.endsAt !== null ? Date.parse(s.endsAt) : Number.NaN;
+    const current = byRoot.get(s.rootLineId);
+    const currentEnd = current?.endsAt != null ? Date.parse(current.endsAt) : Number.NaN;
+    if (current !== undefined && !(end > currentEnd)) continue;
+    const minutes = Number.isFinite(end) ? Math.round((end - nowMs) / 60000) : null;
+    byRoot.set(s.rootLineId, {
+      lineId: s.rootLineId,
+      rootLineId: s.rootLineId,
+      unitName: s.unitName ?? "",
+      endsAt: s.endsAt,
+      stepMinutes: s.stepMinutes,
+      minutesLeft: minutes !== null && minutes >= 0 ? minutes : null,
+      overBy: minutes !== null && minutes < 0 ? -minutes : null,
+    });
+  }
+  return [...byRoot.values()];
+}
+
+/** "Add 30 min" adds one step of the offer, at least 30 minutes. */
+export const extendMinutes = (stepMinutes: number): number =>
+  stepMinutes >= 30 ? stepMinutes : Math.ceil(30 / Math.max(1, stepMinutes)) * Math.max(1, stepMinutes);
+
+/** The lengths a session can start with (from the offer's shortest, by its step; at most 8). */
+export function sessionLengths(minMinutes: number, maxMinutes: number, stepMinutes: number): number[] {
+  const out: number[] = [];
+  for (let m = minMinutes; m <= maxMinutes && out.length < 8; m += Math.max(15, stepMinutes)) out.push(m);
+  return out;
 }

@@ -14,6 +14,7 @@ import { supabase } from "../services/supabase";
 import {
   addTillMenu,
   addTillOffer,
+  extendTillSession,
   fetchTillCatalog,
   fetchTillChecks,
   fetchTillSale,
@@ -23,9 +24,12 @@ import {
   refundTill,
   refundTillLine,
   relabelTill,
+  seatTillTable,
   sendTill,
   sendTillReceipt,
   setTillServer,
+  setTillSplit,
+  startTillSession,
   voidTillLine,
   type TillCatalog,
   type TillChecks,
@@ -161,6 +165,11 @@ export function useTillActions(venueId: string | null) {
     refund: useMutation({ mutationFn: async (i: Omit<Parameters<typeof refundTill>[0], "venueId">) => put(await refundTill({ venueId: venueId as string, ...i })) }),
     refundLine: useMutation({ mutationFn: async (i: Omit<Parameters<typeof refundTillLine>[0], "venueId">) => put(await refundTillLine({ venueId: venueId as string, ...i })) }),
     relabel: useMutation({ mutationFn: async (i: Omit<Parameters<typeof relabelTill>[0], "venueId">) => put(await relabelTill({ venueId: venueId as string, ...i })) }),
+    // 08-O4: split, seat a table, start / extend a by-the-hour session.
+    setSplit: useMutation({ mutationFn: async (i: Omit<Parameters<typeof setTillSplit>[0], "venueId">) => put(await setTillSplit({ venueId: venueId as string, ...i })) }),
+    seat: useMutation({ mutationFn: async (i: Omit<Parameters<typeof seatTillTable>[0], "venueId">) => put(await seatTillTable({ venueId: venueId as string, ...i })) }),
+    startSession: useMutation({ mutationFn: async (i: Omit<Parameters<typeof startTillSession>[0], "venueId">) => put(await startTillSession({ venueId: venueId as string, ...i })) }),
+    extendSession: useMutation({ mutationFn: async (i: Omit<Parameters<typeof extendTillSession>[0], "venueId">) => put(await extendTillSession({ venueId: venueId as string, ...i })) }),
     setServer: useMutation({
       mutationFn: async (i: Omit<Parameters<typeof setTillServer>[0], "venueId">) => {
         const sale = put(await setTillServer({ venueId: venueId as string, ...i }));

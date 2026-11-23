@@ -84,7 +84,7 @@ export interface FloorEditorProps {
   spaces: ReadonlyArray<{ id: string; name: string }>;
   allTables: readonly VenueFloorTable[];
   currency: string | null;
-  features: { minSpendTables: boolean; pickATable: boolean; floorPlan: boolean };
+  features: { minSpendTables: boolean; pickATable: boolean; floorPlan: boolean; till?: boolean };
   canEdit: boolean;
   onOpenSettings?: () => void;
   onToast: (message: string) => void;

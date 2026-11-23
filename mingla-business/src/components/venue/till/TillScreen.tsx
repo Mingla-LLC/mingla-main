@@ -16,6 +16,12 @@
  * width with a bottom bar that opens the basket; tablet and desk show the
  * basket beside the catalog at `size.sidePanel`. (The full tablet layout with
  * rotation is O3; this holds at 390, 768, 1024 and 1440.)
+ *
+ * O4: the pay sheet splits the bill (its split step); a Tables tab seats a
+ * walk-in or a booking (a paid deposit comes off the bill); a By the hour tab
+ * starts a session now, and a session on the check shows its clock with
+ * "Add 30 min". Every sheet here opens from the catalog or the basket, one at
+ * a time, never two native sheets from one screen (08-O3 fix 3).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,7 +32,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { color, radius, size, space, type } from "../../../constants/designSystem";
 import { useVenueOffers } from "../../../hooks/useVenueOffers";
 import { useTillActions, useTillCatalog, useTillChecks, useTillSale, useTillServers } from "../../../hooks/useVenueTill";
-import type { TillCatalog, TillMenuItem, TillSale, TillServer } from "../../../services/venueTillService";
+import type {
+  TillCatalog,
+  TillHourOffer,
+  TillMenuItem,
+  TillSale,
+  TillServer,
+  TillTable,
+} from "../../../services/venueTillService";
 import {
   cancelTillPayCode,
   fetchTillPayCode,
@@ -80,6 +93,9 @@ import {
   addToDraft,
   basketRows,
   clockTime,
+  extendMinutes,
+  sessionClocks,
+  sessionLengths,
   floorLayoutFor,
   readyToTakeOut,
   tillDestination,
@@ -127,7 +143,10 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const checksQuery = useTillChecks(venueId, true);
   const actions = useTillActions(venueId);
 
-  const [tab, setTab] = useState<"menu" | "entry">(prefill?.tab ?? "menu");
+  const [tab, setTab] = useState<"menu" | "entry" | "hour" | "tables">(prefill?.tab ?? "menu");
+  // 08-O4: start a by-the-hour session; seat a table.
+  const [sessionFor, setSessionFor] = useState<TillHourOffer | null>(null);
+  const [seatFor, setSeatFor] = useState<TillTable | null>(null);
   const [menuIndex, setMenuIndex] = useState(0);
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [choicesFor, setChoicesFor] = useState<TillMenuItem | null>(null);
@@ -192,8 +211,13 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
       const code = err instanceof TillError ? err.code : "till_failed";
       const item = err instanceof TillError ? err.item : null;
       const refresh = ["till_check_changed", "till_hold_lapsed", "till_tab_settled_on_pad", "till_round_settled_elsewhere",
-        "till_line_not_paid", "till_refund_line_invalid"];
+        "till_line_not_paid", "till_refund_line_invalid", "till_share_paid", "till_share_paying"];
       if (refresh.includes(code) && saleId !== null) actions.refreshSale(saleId);
+      // T13: "The next booking for {unit} is at {time}."
+      if (code === "offer_space_taken" && err instanceof TillError && err.nextAt !== null && err.unitName !== null) {
+        setToast({ kind: "error", message: TILL_COPY.nextBookingAt(err.unitName, clockTime(err.nextAt)) });
+        return;
+      }
       setToast({ kind: "error", message: tillErrorCopy(code, item) });
     },
     [actions, saleId],
@@ -297,6 +321,23 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     return () => clearInterval(id);
   }, []);
   const rows = basketRows(sale, nowMs);
+  const clocks = sessionClocks(sale, nowMs);
+  const overSession = clocks.find((c) => c.overBy !== null && c.overBy > 0) ?? null;
+  const extend = (lineId: string, stepMinutes: number): void =>
+    void run(async () => {
+      if (sale === null) return;
+      try {
+        await actions.extendSession.mutateAsync({
+          saleId: sale.id,
+          lineId,
+          minutes: extendMinutes(stepMinutes),
+          idempotencyKey: `extend:${randomId()}`,
+          expectedVersion: sale.version,
+        });
+      } catch (err) {
+        fail(err);
+      }
+    });
   const ready = totalsReady(sale, draft);
   const send = sendLabel(sale, draft, catalog);
   const sendText = send === "bar" ? TILL_COPY.sendToBar : send === "kitchen" ? TILL_COPY.sendToKitchen : TILL_COPY.send;
@@ -391,9 +432,13 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   // ---------------------------------------------------------------- catalog
   const menus = catalog?.menus ?? [];
   const menu = menus[Math.min(menuIndex, Math.max(0, menus.length - 1))] ?? null;
+  const hourOffers = catalog?.hourOffers ?? [];
+  const tables = catalog?.tables ?? [];
   const tabs = [
     ...(menus.length > 0 ? [{ key: "menu" as const, label: TILL_COPY.menu }] : []),
     ...(entryOffers.length > 0 ? [{ key: "entry" as const, label: TILL_COPY.entry }] : []),
+    ...(hourOffers.length > 0 ? [{ key: "hour" as const, label: TILL_COPY.byTheHour }] : []),
+    ...(tables.length > 0 ? [{ key: "tables" as const, label: TILL_COPY.tables }] : []),
   ];
   const activeTab = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key ?? "menu";
 
@@ -420,6 +465,52 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         cta={{ label: TILL_COPY.openMenu, onPress: () => router.push(`/venue/${venueId}?module=menu`) }}
         testID="till-empty"
       />
+    );
+  } else if (activeTab === "hour") {
+    catalogBody = (
+      <View style={styles.grid}>
+        {hourOffers.map((offer) => (
+          <Pressable
+            key={offer.id}
+            accessibilityRole="button"
+            onPress={() => setSessionFor(offer)}
+            style={({ pressed }) => [styles.tile, layout === "phone" && styles.tilePhone, pressed && styles.tilePressed]}
+            testID={`till-hour-${offer.id}`}
+          >
+            <Text style={styles.tileName} numberOfLines={2}>{offer.name}</Text>
+            <Text style={styles.tilePrice}>
+              {offer.pricePerHourMinor === null ? "--" : TILL_COPY.perHour(money(offer.pricePerHourMinor))}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  } else if (activeTab === "tables") {
+    catalogBody = (
+      <View style={styles.grid}>
+        {tables.map((table) => (
+          <Pressable
+            key={table.spotId}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: table.hasCheck }}
+            disabled={table.hasCheck}
+            onPress={() => setSeatFor(table)}
+            style={({ pressed }) => [styles.tile, layout === "phone" && styles.tilePhone, table.hasCheck && styles.tileOff,
+              pressed && styles.tilePressed]}
+            testID={`till-table-${table.spotId}`}
+          >
+            <Text style={styles.tileName} numberOfLines={2}>{table.name}</Text>
+            <View style={styles.tileFoot}>
+              <Text style={styles.tilePrice}>
+                {table.minSpendMinor !== null ? TILL_COPY.minSpendTable(money(table.minSpendMinor)) : `${table.capacity}`}
+              </Text>
+              {table.hasCheck ? <Pill variant="info">{TILL_COPY.tableBusy}</Pill> : table.bookings.length > 0 ? (
+                <Pill variant="accent">{TILL_COPY.seatBooking}</Pill>
+              ) : null}
+            </View>
+          </Pressable>
+        ))}
+      </View>
     );
   } else if (activeTab === "entry") {
     catalogBody = (
@@ -526,12 +617,52 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
           testID="till-unaccepted-banner"
         />
       ) : null}
+      {overSession !== null ? (
+        <Banner
+          tone="warning"
+          title={TILL_COPY.unitOver(overSession.unitName, overSession.overBy ?? 0)}
+          action={{
+            label: TILL_COPY.addMinutes(extendMinutes(overSession.stepMinutes)),
+            onPress: () => extend(overSession.rootLineId, overSession.stepMinutes),
+            testID: "till-session-over-add",
+          }}
+          testID="till-session-over"
+        />
+      ) : null}
       <ScrollView style={styles.grow} contentContainerStyle={styles.basketList}>
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const clock = row.kind === "session" ? clocks.find((c) => c.rootLineId === row.lineId) ?? null : null;
+          return (
           <ListRow
             key={row.key}
             title={`${row.quantity > 1 ? `${row.quantity} × ` : ""}${row.label}`}
-            subtitle={row.voided ? TILL_COPY.void : row.lineState === "refunded" ? TILL_COPY.refunded : kitchenSubtitle(row) ?? undefined}
+            subtitle={
+              row.voided
+                ? TILL_COPY.void
+                : row.lineState === "refunded"
+                ? TILL_COPY.refunded
+                : row.kind === "deposit"
+                ? TILL_COPY.depositComesOff
+                : clock !== null
+                ? clock.overBy !== null && clock.overBy > 0
+                  ? TILL_COPY.overBy(clock.overBy)
+                  : clock.minutesLeft !== null
+                  ? TILL_COPY.minutesLeft(clock.minutesLeft)
+                  : undefined
+                : kitchenSubtitle(row) ?? undefined
+            }
+            trailing={
+              clock !== null && row.lineState === "held" && !row.voided && sale !== null && sale.state === "open" ? (
+                <Button
+                  label={TILL_COPY.addMinutes(extendMinutes(clock.stepMinutes))}
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  onPress={() => extend(clock.rootLineId, clock.stepMinutes)}
+                  testID={`till-session-add-${row.lineId}`}
+                />
+              ) : undefined
+            }
             value={money(row.amountMinor)}
             disabled={row.voided || row.lineState === "refunded"}
             chevron={false}
@@ -544,7 +675,8 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
             }
             testID={`till-row-${row.key}`}
           />
-        ))}
+          );
+        })}
         {draft.map((d) => (
           <View key={d.key} style={styles.draftRow}>
             <NumberStepper
@@ -562,6 +694,16 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         <Row label={TILL_COPY.subtotal} value={ready && sale !== null ? money(sale.subtotalMinor) : "--"} />
         {sale !== null && sale.serviceChargeMinor > 0 ? (
           <Row label={TILL_COPY.serviceCharge} value={ready ? money(sale.serviceChargeMinor) : "--"} />
+        ) : null}
+        {sale !== null && (sale.creditUsedMinor ?? 0) > 0 ? (
+          <Row label={TILL_COPY.depositPaidOnline} value={ready ? money(-(sale.creditUsedMinor ?? 0)) : "--"} />
+        ) : null}
+        {sale !== null && sale.minimumSpend != null ? (
+          <Text style={sale.minimumSpend.shortMinor > 0 ? styles.warnText : styles.muted} testID="till-min-spend">
+            {sale.minimumSpend.shortMinor > 0
+              ? TILL_COPY.minSpendLeft(money(sale.minimumSpend.shortMinor))
+              : TILL_COPY.minSpendMet}
+          </Text>
         ) : null}
         <Row label={TILL_COPY.total} value={ready && sale !== null ? money(sale.totalDueMinor) : "--"} strong />
       </View>
@@ -619,6 +761,8 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         tipBpsOptions={catalog?.tipBpsOptions ?? []}
         onClose={() => setPayOpen(false)}
         onPay={(input) => actions.pay.mutateAsync({ saleId: sale?.id as string, ...input })}
+        onSetSplit={(split) =>
+          actions.setSplit.mutateAsync({ saleId: sale?.id as string, split, expectedVersion: sale?.version ?? 0 })}
         onNewSale={newSale}
         onRefreshSale={() => {
           if (saleId !== null) actions.refreshSale(saleId);
@@ -942,6 +1086,59 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         }
       />
 
+      <SessionSheet
+        offer={sessionFor}
+        currency={currency}
+        busy={busy}
+        onClose={() => setSessionFor(null)}
+        onStart={(choice) =>
+          void run(async () => {
+            if (sessionFor === null) return;
+            try {
+              const current = await ensureSale();
+              await actions.startSession.mutateAsync({
+                saleId: current.id,
+                offeringId: sessionFor.id,
+                spaceId: choice.spaceId,
+                minutes: choice.minutes,
+                guests: choice.guests,
+                idempotencyKey: `session:${randomId()}`,
+                expectedVersion: current.version,
+              });
+              setSessionFor(null);
+            } catch (err) {
+              fail(err);
+            }
+          })
+        }
+      />
+
+      <SeatSheet
+        table={seatFor}
+        currency={currency}
+        busy={busy}
+        onClose={() => setSeatFor(null)}
+        onSeat={(choice) =>
+          void run(async () => {
+            if (seatFor === null) return;
+            try {
+              const seated = await actions.seat.mutateAsync({
+                spotId: seatFor.spotId,
+                partySize: choice.partySize,
+                reservationId: choice.reservationId,
+                label: null,
+                idempotencyKey: `seat:${randomId()}`,
+              });
+              setSaleId(seated.id);
+              setSeatFor(null);
+              void catalogQuery.refetch();
+            } catch (err) {
+              fail(err);
+            }
+          })
+        }
+      />
+
       <ChecksSheet
         visible={checksOpen}
         checks={checksQuery.data ?? null}
@@ -1164,6 +1361,164 @@ function OfferSheet({
               testID={`till-offer-option-${o.id}`}
             />
           ))}
+        </SheetScrollLayout>
+      </View>
+    </Sheet>
+  );
+}
+
+/** 08-O4: "Start a session now" for a by-the-hour offer staff can start. */
+function SessionSheet({
+  offer,
+  currency,
+  busy,
+  onClose,
+  onStart,
+}: {
+  offer: TillHourOffer | null;
+  currency: string;
+  busy: boolean;
+  onClose: () => void;
+  onStart: (choice: { spaceId: string | null; minutes: number; guests: number }) => void;
+}): React.ReactElement {
+  const [spaceId, setSpaceId] = useState<string | null>(null);
+  const [minutes, setMinutes] = useState<number | null>(null);
+  const [guests, setGuests] = useState(1);
+  useEffect(() => {
+    setSpaceId(null);
+    setMinutes(offer?.minMinutes ?? null);
+    setGuests(offer?.guestMin ?? 1);
+  }, [offer]);
+  const lengths = offer !== null ? sessionLengths(offer.minMinutes, offer.maxMinutes, offer.stepMinutes) : [];
+  const price = offer?.pricePerHourMinor ?? null;
+  return (
+    <Sheet visible={offer !== null} onClose={onClose} snapPoint={0.85} dismissDisabled={busy} testID="till-session-sheet">
+      <View style={styles.grow}>
+        <SheetHead title={offer?.name ?? ""} onClose={onClose} disabled={busy} />
+        <SheetScrollLayout
+          contentStyle={styles.sheetScroll}
+          footer={
+            <Button
+              label={TILL_COPY.startSessionNow}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={busy}
+              disabled={offer === null || minutes === null}
+              onPress={() => {
+                if (minutes !== null) onStart({ spaceId, minutes, guests });
+              }}
+              testID="till-session-start"
+            />
+          }
+        >
+          {price !== null ? (
+            <Text style={styles.muted}>{TILL_COPY.perHour(formatCurrency(price, currency, true))}</Text>
+          ) : null}
+          {offer !== null && offer.allocation === "any_one" && offer.units.length > 1 ? (
+            <View style={styles.sheetSection}>
+              <Text style={styles.h3}>{TILL_COPY.whichOne}</Text>
+              <View style={styles.chips}>
+                <Chip label={TILL_COPY.anyFreeOne} selected={spaceId === null} onPress={() => setSpaceId(null)}
+                  testID="till-session-unit-any" />
+                {offer.units.map((u) => (
+                  <Chip
+                    key={u.spaceId}
+                    label={u.busy ? `${u.name} · ${TILL_COPY.inUse}` : u.name}
+                    selected={spaceId === u.spaceId}
+                    disabled={u.busy}
+                    onPress={() => setSpaceId(u.spaceId)}
+                    testID={`till-session-unit-${u.spaceId}`}
+                  />
+                ))}
+              </View>
+            </View>
+          ) : null}
+          <View style={styles.sheetSection}>
+            <Text style={styles.h3}>{TILL_COPY.howLong}</Text>
+            <View style={styles.chips}>
+              {lengths.map((m) => (
+                <Chip key={m} label={TILL_COPY.minutes(m)} selected={minutes === m} onPress={() => setMinutes(m)}
+                  testID={`till-session-len-${m}`} />
+              ))}
+            </View>
+          </View>
+          {offer !== null && offer.guestMax > offer.guestMin ? (
+            <NumberStepper label={TILL_COPY.partySize} value={guests} min={offer.guestMin} max={offer.guestMax}
+              onChange={setGuests} testID="till-session-guests" />
+          ) : null}
+        </SheetScrollLayout>
+      </View>
+    </Sheet>
+  );
+}
+
+/** 08-O4: seat a table: a booking for about now (its deposit comes off), or a walk-in. */
+function SeatSheet({
+  table,
+  currency,
+  busy,
+  onClose,
+  onSeat,
+}: {
+  table: TillTable | null;
+  currency: string;
+  busy: boolean;
+  onClose: () => void;
+  onSeat: (choice: { reservationId: string | null; partySize: number | null }) => void;
+}): React.ReactElement {
+  const [party, setParty] = useState(2);
+  useEffect(() => {
+    setParty(Math.min(2, table?.capacity ?? 2));
+  }, [table]);
+  return (
+    <Sheet visible={table !== null} onClose={onClose} snapPoint={0.8} dismissDisabled={busy} testID="till-seat-sheet">
+      <View style={styles.grow}>
+        <SheetHead title={table?.name ?? ""} onClose={onClose} disabled={busy} />
+        <SheetScrollLayout
+          contentStyle={styles.sheetScroll}
+          footer={
+            <Button
+              label={TILL_COPY.seatWalkIn}
+              variant={table !== null && table.bookings.length > 0 ? "secondary" : "primary"}
+              size="lg"
+              fullWidth
+              loading={busy}
+              disabled={table === null}
+              onPress={() => onSeat({ reservationId: null, partySize: party })}
+              testID="till-seat-walkin"
+            />
+          }
+        >
+          {table !== null && table.minSpendMinor !== null ? (
+            <Text style={styles.muted}>{TILL_COPY.minSpendTable(formatCurrency(table.minSpendMinor, currency, true))}</Text>
+          ) : null}
+          {(table?.bookings ?? []).map((b) => (
+            <View key={b.reservationId} style={styles.sheetSection} testID={`till-seat-booking-${b.reservationId}`}>
+              <Text style={styles.h3}>{`${TILL_COPY.seatBooking} · ${b.name ?? ""}`}</Text>
+              <Text style={styles.muted}>
+                {TILL_COPY.bookedFor(b.reservedFor !== null ? clockTime(b.reservedFor) : "--:--", b.partySize)}
+              </Text>
+              {b.note !== null ? <Text style={styles.muted}>{b.note}</Text> : null}
+              {b.depositMinor !== null ? (
+                <Text style={styles.muted}>
+                  {`${TILL_COPY.depositPaidOnline} · ${formatCurrency(b.depositMinor, currency, true)}. ${TILL_COPY.depositComesOff}`}
+                </Text>
+              ) : b.depositUsed ? (
+                <Text style={styles.muted}>{TILL_COPY.depositUsed}</Text>
+              ) : null}
+              <Button
+                label={TILL_COPY.seatAndOpen}
+                variant="primary"
+                size="md"
+                loading={busy}
+                onPress={() => onSeat({ reservationId: b.reservationId, partySize: null })}
+                testID={`till-seat-open-${b.reservationId}`}
+              />
+            </View>
+          ))}
+          <NumberStepper label={TILL_COPY.partySize} value={party} min={1} max={Math.max(1, table?.capacity ?? 1) * 2}
+            onChange={setParty} testID="till-seat-party" />
         </SheetScrollLayout>
       </View>
     </Sheet>
@@ -1582,4 +1937,6 @@ const styles = StyleSheet.create({
   h3: { ...type.row, color: color.text1, flexShrink: 1 },
   label: { ...type.small, color: color.text2 },
   muted: { ...type.small, color: color.text2 },
+  warnText: { ...type.small, color: color.warningText },
+  sheetSection: { gap: space[2] },
 });

@@ -53,6 +53,7 @@ module.exports = {
     // "Pay <rest>" after a part payment is a new payment; the paid step shows the
     // amount the server recorded.
     "**/__tests__/tillAttempts.issue4490.o3fix5.render.test.tsx",
+    "**/__tests__/tillSplit.issue4490.o4.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",

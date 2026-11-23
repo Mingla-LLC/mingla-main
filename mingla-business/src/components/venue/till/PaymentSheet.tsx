@@ -12,6 +12,11 @@
  * same attempt reuses it, so it never charges twice; any other payment (the
  * rest after a part payment, another way, another amount or tip) gets its own.
  * The paid step shows what the server recorded, never the typed amount.
+ *
+ * 08-O4: "Pay in full / Split". A split check opens on its shares (the split
+ * step, SplitSheet, rendered INSIDE this sheet: never a second native sheet);
+ * paying a share uses the same methods with the share's exact amount, its own
+ * request id and its shareId. Tap and Scan take the whole share.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +28,8 @@ import type {
   TillPayCodeStatus,
   TillPaymentResult,
   TillSale,
+  TillShare,
+  TillSplitInput,
 } from "../../../services/venueTillService";
 import { TillError } from "../../../services/venueTillService";
 import { formatCurrency } from "../../../utils/currency";
@@ -36,6 +43,8 @@ import { Spinner } from "../../ui/Spinner";
 import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { ReceiptStep } from "./ReceiptStep";
 import { TillScanPanel } from "./TillScanPanel";
+import { SplitSheet, type SplitMode } from "./SplitSheet";
+import { openShares, shareOf, SPLIT_QUICK_WAYS } from "./splitModel";
 import { TillTapPanel } from "./TillTapPanel";
 import type { TillTapOffer } from "./tillTapAvailability";
 import {
@@ -52,7 +61,7 @@ import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
 import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 import { openFloorPdf } from "../../../utils/floorPdf";
 
-type Step = "choose" | "cash" | "own" | "scan" | "tap" | "paid" | "resuming";
+type Step = "choose" | "cash" | "own" | "scan" | "tap" | "paid" | "resuming" | "split";
 
 /** O2 fix 3: how often a failed read of the live code is tried again. */
 const RESUME_RETRY_MS = 3000;
@@ -71,7 +80,11 @@ export interface PaymentSheetProps {
     cashGivenMinor: number | null;
     clientRequestId: string;
     expectedVersion: number;
+    /** 08-O4: the share being paid, null for the whole check. */
+    shareId: string | null;
   }) => Promise<TillPaymentResult>;
+  /** 08-O4: set (or clear) the split; the server answers the shares. */
+  onSetSplit: (split: TillSplitInput) => Promise<unknown>;
   onNewSale: () => void;
   onRefreshSale: () => void;
   /** O2: the venue (Tap to pay runs against it). */
@@ -84,6 +97,7 @@ export interface PaymentSheetProps {
     tipMinor: number;
     clientRequestId: string;
     expectedVersion: number;
+    shareId: string | null;
   }) => Promise<TillCardStart>;
   scanApi: {
     fetchStatus: (code: string) => Promise<TillPayCodeStatus>;
@@ -107,6 +121,7 @@ export function PaymentSheet({
   tipBpsOptions,
   onClose,
   onPay,
+  onSetSplit,
   onNewSale,
   onRefreshSale,
   onSendReceipt,
@@ -139,9 +154,15 @@ export function PaymentSheet({
   // retry of the same facts reuses the id; it is dropped once the server has
   // answered, and on every way back to the methods.
   const attempt = useRef<TillAttempt | null>(null);
+  // 08-O4: the share being paid (null: the whole check), and where the split
+  // editor starts.
+  const [share, setShare] = useState<TillShare | null>(null);
+  const [splitStart, setSplitStart] = useState<{ mode: SplitMode; count: number }>({ mode: "by_item", count: 2 });
+  const [splitKey, setSplitKey] = useState(0);
+  const liveShare = shareOf(sale, share?.id ?? null);
 
   const currency = sale?.currency ?? "NGN";
-  const due = sale?.remainingMinor ?? 0;
+  const due = share !== null ? share.amountMinor : sale?.remainingMinor ?? 0;
   const money = (minor: number): string => formatCurrency(minor, currency, true);
 
   useEffect(() => {
@@ -157,6 +178,7 @@ export function PaymentSheet({
     setTapResumed(false);
     resumeDone.current = false;
     attempt.current = null;
+    setShare(null);
   }, [visible]);
 
   // O2-B1: a check that already has a live card payment opens on that payment's
@@ -165,7 +187,14 @@ export function PaymentSheet({
   // to resume shows waiting with Cancel payment.
   useEffect(() => {
     if (!visible || sale === null || resumeDone.current) return undefined;
-    const live = resumeLivePayment(sale, Date.now());
+    // 08-O4: a split check opens on its shares; a share's own live payment is
+    // resumed when that share is picked.
+    if (share === null && openShares(sale).length > 0) {
+      resumeDone.current = true;
+      setStep("split");
+      return undefined;
+    }
+    const live = resumeLivePayment(sale, Date.now(), share?.id ?? null);
     if (live.kind === "none") {
       resumeDone.current = true;
       return undefined;
@@ -218,7 +247,7 @@ export function PaymentSheet({
       if (timer !== null) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, sale, resumeTry]);
+  }, [visible, sale, resumeTry, share]);
 
   // O1-B1: the typed amount is what is taken, never quietly swapped for the
   // balance; an amount above what is left is refused in words and blocks the
@@ -240,7 +269,7 @@ export function PaymentSheet({
     const cashGivenMinor = method === "cash" ? cashGiven : null;
     const current = tillAttemptFor(
       attempt.current,
-      tillAttemptKey({ method, amountMinor: payAmount, tipMinor, cashGivenMinor }),
+      tillAttemptKey({ method, amountMinor: payAmount, tipMinor, cashGivenMinor, shareId: share?.id ?? null }),
     );
     attempt.current = current;
     try {
@@ -251,6 +280,7 @@ export function PaymentSheet({
         cashGivenMinor,
         clientRequestId: current.id,
         expectedVersion: sale.version,
+        shareId: share?.id ?? null,
       });
       // Taken (or the first try's answer replayed): this attempt is over.
       attempt.current = null;
@@ -268,6 +298,12 @@ export function PaymentSheet({
         onRefreshSale();
         setStep("choose");
       }
+      if (share !== null && (code === "till_check_changed" || code === "till_share_paid" || code === "till_share_paying")) {
+        // The split moved on another device: back to the shares as they are now.
+        onRefreshSale();
+        setShare(null);
+        setStep("split");
+      }
       setError(tillErrorCopy(code));
     } finally {
       setBusy(false);
@@ -283,7 +319,7 @@ export function PaymentSheet({
     if (sale === null || busy) return;
     setBusy(true);
     setError(null);
-    const current = tillAttemptFor(attempt.current, tillAttemptKey({ method, tipMinor }));
+    const current = tillAttemptFor(attempt.current, tillAttemptKey({ method, tipMinor, shareId: share?.id ?? null }));
     attempt.current = current;
     try {
       const started = await onStartCard({
@@ -291,6 +327,7 @@ export function PaymentSheet({
         tipMinor,
         clientRequestId: current.id,
         expectedVersion: sale.version,
+        shareId: share?.id ?? null,
       });
       // The card payment exists on the server now; its panel follows it by
       // payment id. Whatever happens to it, the next start is a new attempt.
@@ -302,6 +339,10 @@ export function PaymentSheet({
       if (!tillAttemptKeepsId(code)) attempt.current = null;
       if (code === "till_check_changed" || code === "till_nothing_to_pay" || code === "till_request_reused") {
         onRefreshSale();
+      }
+      if (share !== null && (code === "till_check_changed" || code === "till_share_paid" || code === "till_share_paying")) {
+        setShare(null);
+        setStep("split");
       }
       setError(tillErrorCopy(code));
     } finally {
@@ -337,8 +378,77 @@ export function PaymentSheet({
     setStep("choose");
   };
 
+  // 08-O4: pay one share (its own attempt, its exact amount). A share already
+  // being paid opens on its live payment's panel.
+  const payShare = (picked: TillShare): void => {
+    attempt.current = null;
+    setAmountMinor(null);
+    setTipMinor(0);
+    setCashGiven(null);
+    setError(null);
+    setResult(null);
+    setCard(null);
+    setTapResumed(false);
+    setShare(picked);
+    if (picked.state === "paying") {
+      resumeDone.current = false;
+      setResumeTry((n) => n + 1);
+    } else {
+      resumeDone.current = true;
+      setStep("choose");
+    }
+  };
+  const backToShares = (): void => {
+    attempt.current = null;
+    setShare(null);
+    setCard(null);
+    setResult(null);
+    setError(null);
+    setStep("split");
+    onRefreshSale();
+  };
+  const openSplit = (mode: SplitMode, count: number): void => {
+    setSplitStart({ mode, count });
+    setSplitKey((k) => k + 1);
+    setError(null);
+    setStep("split");
+  };
+  const applySplit = async (split: TillSplitInput): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSetSplit(split);
+      if (split.mode === "none") setStep("choose");
+    } catch (err) {
+      const code = err instanceof TillError ? err.code : "till_failed";
+      if (code === "till_check_changed") onRefreshSale();
+      setError(tillErrorCopy(code));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // A5: "{n} ways" sets an even split at once and shows its shares.
+  const quickWays = async (n: number): Promise<void> => {
+    openSplit("even", n);
+    await applySplit({ mode: "even", count: n });
+  };
+  const sharesOpen = openShares(sale);
+  // A share dropped or paid on another device while this one was choosing a
+  // method: back to the shares as they are now.
+  useEffect(() => {
+    if (share !== null && step === "choose" && (liveShare === null || liveShare.state === "paid")) {
+      attempt.current = null;
+      setShare(null);
+      setStep("split");
+    }
+  }, [share, step, liveShare]);
+  const canSplit = share === null && (sale?.remainingMinor ?? 0) > 0 && sale?.state === "open";
+
   const title =
-    step === "resuming"
+    step === "split"
+      ? TILL_COPY.splitTheBill
+      : step === "resuming"
       ? TILL_COPY.scanToPay
       : step === "paid"
       ? TILL_COPY.paymentTaken
@@ -350,6 +460,8 @@ export function PaymentSheet({
       ? TILL_COPY.scanToPay
       : step === "tap"
       ? TILL_COPY.tapToPay
+      : share !== null
+      ? TILL_COPY.payShare(share.shareNo, money(due))
       : TILL_COPY.pay(money(due));
   const tapDisabledReason =
     tapOffer.kind !== "disabled"
@@ -364,6 +476,20 @@ export function PaymentSheet({
   let footer: React.ReactNode = null;
   if (sale === null) {
     body = <Text style={styles.muted}>{TILL_COPY.payPending}</Text>;
+  } else if (step === "split") {
+    body = (
+      <SplitSheet
+        key={splitKey}
+        sale={sale}
+        busy={busy}
+        initialMode={splitStart.mode}
+        initialCount={splitStart.count}
+        onSetSplit={applySplit}
+        onPayShare={payShare}
+        onPayInFull={() => void applySplit({ mode: "none" })}
+        error={error}
+      />
+    );
   } else if (step === "resuming") {
     body = (
       <View style={[styles.body, styles.center]} testID="till-pay-resuming">
@@ -374,17 +500,33 @@ export function PaymentSheet({
     body = (
       <View style={styles.body}>
         <View style={styles.dueBox}>
-          <Text style={styles.label}>{sale.paidMinor > 0 ? TILL_COPY.leftToPay : TILL_COPY.amountDue}</Text>
+          <Text style={styles.label}>
+            {share !== null ? TILL_COPY.shareN(share.shareNo) : sale.paidMinor > 0 ? TILL_COPY.leftToPay : TILL_COPY.amountDue}
+          </Text>
           <Text style={styles.big} testID="till-pay-due">{money(due)}</Text>
         </View>
-        <MoneyField
-          label={TILL_COPY.payInFull}
-          valueMinor={amountMinor ?? due}
-          onChangeMinor={(next) => setAmountMinor(next)}
-          currency={currency}
-          error={amountError}
-          testID="till-pay-amount"
-        />
+        {canSplit ? (
+          // Spec 08 §11 A5: Pay in full · 2 ways · 3 ways · 4 ways · By item.
+          <View style={styles.chips} testID="till-split-chips">
+            <Chip label={TILL_COPY.payInFull} selected onPress={() => undefined} testID="till-split-chip-full" />
+            {SPLIT_QUICK_WAYS.map((n) => (
+              <Chip key={n} label={TILL_COPY.ways(n)} disabled={busy || due < n} onPress={() => void quickWays(n)}
+                testID={`till-split-chip-${n}`} />
+            ))}
+            <Chip label={TILL_COPY.byItem} disabled={busy || sale.split?.evenOnly === true} onPress={() => openSplit("by_item", 2)}
+              testID="till-split-chip-item" />
+          </View>
+        ) : null}
+        {share === null ? (
+          <MoneyField
+            label={TILL_COPY.payInFull}
+            valueMinor={amountMinor ?? due}
+            onChangeMinor={(next) => setAmountMinor(next)}
+            currency={currency}
+            error={amountError}
+            testID="till-pay-amount"
+          />
+        ) : null}
         {tips.length > 1 ? (
           <View style={styles.chips}>
             {tips.map((t) => (
@@ -516,6 +658,7 @@ export function PaymentSheet({
     const left = sale.remainingMinor;
     body = (
       <View style={styles.body}>
+        {share !== null ? <Text style={styles.title}>{TILL_COPY.sharePaid(share.shareNo)}</Text> : null}
         {result !== null && result.amountMinor !== null ? (
           <Text style={styles.big} testID="till-paid-amount">{money(result.amountMinor)}</Text>
         ) : null}
@@ -546,7 +689,9 @@ export function PaymentSheet({
       </View>
     );
     footer =
-      left > 0 ? (
+      left > 0 && (share !== null || sharesOpen.length > 0) ? (
+        <Button label={TILL_COPY.backToShares} variant="primary" size="lg" fullWidth onPress={backToShares} testID="till-pay-shares" />
+      ) : left > 0 ? (
         <Button label={TILL_COPY.pay(money(left))} variant="primary" size="lg" fullWidth onPress={payRest} testID="till-pay-rest" />
       ) : (
         <Button label={TILL_COPY.newSale} variant="primary" size="lg" fullWidth onPress={onNewSale} testID="till-new-sale" />
@@ -561,6 +706,9 @@ export function PaymentSheet({
           <Text style={styles.heading} accessibilityRole="header">{title}</Text>
           {step === "cash" || step === "own" ? (
             <Button label={TILL_COPY.noGoBack} variant="ghost" size="sm" disabled={busy} onPress={() => setStep("choose")} />
+          ) : step === "choose" && (share !== null || sharesOpen.length > 0) ? (
+            <Button label={TILL_COPY.backToShares} variant="ghost" size="sm" disabled={busy} onPress={backToShares}
+              testID="till-pay-back-shares" />
           ) : (
             <Button label={TILL_COPY.close} variant="ghost" size="sm" disabled={busy || tapBusy} onPress={onClose} testID="till-pay-close" />
           )}

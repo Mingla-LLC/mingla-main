@@ -59,7 +59,8 @@ export interface TableFormProps {
   /** #4490 N24: a new table starts like this one (shape and seats). */
   defaultLike?: Pick<VenueFloorTable, "shape" | "capacity"> | null;
   currency: string | null;
-  features: { minSpendTables: boolean; pickATable: boolean; floorPlan: boolean };
+  /** `till`: the Till runs at this venue (VENUE_TILL and the venue's Sell in person), so a paid deposit comes off the bill there (spec 07 §11 B1, 08 O4 T12). */
+  features: { minSpendTables: boolean; pickATable: boolean; floorPlan: boolean; till?: boolean };
   canEdit: boolean;
   onSaved: (table: VenueFloorTable | null, message: string) => void;
   onCancel?: () => void;
@@ -319,7 +320,8 @@ export function TableForm({
           {showErrors && issues.hold !== null ? <Text style={styles.error}>{issues.hold}</Text> : null}
         </View>
       ) : null}
-      <Text style={styles.hint}>Paid when they book. Take it off their bill at the venue.</Text>
+      {/* Spec 07 §11 B1: the short hint is true only where the Till credits the deposit (08 O4 T12). */}
+      <Text style={styles.hint}>{features.till === true ? "Comes off their bill." : "Paid when they book. Take it off their bill at the venue."}</Text>
 
       <Text style={styles.section}>Booking</Text>
       {features.pickATable ? (

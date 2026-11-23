@@ -146,10 +146,16 @@ export type PayResume =
   | { kind: "scan"; payment: TillPayment; code: string }
   | { kind: "tap"; payment: TillPayment };
 
-export const resumeLivePayment = (sale: TillSale | null, nowMs: number): PayResume => {
+export const resumeLivePayment = (
+  sale: TillSale | null,
+  nowMs: number,
+  /** 08-O4: a share's own live payment; without it, only whole-check payments. */
+  shareId: string | null = null,
+): PayResume => {
   if (sale === null || (sale.state !== "open" && sale.state !== "paying")) return { kind: "none" };
   for (const payment of sale.payments) {
     if (payment.state !== "pending") continue;
+    if ((payment.shareId ?? null) !== shareId) continue;
     if (payment.method === "scan") {
       const pc = payment.payCode;
       if (pc === null || !TILL_CODE_RE.test(pc.code)) continue;

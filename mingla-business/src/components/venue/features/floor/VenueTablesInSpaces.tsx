@@ -16,6 +16,7 @@ import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 import { color, radius, space, type } from "../../../../constants/designSystem";
 import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
 import { useSetVenueFeature, useVenueFeatures } from "../../../../hooks/useVenueFeatures";
+import { useTillReleased } from "../../../../hooks/useTillReleased";
 import { useTouchFloor } from "../../../../hooks/useTouchFloor";
 import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { useVenueFloorPlan } from "../../../../hooks/useVenueTables";
@@ -76,10 +77,13 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
     [plan?.unplaced, spaces],
   );
   const selected = spaces.find((s) => s.id === spaceId) ?? null;
+  const tillReleased = useTillReleased();
   const features = {
     minSpendTables: plan?.features.minSpendTables ?? false,
     pickATable: plan?.features.pickATable ?? false,
     floorPlan: plan?.features.floorPlan ?? false,
+    // 08 O4 (T12): where the Till runs, a paid table deposit comes off the bill.
+    till: tillReleased && featuresQuery.data?.features.till?.enabled === true,
   };
   const tableReservationsOn = featuresQuery.data?.features.table_reservations.enabled === true;
   const canEdit = access.canManageTables;

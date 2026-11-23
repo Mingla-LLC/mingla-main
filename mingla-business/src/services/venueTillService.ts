@@ -23,16 +23,35 @@ export class TillError extends Error {
   readonly code: string;
   readonly item: string | null;
   readonly remainingMinor: number | null;
-  constructor(code: string, item: string | null = null, remainingMinor: number | null = null) {
+  /** 08-O4 (T13): who has the unit next and when (offer_space_taken). */
+  readonly unitName: string | null;
+  readonly nextAt: string | null;
+  constructor(
+    code: string,
+    item: string | null = null,
+    remainingMinor: number | null = null,
+    next: { unitName: string | null; nextAt: string | null } | null = null,
+  ) {
     super(code);
     this.name = "TillError";
     this.code = code;
     this.item = item;
     this.remainingMinor = remainingMinor;
+    this.unitName = next?.unitName ?? null;
+    this.nextAt = next?.nextAt ?? null;
   }
 }
 
-export type TillLineKind = "menu_round" | "entry" | "group_package" | "by_the_hour" | "table" | "plan" | "balance";
+export type TillLineKind =
+  | "menu_round"
+  | "entry"
+  | "group_package"
+  | "by_the_hour"
+  | "table"
+  | "plan"
+  | "balance"
+  /** 08-O4 (T12): a booking's paid table deposit, money off the bill. */
+  | "deposit_credit";
 export type TillPaymentMethod = "tap" | "scan" | "cash" | "own_machine" | "room";
 
 export interface TillItem {
@@ -98,6 +117,31 @@ export interface TillPayment {
   /** A late payment staff kept as payment for the check. */
   lateKept: boolean;
   payCode: TillPayCodeState | null;
+  /** 08-O4: the share of a split check this payment pays (null: the whole check). */
+  shareId?: string | null;
+}
+
+/** 08-O4: one share of a split check (every amount is the server's). */
+export interface TillShare {
+  id: string;
+  shareNo: number;
+  mode: "by_item" | "even";
+  state: "unpaid" | "paying" | "paid";
+  amountMinor: number;
+  serviceChargeMinor: number;
+  setVersion: number;
+  paymentId: string | null;
+  items: Array<{ orderItemId: string | null; lineId: string | null; units: number; amountMinor: number }>;
+}
+
+/** 08-O4: a by-the-hour session on the check. */
+export interface TillHourSession {
+  lineId: string;
+  rootLineId: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  unitName: string | null;
+  stepMinutes: number;
 }
 
 /** A scan payment's code as the staff side sees it. */
@@ -131,6 +175,23 @@ export interface TillSale {
   pendingPayment: boolean;
   lines: TillLine[];
   payments: TillPayment[];
+  /** 08-O4: the split (empty when paid in one go). Optional only for older cached shapes. */
+  shares?: TillShare[];
+  split?: {
+    /** Only an even split of what is left is possible (part paid, refunded, a deposit). */
+    evenOnly: boolean;
+    /** Units already paid by a share, per order item or line id. */
+    unitsPaid: Record<string, number>;
+    /** The service charge payments still carry (the server's; previews use it). */
+    serviceChargeLeftMinor: number;
+  };
+  /** 08-O4 (T12): the booking's paid deposit on this check, and how much of it the bill uses. */
+  creditMinor?: number;
+  creditUsedMinor?: number;
+  reservation?: { id: string; name: string | null; partySize: number; reservedFor: string | null; source: string | null } | null;
+  /** The table's minimum spend (null when there is none). */
+  minimumSpend?: { minimumMinor: number; spentMinor: number; shortMinor: number } | null;
+  hourSessions?: TillHourSession[];
 }
 
 export interface TillMenuModifier {
@@ -172,6 +233,45 @@ export interface TillCatalog {
   tapAvailable: boolean;
   menus: Array<{ id: string; name: string; items: TillMenuItem[] }>;
   spots: Array<{ id: string; label: string; hasCheck: boolean }>;
+  /** 08-O4: tables (spots with a table), their minimum spend and bookings for about now. */
+  tableReservationsOn: boolean;
+  tables: TillTable[];
+  /** 08-O4: by-the-hour offers staff can start at the Till. */
+  hourOffers: TillHourOffer[];
+}
+
+export interface TillTableBooking {
+  reservationId: string;
+  name: string | null;
+  partySize: number;
+  reservedFor: string | null;
+  /** A paid deposit that will come off the bill (null: none, or already used / refunded). */
+  depositMinor: number | null;
+  depositUsed: boolean;
+  note: string | null;
+}
+
+export interface TillTable {
+  spotId: string;
+  tableId: string;
+  name: string;
+  capacity: number;
+  minSpendMinor: number | null;
+  hasCheck: boolean;
+  bookings: TillTableBooking[];
+}
+
+export interface TillHourOffer {
+  id: string;
+  name: string;
+  allocation: "all" | "any_one";
+  stepMinutes: number;
+  minMinutes: number;
+  maxMinutes: number;
+  guestMin: number;
+  guestMax: number;
+  pricePerHourMinor: number | null;
+  units: Array<{ spaceId: string; name: string; busy: boolean }>;
 }
 
 export interface TillCheckRow {
@@ -278,6 +378,68 @@ export function mapTillSale(v: unknown): TillSale {
         cardLast4: strOrNull(pay.cardLast4),
         lateKept: pay.lateKept === true,
         payCode: pay.payCode !== null && typeof pay.payCode === "object" ? mapPayCodeState(pay.payCode) : null,
+        shareId: strOrNull(pay.shareId),
+      };
+    }),
+    shares: arr(s.shares).map((v2): TillShare => {
+      const sh = obj(v2);
+      return {
+        id: str(sh.id),
+        shareNo: num(sh.shareNo, 1),
+        mode: sh.mode === "even" ? "even" : "by_item",
+        state: sh.state === "paid" || sh.state === "paying" ? sh.state : "unpaid",
+        amountMinor: num(sh.amountMinor),
+        serviceChargeMinor: num(sh.serviceChargeMinor),
+        setVersion: num(sh.setVersion, 1),
+        paymentId: strOrNull(sh.paymentId),
+        items: arr(sh.items).map((it) => {
+          const item = obj(it);
+          return {
+            orderItemId: strOrNull(item.orderItemId),
+            lineId: strOrNull(item.lineId),
+            units: num(item.units, 1),
+            amountMinor: num(item.amountMinor),
+          };
+        }),
+      };
+    }),
+    split: (() => {
+      const sp = obj(s.split);
+      const unitsPaid: Record<string, number> = {};
+      for (const [k, n] of Object.entries(obj(sp.unitsPaid))) {
+        if (typeof n === "number") unitsPaid[k] = n;
+      }
+      return { evenOnly: sp.evenOnly === true, unitsPaid, serviceChargeLeftMinor: num(sp.serviceChargeLeftMinor) };
+    })(),
+    creditMinor: num(s.creditMinor),
+    creditUsedMinor: num(s.creditUsedMinor),
+    reservation: s.reservation !== null && typeof s.reservation === "object"
+      ? (() => {
+        const r = obj(s.reservation);
+        return {
+          id: str(r.id),
+          name: strOrNull(r.name),
+          partySize: num(r.partySize, 1),
+          reservedFor: strOrNull(r.reservedFor),
+          source: strOrNull(r.source),
+        };
+      })()
+      : null,
+    minimumSpend: s.minimumSpend !== null && typeof s.minimumSpend === "object"
+      ? (() => {
+        const m = obj(s.minimumSpend);
+        return { minimumMinor: num(m.minimumMinor), spentMinor: num(m.spentMinor), shortMinor: num(m.shortMinor) };
+      })()
+      : null,
+    hourSessions: arr(s.hourSessions).map((h) => {
+      const hs = obj(h);
+      return {
+        lineId: str(hs.lineId),
+        rootLineId: str(hs.rootLineId),
+        startsAt: strOrNull(hs.startsAt),
+        endsAt: strOrNull(hs.endsAt),
+        unitName: strOrNull(hs.unitName),
+        stepMinutes: num(hs.stepMinutes, 60),
       };
     }),
   };
@@ -338,6 +500,48 @@ export function mapTillCatalog(v: unknown): TillCatalog {
       const spot = obj(sp);
       return { id: str(spot.id), label: str(spot.label), hasCheck: spot.hasCheck === true };
     }),
+    tableReservationsOn: c.tableReservationsOn === true,
+    tables: arr(c.tables).map((t): TillTable => {
+      const table = obj(t);
+      return {
+        spotId: str(table.spotId),
+        tableId: str(table.tableId),
+        name: str(table.name),
+        capacity: num(table.capacity, 1),
+        minSpendMinor: numOrNull(table.minSpendMinor),
+        hasCheck: table.hasCheck === true,
+        bookings: arr(table.bookings).map((b) => {
+          const booking = obj(b);
+          return {
+            reservationId: str(booking.reservationId),
+            name: strOrNull(booking.name),
+            partySize: num(booking.partySize, 1),
+            reservedFor: strOrNull(booking.reservedFor),
+            depositMinor: numOrNull(booking.depositMinor),
+            depositUsed: booking.depositUsed === true,
+            note: strOrNull(booking.note),
+          };
+        }),
+      };
+    }).filter((t) => t.spotId.length > 0),
+    hourOffers: arr(c.hourOffers).map((o): TillHourOffer => {
+      const offer = obj(o);
+      return {
+        id: str(offer.id),
+        name: str(offer.name),
+        allocation: offer.allocation === "any_one" ? "any_one" : "all",
+        stepMinutes: num(offer.stepMinutes, 60),
+        minMinutes: num(offer.minMinutes, 60),
+        maxMinutes: num(offer.maxMinutes, 1440),
+        guestMin: num(offer.guestMin, 1),
+        guestMax: num(offer.guestMax, 1),
+        pricePerHourMinor: numOrNull(offer.pricePerHourMinor),
+        units: arr(offer.units).map((u) => {
+          const unit = obj(u);
+          return { spaceId: str(unit.spaceId), name: str(unit.name), busy: unit.busy === true };
+        }),
+      };
+    }).filter((o) => o.id.length > 0),
   };
 }
 
@@ -363,7 +567,8 @@ async function tillError(error: { message?: string; context?: unknown }): Promis
     try {
       const body = obj(await (context as Response).json());
       if (typeof body.code === "string" && body.code.length > 0) {
-        return new TillError(body.code, strOrNull(body.item), numOrNull(body.remainingMinor));
+        return new TillError(body.code, strOrNull(body.item), numOrNull(body.remainingMinor),
+          { unitName: strOrNull(body.unitName), nextAt: strOrNull(body.nextAt) });
       }
     } catch {
       // An unreadable body falls through to the network mapping below.
@@ -479,12 +684,15 @@ export async function payTill(input: {
   cashGivenMinor: number | null;
   clientRequestId: string;
   expectedVersion: number;
+  /** 08-O4: the share being paid (its exact amount), or null for the whole check. */
+  shareId?: string | null;
 }): Promise<TillPaymentResult> {
-  const { method, cashGivenMinor, ...rest } = input;
+  const { method, cashGivenMinor, shareId, ...rest } = input;
   const data = obj(await till<unknown>({
     action: method === "cash" ? "pay_cash" : "pay_own_machine",
     ...rest,
     ...(method === "cash" ? { cashGivenMinor } : {}),
+    ...(shareId ? { shareId } : {}),
   }));
   return {
     sale: mapTillSale(data.sale),
@@ -627,8 +835,10 @@ export async function startTillScan(input: {
   tipMinor: number;
   clientRequestId: string;
   expectedVersion: number;
+  shareId?: string | null;
 }): Promise<TillCardStart> {
-  return mapCardStart(await till<unknown>({ action: "pay_code_create", ...input }));
+  const { shareId, ...rest } = input;
+  return mapCardStart(await till<unknown>({ action: "pay_code_create", ...rest, ...(shareId ? { shareId } : {}) }));
 }
 
 export async function startTillTap(input: {
@@ -638,8 +848,10 @@ export async function startTillTap(input: {
   clientRequestId: string;
   expectedVersion: number;
   platform: string;
+  shareId?: string | null;
 }): Promise<TillCardStart> {
-  return mapCardStart(await till<unknown>({ action: "pay_tap_start", ...input }));
+  const { shareId, ...rest } = input;
+  return mapCardStart(await till<unknown>({ action: "pay_tap_start", ...rest, ...(shareId ? { shareId } : {}) }));
 }
 
 /** A tap payment whose card reader never started. */
@@ -689,4 +901,60 @@ export async function keepTillLatePayment(input: {
 }): Promise<TillSale> {
   const d = obj(await till<unknown>({ action: "keep_late", ...input }));
   return mapTillSale(d.sale);
+}
+
+// ---------------------------------------------------------------------------
+// #4490 spec 08 O4 — split bill, tables, by the hour started by staff. The
+// client sends what a person chose (who has which item, how many people,
+// which table, how long); the server computes every share and price.
+// ---------------------------------------------------------------------------
+
+export type TillSplitInput =
+  | { mode: "even"; count: number }
+  | { mode: "by_item"; shares: Array<{ items: Array<{ orderItemId: string; units: number } | { lineId: string; units: number }> }> }
+  | { mode: "none" };
+
+export function setTillSplit(input: {
+  venueId: string;
+  saleId: string;
+  split: TillSplitInput;
+  expectedVersion: number;
+}): Promise<TillSale> {
+  const { split, ...rest } = input;
+  return saleAction({ action: "set_split", ...rest, ...split });
+}
+
+export function seatTillTable(input: {
+  venueId: string;
+  spotId: string;
+  partySize: number | null;
+  reservationId: string | null;
+  label: string | null;
+  idempotencyKey: string;
+}): Promise<TillSale> {
+  return saleAction({ action: "seat", ...input });
+}
+
+export function startTillSession(input: {
+  venueId: string;
+  saleId: string;
+  offeringId: string;
+  spaceId: string | null;
+  minutes: number;
+  guests: number | null;
+  idempotencyKey: string;
+  expectedVersion: number;
+}): Promise<TillSale> {
+  return saleAction({ action: "start_session", ...input });
+}
+
+export function extendTillSession(input: {
+  venueId: string;
+  saleId: string;
+  lineId: string;
+  minutes: number;
+  idempotencyKey: string;
+  expectedVersion: number;
+}): Promise<TillSale> {
+  return saleAction({ action: "extend_session", ...input });
 }
