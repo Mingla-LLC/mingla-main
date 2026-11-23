@@ -50,6 +50,7 @@ import { PipelineToolbar } from "../components/crm/PipelineToolbar";
 import { PipelineBoard, PipelineBoardSkeleton } from "../components/crm/PipelineBoard";
 // #4571 W3: My calls today.
 import { CallsQueue } from "../components/crm/CallsQueue";
+import { DemosBanner } from "../components/leads/DemosBanner";
 import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
 import { PipelineOverlays } from "../components/crm/CrmLayer";
@@ -577,6 +578,8 @@ function PipelinePage({ pipeline, onTabChange }) {
       {!online && (
         <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>
       )}
+      {/* #4571 W4: booked demos that are not linked to a host card yet. */}
+      {pipeline === "hosts" && online && <DemosBanner />}
 
       {loadError ? (
         <AlertCard

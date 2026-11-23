@@ -52,7 +52,8 @@ import {
   terminalStage,
 } from "../../lib/crmModel";
 import { buildCrmHash } from "../../lib/crmUrl";
-import { getRecord, newRequestKey, recordWork, setFollowers, setRecordPeople } from "../../services/crmService";
+import { demoUnlink, getRecord, newRequestKey, recordWork, setFollowers, setRecordPeople } from "../../services/crmService";
+import { demoStatusWords, linkSourceWords, schedulerLink } from "../leads/demoLinkModel";
 import { useRecordDraftCount } from "../../hooks/useDrafts";
 
 // What someone typed on a card that could not be sent before the card went
@@ -160,12 +161,41 @@ function CallsSection({ activity, onLogCall, disabled }) {
 }
 
 /**
- * #4571 W3: Demos (Google Meet), read-only until W4 links bookings to cards.
- * It reads `demos` from the card's read and `demo_gate` from the record when
- * the server sends them (W4 fills both); nothing is invented before then.
+ * #4571 W3/W4: Demos (Google Meet), design tab 3. The card's linked demos (from
+ * crm_record_get), the Demo booked lock with its reason (demo_gate), and the
+ * card's own scheduler link: Book a demo opens it in a new tab so the rep books
+ * during the call; Copy scheduler link copies it. A booking made with it links
+ * itself. Staff book only through this link (Mingla does not read personal
+ * calendars). Unlinking is refused while the card stands on that demo alone.
  */
-function DemosSection({ record, demos }) {
+function DemosSection({ record, demos, scheduleToken, disabled, onChanged }) {
+  const { addToast } = useToast();
+  const [busy, setBusy] = useState("");
   const list = Array.isArray(demos) ? demos : [];
+  const link = schedulerLink(scheduleToken);
+  const gate = record.demo_gate || null;
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      addToast({ variant: "success", title: "Scheduler link copied. A demo booked with it links to this card." });
+    } catch (err) {
+      console.error("[crm] copy scheduler link failed:", err?.message || err);
+      addToast({ variant: "error", title: "Couldn't copy the link", description: link });
+    }
+  };
+  const unlink = async (bookingId) => {
+    setBusy(bookingId);
+    try {
+      await demoUnlink(bookingId);
+      addToast({ variant: "success", title: "Demo unlinked. It is back on Demos to link." });
+      onChanged();
+    } catch (err) {
+      addToast({ variant: "error", title: "Couldn't unlink the demo", description: errorWords(err) });
+    } finally {
+      setBusy("");
+    }
+  };
   return (
     <section aria-label="Demos" data-record-section="demos" className={SECTION}>
       <h3 className={H3}><span>Demos (Google Meet) <span className="font-medium text-[var(--color-text-tertiary)]">· {list.length}</span></span></h3>
@@ -174,16 +204,48 @@ function DemosSection({ record, demos }) {
       ) : (
         <ul className="flex min-w-0 flex-col gap-1.5">
           {list.map((d) => (
-            <li key={d.booking_id || d.id} className="rounded-lg border border-[var(--gray-200)] px-3 py-2 text-[12.5px] text-[var(--color-text-secondary)]">
-              <b className="text-[var(--color-text-primary)]">{d.status === "cancelled" ? "Demo cancelled" : "Demo booked"}</b> · {localWhen(d.call_at)}
+            <li key={d.booking_id || d.id} data-demo={d.status} className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-[12.5px] text-[var(--color-text-secondary)]">
+              <span className="min-w-0 break-words">
+                <b className="text-[var(--color-text-primary)]">{demoStatusWords(d.status)}</b> · {localWhen(d.call_at)}
+                {d.status === "moved" && d.original_call_at ? <span> (was {localWhen(d.original_call_at)})</span> : null}
+                {linkSourceWords(d.link_source) ? <span className="text-[var(--color-text-tertiary)]"> · {linkSourceWords(d.link_source)}{d.linked_by_name ? ` by ${d.linked_by_name}` : ""}</span> : null}
+              </span>
+              <span className="flex flex-wrap gap-1">
+                {d.meet_url && d.status !== "cancelled" && d.status !== "declined" && (
+                  <a href={d.meet_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg px-2 font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]">Join <ExternalLink aria-hidden="true" className="ml-1 h-3.5 w-3.5" /></a>
+                )}
+                <Button variant="ghost" size="sm" className="min-h-11" disabled={disabled || busy === d.booking_id} loading={busy === d.booking_id} onClick={() => unlink(d.booking_id)}>Unlink</Button>
+              </span>
             </li>
           ))}
         </ul>
       )}
-      {record.demo_gate?.locked && (
-        <p role="note" data-demo-lock="" className="rounded-lg bg-[var(--color-error-50)] px-3 py-2 text-[12.5px] text-[var(--color-error-700)]">
-          <b>Demo booked is locked.</b> {record.demo_gate.reason || "It needs a Google Meet booked through the scheduler and linked to this card."}
+      {gate?.demo_cancelled && (
+        <p role="note" data-demo-cancelled="" className="rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-[12.5px] text-[var(--color-warning-700)]">
+          <b>Demo cancelled.</b> The card stays where it is. Book a new demo, or move the card back.
         </p>
+      )}
+      {gate?.needs_linking && !gate?.demo_cancelled && (
+        <p role="note" data-demo-needs-linking="" className="rounded-lg bg-[var(--a-sched-bg)] px-3 py-2 text-[12.5px] text-[var(--a-sched-ink)]">
+          <b>Needs linking.</b> This card was in Demo booked before demos were linked. Link its booking on Demos to link, or book one with the link below.
+        </p>
+      )}
+      {gate?.locked && (
+        <p role="note" data-demo-lock="" className="rounded-lg bg-[var(--color-error-50)] px-3 py-2 text-[12.5px] text-[var(--color-error-700)]">
+          <b>Demo booked is locked.</b> {gate.reason || "It needs a Google Meet booked through the scheduler and linked to this card."}
+        </p>
+      )}
+      {link ? (
+        <div className="flex min-w-0 flex-wrap gap-2">
+          <a href={link} target="_blank" rel="noopener noreferrer" data-book-demo=""
+            className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-[var(--color-brand-800)] px-3 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)]">
+            <Phone aria-hidden="true" className="h-3.5 w-3.5" />Book a demo
+          </a>
+          <Button variant="secondary" size="sm" className="min-h-11" onClick={copy} data-copy-scheduler="">Copy scheduler link</Button>
+          <a href="#/inbound" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--gray-200)] px-3 text-[13px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)]">Link a booked demo</a>
+        </div>
+      ) : (
+        <p className="text-[12.5px] text-[var(--color-text-tertiary)]">The card&apos;s scheduler link shows once the card has loaded.</p>
       )}
     </section>
   );
@@ -1058,7 +1120,7 @@ export function RecordPanel({
         )}
         {/* #4571 W3: Work for hosts and creators (crm_record_work); its Add work item keeps #4270's form. */}
         <HostToDoSection key={`record-work-${record.id}`} record={record} read={work} online={online && !locked} onAdded={() => { work.retry(); if (isHosts) hostRead.retry(); }} />
-        {isHosts && <DemosSection record={record} demos={current.data?.demos} />}
+        {isHosts && <DemosSection record={record} demos={current.data?.demos} scheduleToken={current.data?.schedule_token} disabled={locked || !online} onChanged={() => setReloadTick((n) => n + 1)} />}
         <CallsSection activity={current.data?.activity} disabled={locked} onLogCall={() => { const box = logRef.current; const fold = box?.closest?.("details"); if (fold && !fold.open) fold.open = true; box?.scrollIntoView?.({ block: "center" }); }} />
         {isHosts && (
           <>

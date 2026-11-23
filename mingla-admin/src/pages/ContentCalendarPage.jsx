@@ -164,7 +164,7 @@ function CallStatusBadge({ status, label }) {
 
 /** A call's chip on the month: time first, then its badge, then the name. A cancelled or declined call is struck through. */
 function CallChip({ e, past, current, onOpen }) {
-  const words = [e.time, e.badge, e.statusLabel, e.title].filter(Boolean);
+  const words = [e.time, e.badge, e.statusLabel, e.needsLinking ? "Needs linking" : "", e.title].filter(Boolean);
   return (
     <button
       type="button"
@@ -181,6 +181,8 @@ function CallChip({ e, past, current, onOpen }) {
         <b className={`whitespace-nowrap tabular-nums ${e.off ? "line-through" : ""}`} data-call-time="">{e.time}</b>
         <span className="whitespace-nowrap rounded-full bg-[var(--color-brand-50)] px-1.5 text-[10.5px] font-semibold text-[var(--color-brand-700)]" data-call-badge="">{e.badge}</span>
         <CallStatusBadge status={e.status} label={e.statusLabel} />
+        {/* #4571 W4: a booked demo not linked to a host card yet. */}
+        {e.needsLinking && <span className="whitespace-nowrap rounded-full bg-[var(--a-sched-bg)] px-1.5 text-[10.5px] font-semibold text-[var(--a-sched-ink)]" data-call-needs-linking="">Needs linking</span>}
       </span>
       <span className={`block font-semibold ${e.off ? "line-through" : ""}`} data-call-title=""><ChipWords text={e.title} /></span>
     </button>
@@ -378,6 +380,8 @@ function CallPanel({ call, zone, loading, onClose }) {
             {row("Booked for", v.originalWhen ? <span className="line-through" data-call-original="">{v.originalWhen}</span> : null)}
             {row("Their time", v.bookerWhen)}
             {row(v.badge === CALL_LABELS.host ? "What they run" : v.badge === CALL_LABELS.creator ? "What they make" : "First place", v.what ? v.what.replace(/^[^:]+: /, "") : null)}
+            {row("Host card", v.record ? <a href={`#/hosts?card=${encodeURIComponent(v.record.id)}`} className={link} data-call-record="">{v.record.name}</a>
+              : v.needsLinking ? <a href="#/inbound" className={link} data-call-needs-linking="">Needs linking: review in Demos to link</a> : null)}
             {row("Place or brand", v.venue)}
             {row("City", v.city)}
             {row("Social", v.socialUrl ? <a href={v.socialUrl} target="_blank" rel="noopener noreferrer" className={link} data-call-social="">{v.socialLabel}: {v.socialHandle || v.socialUrl}</a> : null)}

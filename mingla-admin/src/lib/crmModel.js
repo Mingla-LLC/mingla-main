@@ -308,6 +308,11 @@ const SERVER_WORDS = new Set([
   "unknown_watcher",
   "too_many_watchers",
   "demo_required",
+  // #4571 W4: linking a booked demo to a host card.
+  "booking_linked",
+  "demo_in_use",
+  "not_a_host_call",
+  "not_a_host",
 ]);
 
 // Tokens whose server message is written for a caller of the function (it

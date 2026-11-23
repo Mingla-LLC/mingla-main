@@ -118,6 +118,8 @@ export function callEntriesOn(dayKey, calls, timeZone) {
       // "Moved", "Cancelled" or "Declined"; null for a call still as booked.
       statusLabel: status === "booked" ? null : CALL_STATUS_LABELS[status],
       off: callIsOff(status),
+      // #4571 W4: a host booking not linked to a card yet (crm_demo_needs_linking).
+      needsLinking: call.needs_linking === true,
     });
   }
   return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
@@ -156,6 +158,9 @@ export function callView(call, timeZone) {
     // A moved call's booked time, in the viewer's zone.
     originalWhen: callStatus(call.status) === "moved" ? callWhen(call.original_call_at, timeZone) || null : null,
     isTest: !!call.is_test,
+    // #4571 W4: the host card this demo is linked to, or whether it still needs linking.
+    record: call.record && typeof call.record.id === "string" ? { id: call.record.id, name: call.record.name || "Host card" } : null,
+    needsLinking: call.needs_linking === true,
   };
 }
 

@@ -226,3 +226,34 @@ export function betaLeadToHost(leadId) {
 export function contactCheck(pipeline, candidates) {
   return call(() => supabase.rpc("crm_contact_check", { p_pipeline: pipeline, p_candidates: candidates }));
 }
+
+// #4571 W4: booked demos and host cards. Needs linking, the Hosts banner count
+// and a person's link decisions. The answers never carry an email or a phone.
+export function demoInbox() {
+  return call(() => supabase.rpc("crm_demo_inbox"));
+}
+
+export function demoInboxCount() {
+  return call(() => supabase.rpc("crm_demo_inbox_count"));
+}
+
+export function demoSuggestions(bookingId) {
+  return call(() => supabase.rpc("crm_demo_suggestions", { p_booking_id: bookingId }));
+}
+
+/** source: confirmed_suggestion (Confirm) or picked (Pick another host). */
+export function demoLink(bookingId, recordId, source) {
+  return call(() => supabase.rpc("crm_demo_link", { p_booking_id: bookingId, p_record_id: recordId, p_source: source }));
+}
+
+export function demoCreateRecord(bookingId) {
+  return call(() => supabase.rpc("crm_demo_create_record", { p_booking_id: bookingId }));
+}
+
+export function demoNotAHost(bookingId) {
+  return call(() => supabase.rpc("crm_demo_not_a_host", { p_booking_id: bookingId }));
+}
+
+export function demoUnlink(bookingId) {
+  return call(() => supabase.rpc("crm_demo_unlink", { p_booking_id: bookingId }));
+}
