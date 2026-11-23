@@ -146,6 +146,7 @@ interface Plan {
   minRefundMinor?: number;
   overRefundedMinor?: number;
   refundedMinor?: number;
+  pendingMinor?: number;
 }
 
 interface Recorded {
@@ -157,6 +158,7 @@ interface Recorded {
   overRefundedMinor?: number;
   refundMinor?: number;
   refundedMinor?: number;
+  pendingMinor?: number;
   reason?: string;
 }
 
@@ -244,16 +246,24 @@ export function overpaymentAlert(
           "The host's payout for this charge stays held until it completes.",
         ],
       };
-    case "provider_refunded_more":
+    case "provider_refunded_more": {
+      const units = `(${plan.currency ?? "?"} minor units)`;
+      const notMore = typeof plan.overRefundedMinor === "number" && plan.overRefundedMinor <= 0;
+      const pending = typeof plan.pendingMinor === "number" && plan.pendingMinor > 0
+        ? ` Of that, ${String(plan.pendingMinor)} ${units} is still pending at the provider and may yet fail.`
+        : "";
       return {
         subject: "Trip overpayment refunded more than owed",
         paragraphs: [
-          `The provider shows a refund of a traveler's overpayment that Mingla had not counted, so the traveler was refunded ${String(plan.overRefundedMinor ?? "?")} (${plan.currency ?? "?"} minor units) more than this overpayment. Mingla recorded it and stopped automatic refunding for this overpayment.`,
+          notMore
+            ? "The provider shows a refund of a traveler's overpayment that Mingla had not counted. With it the traveler has not been refunded more than this overpayment (the refund Mingla had recorded failed or was reversed). Mingla recorded it and stopped automatic refunding for this overpayment."
+            : `The provider shows a refund of a traveler's overpayment that Mingla had not counted, so the traveler was refunded ${String(plan.overRefundedMinor ?? "?")} ${units} more than this overpayment. Mingla recorded it and stopped automatic refunding for this overpayment.`,
           ...where.slice(0, 3),
-          `Owed back to the traveler for this overpayment: ${String(plan.refundMinor ?? "?")} (${plan.currency ?? "?"} minor units). Refunded to the traveler on the charge for it: ${String(plan.refundedMinor ?? "?")} (${plan.currency ?? "?"} minor units).`,
-          "Nothing more will be refunded for it automatically. Decide whether to recover the extra amount, then record the outcome; the host's payout for this charge stays held until then.",
+          `Owed back to the traveler for this overpayment: ${String(plan.refundMinor ?? "?")} ${units}. Refunded to the traveler on the charge for it: ${String(plan.refundedMinor ?? "?")} ${units}.${pending}`,
+          "Nothing more will be refunded for it automatically. Decide whether to recover any extra amount. Then close it with issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>): Mingla counts every refund that went back to the traveler for this overpayment, sends only what is still owed (nothing if the traveler already has it all) and releases the host's payout. Do not use 'refunded_by_hand' for this case: it does not close it. Use 'retry' only once no refund for it is still pending at the provider (Mingla keeps checking the refund it recorded and refuses 'retry' while that one is pending).",
         ],
       };
+    }
     case "provider_reversed_refund":
       return {
         subject: "Trip overpayment refund reversed by the provider",
@@ -305,6 +315,7 @@ async function record(
     overRefundedMinor: recorded.overRefundedMinor,
     refundMinor: recorded.refundMinor ?? plan.refundMinor,
     refundedMinor: recorded.refundedMinor,
+    pendingMinor: recorded.pendingMinor,
   }, recorded, error);
   return recorded;
 }
@@ -814,6 +825,7 @@ export async function applyOverpaymentRefundEvent(
         overRefundedMinor: r.overRefundedMinor,
         refundMinor: r.refundMinor,
         refundedMinor: r.refundedMinor,
+        pendingMinor: r.pendingMinor,
       }, null);
       if (alert !== null) await alertOps(alert.subject, alert.paragraphs);
     }

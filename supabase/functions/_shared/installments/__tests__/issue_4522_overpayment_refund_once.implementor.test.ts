@@ -534,6 +534,20 @@ Deno.test("T5-1 a second Paystack refund for one attempt is never silent: one al
   assert(hooked[0].includes("Refunded to the traveler on the charge for it: 1000000 (NGN minor units)"), hooked[0]);
 });
 
+Deno.test("T6-3 the refunded-more alert names the ops action; T6-2 its numbers name what is pending and never say '0 more'", () => {
+  const base = { ...plan, provider: "paystack", providerRef: "ps_ref_1", currency: "NGN", refundMinor: 500000 };
+  const more = overpaymentAlert("provider_refunded_more",
+    { ...base, overRefundedMinor: 500000, refundedMinor: 1000000, pendingMinor: 500000 }, null)!.paragraphs.join(" ");
+  assert(more.includes("issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>)"), more);
+  assert(more.includes("Do not use 'refunded_by_hand' for this case"), more);
+  assert(more.includes("Of that, 500000 (NGN minor units) is still pending at the provider"), more);
+  const notMore = overpaymentAlert("provider_refunded_more",
+    { ...base, overRefundedMinor: 0, refundedMinor: 500000, pendingMinor: 0 }, null)!.paragraphs.join(" ");
+  assert(!notMore.includes("refunded 0 ("), notMore);
+  assert(notMore.includes("has not been refunded more than this overpayment"), notMore);
+  assert(!notMore.includes("still pending at the provider and may yet fail"), notMore);
+});
+
 Deno.test("T3-8 a schema probe that keeps failing is answered by reading the table, every time", async () => {
   const probe = (rpcError: { code: string; message: string }, tableError: { code: string; message: string } | null) => ({
     rpc: () => Promise.resolve({ data: null, error: rpcError }),
