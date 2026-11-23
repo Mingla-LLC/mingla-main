@@ -265,6 +265,17 @@ export function PaymentSheet({
   const change = changeDue(cashGiven, payAmount, tipMinor);
   const presets = cashPresets(payAmount + tipMinor);
 
+  // 08-O4 fix 2 (O4-B4): "Pay in full" on a split check pays everything that
+  // is left in one payment: the unpaid shares are dropped first (the paid ones
+  // stay paid), exactly as the shares list's "Pay in full" does, then this
+  // payment is taken against the check as it is after that.
+  const versionForWhole = async (): Promise<number> => {
+    if (sale === null) return 0;
+    if (share !== null || openShares(sale).length === 0) return sale.version;
+    const after = (await onSetSplit({ mode: "none" })) as TillSale | null | undefined;
+    return after?.version ?? sale.version;
+  };
+
   const take = async (method: "cash" | "own_machine"): Promise<void> => {
     if (sale === null || busy) return;
     setBusy(true);
@@ -276,7 +287,7 @@ export function PaymentSheet({
     );
     attempt.current = current;
     try {
-      const expectedVersion = sale.version;
+      const expectedVersion = await versionForWhole();
       const paid = await onPay({
         method,
         amountMinor: payAmount,
@@ -326,7 +337,7 @@ export function PaymentSheet({
     const current = tillAttemptFor(attempt.current, tillAttemptKey({ method, tipMinor, shareId: share?.id ?? null }));
     attempt.current = current;
     try {
-      const expectedVersion = sale.version;
+      const expectedVersion = await versionForWhole();
       const started = await onStartCard({
         method,
         tipMinor,

@@ -433,3 +433,33 @@ describe("O4-B1: a tip percentage is taken on what THIS payment pays for", () =>
     expect(chipLabel(t, 1000)).toBe("10% · ₦516.67");
   });
 });
+
+describe("O4-B4: Pay in full on a split check pays everything left in one payment", () => {
+  beforeAll(() => {
+    Dimensions.set({ window: { width: 375, height: 667, scale: 2, fontScale: 1 }, screen: { width: 375, height: 667, scale: 2, fontScale: 1 } });
+  });
+  beforeEach(reset);
+
+  test("cash with Pay in full chosen: the unpaid share is dropped first, then the rest is taken against the new version", async () => {
+    const SPLIT = {
+      ...CHECK, version: 6, paidMinor: 852500, remainingMinor: 852500,
+      payments: [payment(PAYMENT_1, 852500, { shareId: S1 })],
+      shares: [
+        { id: S1, shareNo: 1, mode: "even", state: "paid", amountMinor: 852500, serviceChargeMinor: 77500, setVersion: 5, paymentId: PAYMENT_1, items: [] },
+        { id: S2, shareNo: 2, mode: "even", state: "unpaid", amountMinor: 852500, serviceChargeMinor: 77500, setVersion: 5, paymentId: null, items: [] },
+      ],
+      split: { evenOnly: true, unitsPaid: {}, serviceChargeLeftMinor: 77500 },
+    };
+    mockState.sale = { ...CHECK, paidMinor: 852500, remainingMinor: 852500, payments: [payment(PAYMENT_1, 852500)] };
+    mockState.splitAnswer = { ...SPLIT, version: 9, shares: [SPLIT.shares[0]] };
+    mockState.pay = [recorded(PAYMENT_2, 852500, { ...SPLIT, state: "paid", paidMinor: 1705000, remainingMinor: 0, version: 11 })];
+    const t = await mount();
+    await openPay(t);
+    // The sheet is on "Pay in full" (methods) when another device's split arrives.
+    await TestRenderer.act(async () => mockSetSale(SPLIT));
+    await cashTake(t, 852500);
+    expect(sent(mockCalls.setSplit)).toEqual([expect.objectContaining({ split: { mode: "none" } })]);
+    expect(sent(mockCalls.pay)).toHaveLength(1);
+    expect(sent(mockCalls.pay)[0]).toMatchObject({ method: "cash", shareId: null, amountMinor: 852500, expectedVersion: 9 });
+  });
+});
