@@ -128,7 +128,9 @@ describe("P-1 the card is RecordPanel", () => {
     for (const fn of ["crm_record_set_people", "crm_record_work", "crm_calls_queue", "crm_identifier_set_followers"]) assert.match(svc, new RegExp(`"${fn}"`));
   });
   it("My calls today is a view of Hosts", () => {
-    assert.match(read("lib/crmUrl.js"), /if \(params\.get\("view"\) === "calls"\) state\.view = "calls";/);
+    // #4571 W6a: calls is one of the board's views (with archived and duplicates).
+    assert.match(read("lib/crmUrl.js"), /CRM_VIEWS = Object\.freeze\(\["calls", "archived", "duplicates"\]\)/);
+    assert.match(read("pages/PipelinePage.jsx"), /pipeline === "hosts" \? \[\["calls", "My calls today"\]\] : \[\]/);
   });
 });
 

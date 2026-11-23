@@ -722,12 +722,20 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
       "crm_demo_not_a_host",
       "crm_demo_suggestions",
       "crm_demo_unlink",
+      // #4571 W6a: archive and merge are people's (excluded in SCREEN_FUNCTION_PARITY).
+      "crm_duplicate_pairs",
       // #4571 W3: follower counts (read by a person) and the card's Work list (agents use list_work).
       "crm_identifier_set_followers",
+      "crm_record_archive",
       "crm_record_delete",
+      "crm_record_merge",
+      "crm_record_merges_json",
       "crm_record_restore",
+      "crm_record_unarchive",
       "crm_record_undo_stage_move",
+      "crm_record_unmerge",
       "crm_record_work",
+      "crm_records_archived_list",
       "crm_target_set",
       // #4130: the Team dashboard's numbers are read by people; agents use team_summary.
       "crm_team_pulse",

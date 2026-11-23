@@ -257,3 +257,26 @@ export function demoNotAHost(bookingId) {
 export function demoUnlink(bookingId) {
   return call(() => supabase.rpc("crm_demo_unlink", { p_booking_id: bookingId }));
 }
+
+// #4571 W6a: Archived and Merge (people only; the server refuses an agent).
+export function archiveRecord(id, reason) {
+  return call(() => supabase.rpc("crm_record_archive", { p_id: id, p_reason: reason }));
+}
+export function unarchiveRecord(id) {
+  return call(() => supabase.rpc("crm_record_unarchive", { p_id: id }));
+}
+export function listArchived(pipeline) {
+  return call(() => supabase.rpc("crm_records_archived_list", { p_pipeline: pipeline }));
+}
+export function mergeRecords(keepId, dropId, requestKey) {
+  return call(() => supabase.rpc("crm_record_merge", { p_keep: keepId, p_drop: dropId, p_request_key: requestKey }));
+}
+export function unmergeRecords(mergeId) {
+  return call(() => supabase.rpc("crm_record_unmerge", { p_merge_id: mergeId }));
+}
+export function recordMerges(id) {
+  return call(() => supabase.rpc("crm_record_merges_json", { p_id: id }));
+}
+export function duplicatePairs(pipeline) {
+  return call(() => supabase.rpc("crm_duplicate_pairs", { p_pipeline: pipeline }));
+}

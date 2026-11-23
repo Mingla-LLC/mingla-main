@@ -1479,6 +1479,16 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
       "the card's Work list is for people; an agent reads Work cards with list_work and my_work",
   },
   crm_calls_queue: { tools: ["my_day"] },
+  // #4571 W6a: archiving and merging cards are people's decisions in Mingla
+  // Admin. An agent still finds archived cards with find_records, and
+  // get_record says when a card is archived or merged.
+  crm_record_archive: { excluded: "a person archives a card in Mingla Admin" },
+  crm_record_unarchive: { excluded: "a person unarchives a card in Mingla Admin" },
+  crm_records_archived_list: { excluded: "a person reviews the archived cards; find_records still finds them" },
+  crm_record_merge: { excluded: "a person merges duplicate cards in Mingla Admin" },
+  crm_record_unmerge: { excluded: "a person undoes a merge in Mingla Admin" },
+  crm_record_merges_json: { excluded: "the card's merges and Undo are for people" },
+  crm_duplicate_pairs: { excluded: "a person reviews the duplicate pairs on Monday" },
   crm_identifier_set_followers: {
     excluded:
       "follower counts are read by a person, never guessed by an agent",

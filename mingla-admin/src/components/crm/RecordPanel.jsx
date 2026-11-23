@@ -18,6 +18,7 @@ import { useHostOnMingla } from "../../hooks/useHostOnMingla";
 import { HostToDoSection } from "./HostToDoSection";
 import { HostTeamSection } from "./HostTeamSection";
 import { HostPlanSection } from "./HostPlanSection";
+import { RecordHygiene } from "./RecordHygiene";
 import { hostMissing } from "../../lib/opsModel";
 import { ActivityLog } from "./ActivityLog";
 import { CardFiles } from "../ops/CardFiles";
@@ -1065,6 +1066,10 @@ export function RecordPanel({
           <Button variant="ghost" size="sm" className="min-h-11" icon={MessageSquare} data-thread-button="" onClick={focusNote}>Thread</Button>
           {(record.stage_reason || stageHelp) && <p className="w-full text-[12px] text-[var(--color-text-tertiary)]">{record.stage_reason ? `Reason: ${record.stage_reason}. ` : ""}{stageHelp}</p>}
         </section>
+        {/* #4571 W6: archive state, merge, a reply that suggests Replied, the cadence round. */}
+        <RecordHygiene record={record} pipeline={pipeline} disabled={locked || pending}
+          onChanged={() => { setReloadTick((n) => n + 1); pipe.refetch({ quiet: true }); }}
+          onRequestMove={onRequestMove} onOpenCard={onOpenCard} />
         <section aria-label="People and details" data-record-section="people" className="flex min-w-0 flex-wrap items-center gap-1">
           <PeopleChip id={fid("owners-pop")} label="Owners" people={(record.owners || []).map((e) => (config.team || []).find((p) => p.email === e) || { email: e, name: e })} field={
             <PeopleField id={fid("owners")} label="Owners" value={record.owners || []} team={directory.people || config.team} me={directory.me}

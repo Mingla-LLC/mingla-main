@@ -50,6 +50,7 @@ import { PipelineToolbar } from "../components/crm/PipelineToolbar";
 import { PipelineBoard, PipelineBoardSkeleton } from "../components/crm/PipelineBoard";
 // #4571 W3: My calls today.
 import { CallsQueue } from "../components/crm/CallsQueue";
+import { ArchivedList, DuplicatePairs } from "../components/crm/HygieneViews";
 import { DemosBanner } from "../components/leads/DemosBanner";
 import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
@@ -620,9 +621,9 @@ function PipelinePage({ pipeline, onTabChange }) {
             <AlertCard variant="info">Showing the 5,000 most recently changed. Use search to find older ones.</AlertCard>
           )}
 
-          {pipeline === "hosts" && (
+          {(
             <div role="group" aria-label="View" className="flex flex-wrap gap-1">
-              {[["", "Board"], ["calls", "My calls today"]].map(([v, l]) => (
+              {[["", "Board"], ...(pipeline === "hosts" ? [["calls", "My calls today"]] : []), ["duplicates", "Duplicate pairs"], ["archived", "Show archived"]].map(([v, l]) => (
                 <button key={l} type="button" aria-pressed={(state.view || "") === v} onClick={() => patch({ view: v })}
                   className={`min-h-11 rounded-full border px-3 text-[13px] font-semibold ${(state.view || "") === v ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)]"}`}>{l}</button>
               ))}
@@ -631,6 +632,10 @@ function PipelinePage({ pipeline, onTabChange }) {
           <HostNextContext.Provider value={isHostBoard ? hostNext.byId : null}>
           {pipeline === "hosts" && state.view === "calls" ? (
             <CallsQueue def={def} today={today} tick={activityTick} onOpen={(id) => openCard(id)} />
+          ) : state.view === "archived" ? (
+            <ArchivedList pipeline={pipeline} def={def} tick={activityTick} onOpen={(id) => openCard(id)} />
+          ) : state.view === "duplicates" ? (
+            <DuplicatePairs pipeline={pipeline} def={def} tick={activityTick} onOpen={(id) => openCard(id)} />
           ) : loading ? (
             <PipelineBoardSkeleton />
           ) : pipe.records.length === 0 ? (

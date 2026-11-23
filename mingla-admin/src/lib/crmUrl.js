@@ -91,9 +91,13 @@ export function parseCrmSearch(search) {
   if (state.owner) state.mine = false;
   const side = sideValue(parseSideValue(params.get("side") || ""));
   if (side) state.side = side;
-  if (params.get("view") === "calls") state.view = "calls";
+  // #4571 W6a: Show archived and the duplicate pairs are views of the board.
+  if (CRM_VIEWS.includes(params.get("view"))) state.view = params.get("view");
   return state;
 }
+
+/** The views besides the board (#4571 W3 calls; W6a archived and duplicates). */
+export const CRM_VIEWS = Object.freeze(["calls", "archived", "duplicates"]);
 
 /** Read a view out of a whole address: "#/hosts?view=list&mine=1". */
 export function parseCrmHash(hash) {
@@ -114,7 +118,7 @@ export function buildCrmSearch(state) {
   if (s.due && DUE_VALUES.includes(s.due)) params.set("due", s.due);
   const side = sideValue(parseSideValue(s.side || ""));
   if (side) params.set("side", side);
-  if (s.view === "calls") params.set("view", "calls");
+  if (CRM_VIEWS.includes(s.view)) params.set("view", s.view);
   return params.toString();
 }
 
