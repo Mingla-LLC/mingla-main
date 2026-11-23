@@ -32,6 +32,7 @@
 --         checked (never re-sent, never re-alerted); ops can act once it ends.
 --   T6-2  a succeeded extra refund counts as returned: an ops retry after the
 --         recorded refund failed or was reversed sends nothing.
+--   T6-4  an extra refund that later fails stops counting, no second alert.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
@@ -547,6 +548,25 @@ BEGIN
   PERFORM pg_temp.check('T6-2 ... ops retry sends nothing', (pg_temp.op(op)).state = 'refunded'
     AND pg_temp.n_attempts(op) = 1, v::text);
 
+  -- T6-4: an extra refund recorded while pending, then failed.
+  op := pg_temp.ng_overpayment(r9, 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9091');
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9092', 'mingla-inst-' || r9::text || '-l1', 500000,
+    'pending', op, 1, true);
+  v := public.issue_4522_overpayment_refund_event('paystack', '9092', 'mingla-inst-' || r9::text || '-l1', 500000,
+         'failed', op, 1, true);
+  PERFORM pg_temp.check('T6-4 the extra refund failing marks it failed (kept as history), no second alert',
+    jsonb_array_length(v->'results') = 0 AND jsonb_array_length((pg_temp.op(op)).detail->'over_refunded') = 1
+    AND (pg_temp.op(op)).detail->'over_refunded'->0->>'status' = 'failed', v::text);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'succeeded', '9091');
+  PERFORM pg_temp.check('T6-4 ... it no longer counts as returned', public.issue_4522_overpayment_back_minor(op) = 500000);
+  -- The recorded refund reversed after that: nothing went back, so a retry sends it once.
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9091', 'mingla-inst-' || r9::text || '-l1', 500000, 'failed');
+  PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op, 1, true);
+  PERFORM pg_temp.check('T6-4 ... with the extra failed and the recorded one reversed, a retry sends the 500,000 owed once',
+    v->>'action' = 'create' AND (v->>'amountMinor')::bigint = 500000, v::text);
 END
 $t$;
 

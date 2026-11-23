@@ -942,8 +942,9 @@ REVOKE ALL ON FUNCTION public.issue_4522_overpayment_to_needs_ops(uuid, text, ti
 -- amount: recorded once per provider refund (detail.over_refunded),
 -- automatic refunding stops (needs_ops 'provider_refunded_more') and ops is
 -- told once what was owed back and what was refunded. A failed refund moved
--- no money and is not recorded. NULL when nothing new was recorded. The
--- caller holds the order graph.
+-- no money and is not recorded; T6-4: a recorded one's later final answer
+-- updates its status (a failed one stops counting), never a second alert.
+-- NULL when nothing new was recorded. The caller holds the order graph.
 CREATE FUNCTION public.issue_4522_overpayment_extra_refund(
   p_overpayment_id uuid,
   p_attempt_no integer,
@@ -962,10 +963,22 @@ DECLARE
   v_pending bigint;
   v_returned bigint;
   v_alert boolean;
+  v_status text := CASE WHEN p_status IN ('failed', 'not_found') THEN 'failed' ELSE p_status END;
 BEGIN
   SELECT * INTO v_op FROM public.order_overpayments WHERE id = p_overpayment_id FOR UPDATE;
-  IF NOT FOUND OR p_status IS NULL OR p_status NOT IN ('pending', 'succeeded')
+  IF NOT FOUND OR v_status IS NULL OR v_status NOT IN ('pending', 'succeeded', 'failed')
      OR COALESCE(p_provider_refund_id, '') = '' OR COALESCE(p_amount_minor, 0) <= 0 THEN
+    RETURN NULL;
+  END IF;
+  IF v_status <> 'pending' THEN
+    UPDATE public.order_overpayments
+       SET detail = jsonb_set(detail, '{over_refunded}', (
+             SELECT jsonb_agg(CASE WHEN e ? 'status' AND e->>'provider_refund_id' = p_provider_refund_id
+                                   THEN e || jsonb_build_object('status', v_status) ELSE e END ORDER BY n)
+               FROM jsonb_array_elements(detail->'over_refunded') WITH ORDINALITY x(e, n)))
+     WHERE id = v_op.id AND detail->'over_refunded' @> jsonb_build_array(jsonb_build_object('provider_refund_id', p_provider_refund_id));
+  END IF;
+  IF v_status = 'failed' THEN
     RETURN NULL;
   END IF;
   UPDATE public.order_overpayments
