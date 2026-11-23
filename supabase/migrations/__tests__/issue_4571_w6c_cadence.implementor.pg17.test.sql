@@ -427,8 +427,9 @@ begin
   n := (select count(*) from public.crm_cadence_sweep_runs);
   j := public.crm_cadence_sweep_cron();
   perform pg_temp.chk('SWITCH', 'off: the cron entry does nothing', j::text || '/' || ((select count(*) from public.crm_cadence_sweep_runs) - n)::text, '{"mode": "off"}/0');
-  perform pg_temp.chk('SWITCH', 'the job runs weekdays at 20:00 UTC (9 PM Lagos)',
-    (select schedule || '|' || command from cron.job where jobname = 'issue_4571_crm_cadence_sweep'), '0 20 * * 1-5|SELECT public.crm_cadence_sweep_cron()');
+  -- #4571 rework (spec cutover): it ships unscheduled; Dry run schedules it.
+  perform pg_temp.chk('SWITCH', 'it ships with no cron entry',
+    (select count(*)::text from cron.job where jobname = 'issue_4571_crm_cadence_sweep'), '0');
   perform pg_temp.chk('SWITCH', 'the sweep itself is the server''s only',
     has_function_privilege('authenticated', 'public.crm_cadence_sweep(boolean,text)', 'execute')::text || has_function_privilege('authenticated', 'public.crm_cadence_sweep_cron()', 'execute')::text, 'falsefalse');
   v := pg_temp.person('tao', $q$select public.crm_cadence_sweep_configure('apply')::text$q$);
@@ -441,6 +442,8 @@ begin
   perform pg_temp.chk('SWITCH', 'the owner reads the panel with the last run''s actions', (jsonb_array_length((v::jsonb)->'actions') = 6)::text, 'true');
   v := pg_temp.person('seth', $q$select public.crm_cadence_sweep_configure('dry_run')::text$q$);
   perform pg_temp.chk('SWITCH', 'the owner sets Dry run', (v::jsonb)->>'mode', 'dry_run');
+  perform pg_temp.chk('SWITCH', 'the job runs weekdays at 20:00 UTC (9 PM Lagos)',
+    (select schedule || '|' || command from cron.job where jobname = 'issue_4571_crm_cadence_sweep'), '0 20 * * 1-5|SELECT public.crm_cadence_sweep_cron()');
   perform pg_temp.chk('SWITCH', 'the team and restart date are kept', (v::jsonb)->'team'->>0, 'tao.w64571@test.local');
   j := public.crm_cadence_sweep_cron();
   perform pg_temp.chk('SWITCH', 'dry_run: the cron entry writes a dry run', j->>'dry_run', 'true');
