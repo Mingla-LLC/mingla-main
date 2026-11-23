@@ -720,7 +720,8 @@ create function pg_temp.board_of(k text, v jsonb) returns jsonb language sql imm
   select case
     when v is null or jsonb_typeof(v) = 'null' then v
     when k = 'anchor' and jsonb_typeof(v) = 'object' then jsonb_build_object('kind', v->'kind')
-    when k = 'links' then (select coalesce(jsonb_agg(jsonb_build_object('kind', l->'kind', 'id', l->'id') order by o), '[]'::jsonb)
+    -- #4571 W2: the board keeps each link's stored label (chips on tiles); only exists is trimmed.
+    when k = 'links' then (select coalesce(jsonb_agg(jsonb_build_object('kind', l->'kind', 'id', l->'id', 'label', l->'label') order by o), '[]'::jsonb)
                              from jsonb_array_elements(v) with ordinality x(l, o))
     when k = 'proof' and jsonb_typeof(v) = 'array' then
       (select coalesce(jsonb_agg(case when jsonb_typeof(e) = 'object' then jsonb_build_object('kind', e->'kind', 'id', e->'id') else e end order by o), '[]'::jsonb)
@@ -753,10 +754,11 @@ begin
     cross join lateral jsonb_object_keys(b) k
    where b->k is distinct from pg_temp.board_of(k, f->k);
   perform pg_temp.chk('BOARD', 'every board value equals the full value, trimmed to what the Admin list reads', coalesce(v_same, 'same'), 'same');
-  perform pg_temp.chk('BOARD', 'the trims are real: the fixture has a link label, a review requester and a proof url, and the board drops each',
+  perform pg_temp.chk('BOARD', 'the trims are real: the fixture has a link exists flag, a review requester and a proof url, and the board drops each (#4571 W2: it keeps the label)',
     concat_ws(',',
-      (select bool_or(l ? 'label') from jsonb_array_elements(v_full->'cards') c, jsonb_array_elements(c->'links') l)
-        and not (select coalesce(bool_or(l ? 'label'), false) from jsonb_array_elements(v_board->'cards') c, jsonb_array_elements(c->'links') l),
+      (select bool_or(l ? 'exists') from jsonb_array_elements(v_full->'cards') c, jsonb_array_elements(c->'links') l)
+        and not (select coalesce(bool_or(l ? 'exists'), false) from jsonb_array_elements(v_board->'cards') c, jsonb_array_elements(c->'links') l)
+        and (select coalesce(bool_or(l ? 'label'), false) from jsonb_array_elements(v_board->'cards') c, jsonb_array_elements(c->'links') l),
       (select bool_or(c->'review' ? 'requested_by_name') from jsonb_array_elements(v_full->'cards') c)
         and not (select coalesce(bool_or(c->'review' ? 'requested_by_name'), false) from jsonb_array_elements(v_board->'cards') c),
       (select bool_or(p ? 'url') from jsonb_array_elements(v_full->'cards') c, jsonb_array_elements(c->'proof') p)

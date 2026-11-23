@@ -646,7 +646,8 @@ export function phase3dContractDigest(manifest) {
 // #4549 tester retest: registered the tester report-bounds pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4549 merge of main after #4548 guest pack: kept main's #4548 rows and filtered-replay skip, re-added the #4549 migration and its three pg17 suites (with sidecars) in filename order; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 W1 people and goals: listed migration 20281126014571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "833b2a6ded0a2631aebf0aa12950cf1457a693b47aed9fb9388a875248bf8ce9";
+// #4571 W2 links and call outcomes: listed migration 20281126024571 after 20281126014571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e9c3822a967c940d320ec3a5d332fa1e6a5082a97cd518dcb57c7359757d70d2";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

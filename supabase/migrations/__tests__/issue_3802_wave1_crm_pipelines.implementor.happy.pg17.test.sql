@@ -1357,7 +1357,8 @@ begin
   r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, v_id));
   perform pg_temp.t3802w_check('W1-11', 'record view: log entry keys',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r) #> '{activity,0}') k),
-    'actor_email,actor_name,body,channel,direction,from_stage,id,kind,message_ref,occurred_at,reply_class,to_stage,via');
+    -- #4571 W2: a call carries its outcome and length; every entry its stage_at.
+    'actor_email,actor_name,body,channel,direction,duration_seconds,from_stage,id,kind,message_ref,occurred_at,outcome,reply_class,stage_at,to_stage,via');
   perform pg_temp.t3802w_check('W1-11', 'record view: newest first, the dated reply last but one',
     (select string_agg(coalesce(a->>'body', a->>'reply_class'), ' < ' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'activity') with ordinality x(a, o)),
     'clock skew < Sent the intro. < Added to the pipeline. < interested');
@@ -1600,7 +1601,9 @@ begin
       (select relrowsecurity::text from pg_class where oid = v_tbl::regclass) || '/'
         || (select count(*)::text from pg_policy where polrelid = v_tbl::regclass), 'true/0');
     perform pg_temp.t3802w_check('W1-12', 'no trigger on ' || v_tbl,
-      (select count(*)::text from pg_trigger where tgrelid = v_tbl::regclass and not tgisinternal), '0');
+      -- #4571 W2: the one stage_at trigger on crm_activity (INVARIANT crm-activity-stage-at-written) is expected.
+      (select count(*)::text from pg_trigger where tgrelid = v_tbl::regclass and not tgisinternal
+          and not (v_tbl = 'public.crm_activity' and tgname = 'ops_4571_activity_stage_at')), '0');
   end loop;
 
   -- Who writes each table, by name, in every schema.
@@ -1614,7 +1617,8 @@ begin
       -- service-role only and log every change to crm_activity.
       ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.forms_move_stage,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
-      ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
+      -- #4571 W2: crm_record_log marks a wrong number bad.
+      ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_log,public.crm_record_update'),
       ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.forms_move_stage,public.forms_route_submission,public.forms_submit_core,public.ops_brand_autolink_one,public.team_draft_unsend'),
       ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)
