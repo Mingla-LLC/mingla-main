@@ -324,3 +324,140 @@ BEGIN
 END;
 $xleak$;
 ROLLBACK;
+
+-- ═══ Retest 1 (fix pass 8036f8aa0d..8a0016cccf): payout settings are owner-only ═══
+-- Angles the implementor's T-9 / T-11 do not take: a payout field smuggled into an
+-- otherwise allowed update (atomic refusal), an ownership grab first, a console admin
+-- who is NOT on the brand (the "Admins can update brands for claim review" policy), a
+-- multi-row update that mixes an owned and a non-owned row, the owner's own multi-row
+-- update, a same-value write (no over-blocking), and payouts history writes by a
+-- console admin. Run the way PostgREST runs (session authenticator, role authenticated).
+-- fails-on-revert: X-9 fails when trigger zz_issue_4579_payout_settings_owner_only is
+-- dropped; X-10 fails when the old FOR ALL payouts policy and client grants come back.
+CREATE OR REPLACE FUNCTION pg_temp.try_api(p_user uuid, p_sql text)
+RETURNS text LANGUAGE plpgsql AS $fn$
+DECLARE v text := '';
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', p_user::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  EXECUTE 'SET LOCAL SESSION AUTHORIZATION authenticator';
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  BEGIN EXECUTE p_sql; EXCEPTION WHEN OTHERS THEN v := SQLSTATE || ':' || SQLERRM; END;
+  EXECUTE 'RESET ROLE';
+  EXECUTE 'RESET SESSION AUTHORIZATION';
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+  RETURN v;
+END;
+$fn$;
+
+-- X-9  brand payout fields by every non-owner shape; the owner and harmless edits still work.
+BEGIN;
+SELECT pg_temp.fixture();
+DO $x9$
+DECLARE v text; v_b1 uuid := pg_temp.u('b1'); v_b2 uuid := pg_temp.u('b2');
+BEGIN
+  -- The owner removes Mingla Team from b2, so k2 is a console admin who is not on b2.
+  v := pg_temp.try_api(pg_temp.u('owner'), format('SELECT public.issue_4579_remove_mingla_team(%L)', v_b2));
+  PERFORM pg_temp.ok(v = '' AND pg_temp.auto_count('b2') = 0, 'X-9 seed: Mingla Team removed from b2 by the owner');
+
+  -- (a) a payout field smuggled into an allowed profile edit: the whole update is refused.
+  v := pg_temp.try_api(pg_temp.u('hadmin'), format(
+    'UPDATE public.brands SET description = ''smuggled'', payout_country = ''GB'' WHERE id = %L', v_b1));
+  PERFORM pg_temp.ok(v LIKE '42501:payout_settings_owner_only%', 'X-9 invited Brand admin: payout field inside a profile edit is refused');
+  PERFORM pg_temp.ok((SELECT description IS DISTINCT FROM 'smuggled' AND payout_country IS NULL FROM public.brands WHERE id = v_b1),
+    'X-9 the refused update wrote nothing (atomic)');
+
+  -- (b) take ownership first: refused, so the owner-only rule cannot be sidestepped.
+  v := pg_temp.try_api(pg_temp.u('hadmin'), format('UPDATE public.brands SET account_id = %L WHERE id = %L', pg_temp.u('hadmin'), v_b1));
+  PERFORM pg_temp.ok(v <> '' AND (SELECT account_id FROM public.brands WHERE id = v_b1) = pg_temp.u('owner'),
+    'X-9 a Brand admin cannot make themselves the owner');
+  v := pg_temp.try_api(pg_temp.u('k1'), format('UPDATE public.brands SET account_id = %L WHERE id = %L', pg_temp.u('k1'), v_b1));
+  PERFORM pg_temp.ok(v <> '' AND (SELECT account_id FROM public.brands WHERE id = v_b1) = pg_temp.u('owner'),
+    'X-9 an auto-added admin cannot make themselves the owner');
+
+  -- (c) an auto-added admin who is also a console admin, on the brand.
+  v := pg_temp.try_api(pg_temp.u('k1'), format('UPDATE public.brands SET stripe_connect_id = ''acct_k1'' WHERE id = %L', v_b1));
+  PERFORM pg_temp.ok(v LIKE '42501:payout_settings_owner_only%', 'X-9 auto-added console admin on the brand is refused');
+
+  -- (d) a console admin NOT on the brand, through the admin claim-review update policy.
+  v := pg_temp.try_api(pg_temp.u('k2'), format('UPDATE public.brands SET paystack_subaccount_code = ''ACCT_k2'' WHERE id = %L', v_b2));
+  PERFORM pg_temp.ok(v LIKE '42501:payout_settings_owner_only%', 'X-9 console admin off the brand is refused (claim-review policy)');
+  v := pg_temp.try_api(pg_temp.u('k2'), format('UPDATE public.brands SET payout_hold_cutover_at = now(), payments_setup_started_at = now() WHERE id = %L', v_b2));
+  PERFORM pg_temp.ok(v LIKE '42501:payout_settings_owner_only%', 'X-9 console admin cannot stamp the hold cutover or setup start');
+  v := pg_temp.try_api(pg_temp.u('k2'), format('UPDATE public.brands SET description = ''claim note'' WHERE id = %L', v_b2));
+  PERFORM pg_temp.ok(v = '' AND (SELECT description FROM public.brands WHERE id = v_b2) = 'claim note',
+    'X-9 console admin claim-review edits (non-payout) still save');
+
+  -- (e) multi-row: a non-owner touching two brands in one statement changes neither.
+  v := pg_temp.try_api(pg_temp.u('k1'), format(
+    'UPDATE public.brands SET stripe_payouts_enabled = true WHERE id IN (%L, %L)', v_b1, v_b2));
+  PERFORM pg_temp.ok(v LIKE '42501:payout_settings_owner_only%'
+    AND NOT EXISTS (SELECT 1 FROM public.brands WHERE id IN (v_b1, v_b2) AND stripe_payouts_enabled IS TRUE),
+    'X-9 a multi-row non-owner update is refused whole');
+
+  -- (f) same-value write by a Brand admin: allowed (no over-blocking of a full-row save).
+  v := pg_temp.try_api(pg_temp.u('hadmin'), format(
+    'UPDATE public.brands SET name = name, payout_country = payout_country, stripe_connect_id = stripe_connect_id, description = ''same values'' WHERE id = %L', v_b1));
+  PERFORM pg_temp.ok(v = '' AND (SELECT description FROM public.brands WHERE id = v_b1) = 'same values',
+    'X-9 a full-row save with unchanged payout values still works for a Brand admin');
+
+  -- (g) the owner: a multi-row update of their own brands works.
+  v := pg_temp.try_api(pg_temp.u('owner'), format(
+    'UPDATE public.brands SET payout_hold_cutover_at = now() WHERE id IN (%L, %L)', v_b1, v_b2));
+  PERFORM pg_temp.ok(v = '' AND (SELECT count(*) FROM public.brands WHERE id IN (v_b1, v_b2) AND payout_hold_cutover_at IS NOT NULL) = 2,
+    'X-9 the owner updates payout fields on both own brands');
+  -- and the owner through the RPC.
+  v := pg_temp.try_api(pg_temp.u('owner'), format('SELECT public.biz_set_brand_payout_country(%L, ''GB'')', v_b2));
+  PERFORM pg_temp.ok(v = '' AND (SELECT payout_country FROM public.brands WHERE id = v_b2) = 'GB',
+    'X-9 the owner sets the bank country through the RPC');
+  -- (h) the auto-added admin through the RPC on a brand where the owner already chose: refused.
+  v := pg_temp.try_api(pg_temp.u('k1'), format('SELECT public.biz_set_brand_payout_country(%L, ''NG'')', v_b1));
+  PERFORM pg_temp.ok(v LIKE '42501:%' AND (SELECT payout_country FROM public.brands WHERE id = v_b1) IS NULL,
+    'X-9 auto-added admin cannot set the bank country through the RPC');
+END;
+$x9$;
+ROLLBACK;
+
+-- X-10 payouts history: a console admin off the brand, and every team kind, cannot write it.
+BEGIN;
+SELECT pg_temp.fixture();
+INSERT INTO public.payouts(id, brand_id, stripe_payout_id, amount_cents, currency, status)
+VALUES (pg_temp.u('xpo'), pg_temp.u('b2'), 'po_x10', 1000, 'GBP', 'pending');
+DO $x10$
+DECLARE v text; v_who text;
+BEGIN
+  v := pg_temp.try_api(pg_temp.u('owner'), format('SELECT public.issue_4579_remove_mingla_team(%L)', pg_temp.u('b2')));
+  FOREACH v_who IN ARRAY ARRAY['k2', 'k1', 'owner', 'outsider'] LOOP
+    v := pg_temp.try_api(pg_temp.u(v_who), format('UPDATE public.payouts SET status = ''paid'', amount_cents = 1 WHERE id = %L', pg_temp.u('xpo')));
+    PERFORM pg_temp.ok(v LIKE '42501:%', format('X-10 %s cannot change a payout row', v_who));
+    v := pg_temp.try_api(pg_temp.u(v_who), format(
+      'INSERT INTO public.payouts(brand_id, stripe_payout_id, amount_cents, currency, status) VALUES (%L, ''po_x10_forged'', 9, ''GBP'', ''paid'')', pg_temp.u('b2')));
+    PERFORM pg_temp.ok(v LIKE '42501:%', format('X-10 %s cannot insert a payout row', v_who));
+  END LOOP;
+  PERFORM pg_temp.ok((SELECT status = 'pending' AND amount_cents = 1000 FROM public.payouts WHERE id = pg_temp.u('xpo'))
+    AND NOT EXISTS (SELECT 1 FROM public.payouts WHERE stripe_payout_id = 'po_x10_forged'),
+    'X-10 the payout row is untouched and nothing was forged');
+  PERFORM pg_temp.ok(pg_temp.val_as(pg_temp.u('owner'), format('SELECT count(*)::text FROM public.payouts WHERE id = %L', pg_temp.u('xpo'))) = '1',
+    'X-10 the owner still reads the payouts history');
+END;
+$x10$;
+ROLLBACK;
+
+-- X-11 name rule, username angle (fix pass): a display name equal to the username in another
+--      letter case or with padding, where the email handle is unrelated, falls back; a real
+--      first name that merely starts like the username does not.
+-- fails-on-revert: X-11 fails when the username comparison is deleted from
+-- issue_4579_admin_public_name.
+BEGIN;
+SELECT pg_temp.fixture();
+UPDATE auth.users SET email = 'ops.desk.t4579@example.test' WHERE id = pg_temp.u('k1');
+UPDATE public.profiles SET username = 'kunle_adeyemi99', display_name = '  Kunle_Adeyemi99 ' WHERE id = pg_temp.u('k1');
+SELECT pg_temp.ok(public.issue_4579_admin_public_name(pg_temp.u('k1')) = 'Mingla Team', 'X-11 display name = username (case, padding) falls back');
+UPDATE public.profiles SET display_name = 'KUNLE_ADEYEMI99' WHERE id = pg_temp.u('k1');
+SELECT pg_temp.ok(public.issue_4579_admin_public_name(pg_temp.u('k1')) = 'Mingla Team', 'X-11 upper-case username falls back');
+UPDATE public.profiles SET display_name = 'Kunle' WHERE id = pg_temp.u('k1');
+SELECT pg_temp.ok(public.issue_4579_admin_public_name(pg_temp.u('k1')) = 'Kunle', 'X-11 a first name that is a prefix of the username is kept');
+UPDATE public.profiles SET username = NULL, display_name = 'kunle_adeyemi99' WHERE id = pg_temp.u('k1');
+SELECT pg_temp.ok(public.issue_4579_admin_public_name(pg_temp.u('k1')) = 'kunle_adeyemi99', 'X-11 no username: the rule does not invent a match (handle rule unrelated)');
+ROLLBACK;
