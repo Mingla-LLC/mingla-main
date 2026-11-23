@@ -1,8 +1,11 @@
 /**
- * #4490 spec 08 O1 — the one payment sheet. O1 takes Cash (with change) and
- * the venue's own card machine; Charge to room shows disabled (O4 seam); Tap
- * and Scan to pay arrive with O2 and are not shown until then. The amount due
- * is the server's remaining amount; a part payment leaves the rest due.
+ * #4490 spec 08 O1 + O2 — the one payment sheet. Methods in order: Tap to pay
+ * (only where tillTapOffer allows; shown disabled with the reason on a phone
+ * that can't), Scan to pay (the guest pays on their phone, by card or a bank
+ * transfer that confirms itself), Cash (with change), the venue's own card
+ * machine, Charge to room (disabled, O4 seam). The amount due is the server's
+ * remaining amount; cash and the own machine may part-pay, Tap and Scan take
+ * everything that is left (the server prices it; the sheet only sends a tip).
  *
  * Every payment carries the check version it was taken against (T10) and one
  * client request id per tap, so a retry never charges twice.
@@ -12,7 +15,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../../constants/designSystem";
-import type { TillPaymentResult, TillSale } from "../../../services/venueTillService";
+import type {
+  TillCardStart,
+  TillPayCodeStatus,
+  TillPaymentResult,
+  TillSale,
+} from "../../../services/venueTillService";
 import { TillError } from "../../../services/venueTillService";
 import { formatCurrency } from "../../../utils/currency";
 import { randomId } from "../../../utils/randomId";
@@ -24,10 +32,15 @@ import { Chip } from "../../ui/Pill";
 import { Sheet } from "../../ui/Sheet";
 import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { ReceiptStep } from "./ReceiptStep";
+import { TillScanPanel } from "./TillScanPanel";
+import { TillTapPanel } from "./TillTapPanel";
+import type { TillTapOffer } from "./tillTapAvailability";
+import { paidLabel } from "./tillPayModel";
 import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
 import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 
-type Step = "choose" | "cash" | "own" | "paid";
+type Step = "choose" | "cash" | "own" | "scan" | "tap" | "paid";
+type PaidMethod = "cash" | "own_machine" | "tap" | "scan";
 
 export interface PaymentSheetProps {
   visible: boolean;
@@ -45,6 +58,22 @@ export interface PaymentSheetProps {
   }) => Promise<TillPaymentResult>;
   onNewSale: () => void;
   onRefreshSale: () => void;
+  /** O2: the venue (Tap to pay runs against it). */
+  venueId: string;
+  /** O2: whether this phone offers Tap to pay (tillTapOffer). */
+  tapOffer: TillTapOffer;
+  /** O2: start a tap or scan payment for everything that is left. */
+  onStartCard: (input: {
+    method: "tap" | "scan";
+    tipMinor: number;
+    clientRequestId: string;
+    expectedVersion: number;
+  }) => Promise<TillCardStart>;
+  scanApi: {
+    fetchStatus: (code: string) => Promise<TillPayCodeStatus>;
+    cancelCode: (code: string) => Promise<void>;
+    textLink: (input: { code: string; phone: string; phoneCountryIso: string | null }) => Promise<{ textLinksLeft: number }>;
+  };
   /** pay-receipt: send this payment's receipt (text, email or both). */
   onSendReceipt: (input: {
     paymentId: string;
@@ -65,6 +94,10 @@ export function PaymentSheet({
   onNewSale,
   onRefreshSale,
   onSendReceipt,
+  venueId,
+  tapOffer,
+  onStartCard,
+  scanApi,
 }: PaymentSheetProps): React.ReactElement {
   const [step, setStep] = useState<Step>("choose");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
@@ -73,11 +106,14 @@ export function PaymentSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
-    method: "cash" | "own_machine";
+    method: PaidMethod;
     amountMinor: number;
     changeMinor: number | null;
     paymentId: string;
+    label?: string;
   } | null>(null);
+  const [card, setCard] = useState<TillCardStart | null>(null);
+  const [tapBusy, setTapBusy] = useState(false);
   // One id per payment attempt: a retry of the same tap reuses it.
   const requestId = useRef<string>(randomId());
 
@@ -93,6 +129,8 @@ export function PaymentSheet({
     setCashGiven(null);
     setError(null);
     setResult(null);
+    setCard(null);
+    setTapBusy(false);
     requestId.current = randomId();
   }, [visible]);
 
@@ -141,8 +179,71 @@ export function PaymentSheet({
     }
   };
 
+  // O2: Tap and Scan take everything that is left; a typed part amount is for
+  // cash or the own machine.
+  const wholeAmount = amountMinor === null || amountMinor === due;
+  const canCard = canChooseMethod && wholeAmount;
+
+  const startCard = async (method: "tap" | "scan"): Promise<void> => {
+    if (sale === null || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const started = await onStartCard({
+        method,
+        tipMinor,
+        clientRequestId: requestId.current,
+        expectedVersion: sale.version,
+      });
+      setCard(started);
+      setStep(method);
+    } catch (err) {
+      const code = err instanceof TillError ? err.code : "till_failed";
+      if (code === "till_check_changed" || code === "till_nothing_to_pay") {
+        requestId.current = randomId();
+        onRefreshSale();
+      }
+      setError(tillErrorCopy(code));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cardPaid = (method: "tap" | "scan", label: string): void => {
+    if (card === null) return;
+    setResult({ method, amountMinor: card.amountMinor + card.tipMinor, changeMinor: null, paymentId: card.paymentId, label });
+    setStep("paid");
+    onRefreshSale();
+  };
+
+  // A new attempt (a fresh code, or another way) never reuses the old request.
+  const backToChoose = (): void => {
+    requestId.current = randomId();
+    setCard(null);
+    setStep("choose");
+    onRefreshSale();
+  };
+
   const title =
-    step === "paid" ? TILL_COPY.paymentTaken : step === "cash" ? TILL_COPY.cash : step === "own" ? TILL_COPY.ownMachine : TILL_COPY.pay(money(due));
+    step === "paid"
+      ? TILL_COPY.paymentTaken
+      : step === "cash"
+      ? TILL_COPY.cash
+      : step === "own"
+      ? TILL_COPY.ownMachine
+      : step === "scan"
+      ? TILL_COPY.scanToPay
+      : step === "tap"
+      ? TILL_COPY.tapToPay
+      : TILL_COPY.pay(money(due));
+  const tapDisabledReason =
+    tapOffer.kind !== "disabled"
+      ? null
+      : tapOffer.reason === "ios_update"
+      ? TILL_COPY.tapUpdateIos
+      : tapOffer.reason === "needs_latest_app"
+      ? TILL_COPY.tapNeedsApp
+      : TILL_COPY.tapNotOnIpad;
 
   let body: React.ReactNode;
   let footer: React.ReactNode = null;
@@ -177,6 +278,24 @@ export function PaymentSheet({
           </View>
         ) : null}
         <View style={styles.methods}>
+          {tapOffer.kind !== "hidden" ? (
+            <ListRow
+              title={TILL_COPY.tapToPay}
+              subtitle={tapDisabledReason ?? (wholeAmount ? TILL_COPY.tapSub : TILL_COPY.takesWhatIsLeft)}
+              icon="tap"
+              onPress={() => void startCard("tap")}
+              disabled={tapOffer.kind !== "ready" || !canCard || busy}
+              testID="till-pay-tap"
+            />
+          ) : null}
+          <ListRow
+            title={TILL_COPY.scanToPay}
+            subtitle={wholeAmount ? TILL_COPY.scanSub : TILL_COPY.takesWhatIsLeft}
+            icon="qr"
+            onPress={() => void startCard("scan")}
+            disabled={!canCard || busy}
+            testID="till-pay-scan"
+          />
           <ListRow title={TILL_COPY.cash} subtitle={TILL_COPY.cashSub} icon="cash" onPress={() => setStep("cash")} disabled={!canChooseMethod} testID="till-pay-cash" />
           <ListRow title={TILL_COPY.ownMachine} subtitle={TILL_COPY.ownMachineSub} icon="keypad" onPress={() => setStep("own")} disabled={!canChooseMethod} testID="till-pay-own" />
           <ListRow title={TILL_COPY.chargeToRoom} subtitle={TILL_COPY.chargeToRoomLater} icon="home" disabled testID="till-pay-room" />
@@ -223,6 +342,39 @@ export function PaymentSheet({
         testID="till-cash-take"
       />
     );
+  } else if (step === "scan" && card !== null && card.code !== null && card.payUrl !== null) {
+    body = (
+      <TillScanPanel
+        code={card.code}
+        payUrl={card.payUrl}
+        expiresAt={card.expiresAt}
+        amountMinor={card.amountMinor}
+        tipMinor={card.tipMinor}
+        chargedMinor={card.chargedMinor}
+        currency={currency}
+        fetchStatus={scanApi.fetchStatus}
+        cancelCode={scanApi.cancelCode}
+        textLink={scanApi.textLink}
+        onPaid={(st) =>
+          cardPaid("scan", paidLabel({ method: "scan", providerChannel: st.providerChannel, cardBrand: null, cardLast4: null }))
+        }
+        onMakeNew={backToChoose}
+        onChooseAnother={backToChoose}
+        onBackToTill={onClose}
+      />
+    );
+  } else if (step === "tap" && card !== null) {
+    body = (
+      <TillTapPanel
+        venueId={venueId}
+        paymentId={card.paymentId}
+        chargedMinor={card.chargedMinor}
+        currency={currency}
+        onBusyChange={setTapBusy}
+        onPaid={() => cardPaid("tap", TILL_COPY.tapToPay)}
+        onScanInstead={backToChoose}
+      />
+    );
   } else if (step === "own") {
     body = (
       <View style={[styles.body, styles.center]}>
@@ -245,7 +397,7 @@ export function PaymentSheet({
         <Text style={styles.big} testID="till-paid-amount">{money(result?.amountMinor ?? 0)}</Text>
         <Text style={styles.muted}>
           {[
-            result?.method === "cash" ? TILL_COPY.cash : TILL_COPY.ownMachine,
+            result?.label ?? (result?.method === "cash" ? TILL_COPY.cash : TILL_COPY.ownMachine),
             result?.changeMinor !== null && result?.changeMinor !== undefined ? TILL_COPY.changeLine(money(result.changeMinor)) : null,
           ].filter(Boolean).join(" · ")}
         </Text>
@@ -276,14 +428,14 @@ export function PaymentSheet({
 
   return (
     // Tap outside closes, except while money is moving.
-    <Sheet visible={visible} onClose={onClose} snapPoint={0.9} dismissDisabled={busy} testID="till-pay-sheet">
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.9} dismissDisabled={busy || tapBusy} testID="till-pay-sheet">
       <View style={styles.host}>
         <View style={styles.head}>
           <Text style={styles.heading} accessibilityRole="header">{title}</Text>
           {step === "cash" || step === "own" ? (
             <Button label={TILL_COPY.noGoBack} variant="ghost" size="sm" disabled={busy} onPress={() => setStep("choose")} />
           ) : (
-            <Button label={TILL_COPY.close} variant="ghost" size="sm" disabled={busy} onPress={onClose} testID="till-pay-close" />
+            <Button label={TILL_COPY.close} variant="ghost" size="sm" disabled={busy || tapBusy} onPress={onClose} testID="till-pay-close" />
           )}
         </View>
         <SheetScrollLayout footer={footer} keyboardAware contentStyle={styles.scroll}>

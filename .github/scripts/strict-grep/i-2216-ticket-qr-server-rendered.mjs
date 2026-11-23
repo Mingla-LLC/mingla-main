@@ -54,10 +54,14 @@ const GATE_QR_IMPORT_ALLOWLIST = new Set([
 // refused otherwise) on /visit/<groupId>, opened with the booking's own token:
 // reconciliation rulings 3 and 15 (buying and the pass never need an account
 // on web; one QR for the party). Not an event-ticket credential.
+// #4490 spec 08 O2 — TillPayQr encodes a /pay/till/<code> link only (one Till
+// payment the guest pays on their phone, proven by toTillPayUrl), never a
+// ticket or pass credential.
 const PAY_LINK_QR_ALLOWLIST = new Set([
   "mingla-business/src/components/door/DoorPayQr.tsx",
   "mingla-business/src/components/venue/features/checkin/VenuePayQr.tsx",
   "mingla-business/src/components/venue/offers/VenueOfferPassQr.tsx",
+  "mingla-business/src/components/venue/till/TillPayQr.tsx",
 ]);
 
 const stripComments = (source) =>

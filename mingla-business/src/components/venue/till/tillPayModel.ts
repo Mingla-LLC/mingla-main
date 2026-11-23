@@ -1,0 +1,177 @@
+/**
+ * #4490 spec 08 O2 — pure display state for Tap to pay and Scan to pay: the
+ * staff sheet's scan panel, the late-money banner and the guest's pay page.
+ * No React, no network: every rule here is tested on its own.
+ */
+import type { TillPayment, TillSale } from "../../../services/venueTillService";
+import { TILL_COPY } from "./tillCopy";
+
+const TILL_PAY_URL = /^https?:\/\/[^/\s#?]+\/pay\/till\/[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
+export const TILL_CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
+
+/** Only a /pay/till/<code> link is ever drawn as a Till QR. */
+export const toTillPayUrl = (value: unknown): string | null =>
+  typeof value === "string" && TILL_PAY_URL.test(value) ? value : null;
+
+/** "K7MP 4XRT": the code as staff read it aloud. */
+export const spacedCode = (code: string): string => (TILL_CODE_RE.test(code) ? `${code.slice(0, 4)} ${code.slice(4)}` : code);
+
+/** "14:32" until it runs out, then null. */
+export const countdown = (expiresAt: string | null, nowMs: number): string | null => {
+  if (expiresAt === null) return null;
+  const left = Math.floor((Date.parse(expiresAt) - nowMs) / 1000);
+  if (!Number.isFinite(left) || left <= 0) return null;
+  const m = Math.floor(left / 60);
+  const s = left % 60;
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+};
+
+export type ScanPanel = "waiting" | "paying" | "paid" | "expired" | "cancelled";
+
+/**
+ * The staff side of one scan payment. A code past its time reads as expired
+ * (the server closes it on the next read); money that lands later is late
+ * money and shows on the check, never here.
+ */
+export const scanPanelState = (
+  input: { status: string; paymentState: string; payStarted: boolean; expiresAt: string | null },
+  nowMs: number,
+): ScanPanel => {
+  if (input.paymentState === "paid" || input.status === "paid") return "paid";
+  if (input.status === "cancelled" || input.paymentState === "cancelled") return "cancelled";
+  if (input.status === "expired" || countdown(input.expiresAt, nowMs) === null) return "expired";
+  return input.payStarted ? "paying" : "waiting";
+};
+
+/** How a card or scan payment was paid, in the Till's words. */
+export const paidLabel = (p: Pick<TillPayment, "method" | "providerChannel" | "cardBrand" | "cardLast4">): string => {
+  if (p.method === "scan" && p.providerChannel === "bank_transfer") return TILL_COPY.paidByTransfer;
+  if (p.method === "tap") {
+    const card = [p.cardBrand ? p.cardBrand.charAt(0).toUpperCase() + p.cardBrand.slice(1) : null, p.cardLast4 ? `•••• ${p.cardLast4}` : null]
+      .filter(Boolean)
+      .join(" ");
+    return card.length > 0 ? TILL_COPY.paidByCard(card) : TILL_COPY.tapToPay;
+  }
+  return TILL_COPY.paidOnPhone;
+};
+
+/** What a payment can still give back (amount and tip, less refunds). */
+const refundable = (p: TillPayment): number => Math.max(p.amountMinor + p.tipMinor - p.refundedMinor, 0);
+
+/**
+ * "A cancelled payment was paid. Refund it or keep it as payment": a payment
+ * that landed after it was cancelled (or its code expired), not kept and not
+ * refunded yet. Keep is offered only while the check still has something to
+ * pay; otherwise the extra is refunded.
+ */
+export const latePayments = (sale: TillSale | null): Array<{ payment: TillPayment; canKeep: boolean }> => {
+  if (sale === null) return [];
+  const open = sale.state === "open" || sale.state === "paying";
+  return sale.payments
+    .filter((p) => p.paidLate && !p.lateKept && (p.state === "paid" || p.state === "partially_refunded") && refundable(p) > 0)
+    .map((payment) => ({ payment, canKeep: open && sale.remainingMinor > 0 && payment.refundedMinor === 0 }));
+};
+
+/** "Card {amount}, includes fees" only when the card takes more than the bill. */
+export const cardTotalDiffers = (amountMinor: number, tipMinor: number, chargedMinor: number | null): boolean =>
+  chargedMinor !== null && chargedMinor > amountMinor + tipMinor;
+
+// ---------------------------------------------------------------------------
+// The guest's pay page (/pay/till/<code>): anonymous, no account.
+// ---------------------------------------------------------------------------
+
+export interface TillPayView {
+  status: "open" | "opened" | "paid" | "expired" | "cancelled" | "failed";
+  expiresAt: string | null;
+  provider: "stripe" | "paystack" | null;
+  venueName: string;
+  currency: string;
+  lines: Array<{ name: string; quantity: number; amountMinor: number }>;
+  subtotalMinor: number;
+  serviceChargeMinor: number;
+  paidBeforeMinor: number;
+  tipMinor: number;
+  feesMinor: number;
+  amountMinor: number;
+  paid: boolean;
+}
+
+const obj = (v: unknown): Record<string, unknown> => (v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {});
+const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+export const mapTillPayView = (v: unknown): TillPayView => {
+  const o = obj(v);
+  const status = String(o.status ?? "open");
+  return {
+    status: (["open", "opened", "paid", "expired", "cancelled", "failed"].includes(status) ? status : "open") as TillPayView["status"],
+    expiresAt: typeof o.expiresAt === "string" ? o.expiresAt : null,
+    provider: o.provider === "stripe" || o.provider === "paystack" ? o.provider : null,
+    venueName: typeof o.venueName === "string" ? o.venueName : "",
+    currency: typeof o.currency === "string" ? o.currency : "NGN",
+    lines: (Array.isArray(o.lines) ? o.lines : []).map((l) => {
+      const line = obj(l);
+      return { name: String(line.name ?? ""), quantity: n(line.quantity), amountMinor: n(line.amountMinor) };
+    }),
+    subtotalMinor: n(o.subtotalMinor),
+    serviceChargeMinor: n(o.serviceChargeMinor),
+    paidBeforeMinor: n(o.paidBeforeMinor),
+    tipMinor: n(o.tipMinor),
+    feesMinor: Math.max(n(o.feesMinor), 0),
+    amountMinor: n(o.amountMinor),
+    paid: o.paid === true,
+  };
+};
+
+export type GuestPayState =
+  | "loading"
+  | "not_found"
+  | "error"
+  | "details"
+  | "confirming"
+  | "paid"
+  /** Closed with no money seen: never "you were not charged" (the door rule). */
+  | "closed";
+
+/**
+ * What the guest sees. Back from the provider (`?paid=1`), the page keeps
+ * confirming until the server says paid or the bounded polls run out; a
+ * closed code is only ever "closed", never "not charged".
+ */
+export const guestPayState = (input: {
+  loading: boolean;
+  notFound: boolean;
+  error: boolean;
+  view: TillPayView | null;
+  returned: boolean;
+  pollsLeft: number;
+}): GuestPayState => {
+  if (input.notFound) return "not_found";
+  if (input.view === null) return input.error ? "error" : "loading";
+  if (input.view.paid || input.view.status === "paid") return "paid";
+  // Back from the provider: confirm while reads are left, then say it is still
+  // being confirmed (never "not charged") with a way to check again.
+  if (input.returned) return input.pollsLeft > 0 ? "confirming" : "closed";
+  if (input.view.status === "open" || input.view.status === "opened") return "details";
+  return "closed";
+};
+
+/** The return check is bounded (N143): this many reads, this far apart. */
+export const GUEST_PAY_POLLS = 10;
+export const GUEST_PAY_POLL_MS = 3000;
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The guest's form: name and email in words; the phone is the PhoneField's. */
+export const guestPayFormErrors = (input: { name: string; email: string }): { name: string | null; email: string | null } => {
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  const domain = email.split("@")[1] ?? "";
+  return {
+    name: name.length >= 2 ? null : "Add your name.",
+    email: !EMAIL.test(email)
+      ? "Check the email address."
+      : /(^|\.)(test|invalid|example|localhost|local)$/.test(domain)
+      ? "That email address can't get receipts. Use another one."
+      : null,
+  };
+};

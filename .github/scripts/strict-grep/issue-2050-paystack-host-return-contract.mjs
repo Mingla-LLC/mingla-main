@@ -27,8 +27,11 @@ const CALLBACKS = {
     "${callbackOrigin}/o/venue/${",
   "supabase/functions/venue-reservation-create/index.ts":
     "${PRODUCTION_BUSINESS_WEB_ORIGIN}/reserve/${",
+  // #4490 spec 08 O2: the pad's bill-to-phone return reads its origin from env
+  // (resolveVenueVisitOrigin), as venue-order-create does; still the Host
+  // /o/venue status surface.
   "supabase/functions/venue-order-staff/index.ts":
-    "${PRODUCTION_BUSINESS_WEB_ORIGIN}/o/venue/${",
+    "${callbackOrigin}/o/venue/${",
 };
 // issue #2227 (2026-08-18) — AMENDED, client-side callback half only.
 //

@@ -19,7 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -27,7 +27,21 @@ import { color, radius, size, space, type } from "../../../constants/designSyste
 import { useVenueOffers } from "../../../hooks/useVenueOffers";
 import { useTillActions, useTillCatalog, useTillChecks, useTillSale, useTillServers } from "../../../hooks/useVenueTill";
 import type { TillCatalog, TillMenuItem, TillSale, TillServer } from "../../../services/venueTillService";
-import { TillError } from "../../../services/venueTillService";
+import {
+  cancelTillPayCode,
+  fetchTillPayCode,
+  keepTillLatePayment,
+  startTillScan,
+  startTillTap,
+  textTillPayCode,
+  TillError,
+} from "../../../services/venueTillService";
+import { useTapToPayBrandFacts } from "../../../hooks/useTapToPayBrandFacts";
+import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
+import { currentTapToPayDevice } from "../../../services/terminal/tapToPayDevice";
+import { setTapToPayScope } from "../../../services/terminal/tapToPaySession";
+import { tillTapOffer } from "./tillTapAvailability";
+import { latePayments, paidLabel } from "./tillPayModel";
 import type { VenueOffer } from "../../../types/venueOffers";
 import { formatCurrency } from "../../../utils/currency";
 import { randomId } from "../../../utils/randomId";
@@ -227,7 +241,55 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const payLabel = ready && sale !== null ? TILL_COPY.pay(money(sale.remainingMinor)) : TILL_COPY.payPending;
   const nothingOnCheck = rows.length === 0 && draft.length === 0;
   const canManageMoney = catalog?.canManageMoney === true;
+  // #4490 O2: Tap to pay where this phone, this build, the brand and the
+  // release all allow it (the matrix in tillTapAvailability).
+  const tapBrand = useTapToPayBrandFacts(catalog?.brandId ?? null);
+  const tapRelease = useTapToPayRelease(catalog?.brandId ?? null);
+  const tapOffer = useMemo(
+    () =>
+      tillTapOffer({
+        brand: tapBrand,
+        release: { iphone: tapRelease.live, android: tapRelease.live },
+        device: currentTapToPayDevice(),
+        canSell: catalog !== null,
+        serverAllows: catalog?.tapAvailable === true,
+      }),
+    [tapBrand, tapRelease.live, catalog],
+  );
+  // The app's one Terminal session works for this venue while the Till is open.
+  useEffect(() => {
+    if (tapOffer.kind !== "ready" || catalog === null) return undefined;
+    setTapToPayScope({ brandId: catalog.brandId, eventId: null, venueId, merchantDisplayName: catalog.venueName ?? null });
+    return () => setTapToPayScope(null);
+  }, [tapOffer.kind, catalog, venueId]);
+  const scanApi = useMemo(
+    () => ({
+      fetchStatus: (code: string) => fetchTillPayCode({ venueId, code }),
+      cancelCode: async (code: string) => {
+        await cancelTillPayCode({ venueId, code });
+      },
+      textLink: (input: { code: string; phone: string; phoneCountryIso: string | null }) =>
+        textTillPayCode({ venueId, ...input }),
+    }),
+    [venueId],
+  );
   const overpaid = overpaidToRefund(sale);
+  // O2 late money: refund it, or keep it towards what is still due.
+  const late = latePayments(sale);
+  const [keeping, setKeeping] = useState<string | null>(null);
+  const keepLate = async (paymentId: string): Promise<void> => {
+    if (sale === null || keeping !== null) return;
+    setKeeping(paymentId);
+    try {
+      await keepTillLatePayment({ venueId, paymentId, expectedVersion: sale.version });
+      setToast({ kind: "success", message: TILL_COPY.lateKept });
+    } catch (err) {
+      setToast({ kind: "error", message: tillErrorCopy(err instanceof TillError ? err.code : "till_failed") });
+    } finally {
+      setKeeping(null);
+      actions.refreshSale(sale.id);
+    }
+  };
   const checkName = sale?.checkLabel ?? sale?.spotLabel ?? TILL_COPY.newCheck;
   const servers = serversQuery.data ?? [];
   const currentServer = serverName(servers, sale?.serverUserId ?? null, TILL_COPY.teamMember);
@@ -334,7 +396,24 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
             testID="till-check-actions" />
         ) : null}
       </View>
-      {overpaid > 0 ? (
+      {late.length > 0 ? (
+        <View style={styles.lateBox} testID="till-late-money">
+          {late.map(({ payment, canKeep }) => (
+            <View key={payment.id} style={styles.lateRow}>
+              <Banner tone="warning" title={TILL_COPY.latePaid} body={`${money(payment.amountMinor + payment.tipMinor)} · ${paidLabel(payment)}`} />
+              <View style={styles.lateActions}>
+                {canManageMoney ? (
+                  <Button label={TILL_COPY.refundIt} variant="secondary" size="sm" onPress={() => setRefundFor(payment.id)} testID="till-late-refund" />
+                ) : null}
+                {canKeep ? (
+                  <Button label={TILL_COPY.keepAsPayment} variant="primary" size="sm" loading={keeping === payment.id}
+                    onPress={() => void keepLate(payment.id)} testID="till-late-keep" />
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : overpaid > 0 ? (
         <Banner tone="warning" title={TILL_COPY.overpaid(money(overpaid))} testID="till-overpaid" />
       ) : null}
       <ScrollView style={styles.grow} contentContainerStyle={styles.basketList}>
@@ -443,7 +522,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
               {paidPayments.map((p) => (
                 <ListRow
                   key={p.id}
-                  title={`${p.method === "cash" ? TILL_COPY.cash : TILL_COPY.ownMachine} · ${money(p.amountMinor + p.tipMinor)}`}
+                  title={`${p.method === "cash" ? TILL_COPY.cash : p.method === "own_machine" ? TILL_COPY.ownMachine : paidLabel(p)} · ${money(p.amountMinor + p.tipMinor)}`}
                   subtitle={p.reference}
                   trailing={
                     <View style={styles.paidActions}>
@@ -624,6 +703,13 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
           if (saleId !== null) actions.refreshSale(saleId);
         }}
         onSendReceipt={({ channel: _channel, ...input }) => sendReceipt(input)}
+        venueId={venueId}
+        tapOffer={tapOffer}
+        onStartCard={({ method, ...input }) =>
+          method === "tap"
+            ? startTillTap({ venueId, saleId: sale?.id as string, platform: Platform.OS, ...input })
+            : startTillScan({ venueId, saleId: sale?.id as string, ...input })}
+        scanApi={scanApi}
       />
 
       {/* Re-send a paid payment's receipt (any seller; three sends at most). */}
@@ -1287,6 +1373,9 @@ function RefundSheet({
 }
 
 const styles = StyleSheet.create({
+  lateBox: { gap: space[2] },
+  lateRow: { gap: space[2] },
+  lateActions: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
   screen: { flex: 1, backgroundColor: color.canvas },
   header: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingVertical: space[2] },
   title: { ...type.h2, color: color.text1, flex: 1, textAlign: "center" },

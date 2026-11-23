@@ -7,6 +7,7 @@
  * amount) and the check version it last saw (T10).
  */
 
+import { Platform } from "react-native";
 import { supabase } from "./supabase";
 
 type Json = Record<string, unknown>;
@@ -76,6 +77,24 @@ export interface TillPayment {
   refundedMinor: number;
   /** Receipts already sent for this payment (the server allows three). */
   receiptSends: number;
+  /** #4490 O2: what the card or scan took (fees passed to the guest included). */
+  chargedMinor: number | null;
+  /** card | bank_transfer | ussd | bank, from the provider; null otherwise. */
+  providerChannel: string | null;
+  cardBrand: string | null;
+  cardLast4: string | null;
+  /** A late payment staff kept as payment for the check. */
+  lateKept: boolean;
+  payCode: TillPayCodeState | null;
+}
+
+/** A scan payment's code as the staff side sees it. */
+export interface TillPayCodeState {
+  code: string;
+  status: "open" | "opened" | "paid" | "expired" | "cancelled" | "failed";
+  expiresAt: string | null;
+  payStarted: boolean;
+  textLinksLeft: number;
 }
 
 export interface TillSale {
@@ -230,6 +249,12 @@ export function mapTillSale(v: unknown): TillSale {
         reference: str(pay.reference),
         refundedMinor: num(pay.refundedMinor),
         receiptSends: num(pay.receiptSends),
+        chargedMinor: numOrNull(pay.chargedMinor),
+        providerChannel: strOrNull(pay.providerChannel),
+        cardBrand: strOrNull(pay.cardBrand),
+        cardLast4: strOrNull(pay.cardLast4),
+        lateKept: pay.lateKept === true,
+        payCode: pay.payCode !== null && typeof pay.payCode === "object" ? mapPayCodeState(pay.payCode) : null,
       };
     }),
   };
@@ -334,7 +359,8 @@ async function till<T>(body: Record<string, unknown>): Promise<T> {
 }
 
 export async function fetchTillCatalog(venueId: string): Promise<TillCatalog> {
-  return mapTillCatalog(await till<unknown>({ action: "catalog", venueId }));
+  // The platform lets the server answer the tap release for this phone (O2).
+  return mapTillCatalog(await till<unknown>({ action: "catalog", venueId, platform: Platform.OS }));
 }
 
 export async function fetchTillChecks(venueId: string): Promise<TillChecks> {
@@ -519,4 +545,116 @@ export async function sendTillReceipt(input: {
   }));
   const queued = obj(data.queued);
   return { sendsLeft: num(data.sendsLeft), queued: { sms: queued.sms === true, email: queued.email === true } };
+}
+
+// ---------------------------------------------------------------------------
+// #4490 spec 08 O2 — tap to pay and scan to pay. The amount is always what is
+// left on the check, priced by the server; only the tip is sent.
+// ---------------------------------------------------------------------------
+
+export function mapPayCodeState(v: unknown): TillPayCodeState {
+  const c = obj(v);
+  return {
+    code: str(c.code),
+    status: str(c.status, "open") as TillPayCodeState["status"],
+    expiresAt: strOrNull(c.expiresAt),
+    payStarted: c.payStarted === true,
+    textLinksLeft: num(c.textLinksLeft, 3),
+  };
+}
+
+export interface TillCardStart {
+  paymentId: string;
+  amountMinor: number;
+  tipMinor: number;
+  chargedMinor: number;
+  sale: TillSale | null;
+  /** Scan only. */
+  code: string | null;
+  payUrl: string | null;
+  expiresAt: string | null;
+}
+
+function mapCardStart(v: unknown): TillCardStart {
+  const d = obj(v);
+  return {
+    paymentId: str(d.paymentId),
+    amountMinor: num(d.amountMinor),
+    tipMinor: num(d.tipMinor),
+    chargedMinor: num(d.chargedMinor),
+    sale: d.sale !== null && typeof d.sale === "object" ? mapTillSale(d.sale) : null,
+    code: strOrNull(d.code),
+    payUrl: strOrNull(d.payUrl),
+    expiresAt: strOrNull(d.expiresAt),
+  };
+}
+
+export async function startTillScan(input: {
+  venueId: string;
+  saleId: string;
+  tipMinor: number;
+  clientRequestId: string;
+  expectedVersion: number;
+}): Promise<TillCardStart> {
+  return mapCardStart(await till<unknown>({ action: "pay_code_create", ...input }));
+}
+
+export async function startTillTap(input: {
+  venueId: string;
+  saleId: string;
+  tipMinor: number;
+  clientRequestId: string;
+  expectedVersion: number;
+  platform: string;
+}): Promise<TillCardStart> {
+  return mapCardStart(await till<unknown>({ action: "pay_tap_start", ...input }));
+}
+
+/** A tap payment whose card reader never started. */
+export async function cancelTillCardPayment(input: { venueId: string; paymentId: string }): Promise<void> {
+  await till<unknown>({ action: "pay_card_cancel", ...input });
+}
+
+export interface TillPayCodeStatus extends TillPayCodeState {
+  paymentId: string;
+  paymentState: string;
+  paidLate: boolean;
+  providerChannel: string | null;
+  payUrl: string | null;
+}
+
+export async function fetchTillPayCode(input: { venueId: string; code: string }): Promise<TillPayCodeStatus> {
+  const d = obj(await till<unknown>({ action: "pay_code_status", ...input }));
+  return {
+    ...mapPayCodeState(d),
+    paymentId: str(d.paymentId),
+    paymentState: str(d.paymentState),
+    paidLate: d.paidLate === true,
+    providerChannel: strOrNull(d.providerChannel),
+    payUrl: strOrNull(d.payUrl),
+  };
+}
+
+export async function cancelTillPayCode(input: { venueId: string; code: string }): Promise<TillSale | null> {
+  const d = obj(await till<unknown>({ action: "pay_code_cancel", ...input }));
+  return d.sale !== null && typeof d.sale === "object" ? mapTillSale(d.sale) : null;
+}
+
+export async function textTillPayCode(input: {
+  venueId: string;
+  code: string;
+  phone: string;
+  phoneCountryIso: string | null;
+}): Promise<{ textLinksLeft: number }> {
+  const d = obj(await till<unknown>({ action: "pay_code_text", ...input }));
+  return { textLinksLeft: num(d.textLinksLeft) };
+}
+
+export async function keepTillLatePayment(input: {
+  venueId: string;
+  paymentId: string;
+  expectedVersion: number;
+}): Promise<TillSale> {
+  const d = obj(await till<unknown>({ action: "keep_late", ...input }));
+  return mapTillSale(d.sale);
 }

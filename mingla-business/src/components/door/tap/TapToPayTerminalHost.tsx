@@ -261,7 +261,7 @@ const TerminalBridge = ({ sdk, brandId, merchantDisplayName }: BridgeProps): nul
       readHint: () => readTapToPayWarmHint(brandId),
       fetchLocation: () => {
         const scope = getTapToPaySession().scope;
-        return fetchDoorTapLocation({ brandId, eventId: scope?.eventId ?? null });
+        return fetchDoorTapLocation({ brandId, eventId: scope?.eventId ?? null, venueId: scope?.venueId ?? null });
       },
       connect: (locationId) => queuedConnect(locationId, { mayAcceptTerms: false, warm: true }),
       now: () => Date.now(),
@@ -307,6 +307,7 @@ const LiveTerminal = ({ sdk, brandId }: { sdk: TerminalSdk; brandId: string }): 
     return fetchTerminalConnectionToken({
       brandId: currentScope?.brandId ?? brandIdRef.current,
       eventId: currentScope?.eventId ?? null,
+      venueId: currentScope?.venueId ?? null,
     });
   }, []);
   const { StripeTerminalProvider } = sdk;

@@ -32,6 +32,8 @@ export interface TapToPayScope {
   brandId: string | null;
   /** The door's event. Token and Location use it when set, otherwise the brand. */
   eventId: string | null;
+  /** #4490 O2: a Till's venue. Token and Location use it when set (sellers there). */
+  venueId?: string | null;
   merchantDisplayName: string | null;
 }
 

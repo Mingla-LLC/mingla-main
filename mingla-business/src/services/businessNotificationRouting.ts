@@ -233,6 +233,9 @@ export function parseBusinessDeepLink(
       // on Settings, where the Venue details card shows the new details or the
       // reason it was not approved.
       if (rest[1] === "settings") return `/venue/${venueId}?module=settings`;
+      // #4490 spec 08 O2: a Till card payment that ended unseen or landed late
+      // opens the Till on its checks.
+      if (rest[1] === "till") return `/venue/${venueId}/till?checks=1`;
       return `/venue/${venueId}`;
     }
     case "(tabs)": {
@@ -406,6 +409,13 @@ export function resolveBusinessNavTarget(
 
     // Issue #3386: a push without its deep link still reaches the venue's
     // Settings, never the account tab.
+    case "business.venue_till_paid_late":
+    case "business.venue_till_tap_paid_unseen":
+    case "business.venue_till_tap_not_completed": {
+      const venueId = data.venueId as string | undefined;
+      return venueId ? `/venue/${venueId}/till?checks=1` : ACCOUNT_FALLBACK;
+    }
+
     case "business.venue_details_change_decision": {
       const venueId = (data.venueId ?? data.relatedId) as string | undefined;
       return venueId ? `/venue/${venueId}?module=settings` : ACCOUNT_FALLBACK;
