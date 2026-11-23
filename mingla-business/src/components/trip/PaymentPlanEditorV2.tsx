@@ -448,6 +448,9 @@ const styles = StyleSheet.create({
   inputWithSuffix: { flexDirection: "row", alignItems: "center", gap: space[2] },
   input: {
     flex: 1,
+    // #4522 W-7 — a web text field will not shrink below its default width
+    // unless told it may; beside a suffix it pushed the row past a 375 px card.
+    minWidth: 0,
     minHeight: 46,
     paddingHorizontal: space[3],
     borderRadius: radius.md,
@@ -457,7 +460,7 @@ const styles = StyleSheet.create({
     color: color.text1,
     fontSize: type.body.fontSize,
   },
-  suffix: { maxWidth: "55%", fontSize: type.small.fontSize, color: color.text2 },
+  suffix: { maxWidth: "55%", flexShrink: 1, fontSize: type.small.fontSize, color: color.text2 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   pill: {
     minWidth: 54,
