@@ -107,3 +107,26 @@ export const resolveSeededCartPlanChoice = (
   seededLines.some((l) => l.paymentPlanChoice === "installments")
     ? "installments"
     : scalarPlanParam;
+
+/**
+ * issue #4522 S-1 — a package that offers paying over time: the old percent
+ * plan (`installmentSchedule`) or a v2 plan (`paymentPlan` with `v: 2`). A
+ * seeded "installments" choice survives only on these (on any other package it
+ * becomes "full"), so the cart line the checkout create sends is the choice the
+ * buyer made. Before this a v2 package always seeded "full".
+ */
+export const tierOffersPlan = (
+  tier:
+    | {
+        installmentSchedule?: unknown;
+        paymentPlan?: unknown;
+      }
+    | undefined,
+): boolean => {
+  if (tier === undefined) return false;
+  if (tier.installmentSchedule !== null && tier.installmentSchedule !== undefined) {
+    return true;
+  }
+  const plan = tier.paymentPlan as { v?: unknown } | null | undefined;
+  return plan !== null && plan !== undefined && plan.v === 2;
+};

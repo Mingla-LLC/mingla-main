@@ -134,7 +134,9 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
     expect(paymentSource).toMatch(
       /const isUsingInstallments =\s*installmentPlanLines\.length > 0 \|\|\s*\(v2CheckoutActive && paymentPlanChoice === "installments"\)/,
     );
-    expect(paymentSource).toMatch(/\{isUsingInstallments\s*\?\s*\(/);
+    // [TEST-MOD-APPROVED #4522 W-4] The due-today row waits for the quote that
+    // matches the choice, so it never shows a stale or empty amount.
+    expect(paymentSource).toMatch(/\{isUsingInstallments\s*&&\s*quoteStatus === "ready"\s*\?\s*\(/);
     expect(paymentSource).toMatch(
       /isPlanActive\s*&&\s*isUsingInstallments\s*&&[\s\S]{0,120}\?\s*\(/,
     );

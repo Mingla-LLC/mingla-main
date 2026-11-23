@@ -294,6 +294,18 @@ function CheckoutTripPaymentScreenContent({
         (count, entry) => count + entry.schedule.installments.length,
         0,
       ));
+  // issue #4522 S-1 — while the plan is chosen, "Pay in full" shows what the
+  // whole booking costs: today's charge plus every scheduled row, read from the
+  // same quote. The schedule's own fullPriceCents leaves out add-ons paid today.
+  const v2PlanSchedule = quote?.paymentPlanV2?.installmentSchedule ?? null;
+  const v2PlanQuotedTotalCents =
+    v2PlanSchedule !== null && quote !== null
+      ? quote.buyerTotalCents +
+        v2PlanSchedule.installments.reduce(
+          (sum, row) => sum + row.amountCents,
+          0,
+        )
+      : undefined;
   const v2FlexEnabled = v2PlanLines.some(
     ({ plan }) => plan.flex?.enabled === true,
   );
@@ -1013,8 +1025,7 @@ function CheckoutTripPaymentScreenContent({
             fullPriceCents={
               paymentPlanChoice === "full"
                 ? quote?.buyerTotalCents
-                : (quote?.planTotalBuyerCents ??
-                  quote?.paymentPlanV2?.installmentSchedule?.fullPriceCents)
+                : (quote?.planTotalBuyerCents ?? v2PlanQuotedTotalCents)
             }
             lockedChargeSchedule={quote?.installmentChargeSchedule}
             addOnPlan={
@@ -1119,7 +1130,7 @@ function CheckoutTripPaymentScreenContent({
             Constitution #3 — no silent failures. */}
         {isPlanActive &&
         isUsingInstallments &&
-        (!v2CheckoutActive || quoteStatus === "ready") ? (
+        quoteStatus === "ready" ? (
           <View
             style={styles.planBanner}
             accessibilityRole="alert"
@@ -1153,7 +1164,7 @@ function CheckoutTripPaymentScreenContent({
         ) : null}
         {isPlanActive &&
         !isUsingInstallments &&
-        (!v2CheckoutActive || quoteStatus === "ready") ? (
+        quoteStatus === "ready" ? (
           <View
             style={[styles.planBanner, styles.fullPayBanner]}
             accessibilityRole="alert"
@@ -1173,7 +1184,7 @@ function CheckoutTripPaymentScreenContent({
         </View>
         {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under
             pay-over-time; mirrors the order-summary box + buyer step. */}
-        {isUsingInstallments ? (
+        {isUsingInstallments && quoteStatus === "ready" ? (
           <View style={styles.dueTodayRow}>
             <Text style={styles.dueTodayLabel}>Total due today</Text>
             <Text style={styles.dueTodayValue}>
@@ -1200,7 +1211,7 @@ function CheckoutTripPaymentScreenContent({
           // cart CTA deliberately says "today" because mixed carts also include
           // full-pay lines in the aggregate amount.
           label={
-            v2CheckoutActive && quoteStatus !== "ready"
+            isPlanActive && quoteStatus !== "ready"
               ? "Working out your payments…"
               : installmentCtaActive
               ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today`
@@ -1211,13 +1222,13 @@ function CheckoutTripPaymentScreenContent({
           size="lg"
           fullWidth
           loading={
-            processing || (v2CheckoutActive && quoteStatus === "loading")
+            processing || (isPlanActive && quoteStatus === "loading")
           }
           // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
           // immediately (only blocked while a charge is in flight).
           disabled={processing || quoteStatus !== "ready" || quote === null}
           accessibilityLabel={
-            v2CheckoutActive && quoteStatus !== "ready"
+            isPlanActive && quoteStatus !== "ready"
               ? "Working out your payments"
               : installmentCtaActive
               ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today with card`

@@ -161,3 +161,22 @@ export function addOnsRideContractPlan(
   if (extrasTotalCents <= 0 || !hasInstallments) return "none";
   return planV2 !== null && planV2.addOnsOnPlan ? "on_plan" : "refuse";
 }
+
+/**
+ * issue #4522 W-4 / S-1 — the plan choice a quote read inside a create prices.
+ * A v2-contract create carries its choice on each line and sends no scalar,
+ * so its session scalar is "full"; but the quote it re-reads for a review
+ * (`checkout_review_required`) must price what the buyer chose, or the review
+ * shows the full price while the session it then opens takes a deposit. Any
+ * line paying over time quotes "installments"; a v1 request keeps its scalar.
+ */
+export function checkoutQuotePlanChoice<C extends string>(
+  isCheckoutV2: boolean,
+  v2Lines: ReadonlyArray<{ paymentPlanChoice: string }> | null,
+  scalar: C,
+): C | "installments" | "full" {
+  if (!isCheckoutV2 || v2Lines === null) return scalar;
+  return v2Lines.some((line) => line.paymentPlanChoice === "installments")
+    ? "installments"
+    : "full";
+}

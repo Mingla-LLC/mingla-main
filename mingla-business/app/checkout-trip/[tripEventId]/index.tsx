@@ -59,6 +59,7 @@ import {
 import {
   parseSeededTripLines,
   resolveSeededCartPlanChoice,
+  tierOffersPlan,
 } from "../../../src/components/trip/tripCartPlanChoice";
 
 import {
@@ -403,7 +404,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           qty,
           paymentPlanChoice:
             line.paymentPlanChoice === "installments" &&
-            tierById.get(line.ticketTypeId)?.installmentSchedule != null
+            tierOffersPlan(tierById.get(line.ticketTypeId))
               ? ("installments" as const)
               : ("full" as const),
         },
@@ -486,10 +487,9 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
         isFree: sole.isFree,
         quantity: 1,
-        paymentPlanChoice:
-          trip.pricingTiers[0]?.installmentSchedule != null
-            ? paymentPlanChoice
-            : "full",
+        paymentPlanChoice: tierOffersPlan(trip.pricingTiers[0])
+          ? paymentPlanChoice
+          : "full",
       });
       return;
     }

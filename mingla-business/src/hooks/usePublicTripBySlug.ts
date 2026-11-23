@@ -43,7 +43,10 @@ import type {
   TripInstallmentScheduleData,
   TripPricingTier,
 } from "../services/tripsService";
-import { coerceTripDayMedia } from "../services/tripsService";
+import {
+  coerceTripDayMedia,
+  loadPublicTripPlanV2Decoder,
+} from "../services/tripsService";
 import { sumTripPackageSpots } from "../services/tripPackages";
 import { featureFlags } from "../config/featureFlags";
 
@@ -331,15 +334,11 @@ export const usePublicTripBySlug = (
       }
       if (data === null || data === undefined) return null;
       const p = data as RpcTripPayload;
-      const decodePaymentPlanV2 =
-        featureFlags.tripPlanV2 &&
-        (p.tiers ?? []).some(
-          (tier) => tier.tierMetadata?.payment_plan !== undefined,
-        )
-          ? await import(
-              "@mingla/offering-rendering/tripPlanV2Contract"
-            ).then(({ decodeTripPaymentPlanV2 }) => decodeTripPaymentPlanV2)
-          : null;
+      // #4522 S-1 — the same decoder the by-id (checkout) loader uses.
+      const decodePaymentPlanV2 = await loadPublicTripPlanV2Decoder(
+        (p.tiers ?? []).map((tier) => tier.tierMetadata),
+        featureFlags.tripPlanV2,
+      );
 
       // #4518 — the same-origin bundle carries the buy-gate answers. Only
       // trusted from the bundle (the RPC fallback never has them).

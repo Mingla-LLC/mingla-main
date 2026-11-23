@@ -527,14 +527,24 @@ const reducer = (state: CartState, action: CartAction): CartState => {
     case "SET_PAYMENT_PLAN_CHOICE":
       return { ...state, paymentPlanChoice: action.choice, ...staleQuote(state) };
     case "SET_LINE_PAYMENT_PLAN_CHOICE": {
+      const lines = state.lines.map((line) =>
+        line.ticketTypeId === action.ticketTypeId
+          ? { ...line, paymentPlanChoice: action.choice }
+          : line,
+      );
       return {
         ...state,
         ...staleQuote(state),
-        lines: state.lines.map((line) =>
-          line.ticketTypeId === action.ticketTypeId
-            ? { ...line, paymentPlanChoice: action.choice }
-            : line,
-        ),
+        lines,
+        // issue #4522 W-4 — the quote request carries only the cart-level
+        // choice, so it follows the lines (the create's per-line choices):
+        // any line paying over time quotes "installments", else "full". The
+        // amount shown is then the amount of the session the create opens.
+        paymentPlanChoice: lines.some(
+          (line) => line.paymentPlanChoice === "installments",
+        )
+          ? "installments"
+          : "full",
       };
     }
     case "SET_ADDON_PAYMENT_MODE": {

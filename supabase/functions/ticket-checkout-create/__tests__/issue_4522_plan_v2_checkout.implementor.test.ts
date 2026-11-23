@@ -18,6 +18,7 @@ import {
   hasTripInstallmentTemplate,
 } from "../../../../packages/offering-rendering/tripInstallmentCapability.ts";
 import {
+  checkoutQuotePlanChoice,
   parseTripPlanV2ContractPlan,
   tierRowsCarryPlanV2,
   TripPlanV2ContractError,
@@ -163,4 +164,28 @@ Deno.test("v2 refusals keep their names and the contract path plans before bindi
   const bind = source.indexOf('"issue_3859_bind_checkout_contract"');
   assert(v2Rpc > 0 && legacyPlanner > v2Rpc && bind > legacyPlanner);
   assertStringIncludes(source, "...(planV2 !== null ? planV2.summary : {}),");
+});
+
+Deno.test("W-4 / S-1: a v2 create's review quote prices the lines' own plan choice", () => {
+  // Without this the review after a refused or retried create quoted "full"
+  // (the v2 session scalar) and showed the full price for a deposit session.
+  assertEquals(
+    checkoutQuotePlanChoice(true, [{ paymentPlanChoice: "installments" }], "full"),
+    "installments",
+  );
+  assertEquals(
+    checkoutQuotePlanChoice(true, [{ paymentPlanChoice: "full" }], "full"),
+    "full",
+  );
+  assertEquals(checkoutQuotePlanChoice(false, null, "auto"), "auto");
+  assertEquals(checkoutQuotePlanChoice(false, null, "installments"), "installments");
+  const loader = source.slice(
+    source.indexOf("const loadTicketQuote = async"),
+    source.indexOf("const buildTicketQuoteEnvelope"),
+  );
+  assertEquals(
+    loader.split("p_payment_plan_choice: quotePaymentPlanChoice,").length - 1,
+    2,
+  );
+  assert(!loader.includes("p_payment_plan_choice: paymentPlanChoice,"));
 });

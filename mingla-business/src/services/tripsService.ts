@@ -745,6 +745,24 @@ function withTierPlan(
 }
 
 /**
+ * issue #4522 S-1 — the ONE decoder both public trip loaders (by slug for
+ * `/t`, by id for `/checkout-trip`) use for a package's v2 plan, so the two
+ * return the same `paymentPlan`. Null (no decoder) while the plan flag is dark
+ * or no package carries `tier_metadata.payment_plan`; the decoder itself is
+ * loaded on use so it never joins the eager web graph.
+ */
+export const loadPublicTripPlanV2Decoder = async (
+  tierMetadata: ReadonlyArray<Record<string, unknown> | null | undefined>,
+  planV2Enabled: boolean,
+): Promise<((raw: unknown) => TripPaymentPlanV2 | null) | null> =>
+  planV2Enabled &&
+  tierMetadata.some((metadata) => metadata?.payment_plan !== undefined)
+    ? import("@mingla/offering-rendering/tripPlanV2Contract").then(
+        ({ decodeTripPaymentPlanV2 }) => decodeTripPaymentPlanV2,
+      )
+    : null;
+
+/**
  * ORCH-0873 [Tr3 Stage 2 UI] — extract typed installment schedule from
  * tier_metadata JSONB. Returns null on missing key / malformed shape;
  * the wizard's PaymentPlanEditor treats null as "single-payment trip".

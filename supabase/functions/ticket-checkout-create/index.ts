@@ -161,6 +161,7 @@ import {
 import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
 import {
   addOnsRideContractPlan,
+  checkoutQuotePlanChoice,
   parseTripPlanV2ContractPlan,
   tierRowsCarryPlanV2,
   type TripPlanV2ContractPlan,
@@ -1688,6 +1689,13 @@ export const createTicketCheckoutCreateHandler = (
       }
     };
 
+    // issue #4522 W-4 / S-1 — a v2 create's review quote prices its lines' own
+    // plan choice (its session scalar is "full" by contract).
+    const quotePaymentPlanChoice = checkoutQuotePlanChoice(
+      isCheckoutV2,
+      checkoutV2Lines,
+      paymentPlanChoice,
+    );
     const loadTicketQuote = async (): Promise<Record<string, unknown>> => {
       // Issue #4271 — a door code's lines are priced by the door rule: the
       // wrapper unlocks the code's own in-person-only tiers for this one
@@ -1705,7 +1713,7 @@ export const createTicketCheckoutCreateHandler = (
             p_booked_start_at: bookedStartAt,
             p_booked_end_at: bookedEndAt,
             p_booked_party_size: partySize,
-            p_payment_plan_choice: paymentPlanChoice,
+            p_payment_plan_choice: quotePaymentPlanChoice,
             p_discount_code: discountCode,
             p_buyer_email: buyerEmail,
             p_buyer_phone_e164: buyerPhoneE164,
@@ -1727,7 +1735,7 @@ export const createTicketCheckoutCreateHandler = (
         p_booked_start_at: bookedStartAt,
         p_booked_end_at: bookedEndAt,
         p_booked_party_size: partySize,
-        p_payment_plan_choice: paymentPlanChoice,
+        p_payment_plan_choice: quotePaymentPlanChoice,
         p_discount_code: discountCode,
         p_buyer_email: buyerEmail,
         p_buyer_phone_e164: buyerPhoneE164,
