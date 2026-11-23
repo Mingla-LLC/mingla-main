@@ -103,8 +103,10 @@ import {
 // eslint-disable-next-line import/first
 import {
   checkoutToSupersede,
+  followableProviderUrl,
   heldCheckoutConfirmPath,
   restoreTripCheckout,
+  sameBuyerAs,
   tripResumeDecision,
 } from "../../../../src/components/checkout/tripCheckoutResume";
 
@@ -440,10 +442,12 @@ describe("#4522 E-3 — Back, change the choice, Pay", () => {
     await TestRenderer.act(async () => second.unmount());
   });
 
-  test("a page kept in memory (back-forward cache) is named too; the screen sends it and goes to confirmation if it was paid", () => {
-    const held = { fingerprint: "cart-A", handoff: { checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" } };
-    expect(checkoutToSupersede(held, null, "cart-A")).toBeNull();
-    expect(checkoutToSupersede(held, null, "cart-B")).toEqual({ checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" });
+  test("a page kept in memory (back-forward cache) is named too; the screen sends it", () => {
+    const cartA = JSON.stringify({ eventId: EVENT, email: "sam@example.test", phone: "+15555550143", lines: [["a", 1, "installments", null, null]] });
+    const cartB = JSON.stringify({ eventId: EVENT, email: "sam@example.test", phone: "+15555550143", lines: [["a", 1, "full", null, null]] });
+    const held = { fingerprint: cartA, handoff: { checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" } };
+    expect(checkoutToSupersede(held, null, cartA)).toBeNull();
+    expect(checkoutToSupersede(held, null, cartB)).toEqual({ checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" });
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs") as { readFileSync: (p: string, e: string) => string };
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -451,12 +455,117 @@ describe("#4522 E-3 — Back, change the choice, Pay", () => {
     const screen = fs.readFileSync(path.join(__dirname, "..", "payment.tsx"), "utf8");
     expect(screen).toContain("supersedesCheckout = checkoutToSupersede(");
     expect(screen).toContain("...(supersedesCheckout !== null ? { supersedesCheckout } : {}),");
-    const paid = screen.indexOf('=== "checkout_already_paid"');
-    expect(paid).toBeGreaterThan(0);
-    expect(screen.slice(paid, paid + 300)).toContain("router.replace(heldCheckoutConfirmPath(tripEventId, supersedesCheckout) as never);");
+    // Pass 5 (F-2) — a held checkout found paid never sends this cart to its
+    // confirmation (that showed the previous buyer's booking to the next one).
+    expect(screen).not.toContain("checkout_already_paid");
+    expect(screen.match(/router\.replace\(heldCheckoutConfirmPath\(/g)?.length).toBe(1);
+    expect(screen).toContain("router.replace(heldCheckoutConfirmPath(tripEventId, resumed) as never);");
     // The confirm screen starts only from `?cs=` and finds the checkout by
     // csi / bst when the resume payload is gone (it rendered nothing before).
     expect(heldCheckoutConfirmPath("trip-1", { checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" }))
       .toBe("/checkout-trip/trip-1/confirm?cs=held&csi=s-mem&bst=t-mem");
+  });
+});
+
+// Pass 5 F-2 — buyer A paid and never came back; buyer B uses the same tab.
+// FAILS ON REVERT: B's different cart named A's checkout, the server answered
+// "already paid" and B was shown A's confirmation (A's email and phone ending),
+// told "You're in" with no payment and no order.
+describe("#4522 pass 5 F-2 — the next buyer in the same tab", () => {
+  const BUYER_B = { name: "Bo Other", email: "bo@example.test", phone: "+15555550199", marketingOptIn: true, termsAccepted: true };
+
+  test("another buyer's held checkout is never named, followed or confirmed; B gets a fresh attempt", async () => {
+    const storage = memoryStorage();
+    const first = await mountCart();
+    const { attemptId: attemptA, fingerprint: fingerprintA } = await payOverTime(storage, V2_TT);
+    await TestRenderer.act(async () => first.unmount());
+    // Same tab, a fresh page: B fills a cart (a different room choice) and their own details.
+    const second = await mountCart();
+    let resumed: ReturnType<typeof restoreTripCheckout> = null;
+    await TestRenderer.act(async () => {
+      cart!.setLineQuantity({ ticketTypeId: V1_TT, ticketName: "Old plan", unitPrice: 800, currency: "USD", isFree: false, quantity: 1, paymentPlanChoice: "full" });
+      cart!.setBuyer(BUYER_B);
+    });
+    await TestRenderer.act(async () => {
+      resumed = restoreTripCheckout(readCheckoutResumePayload(storage, EVENT), cart!, cart!.lines.length === 0);
+    });
+    const fingerprintB = screenFingerprint(cart!);
+    expect(resumed).not.toBeNull();
+    expect(sameBuyerAs(fingerprintA, fingerprintB)).toBe(false);
+    // A's checkout is paid; B is still never sent to its confirmation…
+    const paidStatus = async () => ({ status: "paid_completed", order: { id: "order-A" } });
+    await expect(tripResumeDecision(resumed, fingerprintB, paidStatus)).resolves.toEqual({ kind: "create", forget: false });
+    // …and never names it for closing.
+    expect(checkoutToSupersede(null, resumed, fingerprintB)).toBeNull();
+    // B's create is a new purchase: a new attempt, no reference to A's checkout.
+    const body = await createBody(cart!);
+    expect(body.checkoutAttemptId).not.toBe(attemptA);
+    expect(body.supersedesCheckout).toBeUndefined();
+    expect(body.buyer).toEqual(expect.objectContaining({ email: BUYER_B.email }));
+    // A (same buyer, same cart) re-opening is still sent to their own confirmation.
+    await expect(tripResumeDecision(resumed, fingerprintA, paidStatus)).resolves.toEqual({ kind: "confirm" });
+    // The same buyer with a changed cart still names their own open checkout.
+    const fingerprintA2 = fingerprintA.replace('"installments"', '"full"');
+    expect(checkoutToSupersede(null, resumed, fingerprintA2)).toEqual({ checkoutSessionId: "session-1", buyerStatusToken: "token-1" });
+    await TestRenderer.act(async () => second.unmount());
+  });
+});
+
+// Pass 5 F-1 / F-14 — Back, Pay again unchanged ("in progress"), then change.
+// FAILS ON REVERT: the unchanged Pay dropped the held checkout before its
+// create was answered (409 checkout_in_progress), so the changed Pay named
+// nothing and a second payable page was opened (two orders, two charges).
+describe("#4522 pass 5 F-1 / F-14 — the held checkout survives an unchanged Pay", () => {
+  test("the screen drops the restored checkout only when it is over or replaced", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as { readFileSync: (p: string, e: string) => string };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path") as { join: (...p: string[]) => string };
+    const screen = fs.readFileSync(path.join(__dirname, "..", "payment.tsx"), "utf8");
+    const clears = [...screen.matchAll(/resumedCheckoutRef\.current = null;/g)].map((m) => m.index!);
+    const forget = screen.indexOf("if (decision.forget) {");
+    const replaced = screen.indexOf("setCheckoutSessionId(handoff.checkoutSessionId);");
+    const otherBuyer = screen.indexOf("!sameBuyerAs(resumedCheckoutRef.current.fingerprint, cartFingerprint)");
+    expect(forget).toBeGreaterThan(0);
+    expect(clears.length).toBe(3);
+    // 1: another buyer's checkout (F-2); 2: an over checkout; 3: after a new checkout replaced it
+    expect(clears[0]).toBeGreaterThan(otherBuyer);
+    expect(clears[1]).toBeGreaterThan(forget);
+    expect(clears[1] - forget).toBeLessThan(120);
+    expect(clears[2]).toBeGreaterThan(replaced);
+    expect(screen.indexOf("const checkout = await createTicketCheckout(")).toBeLessThan(clears[2]);
+  });
+
+  test("Back → unchanged Pay → change: the restored checkout is still named after the unchanged Pay", async () => {
+    const storage = memoryStorage();
+    const first = await mountCart();
+    const { fingerprint } = await payOverTime(storage, V2_TT);
+    await TestRenderer.act(async () => first.unmount());
+    const second = await mountCart();
+    let resumed: ReturnType<typeof restoreTripCheckout> = null;
+    await TestRenderer.act(async () => {
+      resumed = restoreTripCheckout(readCheckoutResumePayload(storage, EVENT), cart!, true);
+    });
+    // The unchanged Pay with no followable page asks the server with the same
+    // attempt (which answers "in progress"): the checkout is NOT over.
+    const noPage = { ...resumed!, redirectUrl: null };
+    await expect(tripResumeDecision(noPage, fingerprint, async () => ({ status: "awaiting_web_redirect", order: null })))
+      .resolves.toEqual({ kind: "create", forget: false });
+    // Then the buyer switches to Pay in full: the same restored checkout is named.
+    await TestRenderer.act(async () => {
+      cart!.setLinePaymentPlanChoice(V2_TT, "full");
+    });
+    expect(checkoutToSupersede(null, resumed, screenFingerprint(cart!)))
+      .toEqual({ checkoutSessionId: "session-1", buyerStatusToken: "token-1" });
+    await TestRenderer.act(async () => second.unmount());
+  });
+
+  test("F-14: a local provider page is followed only while the checkout itself runs locally", () => {
+    expect(followableProviderUrl("https://checkout.paystack.com/abc", "https://host.usemingla.com")).toBe(true);
+    expect(followableProviderUrl("http://127.0.0.1:55444/pay/abc", "https://host.usemingla.com")).toBe(false);
+    expect(followableProviderUrl("http://127.0.0.1:55444/pay/abc", "http://127.0.0.1:19460")).toBe(true);
+    expect(followableProviderUrl("http://evil.example/pay", "http://127.0.0.1:19460")).toBe(false);
+    expect(followableProviderUrl("javascript:alert(1)", "http://localhost:19460")).toBe(false);
+    expect(followableProviderUrl("http://localhost.evil.example/x", "http://localhost:19460")).toBe(false);
   });
 });

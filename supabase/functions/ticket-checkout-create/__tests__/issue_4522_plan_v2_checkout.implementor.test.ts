@@ -23,7 +23,11 @@ import {
   tierRowsCarryPlanV2,
   TripPlanV2ContractError,
 } from "../tripPlanV2Contract.ts";
-import { parseSupersedeRequest, supersedeHeldCheckout } from "../supersedeCheckout.ts";
+import {
+  parseSupersedeRequest,
+  supersedeHeldCheckout,
+  supersedeOpenBuyerCheckouts,
+} from "../supersedeCheckout.ts";
 import { fakeSupabase } from "../../_shared/installments/__tests__/issue_3645_fake_supabase.ts";
 
 const source = await Deno.readTextFile(
@@ -201,12 +205,15 @@ Deno.test("W-4 / S-1: a v2 create's review quote prices the lines' own plan choi
 const OLD = "4522e300-0000-4000-8000-000000000001";
 const EVENT = "4522e300-0000-4000-8000-0000000000e1";
 const TOKEN = "t".repeat(64);
+const BUYER = { email: "buyer5@example.test", phoneE164: "+2348000004505" };
 
 function supersedeWorld(opts: {
   provider: "stripe" | "paystack";
   orderId?: string | null;
   status?: string;
   tokenHash?: string;
+  buyerEmail?: string;
+  buyerPhone?: string;
 }) {
   const steps: string[] = [];
   const fake = fakeSupabase({
@@ -215,6 +222,7 @@ function supersedeWorld(opts: {
         return {
           data: {
             id: OLD, event_id: EVENT, buyer_status_token_hash: opts.tokenHash ?? `h:${TOKEN}`,
+            buyer_email: opts.buyerEmail ?? BUYER.email, buyer_phone_e164: opts.buyerPhone ?? BUYER.phoneE164,
             order_id: opts.orderId ?? null, status: opts.status ?? "awaiting_web_redirect", revoked_at: null,
             stripe_account_id: opts.provider === "stripe" ? "acct_1" : null,
             stripe_payment_intent_id: opts.provider === "paystack" ? `mingla_${OLD}` : null,
@@ -265,7 +273,7 @@ const deps = (steps: string[], o: {
 Deno.test("E-3 card provider: the old page is expired at the provider, then revoked, before a new one", async () => {
   const w = supersedeWorld({ provider: "stripe" });
   const out = await supersedeHeldCheckout(w.fake.client as never, EVENT,
-    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, {}));
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, {}), BUYER);
   assertEquals(out, { kind: "superseded" });
   assertEquals(w.steps, [
     `expire:cs_old:ticket_checkout:${OLD}:stripe_checkout:expire:acct_1`,
@@ -280,7 +288,7 @@ Deno.test("E-3 card provider: an old page already paid is never closed; the buye
   const w = supersedeWorld({ provider: "stripe" });
   const out = await supersedeHeldCheckout(w.fake.client as never, EVENT,
     { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
-    deps(w.steps, { expire: () => Promise.reject(new Error("session complete")), retrieve: { status: "complete", paymentStatus: "paid" } }));
+    deps(w.steps, { expire: () => Promise.reject(new Error("session complete")), retrieve: { status: "complete", paymentStatus: "paid" } }), BUYER);
   assertEquals(out, { kind: "paid", checkoutSessionId: OLD });
   assertEquals(w.fake.rpcCalls.length, 0);
 });
@@ -289,43 +297,43 @@ Deno.test("E-3 card provider: an old page that cannot be expired blocks the repl
   const w = supersedeWorld({ provider: "stripe" });
   const out = await supersedeHeldCheckout(w.fake.client as never, EVENT,
     { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
-    deps(w.steps, { expire: () => Promise.reject(new Error("network")) }));
+    deps(w.steps, { expire: () => Promise.reject(new Error("network")) }), BUYER);
   assertEquals(out.kind, "unavailable");
   assertEquals(w.fake.rpcCalls.length, 0);
   // an already-expired page counts as closed
   const w2 = supersedeWorld({ provider: "stripe" });
   assertEquals((await supersedeHeldCheckout(w2.fake.client as never, EVENT,
     { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
-    deps(w2.steps, { expire: () => Promise.reject(new Error("expired")), retrieve: { status: "expired", paymentStatus: "unpaid" } }))).kind,
+    deps(w2.steps, { expire: () => Promise.reject(new Error("expired")), retrieve: { status: "expired", paymentStatus: "unpaid" } }), BUYER)).kind,
     "superseded");
 });
 
 Deno.test("E-3 second provider: verified unpaid → superseded on our side; verified paid → its confirmation", async () => {
   const w = supersedeWorld({ provider: "paystack" });
   assertEquals((await supersedeHeldCheckout(w.fake.client as never, EVENT,
-    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, { paystack: { kind: "failed" } }))).kind, "superseded");
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, { paystack: { kind: "failed" } }), BUYER)).kind, "superseded");
   assertEquals(w.steps, ["paystack_verify", "rpc:issue_4522_supersede_checkout_session"]);
   const paid = supersedeWorld({ provider: "paystack" });
   assertEquals(await supersedeHeldCheckout(paid.fake.client as never, EVENT,
-    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(paid.steps, { paystack: { kind: "finalized" } })),
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(paid.steps, { paystack: { kind: "finalized" } }), BUYER),
     { kind: "paid", checkoutSessionId: OLD });
   assertEquals(paid.fake.rpcCalls.length, 0);
   // paid at the provider but not finalized yet: never closed on a guess
   const racing = supersedeWorld({ provider: "paystack" });
   assertEquals((await supersedeHeldCheckout(racing.fake.client as never, EVENT,
     { checkoutSessionId: OLD, buyerStatusToken: TOKEN },
-    deps(racing.steps, { paystack: { kind: "pending", reason: "finalize_retryable" } }))).kind, "unavailable");
+    deps(racing.steps, { paystack: { kind: "pending", reason: "finalize_retryable" } }), BUYER)).kind, "unavailable");
   assertEquals(racing.fake.rpcCalls.length, 0);
 });
 
 Deno.test("E-3: someone else's token, or a session already paid, closes nothing at the provider", async () => {
   const w = supersedeWorld({ provider: "stripe", tokenHash: "h:other" });
   assertEquals((await supersedeHeldCheckout(w.fake.client as never, EVENT,
-    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, {}))).kind, "not_found");
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, {}), BUYER)).kind, "not_found");
   assertEquals(w.steps, []);
   const paid = supersedeWorld({ provider: "stripe", orderId: "4522e300-0000-4000-8000-0000000000aa" });
   assertEquals((await supersedeHeldCheckout(paid.fake.client as never, EVENT,
-    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(paid.steps, {}))).kind, "paid");
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(paid.steps, {}), BUYER)).kind, "paid");
   assertEquals(paid.steps, []);
   assertEquals(parseSupersedeRequest({ checkoutSessionId: "nope", buyerStatusToken: TOKEN }), null);
   assertEquals(parseSupersedeRequest(undefined), null);
@@ -334,13 +342,13 @@ Deno.test("E-3: someone else's token, or a session already paid, closes nothing 
 Deno.test("E-3 deploy window: on main's database nothing is closed (main's behaviour)", async () => {
   const w = supersedeWorld({ provider: "stripe" });
   assertEquals(await supersedeHeldCheckout(w.fake.client as never, EVENT,
-    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, { ready: false })), { kind: "not_applied" });
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, { ready: false }), BUYER), { kind: "not_applied" });
   assertEquals(w.steps, []);
   assertEquals(w.fake.tableOps.length, 0);
 });
 
 Deno.test("E-3: the create path closes the held checkout before any session or provider call, never on a replay", () => {
-  const close = source.indexOf("const superseded = await supersedeHeldCheckout(");
+  const close = source.indexOf(": await supersedeHeldCheckout(");
   const guard = source.lastIndexOf("resolvedAttempt.data === null", close);
   const replayStart = source.indexOf("\"issue_3859_resolve_checkout_attempt\"");
   const create = source.indexOf("\"biz_ticket_checkout_create_session\",", close);
@@ -348,5 +356,97 @@ Deno.test("E-3: the create path closes the held checkout before any session or p
   const paystackInit = source.indexOf("paystackInitializeTransaction(", close);
   assert(close > replayStart && guard > replayStart && guard < close, "only a fresh attempt closes the held checkout");
   assert(create > close && stripeCreate > close && paystackInit > close, "closed before any new session");
-  assertStringIncludes(source.slice(close, create), 'error: "checkout_already_paid"');
+  // Pass 5 (F-2) — a paid held checkout never blocks the new purchase (and is
+  // never answered for): the create goes on as its own checkout.
+  assert(!source.slice(close, create).includes("checkout_already_paid"));
+  const sweep = source.indexOf("await supersedeOpenBuyerCheckouts(", close);
+  assert(sweep > close && sweep < create, "the buyer's other open pages are closed before a new session");
+});
+
+// ── Pass 5 F-2: another buyer's checkout held by the same tab ──
+// FAILS ON REVERT: the held checkout was answered for (paid → "checkout_already_paid"
+// → that buyer's confirmation shown to the next buyer) or closed.
+Deno.test("F-2: a held checkout of a DIFFERENT buyer is neither closed nor answered for", async () => {
+  for (const other of [{ buyerEmail: "buyer6@example.test" }, { buyerPhone: "+2348000009999" }]) {
+    const paid = supersedeWorld({ provider: "paystack", orderId: "4522e300-0000-4000-8000-0000000000aa", ...other });
+    assertEquals(await supersedeHeldCheckout(paid.fake.client as never, EVENT,
+      { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(paid.steps, {}), BUYER), { kind: "other_buyer" });
+    assertEquals(paid.steps, []);
+    const open = supersedeWorld({ provider: "stripe", ...other });
+    assertEquals((await supersedeHeldCheckout(open.fake.client as never, EVENT,
+      { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(open.steps, {}), BUYER)).kind, "other_buyer");
+    assertEquals(open.steps, []);
+    assertEquals(open.fake.rpcCalls.length, 0);
+  }
+  // the same buyer, case and spacing aside, is the same buyer
+  const same = supersedeWorld({ provider: "stripe", buyerEmail: " Buyer5@Example.test " });
+  assertEquals((await supersedeHeldCheckout(same.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(same.steps, {}), BUYER)).kind, "superseded");
+});
+
+// ── Pass 5 F-1: the server closes the buyer's open pages, whatever the browser remembered ──
+// FAILS ON REVERT: a create whose request carried no supersedesCheckout (the
+// browser lost it after an unchanged Pay answered "in progress") opened a
+// second payable page; both were paid → two orders, two charges.
+function sweepWorld(rows: Array<Record<string, unknown>>, attempts: Record<string, Record<string, unknown> | null>) {
+  const steps: string[] = [];
+  const fake = fakeSupabase({
+    table: (op) => {
+      if (op.table === "ticket_checkout_sessions") return { data: rows, error: null };
+      if (op.table === "ticket_checkout_provider_attempts") {
+        const id = String(op.filters.find((f) => f[1] === "checkout_session_id")?.[2] ?? "");
+        return { data: attempts[id] ?? null, error: null };
+      }
+      return { data: null, error: null };
+    },
+    rpc: (name, args) => {
+      steps.push(`rpc:${name}:${String(args.p_checkout_session_id)}:${String(args.p_buyer_status_token_hash)}`);
+      return { data: { outcome: "superseded" }, error: null };
+    },
+  });
+  return { fake, steps };
+}
+const sessionRow = (id: string, extra: Record<string, unknown> = {}) => ({
+  id, event_id: EVENT, buyer_status_token_hash: `hash-${id}`, buyer_email: BUYER.email,
+  buyer_phone_e164: BUYER.phoneE164, order_id: null, status: "awaiting_web_redirect", revoked_at: null,
+  stripe_account_id: null, stripe_payment_intent_id: `mingla_${id}`, ...extra,
+});
+const PS = { provider: "paystack", flow: "paystack_redirect", provider_checkout_id: null, provider_idempotency_key: "k" };
+
+Deno.test("F-1: a create with NO named checkout still closes the same buyer's open second-provider page", async () => {
+  const A = "4522f100-0000-4000-8000-000000000001";
+  const w = sweepWorld([sessionRow(A)], { [A]: PS });
+  const out = await supersedeOpenBuyerCheckouts(w.fake.client as never, EVENT, BUYER, deps(w.steps, {}), null);
+  assertEquals(out, { closed: [A] });
+  // verified unpaid at the provider first, then revoked with the row's own token hash
+  assertEquals(w.steps, ["paystack_verify", `rpc:issue_4522_supersede_checkout_session:${A}:hash-${A}`]);
+  const q = w.fake.tableOps[0];
+  assertEquals(q.filters.filter((f) => f[0] === "eq").map((f) => f[1]).sort(), ["buyer_email", "buyer_phone_e164", "event_id"]);
+  assert(q.filters.some((f) => f[0] === "is" && f[1] === "order_id" && f[2] === null));
+  assert(q.filters.some((f) => f[0] === "is" && f[1] === "revoked_at" && f[2] === null));
+});
+
+Deno.test("F-1: never another buyer's page, never a session with no provider page, a paid one is left; an unclosable one stops the create", async () => {
+  const A = "4522f100-0000-4000-8000-000000000002";
+  const B = "4522f100-0000-4000-8000-000000000003";
+  const C = "4522f100-0000-4000-8000-000000000004";
+  const w = sweepWorld(
+    [sessionRow(A, { buyer_email: "someone@example.test" }), sessionRow(B), sessionRow(C)],
+    { [A]: PS, [B]: null, [C]: PS },
+  );
+  const out = await supersedeOpenBuyerCheckouts(w.fake.client as never, EVENT, BUYER,
+    deps(w.steps, { paystack: { kind: "finalized" } }), null);
+  assertEquals(out, { closed: [] });
+  assertEquals(w.fake.rpcCalls.length, 0);
+  const stuck = sweepWorld([sessionRow(C)], { [C]: PS });
+  assertEquals((await supersedeOpenBuyerCheckouts(stuck.fake.client as never, EVENT, BUYER,
+    deps(stuck.steps, { paystack: { kind: "pending", reason: "finalize_retryable" } }), null) as { kind?: string }).kind, "unavailable");
+  const card = sweepWorld([sessionRow(C, { stripe_account_id: "acct_1" })],
+    { [C]: { provider: "stripe", flow: "stripe_checkout", provider_checkout_id: "cs_c", provider_idempotency_key: "kc" } });
+  assertEquals(await supersedeOpenBuyerCheckouts(card.fake.client as never, EVENT, BUYER, deps(card.steps, {}), null), { closed: [C] });
+  assertEquals(card.steps[0], "expire:cs_c:kc:expire:acct_1");
+  // deploy window: main's behaviour, nothing read
+  const main = sweepWorld([sessionRow(C)], { [C]: PS });
+  assertEquals(await supersedeOpenBuyerCheckouts(main.fake.client as never, EVENT, BUYER, deps(main.steps, { ready: false }), null), { kind: "not_applied" });
+  assertEquals(main.fake.tableOps.length, 0);
 });

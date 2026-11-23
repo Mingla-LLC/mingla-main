@@ -92,6 +92,7 @@ import {
 import {
   checkoutToSupersede,
   heldCheckoutConfirmPath,
+  sameBuyerAs,
   restoreTripCheckout,
   tripResumeDecision,
   type ResumedTripCheckout,
@@ -546,6 +547,21 @@ function CheckoutTripPaymentScreenContent({
           // refuses a duplicate create with 409 and it is right to: a second
           // create for a cart with a live provider attempt is never what the
           // guest wants. Re-following the URL we were already given is.
+          // Pass 5 (F-2) — a checkout this tab holds for ANOTHER buyer (the
+          // last person to pay here never came back) is simply forgotten: it
+          // is theirs, it is never closed, followed or confirmed for this one.
+          if (
+            providerHandoffRef.current !== null &&
+            !sameBuyerAs(providerHandoffRef.current.fingerprint, cartFingerprint)
+          ) {
+            providerHandoffRef.current = null;
+          }
+          if (
+            resumedCheckoutRef.current !== null &&
+            !sameBuyerAs(resumedCheckoutRef.current.fingerprint, cartFingerprint)
+          ) {
+            resumedCheckoutRef.current = null;
+          }
           const held = providerHandoffRef.current;
           supersedesCheckout = checkoutToSupersede(
             held,
@@ -580,8 +596,14 @@ function CheckoutTripPaymentScreenContent({
               setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
               return;
             }
-            if (decision.forget) resetCheckoutAttempt();
-            resumedCheckoutRef.current = null;
+            // Pass 5 (F-1) — an over (expired / failed) checkout is dropped
+            // now; otherwise it stays held until a new checkout replaces it,
+            // so a create answered "in progress" never loses it and the next
+            // changed cart still names it.
+            if (decision.forget) {
+              resetCheckoutAttempt();
+              resumedCheckoutRef.current = null;
+            }
           }
           // createTicketCheckout is event_type-agnostic — the RPC
           // biz_ticket_checkout_create_session branches on v_event.event_type='trip'.
@@ -623,6 +645,8 @@ function CheckoutTripPaymentScreenContent({
             throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
           }
           setCheckoutSessionId(handoff.checkoutSessionId);
+          // The new checkout replaces the one restored from before the reload.
+          resumedCheckoutRef.current = null;
           // Remember it BEFORE navigating: if the redirect cannot run, the next
           // Pay tap re-follows this URL rather than creating a second checkout.
           providerHandoffRef.current = {
@@ -660,16 +684,10 @@ function CheckoutTripPaymentScreenContent({
           setProcessing(false);
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
         } catch (error) {
-          // issue #4522 E-3 — the checkout this cart was handed was paid
-          // before the change: that booking stands, so show its confirmation
-          // (the saved resume payload is that checkout) and open nothing new.
-          if (
-            (error as { code?: unknown } | null)?.code === "checkout_already_paid" &&
-            supersedesCheckout !== null
-          ) {
-            router.replace(heldCheckoutConfirmPath(tripEventId, supersedesCheckout) as never);
-            return;
-          }
+          // Pass 5 (F-2) — a held checkout found paid is never a reason to show
+          // its confirmation for a different cart: the server opens the new
+          // purchase as its own checkout (only an unchanged cart of the same
+          // buyer goes to its confirmation, through tripResumeDecision above).
           setProcessing(false);
           const review =
             await import("../../../src/services/ticketCheckoutReview").then(

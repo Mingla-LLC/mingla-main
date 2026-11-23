@@ -72,6 +72,49 @@ export interface TripResumeCart {
   restoreCheckoutAttempt: (attempt: HeldCheckoutAttempt) => void;
 }
 
+/**
+ * Only an https provider page is followed back out of storage. Pass 5 (F-14)
+ * — a page served from this machine (http://localhost or 127.0.0.1) is
+ * followed only while this checkout itself runs on this machine (a local
+ * build against a local provider stand-in); a deployed checkout (https)
+ * follows https pages only, exactly as before.
+ */
+const LOOPBACK_HTTP = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/;
+export function followableProviderUrl(url: string, origin: string | null): boolean {
+  if (url.startsWith("https://")) return true;
+  return origin !== null && LOOPBACK_HTTP.test(origin) && LOOPBACK_HTTP.test(url);
+}
+
+function pageOrigin(): string | null {
+  const origin = (globalThis as { location?: { origin?: unknown } }).location?.origin;
+  return typeof origin === "string" ? origin : null;
+}
+
+/**
+ * Pass 5 (F-2) — the buyer (email and phone) a Review & pay fingerprint was
+ * made for; null when it cannot be read. Two fingerprints with different
+ * buyers are two people: one's checkout is never closed, followed or
+ * confirmed for the other.
+ */
+export function fingerprintBuyer(fingerprint: string | null): { email: string; phone: string } | null {
+  if (fingerprint === null) return null;
+  try {
+    const parsed = JSON.parse(fingerprint) as { email?: unknown; phone?: unknown };
+    return typeof parsed.email === "string" && typeof parsed.phone === "string"
+      ? { email: parsed.email.trim().toLowerCase(), phone: parsed.phone.trim() }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether a held checkout's fingerprint is for the buyer on screen now. */
+export function sameBuyerAs(heldFingerprint: string | null, cartFingerprint: string): boolean {
+  const held = fingerprintBuyer(heldFingerprint);
+  const now = fingerprintBuyer(cartFingerprint);
+  return held !== null && now !== null && held.email === now.email && held.phone === now.phone;
+}
+
 /** The checkout this cart was already handed, as saved before the redirect. */
 export interface ResumedTripCheckout {
   checkoutSessionId: string;
@@ -125,7 +168,7 @@ export function restoreTripCheckout(
     ? handoff.fingerprint
     : null;
   const redirectUrl = fingerprint !== null && typeof handoff?.redirectUrl === "string" &&
-      handoff.redirectUrl.startsWith("https://")
+      followableProviderUrl(handoff.redirectUrl, pageOrigin())
     ? handoff.redirectUrl
     : null;
   return {
@@ -187,6 +230,8 @@ export async function tripResumeDecision(
  * issue #4522 E-3 — the checkout to close before a new one is opened: the one
  * this cart was handed (in memory, or restored after a reload) when the cart
  * has CHANGED since. An unchanged cart re-follows or replays it instead.
+ * Pass 5 (F-2) — only the SAME buyer's: another buyer's checkout held by this
+ * tab is never named (the caller forgets it; the server never closes it).
  */
 export function checkoutToSupersede(
   held: {
@@ -196,13 +241,16 @@ export function checkoutToSupersede(
   resumed: ResumedTripCheckout | null,
   cartFingerprint: string,
 ): { checkoutSessionId: string; buyerStatusToken: string } | null {
-  if (held !== null && held.fingerprint !== cartFingerprint) {
+  if (held !== null && held.fingerprint !== cartFingerprint && sameBuyerAs(held.fingerprint, cartFingerprint)) {
     return {
       checkoutSessionId: held.handoff.checkoutSessionId,
       buyerStatusToken: held.handoff.buyerStatusToken,
     };
   }
-  if (resumed !== null && resumed.fingerprint !== cartFingerprint) {
+  if (
+    resumed !== null && resumed.fingerprint !== cartFingerprint &&
+    sameBuyerAs(resumed.fingerprint, cartFingerprint)
+  ) {
     return {
       checkoutSessionId: resumed.checkoutSessionId,
       buyerStatusToken: resumed.buyerStatusToken,

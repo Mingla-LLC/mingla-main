@@ -89,7 +89,9 @@ import {
 import { resolvePaystackTicketReturn } from "../_shared/paystackTicketReturnVerify.ts";
 import {
   parseSupersedeRequest,
+  type SupersedeDeps,
   supersedeHeldCheckout,
+  supersedeOpenBuyerCheckouts,
 } from "./supersedeCheckout.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 // Issue #3872 — explicit order totals written from the breakdown whose total is
@@ -2305,70 +2307,80 @@ export const createTicketCheckoutCreateHandler = (
     // issue #4522 E-3 — one cart, one payable checkout. A buyer back from the
     // provider page with a CHANGED cart names the checkout they were handed;
     // it is closed (a card page expired at the provider first) before this
-    // one is opened. Already paid → that checkout's confirmation, nothing new.
-    // A replay of the same attempt (resolvedAttempt.data) is never closed.
+    // one is opened. A replay of the same attempt (resolvedAttempt.data) is
+    // never closed.
     const supersedeRequest = parseSupersedeRequest(body.supersedesCheckout);
+    // Pass 5 (F-1) — on a fresh v2 attempt every open provider page of the
+    // same buyer (email + phone) for this event is closed first, whether or
+    // not the browser still named it; a held checkout of another buyer is
+    // never closed or answered for (F-2). A paid one needs nothing: the new
+    // purchase goes on as its own checkout.
     if (
-      supersedeRequest !== null && resolvedAttempt.error === null &&
-      resolvedAttempt.data === null
+      isCheckoutV2 && tripGateRow?.event_type === "trip" &&
+      resolvedAttempt.error === null && resolvedAttempt.data === null
     ) {
-      const superseded = await supersedeHeldCheckout(
-        supabase,
-        eventId,
-        supersedeRequest,
-        {
-          planV2Ready: () => planV2SchemaAvailable(supabase),
-          sha256Hex,
-          expireStripeCheckout: async (input) => {
-            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-            await stripeTicketCheckout().checkout.sessions.expire(
-              input.checkoutSessionId,
-              {},
-              {
-                stripeAccount: input.stripeAccountId,
-                idempotencyKey: input.idempotencyKey,
-              },
-            );
-          },
-          retrieveStripeCheckout: async (input) => {
-            // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
-            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-            const read = await stripeTicketCheckout().checkout.sessions.retrieve(
-              input.checkoutSessionId,
-              {},
-              { stripeAccount: input.stripeAccountId },
-            );
-            return {
-              status: typeof read?.status === "string" ? read.status : null,
-              paymentStatus: typeof read?.payment_status === "string"
-                ? read.payment_status
-                : null,
-            };
-          },
-          resolvePaystackReturn: (session) =>
-            resolvePaystackTicketReturn(
-              supabase,
-              session,
-              paystackVerifyTransaction,
-            ),
+      const supersedeBuyer = { email: buyerEmail, phoneE164: buyerPhoneE164 };
+      const supersedeDeps: SupersedeDeps = {
+        planV2Ready: () => planV2SchemaAvailable(supabase),
+        sha256Hex,
+        expireStripeCheckout: async (input) => {
+          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+          await stripeTicketCheckout().checkout.sessions.expire(
+            input.checkoutSessionId,
+            {},
+            {
+              stripeAccount: input.stripeAccountId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          );
         },
-      );
-      if (superseded.kind === "paid") {
-        return jsonResponse(
-          {
-            error: "checkout_already_paid",
-            checkoutSessionId: superseded.checkoutSessionId,
-          },
-          409,
+        retrieveStripeCheckout: async (input) => {
+          // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+          const read = await stripeTicketCheckout().checkout.sessions.retrieve(
+            input.checkoutSessionId,
+            {},
+            { stripeAccount: input.stripeAccountId },
+          );
+          return {
+            status: typeof read?.status === "string" ? read.status : null,
+            paymentStatus: typeof read?.payment_status === "string"
+              ? read.payment_status
+              : null,
+          };
+        },
+        resolvePaystackReturn: (session: { id: string; stripe_payment_intent_id: string | null }) =>
+          resolvePaystackTicketReturn(
+            supabase,
+            session,
+            paystackVerifyTransaction,
+          ),
+      };
+      const superseded = supersedeRequest === null
+        ? null
+        : await supersedeHeldCheckout(
+          supabase,
+          eventId,
+          supersedeRequest,
+          supersedeDeps,
+          supersedeBuyer,
         );
-      }
-      if (superseded.kind === "unavailable") {
+      const swept = superseded?.kind === "unavailable"
+        ? superseded
+        : await supersedeOpenBuyerCheckouts(
+          supabase,
+          eventId,
+          supersedeBuyer,
+          supersedeDeps,
+          null,
+        );
+      if ("kind" in swept && swept.kind === "unavailable") {
         console.error(
           "[ticket-checkout-create] held checkout not closed",
-          superseded.reason,
+          swept.reason,
         );
         return jsonResponse(
-          { error: "checkout_replace_unavailable", detail: superseded.reason },
+          { error: "checkout_replace_unavailable", detail: swept.reason },
           503,
         );
       }
