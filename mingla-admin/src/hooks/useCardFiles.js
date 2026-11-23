@@ -56,13 +56,13 @@ export function useOpenFile() {
  * Upload a list of files to a card. Each is checked before anything is sent
  * (type, 25 MB); a failed one stays in `pending` with Retry.
  */
-export function useCardUploads(cardId, onDone) {
+export function useCardUploads(cardId, onDone, { record = false } = {}) {
   const { addToast } = useToast();
   const [pending, setPending] = useState([]);
   const send = async (item) => {
     setPending((list) => list.map((p) => (p.key === item.key ? { ...p, state: "sending", error: "" } : p)));
     try {
-      const row = await ops.uploadCardFile(cardId, item.file, { kind: fileKind(item.file), mime: fileMime(item.file), key: item.key });
+      const row = await ops.uploadCardFile(cardId, item.file, { kind: fileKind(item.file), mime: fileMime(item.file), key: item.key, record });
       setPending((list) => list.filter((p) => p.key !== item.key));
       return row;
     } catch (error) {

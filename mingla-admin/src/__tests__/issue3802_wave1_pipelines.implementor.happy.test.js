@@ -468,6 +468,14 @@ describe("#3802 P-8: source contracts", () => {
       "crm_beta_leads_list",
       "crm_config",
       "crm_contact_check",
+      // #4571 W4: Needs linking and a person's demo link decisions.
+      "crm_demo_create_record",
+      "crm_demo_inbox",
+      "crm_demo_inbox_count",
+      "crm_demo_link",
+      "crm_demo_not_a_host",
+      "crm_demo_suggestions",
+      "crm_demo_unlink",
       "crm_duplicate_check",
       "crm_home_summary",
       "crm_link_search",
@@ -485,6 +493,23 @@ describe("#3802 P-8: source contracts", () => {
       "crm_team_summary",
       // #4130: the Team dashboard's row of numbers (read-only, owner and admin).
       "crm_team_pulse",
+      // #4571 W3: people on a card, its Work, My calls today, follower counts.
+      "crm_record_set_people",
+      "crm_record_work",
+      "crm_calls_queue",
+      "crm_identifier_set_followers",
+      // #4571 W6: archive and merge, the duplicate pairs, the weekly numbers, the nightly sweep panel.
+      "crm_record_archive",
+      "crm_record_unarchive",
+      "crm_records_archived_list",
+      "crm_record_merge",
+      "crm_record_unmerge",
+      "crm_record_merges_json",
+      "crm_duplicate_pairs",
+      "crm_outreach_numbers",
+      "crm_cadence_sweep_status",
+      "crm_cadence_sweep_preview",
+      "crm_cadence_sweep_configure",
     ].sort());
     // Bulk add is for the agent connector (a later wave); the screen never calls it.
     assert.ok(!SERVICE.includes("crm_records_bulk_create"));
@@ -756,7 +781,7 @@ describe("#3802 P-12: duplicates, counts, owners, order", () => {
 // detail coverage to this already registered CRM suite. CI registration remains
 // self-contained; no workflow or frozen discovery baseline is edited.
 describe("#3802 P-13: imported ClickUp context", () => {
-  const drawer = read("components/crm/RecordDrawer.jsx");
+  const drawer = read("components/crm/RecordPanel.jsx");
   const migration = read("../../supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql");
 
   it("shows imported source cards only when a detail response contains them", () => {

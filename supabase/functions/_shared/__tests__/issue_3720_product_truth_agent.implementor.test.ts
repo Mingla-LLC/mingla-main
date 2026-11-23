@@ -27,7 +27,8 @@ function request(id: number, method: string, params: Record<string, unknown>) {
 }
 
 Deno.test("#3720 Product Truth tool is an additive, permission-scoped connector extension", () => {
-  assertEquals(TEAM_AGENT_TOOLS.length, 26);
+  // #4571 W6b added log_emails.
+  assertEquals(TEAM_AGENT_TOOLS.length, 27);
   assertEquals(TEAM_AGENT_PRODUCT_TRUTH_TOOLS.map((tool) => tool.name), [
     "find_capabilities",
   ]);

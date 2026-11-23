@@ -14,6 +14,9 @@ import { useCallback, useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { AlertCard } from "../components/ui/Card";
 import { LeadsList } from "../components/leads/LeadsList";
+import { DemosToLink } from "../components/leads/DemosToLink";
+import { useAuth } from "../context/AuthContext";
+import { canOpenPage } from "../lib/access";
 import { useHashQuery } from "../hooks/useHashQuery";
 import { formatDate } from "../lib/formatters";
 import { quietWarning } from "../lib/inboundLeads";
@@ -21,6 +24,8 @@ import { quietWarning } from "../lib/inboundLeads";
 export function InboundLeadsPage() {
   const [search, setSearch] = useHashQuery("inbound");
   const [quiet, setQuiet] = useState(null);
+  const { access } = useAuth();
+  const canLinkDemos = canOpenPage(access, "hosts");
   const onCan = useCallback((_can, page) => {
     // The quiet-leads warning reads as_of and the newest last_seen_at.
     const rows = Array.isArray(page?.rows) ? page.rows : [];
@@ -38,6 +43,8 @@ export function InboundLeadsPage() {
           {quiet.lastAt ? `The last one arrived on ${formatDate(quiet.lastAt)}. ` : ""}Check the forms and free tools are still reachable and promoted.
         </AlertCard>
       )}
+      {/* #4571 W4: booked demos waiting for a host card (people with Hosts and Creators). */}
+      {canLinkDemos && <DemosToLink />}
       <LeadsList search={search} onSearch={(next) => setSearch(next, { replace: true })} onCan={onCan} />
     </div>
   );

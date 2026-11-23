@@ -28,6 +28,26 @@ export function useCalendarCalls(fromIso, toIso, showTest) {
   });
 }
 
+// #4571 W5 (the Week view): the scheduled call-backs and the Work due for the
+// days on screen. Read only while the Week view is open.
+export function useCalendarCallbacks(from, to, enabled = true) {
+  const { access } = useAuth();
+  return useOpsPoll(() => ops.fetchCalendarCallbacks(from, to), {
+    key: `${access?.email || ""}|callbacks|${from}|${to}`,
+    intervalMs: 60_000,
+    enabled: enabled && !!from && !!to,
+  });
+}
+
+export function useCalendarWorkDue(from, to, enabled = true) {
+  const { access } = useAuth();
+  return useOpsPoll(() => ops.fetchCalendarWorkDue(from, to), {
+    key: `${access?.email || ""}|workdue|${from}|${to}`,
+    intervalMs: 60_000,
+    enabled: enabled && !!from && !!to,
+  });
+}
+
 // The runway list's last answer per signed-in person, kept across remounts so
 // Back to runway shows the rows (and can focus the one that opened the panel)
 // at once instead of a loading state.

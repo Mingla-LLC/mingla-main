@@ -100,6 +100,8 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "set_owners",
     "log_activity",
     "record_reply",
+    // #4571 W6b: the log_emails connector tool (growth and admin alike).
+    "log_emails",
     "save_drafts",
     "update_draft",
     "list_drafts",
@@ -129,6 +131,8 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "set_owners",
     "log_activity",
     "record_reply",
+    // #4571 W6b: the log_emails connector tool (growth and admin alike).
+    "log_emails",
     "save_drafts",
     "update_draft",
     "list_drafts",

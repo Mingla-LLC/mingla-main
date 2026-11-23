@@ -465,15 +465,21 @@ begin
       not exists (
         select 1 from jsonb_array_elements(v_agent #> '{result,records}') a
         join jsonb_array_elements(v_screen -> 'records') s on s ->> 'id' = a ->> 'id'
-        where (a - 'last_touch' - 'last_reply') is distinct from s));
+        -- #4571 W3: the screen's record carries its own last_touch (who by name, channel,
+        -- outcome); the agent's is the same touch with more of it, so both name one touch.
+        where (a - 'last_touch' - 'last_reply') is distinct from (s - 'last_touch')
+           or (a #>> '{last_touch,at}') is distinct from (s #>> '{last_touch,at}')
+           or (a #>> '{last_touch,channel}') is distinct from (s #>> '{last_touch,channel}')));
     perform pg_temp.t3802ta_ok('TA-4', w || ': no deleted record is found',
       not exists (select 1 from jsonb_array_elements(v_agent #> '{result,records}') a
                    join public.crm_records c on c.id = (a ->> 'id')::uuid where c.deleted_at is not null));
     v_drafts := pg_temp.t3802ta_as(w, $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
     v_other := case w when 'growth' then 'partner' when 'partner' then 'admin' when 'admin' then 'owner' else 'growth' end;
     v_other_drafts := pg_temp.t3802ta_as(v_other, $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
+    -- #4571 W3: my_day also says how many hosts are on this person's My calls today.
     v_screen := pg_temp.t3802ta_as(w, $q$select public.crm_home_summary(null)::text$q$)::jsonb
-      || jsonb_build_object('drafts_waiting', v_drafts);
+      || jsonb_build_object('drafts_waiting', v_drafts)
+      || jsonb_build_object('calls_due', (pg_temp.t3802ta_as(w, $q$select public.crm_calls_queue(null)::text$q$)::jsonb)->'count');
     v_agent := pg_temp.t3802ta_gw(w || '.claude', 'my_day')::jsonb;
     perform pg_temp.t3802ta_ok('TA-4', w || ': "my day" is the screen plus only this person''s draft count and no draft text',
       v_agent -> 'result' = v_screen
@@ -930,14 +936,18 @@ begin
   v_drafts := pg_temp.t3802ta_as('partner', $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
   v_other_drafts := pg_temp.t3802ta_as('owner', $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
   v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_east))::jsonb
-    || jsonb_build_object('drafts_waiting', v_drafts);
+    || jsonb_build_object('drafts_waiting', v_drafts)
+    -- #4571 W3: and the person's calls due on that day.
+    || jsonb_build_object('calls_due', (pg_temp.t3802ta_as('partner', format('select public.crm_calls_queue(%L)::text', d_east))::jsonb)->'count');
   perform pg_temp.t3802ta_ok('TA-10', 'east of the date line the agent matches its person''s screen and private count only',
     v_east -> 'result' = v_screen
     and (v_east #>> '{result,drafts_waiting}')::integer = v_drafts
     and v_drafts <> v_other_drafts
     and v_east::text not like '%Issue3802ta private draft%');
   v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_west))::jsonb
-    || jsonb_build_object('drafts_waiting', v_drafts);
+    || jsonb_build_object('drafts_waiting', v_drafts)
+    -- #4571 W3: and the person's calls due on that day.
+    || jsonb_build_object('calls_due', (pg_temp.t3802ta_as('partner', format('select public.crm_calls_queue(%L)::text', d_west))::jsonb)->'count');
   perform pg_temp.t3802ta_ok('TA-10', 'west of it too, with no other person''s count or any draft text',
     v_west -> 'result' = v_screen
     and (v_west #>> '{result,drafts_waiting}')::integer = v_drafts

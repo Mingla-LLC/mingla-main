@@ -55,12 +55,24 @@
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below
 -- check growth only for admin areas and accept the team_manage gate.
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/"`
+-- #4571 W3: the pr3 self-check also checks the four new client functions, the three new internal helpers and crm_record_watchers.
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql | sed "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'crm_team_pulse'/" | sed -e "s/admin_team_role_areas('partner')/admin_team_role_areas('growth')/g" -e "s/prosrc !~ 'admin_team_role/prosrc !~ 'team_manage|admin_team_role/" | sed -e "s/^    'public.crm_contact_check(text,jsonb)'$/    'public.crm_contact_check(text,jsonb)', 'public.crm_record_set_people(uuid,text\\[\\],text\\[\\],timestamp with time zone)', 'public.crm_record_work(uuid)', 'public.crm_calls_queue(date)', 'public.crm_identifier_set_followers(uuid,integer)', 'public.crm_demo_suggestions(uuid)', 'public.crm_demo_link(uuid,uuid,text)', 'public.crm_demo_create_record(uuid)', 'public.crm_demo_not_a_host(uuid)', 'public.crm_demo_unlink(uuid)', 'public.crm_demo_inbox()', 'public.crm_demo_inbox_count()', 'public.crm_records_archived_list(text)', 'public.crm_record_archive(uuid,text)', 'public.crm_record_unarchive(uuid)', 'public.crm_record_merge(uuid,uuid,text)', 'public.crm_record_unmerge(uuid)', 'public.crm_record_merges_json(uuid)', 'public.crm_duplicate_pairs(text)', 'public.crm_email_log_ingest(text,jsonb)', 'public.crm_outreach_numbers(date,date)', 'public.crm_cadence_state(uuid)', 'public.crm_cadence_sweep_status(uuid)', 'public.crm_cadence_sweep_preview()', 'public.crm_cadence_sweep_configure(text,uuid,text\\[\\],date)'/" -e "s/^    'public.admin_team_directory()',$/    'public.admin_team_directory()', 'public.crm_4571_people_overlap(uuid,text\\[\\],text\\[\\])', 'public.crm_notify_watchers(uuid,uuid,text,text,text)', 'public.crm_record_work_ids(uuid)', 'public.crm_record_has_demo(uuid)', 'public.crm_4571_demo_move_ok(uuid,text,text,text,timestamp with time zone)', 'public.crm_demo_stage_allowed(uuid,text)', 'public.crm_4571_demo_stage_guard()', 'public.crm_record_demos_json(uuid)', 'public.crm_demo_gate(public.crm_records)', 'public.crm_demo_needs_linking(uuid)', 'public.crm_demo_calendar_bits(uuid)', 'public.crm_4571_demo_candidates(uuid,text)', 'public.crm_4571_demo_link_core(public.book_call_leads,public.crm_records,text,text,text)', 'public.crm_demo_link_from_token(text,uuid)', 'public.crm_4571_demo_booking(uuid)', 'public.crm_4571_booking_icp(text)', 'public.crm_4571_w6_json(public.crm_records)', 'public.crm_4571_person_ctx()', 'public.crm_4571_email_of(text)', 'public.crm_4571_stage_at(uuid,timestamp with time zone)', 'public.crm_4571_suggest_replied(public.crm_records)', 'public.crm_4571_numbers_row(integer,integer,integer,integer,integer,integer)', 'public.crm_4571_cadence_config()', 'public.crm_4571_working_days_after(date,integer)', 'public.crm_4571_cadence(public.crm_records,date)', 'public.crm_4571_system_move(uuid,text,text,text)', 'public.crm_cadence_sweep(boolean,text)', 'public.crm_cadence_sweep_cron()', 'public.crm_4571_sweep_reader()', 'public.crm_4571_stage_move_ok(uuid,text,text,text,timestamp with time zone,uuid)', 'public.crm_4571_stage_refusal(text)',/" -e "s/^    'public.crm_import_receipts'$/    'public.crm_import_receipts', 'public.crm_record_watchers', 'public.crm_record_demos', 'public.crm_record_merges', 'public.crm_email_log', 'public.crm_cadence_sweep_runs', 'public.crm_cadence_sweep_actions'/"`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
 -- ===========================================================================
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
+-- #4571 W4: this suite proves brand linking and Live, which predate the Demo
+-- booked rule; the rule (tested in issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql
+-- and, for the brand path, issue_3980_synced_w3.implementor.happy.pg17.test.sql)
+-- is answered yes inside this rolled-back transaction only.
+create or replace function public.crm_4571_demo_move_ok(p_record_id uuid, p_pipeline text, p_from text, p_to text, p_exempt_at timestamptz) returns boolean
+language sql stable set search_path = '' as $ov$ select true $ov$;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 
@@ -465,10 +477,13 @@ begin
     pg_temp.t3802w_as('growth', $q$select public.crm_records_list('venues')::text$q$), 'ERR:22023:invalid_pipeline:%');
   perform pg_temp.t3802w_check('W1-1', 'list: shape',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(pg_temp.t3802w_as('partner', $q$select public.crm_records_list('hosts')::text$q$))) k),
-    'pipeline,records,truncated');
+    'archived_count,pipeline,records,truncated');
   perform pg_temp.t3802w_check('W1-1', 'record: exactly the documented keys',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, pg_temp.t3802w_id('base')))) -> 'record') k),
-    'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at');
+    -- #4571 W3: the card carries its watchers, last touch and open Work count.
+    -- #4571 W4: a host carries demo_gate and next_demo.
+    -- #4571 W6: archive state, merged_into, suggest_replied and cadence.
+    'agreement,archived_at,archived_by,archived_reason,beta_lead_id,brand_id,brand_name,cadence,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,demo_gate,due_on,followers,icp,id,identifiers,last_touch,last_touch_at,merged_into,name,next_action,next_demo,open_work,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,suggest_replied,touch_count,updated_at,watchers,went_live_at');
 end;
 $w1$;
 
@@ -1269,7 +1284,9 @@ begin
       where l.action like 'crm.%' and l.admin_email <> 'system'
         and not exists (select 1 from t3802w_people p where p.email = l.admin_email)), '0');
   perform pg_temp.t3802w_check('W1-10', 'no pipeline row was written by a person as the system',
-    (select count(*)::text from public.admin_audit_log l where l.action like 'crm.%' and l.admin_email = 'system' and l.action <> 'crm.stage_auto_live'), '0');
+    (select count(*)::text from public.admin_audit_log l where l.action like 'crm.%' and l.admin_email = 'system' and l.action <> 'crm.stage_auto_live'
+       -- #4571 W4: the migration's grandfathering count and a booking that links itself are the system's own.
+       and l.action not in ('crm.demo_rule_grandfathered', 'crm.demo_link')), '0');
 end;
 $w10$;
 
@@ -1357,14 +1374,17 @@ begin
   r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, v_id));
   perform pg_temp.t3802w_check('W1-11', 'record view: log entry keys',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r) #> '{activity,0}') k),
-    'actor_email,actor_name,body,channel,direction,from_stage,id,kind,message_ref,occurred_at,reply_class,to_stage,via');
+    -- #4571 W2: a call carries its outcome and length; every entry its stage_at.
+    'actor_email,actor_name,body,channel,direction,duration_seconds,from_stage,id,kind,message_ref,occurred_at,outcome,reply_class,stage_at,to_stage,via');
   perform pg_temp.t3802w_check('W1-11', 'record view: newest first, the dated reply last but one',
     (select string_agg(coalesce(a->>'body', a->>'reply_class'), ' < ' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'activity') with ordinality x(a, o)),
     'clock skew < Sent the intro. < Added to the pipeline. < interested');
   -- [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 appends one safe,
   -- read-only imports key to record details; the record/list shapes stay exact.
   perform pg_temp.t3802w_check('W1-11', 'record view: top-level keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r)) k), 'activity,imports,links,record,undoable_activity_id');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r)) k), -- #4571 W3: and the record's files (the Work card files model).
+    -- #4571 W4: a host's read carries its demos and its scheduler token.
+    'activity,demos,files,imports,links,record,schedule_token,undoable_activity_id');
 end;
 $w11$;
 
@@ -1518,7 +1538,15 @@ declare
     'crm_record_set_owners(uuid,text[])', 'crm_record_undo_stage_move(uuid)', 'crm_record_update(uuid,jsonb)',
     'crm_records_bulk_create(text,jsonb,text)', 'crm_records_list(text)',
     'crm_beta_lead_to_host(uuid)', 'crm_beta_leads_list()', 'crm_home_summary(date)',
-    'crm_target_set(uuid,text,integer)', 'crm_team_summary(date)', 'crm_contact_check(text,jsonb)'];
+    'crm_target_set(uuid,text,integer)', 'crm_team_summary(date)', 'crm_contact_check(text,jsonb)',
+    -- #4571 W3: people on a record, its Work, My calls today, follower counts.
+    'crm_record_set_people(uuid,text[],text[],timestamp with time zone)', 'crm_record_work(uuid)', 'crm_calls_queue(date)',
+    'crm_identifier_set_followers(uuid,integer)',
+    -- #4571 W4: Needs linking and a person's link decisions.
+    'crm_demo_suggestions(uuid)', 'crm_demo_link(uuid,uuid,text)', 'crm_demo_create_record(uuid)', 'crm_demo_not_a_host(uuid)',
+    'crm_demo_unlink(uuid)', 'crm_demo_inbox()', 'crm_demo_inbox_count()',
+    -- #4571 W6: archive and merge, the email log, the weekly numbers, the cadence.
+    'crm_records_archived_list(text)', 'crm_record_archive(uuid,text)', 'crm_record_unarchive(uuid)', 'crm_record_merge(uuid,uuid,text)', 'crm_record_unmerge(uuid)', 'crm_record_merges_json(uuid)', 'crm_duplicate_pairs(text)', 'crm_email_log_ingest(text,jsonb)', 'crm_outreach_numbers(date,date)', 'crm_cadence_state(uuid)', 'crm_cadence_sweep_status(uuid)', 'crm_cadence_sweep_preview()', 'crm_cadence_sweep_configure(text,uuid,text[],date)'];
   c_internal constant text[] := array[
     'admin_team_directory()', 'crm_activity_json(crm_activity)', 'crm_apply_brand_link(uuid)',
     'crm_audit(text,text,text,text,jsonb)', 'crm_brand_is_live(uuid)', 'crm_clean_owners(jsonb)', 'crm_ctx()',
@@ -1530,7 +1558,19 @@ declare
     'crm_stage_counts_json()', 'crm_targets_json(date)',
     'crm_ident_key(text,text)', 'crm_clean_identifiers(jsonb)', 'crm_identifier_matches(text,jsonb,uuid)',
     'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)',
-    'crm_phone_national(text)', 'crm_record_sources_json(uuid)'];
+    'crm_phone_national(text)', 'crm_record_sources_json(uuid)',
+    -- #4571 W3
+    'crm_4571_people_overlap(uuid,text[],text[])', 'crm_notify_watchers(uuid,uuid,text,text,text)', 'crm_record_work_ids(uuid)',
+    -- #4571 W4: the Demo booked rule, demo reads and the link core.
+    'crm_record_has_demo(uuid)', 'crm_4571_demo_move_ok(uuid,text,text,text,timestamp with time zone)', 'crm_demo_stage_allowed(uuid,text)',
+    'crm_4571_demo_stage_guard()', 'crm_record_demos_json(uuid)', 'crm_demo_gate(crm_records)', 'crm_demo_needs_linking(uuid)',
+    'crm_demo_calendar_bits(uuid)', 'crm_4571_demo_candidates(uuid,text)',
+    'crm_4571_demo_link_core(book_call_leads,crm_records,text,text,text)', 'crm_demo_link_from_token(text,uuid)',
+    'crm_4571_demo_booking(uuid)', 'crm_4571_booking_icp(text)',
+    -- #4571 W6
+    'crm_4571_w6_json(crm_records)', 'crm_4571_person_ctx()', 'crm_4571_email_of(text)', 'crm_4571_stage_at(uuid,timestamp with time zone)', 'crm_4571_suggest_replied(crm_records)', 'crm_4571_numbers_row(integer,integer,integer,integer,integer,integer)', 'crm_4571_cadence_config()', 'crm_4571_working_days_after(date,integer)', 'crm_4571_cadence(crm_records,date)', 'crm_4571_system_move(uuid,text,text,text)', 'crm_cadence_sweep(boolean,text)', 'crm_cadence_sweep_cron()', 'crm_4571_sweep_reader()',
+    -- #4571 W7
+    'crm_4571_stage_move_ok(uuid,text,text,text,timestamp with time zone,uuid)', 'crm_4571_stage_refusal(text)'];
   -- #4130: this owner-only Team dashboard aggregate deliberately uses the
   -- public, pg_temp path required by its aggregate RPC contract. Keep it in
   -- the exact function inventory without pretending it is a pipeline command.
@@ -1584,7 +1624,7 @@ begin
   end loop;
 
   foreach v_tbl in array array['public.crm_records', 'public.crm_record_owners', 'public.crm_activity', 'public.crm_request_keys',
-    'public.crm_record_sources', 'public.crm_import_receipts'] loop
+    'public.crm_record_sources', 'public.crm_import_receipts', 'public.crm_record_watchers', 'public.crm_record_demos'] loop  -- #4571 W3: watchers; W4: demo links
     foreach v_role in array array['anon', 'authenticated'] loop
       foreach v_priv in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] loop
         perform pg_temp.t3802w_check('W1-12', v_role || ' ' || v_priv || ' on ' || v_tbl,
@@ -1600,7 +1640,11 @@ begin
       (select relrowsecurity::text from pg_class where oid = v_tbl::regclass) || '/'
         || (select count(*)::text from pg_policy where polrelid = v_tbl::regclass), 'true/0');
     perform pg_temp.t3802w_check('W1-12', 'no trigger on ' || v_tbl,
-      (select count(*)::text from pg_trigger where tgrelid = v_tbl::regclass and not tgisinternal), '0');
+      -- #4571 W2: the one stage_at trigger on crm_activity (INVARIANT crm-activity-stage-at-written) is expected.
+      (select count(*)::text from pg_trigger where tgrelid = v_tbl::regclass and not tgisinternal
+          and not (v_tbl = 'public.crm_activity' and tgname = 'ops_4571_activity_stage_at')
+          -- #4571 W4: the Demo booked rule (INVARIANT crm-demo-before-demo-booked) is expected.
+          and not (v_tbl = 'public.crm_records' and tgname = 'crm_4571_demo_stage_guard')), '0');
   end loop;
 
   -- Who writes each table, by name, in every schema.
@@ -1612,10 +1656,16 @@ begin
       -- #4452: forms routing (a submission makes or updates a card and logs it) and the
       -- automation "move stage" step are the approved new writers; all three are
       -- service-role only and log every change to crm_activity.
-      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.forms_move_stage,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
-      ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
-      ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
-      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.forms_move_stage,public.forms_route_submission,public.forms_submit_core,public.ops_brand_autolink_one,public.team_draft_unsend'),
+      -- #4571 W3: setting people or a follower count stamps the record's updated_at.
+      ('crm_records',       'public.crm_4571_system_move,public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_cadence_sweep,public.crm_identifier_set_followers,public.crm_reconcile_live,public.crm_record_archive,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_merge,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_set_people,public.crm_record_unarchive,public.crm_record_undo_stage_move,public.crm_record_unmerge,public.crm_record_update,public.forms_move_stage,public.ops_brand_autolink_one,public.outreach_reset_stale_due'),
+      ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_merge,public.crm_record_set_owners,public.crm_record_set_people,public.crm_record_unmerge'),  -- #4571 W3
+      ('crm_record_watchers', 'public.crm_record_merge,public.crm_record_set_people,public.crm_record_unmerge'),  -- #4571 W3
+      ('crm_record_demos', 'public.crm_4571_demo_link_core,public.crm_demo_unlink,public.crm_record_merge,public.crm_record_unmerge'),  -- #4571 W4
+      -- #4571 W2: crm_record_log marks a wrong number bad.
+      -- #4571 W3: crm_identifier_set_followers writes a handle's follower count.
+      ('crm_record_identifiers', 'public.crm_identifier_set_followers,public.crm_record_create_core,public.crm_record_log,public.crm_record_merge,public.crm_record_unmerge,public.crm_record_update'),
+      -- #4571 W4: a demo link or unlink writes a note on the card.
+      ('crm_activity',      'public.crm_4571_demo_link_core,public.crm_4571_system_move,public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_demo_unlink,public.crm_reconcile_live,public.crm_record_archive,public.crm_record_create_core,public.crm_record_log,public.crm_record_merge,public.crm_record_move_stage,public.crm_record_unarchive,public.crm_record_undo_stage_move,public.crm_record_unmerge,public.forms_move_stage,public.forms_route_submission,public.forms_submit_core,public.ops_brand_autolink_one,public.team_draft_unsend'),
       ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)
   loop
@@ -1636,7 +1686,7 @@ begin
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname !~ '^pg_temp' and p.prosrc ~* 'update\s+public\.crm_records\s+set\s+stage\s*='),
     -- #4452: the automation "move stage" step (forms_move_stage) is the one new stage writer.
-    'public.crm_apply_brand_link,public.crm_reconcile_live,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.forms_move_stage');
+    'public.crm_4571_system_move,public.crm_apply_brand_link,public.crm_reconcile_live,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.forms_move_stage');
   perform pg_temp.t3802w_check('W1-12', 'only the two exact Undo functions remove a log line',
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -1659,7 +1709,9 @@ begin
   perform pg_temp.t3802w_check('W1-12', 'no foreign key points from a pipeline table at another table, or the other way',
     (select count(*)::text from pg_constraint c
       where c.contype = 'f'
-        and (c.conrelid::regclass::text like 'crm\_%') <> (c.confrelid::regclass::text like 'crm\_%')), '0');
+        and (c.conrelid::regclass::text like 'crm\_%') <> (c.confrelid::regclass::text like 'crm\_%')
+        -- #4571 W4: a demo link points at its book_call_leads booking (INVARIANT crm-booking-one-card).
+        and c.conname <> 'crm_record_demos_booking_id_fkey'), '0');
   -- Other work inventories every table that has a column with one of these
   -- names; a pipeline link must not enter that inventory.
   perform pg_temp.t3802w_check('W1-12', 'no pipeline column uses a name the venue-identity inventory keys on',
@@ -2534,6 +2586,11 @@ create table t3802w_race.results (seq serial primary key, label text, ok boolean
 -- admins: that role needs no confirmed-mailbox column, which this image lacks
 -- outside part 1.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 delete from public.crm_activity where actor_email like 'issue3802w-race-%'
    or record_id in (select id from public.crm_records where created_by like 'issue3802w-race-%');
 delete from public.crm_record_owners where owner_email like 'issue3802w-race-%'
@@ -2552,6 +2609,7 @@ insert into public.admin_users (email, role, status, accepted_at) values
   ('issue3802w-race-2@test.local', 'admin', 'active', now());
 insert into public.crm_records (id, pipeline, name, stage, created_by, updated_by) values
   ('38020000-0000-4000-c910-000000000001', 'hosts', 'Issue3802w Race Card', 'prospect', 'issue3802w-race-1@test.local', 'issue3802w-race-1@test.local');
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 
 do $race$
@@ -2683,6 +2741,11 @@ select count(*) as t3802w_race_total,
 
 -- Remove the committed rows, whatever the verdict.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 delete from public.crm_activity where actor_email like 'issue3802w-race-%'
    or record_id in (select id from public.crm_records where created_by like 'issue3802w-race-%');
 delete from public.crm_record_owners where owner_email like 'issue3802w-race-%'
@@ -2693,6 +2756,7 @@ set local session_replication_role = replica;
 delete from public.admin_audit_log where admin_email like 'issue3802w-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802w-race-%';
 delete from auth.users where email like 'issue3802w-race-%';
+alter table public.crm_records enable trigger crm_4571_demo_stage_guard;  -- #4571 W4
 commit;
 reset search_path;
 \if :t3802w_made_dblink

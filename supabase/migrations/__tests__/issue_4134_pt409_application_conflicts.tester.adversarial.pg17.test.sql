@@ -402,7 +402,11 @@ $fn$;
 -- restored the same way. It also DROPS issue_3720_update_internal_thread and
 -- issue_3988_reassign_internal_thread with the staff-thread table; they are
 -- re-created here from section B for the replay and dropped again after T4.
+-- #4571 W3 (20281130034571) re-defines team_agent_call (set_owners takes
+-- watcher_emails; my_day carries calls_due), so it is put back from section B
+-- (read from the migration file itself, not copied) and restored the same way.
 -------------------------------------------------------------------------------
+\set t4134_tac `sed -n '/^CREATE OR REPLACE FUNCTION public.team_agent_call(p_key_hash text, p_tool text, p_args jsonb, p_client text)$/,/^;$/p' supabase/migrations/20271231204134_issue_4134_pt409_application_conflicts.sql`
 CREATE TEMP TABLE t4134_superseded AS
 SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS def_md5
   FROM pg_catalog.pg_proc AS p
@@ -416,7 +420,8 @@ SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS 
                  'public.issue_3720_set_next_update(text,uuid,integer,timestamp with time zone,text)'::regprocedure,
                  'public.issue_3720_link_product_signal_source(uuid,integer,text,uuid)'::regprocedure,
                  'public.issue_3720_update_product_signal(uuid,integer,text,text,timestamp with time zone,text,text)'::regprocedure,
-                 'public.issue_3720_save_product_avengers_review(uuid,integer,text,text,text,text[],text,text,text,text,text,text)'::regprocedure);
+                 'public.issue_3720_save_product_avengers_review(uuid,integer,text,text,text,text[],text,text,text,text,text,text)'::regprocedure,
+                 'public.team_agent_call(text,text,jsonb,text)'::regprocedure);
 
 BEGIN;
 SET LOCAL search_path TO pg_catalog, pg_temp;
@@ -1915,6 +1920,8 @@ BEGIN
 END;
 $function$
 ;
+-- #4571 W3: team_agent_call as section B wrote it.
+:t4134_tac
 COMMIT;
 
 -------------------------------------------------------------------------------

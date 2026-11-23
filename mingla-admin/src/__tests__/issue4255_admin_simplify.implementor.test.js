@@ -178,7 +178,7 @@ describe("S-1 the side panels", () => {
       // #4255 W3 (D6): the card's "Message to send" block is gone; the drafts open from the Drafts page.
       ["components/drafts/DraftCard.jsx", "kind: draft.record.pipeline"],
       ["components/ops/WorkDetail.jsx", "side={linkSide(l)}"],
-      ["components/crm/RecordDrawer.jsx", 'kind: "drafts"'],
+      ["components/crm/RecordPanel.jsx", 'kind: "drafts"'],
       // #4270 W2: the host card's cards moved from On Mingla to To do.
       ["components/crm/HostToDoSection.jsx", 'kind: "card"'],
       ["components/crm/OnMinglaSection.jsx", "kind: u.kind"],
@@ -320,7 +320,11 @@ describe("S-2 Hosts and creators: one honest board", () => {
 
   it("the page: board only, no list or By region, no agent strip, dropdown filters, the board built from every filtered card", () => {
     const page = code("pages/PipelinePage.jsx");
-    assert.ok(!/PipelineList|PipelineByRegion|lateStage|AgentPromptStrip|state\.view/.test(page));
+    assert.ok(!/PipelineList|PipelineByRegion|lateStage|AgentPromptStrip/.test(page));
+    // #4571 W3: Hosts' My calls today; #4571 W6a: Show archived and Duplicate pairs. Every other address is the board.
+    assert.deepEqual([...page.matchAll(/state\.view === "([a-z]+)"/g)].map((m) => m[1]), ["calls", "archived", "duplicates"]);
+    assert.match(page, /pipeline === "hosts" && state\.view === "calls" \? \(\s*<CallsQueue /);
+    assert.equal(buildCrmSearch(parseCrmSearch("view=calls&mine=1")), "mine=1&view=calls");
     assert.ok(!fs.existsSync(path.join(SRC, "components/crm/PipelineList.jsx")));
     assert.ok(!fs.existsSync(path.join(SRC, "components/crm/PipelineByRegion.jsx")));
     assert.match(page, /const columns = useMemo\(\(\) => \(def \? boardColumns\(def, dueShown\.map\(forDisplay\), today\) : \[\]\), \[def, dueShown, today\]\);/);
@@ -480,8 +484,9 @@ describe("S-3 Work: one filter, four tabs, one layout", () => {
 describe("S-4 Calendar: Month and Board only", () => {
   const page = code("pages/ContentCalendarPage.jsx");
   it("no list view: Month (default) and Board, an old list address opens Month", () => {
-    assert.match(page, /const VIEW_OPTIONS = \[\s*\{ value: "calendar", label: "Month" \},\s*\{ value: "board", label: "Board" \},\s*\];/);
-    assert.match(page, /view: p\.get\("view"\) === "board" \? "board" : "calendar"/);
+    // [TEST-MOD-APPROVED #4571] W5 adds a Week view between Month and Board; the old list address still opens Month.
+    assert.match(page, /const VIEW_OPTIONS = \[\s*\{ value: "calendar", label: "Month" \},\s*\{ value: "week", label: "Week" \},\s*\{ value: "board", label: "Board" \},\s*\];/);
+    assert.match(page, /view: p\.get\("view"\) === "board" \? "board" : p\.get\("view"\) === "week" \? "week" : "calendar"/);
     assert.ok(!/RunwayTable|PostsList|value: "list"|route\.view === "list"/.test(page));
   });
   it("Make a card and Plan a post sit in the event panel and the header; the tiles filter the month", () => {

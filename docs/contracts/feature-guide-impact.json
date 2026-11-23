@@ -2292,7 +2292,12 @@
         "mingla-admin/src/components/ui/Table.jsx",
         "mingla-admin/src/components/ui/Tabs.jsx",
         "mingla-admin/src/lib/flowModel.js",
-        "supabase/migrations/20280720004452_issue_4452_dashboard_last_lead.sql"
+        "supabase/migrations/20280720004452_issue_4452_dashboard_last_lead.sql",
+        "mingla-admin/src/context/ToastContext.jsx",
+        "mingla-admin/src/lib/toastPage.js",
+        "mingla-admin/src/components/LoginScreen.jsx",
+        "mingla-admin/src/components/InviteSetupScreen.jsx",
+        "supabase/migrations/20281130014571_issue_4571_w1_people_and_goals.sql"
       ]
     },
     {
@@ -2388,7 +2393,30 @@
         "supabase/migrations/20280712004452_issue_4452_forms_core.sql",
         "supabase/migrations/20280712044452_issue_4452_leads.sql",
         "mingla-admin/scripts/verify-forms-kit-dist.mjs",
-        "mingla-marketing/app/apply/[slug]/resolve.ts"
+        "mingla-marketing/app/apply/[slug]/resolve.ts",
+        "mingla-admin/src/components/crm/CallsQueue.jsx",
+        "mingla-admin/src/components/crm/HygieneViews.jsx",
+        "mingla-admin/src/components/crm/OwnersField.jsx",
+        "mingla-admin/src/components/crm/RecordHygiene.jsx",
+        "mingla-admin/src/components/crm/RecordPanel.jsx",
+        "mingla-admin/src/components/crm/home/CadenceSweepPanel.jsx",
+        "mingla-admin/src/components/crm/home/OutreachNumbers.jsx",
+        "mingla-admin/src/components/leads/DemosBanner.jsx",
+        "mingla-admin/src/components/leads/DemosToLink.jsx",
+        "mingla-admin/src/components/leads/demoLinkModel.js",
+        "mingla-admin/src/lib/sopTools.js",
+        "mingla-admin/src/pages/PipelinePage.jsx",
+        "mingla-admin/src/services/crmService.js",
+        "supabase/migrations/20281130024571_issue_4571_w2_links_and_call_outcomes.sql",
+        "supabase/migrations/20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql",
+        "supabase/migrations/20281130044571_issue_4571_w4_demo_bookings_stage_rule.sql",
+        "supabase/migrations/20281130064571_issue_4571_w6a_archive_merge.sql",
+        "supabase/migrations/20281130074571_issue_4571_w6b_email_log_and_numbers.sql",
+        "supabase/migrations/20281130084571_issue_4571_w6c_cadence_sweep.sql",
+        "supabase/migrations/20281130094571_issue_4571_w6d_rework.sql",
+        "supabase/migrations/20281130104571_issue_4571_w7_brand_counts.sql",
+        "supabase/migrations/20281130114571_issue_4571_final_gate_fixes.sql",
+        "supabase/migrations/20281130124571_issue_4571_leftovers.sql"
       ]
     },
     {
@@ -2417,7 +2445,10 @@
         "mingla-admin/src/lib/panelStack.js",
         "mingla-admin/src/pages/ContentCalendarPage.jsx",
         "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql",
-        "mingla-admin/src/hooks/useContentCalendar.js"
+        "mingla-admin/src/hooks/useContentCalendar.js",
+        "mingla-admin/src/components/contentCalendar/WeekView.jsx",
+        "mingla-admin/src/lib/calendarWeek.js",
+        "supabase/migrations/20281130054571_issue_4571_w5_calendar_week.sql"
       ]
     },
     {
@@ -2465,7 +2496,8 @@
         "supabase/functions/team-agent/index.ts",
         "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql",
         "mingla-admin/src/hooks/useAgentGuide.js",
-        "mingla-admin/src/hooks/useAgentKeys.js"
+        "mingla-admin/src/hooks/useAgentKeys.js",
+        "mingla-admin/src/lib/agentPrompts.js"
       ]
     },
     {
