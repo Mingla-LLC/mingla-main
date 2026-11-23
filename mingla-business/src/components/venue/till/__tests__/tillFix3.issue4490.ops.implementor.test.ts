@@ -7,19 +7,21 @@
  * Text them the link, Cancel payment. A live tap with no reader to resume shows
  * waiting with a working cancel. No live payment: the method list, as before.
  *
- * fails-on-revert: resumeLivePayment and the sheet's use of it are pinned here.
+ * fails-on-revert: resumeLivePayment is pinned here; the sheet's and the tap
+ * panel's use of it are pins `till-pay-sheet-resume` / `till-tap-panel-resumed`
+ * in the host-wiring gate.
+ *
+ * TEST-MOD-APPROVED #4490 (08-O3 fix 1, O3-T7): the source-text reads of this suite moved, word for word, into
+ * .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN: "for a genuine
+ * structural rule, an additive strict-grep gate", as #4490 W3 fix 1 did); every behavioural test stays here.
  */
 import { describe, expect, test } from "@jest/globals";
-import fs from "fs";
-import path from "path";
 
 import type { TillPayment, TillSale } from "../../../../services/venueTillService";
 import { resumeLivePayment } from "../tillPayModel";
 import { tillTapResumedCopy } from "../tillTapPanelModel";
 import { TILL_COPY } from "../tillCopy";
 
-const SHEET = fs.readFileSync(path.join(__dirname, "../PaymentSheet.tsx"), "utf8");
-const TAP = fs.readFileSync(path.join(__dirname, "../TillTapPanel.tsx"), "utf8");
 
 const NOW = Date.parse("2026-11-22T12:00:00Z");
 const inFuture = new Date(NOW + 10 * 60_000).toISOString();
@@ -89,29 +91,6 @@ describe("O2-B1 — what the pay sheet opens on", () => {
 
   test("a malformed code in the projection is never drawn", () => {
     expect(resumeLivePayment(sale([pay({ payCode: code({ code: "nope" }) })]), NOW).kind).toBe("none");
-  });
-});
-
-describe("O2-B1 — the sheet uses it, with the existing panels", () => {
-  test("the sheet resumes through resumeLivePayment and reads the code back for its link", () => {
-    expect(SHEET).toMatch(/resumeLivePayment\(sale, Date\.now\(\)\)/);
-    expect(SHEET).toMatch(/scanApi\s*\n?\s*\.fetchStatus\(live\.code\)/);
-    expect(SHEET).toMatch(/setStep\("scan"\)/);
-  });
-
-  test("a live tap goes to the existing tap panel in resumed mode", () => {
-    expect(SHEET).toMatch(/setTapResumed\(true\)/);
-    expect(SHEET).toMatch(/resumed=\{tapResumed\}/);
-  });
-
-  test("one scan panel only (no second component was built)", () => {
-    expect(SHEET.match(/<TillScanPanel/g)?.length).toBe(1);
-  });
-
-  test("a resumed tap starts no reader and cancels through pay_card_cancel", () => {
-    expect(TAP).toMatch(/if \(resumed\) return undefined;/);
-    expect(TAP).toMatch(/await cancelTillCardPayment\(\{ venueId, paymentId \}\);\s*\n\s*onScanInstead\(\);/);
-    expect(TAP).toMatch(/testID="till-tap-cancel-resumed"/);
   });
 });
 

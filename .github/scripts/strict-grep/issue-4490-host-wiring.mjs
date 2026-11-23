@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout) keeps its load-bearing lines.
+// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the station rail routing) keeps its load-bearing lines.
 /**
  * #4490 W3 fix 1 — the structural pins of eight #4490 mingla-business jest
  * suites, moved here as the additive strict-grep gate that
@@ -289,7 +289,110 @@ const PINS = [
     contains: ['layout = "auto"'],
     why: "the features panel defaults to the automatic layout",
   },
+  // #4490 08-O3 fix 1 (O3-T7): the source-text reads of four Till / station
+  // jest suites (tillFix2, tillFix3, tillKitchen, venueStationsNav), word for
+  // word; the suites keep every behavioural test.
+  {
+    id: "till-error-codes-have-words",
+    file: `${BIZ}/src/components/venue/till/tillCopy.ts`,
+    slice: "export const TILL_ERROR_COPY = {",
+    contains: () => tillServerCodes().map((code) => `\n  ${code}:`),
+    why: "every refusal the venue-till edge can send has its own row in the Till's words (O1-B1)",
+  },
+  {
+    id: "till-pay-sheet-typed-amount",
+    file: `${BIZ}/src/components/venue/till/PaymentSheet.tsx`,
+    contains: ["const payAmount = amountMinor ?? due;", "error={amountError}"],
+    matches: [/disabled=\{!canChooseMethod\}[\s\S]*disabled=\{!canChooseMethod\}/],
+    absentMatches: [/amountMinor <= due \? amountMinor : due/, /(disabled=\{!canChooseMethod\}[\s\S]*){3}/],
+    why: "a typed amount is taken as typed and both method rows stay blocked while it is refused (O1-B1)",
+  },
+  {
+    id: "till-pay-sheet-resume",
+    file: `${BIZ}/src/components/venue/till/PaymentSheet.tsx`,
+    matches: [
+      /resumeLivePayment\(sale, Date\.now\(\)\)/,
+      /scanApi\s*\n?\s*\.fetchStatus\(live\.code\)/,
+      /setStep\("scan"\)/,
+      /setTapResumed\(true\)/,
+      /resumed=\{tapResumed\}/,
+      /<TillScanPanel/,
+    ],
+    absentMatches: [/<TillScanPanel[\s\S]*<TillScanPanel/],
+    why: "the pay sheet reopens a live payment on the one existing scan panel or the tap panel in resumed mode (O2-B1)",
+  },
+  {
+    id: "till-tap-panel-resumed",
+    file: `${BIZ}/src/components/venue/till/TillTapPanel.tsx`,
+    matches: [
+      /if \(resumed\) return undefined;/,
+      /await cancelTillCardPayment\(\{ venueId, paymentId \}\);\s*\n\s*onScanInstead\(\);/,
+      /testID="till-tap-cancel-resumed"/,
+    ],
+    why: "a resumed tap starts no reader and cancels through pay_card_cancel (O2-B1)",
+  },
+  {
+    id: "till-kitchen-banners",
+    file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
+    contains: [
+      'testID="till-ready-banner"',
+      'runStationAction("picked_up", round.orderId, station)',
+      'testID="till-unaccepted-banner"',
+      'kind: "kitchen_ticket", venueId, orderId: waitingRound.orderId',
+    ],
+    why: "the Till shows Ready to take out with Picked up, and Nobody has accepted with Print ticket (§11 T5/T7)",
+  },
+  {
+    id: "till-hears-station-changes",
+    file: `${BIZ}/src/hooks/useVenueTill.ts`,
+    matches: [/table: "venue_orders", filter: `venue_id=eq\.\$\{venueId\}`/],
+    why: "the Till hears station changes on venue_orders (§11 T6)",
+  },
+  {
+    id: "stations-shell-routing-venue",
+    file: `${BIZ}/src/components/venue/VenueSuiteShell.tsx`,
+    contains: [
+      'import { stationHref, StationsLauncher } from "./station/StationsLauncher";',
+      "stationsDeepLinkRef",
+      "venueAccess.canKitchen === true",
+    ],
+    matches: [/=== "stations"[\s\S]{0,80}push\(stationHref\(venueId\)/],
+    absentMatches: [/StationScreen/],
+    why: "the venue shell opens the station route from the rail and ?module=stations, with a static launcher (O3 A2)",
+  },
+  {
+    id: "stations-shell-routing-stay",
+    file: `${BIZ}/src/components/stay/StaySuiteShell.tsx`,
+    contains: [
+      'import { stationHref, StationsLauncher } from "../venue/station/StationsLauncher";',
+      "stationsDeepLinkRef",
+      "venueAccess.canKitchen === true",
+    ],
+    matches: [/=== "stations"[\s\S]{0,80}push\(stationHref\(venueId\)/],
+    absentMatches: [/StationScreen/],
+    why: "the Stay shell opens the station route from the rail and ?module=stations, with a static launcher (O3 A2)",
+  },
 ];
+
+/**
+ * Every code the venue-till edge can answer: its TILL_SAFE_CODES list, every
+ * literal `code: "…"`, and the one rewritten code. Fails closed: an
+ * unreadable list resolves to an unresolvable line.
+ */
+function tillServerCodes() {
+  const edge = fs.readFileSync(path.join(ROOT, "supabase/functions/venue-till/index.ts"), "utf8");
+  const list = edge.match(/export const TILL_SAFE_CODES = \[([\s\S]*?)\] as const;/);
+  if (list === null) return ["null; TILL_SAFE_CODES not found in venue-till/index.ts"];
+  const fromList = [...list[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+  const literal = [...edge.matchAll(/code: "([a-z_]+)"/g)].map((m) => m[1]);
+  const rewritten = [...edge.matchAll(/code: f\.code === "[a-z_]+"\s*\?\s*"([a-z_]+)"\s*:\s*"([a-z_]+)"/g)]
+    .flatMap((m) => [m[1], m[2]]);
+  const codes = [...new Set([...fromList, ...literal, ...rewritten])].sort();
+  if (codes.length <= 50 || !["till_amount_over_due", "till_check_changed", "till_item_not_orderable"].every((c) => codes.includes(c))) {
+    return [`null; only ${codes.length} codes read from venue-till/index.ts`];
+  }
+  return codes;
+}
 
 function check(pin, source) {
   const problems = [];

@@ -4,13 +4,14 @@
  * the venue's Kitchen and bar screens feature is on, and the person may work
  * the kitchen (issue_4490_can_kitchen). Selecting it opens the station route.
  *
- * fails-on-revert: the nav candidate, the capability rule and both shells'
- * routing are pinned here.
+ * fails-on-revert: the nav candidate and the capability rule are pinned here;
+ * both shells' routing is pin `stations-shell-routing` in the host-wiring gate.
+ *
+ * TEST-MOD-APPROVED #4490 (08-O3 fix 1, O3-T7): the source-text reads of this suite moved, word for word, into
+ * .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN: "for a genuine
+ * structural rule, an additive strict-grep gate", as #4490 W3 fix 1 did); every behavioural test stays here.
  */
 import { describe, expect, test } from "@jest/globals";
-import fs from "fs";
-import path from "path";
-
 import { featureSetFrom } from "../../../types/venueFeatures";
 import { deriveVenueNav, venueModuleGroupLabel, VENUE_MODULES } from "../venueModules";
 import {
@@ -57,17 +58,5 @@ describe("08-O3 A2 Kitchen and bar in the rail", () => {
     expect(venueAccessCanKitchen({ scoped: false, capabilities: [], role: "finance_manager" })).toBe(false);
     expect(withStationsAccess(withTillAccess(all, false), false)).not.toContain("stations");
     expect(withStationsAccess(all, true)).toContain("stations");
-  });
-  test("both shells open the station route from the rail and from ?module=stations, with a static launcher", () => {
-    const venue = fs.readFileSync(path.join(__dirname, "../VenueSuiteShell.tsx"), "utf8");
-    const stay = fs.readFileSync(path.join(__dirname, "../../stay/StaySuiteShell.tsx"), "utf8");
-    expect(venue).toContain('import { stationHref, StationsLauncher } from "./station/StationsLauncher";');
-    expect(stay).toContain('import { stationHref, StationsLauncher } from "../venue/station/StationsLauncher";');
-    for (const shell of [venue, stay]) {
-      expect(shell).toMatch(/=== "stations"[\s\S]{0,80}push\(stationHref\(venueId\)/);
-      expect(shell).toContain("stationsDeepLinkRef");
-      expect(shell).toContain("venueAccess.canKitchen === true");
-      expect(shell).not.toMatch(/StationScreen/);
-    }
   });
 });

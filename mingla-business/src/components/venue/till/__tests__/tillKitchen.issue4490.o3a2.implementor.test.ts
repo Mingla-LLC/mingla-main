@@ -6,13 +6,15 @@
  * {destination}'s order" with Print ticket; the Till hears station changes on
  * venue_orders (T6).
  *
- * fails-on-revert: roundKitchenState / readyToTakeOut / unacceptedRound and the
- * Till's two banners are pinned here.
+ * fails-on-revert: roundKitchenState / readyToTakeOut / unacceptedRound are pinned
+ * here; the Till's two banners and its venue_orders feed are pin
+ * `till-kitchen-banners` in the host-wiring gate.
+ *
+ * TEST-MOD-APPROVED #4490 (08-O3 fix 1, O3-T7): the source-text reads of this suite moved, word for word, into
+ * .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN: "for a genuine
+ * structural rule, an additive strict-grep gate", as #4490 W3 fix 1 did); every behavioural test stays here.
  */
 import { describe, expect, test } from "@jest/globals";
-import fs from "fs";
-import path from "path";
-
 import type { TillLine, TillSale } from "../../../../services/venueTillService";
 import {
   basketRows,
@@ -92,14 +94,5 @@ describe("08-O3 A2 the check's banners", () => {
     expect(unacceptedRound(s, T(2))).toBeNull();
     expect(unacceptedRound(s, T(4))).toEqual({ orderId: "o1", station: "kitchen", minutes: 4 });
     expect(TILL_COPY.nobodyAccepted("Table 6")).toBe("Nobody has accepted Table 6's order");
-  });
-  test("the Till shows both banners with their actions and hears station changes on venue_orders", () => {
-    const screen = fs.readFileSync(path.join(__dirname, "../TillScreen.tsx"), "utf8");
-    expect(screen).toContain('testID="till-ready-banner"');
-    expect(screen).toContain('runStationAction("picked_up", round.orderId, station)');
-    expect(screen).toContain('testID="till-unaccepted-banner"');
-    expect(screen).toContain('kind: "kitchen_ticket", venueId, orderId: waitingRound.orderId');
-    const hook = fs.readFileSync(path.join(__dirname, "../../../../hooks/useVenueTill.ts"), "utf8");
-    expect(hook).toMatch(/table: "venue_orders", filter: `venue_id=eq\.\$\{venueId\}`/);
   });
 });

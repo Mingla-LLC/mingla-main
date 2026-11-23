@@ -10,43 +10,27 @@
  * swapped for the balance.
  *
  * O1-B2 — the overpaid banner never asks for money already given back.
+ *
+ * TEST-MOD-APPROVED #4490 (08-O3 fix 1, O3-T7): the source-text reads of this suite moved, word for word, into
+ * .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047-NO-SOLE-SOURCE-PIN: "for a genuine
+ * structural rule, an additive strict-grep gate", as #4490 W3 fix 1 did); every behavioural test stays here.
+ * (The edge's codes each having a row in TILL_ERROR_COPY is pin `till-error-codes-have-words` there.)
  */
-
-import * as fs from "fs";
-import * as path from "path";
 
 import { mapTillSale } from "../../../../services/venueTillService";
 import { TILL_ERROR_COPY, TILL_SHARED_COPY, tillAmountError, tillErrorCopy, type TillErrorCode } from "../tillCopy";
 import { overpaidToRefund } from "../tillModel";
 
-const ROOT = path.resolve(__dirname, "../../../../../..");
-const EDGE = fs.readFileSync(path.join(ROOT, "supabase/functions/venue-till/index.ts"), "utf8");
-const SHEET = fs.readFileSync(path.join(__dirname, "../PaymentSheet.tsx"), "utf8");
-
-function serverCodes(): string[] {
-  const list = EDGE.match(/export const TILL_SAFE_CODES = \[([\s\S]*?)\] as const;/);
-  if (list === null) throw new Error("TILL_SAFE_CODES not found in venue-till/index.ts");
-  const fromList = [...list[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
-  const literal = [...EDGE.matchAll(/code: "([a-z_]+)"/g)].map((m) => m[1]);
-  // The one rewritten code: a menu item that stopped being orderable.
-  const rewritten = [...EDGE.matchAll(/code: f\.code === "[a-z_]+"\s*\?\s*"([a-z_]+)"\s*:\s*"([a-z_]+)"/g)].flatMap((m) => [
-    m[1],
-    m[2],
-  ]);
-  return [...new Set([...fromList, ...literal, ...rewritten])].sort();
-}
-
 const CHANGED = "That check was changed on another device. We've refreshed it.";
 
 describe("#4490 O1 fix 2 — every Till refusal has its own words (O1-B1)", () => {
-  const codes = serverCodes();
-
-  it("reads the edge function's codes (sanity: the overpay and version codes are among them)", () => {
+  it("the table holds the overpay, version and not-orderable rows (sanity)", () => {
+    const codes = Object.keys(TILL_ERROR_COPY);
     expect(codes).toEqual(expect.arrayContaining(["till_amount_over_due", "till_check_changed", "till_item_not_orderable"]));
     expect(codes.length).toBeGreaterThan(50);
   });
 
-  it.each(serverCodes())("%s has its own row in the table (no fallback words)", (code) => {
+  it.each(Object.keys(TILL_ERROR_COPY))("%s has its own row in the table (no fallback words)", (code) => {
     expect(Object.prototype.hasOwnProperty.call(TILL_ERROR_COPY, code)).toBe(true);
     expect(tillErrorCopy(code)).not.toMatch(/_/);
   });
@@ -102,13 +86,6 @@ describe("#4490 O1 fix 2 — the pay sheet never changes a typed amount (O1-B1)"
     expect(tillAmountError(590000, 590000)).toBeNull();
     expect(tillAmountError(100000, 590000)).toBeNull();
     expect(tillAmountError(null, 590000)).toBeNull();
-  });
-
-  it("takes the typed amount as typed and blocks the methods while it is refused", () => {
-    expect(SHEET).toContain("const payAmount = amountMinor ?? due;");
-    expect(SHEET).not.toMatch(/amountMinor <= due \? amountMinor : due/);
-    expect(SHEET).toContain("error={amountError}");
-    expect(SHEET.match(/disabled=\{!canChooseMethod\}/g)?.length).toBe(2);
   });
 });
 
