@@ -22,7 +22,9 @@ import {
 
 import {
   fetchInstallmentsForBrandTrips,
+  fetchTripEventBalances,
   retryInstallment,
+  type HostTripBalance,
   type OrderInstallmentForBrand,
   type RetryInstallmentResult,
 } from "../services/orderInstallmentsService";
@@ -33,6 +35,8 @@ const INSTALLMENTS_STALE_MS = 30 * 1000;
 interface ByBrandOpts {
   atRiskOnly?: boolean;
   tripEventId?: string;
+  /** issue #4522 — also read each row's kind (set row or flexible payment). */
+  planV2?: boolean;
 }
 
 export const orderInstallmentKeys = {
@@ -41,6 +45,9 @@ export const orderInstallmentKeys = {
     ["orderInstallments", "byOrder", orderId] as const,
   byBrand: (brandId: string, opts: ByBrandOpts) =>
     ["orderInstallments", "byBrand", brandId, opts] as const,
+  // issue #4522 — under `all`, so every installment invalidation refreshes it.
+  balancesByEvent: (eventId: string) =>
+    ["orderInstallments", "balancesByEvent", eventId] as const,
 };
 
 const DISABLED_KEY = ["orderInstallments", "__disabled__"] as const;
@@ -59,6 +66,30 @@ export function useInstallmentsForBrandTrips(
     queryFn: async () => {
       if (brandId === null) return [];
       return fetchInstallmentsForBrandTrips(brandId, opts);
+    },
+    enabled,
+    staleTime: INSTALLMENTS_STALE_MS,
+  });
+}
+
+/**
+ * issue #4522 S-2 — the server's balance for every plan-v2 order on a trip.
+ * Disabled (no request) while the plan-v2 switch is off.
+ */
+export function useTripEventBalances(
+  eventId: string | null,
+  planV2Enabled: boolean,
+): UseQueryResult<HostTripBalance[], Error> {
+  const { isAuthReady } = useAuth();
+  const enabled =
+    planV2Enabled && isAuthReady && eventId !== null && eventId.length > 0;
+  return useQuery<HostTripBalance[], Error>({
+    queryKey: enabled
+      ? orderInstallmentKeys.balancesByEvent(eventId)
+      : DISABLED_KEY,
+    queryFn: async () => {
+      if (eventId === null) return [];
+      return fetchTripEventBalances(eventId);
     },
     enabled,
     staleTime: INSTALLMENTS_STALE_MS,

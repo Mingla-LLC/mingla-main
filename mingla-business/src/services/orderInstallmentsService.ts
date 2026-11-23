@@ -14,6 +14,8 @@
  * Per SPEC_ORCH-0873 §3.3.1.
  */
 
+import type { TripBalance } from "@mingla/offering-rendering/tripBalance";
+
 import { supabase } from "./supabase";
 
 export type OrderInstallmentStatus =
@@ -21,7 +23,13 @@ export type OrderInstallmentStatus =
   | "collected"
   | "failed"
   | "refunded"
-  | "cancelled";
+  | "cancelled"
+  // issue #4522 — a plan-v2 row rebalanced away, rolled over, written off or
+  // a closed flexible attempt (`kind` tells them apart).
+  | "superseded";
+
+/** issue #4522 — a set plan row, or a traveler's flexible payment. */
+export type OrderInstallmentKind = "scheduled" | "flex";
 
 export interface OrderInstallment {
   id: string;
@@ -48,6 +56,8 @@ export interface OrderInstallment {
   failureReason: string | null;
   retryCount: number;
   nextRetryAt: string | null;
+  /** issue #4522 — null when the read did not ask for it (plan v2 off). */
+  kind: OrderInstallmentKind | null;
 }
 
 export interface OrderInstallmentForBrand extends OrderInstallment {
@@ -81,6 +91,7 @@ interface OrderInstallmentRow {
   failure_reason: string | null;
   retry_count: number;
   next_retry_at: string | null;
+  kind?: string | null;
 }
 
 interface OrderInstallmentBrandRow extends OrderInstallmentRow {
@@ -119,6 +130,7 @@ function mapRow(row: OrderInstallmentRow): OrderInstallment {
     failureReason: row.failure_reason,
     retryCount: row.retry_count,
     nextRetryAt: row.next_retry_at,
+    kind: row.kind === "flex" || row.kind === "scheduled" ? row.kind : null,
   };
 }
 
@@ -189,7 +201,7 @@ export async function fetchInstallmentsForOrder(
  */
 export async function fetchInstallmentsForBrandTrips(
   brandId: string,
-  opts?: { atRiskOnly?: boolean; tripEventId?: string },
+  opts?: { atRiskOnly?: boolean; tripEventId?: string; planV2?: boolean },
 ): Promise<OrderInstallmentForBrand[]> {
   void brandId; // RLS does the filter; brandId only scopes the query key
   let query = supabase
@@ -215,7 +227,7 @@ export async function fetchInstallmentsForBrandTrips(
       failed_at,
       failure_reason,
       retry_count,
-      next_retry_at,
+      next_retry_at,${opts?.planV2 === true ? "\n      kind," : ""}
       orders!inner (
         buyer_name,
         buyer_email,
@@ -278,4 +290,128 @@ export async function retryInstallment(
       ? payload.current_status
       : undefined,
   };
+}
+
+/** issue #4522 — the frozen plan terms an order was booked on (orders.payment_plan_terms). */
+export interface TripPlanTerms {
+  depositMinor: number | null;
+  countGiven: number | null;
+  finalDueAt: string | null;
+  tripStartAt: string | null;
+  flexEnabled: boolean;
+}
+
+/** issue #4522 — one order_balance_events row (why the open rows changed). */
+export interface TripBalanceEvent {
+  reason: string;
+  triggerInstallmentId: string | null;
+  createdAt: string;
+}
+
+/**
+ * issue #4522 S-2 — the server's balance truth for one plan-v2 order, as the
+ * host money screen reads it (biz_trip_event_balances → issue_4522_balance).
+ */
+export interface HostTripBalance {
+  orderId: string;
+  currency: string;
+  depositMinor: number;
+  paidMinor: number;
+  remainingMinor: number;
+  totalMinor: number;
+  paymentInFlight: boolean;
+  nextPayment: { dueAt: string; amountMinor: number; status?: string } | null;
+  openRowIds: string[];
+  heldCreditMinor: number;
+  overpaymentRefundedMinor: number;
+  waivedMinor: number;
+  terms: TripPlanTerms;
+  balanceEvents: TripBalanceEvent[];
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const safeInt = (value: unknown): number | null =>
+  typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+const isoText = (value: unknown): string | null =>
+  typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+
+function decodeTerms(value: unknown): TripPlanTerms {
+  const terms = isObject(value) ? value : {};
+  return {
+    depositMinor: safeInt(terms.deposit_minor),
+    countGiven: safeInt(terms.count_given),
+    finalDueAt: isoText(terms.final_due_at),
+    tripStartAt: isoText(terms.trip_start_at),
+    flexEnabled: terms.flex_enabled === true,
+  };
+}
+
+/**
+ * Fails closed: a balance the shared decoder refuses throws, so the screen
+ * shows its error state instead of guessing at money.
+ */
+export function decodeHostTripBalance(
+  value: unknown,
+  decodeTripBalance: (raw: unknown) => TripBalance | null,
+): HostTripBalance {
+  const base = decodeTripBalance(value);
+  if (base === null || !isObject(value)) {
+    throw new Error("trip_balance_invalid");
+  }
+  const waived = value.waivedMinor === undefined || value.waivedMinor === null
+    ? 0
+    : safeInt(value.waivedMinor);
+  if (waived === null || waived < 0) throw new Error("trip_balance_invalid");
+  const rawEvents = Array.isArray(value.balanceEvents) ? value.balanceEvents : [];
+  const balanceEvents: TripBalanceEvent[] = [];
+  for (const event of rawEvents) {
+    if (!isObject(event) || typeof event.reason !== "string") {
+      throw new Error("trip_balance_invalid");
+    }
+    const createdAt = isoText(event.createdAt);
+    if (createdAt === null) throw new Error("trip_balance_invalid");
+    balanceEvents.push({
+      reason: event.reason,
+      triggerInstallmentId:
+        typeof event.triggerInstallmentId === "string" ? event.triggerInstallmentId : null,
+      createdAt,
+    });
+  }
+  return {
+    orderId: base.orderId,
+    currency: base.currency,
+    depositMinor: base.depositMinor,
+    paidMinor: base.paidMinor,
+    remainingMinor: base.remainingMinor,
+    totalMinor: base.totalMinor,
+    paymentInFlight: base.paymentInFlight,
+    nextPayment: base.nextPayment,
+    openRowIds: base.openRows.map((row) => row.installmentId),
+    heldCreditMinor: base.heldCreditMinor,
+    overpaymentRefundedMinor: base.overpaymentRefundedMinor,
+    waivedMinor: waived,
+    terms: decodeTerms(value.terms),
+    balanceEvents,
+  };
+}
+
+/**
+ * issue #4522 S-2 — every plan-v2 order's balance on one trip (brand members
+ * only; the RPC answers balance_not_found to anyone else). Older plans are
+ * not returned and keep the ledger view exactly as before.
+ */
+export async function fetchTripEventBalances(
+  eventId: string,
+): Promise<HostTripBalance[]> {
+  const { data, error } = await supabase.rpc("biz_trip_event_balances", {
+    p_event_id: eventId,
+  });
+  if (error !== null) {
+    throw new Error(`fetchTripEventBalances failed: ${error.message}`);
+  }
+  if (!Array.isArray(data)) throw new Error("trip_balance_invalid");
+  // Kept off the shared service's eager graph: only the money route asks.
+  const { decodeTripBalance } = await import("@mingla/offering-rendering/tripBalance");
+  return data.map((row: unknown) => decodeHostTripBalance(row, decodeTripBalance));
 }
