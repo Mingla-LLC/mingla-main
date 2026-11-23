@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Trash2, Edit3, Sun, Moon, Monitor, RotateCcw } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { fetchAdminProfileContacts } from "../services/adminProfileContactsService";
+import { pickSingleContactByEmail } from "../lib/profileContactsPure";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Toggle, Textarea } from "../components/ui/Input";
@@ -253,7 +254,12 @@ function DangerZone() {
       let findError = null;
       try {
         const rows = await fetchAdminProfileContacts({ email: userEmail.trim() });
-        user = rows[0] || null;
+        const picked = pickSingleContactByEmail(rows, userEmail);
+        if (picked.error === "ambiguous") {
+          findError = new Error(`More than one account matches "${userEmail.trim()}". Reset it by user id instead.`);
+        } else {
+          user = picked.user || null;
+        }
       } catch (e) {
         findError = e;
       }

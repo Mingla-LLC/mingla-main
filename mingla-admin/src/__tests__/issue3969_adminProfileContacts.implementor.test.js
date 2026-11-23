@@ -9,6 +9,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  chunkIds,
+  fetchContactsInChunks,
+  pickSingleContactByEmail,
+} from "../lib/profileContactsPure.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) =>
@@ -61,5 +66,51 @@ describe("#3969 admin profile contacts", () => {
       assert.match(source, /contacts\[[\w.]+\]\?\.email \|\| null/, site);
       assert.match(source, /console\.warn\("\[\w+\] contact read failed:"/, site);
     }
+  });
+});
+
+describe("#3969 admin contacts: batching and exact email match", () => {
+  it("never sends more than 1000 ids in one call and merges every batch", async () => {
+    const ids = Array.from({ length: 2500 }, (_, i) => `id-${i}`);
+    const sizes = [];
+    const rows = await fetchContactsInChunks(ids, async (chunk) => {
+      sizes.push(chunk.length);
+      return chunk.map((id) => ({ id }));
+    });
+    assert.deepEqual(sizes, [1000, 1000, 500]);
+    assert.equal(rows.length, 2500);
+    assert.equal(chunkIds([]).length, 0);
+  });
+
+  it("a failing batch fails the whole read", async () => {
+    await assert.rejects(
+      fetchContactsInChunks(Array.from({ length: 1500 }, (_, i) => String(i)), async (chunk) => {
+        if (chunk.length === 500) throw new Error("boom");
+        return [];
+      }),
+      /boom/,
+    );
+  });
+
+  it("the by-id read goes through the batching helper", () => {
+    assert.match(read("services/adminProfileContactsService.js"), /fetchContactsInChunks\(/);
+  });
+
+  it("email match is case-insensitive and exact; none or several is refused", () => {
+    const one = pickSingleContactByEmail([{ id: "a", email: "Sam@X.com" }], " sam@x.COM ");
+    assert.equal(one.user.id, "a");
+    assert.equal(pickSingleContactByEmail([], "a@b.c").error, "none");
+    assert.equal(pickSingleContactByEmail([{ id: "a", email: "other@x.com" }], "a@b.c").error, "none");
+    assert.equal(
+      pickSingleContactByEmail(
+        [{ id: "a", email: "sam@x.com" }, { id: "b", email: "SAM@x.com" }],
+        "sam@x.com",
+      ).error,
+      "ambiguous",
+    );
+  });
+
+  it("the coach-mark reset uses the exact-match picker", () => {
+    assert.match(read("pages/SettingsPage.jsx"), /pickSingleContactByEmail\(rows, userEmail\)/);
   });
 });

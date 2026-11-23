@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { fetchContactsInChunks } from "../lib/profileContactsPure";
 
 /**
  * #3969 — the admin read of people's names, email and coach-mark step.
@@ -18,7 +19,11 @@ export async function fetchAdminProfileContacts({ userIds = null, email = null }
 
 /** Contacts by user id, as a map. Throws when the read fails. */
 export async function fetchAdminProfileContactsById(userIds) {
-  const rows = await fetchAdminProfileContacts({ userIds });
+  // The server read refuses more than 1000 ids per call: ask in batches.
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  const rows = await fetchContactsInChunks(ids, (chunk) =>
+    fetchAdminProfileContacts({ userIds: chunk }),
+  );
   const map = {};
   for (const row of rows) map[row.id] = row;
   return map;
