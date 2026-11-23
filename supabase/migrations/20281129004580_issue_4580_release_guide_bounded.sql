@@ -20,11 +20,16 @@
 -- ops_release_records_ingest(jsonb) is not changed: its call to
 -- ops_release_guide_apply() is safe once the callee is bounded.
 --
+-- A0b. ops_agent_log_action_check also allows guide_deferred and
+--     release_record_poisoned (added beside the current rule).
+--
 -- Rollback (A5): re-apply public.ops_release_guide_apply() from
 -- 20280626014398_issue_4398_review_and_notices.sql, then
 --   DROP FUNCTION public.ops_release_guide_watchers(),
 --                 public.ops_release_guide_budget(),
 --                 public.ops_release_record_poisoned(integer, text, text);
+-- and, once no ops_agent_log row uses the two actions, restore
+-- ops_agent_log_action_check from 20271202003980_issue_3980_synced_w4_backfills_guide.sql.
 -- Warning: rolling back restores the timeout (one PR naming ~90+ entries
 -- freezes the sync again). Move #4553's keys out of the way first.
 
@@ -46,6 +51,29 @@ BEGIN
   END IF;
 END;
 $preflight$;
+
+-- A0b. The Admin log learns the two actions this migration writes
+-- (guide_deferred, release_record_poisoned). The current rule is kept as it
+-- is and the two names are added beside it, so every action it already
+-- allows stays allowed. Skipped when they are already allowed.
+DO $log_actions$
+DECLARE
+  v_def text;
+BEGIN
+  SELECT pg_get_constraintdef(c.oid) INTO v_def
+    FROM pg_constraint c
+   WHERE c.conrelid = 'public.ops_agent_log'::regclass AND c.conname = 'ops_agent_log_action_check';
+  IF v_def IS NULL OR v_def !~ '^CHECK \(.*\)$' THEN
+    RAISE EXCEPTION 'issue4580_agent_log_action_check_missing:%', coalesce(v_def, '<null>');
+  END IF;
+  IF position('''guide_deferred''' in v_def) > 0 AND position('''release_record_poisoned''' in v_def) > 0 THEN
+    RETURN;
+  END IF;
+  ALTER TABLE public.ops_agent_log DROP CONSTRAINT ops_agent_log_action_check;
+  EXECUTE format('ALTER TABLE public.ops_agent_log ADD CONSTRAINT ops_agent_log_action_check CHECK (%s OR action IN (%L, %L))',
+                 substring(v_def from '^CHECK (.*)$'), 'guide_deferred', 'release_record_poisoned');
+END;
+$log_actions$;
 
 -- A1. Who on Support hears that an entry is Live: an active directory row,
 -- not the owner, a matching sign-in account by lower(btrim(email)), and
@@ -274,8 +302,8 @@ BEGIN
 END;
 $function$;
 
--- A4. A release record the bridge skipped because it fails on its own: an
--- error row in the Admin log and one Admin notice to the owner. The same
+-- A4. A release record the bridge skipped because it fails on its own: a
+-- 'stopped' row in the Admin log and one Admin notice to the owner. The same
 -- record skipped twice is told once.
 CREATE OR REPLACE FUNCTION public.ops_release_record_poisoned(p_pr integer, p_comment_url text, p_code text) RETURNS void
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -289,7 +317,7 @@ BEGIN
      OR p_code IS NULL OR p_code !~ '^[A-Z0-9_]{1,60}$' THEN
     RAISE EXCEPTION 'invalid_poisoned_record: Send a pull request number, its record comment link and a short code.' USING ERRCODE = '22023';
   END IF;
-  PERFORM public.ops_log_write('system@usemingla.com', 'system', 'release_record_poisoned', 'error', NULL, 'release', NULL,
+  PERFORM public.ops_log_write('system@usemingla.com', 'system', 'release_record_poisoned', 'stopped', NULL, 'release', NULL,
     format('Release record of PR #%s could not be read into Mingla (%s). It was skipped so later records keep flowing. Re-read it once the cause is fixed.', p_pr, p_code),
     jsonb_build_object('pr', p_pr, 'comment_url', p_comment_url, 'code', p_code));
   v_boss := public.ops_owner_email();
@@ -304,6 +332,6 @@ $function$;
 REVOKE ALL ON FUNCTION public.ops_release_record_poisoned(integer, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_release_record_poisoned(integer, text, text) TO service_role;
 COMMENT ON FUNCTION public.ops_release_record_poisoned(integer, text, text) IS
-  'Issue #4580. The bridge skipped a release record that fails on its own: one error row in the Admin log (release_record_poisoned) and one Admin notice (alert) to the owner, once per record comment.';
+  'Issue #4580. The bridge skipped a release record that fails on its own: one stopped row in the Admin log (release_record_poisoned) and one Admin notice (alert) to the owner, once per record comment.';
 
 COMMIT;

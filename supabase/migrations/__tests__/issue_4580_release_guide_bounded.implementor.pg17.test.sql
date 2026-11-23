@@ -25,10 +25,13 @@
 --          3 guide_live log rows and the same audit rows per entry.
 --   SC-5   an incomplete key tried 10 minutes ago is not retried (no new
 --          guide_incomplete row); one tried 2 hours ago is.
---   POISON ops_release_record_poisoned writes one error row in the Admin log
+--   POISON ops_release_record_poisoned writes one stopped row in the Admin log
 --          per call and one notice to the owner per record comment; it
 --          refuses a caller that is not the bridge (42501) and bad input
 --          (22023).
+--   LOG    ops_agent_log_action_check keeps every older action and also
+--          allows guide_deferred and release_record_poisoned; the outcome rule
+--          is unchanged.
 --   GRANTS the three new functions are closed to anon and authenticated.
 --
 -- Run from the repository root as supabase_admin.
@@ -279,9 +282,9 @@ select pg_temp.chk('POISON', 'the bridge records a skipped record',
   pg_temp.state($q$select public.ops_release_record_poisoned(994590, 'https://github.com/Mingla-LLC/mingla-main/issues/4580#issuecomment-994590', 'INGEST_TIMEOUT')$q$), 'ok');
 select pg_temp.chk('POISON', 'twice for the same record comment',
   pg_temp.state($q$select public.ops_release_record_poisoned(994590, 'https://github.com/Mingla-LLC/mingla-main/issues/4580#issuecomment-994590', 'INGEST_TIMEOUT')$q$), 'ok');
-select pg_temp.chk('POISON', 'one error row in the Admin log per call',
+select pg_temp.chk('POISON', 'one stopped row in the Admin log per call',
   (select count(*)::text || ':' || coalesce(min(outcome), '-') || ':' || coalesce(min(detail->>'code'), '-')
-     from public.ops_agent_log where action = 'release_record_poisoned' and detail->>'pr' = '994590'), '2:error:INGEST_TIMEOUT');
+     from public.ops_agent_log where action = 'release_record_poisoned' and detail->>'pr' = '994590'), '2:stopped:INGEST_TIMEOUT');
 select pg_temp.chk('POISON', 'the owner is told once per record comment',
   (select count(*)::text || ':' || coalesce(min(u.email), '-') from public.team_mentions m join auth.users u on u.id = m.target_user_id
     where m.source_kind = 'ops_activity' and m.body_excerpt like '%PR #994590%'), '1:own.r4580@test.local');
@@ -298,6 +301,16 @@ select set_config('request.jwt.claim.role', 'authenticated', true);
 select pg_temp.chk('POISON', 'a caller that is not the bridge is refused 42501',
   pg_temp.state($q$select public.ops_release_record_poisoned(994592, null, 'INGEST_FAILED')$q$), '42501');
 select set_config('request.jwt.claim.role', 'service_role', true);
+
+-- ───────────────────────────── LOG ─────────────────────────────
+select pg_temp.chk('LOG', 'the Admin log keeps the older actions and learns the two new ones',
+  (select (pg_get_constraintdef(oid) like '%backfill_confirmed%' and pg_get_constraintdef(oid) like '%card_added%'
+           and pg_get_constraintdef(oid) like '%guide_deferred%' and pg_get_constraintdef(oid) like '%release_record_poisoned%')::text
+     from pg_constraint where conrelid = 'public.ops_agent_log'::regclass and conname = 'ops_agent_log_action_check'), 'true');
+select pg_temp.chk('LOG', 'an unknown action is still refused 23514',
+  pg_temp.state($q$insert into public.ops_agent_log (actor_email, via, action, outcome, summary, detail) values ('system@usemingla.com', 'system', 'not_an_action', 'info', 'x', '{}')$q$), '23514');
+select pg_temp.chk('LOG', 'the outcome rule is unchanged (error is still refused 23514)',
+  pg_temp.state($q$insert into public.ops_agent_log (actor_email, via, action, outcome, summary, detail) values ('system@usemingla.com', 'system', 'guide_deferred', 'error', 'x', '{}')$q$), '23514');
 
 -- ───────────────────────────── GRANTS ─────────────────────────────
 select pg_temp.chk('GRANTS', 'the new functions are closed to anon and authenticated, open to service_role',
