@@ -303,6 +303,11 @@ const SERVER_WORDS = new Set([
   "contact_rule_locked",
   "duplicate_identifier",
   "invalid_identifier",
+  // #4571 W3: people on a card. W4: Demo booked needs a linked demo (the server's sentence says how).
+  "owner_and_watcher",
+  "unknown_watcher",
+  "too_many_watchers",
+  "demo_required",
 ]);
 
 // Tokens whose server message is written for a caller of the function (it

@@ -117,8 +117,8 @@ export function RecordCard({
   canDrag = false,
   onOpen,
   onMove,
-  onDragStart,
-  onDragEnd,
+  // #4571 W3: dnd-kit's draggable (PipelineBoard), the same as the Work board.
+  drag = null,
 }) {
   const next = nextStage(def, record);
   const icp = icpLabel(def, record.icp);
@@ -139,13 +139,16 @@ export function RecordCard({
       tabIndex={0}
       aria-label={recordOpenLabel(record, team)}
       aria-busy={pending || undefined}
-      draggable={draggable}
-      onDragStart={draggable ? (e) => onDragStart?.(e, record) : undefined}
-      onDragEnd={draggable ? onDragEnd : undefined}
+      aria-roledescription={draggable && drag ? "Draggable card" : undefined}
+      ref={drag?.ref}
+      {...(draggable && drag ? drag.attributes : {})}
+      {...(draggable && drag ? drag.listeners : {})}
       onClick={() => onOpen(record)}
       onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
+        // dnd-kit picks the card up with Space (keyboard drag); Enter opens it.
+        if (draggable && drag) drag.listeners?.onKeyDown?.(e);
+        if (e.target !== e.currentTarget || e.defaultPrevented) return;
+        if (e.key === "Enter" || (e.key === " " && !(draggable && drag))) {
           e.preventDefault();
           onOpen(record);
         }
@@ -155,7 +158,7 @@ export function RecordCard({
         "group flex min-w-0 flex-col gap-1.5 rounded-[var(--radius-sm)] border border-[var(--gray-200)]",
         "bg-[var(--color-background-primary)] p-3 shadow-[var(--shadow-sm)] transition-opacity duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
-        pending ? "opacity-60" : "",
+        pending || drag?.isDragging ? "opacity-60" : "",
         draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
       ].join(" ")}
     >

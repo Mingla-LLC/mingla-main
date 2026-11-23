@@ -22,7 +22,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { identKey, lastTouchWords, quickLinks, followersShort, dueChoices } from "../lib/crmModel.js";
+import { identKey, lastTouchWords, quickLinks, followersShort, dueChoices, errorCopy } from "../lib/crmModel.js";
 import { linkLabelWords, localWhen, linkChips } from "../lib/opsModel.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -129,5 +129,24 @@ describe("P-1 the card is RecordPanel", () => {
   });
   it("My calls today is a view of Hosts", () => {
     assert.match(read("lib/crmUrl.js"), /if \(params\.get\("view"\) === "calls"\) state\.view = "calls";/);
+  });
+});
+
+describe("D-1 the pipeline board drags with dnd-kit, like the Work board", () => {
+  const board = read("components/crm/PipelineBoard.jsx");
+  const card = read("components/crm/RecordCard.jsx");
+  it("pointer after 6px, keyboard with Space and the arrow keys, Escape cancels", () => {
+    assert.match(board, /useSensor\(PointerSensor, \{ activationConstraint: \{ distance: 6 \} \}\)/);
+    assert.match(board, /useSensor\(KeyboardSensor, \{ coordinateGetter: columnKeyboardCoordinates, keyboardCodes: \{ start: \["Space"\], cancel: \["Escape"\], end: \["Space", "Enter"\] \} \}\)/);
+    assert.match(board, /import \{ collisions, columnKeyboardCoordinates \} from "\.\.\/ops\/WorkBoard";/);
+    assert.match(card, /if \(draggable && drag\) drag\.listeners\?\.onKeyDown\?\.\(e\);/, "Space reaches dnd-kit; Enter still opens");
+  });
+  it("every drop goes through the page's one move; a refusal is the server's sentence", () => {
+    assert.match(board, /if \(stageId && stageId !== record\.stage\) onMove\(record, stageId\);/);
+    assert.doesNotMatch(board, /moveStage\(|supabase/);
+    const words = "demo_required: Demo booked needs a Google Meet booked through the scheduler and linked to this card. Send the card's scheduler link, or link the booking on Needs linking.";
+    const sentence = words.slice("demo_required: ".length);
+    assert.equal(errorCopy("demo_required", sentence), sentence);
+    assert.match(read("pages/PipelinePage.jsx"), /addToast\(\{ variant: "error", title: `\$\{record\.name\} didn't move`, description: errorWords\(err\) \}\);/);
   });
 });

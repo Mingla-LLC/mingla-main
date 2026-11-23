@@ -508,9 +508,11 @@ describe("#3802 A-8: what the new screens keep and leave behind", () => {
     const card = read("components/crm/RecordCard.jsx");
     // #4255: a column is a drop target only when it is a stage (Stale is not).
     assert.match(board, /const droppable = !!stageId && canDrag && !disabled;/);
-    assert.match(board, /onDragOver=\{\s*droppable/);
-    assert.match(board, /onDrop=\{droppable \? /);
-    assert.match(board, /if \(record && record\.stage !== stageId\) onMove\(record, stageId\);/);
+    // #4571 W3: dnd-kit, as the Work board: a column is a drop target only when droppable.
+    assert.match(board, /useDroppable\(\{[\s\S]*?disabled: !droppable,/);
+    assert.match(board, /draggable=\{canDrag && !disabled && !pendingIds\.has\(record\.id\)\}/);
+    assert.match(board, /if \(stageId && stageId !== record\.stage\) onMove\(record, stageId\);/);
+    assert.match(card, /\{\.\.\.\(draggable && drag \? drag\.listeners : \{\}\)\}/);
     assert.match(card, /const draggable = canDrag && !disabled && !pending;/);
     assert.match(PAGE, /matchMedia\?\.\("\(hover: hover\) and \(pointer: fine\)"\)/);
   });
@@ -848,10 +850,10 @@ describe("#3802 B-6: what the retest attacked at runtime, pinned", () => {
   });
 
   it("a column that refuses the card is never a drop target, and the board stops scrolling when the drag ends", () => {
-    const over = BOARD_NOW.slice(BOARD_NOW.indexOf("if (refusal(stageId)) {"), BOARD_NOW.indexOf('e.dataTransfer.dropEffect = "move";'));
-    assert.match(over, /e\.dataTransfer\.dropEffect = "none";\s*return;/);
-    assert.ok(over.indexOf("return;") < over.indexOf("e.preventDefault();"));
-    assert.match(BOARD_NOW, /const endDrag = \(\) => \{\s*stopScrolling\(\);/);
-    assert.match(BOARD_NOW, /useEffect\(\(\) => stopScrolling, \[\]\);/);
+    // #4571 W3: dnd-kit. A refusing column is drawn refused, never as a target;
+    // ending or cancelling a drag clears the dragged card (dnd-kit stops its own scrolling).
+    assert.match(BOARD_NOW, /isOver: over && !refused, refused/);
+    assert.match(BOARD_NOW, /const onDragEnd = \(\{ active, over \}\) => \{\s*const record = active\.data\.current\?\.record;\s*setDragged\(null\);/);
+    assert.match(BOARD_NOW, /onDragCancel=\{\(\) => setDragged\(null\)\}/);
   });
 });

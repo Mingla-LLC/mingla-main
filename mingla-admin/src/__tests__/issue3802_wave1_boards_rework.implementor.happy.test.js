@@ -420,8 +420,8 @@ describe("#3802 R-8: the smaller items", () => {
   });
 
   it("a column that will not take the card does not look like a drop target", () => {
-    assert.match(BOARD, /const isOver = over && !refused;/);
-    assert.match(BOARD, /if \(refusal\(stageId\)\) \{\s*e\.dataTransfer\.dropEffect = "none";\s*return;\s*\}\s*e\.preventDefault\(\);/);
+    // #4571 W3: dnd-kit (as the Work board). A refusing column is outlined as refused, never as a target.
+    assert.match(BOARD, /const refused = over \? refusal\(stageId\) : null;\s*return children\(\{ setNodeRef, isOver: over && !refused, refused, className \}\);/);
     assert.match(BOARD, /block\.token === "stage_sets_itself" \|\| block\.token === "stage_is_live"/);
     assert.match(BOARD, /Can&apos;t drop here\. \{refused\.message\}/);
   });
@@ -432,10 +432,12 @@ describe("#3802 R-8: the smaller items", () => {
   });
 
   it("the board scrolls sideways while a card is dragged near its edge", () => {
-    assert.match(BOARD, /onDragOver=\{canDrag && !disabled \? steerScroll : undefined\}/);
-    assert.match(BOARD, /if \(e\.clientX < box\.left \+ EDGE_PX\) speed = -EDGE_SPEED;/);
-    assert.match(BOARD, /else if \(e\.clientX > box\.right - EDGE_PX\) speed = EDGE_SPEED;/);
-    assert.match(BOARD, /const endDrag = \(\) => \{\s*stopScrolling\(\);/);
+    // #4571 W3: dnd-kit scrolls the board's own scroll box near its edges (its
+    // autoScroll is on: never switched off), and the page itself never scrolls sideways.
+    assert.match(BOARD, /<DndContext sensors=\{sensors\} collisionDetection=\{collisions\}/);
+    assert.doesNotMatch(BOARD, /autoScroll=\{false\}/);
+    assert.match(BOARD, /data-pipeline-board="dnd"\s+className="max-w-full overflow-x-auto/);
+    assert.doesNotMatch(BOARD, /dataTransfer|steerScroll|onDrop=|draggable: true/, "no native drag left");
   });
 
   // #4255: the list view is gone (D8); "Show all N" is the board's tap target.

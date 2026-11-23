@@ -376,7 +376,7 @@ function useIsPhone() {
  * Keyboard: the arrow keys take a picked-up card to the next or previous
  * column (by their place on screen), rather than 25 pixels at a time.
  */
-function columnKeyboardCoordinates(event, { context }) {
+export function columnKeyboardCoordinates(event, { context }) {
   const { active, collisionRect, droppableRects, droppableContainers } = context;
   if (!active || !collisionRect) return undefined;
   const dir = event.code === "ArrowRight" ? 1 : event.code === "ArrowLeft" ? -1 : 0;
@@ -393,7 +393,7 @@ function columnKeyboardCoordinates(event, { context }) {
   return { x: target.left + target.width / 2 - collisionRect.width / 2, y: target.top + 60 };
 }
 
-function collisions(args) {
+export function collisions(args) {
   const within = pointerWithin(args).filter((c) => c.data?.droppableContainer?.data?.current?.type === "column");
   return within.length ? within : closestCenter({ ...args, droppableContainers: args.droppableContainers.filter((c) => c.data.current?.type === "column") });
 }
