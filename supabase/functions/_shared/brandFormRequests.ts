@@ -121,7 +121,11 @@ export interface FormRequestAudience {
 
 export interface RpcResult {
   data: unknown;
-  error: { message: string } | null;
+  /**
+   * #4573: `code` is PostgREST's error code (a SQLSTATE such as 21000 or
+   * PT409, or a PGRST code), passed through for the refusal log only.
+   */
+  error: { message: string; code?: string | null } | null;
 }
 
 export interface FormRequestDeps {

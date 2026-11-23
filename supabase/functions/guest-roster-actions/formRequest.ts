@@ -141,6 +141,47 @@ export function audienceError(
     : { code: "form_request_unavailable", status: 409 };
 }
 
+/** #4573: where a form_request_unavailable refusal came from. */
+export type FormRequestRefusalStage = "audience" | "enqueue" | "parse";
+
+/** A database error code is logged only as a short fixed token (SQLSTATE or PGRST code). */
+const DB_STATE = /^[A-Z0-9]{5,8}$/;
+
+/**
+ * #4573 Constitution rule 3: every refused form request leaves exactly one log
+ * line. No personal data: no raw database message, contact, name, token or id
+ * (the form and event ids are not logged either).
+ */
+export function logFormRequestRefusal(fields: {
+  op: FormRequestBody["operation"];
+  code: string;
+  status: number;
+  dbState: string | null;
+  kind: FormRequestBody["kind"];
+  channels: FormRequestChannel[];
+  smsCount: number | null;
+  reachable: number | null;
+  stage?: FormRequestRefusalStage;
+}): void {
+  const dbState = fields.dbState !== null && DB_STATE.test(fields.dbState)
+    ? fields.dbState
+    : null;
+  const line: Record<string, unknown> = {
+    op: fields.op,
+    code: fields.code,
+    status: fields.status,
+    dbState,
+    kind: fields.kind,
+    channels: fields.channels,
+    smsCount: fields.smsCount,
+    reachable: fields.reachable,
+  };
+  if (fields.code === "form_request_unavailable" && fields.stage !== undefined) {
+    line.stage = fields.stage;
+  }
+  console.warn("[brand-form-request] refused", JSON.stringify(line));
+}
+
 export async function handleFormRequest(
   body: FormRequestBody,
   actorId: string,
@@ -148,6 +189,28 @@ export async function handleFormRequest(
   budgetMs = FORM_SEND_DRAIN_BUDGET_MS,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const channels = [...body.channels].sort() as FormRequestChannel[];
+  let counts: { smsCount: number | null; reachable: number | null } = {
+    smsCount: null,
+    reachable: null,
+  };
+  const refuse = (
+    status: number,
+    payload: Record<string, unknown> & { code: string },
+    dbState: string | null = null,
+    stage?: FormRequestRefusalStage,
+  ): { status: number; body: Record<string, unknown> } => {
+    logFormRequestRefusal({
+      op: body.operation,
+      code: payload.code,
+      status,
+      dbState,
+      kind: body.kind,
+      channels,
+      ...counts,
+      stage,
+    });
+    return { status, body: { ok: false, ...payload } };
+  };
   // #4541 R3.1: push goes to the server too; it drops push while the
   // BRAND_FORMS_PUSH switch is off.
   const audienceKind = body.kind === "remind" ? "unanswered" : body.audience;
@@ -161,27 +224,22 @@ export async function handleFormRequest(
   });
   if (read.error !== null) {
     const e = audienceError(read.error.message);
-    return { status: e.status, body: { ok: false, code: e.code } };
+    return refuse(e.status, { code: e.code }, read.error.code ?? null, "audience");
   }
   let audience;
   try {
     audience = parseAudience(read.data);
   } catch {
-    return {
-      status: 502,
-      body: { ok: false, code: "form_request_unavailable" },
-    };
+    return refuse(502, { code: "form_request_unavailable" }, null, "parse");
   }
   const rates = channels.includes("sms") ? await deps.smsRates() : null;
   const preview = previewFormRequest(audience, channels, rates, body.kind);
   if (body.operation === "form_preview") {
     return { status: 200, body: { ok: true, ...preview } };
   }
+  counts = { smsCount: preview.smsCount, reachable: preview.reachableCount };
   if (preview.reachableCount === 0) {
-    return {
-      status: 409,
-      body: { ok: false, code: "no_recipients", ...preview },
-    };
+    return refuse(409, { ...preview, code: "no_recipients" });
   }
   // #4541 R5.4: a text limit never refuses the send: over the monthly
   // allowance or today's 300, texts are off for this send (preview.textsOff)
@@ -191,10 +249,7 @@ export async function handleFormRequest(
     preview.smsCount > 0 && preview.estimatedCostMinor === null &&
     body.confirmUnpriced !== true
   ) {
-    return {
-      status: 409,
-      body: { ok: false, code: "cost_unpriced", ...preview },
-    };
+    return refuse(409, { ...preview, code: "cost_unpriced" });
   }
   const expected = body.expectedCostMinor ?? null;
   if (
@@ -203,10 +258,7 @@ export async function handleFormRequest(
       preview.estimatedCostMinor > Math.ceil(expected * 1.1) ||
       body.currency !== preview.currency)
   ) {
-    return {
-      status: 409,
-      body: { ok: false, code: "preview_stale_cost", ...preview },
-    };
+    return refuse(409, { ...preview, code: "preview_stale_cost" });
   }
   const queued = await deps.rpc("brand_form_request_enqueue", {
     p_actor_id: actorId,
@@ -218,11 +270,12 @@ export async function handleFormRequest(
     p_channels: channels,
   });
   if (queued.error !== null) {
+    const dbState = queued.error.code ?? null;
     if (queued.error.message.includes("form_request_text_cap")) {
-      return { status: 409, body: { ok: false, code: "text_cap", ...preview } };
+      return refuse(409, { ...preview, code: "text_cap" }, dbState);
     }
     const e = audienceError(queued.error.message);
-    return { status: e.status, body: { ok: false, code: e.code } };
+    return refuse(e.status, { code: e.code }, dbState, "enqueue");
   }
   const q =
     (typeof queued.data === "object" && queued.data !== null
