@@ -61,6 +61,8 @@ function world(
     },
     from,
     rpc: (name: string, params: Row) => {
+      // TEST-MOD-APPROVED #4490 (08-O5 part A): the PIN gate answers "not a Till device" for these accounts, as the database does.
+      if (name === "issue_4490_pin_gate") return Promise.resolve({ data: false, error: null });
       calls.push({ name, params });
       return Promise.resolve(rpcAnswer(name, params));
     },

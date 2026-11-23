@@ -758,7 +758,12 @@ export const createDoorTapIntentHandler = (
     if (body.scope === "till") {
       switch (body.action) {
         case "create":
-          return await handleTillCreate(body, actorId, deps);
+          return await handleTillCreate(
+            body,
+            actorId,
+            deps,
+            (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim(),
+          );
         case "complete":
           return await handleTillComplete(body, actorId, deps);
         case "location":

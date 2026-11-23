@@ -20,6 +20,7 @@ import {
 } from "../_shared/venueTillTerminal.ts";
 import { isUuid } from "../_shared/doorPay.ts";
 import { isMissingTillPaymentColumn } from "../_shared/tillMigrationCompat.ts";
+import { resolveTillActor } from "../_shared/venueTillStaffSession.ts";
 import type { DoorTapIntentDeps } from "./index.ts";
 
 type Body = Record<string, unknown>;
@@ -98,8 +99,9 @@ async function loadTillPayment(
 
 export async function handleTillCreate(
   body: Body,
-  actorId: string,
+  signedInId: string,
   deps: DoorTapIntentDeps,
+  jwt = "",
 ): Promise<Response> {
   const { venueId, paymentId, clientRequestId } = body;
   if (!isUuid(venueId) || !isUuid(paymentId) || !isUuid(clientRequestId)) {
@@ -110,6 +112,17 @@ export async function handleTillCreate(
   if (!(await tillEnabledAtVenue(supabase, venueId))) {
     return tillNotEnabledResponse();
   }
+  // #4490 O5: starting a card read on a Till device login needs a live PIN
+  // session (staffSession in the body) and runs as that member. complete,
+  // cancel, seen and the sweep never ask (T19: money that moved is recorded).
+  const who = await resolveTillActor(supabase, {
+    venueId,
+    userId: signedInId,
+    jwt,
+    staffSession: body.staffSession,
+  });
+  if (!who.ok) return jsonResponse({ error: who.code }, who.status);
+  const actorId = who.actor.actorUserId;
   if (!(await canSell(supabase, venueId, actorId))) {
     return jsonResponse({ error: "door_access_denied" }, 400);
   }

@@ -107,6 +107,15 @@ import { requestClientIp } from "../_shared/ticketLinkToken.ts";
 import { tapToPayReleased } from "../_shared/doorPayServer.ts";
 import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
 import {
+  isMissingPinFunction,
+  jwtAuthSessionId,
+  pinRefusal,
+  requireStepUp,
+  resolveTillActor,
+  STAFF_PIN_RE,
+  staffTokenHash,
+} from "../_shared/venueTillStaffSession.ts";
+import {
   issueTillReceiptTokenHash,
   TILL_RECEIPT_TOKEN_RE,
   tillReceiptTokenHashHex,
@@ -211,6 +220,13 @@ export const TILL_SAFE_CODES = [
   "till_booking_not_found",
   "till_booking_other_table",
   "till_booking_not_seatable",
+  // #4490 08-O5 part A: PIN sessions on a Till device login.
+  "pin_session_required",
+  "pin_session_invalid",
+  "pin_step_up_required",
+  "pin_weak",
+  "pin_invalid",
+  "pin_hard_locked",
 ] as const;
 
 // deno-lint-ignore no-explicit-any
@@ -248,6 +264,169 @@ export const TILL_CODE_PAY_LIMIT = 10;
 export const TILL_UNKNOWN_CODE_LIMIT = 300;
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** #4490 O5: PIN actions of a signed-in member (Team), never on a Till device. */
+export const PIN_ACCOUNT_ACTIONS = new Set(["pin_status", "pin_set", "pin_reset", "pin_team"]);
+/** #4490 O5: "Who's selling?" actions of a Till device login (no session needed). */
+export const PIN_DEVICE_ACTIONS = new Set(["pin_staff", "pin_unlock", "pin_end", "pin_sign_out"]);
+/** A device signed out with its own email code: the code must be this recent. */
+export const PIN_SIGN_OUT_CODE_MAX_AGE_S = 600;
+
+/** The latest one-time-code sign-in time of a verified bearer (amr claim), in seconds. */
+export function jwtOtpSignInAt(jwt: string): number | null {
+  const part = jwt.split(".")[1];
+  if (!part) return null;
+  try {
+    const claims = JSON.parse(
+      atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "=")),
+    ) as Record<string, unknown>;
+    const amr = Array.isArray(claims.amr) ? claims.amr as Array<Record<string, unknown>> : [];
+    const times = amr.filter((a) => a?.method === "otp" && typeof a?.timestamp === "number")
+      .map((a) => Number(a.timestamp));
+    return times.length > 0 ? Math.max(...times) : null;
+  } catch {
+    return null;
+  }
+}
+
+function pinAccountFailure(error: RpcError): Response {
+  const message = error.message ?? "";
+  if (message === "pin_weak" || message === "pin_invalid") return json(400, { code: message });
+  if (message === "pin_hard_locked") return json(422, { code: message });
+  if (message === "not_authorized" || error.code === "42501") return json(403, { code: "not_authorized" });
+  console.error("[venue-till] pin account action failed", error.code);
+  return json(500, { code: "till_failed" });
+}
+
+/** pin_status / pin_set / pin_reset / pin_team: account sign-in only. */
+async function handlePinAccount(
+  client: TillClient,
+  action: string,
+  body: Record<string, unknown>,
+  userId: string,
+): Promise<Response> {
+  // Never in a PIN session (settings, team and PIN resets never are).
+  if (body.staffSession != null) return json(403, { code: "not_authorized" });
+  if (action === "pin_reset") {
+    const memberId = str(body.memberId);
+    if (!UUID.test(memberId)) return json(400, { code: "till_invalid_payload" });
+    const { data, error } = await client.rpc("issue_4490_pin_reset", { p_actor: userId, p_member: memberId });
+    return error ? pinAccountFailure(error) : ok(data);
+  }
+  const brandId = str(body.brandId);
+  if (!UUID.test(brandId)) return json(400, { code: "till_invalid_payload" });
+  if (action === "pin_team") {
+    const { data, error } = await client.rpc("issue_4490_pin_team", { p_actor: userId, p_brand_id: brandId });
+    return error ? pinAccountFailure(error) : ok({ members: data });
+  }
+  const status = await client.rpc("issue_4490_pin_status", { p_user: userId, p_brand_id: brandId });
+  if (status.error) return pinAccountFailure(status.error);
+  if (action === "pin_status") return ok(status.data);
+  const pin = str(body.pin);
+  if (!STAFF_PIN_RE.test(pin)) return json(400, { code: "pin_invalid" });
+  const { data, error } = await client.rpc("issue_4490_pin_set", {
+    p_member: String((status.data as Record<string, unknown>).memberId),
+    p_user: userId,
+    p_pin: pin,
+  });
+  return error ? pinAccountFailure(error) : ok(data);
+}
+
+/** pin_staff / pin_unlock / pin_end / pin_sign_out on a Till device login. */
+async function handlePinDevice(
+  client: TillClient,
+  action: string,
+  body: Record<string, unknown>,
+  venueId: string,
+  userId: string,
+  jwt: string,
+): Promise<Response> {
+  if (action === "pin_staff") {
+    const { data, error } = await client.rpc("issue_4490_pin_staff", {
+      p_venue_id: venueId,
+      p_device_user: userId,
+    });
+    if (error) {
+      // [TRANSITIONAL] before migration 20280809611490 nobody is gated.
+      if (isMissingPinFunction(error)) return ok({ gated: false });
+      return tillFailure(error);
+    }
+    return ok(data);
+  }
+  if (action === "pin_end") {
+    const tokenHash = await staffTokenHash(str(body.staffSession));
+    if (tokenHash === null) return ok({ ended: 0 });
+    const { data, error } = await client.rpc("issue_4490_pin_session_end", {
+      p_token_hash: tokenHash,
+      p_device_user: userId,
+      p_venue_id: venueId,
+      p_reason: body.reason === "auto_lock" ? "auto_lock" : "ended",
+    });
+    return error ? tillFailure(error) : ok({ ended: Number(data ?? 0) });
+  }
+  const memberId = body.memberId == null ? null : str(body.memberId);
+  const pin = str(body.pin);
+  if (action === "pin_unlock") {
+    if (memberId === null || !UUID.test(memberId) || !STAFF_PIN_RE.test(pin)) {
+      return json(400, { code: "till_invalid_payload" });
+    }
+    const { data, error } = await client.rpc("issue_4490_pin_unlock", {
+      p_venue_id: venueId,
+      p_device_user: userId,
+      p_member: memberId,
+      p_pin: pin,
+      p_auth_session: jwtAuthSessionId(jwt),
+    });
+    if (error) return tillFailure(error);
+    const result = data as Record<string, unknown>;
+    if (result?.ok !== true) {
+      const refusal = pinRefusal(result ?? {});
+      return json(refusal.status, refusal.body);
+    }
+    return ok({
+      staffSession: result.token,
+      expiresAt: result.expiresAt,
+      autoLockMinutes: result.autoLockMinutes,
+      member: result.member,
+    });
+  }
+  // pin_sign_out: a manager's PIN, or (when no manager at the venue has a
+  // PIN, spec 08 §12 item 5) the device's own fresh email code. Then every
+  // PIN session of this device ends; the app signs the device out.
+  if (memberId !== null || pin) {
+    if (memberId === null || !UUID.test(memberId) || !STAFF_PIN_RE.test(pin)) {
+      return json(400, { code: "till_invalid_payload" });
+    }
+    const { data, error } = await client.rpc("issue_4490_pin_approve", {
+      p_token_hash: null,
+      p_device_user: userId,
+      p_venue_id: venueId,
+      p_auth_session: null,
+      p_member: memberId,
+      p_pin: pin,
+      p_purpose: "sign_out",
+      p_target: null,
+    });
+    if (error) return tillFailure(error);
+    const result = data as Record<string, unknown>;
+    if (result?.ok !== true) {
+      const refusal = pinRefusal(result ?? {});
+      return json(refusal.status, refusal.body);
+    }
+  } else {
+    const staff = await client.rpc("issue_4490_pin_staff", { p_venue_id: venueId, p_device_user: userId });
+    if (staff.error) return tillFailure(staff.error);
+    const info = staff.data as Record<string, unknown>;
+    if (info?.gated !== true) return json(403, { code: "not_authorized" });
+    if (info.managerHasPin === true) return json(403, { code: "pin_step_up_required" });
+    const at = jwtOtpSignInAt(jwt);
+    if (at === null || Date.now() / 1000 - at > PIN_SIGN_OUT_CODE_MAX_AGE_S) {
+      return json(403, { code: "pin_email_code_required" });
+    }
+  }
+  const { data, error } = await client.rpc("issue_4490_pin_sessions_end_all", { p_device_user: userId });
+  return error ? tillFailure(error) : ok({ ended: Number(data ?? 0) });
+}
 
 type RpcError = { message?: string; code?: string; details?: string | null };
 
@@ -290,6 +469,10 @@ function statusFor(code: string, error: RpcError): number {
       return 400;
     case "42501":
       return 403;
+    // #4490 O5: no PIN session, or one that ended, expired, idled or belongs
+    // to another device or venue.
+    case "28000":
+      return 401;
     case "P0002":
       return 404;
     case "PT409":
@@ -441,8 +624,33 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
     const userId: string | null = userData?.user?.id ?? null;
     if (userError || !userId) return json(401, { code: "auth_required" });
 
+    // #4490 O5: the member's own PIN (Team) and a manager's reset. Account
+    // sign-in only: never from a Till device and never in a PIN session.
+    if (PIN_ACCOUNT_ACTIONS.has(action)) {
+      return await handlePinAccount(client, action, body, userId);
+    }
+
     const venueId = str(body.venueId);
     if (!UUID.test(venueId)) return json(400, { code: "invalid_request" });
+
+    // #4490 O5: "Who's selling?" on a Till device login (the device signed in;
+    // no PIN session needed to list, switch in, end a session or sign out).
+    if (PIN_DEVICE_ACTIONS.has(action)) {
+      return await handlePinDevice(client, action, body, venueId, userId, jwt);
+    }
+    // #4490 O5: on a Till device login every Till action needs a live PIN
+    // session and runs as that member (their own rights, never more); the
+    // device user is recorded. Anyone else acts as themselves, as before.
+    const who = await resolveTillActor(client, {
+      venueId,
+      userId,
+      jwt,
+      staffSession: body.staffSession,
+    });
+    if (!who.ok) return json(who.status, { code: who.code });
+    const tillActor = who.actor;
+    const actor = tillActor.actorUserId;
+    const deviceUser = tillActor.deviceUserId;
 
     // Every sale-scoped action checks the sale belongs to this venue.
     const saleId = str(body.saleId);
@@ -476,7 +684,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       case "catalog": {
         const gate = await rpc("issue_4490_till_catalog", {
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
         });
         if (gate.error) return tillFailure(gate.error);
         const catalog = gate.data as Record<string, unknown>;
@@ -511,7 +719,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       case "checks": {
         const r = await rpc("issue_4490_till_checks", {
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
         });
         return r.error ? tillFailure(r.error) : ok(r.data);
       }
@@ -530,7 +738,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         }
         const r = await rpc("issue_4490_till_open", {
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
           p_server: server,
           p_label: label || null,
           p_spot_id: spotId,
@@ -546,7 +754,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         if (!sale) return json(404, { code: "till_sale_not_found" });
         const allowed = await rpc("issue_4490_can_sell", {
           p_venue_id: venueId,
-          p_user_id: userId,
+          p_user_id: actor,
         });
         if (allowed.error || allowed.data !== true) {
           return json(403, { code: "not_authorized" });
@@ -569,7 +777,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         if (!sale) return json(404, { code: "till_sale_not_found" });
         const allowed = await rpc("issue_4490_can_sell", {
           p_venue_id: venueId,
-          p_user_id: userId,
+          p_user_id: actor,
         });
         if (allowed.error || allowed.data !== true) {
           return json(403, { code: "not_authorized" });
@@ -658,7 +866,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
             qr_spot_id: sale.qr_spot_id,
             spot_label_at_order: spotLabel,
             source: "staff",
-            taken_by_user_id: userId,
+            taken_by_user_id: actor,
             pickup_code: pickupCode,
             buyer_name: sale.check_label ?? null,
             money_path: "venue_collected",
@@ -754,7 +962,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const attached = await rpc("issue_4490_till_attach_round", {
           p_sale_id: saleId,
           p_order_id: orderId,
-          p_actor: userId,
+          p_actor: actor,
           p_expected_version: existing ? null : roundVersion,
         });
         if (attached.error) {
@@ -771,7 +979,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         if (body.send === true) {
           const sent = await rpc("issue_4490_till_send", {
             p_sale_id: saleId,
-            p_actor: userId,
+            p_actor: actor,
           });
           if (sent.error) return tillFailure(sent.error);
           await firePlaced((sent.data as Record<string, unknown>)?.sentOrderIds);
@@ -807,7 +1015,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
             priceOptionId: str(l.priceOptionId),
             guests: Number(l.guests),
           })),
-          p_actor: userId,
+          p_actor: actor,
           p_idempotency_key: key,
           p_guest_list_entry_id: entryId,
           p_expected_version: expectedVersion,
@@ -827,7 +1035,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_sale_id: saleId,
           p_group_id: groupId,
           p_amount_minor: amount,
-          p_actor: userId,
+          p_actor: actor,
           p_idempotency_key: key,
           p_expected_version: expectedVersion,
         });
@@ -847,11 +1055,42 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           return json(400, { code: "till_invalid_payload" });
         }
         if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
+        if (tillActor.isDevice) {
+          // #4490 O5: on a Till device the void runs in the session (checked
+          // again in its own transaction); a sent item also needs a fresh PIN
+          // with money rights, from the seller or a manager on the spot.
+          let voidActor = actor;
+          let steppedUp = false;
+          if (body.stepUp != null) {
+            const step = await requireStepUp(client, {
+              venueId,
+              actor: tillActor,
+              stepUp: body.stepUp,
+              purpose: "void_sent",
+              target: itemId ?? lineId,
+            });
+            if (!step.ok) return json(step.status, step.body);
+            voidActor = step.approverUserId;
+            steppedUp = true;
+          }
+          const r = await rpc("issue_4490_till_void_on_device", {
+            p_sale_id: saleId,
+            p_line_id: lineId,
+            p_order_item_id: itemId,
+            p_actor: voidActor,
+            p_device_user: deviceUser,
+            p_reason: reason,
+            p_restock: body.restock === true,
+            p_expected_version: expectedVersion,
+            p_stepped_up: steppedUp,
+          });
+          return r.error ? tillFailure(r.error) : ok({ sale: r.data });
+        }
         const r = await rpc("issue_4490_till_void", {
           p_sale_id: saleId,
           p_line_id: lineId,
           p_order_item_id: itemId,
-          p_actor: userId,
+          p_actor: actor,
           p_reason: reason,
           p_restock: body.restock === true,
           p_expected_version: expectedVersion,
@@ -862,7 +1101,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       case "send": {
         if (!UUID.test(saleId)) return json(400, { code: "till_invalid_payload" });
         if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
-        const r = await rpc("issue_4490_till_send", { p_sale_id: saleId, p_actor: userId });
+        const r = await rpc("issue_4490_till_send", { p_sale_id: saleId, p_actor: actor });
         if (r.error) return tillFailure(r.error);
         await firePlaced((r.data as Record<string, unknown>)?.sentOrderIds);
         return ok({ sale: r.data });
@@ -882,7 +1121,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_sale_id: saleId,
           p_spot_id: spotId,
           p_label: label || null,
-          p_actor: userId,
+          p_actor: actor,
           p_expected_version: expectedVersion,
         });
         return r.error ? tillFailure(r.error) : ok({ sale: r.data });
@@ -897,7 +1136,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const r = await rpc("issue_4490_till_set_server", {
           p_sale_id: saleId,
           p_server: server,
-          p_actor: userId,
+          p_actor: actor,
           p_expected_version: expectedVersion,
         });
         return r.error ? tillFailure(r.error) : ok({ sale: r.data });
@@ -929,8 +1168,8 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_amount_minor: amount,
           p_tip_minor: tip,
           p_cash_given_minor: cashGiven,
-          p_actor: userId,
-          p_device_user: userId,
+          p_actor: actor,
+          p_device_user: deviceUser,
           p_client_request_id: requestId,
           p_expected_version: expectedVersion,
         };
@@ -980,8 +1219,8 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_amount_minor: 1,
           p_tip_minor: 0,
           p_cash_given_minor: null,
-          p_actor: userId,
-          p_device_user: userId,
+          p_actor: actor,
+          p_device_user: deviceUser,
           p_client_request_id: crypto.randomUUID(),
           p_expected_version: expectedVersion,
         };
@@ -1041,7 +1280,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_sale_id: saleId,
           p_mode: mode,
           p_shares: shares,
-          p_actor: userId,
+          p_actor: actor,
           p_expected_version: expectedVersion,
         });
         return r.error ? tillFailure(r.error) : ok({ sale: r.data });
@@ -1054,7 +1293,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         if (!(await loadSale())) return json(404, { code: "till_sale_not_found" });
         const r = await rpc("issue_4490_till_close_covered", {
           p_sale_id: saleId,
-          p_actor: userId,
+          p_actor: actor,
           p_expected_version: expectedVersion,
         });
         return r.error ? tillFailure(r.error) : ok({ sale: r.data });
@@ -1078,7 +1317,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         }
         const r = await rpc("issue_4490_till_seat", {
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
           p_spot_id: spotId,
           p_party_size: party,
           p_reservation_id: reservationId,
@@ -1110,7 +1349,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_space_id: spaceId,
           p_minutes: minutes,
           p_guests: guests,
-          p_actor: userId,
+          p_actor: actor,
           p_idempotency_key: key,
           p_expected_version: expectedVersion,
         });
@@ -1132,7 +1371,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           p_sale_id: saleId,
           p_line_id: lineId,
           p_minutes: minutes,
-          p_actor: userId,
+          p_actor: actor,
           p_idempotency_key: key,
           p_expected_version: expectedVersion,
         });
@@ -1140,6 +1379,23 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       }
 
       case "refund": {
+        // #4490 O5: on a Till device a refund always needs a fresh PIN with
+        // money rights (the seller's, or a manager's on the spot); it is then
+        // recorded under whoever approved it, with the device.
+        let refundActor = actor;
+        if (tillActor.isDevice) {
+          const target = body.lineId != null ? str(body.lineId) : str(body.paymentId);
+          if (!UUID.test(target)) return json(400, { code: "till_invalid_payload" });
+          const step = await requireStepUp(client, {
+            venueId,
+            actor: tillActor,
+            stepUp: body.stepUp,
+            purpose: "refund",
+            target,
+          });
+          if (!step.ok) return json(step.status, step.body);
+          refundActor = step.approverUserId;
+        }
         // A paid offer line, refunded in full: the money comes back from the
         // check's cash and own-machine payments, then the booking is cancelled
         // through the venue offer cancel path (spec 08 §3 O1 Refunds).
@@ -1165,8 +1421,8 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           }
           const r = await rpc("issue_4490_till_refund_line", {
             p_line_id: lineId,
-            p_actor: userId,
-            p_device_user: userId,
+            p_actor: refundActor,
+            p_device_user: deviceUser,
             p_reason: reason,
             p_client_request_id: requestId,
           });
@@ -1203,8 +1459,8 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
             p_payment_id: paymentId,
             p_amount_minor: amount,
             p_tip_minor: tip,
-            p_actor: userId,
-            p_device_user: userId,
+            p_actor: refundActor,
+            p_device_user: deviceUser,
             p_reason: reason,
             p_client_request_id: requestId,
           })
@@ -1214,8 +1470,8 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
             p_tip_minor: tip,
             p_reason: reason,
             p_restock: body.restock === true,
-            p_actor: userId,
-            p_device_user: userId,
+            p_actor: refundActor,
+            p_device_user: deviceUser,
             p_client_request_id: requestId,
           });
         return r.error ? tillFailure(r.error) : ok(r.data);
@@ -1224,7 +1480,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       case "servers": {
         const r = await rpc("issue_4490_till_servers", {
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
         });
         return r.error ? tillFailure(r.error) : ok({ servers: r.data });
       }
@@ -1252,7 +1508,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const r = await rpc("issue_4490_till_receipt_send", {
           p_payment_id: paymentId,
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
           p_phone_e164: phone,
           p_email: emailRaw || null,
           p_token_hash: `\\x${hashHex}`,
@@ -1283,13 +1539,13 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           const prep = shareId === null
             ? await rpc("issue_4490_till_card_prepare", {
               p_sale_id: saleId,
-              p_actor: userId,
+              p_actor: actor,
               p_expected_version: expectedVersion,
             })
             : await rpc("issue_4490_till_card_prepare_share", {
               p_sale_id: saleId,
               p_share_id: shareId,
-              p_actor: userId,
+              p_actor: actor,
               p_expected_version: expectedVersion,
             });
           if (prep.error) return tillFailure(prep.error);
@@ -1325,8 +1581,8 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
             p_sale_id: saleId,
             p_method: method,
             p_tip_minor: tip,
-            p_actor: userId,
-            p_device_user: userId,
+            p_actor: actor,
+            p_device_user: deviceUser,
             p_client_request_id: requestId,
             p_expected_version: prepared
               ? Number(prepared.version)
@@ -1380,7 +1636,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         if (intent?.stripe_payment_intent_id) {
           return json(409, { code: "till_payment_in_progress" });
         }
-        const r = await rpc("issue_4490_till_card_cancel", { p_payment_id: paymentId, p_actor: userId });
+        const r = await rpc("issue_4490_till_card_cancel", { p_payment_id: paymentId, p_actor: actor });
         return r.error ? tillFailure(r.error) : ok(r.data);
       }
 
@@ -1390,7 +1646,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const r = await rpc("issue_4490_till_pay_code_status", {
           p_code: code,
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
         });
         if (r.error) return tillFailure(r.error);
         return ok({ ...(r.data as Record<string, unknown>), payUrl: makeTillPayUrl(origin(), code) });
@@ -1404,7 +1660,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const status = await rpc("issue_4490_till_pay_code_lookup", {
           p_code: code,
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
         });
         if (status.error) return tillFailure(status.error);
         const st = status.data as Record<string, unknown>;
@@ -1433,7 +1689,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         }
         const r = await rpc("issue_4490_till_card_cancel", {
           p_payment_id: String(st.paymentId),
-          p_actor: userId,
+          p_actor: actor,
         });
         return r.error ? tillFailure(r.error) : ok(r.data);
       }
@@ -1448,7 +1704,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         const r = await rpc("issue_4490_till_pay_code_text", {
           p_code: code,
           p_venue_id: venueId,
-          p_actor: userId,
+          p_actor: actor,
           p_phone_e164: phone.e164,
           p_pay_url: makeTillPayUrl(origin(), code),
         });
@@ -1463,7 +1719,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         if (!(await paymentAtVenue(paymentId))) return json(404, { code: "till_payment_not_found" });
         const r = await rpc("issue_4490_till_keep_late_payment", {
           p_payment_id: paymentId,
-          p_actor: userId,
+          p_actor: actor,
           p_expected_version: expectedVersion,
         });
         return r.error ? tillFailure(r.error) : ok(r.data);

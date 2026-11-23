@@ -52,6 +52,8 @@ function client(
       throw new Error("no table reads expected");
     },
     rpc: (name: string, params: Record<string, unknown>) => {
+      // TEST-MOD-APPROVED #4490 (08-O5 part A): the PIN gate answers "not a Till device" for these accounts, as the database does.
+      if (name === "issue_4490_pin_gate") return Promise.resolve({ data: false, error: null });
       calls.push({ name, params });
       return Promise.resolve(rpc(name, params));
     },
@@ -244,6 +246,8 @@ Deno.test("R-9 the drain reads the receipt and builds the link when the message 
   const token = await deriveTillReceiptToken({ paymentId: PAYMENT, key: KEY });
   const admin = (tokenHashHex: string | null, error: unknown = null) => ({
     rpc: (name: string, params: Record<string, unknown>) => {
+      // TEST-MOD-APPROVED #4490 (08-O5 part A): the PIN gate answers "not a Till device" for these accounts, as the database does.
+      if (name === "issue_4490_pin_gate") return Promise.resolve({ data: false, error: null });
       assertEquals(name, "issue_4490_till_receipt_link_facts");
       assertEquals(params, { p_payment_id: PAYMENT });
       return Promise.resolve({ data: error ? null : { tokenHashHex, receipt: RECEIPT }, error });

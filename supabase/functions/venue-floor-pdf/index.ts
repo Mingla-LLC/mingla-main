@@ -32,6 +32,7 @@ import {
 } from "../_shared/ticketPdf.ts";
 import { deliverPdf, type PdfStorage } from "../_shared/pdfDelivery.ts";
 import { tillReceiptMethodLabel } from "../_shared/email/tillReceiptEmail.ts";
+import { resolveTillActor } from "../_shared/venueTillStaffSession.ts";
 
 export const FLOOR_PDF_BUCKET = "venue-floor-pdfs";
 export const FLOOR_PDF_TTL_SECONDS = 60;
@@ -200,13 +201,23 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
     }
     if (kind === "receipt" && !UUID.test(paymentId)) return json(400, { code: "invalid_request" });
 
+    // #4490 O5: a receipt is a Till action, so on a Till device login it needs
+    // a live PIN session (staffSession in the body) and is made as that
+    // member. Kitchen and test tickets are station work: the device itself.
+    let pdfActor = userId;
+    if (kind === "receipt") {
+      const who = await resolveTillActor(client, { venueId, userId, jwt, staffSession: body.staffSession });
+      if (!who.ok) return json(who.status, { code: who.code });
+      pdfActor = who.actor.actorUserId;
+    }
+
     const { data: sourceData, error: sourceError } = await client.rpc("issue_4490_floor_pdf_source", {
       p_kind: kind,
       p_venue_id: venueId,
       p_order_id: kind === "kitchen_ticket" ? orderId : null,
       p_station: kind === "receipt" ? null : station,
       p_payment_id: kind === "receipt" ? paymentId : null,
-      p_actor: userId,
+      p_actor: pdfActor,
     });
     if (sourceError) {
       const code = str((sourceError as RpcError).message);
@@ -238,7 +249,7 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
       p_brand_id: brandId,
       p_kind: kind,
       p_object_path: objectPath,
-      p_actor: userId,
+      p_actor: pdfActor,
     });
     if (recorded.error) {
       console.error("[venue-floor-pdf] ledger write failed", (recorded.error as RpcError).code ?? "unknown");
@@ -259,7 +270,7 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
       const marked = await client.rpc("issue_4490_station_mark_printed", {
         p_order_id: orderId,
         p_station: station,
-        p_actor: userId,
+        p_actor: pdfActor,
       });
       if (marked.error) {
         // The PDF exists and is downloadable; only the count failed. Never

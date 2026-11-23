@@ -35,6 +35,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+import { resolveTillActor } from "../_shared/venueTillStaffSession.ts";
 import {
   issueVenueOfferBookingToken,
   rederiveVenueOfferBookingToken,
@@ -241,6 +242,14 @@ export function createVenueCheckInHandler(deps: VenueCheckInDeps = {}) {
         return false;
       }
     })();
+    // #4490 O5: on a Till device login, money at the door goes through the
+    // Till with a PIN session (the gate sale sheet only shows while the Till
+    // is off, when no account is gated). Refused here so no door money is
+    // taken without someone's PIN.
+    if (["sell", "sell_guest_list", "take_balance", "balance_link"].includes(action)) {
+      const who = await resolveTillActor(client, { venueId, userId, jwt, staffSession: null });
+      if (!who.ok) return json(who.status === 500 ? 500 : 403, { code: who.status === 500 ? "unavailable" : "pin_session_required" });
+    }
     const pepper = (env("app.qr_token_pepper") ??
       (local ? env("LOCAL_QR_TOKEN_PEPPER") : undefined) ?? "").trim();
 

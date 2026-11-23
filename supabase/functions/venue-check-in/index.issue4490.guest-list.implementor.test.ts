@@ -12,6 +12,8 @@ type Call = { name: string; params: Record<string, unknown> };
 function client(calls: Call[], data: unknown): () => CheckInClient {
   return () => ({
     rpc: (name, params) => {
+      // TEST-MOD-APPROVED #4490 (08-O5 part A): the PIN gate answers "not a Till device" for these accounts, as the database does.
+      if (name === "issue_4490_pin_gate") return Promise.resolve({ data: false, error: null });
       calls.push({ name, params });
       return Promise.resolve({ data, error: null });
     },
@@ -77,7 +79,8 @@ Deno.test("invalid list ids and counts never reach PostgreSQL", async () => {
 Deno.test("#4490 08-O1 fix 2: an arrival already on an open Till check is refused at the gate in words, not a 500", async () => {
   const run = createVenueCheckInHandler({
     client: () => ({
-      rpc: () => Promise.resolve({ data: null, error: { message: "guest_list_entry_on_check", code: "PT409" } }),
+      // TEST-MOD-APPROVED #4490 (08-O5 part A): the PIN gate answers "not a Till device".
+      rpc: (name: string) => Promise.resolve(name === "issue_4490_pin_gate" ? { data: false, error: null } : { data: null, error: { message: "guest_list_entry_on_check", code: "PT409" } }),
       auth: { getUser: () => Promise.resolve({ data: { user: { id: STAFF } }, error: null }) },
     }),
     env,

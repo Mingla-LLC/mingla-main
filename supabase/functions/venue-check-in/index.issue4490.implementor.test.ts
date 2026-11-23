@@ -30,6 +30,8 @@ function client(
 ): () => CheckInClient {
   return () => ({
     rpc: (name, params) => {
+      // TEST-MOD-APPROVED #4490 (08-O5 part A): the PIN gate answers "not a Till device" for these accounts, as the database does.
+      if (name === "issue_4490_pin_gate") return Promise.resolve({ data: false, error: null });
       calls.push({ name, params });
       return Promise.resolve(result(name) as { data: unknown; error: null });
     },

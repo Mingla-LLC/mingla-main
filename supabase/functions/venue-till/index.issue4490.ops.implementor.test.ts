@@ -102,6 +102,8 @@ function makeClient(opts: {
   const client: TillClient = {
     from: db.from,
     rpc: (name: string, params: Record<string, unknown>) => {
+      // TEST-MOD-APPROVED #4490 (08-O5 part A): the PIN gate answers "not a Till device" for these accounts, as the database does.
+      if (name === "issue_4490_pin_gate") return Promise.resolve({ data: false, error: null });
       opts.calls.push({ name, params });
       return Promise.resolve(opts.rpc(name, params));
     },
