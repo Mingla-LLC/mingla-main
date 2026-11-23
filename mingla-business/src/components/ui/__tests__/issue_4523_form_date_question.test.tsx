@@ -279,4 +279,47 @@ describe("#4523 SC-12 — a date-of-birth question opens the birth-date calendar
     expect(isOpen(tree)).toBe(false);
     await TestRenderer.act(async () => tree.unmount());
   });
+
+  // #4522 W-9 — arrow keys move between years and months as they do between
+  // days. FAILS ON REVERT: an arrow key in the year or month grid moved nothing.
+  it("arrow keys move focus through the year and month grids (web)", async () => {
+    Object.defineProperty(Platform, "OS", { configurable: true, get: () => "web" });
+    const tree = await mountDob(jest.fn());
+    await press(tree, "intake-date");
+    type Inst = { focus: jest.Mock };
+    // RN's jest host views share one focus mock; `mock.contexts` names the
+    // instance each call focused.
+    const lastFocused = (): string | undefined => {
+      const nodes = tree.root.findAll(
+        (n) => typeof n.props.testID === "string" && /^intake-date-calendar-(year|month)-\d+$/.test(n.props.testID as string) &&
+          typeof (n as unknown as { instance?: Partial<Inst> }).instance?.focus === "function",
+      );
+      if (nodes.length === 0) return undefined;
+      const mock = (nodes[0] as unknown as { instance: Inst }).instance.focus.mock;
+      const target = mock.contexts[mock.contexts.length - 1];
+      return nodes.find((n) => (n as unknown as { instance: unknown }).instance === target)?.props.testID as string | undefined;
+    };
+    const key = async (k: string): Promise<void> => {
+      await TestRenderer.act(async () => {
+        const surface = tree.root.findAll((n) => typeof n.props.onKeyDown === "function")[0];
+        (surface.props.onKeyDown as (e: { key: string; preventDefault: () => void }) => void)({ key: k, preventDefault: () => undefined });
+      });
+    };
+    const anchor = new Date().getUTCFullYear() - 25;
+    expect(lastFocused()).toBe(`intake-date-calendar-year-${anchor}`);
+    await key("ArrowRight");
+    expect(lastFocused()).toBe(`intake-date-calendar-year-${anchor + 1}`);
+    await key("ArrowLeft");
+    await key("ArrowUp");
+    expect(lastFocused()).toBe(`intake-date-calendar-year-${anchor - 3}`);
+    // Into the month grid: focus starts on the visible month and arrows move it.
+    await press(tree, `intake-date-calendar-year-${anchor}`);
+    const opened = lastFocused();
+    expect(opened).toMatch(/^intake-date-calendar-month-\d+$/);
+    const month = Number((opened as string).split("-").pop());
+    const next = month <= 9 ? month + 3 : month - 3;
+    await key(month <= 9 ? "ArrowDown" : "ArrowUp");
+    expect(lastFocused()).toBe(`intake-date-calendar-month-${next}`);
+    await TestRenderer.act(async () => tree.unmount());
+  });
 });

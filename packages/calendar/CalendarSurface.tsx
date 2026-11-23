@@ -144,8 +144,22 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
   // as they open (the chosen year or month, else the anchor year), as the day
   // grid does for its selected day. Native never pulls focus.
   const pickRefs = useRef<Record<string, { focus?: () => void } | null>>({});
+  // #4522 W-9 — the year or month that has focus in a DOB grid, and the one
+  // an arrow key asked for across a decade (focused once that decade renders).
+  const gridFocusRef = useRef<number | null>(null);
+  const pendingGridFocusRef = useRef<string | null>(null);
   useEffect(() => {
     if (Platform.OS !== "web" || props.mode !== "dob" || dobView === "day") return;
+    if (pendingGridFocusRef.current !== null) {
+      const pending = pendingGridFocusRef.current;
+      pendingGridFocusRef.current = null;
+      const node = pickRefs.current[pending];
+      if (node) {
+        gridFocusRef.current = Number(pending.slice(1));
+        node.focus?.();
+        return;
+      }
+    }
     const anchorYear = monthOf(
       committedDate !== "" && parseCalendarDate(committedDate) !== null
         ? committedDate
@@ -159,6 +173,7 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
             .map((key) => Number(key.slice(1)))
             .sort((a, b) => a - b)[0];
     const key = dobView === "year" ? `y${yearKey}` : `m${visible.month}`;
+    gridFocusRef.current = Number(key.slice(1));
     pickRefs.current[key]?.focus?.();
     // Only a change of grid (view, decade or year) moves focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,6 +207,36 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
     if (props.mode === "dob" && dobView === "year") onNavigateDecade(delta);
     else if (props.mode === "dob" && dobView === "month") onNavigateYears(delta);
     else onNavigateMonth(delta);
+  };
+
+  // #4522 W-9 — move focus by `step` in the open DOB grid. Years cross into
+  // the next or previous decade; months stay within the year. A year or
+  // month outside the allowed dates is not focusable, so focus stays put.
+  const moveGridFocus = (step: number): void => {
+    if (dobView === "year") {
+      const from = gridFocusRef.current ?? decadeStart;
+      const target = from + step;
+      const key = `y${target}`;
+      if (target < decadeStart || target >= decadeStart + DECADE) {
+        const off = (min !== undefined && target < monthOf(min).year) || (max !== undefined && target > monthOf(max).year);
+        if (off) return;
+        pendingGridFocusRef.current = key;
+        setDecadeStart(target - (((target % DECADE) + DECADE) % DECADE));
+        return;
+      }
+      const node = pickRefs.current[key];
+      if (!node) return;
+      gridFocusRef.current = target;
+      node.focus?.();
+      return;
+    }
+    const from = gridFocusRef.current ?? visible.month;
+    const target = from + step;
+    if (target < 1 || target > 12) return;
+    const node = pickRefs.current[`m${target}`];
+    if (!node) return;
+    gridFocusRef.current = target;
+    node.focus?.();
   };
 
   // ---- picking -----------------------------------------------------------
@@ -244,6 +289,22 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
 
   // ---- keyboard ----------------------------------------------------------
   const onKeyDown = (event: { key: string; shiftKey?: boolean; preventDefault?: () => void }): void => {
+    // #4522 W-9 — arrow keys move between the years and months of a DOB's
+    // grids (three to a row) as they do between days. Enter / Space press the
+    // focused item's own button; Escape still closes.
+    if (props.mode === "dob" && dobView !== "day") {
+      const step =
+        event.key === "ArrowLeft" ? -1
+        : event.key === "ArrowRight" ? 1
+        : event.key === "ArrowUp" ? -3
+        : event.key === "ArrowDown" ? 3
+        : 0;
+      if (step !== 0) {
+        event.preventDefault?.();
+        moveGridFocus(step);
+        return;
+      }
+    }
     const result = reduceKeyboard(focusedDate, event, weekStartsOn);
     if (!result.handled) return;
     if (result.action === "dismiss") {
@@ -381,6 +442,9 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
                 accessibilityLabel={String(year)}
                 accessibilityState={{ disabled: off }}
                 disabled={off}
+                onFocus={() => {
+                  gridFocusRef.current = year;
+                }}
                 onPress={() => {
                   setVisible((cur) => ({ year, month: cur.month }));
                   setDobView("month");
@@ -410,6 +474,9 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
               accessibilityLabel={monthTitle(target.year, month, locale)}
               accessibilityState={{ disabled: off }}
               disabled={off}
+              onFocus={() => {
+                gridFocusRef.current = month;
+              }}
               onPress={() => {
                 setVisible(target);
                 setFocusedDate(clampToBounds(firstOf(target), min, max));
