@@ -38,7 +38,7 @@ import { Toast } from "../ui/Toast";
 import { teamTime, useTeamText, type TeamT } from "./teamText";
 import { PersonAvatar, TeamAccessGate, TeamAvatar, TeamHeader, useBack } from "./TeamCommon";
 import { useTeamMentions, useTeamPeople, useTeamRealtime, useTeamThreads } from "./useTeamChat";
-import { filterWorkUpdates, localDay, needsYou, workDueLabel, workUpdateCounts, type DueTone, type WorkUpdate, type WorkUpdateFilter } from "./workUpdates";
+import { cardPeopleWords, filterWorkUpdates, localDay, needsYou, workDueLabel, workUpdateCounts, type DueTone, type WorkUpdate, type WorkUpdateFilter } from "./workUpdates";
 
 import { TeamThreadScreen } from "./TeamThreadScreen";
 export { TeamLockedScreen } from "./TeamCommon";
@@ -171,7 +171,7 @@ function WorkCardSheet({ update, onClose, onOpenAdmin }: { update: WorkUpdate | 
           {card ? (
             <View style={styles.sheetMeta}>
               <DuePill update={update} />
-              <Text style={styles.sheetPeople}>{t("team.card_people", { owner: card.owner ?? "—", watcher: card.watcher ?? "—" })}</Text>
+              <Text style={styles.sheetPeople}>{cardPeopleWords(card, t)}</Text>
             </View>
           ) : null}
           <View style={styles.sheetChanged}>

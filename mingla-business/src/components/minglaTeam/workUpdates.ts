@@ -22,9 +22,42 @@ export interface WorkUpdateCard {
   closed_at: string | null;
   column: string | null;
   in_review: boolean;
+  /** The first owner and watcher: what servers before #4571 send, and what builds before it read. */
   owner: string | null;
   watcher: string | null;
+  /** #4571: every owner and watcher (server-supplied; absent from older servers). */
+  owners?: string[] | null;
+  watchers?: string[] | null;
   parent: { number: number; title: string } | null;
+}
+
+function peopleNames(list: string[] | null | undefined, single: string | null | undefined): string[] {
+  const names = Array.isArray(list) ? list.filter((n): n is string => typeof n === "string" && n.trim() !== "") : [];
+  if (names.length > 0) return names;
+  return typeof single === "string" && single.trim() !== "" ? [single] : [];
+}
+
+function joinNames(names: string[], t: TeamT): string {
+  if (names.length === 0) return "—";
+  if (names.length === 1) return names[0] ?? "—";
+  return t("team.names_and", { list: names.slice(0, -1).join(", "), last: names[names.length - 1] ?? "" });
+}
+
+/**
+ * #4571: the card sheet's people line. One owner and one watcher keep the
+ * words every language already has ("Ada owns · Kemi watches"); several read
+ * "Ada and Tunde own · Kemi watches". "—" stands for nobody (never made up).
+ */
+export function cardPeopleWords(card: Pick<WorkUpdateCard, "owner" | "watcher" | "owners" | "watchers">, t: TeamT): string {
+  const owners = peopleNames(card.owners, card.owner);
+  const watchers = peopleNames(card.watchers, card.watcher);
+  if (owners.length <= 1 && watchers.length <= 1) {
+    return t("team.card_people", { owner: owners[0] ?? "—", watcher: watchers[0] ?? "—" });
+  }
+  return t("team.card_people_list", {
+    owners: t("team.card_owners", { count: Math.max(1, owners.length), names: joinNames(owners, t) }),
+    watchers: t("team.card_watchers", { count: Math.max(1, watchers.length), names: joinNames(watchers, t) }),
+  });
 }
 
 /** A Work update notice: the team_inbox mention row with its card. */

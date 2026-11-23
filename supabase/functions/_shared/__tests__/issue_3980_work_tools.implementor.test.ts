@@ -109,8 +109,8 @@ Deno.test("#3980 each work tool says what it is for, treats other people's text 
   );
   assertMatch(
     findWorkTool("add_work")!.description,
-    // #4398: one owner and one watcher on every card (a subtask takes its parent's).
-    /Each card is checked by the server: title, instructions, done-means line, one current teammate as owner and one other as watcher \(a card under a parent takes the parent's when you send none\), a due date \(or a linked event\), real links\. A refused card comes back with the fixes\. The same request_key repeats safely\./,
+    // #4571: one or more owners and one or more watchers, nobody in both (a subtask takes its parent's).
+    /Each card is checked by the server: title, instructions, done-means line, one or more current teammates as owners and one or more others as watchers \(nobody in both; a card under a parent takes the parent's when you send none\), a due date \(or a linked event\), real links\. A refused card comes back with the fixes\. The same request_key repeats safely\./,
   );
   assertMatch(
     findWorkTool("close_work")!.description,
