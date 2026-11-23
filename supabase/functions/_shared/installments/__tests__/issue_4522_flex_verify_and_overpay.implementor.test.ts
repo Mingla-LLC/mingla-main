@@ -408,4 +408,17 @@ Deno.test("rework 9 T8-3: marked planned Stripe charges are settled, failed, rel
     failStripe: () => { seen.push("fail"); return Promise.resolve(); },
   }, [{ installmentId: "r1", orderId: "o1", paymentIntentId: "pi_m", marked: true, pastCeiling: false }]);
   assertEquals([counts.settled, seen], [1, ["settle"]]);
+  // A cancel whose answer is not "canceled" releases nothing: the row stays in flight.
+  const kept: string[] = [];
+  const keptCounts = await reconcileMarkedStripeCharges({
+    supabase: { rpc: () => { kept.push("release"); return Promise.resolve({ data: { ok: true }, error: null }); } },
+    stripe: () => ({ paymentIntents: {
+      retrieve: () => Promise.resolve({ id: "pi_m", status: "requires_confirmation" }),
+      cancel: () => Promise.resolve({ id: "pi_m", status: "processing" }),
+    } }),
+    stripeAccountFor: () => Promise.resolve("acct_1"),
+    settleStripe: () => { kept.push("settle"); return Promise.resolve(); },
+    failStripe: () => { kept.push("fail"); return Promise.resolve(); },
+  }, [{ installmentId: "r1", orderId: "o1", paymentIntentId: "pi_m", marked: true, pastCeiling: false }]);
+  assertEquals([keptCounts.in_flight, kept], [1, []]);
 });
