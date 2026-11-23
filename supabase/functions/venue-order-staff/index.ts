@@ -115,6 +115,7 @@ import {
 } from "../_shared/paymentProvider.ts";
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
+import { handleStationAction } from "./stationActions.ts";
 // Issue #3380 — the guest's phone is read WITH the country the waiter chose.
 import {
   LEGACY_NANP_REFUSAL,
@@ -200,6 +201,23 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
       return await handlePause(req, body);
     case "set_ordering_enabled":
       return await handleSetOrderingEnabled(req, body);
+    // ---- #4490 spec 08 O3 — kitchen and bar stations. ----------------------
+    // The verified user is the actor of service-only RPCs that check the
+    // station gate and kitchen rights (stationActions.ts).
+    case "station_board":
+    case "station_accept":
+    case "item_ready":
+    case "ticket_ready":
+    case "recall":
+    case "picked_up":
+    case "printed":
+      return await handleStationAction(
+        supabase,
+        action,
+        body,
+        userId,
+        (payload, status = 200) => jsonResponse(payload, status),
+      );
     default:
       return jsonResponse({ error: "unknown_action" }, 400);
   }

@@ -52,9 +52,12 @@ Deno.test("the sweep runs once and reports reminders and overdue notices", async
   assertEquals((await res.json()).result, { reminders: 2, overdue: 1 });
   // TEST-MOD-APPROVED #4490 (spec 08 O1): the same run also sweeps Till
   // rounds that never joined a check.
+  // TEST-MOD-APPROVED #4490 (spec 08 O3 part A): and lists floor PDFs older
+  // than 24 hours (none here, so nothing is removed).
   assertEquals(seen, [
     { name: "issue_4490_offer_sweep", p_limit: 200 },
     { name: "issue_4490_till_sweep_held_rounds", p_limit: 200 },
+    { name: "issue_4490_floor_pdf_due", p_limit: 200 },
   ]);
 });
 
@@ -75,7 +78,8 @@ Deno.test("08-O1 the Till held-round sweep runs even when the offer sweep fails,
   });
   const failed = await handle(req("Bearer service-key"));
   assertEquals(failed.status, 500);
-  assertEquals(seen, ["issue_4490_offer_sweep", "issue_4490_till_sweep_held_rounds"]);
+  // TEST-MOD-APPROVED #4490 (spec 08 O3 part A): the floor PDF step runs too.
+  assertEquals(seen, ["issue_4490_offer_sweep", "issue_4490_till_sweep_held_rounds", "issue_4490_floor_pdf_due"]);
 
   const ok = createVenueOfferSweepHandler({
     env,

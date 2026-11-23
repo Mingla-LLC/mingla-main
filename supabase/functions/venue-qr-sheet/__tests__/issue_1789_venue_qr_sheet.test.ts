@@ -181,8 +181,19 @@ Deno.test("T-Q-ACTIVE-1 — only ACTIVE spots are printed", () => {
   assertStringIncludes(handlerSource, '.eq("is_active", true)');
 });
 
+// TEST-MOD-APPROVED #4490 (08-O3 part A): the upload + signed-URL tail moved to
+// the shared _shared/pdfDelivery.ts rail (used by venue-floor-pdf too); the
+// handler must still hand it this bucket and this TTL, and the rail must still
+// sign with the TTL it is given. Behaviour unchanged.
+const deliverySource = await Deno.readTextFile(
+  new URL("../../_shared/pdfDelivery.ts", import.meta.url),
+);
+
 Deno.test("T-Q-TTL-1 — the sheet lands in a private bucket behind a 60s signed URL", () => {
   assertStringIncludes(handlerSource, "SIGNED_URL_TTL_SECONDS = 60");
   assertStringIncludes(handlerSource, 'STORAGE_BUCKET = "venue-qr-sheets"');
-  assertStringIncludes(handlerSource, "createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS)");
+  assertStringIncludes(handlerSource, "deliverPdf(supabase.storage, {");
+  assertStringIncludes(handlerSource, "bucket: STORAGE_BUCKET,");
+  assertStringIncludes(handlerSource, "ttlSeconds: SIGNED_URL_TTL_SECONDS,");
+  assertStringIncludes(deliverySource, "createSignedUrl(input.objectPath, input.ttlSeconds)");
 });

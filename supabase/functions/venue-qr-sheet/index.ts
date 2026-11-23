@@ -28,6 +28,7 @@ import {
   type VenueQrSpotCard,
 } from "../_shared/ticketPdf.ts";
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+import { deliverPdf } from "../_shared/pdfDelivery.ts";
 import { qrSpotUrl } from "./qrSpotUrl.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
@@ -246,29 +247,19 @@ serve(wrapEdgeHandler("venue-qr-sheet", async (req) => {
     return jsonResponse({ error: "pdf_render_failed" }, 502);
   }
 
-  const pdfBytes = Uint8Array.from(
-    atob(pdf.contentBase64),
-    (c) => c.charCodeAt(0),
-  );
+  // #4490 spec 08 O3: render -> upload -> signed URL is the shared rail
+  // (_shared/pdfDelivery.ts); same bucket, path, TTL and error answers.
   const objectPath = `venue-qr/${brandId}/${crypto.randomUUID()}.pdf`;
-  const { error: uploadError } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(objectPath, pdfBytes, {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-  if (uploadError) {
-    console.error("[venue-qr-sheet] upload failed:", uploadError.message);
-    return jsonResponse({ error: "pdf_render_failed" }, 502);
-  }
-
-  const { data: signedData, error: signError } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS);
-  if (signError || !signedData?.signedUrl) {
+  const delivered = await deliverPdf(supabase.storage, {
+    bucket: STORAGE_BUCKET,
+    objectPath,
+    contentBase64: pdf.contentBase64,
+    ttlSeconds: SIGNED_URL_TTL_SECONDS,
+  });
+  if (!delivered.ok) {
     console.error(
-      "[venue-qr-sheet] sign failed:",
-      signError?.message ?? "no_signed_url",
+      `[venue-qr-sheet] ${delivered.stage === "upload" ? "upload" : "sign"} failed:`,
+      delivered.message,
     );
     return jsonResponse({ error: "pdf_render_failed" }, 502);
   }
@@ -288,9 +279,8 @@ serve(wrapEdgeHandler("venue-qr-sheet", async (req) => {
   }
 
   return jsonResponse({
-    signedUrl: signedData.signedUrl,
-    expiresAt: new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000)
-      .toISOString(),
+    signedUrl: delivered.signedUrl,
+    expiresAt: delivered.expiresAt,
     filename: pdf.filename,
     spotCount: pdf.pageCount,
   });

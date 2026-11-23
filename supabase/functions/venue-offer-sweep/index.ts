@@ -8,6 +8,11 @@
 // but never joined a check within 10 minutes (issue_4490_till_sweep_held_rounds;
 // bounded, idempotent, never a paid, sent or attached round). Each step runs
 // even when the other fails; the run answers 500 if either failed.
+// #4490 spec 08 O3: the same run deletes floor PDFs (kitchen tickets,
+// receipts) older than 24 hours from the private venue-floor-pdfs bucket
+// (issue_4490_floor_pdf_due -> storage remove -> issue_4490_floor_pdf_forget).
+// Before migration 20280809601490 the ledger does not exist: that step then
+// has nothing to delete (deploy-order tolerance), any other failure counts.
 //
 // Only the platform's own scheduler calls this: the bearer must be the
 // project's service key.
@@ -20,7 +25,47 @@ type SweepClient = {
   ) => Promise<
     { data: unknown; error: { code?: string; message?: string } | null }
   >;
+  storage?: {
+    from: (bucket: string) => {
+      remove: (paths: string[]) => Promise<{ error: { message?: string } | null }>;
+    };
+  };
 };
+
+export const FLOOR_PDF_SWEEP_BUCKET = "venue-floor-pdfs";
+
+// [TRANSITIONAL] #4490 O3 deploy order: the ledger RPC is missing until
+// migration 20280809601490 is applied; exit: that migration applied in
+// production, then delete this check.
+function missingFunction(error: { code?: string; message?: string }): boolean {
+  return error.code === "PGRST202" || error.code === "42883";
+}
+
+async function sweepFloorPdfs(client: SweepClient): Promise<{ deleted: number; failed: boolean }> {
+  const due = await client.rpc("issue_4490_floor_pdf_due", { p_limit: 200 });
+  if (due.error) {
+    if (missingFunction(due.error)) return { deleted: 0, failed: false };
+    console.error("venue_floor_pdf_sweep_failed", { code: due.error.code, message: due.error.message });
+    return { deleted: 0, failed: true };
+  }
+  const paths = Array.isArray(due.data) ? due.data.filter((p): p is string => typeof p === "string") : [];
+  if (paths.length === 0) return { deleted: 0, failed: false };
+  if (!client.storage) {
+    console.error("venue_floor_pdf_sweep_failed", { code: "no_storage" });
+    return { deleted: 0, failed: true };
+  }
+  const removed = await client.storage.from(FLOOR_PDF_SWEEP_BUCKET).remove(paths);
+  if (removed.error) {
+    console.error("venue_floor_pdf_sweep_failed", { code: "storage_remove", message: removed.error.message });
+    return { deleted: 0, failed: true };
+  }
+  const forgot = await client.rpc("issue_4490_floor_pdf_forget", { p_paths: paths });
+  if (forgot.error) {
+    console.error("venue_floor_pdf_sweep_failed", { code: forgot.error.code, message: forgot.error.message });
+    return { deleted: paths.length, failed: true };
+  }
+  return { deleted: Number(forgot.data ?? 0), failed: false };
+}
 
 export type VenueOfferSweepDeps = {
   env?: (name: string) => string | undefined;
@@ -66,10 +111,16 @@ export function createVenueOfferSweepHandler(deps: VenueOfferSweepDeps = {}) {
         message: till.error.message,
       });
     }
-    if (error || till.error) {
+    const pdfs = await sweepFloorPdfs(client);
+    if (error || till.error || pdfs.failed) {
       return Response.json({ error: "sweep_failed" }, { status: 500 });
     }
-    return Response.json({ ok: true, result: data, tillHeldRounds: till.data });
+    return Response.json({
+      ok: true,
+      result: data,
+      tillHeldRounds: till.data,
+      floorPdfsDeleted: pdfs.deleted,
+    });
   };
 }
 
