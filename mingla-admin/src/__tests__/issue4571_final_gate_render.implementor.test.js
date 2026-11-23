@@ -19,6 +19,7 @@
 //
 // Run: node --test src/__tests__/issue4571_final_gate_render.implementor.test.js
 import { before, describe, it } from "node:test";
+import { supabaseStubPlugin } from "./_supabaseStubPlugin.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -51,6 +52,7 @@ export const card = (p) => renderToStaticMarkup(<ToastProvider><RecordCard onOpe
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
     loader: { ".js": "jsx" },
     banner: { js: 'import { createRequire as __r } from "node:module"; const require = __r(import.meta.url);' },
+    plugins: [supabaseStubPlugin],
     define: { "process.env.NODE_ENV": '"production"', "import.meta.env": '{"VITE_SUPABASE_URL":"https://x.supabase.test","VITE_SUPABASE_ANON_KEY":"test"}' },
   });
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "issue4571-final-")), "harness.mjs");
