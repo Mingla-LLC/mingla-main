@@ -32,3 +32,18 @@ test("a file's own CREATE TABLE columns satisfy its own references; table constr
   // Own columns never become chain definitions (a skipped file's columns are not credited to others).
   assert.ok(!result.definitions.has("col:ready_at"));
 });
+// TEST-MOD-APPROVED #4490 (08-O3 fix 1, O3-T6): the own-column credit never hides a read of a
+// skipped column on the table the skipped migration added it to; the real false positive stays clean.
+test("an own CREATE TABLE column does not hide a read of the skipped column on its own table (C-1)", () => {
+  const workflows = { fixture: loop };
+  const skip = { ...migrations, "002_skip.sql": "CREATE TABLE public.hidden(id int); ALTER TABLE public.base ADD COLUMN ready_at timestamptz;" };
+  const hole = { ...skip, "007_hole.sql": "CREATE TABLE public.own2 (id int, ready_at timestamptz); CREATE VIEW public.bad3 AS SELECT b.ready_at FROM public.base b;" };
+  assert.ok(analyseTrees({ workflows, migrations: hole }).violations.some(v => v.check === "C-1" && v.message.includes("007_hole.sql") && v.message.includes("ready_at")));
+  const own = { ...skip, "005_own.sql": "CREATE TABLE public.own (id int, ready_at timestamptz); CREATE VIEW public.own_view AS SELECT ready_at FROM public.own;" };
+  assert.deepEqual(analyseTrees({ workflows, migrations: own }).violations, []);
+  assert.deepEqual([...parseMigration("002_skip.sql", skip["002_skip.sql"]).addedColumnTables.get("col:ready_at")], ["base"]);
+});
+test("the real #4453 file that declares its own ready_at stays clean while #4490 skips ADD COLUMN ready_at", () => {
+  const result = analyseLanes();
+  assert.ok(!result.violations.some(v => v.message.includes("20281119004453")));
+});
