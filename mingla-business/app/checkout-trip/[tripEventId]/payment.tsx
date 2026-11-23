@@ -1151,6 +1151,7 @@ function CheckoutTripPaymentScreenContent({
           setBottomBarHeight((prev) => (prev === next ? prev : next));
         }}
       >
+        <View style={styles.bottomBarTint} pointerEvents="none" />
         {/* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
             above the Pay button when cart has plan-active lines. Stripe's
             hosted checkout only displays the deposit amount, so this is
@@ -1476,9 +1477,16 @@ const styles = checkoutStyles(() => StyleSheet.create({
     bottom: 0,
     paddingTop: space[4],
     paddingHorizontal: space[6],
-    backgroundColor: materials.pane.solidFill,
+    // issue #4522 X-11 — the pane fill is a translucent tint on host themes,
+    // so the schedule rows showed through the sticky bar. The bar sits on the
+    // page colour (opaque) with the pane tint drawn over it.
+    backgroundColor: color.canvas,
     borderTopWidth: 1,
     borderTopColor: color.line,
+  },
+  bottomBarTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: materials.pane.solidFill,
   },
   // #1841 — `bottomBarHidden` deleted with the keyboard plumbing that was its
   // only consumer. A style whose sole purpose was hiding the bar behind a

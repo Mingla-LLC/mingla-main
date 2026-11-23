@@ -355,6 +355,10 @@ describe("#4522 v2 checkout choice", () => {
     expect(paymentRoute).toMatch(/formatQuoteMoney\(planTotalCents, quote\.currency\)/);
     expect(paymentRoute).toMatch(/!\(isUsingInstallments && quoteStatus === "ready"\) \? \(\s*<View style=\{styles\.totalRow\}>\s*<Text style=\{styles\.totalLabel\}>Total<\/Text>\s*<Text style=\{styles\.totalValue\}>\{displayAllIn\}<\/Text>/);
     expect(paymentRoute).toMatch(/bottomBarHeight \+ space\[6\]/);
+    // The bar is opaque (page colour) under its translucent pane tint, so the
+    // rows never show through it (seen in a browser on a host theme).
+    expect(paymentRoute).toMatch(/bottomBar: \{[^}]*backgroundColor: color\.canvas,/);
+    expect(paymentRoute).toContain('<View style={styles.bottomBarTint} pointerEvents="none" />');
     expect(paymentRoute).toMatch(/onLayout=\{\(event\) => \{\s*const next = Math\.ceil\(event\.nativeEvent\.layout\.height\);/);
   });
 
