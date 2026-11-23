@@ -1671,7 +1671,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 ? "This online event can't be updated right now. Contact support and quote city_required."
                 : "Pick the venue address from the suggestions so we have a city."
               : code.includes("party_types_required")
-                ? "Pick at least one party type before saving."
+                ? "Pick at least one event type before saving."
                 : code.includes("party_types_not_canonical") ||
                     code.includes("vibe_tags_not_canonical") ||
                     code.includes("music_genres_not_canonical")

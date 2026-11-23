@@ -15,7 +15,7 @@
  * map stays in set-equality + byte-exact label-parity with that canonical file,
  * so a drift (a renamed / dropped / added slug on either side) fails CI.
  *
- * Cross-taxonomy slugs are unique across party/vibe/music (49 slugs, 49 unique,
+ * Cross-taxonomy slugs are unique across party/vibe/music (60 slugs, 60 unique,
  * zero collisions — verified + enforced by the drift gate), so a single flat map
  * is safe and unambiguous. Keys are quoted uniformly so the drift gate parses
  * every `"slug": "label"` pair with one rule.
@@ -23,7 +23,7 @@
 
 /** Canonical party/vibe/music `slug → label` map, verbatim from eventTaxonomy.ts. */
 export const TAXONOMY_LABELS: Readonly<Record<string, string>> = {
-  // PARTY_TYPES (15) — eventTaxonomy.ts:46-62
+  // PARTY_TYPES (26; "Event type" in copy since #4572) — eventTaxonomy.ts
   "birthday-party": "Birthday Party",
   "rooftop-party": "Rooftop Party",
   "club-night": "Club Night",
@@ -39,6 +39,17 @@ export const TAXONOMY_LABELS: Readonly<Record<string, string>> = {
   "networking-event": "Networking Event",
   "rave": "Rave",
   "festival": "Festival",
+  "exhibition": "Exhibition",
+  "opening": "Opening / launch",
+  "talk": "Talk",
+  "workshop": "Workshop",
+  "screening": "Screening",
+  "kids-family": "Kids & family",
+  "class": "Class",
+  "market": "Market",
+  "tour": "Tour",
+  "performance": "Performance",
+  "tasting": "Tasting",
   // VIBE_TAGS (16) — eventTaxonomy.ts:64-81
   "energetic": "Energetic",
   "chill": "Chill",
