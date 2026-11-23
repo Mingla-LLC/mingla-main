@@ -192,6 +192,8 @@ Deno.test("old schema: the cron never filters on kind and never sweeps; new sche
     // issue #4522 (N3 / N2) — the v2 sweeps run only with the v2 schema.
     assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_flex_payments_to_verify"), schemaV2);
     assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_overpayments_due"), schemaV2);
+    // rework 9 (T8-3) — the marked-charge read-back runs only with the v2 schema.
+    assertEquals(fake.tableOps.some((op) => op.filters.some((f) => f[0] === "not.is" && f[1] === "stripe_payment_intent_id")), schemaV2);
   }
   resetPlanV2SchemaProbeForTests();
 });
