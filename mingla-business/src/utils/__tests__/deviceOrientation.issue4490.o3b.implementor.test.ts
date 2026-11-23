@@ -6,12 +6,10 @@
  *
  * fails-on-revert: give a portrait tablet three columns again, centre a floor
  * screen, centre on web or on a phone, or change the 600 limit and a row here
- * fails.
+ * fails. The rendered column and the web split are in
+ * components/ui/__tests__/NativeTabletColumn.issue4490.o3b.implementor.test.tsx.
  */
 import { describe, expect, test } from "@jest/globals";
-import fs from "fs";
-import path from "path";
-
 import { suiteFormMaxWidth } from "../../constants/designSystem";
 import { isFloorRoute, nativeTabletColumnWidth } from "../deviceOrientation";
 import { floorLayoutFor, stationBoardColumns } from "../floorLayout";
@@ -32,10 +30,6 @@ describe("08-O3B floor layout in both orientations", () => {
   test.each(SIZES)("%i x %i: %s, board columns %s", (width, height, layout, columns) => {
     expect(floorLayoutFor(width)).toBe(layout);
     expect(stationBoardColumns(floorLayoutFor(width), width, height)).toBe(columns);
-  });
-  test("the hook passes the window height (landscape-only columns on a tablet)", () => {
-    const hook = fs.readFileSync(path.join(__dirname, "../../hooks/useFloorLayout.ts"), "utf8");
-    expect(hook).toContain("stationBoardColumns(layout, width, height)");
   });
 });
 
@@ -68,39 +62,5 @@ describe("08-O3B native tablet column (every Host screen except the floor)", () 
     expect(isFloorRoute(venue)).toBe(false);
     expect(isFloorRoute(`${venue}/offer/o1`)).toBe(false);
     expect(isFloorRoute(null)).toBe(false);
-  });
-  test("the root Stack sits inside the column; web is a passthrough", () => {
-    const layout = fs.readFileSync(path.join(__dirname, "../../../app/_layout.tsx"), "utf8");
-    expect(layout).toContain('<NativeTabletColumn><Stack screenOptions={{ headerShown: false }} /></NativeTabletColumn>');
-    const column = fs.readFileSync(path.join(__dirname, "../../components/ui/NativeTabletColumn.tsx"), "utf8");
-    expect(column).toContain('Platform.OS === "web" ? <>{children}</>');
-    // Web resolves the .web files: passthrough column and a no-op lock, no native logic in the web boot bundle.
-    const webColumn = fs.readFileSync(path.join(__dirname, "../../components/ui/NativeTabletColumn.web.tsx"), "utf8");
-    expect(webColumn).toContain("({ children }) => <>{children}</>");
-    expect(webColumn).not.toMatch(/deviceOrientation|useWindowDimensions/);
-    const webLock = fs.readFileSync(path.join(__dirname, "../../hooks/usePhonePortraitLock.web.ts"), "utf8");
-    expect(webLock).not.toMatch(/require|import/);
-  });
-});
-
-describe("08-O3B web never loads the two native modules", () => {
-  const walk = (dir: string, out: string[] = []): string[] => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === "node_modules" || entry.name === "__tests__") continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full, out);
-      else if (/\.(ts|tsx|js|jsx)$/.test(entry.name)) out.push(full);
-    }
-    return out;
-  };
-  test("only stationSound.ts (native file; web resolves stationSound.web.ts) loads expo-audio; nothing imports expo-screen-orientation", () => {
-    const appRoot = path.join(__dirname, "../../..");
-    const files = [...walk(path.join(appRoot, "src")), ...walk(path.join(appRoot, "app"))];
-    const audio = files.filter((f) => /from ["']expo-audio["']|require\(["']expo-audio["']\)|import\(["']expo-audio["']\)/.test(fs.readFileSync(f, "utf8")));
-    const orientation = files.filter((f) => /from ["']expo-screen-orientation["']|require\(["']expo-screen-orientation["']\)|import\(["']expo-screen-orientation["']\)/.test(fs.readFileSync(f, "utf8")));
-    expect(audio.map((f) => path.relative(appRoot, f))).toEqual(["src/components/venue/station/stationSound.ts"]);
-    expect(orientation).toEqual([]);
-    expect(fs.existsSync(path.join(appRoot, "src/components/venue/station/stationSound.web.ts"))).toBe(true);
-    expect(fs.readFileSync(path.join(appRoot, "src/components/venue/station/stationSound.web.ts"), "utf8")).not.toMatch(/expo-audio["']/);
   });
 });

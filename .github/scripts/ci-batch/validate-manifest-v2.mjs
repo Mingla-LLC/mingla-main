@@ -1173,6 +1173,10 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // node-forge 1.4.0 -> 1.4.2 security patch; package.json files are unchanged.
 // [TEST-MOD-APPROVED #1023] Re-banked after Host declared lottie-web 5.12.2 (exact pin),
 // the web player for the theme entrance motion, and its lockfile entries.
+// [TEST-MOD-APPROVED #4490] Re-banked after Host declared expo-audio ~1.1.1 and
+// expo-screen-orientation ~9.0.9 (Seth approved on the branch, spec 08 §14) and
+// expo-asset ~12.0.14 (the copy expo already ships, so expo-audio's peer does not
+// pull a newer SDK's native module). app-mobile is unchanged.
 // app-mobile is unchanged.
 // #1023: re-banked after merging origin/main (#3643 node-forge lock patch kept beside the #1023 lottie-web pin).
 // [TEST-MOD-APPROVED #3643] Re-banked all four after the advisory-floor overrides
@@ -1181,8 +1185,8 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "fcdf6302f7944b01a48ddb2111b2d3deed82644b519c7c9a2bc673e31a30aae6",
   "app-mobile/package-lock.json": "40bac6aff5ba88ab90debc72a88f0b106bf2d2e4dc0234f20b054d2ae9786edf",
-  "mingla-business/package.json": "317e03276578841eff1f4840aa448907b32790111bb866e54023f982d0f01903",
-  "mingla-business/package-lock.json": "b4d1f5f1849fbc2857b358d57ae9d0c0d95b868da76d562c55f24059b29f01ea",
+  "mingla-business/package.json": "9ea00a5af6b54f40257f953649c2648fa131862afeea9740aeb43bf3344869f5",
+  "mingla-business/package-lock.json": "73388ac2a0834de6ed311381259dc3b1cab0c8b8c9735600056fef55b9aaea18",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
