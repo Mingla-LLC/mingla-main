@@ -278,11 +278,9 @@
       "payments": "Dati di pagamento"
     },
     "a1": {
-      "headlineNamed": "Ciao {{first}}. Prepariamo il tuo account per ricevere prenotazioni.",
-      "headline": "Ciao. Prepariamo il tuo account per ricevere prenotazioni.",
-      "body": "Ci vogliono circa 3 minuti: il nome del brand, il paese bancario, poi i pagamenti. Ti guido io.",
       "cardTitle": "Configura il tuo brand",
       "minutes": "Circa 3 minuti",
+      "eyebrowStep": "Passaggio {{current}} di {{total}}",
       "setUp": "Configura il mio brand",
       "withAri": "Fallo con Ari",
       "withAriMessage": "Aiutami a configurare il mio brand",

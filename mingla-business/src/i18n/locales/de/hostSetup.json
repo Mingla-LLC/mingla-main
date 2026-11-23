@@ -278,11 +278,9 @@
       "payments": "Zahlungsdaten"
     },
     "a1": {
-      "headlineNamed": "Hallo {{first}}. Machen wir dein Konto bereit für Buchungen.",
-      "headline": "Hallo. Machen wir dein Konto bereit für Buchungen.",
-      "body": "Das dauert etwa 3 Minuten: dein Markenname, dein Bankland, dann die Zahlungen. Ich führe dich durch.",
       "cardTitle": "Richte deine Marke ein",
       "minutes": "Etwa 3 Minuten",
+      "eyebrowStep": "Schritt {{current}} von {{total}}",
       "setUp": "Meine Marke einrichten",
       "withAri": "Mit Ari erledigen",
       "withAriMessage": "Hilf mir, meine Marke einzurichten",

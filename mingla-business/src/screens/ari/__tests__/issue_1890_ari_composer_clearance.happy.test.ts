@@ -1,32 +1,34 @@
 /**
- * #1890 [keyboard-clearance-overshoot] — implementor happy-path render proof.
+ * #1890 [keyboard-clearance-overshoot], rewritten by #4572 item 16.
  *
- * THE DEFECT. `AriChatScreen`'s `inputWrap` carries only paddingHorizontal and
- * paddingTop and is the last in-flow child of a `flex: 1` column, so its
- * dynamic `paddingBottom` ALREADY positions the composer pill's bottom edge.
- * ORCH-1165 REWORK loop 2 added the pill's own MEASURED height on top of that,
- * lifting it a second time. Measured on glass at #1890 INVESTIGATE: 61.0pt of
- * gap on an iPhone SE3 and 71.8dp on a physical Samsung, against a 12pt
- * contract. #1850 then replaced the hand-typed 42 with the derived
- * DONE_BAR_OCCUPIED (53 on iOS 26+), which removed an accidental partial
- * masking and made iOS worse still.
+ * [TEST-MOD-APPROVED #4572] The #1890 contract was "the composer's
+ * paddingBottom is keyboardHeight + DONE_BAR_OCCUPIED + 12 above the bar".
+ * Item 16 (Seth, 2026-11-23) replaced it: the Ari composer rides the keyboard
+ * in a keyboard-controller KeyboardAvoidingView (the #4173 messages pattern)
+ * and sits FLUSH on it, with NO Done bar and 0 clearance while it is focused.
+ * The assertions this file replaced are named next to each new one below.
+ * What #1890 protected is KEPT: the pill's own measured height is never an
+ * input to the composer's position (the double count), and every number is
+ * read off the MOUNTED tree, never off module text.
  *
- * WHY THIS SUITE MOUNTS INSTEAD OF GREPPING. The broken arithmetic was pinned
- * as CORRECT by a source-text rule (i-1047 rule (E), inverted by #1890) and by
- * a quarantined ORCH-1165 pin before it. A source pin is the instrument that
- * blessed the bug, so every numeric claim here is read off the MOUNTED tree —
- * the resolved `paddingBottom` on the composer wrapper's host node — never off
- * module text and never off a constant re-declared in this file.
+ * The new shape, read off the mounted tree:
+ *   - the composer wrapper (`inputWrap`) carries only the container's own
+ *     space[2] below the pill, whatever the keyboard height is;
+ *   - it sits inside a KeyboardAvoidingView (behavior="padding"), followed by
+ *     a resting spacer of (insets.bottom + tab-bar room - space[2]); the
+ *     library pads the view by only the part of the keyboard that rises past
+ *     that spacer, so closed the pill rests where it always did and open it
+ *     ends flush on the keyboard;
+ *   - focusing the field raises the Done-bar suppression flag, blur lowers it.
  *
  * NO JSX IN THIS FILE, DELIBERATELY. The render configs transform through
  * babel-preset-expo, which gates the TypeScript plugin on the file extension:
- * `.ts` compiles with `isTSX: false`, so a single `<View/>` literal — even
- * inside a jest.mock factory — is a syntax error. Everything uses
- * React.createElement.
+ * `.ts` compiles with `isTSX: false`, so a single `<View/>` literal is a
+ * syntax error. Everything uses React.createElement.
  *
- * fails-on-revert: restore `+ spacing.sm + composerHeight` to the lift (and the
- * `onLayout={onComposerLayout}` wrapper) and assertion 3 goes red — the two
- * onLayout heights produce paddingBottom values 148 apart.
+ * fails-on-revert: put the old lift back (`paddingBottom: keyboardHeight +
+ * DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE` on the wrapper, no
+ * KeyboardAvoidingView) and assertions 1, 3 and 4 go red.
  */
 
 import React from "react";
@@ -90,20 +92,33 @@ jest.mock("react-native", () => {
 });
 
 // ───────────────────────── keyboard height, driveable ───────────────────────
-const KEYBOARD_HEIGHT = 336;
+const KEYBOARD_STATE: { height: number } = (() => {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  if (scope.__ISSUE_1890_KB__ == null) scope.__ISSUE_1890_KB__ = { height: 336 };
+  return scope.__ISSUE_1890_KB__ as { height: number };
+})();
 jest.mock("../../../wrappers/useKeyboardHeight", () => ({
-  useKeyboardHeight: () => KEYBOARD_HEIGHT,
+  useKeyboardHeight: () =>
+    ((globalThis as unknown as Record<string, { height: number }>).__ISSUE_1890_KB__ ?? { height: 336 }).height,
 }));
 
 // ───────────────────────── environment mocks ────────────────────────────────
-jest.mock("react-native-keyboard-controller", () => ({
+jest.mock("react-native-keyboard-controller", () => {
+  const RN = jest.requireActual("react-native");
+  const R = jest.requireActual("react") as typeof React;
+  return {
+  // [TEST-MOD-APPROVED #4572] the composer now sits in the library's
+  // KeyboardAvoidingView; a locatable host stand-in that keeps its props.
+  KeyboardAvoidingView: (props: { children?: React.ReactNode; behavior?: string }) =>
+    R.createElement(RN.View, { testID: "keyboard-avoiding-view", behavior: props.behavior }, props.children),
   KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
   KeyboardToolbar: "KeyboardToolbar@library",
   KeyboardProvider: ({ children }: { children?: React.ReactNode }) => children,
   // #4420 — mock-surface widening only: SmartScrollView reads the focused
   // field's height from the library's focused-input value; nothing is focused.
   useReanimatedFocusedInput: () => ({ input: null }),
-}));
+  };
+});
 
 jest.mock("react-native-reanimated", () => {
   const { View: V } = jest.requireActual("react-native");
@@ -299,7 +314,10 @@ jest.mock("../../../components/brand/BrandSwitcherSheet", () => {
 jest.mock("../../../components/ari/InputBar", () => {
   const RN = jest.requireActual("react-native");
   const R = jest.requireActual("react") as typeof React;
-  return { InputBar: () => R.createElement(RN.View, { testID: "ari-input-bar" }) };
+  return {
+    InputBar: (props: { onFocus?: () => void; onBlur?: () => void }) =>
+      R.createElement(RN.View, { testID: "ari-input-bar", onFocus: props.onFocus, onBlur: props.onBlur }),
+  };
 });
 
 // ───────────────────────── helpers ──────────────────────────────────────────
@@ -353,39 +371,36 @@ const findComposerWrapper = (root: HostNode): HostNode => {
 
 interface Branch {
   readonly id: string;
-  readonly os: string;
-  readonly version: number | string;
-  readonly doneBarOccupied: number;
+  /** The composer wrapper's resolved paddingBottom (the pill container's own space). */
   readonly paddingBottom: number;
-  readonly onLayoutCount: number;
   readonly paddingAt52: number;
   readonly paddingAt200: number;
-  /** Lift padding after firing EACH handler alone at an absurd height. */
+  /** paddingBottom after firing EACH handler alone at an absurd height. */
   readonly paddingPerHandler: readonly number[];
+  readonly kav: { found: boolean; behavior: unknown; containsWrapper: boolean };
+  /** The resting spacer's height, and whether it is the KAV's next sibling. */
+  readonly spacerHeight: number | null;
+  readonly spacerFollowsKav: boolean;
+  /** Done-bar suppression flag read after focus, then after blur. */
+  readonly flagAfterFocus: boolean;
+  readonly flagAfterBlur: boolean;
 }
 
 /**
- * Mount AriChatScreen under a chosen platform in its own module registry, then
- * report the resolved lift AND what happens when every onLayout in the composer
- * subtree is fired at two very different heights.
+ * Mount AriChatScreen under a chosen platform and keyboard height in its own
+ * module registry, then report the resolved composer geometry, what happens
+ * when every onLayout in the composer subtree is fired, and the focus flag.
  */
-function measureBranch(id: string, os: string, version: number | string): Branch {
+function measureBranch(id: string, os: string, version: number | string, keyboardHeight = 336): Branch {
   PLATFORM_STATE.OS = os;
   PLATFORM_STATE.Version = version;
+  KEYBOARD_STATE.height = keyboardHeight;
 
   let result: Branch | null = null;
 
-  // React, the renderer, the shared budget and the screen must ALL come from
-  // the SAME isolated registry. Requiring only the component inside
-  // `isolateModules` while the renderer closes over the OUTER react gives two
-  // React instances, and the fresh one's hook dispatcher is null — "Cannot read
-  // properties of null (reading 'useState')" the moment the screen mounts.
-  //
-  // `react-test-renderer` rather than @testing-library/react-native: RTL
-  // registers beforeAll/afterAll at MODULE SCOPE, so re-requiring it per branch
-  // throws "Cannot add a hook after tests have started running". The renderer
-  // underneath it has no such side effect, and the tree it returns is the same
-  // host tree.
+  // React, the renderer and the screen must ALL come from the SAME isolated
+  // registry (two React instances = a null hook dispatcher). `react-test-
+  // renderer` rather than RTL: RTL registers hooks at module scope.
   jest.isolateModules(() => {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const R = require("react") as typeof React;
@@ -393,7 +408,7 @@ function measureBranch(id: string, os: string, version: number | string): Branch
       create: (e: unknown) => { root: HostNode; unmount: () => void };
       act: (cb: () => void) => void;
     };
-    const clearance = require("../../../wrappers/keyboardClearance.native") as { DONE_BAR_OCCUPIED: number };
+    const suppression = require("../../../wrappers/doneBarSuppression") as { getDoneBarSuppressed: () => boolean };
     const { AriChatScreen } = require("../AriChatScreen") as { AriChatScreen: React.ComponentType };
     /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -402,12 +417,11 @@ function measureBranch(id: string, os: string, version: number | string): Branch
       tree = TR.create(R.createElement(AriChatScreen));
     });
     if (tree == null) throw new Error(`[#1890] renderer produced no tree under ${os}/${version}.`);
-    const composer = findByTestId((tree as { root: HostNode }).root, "ari-input-bar");
+    const root = (tree as { root: HostNode }).root;
+    const composer = findByTestId(root, "ari-input-bar");
     const wrapper = findComposerWrapper(composer);
-
     const readPadding = (): number => flatten(wrapper.props.style).paddingBottom as number;
 
-    // Every onLayout in the composer subtree, walking DOWN from the wrapper.
     const layoutHandlers: ((e: unknown) => void)[] = [];
     const walk = (node: HostNode): void => {
       if (typeof node.props?.onLayout === "function") {
@@ -418,23 +432,15 @@ function measureBranch(id: string, os: string, version: number | string): Branch
       }
     };
     walk(wrapper);
-
     const fireAll = (height: number): void => {
       TR.act(() => {
         for (const h of layoutHandlers) h({ nativeEvent: { layout: { x: 0, y: 0, width: 375, height } } });
       });
     };
-
     fireAll(52);
     const paddingAt52 = readPadding();
     fireAll(200);
     const paddingAt200 = readPadding();
-
-    // [TEST-MOD-APPROVED #3429] Per-handler probe for assertion 5. Firing the
-    // handlers TOGETHER (as fireAll does) can be satisfied by two handlers that
-    // feed the lift and cancel. Firing each one ALONE at an absurd height
-    // cannot: if any single handler's measured value reaches the lift padding,
-    // that reading moves.
     const paddingPerHandler = layoutHandlers.map((handler) => {
       TR.act(() => {
         handler({ nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 999 } } });
@@ -443,16 +449,67 @@ function measureBranch(id: string, os: string, version: number | string): Branch
     });
     fireAll(200);
 
+    // The KeyboardAvoidingView ancestor and the resting spacer beside it.
+    let kavNode: HostNode | null = wrapper.parent;
+    while (kavNode != null && kavNode.props?.testID !== "keyboard-avoiding-view") kavNode = kavNode.parent;
+    const spacerNode = (() => {
+      try {
+        return findByTestId(root, "ari-composer-rest-spacer");
+      } catch {
+        return null;
+      }
+    })();
+    // Document order: the spacer must come AFTER the whole KeyboardAvoidingView
+    // subtree (so the keyboard's overlap starts above it), never inside it.
+    const order: HostNode[] = [];
+    const collect = (node: HostNode): void => {
+      order.push(node);
+      for (const child of node.children ?? []) {
+        if (child && typeof child === "object") collect(child as HostNode);
+      }
+    };
+    collect(root);
+    let spacerFollowsKav = false;
+    if (kavNode != null && spacerNode != null) {
+      const kavStart = order.indexOf(kavNode);
+      const subtree: HostNode[] = [];
+      const walkKav = (node: HostNode): void => {
+        subtree.push(node);
+        for (const child of node.children ?? []) {
+          if (child && typeof child === "object") walkKav(child as HostNode);
+        }
+      };
+      walkKav(kavNode);
+      const kavEnd = kavStart + subtree.length - 1;
+      const spacerAt = order.indexOf(spacerNode);
+      spacerFollowsKav = kavStart >= 0 && spacerAt > kavEnd && !subtree.includes(spacerNode);
+    }
+
+    // Focus the (stubbed) composer, then blur it: the Done-bar flag follows.
+    TR.act(() => {
+      (composer.props.onFocus as () => void)();
+    });
+    const flagAfterFocus = suppression.getDoneBarSuppressed();
+    TR.act(() => {
+      (composer.props.onBlur as () => void)();
+    });
+    const flagAfterBlur = suppression.getDoneBarSuppressed();
+
     result = {
       id,
-      os,
-      version,
-      doneBarOccupied: clearance.DONE_BAR_OCCUPIED,
       paddingBottom: readPadding(),
-      onLayoutCount: layoutHandlers.length,
       paddingAt52,
       paddingAt200,
       paddingPerHandler,
+      kav: {
+        found: kavNode != null,
+        behavior: kavNode?.props?.behavior,
+        containsWrapper: kavNode != null,
+      },
+      spacerHeight: spacerNode == null ? null : (flatten(spacerNode.props.style).height as number),
+      spacerFollowsKav,
+      flagAfterFocus,
+      flagAfterBlur,
     };
     TR.act(() => {
       TR.act(() => {
@@ -467,8 +524,13 @@ function measureBranch(id: string, os: string, version: number | string): Branch
   return result;
 }
 
-// ───────────────────────── the suite ────────────────────────────────────────
-describe("#1890 — Ari composer keyboard clearance", () => {
+// Insets are mocked at bottom 34; the screen reserves the floating tab bar's
+// 80pt on top of it. The pill's container keeps space[2] (8) under the pill.
+const INSET_BOTTOM = 34;
+const TAB_ROOM = 80;
+const CONTAINER_SPACE = 8;
+
+describe("#4572 (was #1890) — Ari composer rides the keyboard and sits flush", () => {
   const branches: Branch[] = [];
 
   beforeAll(() => {
@@ -478,7 +540,7 @@ describe("#1890 — Ari composer keyboard clearance", () => {
   });
 
   // ── 0. VACUITY GUARD — throws, never skips ────────────────────────────────
-  it("0. VACUITY GUARD — three branches really loaded, none collapsed to web", () => {
+  it("0. VACUITY GUARD — three native branches really loaded and the KeyboardAvoidingView was found", () => {
     if (branches.length !== 3) {
       throw new Error(`[#1890] expected 3 branches, measured ${branches.length}.`);
     }
@@ -489,152 +551,88 @@ describe("#1890 — Ari composer keyboard clearance", () => {
             "see the quantity it claims to test is a FAILURE, never a pass.",
         );
       }
-      if (b.doneBarOccupied === 0) {
+      if (!b.kav.found || b.spacerHeight === null) {
         throw new Error(
-          `[#1890] branch ${b.id} resolved DONE_BAR_OCCUPIED to 0 — the \`Platform.OS === "web"\` ` +
-            "collapse that made #1834's TA-2 pass while blind. Platform did not switch, so this " +
-            '"branch" is the web branch wearing a different name.',
+          `[#4572] branch ${b.id} mounted no KeyboardAvoidingView / resting spacer: this would be ` +
+            "the web branch wearing a native name, and every assertion below would be blind.",
         );
       }
     }
-
-    // The library's `>= 26` boundary must be LIVE, not folded flat.
-    //
-    // NOTE — DEVIATION FROM SPEC §6.6 TEST A, stated rather than hidden. The
-    // spec asked for "three distinct paddingBottom values". Ari's budget has
-    // only TWO distinct branches by construction: DONE_BAR_OCCUPIED is 53 on
-    // iOS 26+ and 42 on BOTH iOS <26 and Android, so ios-18 and android are
-    // necessarily equal. Demanding three distinct values would be demanding a
-    // difference that does not exist, which a test can only satisfy by
-    // fabricating one. The guard therefore asserts the boundary is live and no
-    // branch collapsed to web — the blindness the spec was actually defending
-    // against.
-    const ios26 = branches.find((b) => b.id === "ios-26");
-    const ios18 = branches.find((b) => b.id === "ios-18");
-    const android = branches.find((b) => b.id === "android");
-    expect(ios26?.paddingBottom).not.toBe(ios18?.paddingBottom);
-    expect(ios18?.paddingBottom).toBe(android?.paddingBottom);
-    expect(new Set(branches.map((b) => b.doneBarOccupied))).toEqual(new Set([53, 42]));
   });
 
-  // ── 1. the lift is the occluder budget ────────────────────────────────────
-  it("1. the keyboard-open lift is keyboardHeight + DONE_BAR_OCCUPIED + 12 on every branch", () => {
+  // ── 1. flush: replaces "the lift is keyboardHeight + DONE_BAR_OCCUPIED + 12" ─
+  it("1. the composer's own bottom space is just the container's space[2]; no Done bar, no 12pt clearance", () => {
     for (const b of branches) {
-      expect(b.paddingBottom).toBe(KEYBOARD_HEIGHT + b.doneBarOccupied + 12);
-      // The visible gap the contract promises above the bar's TOP edge.
-      expect(b.paddingBottom - KEYBOARD_HEIGHT - b.doneBarOccupied).toBe(12);
+      expect(b.paddingBottom).toBe(CONTAINER_SPACE);
+    }
+    // And it is the same with the keyboard CLOSED and OPEN: the keyboard's
+    // height no longer feeds the composer's own padding at all.
+    const closed = measureBranch("ios-26-closed", "ios", 26, 0);
+    const open = measureBranch("ios-26-open", "ios", 26, 336);
+    expect(closed.paddingBottom).toBe(open.paddingBottom);
+    expect(open.paddingBottom).toBe(CONTAINER_SPACE);
+  });
+
+  // ── 2. replaces "the clearance straddles the library's >= 26 boundary" ────
+  it("2. nothing depends on the iOS 26 Done-bar boundary any more", () => {
+    const at25 = measureBranch("probe-25.9", "ios", "25.9");
+    const at26 = measureBranch("probe-26.0", "ios", "26.0");
+    expect(at25.paddingBottom).toBe(at26.paddingBottom);
+    expect(at25.spacerHeight).toBe(at26.spacerHeight);
+  });
+
+  // ── 3. KeyboardAvoidingView + resting spacer ──────────────────────────────
+  it("3. the composer sits in a KeyboardAvoidingView (padding), followed by a resting spacer", () => {
+    for (const b of branches) {
+      expect(b.kav.found).toBe(true);
+      expect(b.kav.behavior).toBe("padding");
+      // Closed, the pill rests exactly where it always did: the spacer plus the
+      // container's space[2] equals insets.bottom + the tab bar's room.
+      expect(b.spacerHeight).toBe(INSET_BOTTOM + TAB_ROOM - CONTAINER_SPACE);
+      expect((b.spacerHeight as number) + b.paddingBottom).toBe(INSET_BOTTOM + TAB_ROOM);
+      // The spacer is AFTER the view, so the keyboard's overlap with the view's
+      // frame starts above it (it holds still until the keyboard reaches it).
+      expect(b.spacerFollowsKav).toBe(true);
     }
   });
 
-  // ── 2. the >= 26 boundary, straddled ──────────────────────────────────────
-  it("2. the clearance straddles the library's >= 26 boundary at 54 / 65", () => {
-    const at = (v: number | string): number => measureBranch(`probe-${v}`, "ios", v).paddingBottom - KEYBOARD_HEIGHT;
-    expect(at("25.9")).toBe(54); // 42 bar + 12 clearance
-    expect(at("26.0")).toBe(65); // 53 bar + 12 clearance
+  // ── 4. the Done bar is suppressed only while the composer is focused ──────
+  it("4. focusing the composer raises the no-Done-bar flag and blur lowers it", () => {
+    for (const b of branches) {
+      expect(b.flagAfterFocus).toBe(true);
+      expect(b.flagAfterBlur).toBe(false);
+    }
   });
 
-  // ── 3. THE ANTI-DOUBLE-COUNT ASSERTION ────────────────────────────────────
+  // ── 5. THE ANTI-DOUBLE-COUNT ASSERTION (kept from #1890) ──────────────────
   //
-  // This is the assertion that cannot pass with the bug present. Firing the
-  // composer's layout at 52 and at 200 must leave the lift IDENTICAL: the
-  // padding positions the pill's bottom edge, so the pill's own height is not
-  // an input to it. Under the reverted code the wrapper's onLayout feeds
-  // `composerHeight` straight into the sum and the two readings differ by 148.
-  //
-  // A test that checked only ONE height would pass on the broken code and prove
-  // nothing — which is precisely how this defect survived two prior issues.
-  it("3. paddingBottom is INVARIANT to the composer's measured height (52 vs 200)", () => {
+  // Firing the composer's layout at 52 and at 200 must leave the padding
+  // IDENTICAL, alone and together: the pill's own height is not an input to
+  // where the composer sits. Checking only one height would pass on the broken
+  // code, which is how this defect survived two prior issues.
+  it("5. paddingBottom is INVARIANT to the composer's measured height (52 vs 200, each handler alone)", () => {
     for (const b of branches) {
       expect(b.paddingAt52).toBe(b.paddingAt200);
-      expect(b.paddingAt200 - b.paddingAt52).toBe(0);
-      // …and it still equals the budget, so "invariant" cannot be satisfied by
-      // the lift having collapsed to a constant or to NaN.
-      expect(b.paddingAt52).toBe(KEYBOARD_HEIGHT + b.doneBarOccupied + 12);
-    }
-  });
-
-  // ── 4. ANTI-HARDCODE ──────────────────────────────────────────────────────
-  //
-  // Move the shared budget and the rendered lift must move by the SAME delta.
-  // Re-typing 65 (or 54) as a literal in the screen fails here.
-  it("4. the lift tracks the shared occluder budget, not a re-typed number", () => {
-    let observed: unknown = null;
-    jest.isolateModules(() => {
-      // [TEST-MOD-APPROVED #3429] Mock-surface widening only; the override
-      // this test exists for (DONE_BAR_OCCUPIED: 100) is unchanged. #3429
-      // gives ConversationDrawer a TextInput, so it now takes `ScrollView`
-      // from this wrapper too (ORCH-0892). Stubbing the module down to the one
-      // constant left that import `undefined` and React rejected the element
-      // before any padding was measured. Re-export the real one.
-      jest.doMock("../../../wrappers/SmartScrollView", () => ({
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        ScrollView: (jest.requireActual("react-native") as { ScrollView: unknown }).ScrollView,
-        DONE_BAR_OCCUPIED: 100,
-      }));
-      jest.doMock("../../../wrappers/keyboardClearance", () => ({ MIN_VISIBLE_CLEARANCE: 7 }));
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const R = require("react") as typeof React;
-      const TR = require("react-test-renderer") as {
-        create: (e: unknown) => { root: HostNode; unmount: () => void };
-        act: (cb: () => void) => void;
-      };
-      const { AriChatScreen } = require("../AriChatScreen") as { AriChatScreen: React.ComponentType };
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      let tree: { root: HostNode; unmount: () => void } | null = null;
-      TR.act(() => {
-        tree = TR.create(R.createElement(AriChatScreen));
-      });
-      if (tree == null) throw new Error("[#1890] anti-hardcode mount produced no tree.");
-      const wrapper = findComposerWrapper(findByTestId((tree as { root: HostNode }).root, "ari-input-bar"));
-      observed = flatten(wrapper.props.style).paddingBottom;
-      TR.act(() => {
-      TR.act(() => {
-        (tree as unknown as { unmount: () => void }).unmount();
-      });
-    });
-    });
-    expect(observed).toBe(KEYBOARD_HEIGHT + 100 + 7);
-    jest.dontMock("../../../wrappers/SmartScrollView");
-    jest.dontMock("../../../wrappers/keyboardClearance");
-  });
-
-  // ── 5. no measurement REACHES the lift ────────────────────────────────────
-  //
-  // [TEST-MOD-APPROVED #3429] This asserted `onLayoutCount === 0`. That is a
-  // PROXY for #1890's property, not the property: what #1890 protects is that
-  // the lift padding does not depend on a measurement, and "no onLayout exists
-  // anywhere below the wrapper" is strictly stronger than that.
-  //
-  // #3429's empty state legitimately measures, and none of it reaches the lift:
-  //   AriChatScreen.tsx:722  hero box      -> emptyHeroBoxHeight -> hero minHeight
-  //   AriChatScreen.tsx:892  composerColumn -> composerContentHeight, whose ONLY
-  //                          consumer is :712, again the hero's geometry
-  // The lift padding is `composerOccupiedPxFor(...)`, which reads neither. The
-  // proxy would have forced the orb geometry to be re-derived without
-  // measurement, reopening the F-1 clipping defect that was fixed and verified
-  // on three devices at two type sizes.
-  //
-  // So the assertion is narrowed to handlers that actually FEED THE LIFT: fire
-  // each handler alone at an absurd height and the padding must not move. A
-  // handler that reaches the lift fails here no matter how many others exist,
-  // and unlike assertion 3 this cannot be satisfied by two handlers cancelling.
-  it("5. no layout measurement reaches the lift padding", () => {
-    for (const b of branches) {
-      const budget = KEYBOARD_HEIGHT + b.doneBarOccupied + 12;
+      expect(b.paddingAt52).toBe(CONTAINER_SPACE);
       for (const [index, padding] of b.paddingPerHandler.entries()) {
         expect({ branch: b.id, handler: index, padding }).toEqual({
           branch: b.id,
           handler: index,
-          padding: budget,
+          padding: CONTAINER_SPACE,
         });
       }
-      // Vacuity guard: this must be measuring something. If the walk found no
-      // handlers the per-handler probe is empty and proves nothing, so the
-      // all-at-once invariant carries the branch instead.
-      if (b.paddingPerHandler.length === 0) {
-        expect(b.paddingAt52).toBe(budget);
-        expect(b.paddingAt200).toBe(budget);
-      }
     }
+  });
+
+  // ── 6. the screen no longer budgets the Done bar at all ───────────────────
+  it("6. the screen imports no Done-bar or clearance constant and has no lift expression", () => {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    /* eslint-enable @typescript-eslint/no-require-imports */
+    const src = fs.readFileSync(path.resolve(__dirname, "../AriChatScreen.tsx"), "utf8");
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(code).not.toMatch(/DONE_BAR_OCCUPIED|MIN_VISIBLE_CLEARANCE|composerOccupiedPxFor/);
+    expect(code).toMatch(/KeyboardAvoidingView[^\n]*behavior="padding"/);
   });
 });

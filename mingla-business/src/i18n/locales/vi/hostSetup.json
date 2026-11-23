@@ -278,11 +278,9 @@
       "payments": "Thông tin thanh toán"
     },
     "a1": {
-      "headlineNamed": "Chào {{first}}. Hãy chuẩn bị tài khoản để nhận đặt chỗ.",
-      "headline": "Chào bạn. Hãy chuẩn bị tài khoản để nhận đặt chỗ.",
-      "body": "Mất khoảng 3 phút: tên thương hiệu, quốc gia ngân hàng, rồi đến thanh toán. Tôi sẽ hướng dẫn bạn.",
       "cardTitle": "Thiết lập thương hiệu",
       "minutes": "Khoảng 3 phút",
+      "eyebrowStep": "Bước {{current}}/{{total}}",
       "setUp": "Thiết lập thương hiệu của tôi",
       "withAri": "Làm cùng Ari",
       "withAriMessage": "Giúp tôi thiết lập thương hiệu",

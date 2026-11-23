@@ -125,11 +125,12 @@ import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
 // #4304 part 3 — First Home with Ari (greeting, chips and top bar by stage).
 import { useFirstRunStageContext } from "../../context/FirstRunStageContext";
-import { FirstRunGreeting } from "../../components/ari/FirstRunGreeting";
+import { FirstRunGreeting, FirstRunSetupStage } from "../../components/ari/FirstRunGreeting";
 import { useFirstRunStore } from "../../store/firstRunStore";
 import { useAriSeedStore } from "../../store/ariSeedStore";
 import {
   type FirstRunChip,
+  NO_BRAND_PLACEHOLDER,
   firstRunGreeting,
   isFirstRunLocked,
 } from "../../utils/firstRunState";
@@ -155,15 +156,13 @@ import {
 // `Keyboard.dismiss()`, which is not a listener and is not in scope for
 // orch-0892.
 import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
-// #1850 [quarantined-checkout-pins] — the Done-bar term in the composer lift is
-// the DERIVED cost of the bar, not the hand-typed 42 that used to sit here. Metro
-// picks the .native variant (53 on iOS 26+, 42 elsewhere); the web variant exports
-// 0, which the web branch below never reads anyway.
-import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
-// #1890 [keyboard-clearance-overshoot] — the visible gap promised above the
-// bar, from the shared occluder budget. Both platform variants export it, so
-// the web branch below can never read `undefined` and budget NaN.
-import { MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
+// #4572 item 16 — the Ari composer rides the keyboard frame by frame with the
+// keyboard-controller KeyboardAvoidingView (the #4173 messages pattern, via
+// the platform wrapper: a plain View on web) and sits FLUSH on it: no Done
+// bar and no clearance while the composer is focused. Every other field keeps
+// the Done bar; this flag is the one switch.
+import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
+import { setDoneBarSuppressed } from "../../wrappers/doneBarSuppression";
 
 // Height the floating BottomNav capsule occupies above the safe-area bottom.
 // Matches NAV_HEIGHT (64) + paddingTop (8) + paddingBottom (≥8) in
@@ -232,31 +231,21 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
 };
 
 /**
- * ORCH-1890 — THE keyboard-open lift. One site, at module scope.
- *
- * How far the composer column is lifted off the bottom of the screen: the
- * keyboard plus its Done bar plus the clearance when the keyboard is up, and
- * the resting occupancy when it is down. Both consumers read this — the
- * composer's own bottom padding and the empty-state clamp — because rule (E)
- * of the keyboard gate matches with a NON-GLOBAL regex and validates only the
- * FIRST lift site it finds; a second site is invisible to it, which is how
- * REWORK-2's clamp went unguarded until #1890's singularity suite caught it.
- *
- * It lives at module scope rather than inside the component so it is outside
- * the region #1850's A-5 stripper deletes (that check treats the props
- * interface's `{` plus its docblock as one JSX comment and drops ~490 lines
- * with it, so a use inside the component body is invisible to it).
- *
- * Do NOT add a measured pill height: this positions the pill's bottom edge, so
- * any pill-height term is the double count #1890 removed.
+ * #4572 item 16 — how far the EMPTY-STATE hero's visible region must stop short
+ * of the composer's resting spot while the keyboard is up. This is content
+ * clamping only: the composer itself is NOT positioned from React state any
+ * more (it rides the keyboard in a KeyboardAvoidingView), so no keyboard
+ * height drives the composer's own layout. The composer's pill ends
+ * `space[2]` above the keyboard (its container's own padding), so that is the
+ * rise measured against its resting spot.
  */
-const composerOccupiedPxFor = (
+const composerRiseFor = (
   keyboardHeight: number,
   restingOccupiedPx: number,
 ): number =>
-  keyboardHeight > 0
-    ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE
-    : restingOccupiedPx;
+  // Closed, keyboardHeight is 0 and space[2] is below every resting value, so
+  // this is 0 (no ternary on purpose: the keyboard gate bans one here).
+  Math.max(0, keyboardHeight + space[2] - restingOccupiedPx);
 
 /*
  * #3355 — the in-chat logo / cover upload (Brand details' own pickers).
@@ -413,6 +402,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(
     null,
   );
+  // #4572 — never strand the "no Done bar" flag if the screen goes away focused.
+  React.useEffect(() => (): void => setDoneBarSuppressed(false), []);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
   // #4453 — the chip names the brand the route names (`/ari?brandId=`), read by the root shell.
   const routeBrand = useContext(WorkspaceRouteContext).brand;
@@ -449,13 +440,13 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     Record<string, { url: string | null; type: string | null }>
   >({});
 
-  // The composer swaps in `keyboardHeight` when the keyboard is up and
-  // BOTTOM_NAV_CLEARANCE_PX when it is down; a plain KeyboardAvoidingView
-  // cannot express that because its padding stacks ON TOP of the BottomNav
-  // clearance, leaving an awkward gap above the keyboard. The height itself now
-  // comes from `useKeyboardHeight` (library-backed) — see the import comment.
-  // The bespoke Keyboard.addListener pair that used to live here was deleted
-  // by #1841; do not reinstate it.
+  // The composer sits in a KeyboardAvoidingView whose frame ends ABOVE a
+  // resting spacer (the floating tab bar's room), so the library pads it by
+  // only the part of the keyboard that rises past that spacer: it holds still
+  // until the keyboard reaches it, then rides the keyboard frame by frame and
+  // ends flush on it. `keyboardHeight` above only feeds content clamping and
+  // alignment, never the composer's position. The bespoke Keyboard.addListener
+  // pair that used to live here was deleted by #1841; do not reinstate it.
 
   const prefs = useAriPreferences();
   const { user } = useAuth();
@@ -925,22 +916,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     selectedBrandId,
   ]);
 
-  // #4304 — a greeting chip is sent as the host's own message, with the chip's
-  // intent as context. In State A a kind ("I host events") is remembered so the
-  // State B greeting can offer that draft once the brand exists.
+  // #4304 — a State B greeting chip is sent as the host's own message, with the
+  // chip's intent as context. (#4572: State A has no pills any more; what the
+  // host runs is still remembered from the words they type in the composer.)
   const handleFirstRunChip = (chip: FirstRunChip): void => {
     if (firstRunStage === null) return;
-    if (
-      firstRunStage === "no_brand" &&
-      firstRunUserId !== null &&
-      chip.id !== "brand" &&
-      chip.id !== "about"
-    ) {
-      rememberFirstRunIntent(firstRunUserId, {
-        intent: chip.id,
-        text: rememberedFirstRun?.text ?? null,
-      });
-    }
     handleSend(chip.label, { stage: firstRunStage, intent: chip.id });
   };
 
@@ -1342,15 +1322,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // Web has no soft keyboard, so this is 0 there and nothing changes.
   const composerRestingOccupiedPx =
     Math.max(insets.bottom, space[4]) + BOTTOM_NAV_CLEARANCE_PX;
-  // The one lift, read by both consumers — see `composerOccupiedPxFor`.
-  const composerOccupiedPx = composerOccupiedPxFor(
-    keyboardHeight,
-    composerRestingOccupiedPx,
-  );
-  const emptyHeroComposerClamp = Math.max(
-    0,
-    composerOccupiedPx + space[2] - composerRestingOccupiedPx,
-  );
+  const composerRisePx = composerRiseFor(keyboardHeight, composerRestingOccupiedPx);
+  const emptyHeroComposerClamp = Math.max(0, composerRisePx + space[2]);
   // #3429 REWORK-4 N-1 — the hero's drop order is EmptyState's to enforce, and
   // this is the only number it needs from the screen.
   const emptyStateLayout = React.useMemo(
@@ -1443,25 +1416,26 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
 
   // #4304 — the composer is drawn either at the bottom (every surface) or,
   // for a first-run host on wide desktop, centred under the greeting.
-  const firstRunCopy =
-    firstRunStage !== null
+  const noBrandStage = firstRunStage === "no_brand";
+  const emptyBrandCopy =
+    firstRunStage === "empty_brand"
       ? firstRunGreeting({
-          stage: firstRunStage,
-          displayName: firstRunContext.displayName,
           brandName: currentBrand?.displayName ?? null,
           remembered: rememberedFirstRun?.intent ?? null,
           // #4389 — never "set up" unless brand_setup is complete.
           setupComplete: setupData?.facts.complete === true,
         })
       : null;
-  const firstRunCentred = firstRunCopy !== null && noMessages && isWideDesktop;
+  const firstRunCentred =
+    (emptyBrandCopy !== null || noBrandStage) && noMessages && isWideDesktop;
   const firstRunChipsDisabled =
     chat.isSending || rateLimited || !online || !conversationSelectionReady;
   // #4389 A1 — the first-landing setup card: works with no AI call (AR-1).
   const firstRunSetupCard =
-    firstRunStage === "no_brand" ? (
+    noBrandStage ? (
       <AriSetupCard
         brandName={null}
+        layout={isWideDesktop ? "wide" : Platform.OS === "web" ? "web" : "phone"}
         doneCount={0}
         onSetUp={() => router.push("/brand/new" as never)}
         onWithAri={
@@ -1662,10 +1636,14 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                           ? "Checking brand access…"
                           : rateLimited
                             ? "Sending paused…"
-                            : firstRunCopy !== null && noMessages
-                              ? firstRunCopy.placeholder
+                            : noBrandStage && noMessages
+                              ? NO_BRAND_PLACEHOLDER
+                              : emptyBrandCopy !== null && noMessages
+                              ? emptyBrandCopy.placeholder
                               : "Ask Ari…"
                   }
+                  onFocus={() => setDoneBarSuppressed(true)}
+                  onBlur={() => setDoneBarSuppressed(false)}
                   onAttach={() => {
                     if (Platform.OS === "web") void attachments.addFiles("all");
                     else setAttachmentSourceOpen(true);
@@ -1882,15 +1860,22 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                 />
               }
             />
-          ) : noMessages && firstRunCopy !== null ? (
+          ) : noMessages && noBrandStage ? (
+            // #4572 item 16 — State A: the setup card is the only content.
+            <FirstRunSetupStage
+              card={firstRunSetupCard}
+              desktop={firstRunCentred}
+              composer={composerBlock}
+              keyboardOpen={keyboardHeight > 0}
+            />
+          ) : noMessages && emptyBrandCopy !== null ? (
             firstRunCentred ? (
               <FirstRunGreeting
-                copy={firstRunCopy}
+                copy={emptyBrandCopy}
                 onChip={handleFirstRunChip}
                 desktop
                 composer={composerBlock}
                 disabled={firstRunChipsDisabled}
-                footer={firstRunSetupCard}
               />
             ) : (
               <>
@@ -1904,17 +1889,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                       60 +
                       Math.max(0, composerContentHeight - 60) +
                       // Keyboard up: lift the greeting above the risen composer.
-                      Math.max(0, composerOccupiedPx - composerRestingOccupiedPx),
+                      composerRisePx,
                   },
                 ]}
               >
                 <View style={styles.firstRunOverlayInner}>
                   <FirstRunGreeting
-                    copy={firstRunCopy}
+                    copy={emptyBrandCopy}
                     onChip={handleFirstRunChip}
                     compact={keyboardHeight > 0}
                     disabled={firstRunChipsDisabled}
-                    footer={firstRunSetupCard}
                   />
                 </View>
               </View>
@@ -2238,90 +2222,62 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           )}
 
           {firstRunCentred ? null : (
+          <>
+          {/* #4572 item 16 — the composer rides the keyboard frame by frame
+              (the #4173 messages pattern) and sits FLUSH on it. On native the
+              KeyboardAvoidingView's frame ends above `composerRestSpacer`
+              (the floating tab bar's room), so the library pads it by only
+              the part of the keyboard that rises past that spacer: it holds
+              still until the keyboard reaches it, then moves with it and
+              ends flush, 0pt gap, no Done bar (the flag is raised while the
+              field is focused). Keyboard closed, the pill rests exactly where
+              it always did. Web has no soft keyboard: the wrapper is a plain
+              View and the web padding below is the same as before. */}
+          <KeyboardAvoidingView behavior="padding">
           <View
             style={[
               styles.inputWrap,
               {
                 // ORCH-1101 Bug A (screen side): on WIDE desktop web there is no
-                // soft keyboard (keyboardHeight stays 0) and no floating BottomNav
-                // capsule (the business web nav is a left side rail), so the old
-                // `insets.bottom + BOTTOM_NAV_CLEARANCE_PX` reserved a phantom
-                // 80px gap below the composer. Wide desktop web → spacing.sm only.
+                // soft keyboard and no floating BottomNav capsule (the business
+                // web nav is a left side rail), so a phantom 80px gap below the
+                // composer is wrong there. Wide desktop web → spacing.sm only.
                 //
-                // #3460 [narrow-web-nav-overlap] — that premise is about WIDTH, not
-                // platform, and it was written as `Platform.OS === "web"`, which is
-                // also true for every web viewport UNDER `WIDE_DESKTOP_MIN_WIDTH`
-                // (1024, inclusive). Below 1024 `BottomNav.web.tsx` renders
-                // `MobileWebCapsule` — a floating capsule in `navWrap`
-                // (`position:absolute; bottom:0`, painted after `<Slot/>`) whose
-                // `pointerEvents="box-none"` compiles in react-native-web 0.21.2 to
-                // `<selector> > * { pointer-events: auto }`, so its full-width direct
-                // child captures taps across the whole 80pt band. With only
-                // `spacing.sm` (8pt) of clearance the composer sat INSIDE that band:
-                // `document.elementFromPoint` returned a nav element at 147 of 147
-                // points sampled across the Attach (+) button, the input and Send on
-                // real mobile Safari at 402x714, and real taps never reached the
-                // controls. The clearance therefore follows `isWideDesktop` — the
-                // same hook the nav itself gates on (I-DESKTOP-GATE-VIA-HOOK) — so
-                // narrow web gets the same 80pt capsule clearance native gets, and
-                // >=1024 keeps ORCH-1101's phantom-gap fix byte-for-byte.
+                // #3460 [narrow-web-nav-overlap] — that premise is about WIDTH,
+                // not platform: below `WIDE_DESKTOP_MIN_WIDTH` (1024) the web nav
+                // is `MobileWebCapsule`, a floating capsule whose full-width
+                // child captures taps across the whole 80pt band, so narrow web
+                // keeps the same capsule clearance native has. The clearance
+                // follows `isWideDesktop`, the hook the nav itself gates on
+                // (I-DESKTOP-GATE-VIA-HOOK). #2830 — no tab bar on the setup
+                // screen either.
                 //
-                // NOT fixed by adding `/ari` to `(tabs)/_layout.tsx`'s
-                // `hideBottomNav` list: `/campaigns/compose` and `/analytics` are
-                // sub-routes a user can back out of, whereas `/ari` IS a top-level
-                // tab (and Website → Edit with Ari redirects INTO it at
-                // `/(tabs)/ari?sitesIntent=edit`), so hiding the capsule there would
-                // strand a phone-web user on a screen with no navigation.
-                //
-                // Native: when the keyboard is up, this padding IS the composer's
-                // position. `inputWrap` carries only paddingHorizontal/paddingTop
-                // and is the last in-flow child of a flex:1 column, so its
-                // paddingBottom already places the pill's BOTTOM EDGE — the pill's
-                // body then extends upward from there.
-                //
-                // #1890 [keyboard-clearance-overshoot] — ORCH-1165 REWORK loop 2
-                // added the measured `composerHeight` on top of that, which lifted
-                // the pill by its own full height a SECOND time, plus a stray
-                // spacing.sm. Measured on glass: 61.0pt of gap on an iPhone SE3
-                // against a 12pt contract, 71.8dp on the physical Samsung. #1850
-                // then correctly replaced the hand-typed 42 with DONE_BAR_OCCUPIED,
-                // which removed the accidental masking and made iOS worse (49 -> 60).
-                //
-                // The bar's top sits keyboardHeight + DONE_BAR_OCCUPIED from the
-                // bottom, so clearing it by MIN_VISIBLE_CLEARANCE is the whole job.
-                // Do NOT add a measured pill height here: this padding positions
-                // the pill's bottom edge, so any pill-height term is a double
-                // count. When closed, clear the floating BottomNav capsule +
-                // safe-area inset.
+                // Native: the container's own spacing.sm is the ONLY space below
+                // the pill; the tab-bar room is the sibling spacer after this
+                // wrapper, so while the keyboard is up the pill is flush.
                 paddingBottom:
                   Platform.OS === "web"
                     ? isWideDesktop
                       ? space[2]
-                      : // #2830 — no tab bar on the setup screen either.
-                        setup
+                      : setup
                         ? space[2]
-                        : // #3460 — narrow web HAS the floating capsule, so it needs the
-                        // same clearance the native branch below reserves.
-                        Math.max(insets.bottom, space[4]) +
-                        BOTTOM_NAV_CLEARANCE_PX
-                    : // ORCH-1101 ADV-3 checks that the web result precedes the
-                      // native clearance term IN THIS EXPRESSION, so the resting
-                      // value is spelled out here rather than passed as
-                      // `composerRestingOccupiedPx`. Same value, same owner for the
-                      // lift itself — the ternary still lives in one place.
-                      composerOccupiedPxFor(
-                        keyboardHeight,
-                        Math.max(insets.bottom, space[4]) +
-                          BOTTOM_NAV_CLEARANCE_PX,
-                      ),
+                        : Math.max(insets.bottom, space[4]) +
+                          BOTTOM_NAV_CLEARANCE_PX
+                    : space[2],
               },
             ]}
           >
-            {/* #1890 — the measuring wrapper is gone with the double count it fed.
-              `inputWrap`'s paddingBottom already positions this pill's bottom
-              edge; nothing needs the pill's own height. */}
             {composerBlock}
           </View>
+          </KeyboardAvoidingView>
+          {Platform.OS === "web" ? null : (
+            <View
+              style={{ height: Math.max(0, composerRestingOccupiedPx - space[2]) }}
+              pointerEvents="none"
+              testID="ari-composer-rest-spacer"
+            />
+          )}
+          </>
           )}
         </View>
       </View>

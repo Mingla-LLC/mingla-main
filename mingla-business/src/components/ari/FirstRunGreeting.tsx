@@ -1,6 +1,12 @@
 /**
- * #4304 part 3 — Ari's first-run greeting (States A and B).
+ * #4304 part 3 — Ari's first-run greeting (State B) and, since #4572 item 16,
+ * the State A stage.
  *
+ * State A (no brand): `FirstRunSetupStage` below. The setup card is the only
+ * content: no orb, headline, paragraph or pills. It never collapses while the
+ * host types.
+ *
+ * State B (a brand exists, nothing made yet): `FirstRunGreeting`.
  * App-written, no AI call: orb, headline, body and every chip. All chips show
  * on phone and desktop alike; they wrap.
  *   - Phone: the greeting sits at the bottom of the thread area, just above the
@@ -13,7 +19,7 @@
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { color, radius as radiusTokens, space, type } from "../../constants/designSystem";
 import type {
@@ -32,8 +38,6 @@ export interface FirstRunGreetingProps {
   /** Phone keyboard up: keep the headline and chips, drop the orb and body. */
   compact?: boolean;
   disabled?: boolean;
-  /** #4389 A1 — the setup card under the chips (no-brand first landing). */
-  footer?: React.ReactNode;
   testID?: string;
 }
 
@@ -44,7 +48,6 @@ export function FirstRunGreeting({
   composer,
   compact = false,
   disabled = false,
-  footer,
   testID = "ari-first-run-greeting",
 }: FirstRunGreetingProps): React.ReactElement {
   const chips = (
@@ -95,17 +98,14 @@ export function FirstRunGreeting({
           <Text style={[styles.body, styles.bodyDesktop]}>{copy.body}</Text>
           {composer ? <View style={styles.desktopComposer}>{composer}</View> : null}
           {chips}
-          {footer}
         </View>
       </View>
     );
   }
 
-  // #4389 P2 — the phone greeting scrolls inside its own box. It used to be a
-  // bottom-anchored View: with the A1 setup card it grew taller than the space
-  // under Ari's top bar and drew over it (17pt overlap; the orb over the brand
-  // chip). The ScrollView clips to that box, keeps short content anchored at
-  // the bottom (flexGrow + flex-end) and lets tall content scroll under the bar.
+  // #4389 P2 — the phone greeting scrolls inside its own box: the ScrollView
+  // clips to the space under Ari's top bar, keeps short content anchored at
+  // the bottom (flexGrow + flex-end) and lets tall content scroll under it.
   return (
     <ScrollView
       style={styles.phoneScroll}
@@ -125,10 +125,90 @@ export function FirstRunGreeting({
       </Text>
       {compact ? null : <Text style={styles.body}>{copy.body}</Text>}
       {chips}
-      {compact ? null : footer}
     </ScrollView>
   );
 }
+
+export interface FirstRunSetupStageProps {
+  /** The setup card: the only content of the no-brand page. */
+  card: React.ReactNode;
+  /** Wide desktop: the card and the composer share one centred 880 column. */
+  desktop?: boolean;
+  /** Desktop only: the screen's composer, drawn under the card. */
+  composer?: React.ReactNode;
+  /**
+   * Phone: the keyboard is up. Only the alignment follows it (top while the
+   * keyboard is open, centred when closed); the card stays mounted and the
+   * composer's position never reads this.
+   */
+  keyboardOpen?: boolean;
+  testID?: string;
+}
+
+/**
+ * #4572 item 16 — State A. The card, and nothing else.
+ *   - Phone / narrow web: a scroll area between the top bar and the composer,
+ *     the card centred in it while the keyboard is closed and top-aligned
+ *     while it is open. The area scrolls and dismisses the keyboard with a
+ *     swipe down (interactive on iOS).
+ *   - Wide desktop: the card and the composer in one centred column.
+ */
+export function FirstRunSetupStage({
+  card,
+  desktop = false,
+  composer,
+  keyboardOpen = false,
+  testID = "ari-first-run-setup-stage",
+}: FirstRunSetupStageProps): React.ReactElement {
+  if (desktop) {
+    return (
+      <View style={stageStyles.desktopHost} testID={testID}>
+        <View style={stageStyles.desktopColumn}>
+          {card}
+          {composer ? <View style={stageStyles.desktopComposer}>{composer}</View> : null}
+        </View>
+      </View>
+    );
+  }
+  return (
+    <ScrollView
+      style={stageStyles.phoneScroll}
+      contentContainerStyle={[
+        stageStyles.phoneContent,
+        keyboardOpen ? stageStyles.phoneTop : stageStyles.phoneCentre,
+      ]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+      showsVerticalScrollIndicator={false}
+      testID={testID}
+    >
+      {card}
+    </ScrollView>
+  );
+}
+
+const stageStyles = StyleSheet.create({
+  phoneScroll: { flex: 1 },
+  phoneContent: {
+    flexGrow: 1,
+    paddingHorizontal: space[4],
+    paddingVertical: space[4],
+  },
+  phoneCentre: { justifyContent: "center" },
+  phoneTop: { justifyContent: "flex-start" },
+  desktopHost: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space[6],
+  },
+  desktopColumn: {
+    width: "100%",
+    maxWidth: 880,
+    gap: space[5],
+  },
+  desktopComposer: { width: "100%" },
+});
 
 const styles = StyleSheet.create({
   phoneScroll: {

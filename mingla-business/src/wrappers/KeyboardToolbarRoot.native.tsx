@@ -30,6 +30,11 @@ import { ChevronDown, ChevronUp } from "lucide-react-native";
 import { color, materials, space, type } from "../constants/designSystem";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { DONE_BAR_OCCUPIED } from "./keyboardClearance.native";
+import {
+  getDoneBarSuppressed,
+  setDoneBarSuppressed,
+  subscribeDoneBarSuppressed,
+} from "./doneBarSuppression";
 import { useKeyboardIsVisible } from "./useKeyboardIsVisible";
 
 // The library does not re-export its KeyboardToolbarTheme type from the
@@ -242,6 +247,16 @@ const DoneBar: React.FC<DoneBarProps> = ({
 
 export const KeyboardToolbarRoot: React.FC = () => {
   const visible = useKeyboardIsVisible();
+  // #4572 — Ari's composer sits flush on the keyboard with no Done bar.
+  const suppressed = useSyncExternalStore(
+    subscribeDoneBarSuppressed,
+    getDoneBarSuppressed,
+    getDoneBarSuppressed,
+  );
+  useEffect(() => {
+    // A dismissal that never blurs the field must not strand the flag.
+    if (!visible) setDoneBarSuppressed(false);
+  }, [visible]);
   const scoped = useSyncExternalStore(
     subscribeAvailabilityToolbar,
     getAvailabilityToolbarSnapshot,
@@ -263,7 +278,7 @@ export const KeyboardToolbarRoot: React.FC = () => {
     event.preventDefault();
     current.focusNext();
   }, []);
-  if (!visible) return null;
+  if (!visible || suppressed) return null;
   if (scoped !== null) {
     return (
       <DoneBarDock>

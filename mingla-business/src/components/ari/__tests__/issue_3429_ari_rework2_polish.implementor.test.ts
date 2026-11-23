@@ -252,9 +252,9 @@ function shippedExpression(source: ts.SourceFile, name: string): string {
 
 describe("#3429 R2 R-2 — the empty state never sits under the composer", () => {
   const screen = parse(SCREEN);
-  // The two constants the screen imports, at their shipped values.
-  const DONE_BAR_OCCUPIED = 42;
-  const MIN_VISIBLE_CLEARANCE = 12;
+  // [TEST-MOD-APPROVED #4572] DONE_BAR_OCCUPIED and MIN_VISIBLE_CLEARANCE are
+  // gone from the screen (the composer is flush on the keyboard now), so they
+  // are no longer in scope here.
   const BOTTOM_NAV_CLEARANCE_PX = 80;
   const spacing = { md: 16, sm: 8 };
   // [TEST-MOD-APPROVED #4420] the screen reads the Graphite `space` scale now
@@ -291,30 +291,27 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
 
   const clampExpression = shippedExpression(screen, "emptyHeroComposerClamp");
   const restingExpression = shippedExpression(screen, "composerRestingOccupiedPx");
-  // [TEST-MOD-APPROVED #3429] ORCH-1890: the keyboard-open lift was hoisted out
-  // of the clamp into ONE named site that both the composer's padding and the
-  // clamp read. It had to be: rule (E) of the keyboard gate matches with a
-  // NON-GLOBAL regex, so it validates the FIRST lift site and never sees a
-  // second — the clamp's own site was unguarded from REWORK-2 until the #1890
-  // singularity suite caught it. These assertions follow the lift to where it
-  // now lives instead of being relaxed; the tokens are still required, and the
-  // clamp must still be DERIVED from that site rather than re-deriving it.
-  // The lift lives at module scope (`composerOccupiedPxFor`) so it is outside
-  // the ~490 lines #1850's A-5 stripper deletes when it mistakes the props
-  // interface's brace plus docblock for a JSX comment. One site, visible to
-  // both checks.
-  const occupiedExpression = shippedArrowBody(screen, "composerOccupiedPxFor");
+  // [TEST-MOD-APPROVED #4572] Replaces the #1890 lift site
+  // (`composerOccupiedPxFor` = keyboardHeight + DONE_BAR_OCCUPIED +
+  // MIN_VISIBLE_CLEARANCE) this block evaluated, and the two assertions that
+  // pinned it. Item 16 moved the composer itself onto a KeyboardAvoidingView,
+  // so no keyboard height positions it. What survives is the hero's clamp,
+  // derived from ONE named site (`composerRiseFor`): how far the composer's
+  // top edge rises above its resting spot, i.e. how far the keyboard (plus the
+  // pill container's own space[2]) climbs past the resting clearance. The
+  // geometry assertions below still hold the same contract: the hero's visible
+  // region never crosses the composer's top.
+  const riseExpression = shippedArrowBody(screen, "composerRiseFor");
 
-  it("the lift is derived from the keyboard, not a constant", () => {
-    expect(occupiedExpression).toContain("keyboardHeight");
-    expect(occupiedExpression).toContain("DONE_BAR_OCCUPIED");
-    expect(occupiedExpression).toContain("MIN_VISIBLE_CLEARANCE");
+  it("the rise is derived from the keyboard height, with no Done bar or fixed clearance term", () => {
+    expect(riseExpression).toContain("keyboardHeight");
+    expect(riseExpression).not.toContain("DONE_BAR_OCCUPIED");
+    expect(riseExpression).not.toContain("MIN_VISIBLE_CLEARANCE");
   });
 
-  it("the clamp reads that ONE lift site rather than re-deriving it", () => {
-    expect(clampExpression).toContain("composerOccupiedPx");
-    // If the clamp re-derived the lift it would be a second site, which is the
-    // blind spot above.
+  it("the clamp reads that ONE rise site rather than re-deriving it", () => {
+    expect(clampExpression).toContain("composerRisePx");
+    // If the clamp re-derived the rise it would be a second site.
     expect(clampExpression).not.toContain("keyboardHeight");
   });
 
@@ -334,30 +331,35 @@ describe("#3429 R2 R-2 — the empty state never sits under the composer", () =>
             spacing,
             space,
             composerContentHeight,
-            DONE_BAR_OCCUPIED,
-            MIN_VISIBLE_CLEARANCE,
             BOTTOM_NAV_CLEARANCE_PX,
             Math,
           };
           const composerRestingOccupiedPx = evaluate(restingExpression, scope);
-          // Evaluate the shipped lift, then the shipped clamp that reads it —
+          // Evaluate the shipped rise, then the shipped clamp that reads it —
           // both from source, so the arithmetic under test is the arithmetic
           // that ships.
-          const composerOccupiedPx = evaluate(occupiedExpression, {
+          const composerRisePx = evaluate(riseExpression, {
             ...scope,
             restingOccupiedPx: composerRestingOccupiedPx,
           });
           const clamp = evaluate(clampExpression, {
             ...scope,
             composerRestingOccupiedPx,
-            composerOccupiedPx,
+            composerRisePx,
           });
 
           // What the screen actually renders, as distances from the bottom of
-          // the chat column. `inputWrap`'s paddingBottom places the composer
-          // pill's BOTTOM edge; the column grows upward from there, under
-          // `inputWrap`'s own paddingTop of spacing.sm.
-          const composerTopInset = composerOccupiedPx + composerContentHeight + spacing.sm;
+          // the chat column. Closed, the pill rests `composerRestingOccupiedPx`
+          // up. Open, the KeyboardAvoidingView's frame ends above a spacer of
+          // (resting - space[2]), so the library pads it by only the part of
+          // the keyboard past that spacer: the container ends at
+          // max(keyboard, spacer) and the pill sits space[2] above that,
+          // flush. The column grows upward from the pill under `inputWrap`'s
+          // own paddingTop of spacing.sm.
+          const composerBottomInset = keyboardOpen
+            ? Math.max(keyboardHeight, composerRestingOccupiedPx - space[2]) + space[2]
+            : composerRestingOccupiedPx;
+          const composerTopInset = composerBottomInset + composerContentHeight + spacing.sm;
           // The overlay's keyboard-INDEPENDENT padding (the no-jump contract),
           // plus the clamp applied to the scroll viewport inside it.
           const heroRestingInset = Math.max(insets.bottom, spacing.md) +

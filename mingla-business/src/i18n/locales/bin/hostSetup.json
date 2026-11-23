@@ -278,11 +278,9 @@
       "payments": "Ẹmwẹ igho"
     },
     "a1": {
-      "headlineNamed": "Kóyo {{first}}. Gia ru akaunti ruẹ ladian ne ọ miẹ emwi.",
-      "headline": "Kóyo. Gia ru akaunti ruẹ ladian ne ọ miẹ emwi.",
-      "body": "Ọ khọ minit 3: ẹvbo brand ruẹ, ẹvbo banki ruẹ, vbe igho. I gha rhie ọbọ ye ruẹ.",
       "cardTitle": "Ru brand ruẹ ladian",
       "minutes": "Minit 3 ra",
+      "eyebrowStep": "Ẹkpẹ {{current}} vbe {{total}}",
       "setUp": "Ru brand mẹ ladian",
       "withAri": "Ru ẹre vbe Ari",
       "withAriMessage": "Rhie ọbọ ye mẹ ne I ru brand mẹ ladian",

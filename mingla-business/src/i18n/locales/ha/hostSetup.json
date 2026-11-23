@@ -278,11 +278,9 @@
       "payments": "Bayanan biya"
     },
     "a1": {
-      "headlineNamed": "Sannu {{first}}. Mu shirya asusunka don karɓar bukin.",
-      "headline": "Sannu. Mu shirya asusunka don karɓar bukin.",
-      "body": "Yana ɗaukar kusan mintuna 3: sunan alamarka, ƙasar bankinka, sannan biyan kuɗi. Zan jagorance ka.",
       "cardTitle": "Saita alamarka",
       "minutes": "Kusan mintuna 3",
+      "eyebrowStep": "Mataki {{current}} cikin {{total}}",
       "setUp": "Saita alamata",
       "withAri": "Yi shi tare da Ari",
       "withAriMessage": "Taimaka min saita alamata",

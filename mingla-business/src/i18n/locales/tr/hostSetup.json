@@ -278,11 +278,9 @@
       "payments": "Ödeme bilgileri"
     },
     "a1": {
-      "headlineNamed": "Merhaba {{first}}. Hesabını rezervasyon almaya hazırlayalım.",
-      "headline": "Merhaba. Hesabını rezervasyon almaya hazırlayalım.",
-      "body": "Yaklaşık 3 dakika sürer: marka adın, banka ülken, sonra ödemeler. Sana rehberlik edeceğim.",
       "cardTitle": "Markanı ayarla",
       "minutes": "Yaklaşık 3 dakika",
+      "eyebrowStep": "Adım {{current}} / {{total}}",
       "setUp": "Markamı ayarla",
       "withAri": "Ari ile yap",
       "withAriMessage": "Markamı ayarlamama yardım et",

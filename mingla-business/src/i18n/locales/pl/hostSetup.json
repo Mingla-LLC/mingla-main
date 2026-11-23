@@ -281,11 +281,9 @@
       "payments": "Dane płatności"
     },
     "a1": {
-      "headlineNamed": "Cześć, {{first}}. Przygotujmy Twoje konto do przyjmowania rezerwacji.",
-      "headline": "Cześć. Przygotujmy Twoje konto do przyjmowania rezerwacji.",
-      "body": "To zajmie około 3 minut: nazwa marki, kraj banku, potem płatności. Poprowadzę Cię.",
       "cardTitle": "Skonfiguruj swoją markę",
       "minutes": "Około 3 minut",
+      "eyebrowStep": "Krok {{current}} z {{total}}",
       "setUp": "Skonfiguruj moją markę",
       "withAri": "Zrób to z Ari",
       "withAriMessage": "Pomóż mi skonfigurować markę",

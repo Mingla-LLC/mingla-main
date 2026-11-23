@@ -3,8 +3,9 @@
  * so they work with no AI call (AR-1) and render from the server checklist,
  * never from Ari's words (AR-2).
  *
- *   A1  first landing, no brand: "Set up your brand" · About 3 minutes ·
- *       4 rows · Set up my brand / Do it with Ari.
+ *   A1  first landing, no brand: "Step 1 of 4 · About 3 minutes" · "Set up
+ *       your brand" · 4 rows · Set up my brand / Do it with Ari. #4572 item 16:
+ *       this card is the WHOLE no-brand page (phone, narrow web, wide web).
  *   A2  a brand still in setup: "{n} of 4 done", 4 rows, Continue; waiting
  *       for a client shows who; complete collapses to "All set" once (AR-9).
  *   A5  a sensitive number was hidden before send: notice + Open secure setup.
@@ -12,7 +13,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { color, radius as radiusTokens, space, type } from "../../constants/designSystem";
+import { color, edge, radius as radiusTokens, size, space, type } from "../../constants/designSystem";
 import { ARI_SETUP_COPY as C, ariSetupItems } from "./ariSetupCopy";
 import { CenteredState } from "../ui/CenteredState";
 import { BRAND_SETUP_SHARED_COPY } from "../brand/brandSetupSharedCopy";
@@ -39,6 +40,8 @@ const CardButtons: React.FC<{ buttons: CardButton[] }> = ({ buttons }) => (
 export interface AriSetupCardProps {
   /** null → A1 (no brand yet). */
   brandName: string | null;
+  /** A1 only: phone, narrow web, or the wide-desktop two-column card. */
+  layout?: "phone" | "web" | "wide";
   doneCount: number;
   waitingFor?: string | null;
   state?: "ready" | "complete" | "error";
@@ -48,8 +51,115 @@ export interface AriSetupCardProps {
   testID?: string;
 }
 
+/** The Ari dot beside "Do it with Ari" (a small fixed-size mark, not an orb). */
+const ARI_DOT_SIZE = 8;
+
+const NoBrandSetupCard: React.FC<{
+  layout: "phone" | "web" | "wide";
+  onSetUp: () => void;
+  onWithAri?: () => void;
+  testID: string;
+}> = ({ layout, onSetUp, onWithAri, testID }) => {
+  const web = layout !== "phone";
+  const wide = layout === "wide";
+  const items = ariSetupItems();
+  const buttons = (
+    <View style={[styles.a1Buttons, wide && styles.a1ButtonsWide]}>
+      <Pressable
+        onPress={onSetUp}
+        accessibilityRole="button"
+        accessibilityLabel={C.a1.setUp}
+        style={({ pressed }) => [
+          styles.a1Primary,
+          web ? styles.a1BtnWeb : styles.a1BtnPhone,
+          pressed && styles.pressed,
+        ]}
+        testID="ari-setup-start"
+      >
+        <Text style={styles.btnPrimaryLabel}>{C.a1.setUp}</Text>
+      </Pressable>
+      {onWithAri ? (
+        <Pressable
+          onPress={onWithAri}
+          accessibilityRole="button"
+          accessibilityLabel={C.a1.withAri}
+          style={({ pressed }) => [
+            styles.a1Secondary,
+            web ? styles.a1BtnWeb : styles.a1BtnPhone,
+            pressed && styles.pressed,
+          ]}
+          testID="ari-setup-with-ari"
+        >
+          <View style={styles.a1AriDot} />
+          <Text style={styles.btnSecondaryLabel}>{C.a1.withAri}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+  const head = (
+    <View style={styles.a1Head}>
+      <Text style={styles.a1Eyebrow}>
+        <Text style={styles.a1EyebrowStep}>{C.a1.eyebrowStep(1, 4).toUpperCase()}</Text>
+        {` · ${C.a1.minutes}`}
+      </Text>
+      <Text style={styles.a1Title} accessibilityRole="header">
+        {C.a1.cardTitle}
+      </Text>
+      <View style={styles.a1Bar}>
+        {[0, 1, 2, 3].map((i) => (
+          <View key={i} style={[styles.a1Seg, i === 0 && styles.a1SegOn]} />
+        ))}
+      </View>
+    </View>
+  );
+  const steps = (
+    <View style={styles.a1Steps}>
+      {items.map((item, i) => (
+        <View
+          key={item}
+          style={[
+            styles.a1Row,
+            web && styles.a1RowWeb,
+            web && i > 0 && styles.a1RowRule,
+          ]}
+        >
+          <View style={[styles.a1Ring, i === 0 && styles.a1RingCurrent]}>
+            <Text style={[styles.a1RingNumber, i === 0 && styles.a1RingNumberCurrent]}>
+              {i + 1}
+            </Text>
+          </View>
+          <Text style={i === 0 ? styles.a1LabelCurrent : styles.a1Label}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
+  return (
+    <View
+      style={[styles.a1Card, web ? styles.a1CardWeb : styles.a1CardPhone, wide && styles.a1CardWide]}
+      testID={testID}
+    >
+      {wide ? (
+        <>
+          <View style={styles.a1Left}>
+            {head}
+            {buttons}
+          </View>
+          <View style={styles.a1Right}>{steps}</View>
+        </>
+      ) : (
+        <>
+          {head}
+          {steps}
+          {buttons}
+        </>
+      )}
+    </View>
+  );
+};
+
 export const AriSetupCard: React.FC<AriSetupCardProps> = ({
   brandName,
+  layout = "phone",
   doneCount,
   waitingFor = null,
   state = "ready",
@@ -77,27 +187,28 @@ export const AriSetupCard: React.FC<AriSetupCardProps> = ({
       </View>
     );
   }
-  const done = brandName === null ? 0 : Math.max(0, Math.min(4, doneCount));
+  if (brandName === null) {
+    return <NoBrandSetupCard layout={layout} onSetUp={onSetUp} onWithAri={onWithAri} testID={testID} />;
+  }
+  const done = Math.max(0, Math.min(4, doneCount));
   return (
     <View style={styles.card} testID={testID}>
       <View style={styles.head}>
         <Text style={styles.title} numberOfLines={2}>
-          {brandName === null ? C.a1.cardTitle : brandName}
+          {brandName}
         </Text>
-        <Text style={styles.meta}>{brandName === null ? C.a1.minutes : C.a2.count(done)}</Text>
+        <Text style={styles.meta}>{C.a2.count(done)}</Text>
       </View>
-      {brandName !== null ? (
-        <View
-          style={styles.bar}
-          accessibilityRole="progressbar"
-          accessibilityLabel={C.a2.progressLabel}
-          accessibilityValue={{ min: 0, max: 4, now: done }}
-        >
-          {[0, 1, 2, 3].map((i) => (
-            <View key={i} style={[styles.seg, i < done && styles.segOn]} />
-          ))}
-        </View>
-      ) : null}
+      <View
+        style={styles.bar}
+        accessibilityRole="progressbar"
+        accessibilityLabel={C.a2.progressLabel}
+        accessibilityValue={{ min: 0, max: 4, now: done }}
+      >
+        {[0, 1, 2, 3].map((i) => (
+          <View key={i} style={[styles.seg, i < done && styles.segOn]} />
+        ))}
+      </View>
       {ariSetupItems().map((item, i) => {
         const waiting = waitingFor !== null && i >= 2;
         return (
@@ -116,14 +227,7 @@ export const AriSetupCard: React.FC<AriSetupCardProps> = ({
           </View>
         );
       })}
-      {brandName === null ? (
-        <CardButtons
-          buttons={[
-            { label: C.a1.setUp, onPress: onSetUp, primary: true, testID: "ari-setup-start" },
-            ...(onWithAri ? [{ label: C.a1.withAri, onPress: onWithAri, testID: "ari-setup-with-ari" }] : []),
-          ]}
-        />
-      ) : waitingFor === null ? (
+      {waitingFor === null ? (
         <CardButtons buttons={[{ label: C.a2.cta, onPress: onSetUp, primary: true, testID: "ari-setup-continue" }]} />
       ) : null}
     </View>
@@ -263,4 +367,79 @@ const styles = StyleSheet.create({
   btnSecondaryLabel: { ...type.small, color: color.text1, fontWeight: "600" },
   pressed: { opacity: 0.72 },
   dim: { opacity: 0.6 },
+  // #4572 item 16 — the no-brand setup card (tokens only).
+  a1Card: {
+    backgroundColor: color.card,
+    ...edge.edge,
+    ...edge.rim,
+    paddingTop: space[6],
+    paddingHorizontal: space[5],
+    paddingBottom: space[5],
+    gap: space[5],
+    alignSelf: "stretch",
+  },
+  a1CardPhone: { borderRadius: radiusTokens.xxl },
+  a1CardWeb: { borderRadius: radiusTokens.xl },
+  a1CardWide: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: space[8],
+    maxWidth: 880,
+    width: "100%",
+    alignSelf: "center",
+  },
+  a1Left: { flex: 1, gap: space[5], justifyContent: "space-between" },
+  a1Right: { flex: 1, justifyContent: "center" },
+  a1Head: { gap: space[2] },
+  a1Eyebrow: { ...type.caption, color: color.text3 },
+  a1EyebrowStep: { ...type.label, color: color.accentText },
+  a1Title: { ...type.title, color: color.text1 },
+  a1Bar: { flexDirection: "row", gap: space[1], marginTop: space[1] },
+  a1Seg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: color.fill.step },
+  a1SegOn: { backgroundColor: color.accent },
+  a1Steps: { alignSelf: "stretch" },
+  a1Row: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: space[3] },
+  a1RowWeb: { minHeight: 52 },
+  a1RowRule: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
+  a1Ring: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: color.controlOutline,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  a1RingCurrent: { borderColor: color.accent },
+  a1RingNumber: { ...type.caption, color: color.text3, fontWeight: "600" },
+  a1RingNumberCurrent: { color: color.accentText },
+  a1Label: { ...type.body, color: color.text2, flexShrink: 1 },
+  a1LabelCurrent: { ...type.row, color: color.text1, flexShrink: 1 },
+  a1Buttons: { gap: space[2] },
+  a1ButtonsWide: { alignSelf: "stretch" },
+  a1BtnPhone: { height: size.btn.phoneLg },
+  a1BtnWeb: { height: size.btn.lg },
+  a1Primary: {
+    paddingHorizontal: space[6],
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.paper,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  a1Secondary: {
+    flexDirection: "row",
+    gap: space[2],
+    paddingHorizontal: space[6],
+    borderRadius: radiusTokens.full,
+    borderWidth: 1,
+    borderColor: color.controlOutline,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  a1AriDot: {
+    width: ARI_DOT_SIZE,
+    height: ARI_DOT_SIZE,
+    borderRadius: ARI_DOT_SIZE / 2,
+    backgroundColor: color.accent,
+  },
 });

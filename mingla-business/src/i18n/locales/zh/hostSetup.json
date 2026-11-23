@@ -278,11 +278,9 @@
       "payments": "付款信息"
     },
     "a1": {
-      "headlineNamed": "你好，{{first}}。我们来让你的账户准备好接受预订。",
-      "headline": "你好。我们来让你的账户准备好接受预订。",
-      "body": "大约需要 3 分钟：品牌名称、银行所在国家/地区，然后是付款。我会一步步引导你。",
       "cardTitle": "设置你的品牌",
       "minutes": "大约 3 分钟",
+      "eyebrowStep": "第 {{current}} 步，共 {{total}} 步",
       "setUp": "设置我的品牌",
       "withAri": "和 Ari 一起完成",
       "withAriMessage": "帮我设置我的品牌",

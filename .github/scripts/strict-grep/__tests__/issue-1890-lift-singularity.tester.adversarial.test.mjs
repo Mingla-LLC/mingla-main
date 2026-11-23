@@ -46,7 +46,16 @@
  * can still see. A rule that resolves nothing reads identically to a rule that
  * holds, which is the failure mode this issue family keeps producing.
  *
- * Append-only: this file is new and edits nothing.
+ * [TEST-MOD-APPROVED #4572] Rewritten for item 16. The Ari composer no longer
+ * has a keyboard-open lift: it rides a keyboard-controller KeyboardAvoidingView
+ * and sits flush on the keyboard (no Done bar, no clearance). Rule (E) of the
+ * keyboard gate was replaced to match (it now pins the wrapper and bans the old
+ * lift), so:
+ *   S-1 (was "exactly ONE lift site")      -> now "ZERO keyboard-open lift sites";
+ *   S-3 (was "lift tokens equal the gate's allow-list") -> now "every pattern the
+ *       gate requires is present and every pattern it bans is absent", read from
+ *       the gate's own `ARI_COMPOSER_FLUSH` export, never restated here.
+ * S-2 (one bottom spacer on inputWrap) and S-4 (loud on empty/missing) stand.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -80,47 +89,28 @@ function mustRead(abs, what) {
 const gateSource = () => mustRead(path.join(SG, GATE_REL), "the keyboard gate");
 const ariSource = () => mustRead(path.join(BIZ, ARI_REL), "AriChatScreen.tsx");
 
-/**
- * The gate's OWN lift pattern, lifted out of its source rather than restated here.
- * Returns { source, flags } for the regex literal on the `lift:` property.
- */
-function liftPattern(src = gateSource()) {
-  const m = /\blift:\s*\/((?:\\.|\[(?:\\.|[^\]])*\]|[^/\\])+)\/([a-z]*)/.exec(src);
-  if (m === null) {
+/** The gate's OWN rule for the Ari composer, imported (never restated). */
+async function flushRule() {
+  const mod = await import(path.join(SG, GATE_REL));
+  const rule = mod.ARI_COMPOSER_FLUSH;
+  if (rule === undefined || !Array.isArray(rule.required) || !Array.isArray(rule.banned)) {
     throw new Error(
-      "[#1890] could not extract the gate's `lift:` pattern from its source. This test derives " +
-        "its scan from the gate rather than copying it, so an unextractable pattern means the " +
-        "gate moved and this rule is checking nothing.",
+      "[#1890] the keyboard gate no longer exports ARI_COMPOSER_FLUSH {required, banned}. This test " +
+        "derives its scan from the gate, so an unreadable rule means it is checking nothing.",
     );
   }
-  return { source: m[1], flags: m[2] };
-}
-
-/** The gate's OWN legal identifier set for the lift, read from its source. */
-function allowedTerms(src = gateSource()) {
-  const m = /\bterms:\s*\[([^\]]*)\]/.exec(src);
-  if (m === null) {
-    throw new Error("[#1890] could not extract the gate's `terms:` allow-list from its source.");
+  if (rule.required.length === 0 || rule.banned.length === 0) {
+    throw new Error("[#1890] the gate's required/banned lists are EMPTY — an empty rule checks nothing.");
   }
-  const terms = [...m[1].matchAll(/["'`]([^"'`]+)["'`]/g)].map((x) => x[1]);
-  if (terms.length === 0) {
-    throw new Error("[#1890] the gate's `terms:` allow-list extracted EMPTY — an empty allow-list checks nothing.");
-  }
-  return terms;
+  return rule;
 }
 
 /** Comments never satisfy and never violate a source rule. */
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
-/**
- * Every keyboard-open lift SITE in a source, counted with the gate's own pattern
- * re-flagged global. The capture group is dropped so the count is of sites, not
- * of captured bodies.
- */
+/** Every keyboard-open ternary SITE in a source (the shape the old lift had). */
 function liftSites(source) {
-  const { source: pat } = liftPattern();
-  const head = pat.replace(/\(([^)]*)\)\s*$/, "");
-  return [...stripComments(source).matchAll(new RegExp(head, "g"))].length;
+  return [...stripComments(source).matchAll(/keyboardHeight\s*>\s*0\s*\?/g)].length;
 }
 
 /** Bottom-spacing keys a style object may not use to smuggle a measured height. */
@@ -155,34 +145,23 @@ function inputWrapOverride(source) {
 }
 
 // ── S-1 ─────────────────────────────────────────────────────────────────────
-test("S-1 AriChatScreen declares exactly ONE keyboard-open lift site — rule (E) is non-global and validates only the first", () => {
-  const { flags } = liftPattern();
-  assert.ok(
-    !flags.includes("g"),
-    "the gate's lift pattern has become global; if `.exec` now walks every site this rule's premise " +
-      "is gone and it should be re-derived rather than left asserting a fixed number.",
-  );
-
+test("S-1 AriChatScreen declares ZERO keyboard-open lift sites — nothing positions the composer from keyboard state", () => {
   const src = ariSource();
-  const sites = liftSites(src);
-  assert.ok(sites > 0, "EMPTY SCAN: no keyboard-open lift site found in AriChatScreen.tsx — the rule saw nothing.");
   assert.equal(
-    sites,
-    1,
-    `AriChatScreen.tsx declares ${sites} keyboard-open lift sites. Rule (E) of the keyboard gate ` +
-      "matches with a NON-GLOBAL regex, so it validates the FIRST site and never sees the rest. " +
-      "MEASURED on the shipped tree: a decoy site whose tokens are all legal, placed above the real " +
-      "lift, leaves the gate at exit 0 with the pill-height double count fully restored. One site, " +
-      "or repoint rule (E) in the same PR.",
+    liftSites(src),
+    0,
+    "AriChatScreen.tsx has a `keyboardHeight > 0 ? …` site again. #4572 item 16: the composer rides a " +
+      "KeyboardAvoidingView and sits flush on the keyboard; a React-state lift leaps to the keyboard's " +
+      "final height in one step while the keyboard is still sliding.",
   );
 
-  // SEEDED BAD FIXTURE — the rule must still be able to see a second site.
+  // SEEDED BAD FIXTURE — the rule must still be able to see a site.
   const decoyed = src.replace(
     "export const AriChatScreen",
     "const _decoy = (keyboardHeight) => keyboardHeight > 0 ? keyboardHeight : 1;\nexport const AriChatScreen",
   );
   assert.notEqual(decoyed, src, "fixture did not seed a decoy lift site");
-  assert.equal(liftSites(decoyed), 2, "the seeded decoy was NOT detected — this rule is blind and would pass vacuously");
+  assert.equal(liftSites(decoyed), 1, "the seeded decoy was NOT detected — this rule is blind and would pass vacuously");
 });
 
 // ── S-2 ─────────────────────────────────────────────────────────────────────
@@ -220,34 +199,24 @@ test("S-2 inputWrap declares exactly ONE bottom spacer — a sibling spacing pro
 });
 
 // ── S-3 ─────────────────────────────────────────────────────────────────────
-test("S-3 the lift's identifier set equals the gate's own allow-list — FAILS ON REVERT", () => {
-  const terms = allowedTerms();
-  const { source: pat } = liftPattern();
-  const m = new RegExp(pat).exec(stripComments(ariSource()));
+test("S-3 the Ari composer carries every pattern the gate requires and none it bans — FAILS ON REVERT", async () => {
+  const rule = await flushRule();
+  const code = stripComments(ariSource());
+
+  const missing = rule.required.filter(([re]) => !re.test(code)).map(([, what]) => what);
+  assert.deepEqual(missing, [], `AriChatScreen is missing what the gate requires: ${JSON.stringify(missing)}`);
+
+  const present = rule.banned.filter(([re]) => re.test(code)).map(([, what]) => what);
+  assert.deepEqual(present, [], `AriChatScreen carries what the gate bans: ${JSON.stringify(present)}`);
+
+  // SEEDED BAD FIXTURES — each ban must still be able to see its subject.
+  const old = `${code}\nconst lift = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;`;
+  const seen = rule.banned.filter(([re]) => re.test(old)).length;
+  assert.ok(seen >= 3, `the seeded old lift tripped only ${seen} bans — the rule is going blind`);
+  const unwrapped = code.replace(/<KeyboardAvoidingView\b[^>]*>/g, "<View>");
   assert.ok(
-    m !== null,
-    "EMPTY SCAN: the gate's own lift pattern matched nothing in AriChatScreen.tsx. A rule that cannot " +
-      "find its subject checks nothing.",
-  );
-
-  const tokens = [...new Set(m[1].match(/[A-Za-z_$][\w$]*|\d+(?:\.\d+)?/g) ?? [])];
-  assert.ok(tokens.length > 0, "EMPTY SCAN: the lift expression tokenised to nothing.");
-
-  const extra = tokens.filter((t) => !terms.includes(t)).sort();
-  assert.deepEqual(
-    extra,
-    [],
-    `the keyboard-open lift carries ${JSON.stringify(extra)} beyond ${JSON.stringify(terms)}. ` +
-      "`inputWrap`'s paddingBottom already positions the pill's bottom edge, so any pill-height term, " +
-      "spacing term or hand-typed number lifts it a second time — measured at 72.00pt of gap on an " +
-      "iPhone SE3 and 71.82dp on a physical Samsung against a 12pt contract, both restored to 12.00 / " +
-      "11.73 by removing exactly these terms.",
-  );
-
-  // The allow-list itself must not be the thing that drifted.
-  assert.ok(
-    terms.includes("keyboardHeight") && terms.length >= 3,
-    `the gate's lift allow-list is ${JSON.stringify(terms)} — widening it is how this rule stops biting.`,
+    rule.required.some(([re]) => !re.test(unwrapped)),
+    "removing the KeyboardAvoidingView tripped no required pattern — the rule is blind",
   );
 });
 
@@ -269,5 +238,5 @@ test("S-4 every rule above fails loudly on an unreadable or empty subject — ne
     "a source with no inputWrap must FAIL S-2 rather than resolve an empty override and pass",
   );
 
-  assert.equal(liftSites("const x = 1;"), 0, "a source with no lift site must count 0 so S-1's non-zero guard fires");
+  assert.equal(liftSites("const x = 1;"), 0, "a source with no lift site counts 0");
 });

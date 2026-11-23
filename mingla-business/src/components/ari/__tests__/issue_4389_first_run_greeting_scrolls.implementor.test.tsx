@@ -9,6 +9,12 @@
  * unchanged), keeps a top inset, and scrolls when tall.
  *
  * FAILS ON REVERT: the phone host back to a plain View → T1 and T2.
+ *
+ * [TEST-MOD-APPROVED #4572] item 16 removed the card from the greeting (State
+ * B keeps orb, copy and chips; State A is now `FirstRunSetupStage`: the card
+ * only). T1 no longer expects a `footer` card inside the greeting; T4 to T6
+ * pin the new State A stage, and T1/T4 assert the no-brand page renders no
+ * chips, headline or body while the empty-brand greeting still renders chips.
  */
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
 import React from "react";
@@ -21,7 +27,7 @@ jest.mock("../AriOrb", () => {
 });
 
 /* eslint-disable import/first */
-import { FirstRunGreeting } from "../FirstRunGreeting";
+import { FirstRunGreeting, FirstRunSetupStage } from "../FirstRunGreeting";
 /* eslint-enable import/first */
 
 interface Node {
@@ -55,21 +61,19 @@ afterEach(() => {
 });
 
 describe("#4389 P2 — the first-run greeting stays under Ari's top bar", () => {
-  test("T1: the phone greeting is a scroll box holding the orb, the copy and the setup card", () => {
-    const root = render(
-      <FirstRunGreeting copy={copy} onChip={() => undefined} footer={<Text testID="setup-card">Set up</Text>} />,
-    );
+  test("T1: the phone greeting is a scroll box holding the orb, the copy and the chips", () => {
+    const root = render(<FirstRunGreeting copy={copy} onChip={() => undefined} />);
     const scroll = root.findAll((n) => n.type === ScrollView);
     expect(scroll).toHaveLength(1);
     const box = scroll[0] as Node;
     expect(box.props.testID).toBe("ari-first-run-greeting");
-    for (const id of ["ari-orb", "setup-card", "ari-first-run-chips"]) {
+    for (const id of ["ari-orb", "ari-first-run-chips"]) {
       expect(box.findAll((n) => n.props.testID === id).length).toBeGreaterThan(0);
     }
   });
 
   test("T2: short content stays bottom-anchored, tall content scrolls, with a top inset", () => {
-    const root = render(<FirstRunGreeting copy={copy} onChip={() => undefined} footer={<Text>card</Text>} />);
+    const root = render(<FirstRunGreeting copy={copy} onChip={() => undefined} />);
     const box = root.findAll((n) => n.type === ScrollView)[0] as Node;
     const content = StyleSheet.flatten(box.props.contentContainerStyle as object) as Record<string, unknown>;
     expect(content.flexGrow).toBe(1);
@@ -82,5 +86,55 @@ describe("#4389 P2 — the first-run greeting stays under Ari's top bar", () => 
   test("T3: desktop keeps its centred layout (no scroll box)", () => {
     const root = render(<FirstRunGreeting copy={copy} onChip={() => undefined} desktop />);
     expect(root.findAll((n) => n.type === ScrollView)).toHaveLength(0);
+  });
+});
+
+describe("#4572 item 16 — the no-brand stage is the card and nothing else", () => {
+  test("T4: no orb, headline, body or pills; the card scrolls and never collapses", () => {
+    const root = render(<FirstRunSetupStage card={<Text testID="setup-card">Set up</Text>} />);
+    const box = root.findAll((n) => n.type === ScrollView)[0] as Node;
+    expect(box.props.testID).toBe("ari-first-run-setup-stage");
+    expect(box.findAll((n) => n.props.testID === "setup-card").length).toBeGreaterThan(0);
+    for (const id of ["ari-orb", "ari-first-run-chips"]) {
+      expect(root.findAll((n) => n.props.testID === id)).toHaveLength(0);
+    }
+    // The empty-brand greeting still renders its chips (unchanged stage).
+    TestRenderer.act(() => tree?.unmount());
+    const b = render(<FirstRunGreeting copy={copy} onChip={() => undefined} />);
+    expect(b.findAll((n) => n.props.testID === "ari-first-run-chips").length).toBeGreaterThan(0);
+  });
+
+  test("T5: centred while the keyboard is closed, top-aligned while it is open, same card mounted", () => {
+    const card = <Text testID="setup-card">Set up</Text>;
+    const closed = render(<FirstRunSetupStage card={card} keyboardOpen={false} />);
+    const closedBox = closed.findAll((n) => n.type === ScrollView)[0] as Node;
+    const c = StyleSheet.flatten(closedBox.props.contentContainerStyle as object) as Record<string, unknown>;
+    expect(c.justifyContent).toBe("center");
+    expect(c.flexGrow).toBe(1);
+    TestRenderer.act(() => tree?.unmount());
+    const open = render(<FirstRunSetupStage card={card} keyboardOpen />);
+    const openBox = open.findAll((n) => n.type === ScrollView)[0] as Node;
+    const o = StyleSheet.flatten(openBox.props.contentContainerStyle as object) as Record<string, unknown>;
+    expect(o.justifyContent).toBe("flex-start");
+    expect(open.findAll((n) => n.props.testID === "setup-card").length).toBeGreaterThan(0);
+    expect(openBox.props.keyboardShouldPersistTaps).toBe("handled");
+  });
+
+  test("T6: wide desktop puts the card and the composer in one centred 880 column", () => {
+    const root = render(
+      <FirstRunSetupStage
+        desktop
+        card={<Text testID="setup-card">Set up</Text>}
+        composer={<Text testID="composer">Ask</Text>}
+      />,
+    );
+    expect(root.findAll((n) => n.type === ScrollView)).toHaveLength(0);
+    expect(root.findAll((n) => n.props.testID === "setup-card").length).toBeGreaterThan(0);
+    expect(root.findAll((n) => n.props.testID === "composer").length).toBeGreaterThan(0);
+    const column = root.findAll((n) => {
+      const st = StyleSheet.flatten(n.props.style as object) as Record<string, unknown> | undefined;
+      return st !== undefined && st !== null && st.maxWidth === 880;
+    });
+    expect(column.length).toBeGreaterThan(0);
   });
 });

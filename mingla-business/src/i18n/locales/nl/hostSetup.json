@@ -278,11 +278,9 @@
       "payments": "Betaalgegevens"
     },
     "a1": {
-      "headlineNamed": "Hoi {{first}}. Laten we je account klaarmaken voor boekingen.",
-      "headline": "Hoi. Laten we je account klaarmaken voor boekingen.",
-      "body": "Het duurt ongeveer 3 minuten: je merknaam, je bankland en dan betalingen. Ik help je.",
       "cardTitle": "Stel je merk in",
       "minutes": "Ongeveer 3 minuten",
+      "eyebrowStep": "Stap {{current}} van {{total}}",
       "setUp": "Mijn merk instellen",
       "withAri": "Doe het met Ari",
       "withAriMessage": "Help me mijn merk in te stellen",

@@ -9,7 +9,7 @@ import * as path from "path";
 import { redactSensitiveDigits } from "../../../components/ari/ariRedaction";
 import { ARI_SETUP_COPY, payoutCountryLabel } from "../../../components/ari/ariSetupCopy";
 import { BRAND_SETUP_BANNED_WORDS } from "../../../components/brand/brandSetupCopy";
-import { firstRunGreeting } from "../../../utils/firstRunState";
+import { emptyBrandChips, firstRunGreeting } from "../../../utils/firstRunState";
 
 const read = (rel: string): string => fs.readFileSync(path.join(__dirname, rel), "utf8");
 
@@ -40,24 +40,44 @@ describe("#4389 A5 — digits redacted before send", () => {
 });
 
 describe("#4389 A1 / A2 — cards from the checklist, not Ari's words", () => {
+  // [TEST-MOD-APPROVED #4572] Replaces "A1 words, no business", which pinned
+  // the no-brand headline and paragraph (`firstRunGreeting({stage:"no_brand"})`).
+  // Item 16 removed both: the A1 card is the whole page. What is pinned now is
+  // the card's own words (and that they never say "business"), and that the
+  // empty-brand greeting (State B) still renders its chips.
   test("A1 words, no business", () => {
-    const copy = firstRunGreeting({ stage: "no_brand", displayName: "Tobi Ade", brandName: null, remembered: null });
-    expect(copy.headline).toBe("Hi Tobi. Let's get your account ready to take bookings.");
-    expect(`${copy.headline} ${copy.body}`).not.toMatch(/business/i);
+    const words = [
+      ARI_SETUP_COPY.a1.cardTitle,
+      ARI_SETUP_COPY.a1.minutes,
+      ARI_SETUP_COPY.a1.eyebrowStep(1, 4),
+      ARI_SETUP_COPY.a1.setUp,
+      ARI_SETUP_COPY.a1.withAri,
+    ].join(" ");
+    expect(words).toBe("Set up your brand About 3 minutes Step 1 of 4 Set up my brand Do it with Ari");
+    expect(words).not.toMatch(/business/i);
+  });
+  test("State B still greets with its chips", () => {
+    const copy = firstRunGreeting({ brandName: "Lantern Room", remembered: null });
+    expect(copy.headline).toBe("Lantern Room was created. What are you hosting first?");
+    expect(copy.chips).toEqual(emptyBrandChips(null));
+    expect(copy.chips).toHaveLength(5);
   });
   test("the greeting is told whether brand_setup is complete (#4389 P2: never 'is set up' early)", () => {
     expect(read("../AriChatScreen.tsx")).toContain("setupComplete: setupData?.facts.complete === true");
   });
 
-  test("the screen mounts A1 under the greeting and A2 from useBrandSetupChecklist", () => {
+  test("the screen mounts A1 as the no-brand page's only content and A2 from useBrandSetupChecklist", () => {
     const src = read("../AriChatScreen.tsx");
-    expect(src).toContain("footer={firstRunSetupCard}");
+    // [TEST-MOD-APPROVED #4572] replaces `footer={firstRunSetupCard}`: the card
+    // is no longer a footer under a greeting, it is the stage's content.
+    expect(src).toContain("card={firstRunSetupCard}");
+    expect(src).not.toContain("footer={firstRunSetupCard}");
     expect(src).toContain("useBrandSetupChecklist(");
     expect(src).toContain('state="complete"');
     expect(src).toContain('onSetUp={() => router.push("/brand/new" as never)}');
   });
   test("no banned words in Ari setup copy", () => {
-    const all = JSON.stringify(ARI_SETUP_COPY) + ARI_SETUP_COPY.a1.headline("A") + ARI_SETUP_COPY.a2.lead("B", 2, "Organiser Terms") + ARI_SETUP_COPY.a3.question("B", "Canada", "CAD");
+    const all = JSON.stringify(ARI_SETUP_COPY) + ARI_SETUP_COPY.a1.eyebrowStep(1, 4) + ARI_SETUP_COPY.a2.lead("B", 2, "Organiser Terms") + ARI_SETUP_COPY.a3.question("B", "Canada", "CAD");
     for (const word of BRAND_SETUP_BANNED_WORDS) expect(all).not.toMatch(word);
   });
 });
@@ -118,9 +138,11 @@ describe("#4389 cards render from their inputs", () => {
     const onWithAri = jest.fn();
     const tree = mount(React.createElement(AriSetupCard, { brandName: null, doneCount: 0, onSetUp, onWithAri }));
     const text = JSON.stringify(tree.toJSON());
-    for (const t of ["Set up your brand", "About 3 minutes", "Brand name", "Bank country", "Organiser Terms", "Payment details"]) {
+    for (const t of ["Set up your brand", "About 3 minutes", "STEP 1 OF 4", "Brand name", "Bank country", "Organiser Terms", "Payment details"]) {
       expect(text).toContain(t);
     }
+    // #4572 — the card is the whole page: nothing but the card's own words.
+    expect(text).not.toMatch(/Let's get your account ready|It takes about 3 minutes|I host events|What is Mingla/);
     press(tree, "ari-setup-start");
     press(tree, "ari-setup-with-ari");
     expect(onSetUp).toHaveBeenCalledTimes(1);

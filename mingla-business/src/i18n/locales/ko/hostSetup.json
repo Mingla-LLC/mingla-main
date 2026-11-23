@@ -278,11 +278,9 @@
       "payments": "결제 정보"
     },
     "a1": {
-      "headlineNamed": "안녕하세요, {{first}}님. 예약을 받을 수 있도록 계정을 준비해요.",
-      "headline": "안녕하세요. 예약을 받을 수 있도록 계정을 준비해요.",
-      "body": "약 3분 걸려요. 브랜드 이름, 은행 국가, 그다음 결제 순서예요. 제가 안내할게요.",
       "cardTitle": "브랜드 설정하기",
       "minutes": "약 3분",
+      "eyebrowStep": "{{current}}/{{total}}단계",
       "setUp": "내 브랜드 설정",
       "withAri": "Ari와 함께 하기",
       "withAriMessage": "내 브랜드 설정을 도와줘",

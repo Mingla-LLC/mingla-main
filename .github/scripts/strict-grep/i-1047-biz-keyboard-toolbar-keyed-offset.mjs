@@ -53,14 +53,21 @@
  *      uses, so an OS bump or a library change to OPENED_OFFSET moves it with no
  *      edit here.
  *
- *  (E) NO PILL-HEIGHT DOUBLE COUNT (INVERTED by #1890) — Ari's keyboard-open lift
- *      must be EXACTLY `keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE`.
- *      This rule previously demanded the OPPOSITE — that the lift keep adding the
- *      composer's MEASURED height. That pinned the arithmetic instead of the intent
- *      and hard-required the defect: `inputWrap`'s paddingBottom already positions
- *      the pill's bottom edge, so adding the pill's height lifts it twice (61.0pt of
- *      dead gap measured on an iPhone SE3, 71.8dp on a physical Samsung, against a
- *      12pt contract).
+ *  (E) ARI COMPOSER IS FLUSH ON THE KEYBOARD (REPLACED by #4572 item 16).
+ *      Rule (E) pinned Ari's keyboard-open lift as EXACTLY
+ *      `keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE` (#1890; before
+ *      that it demanded the opposite, a measured pill height, which is the double
+ *      count #1890 removed). Seth approved a different contract on 2026-11-23: the
+ *      Ari composer rides the keyboard frame by frame in a keyboard-controller
+ *      KeyboardAvoidingView (the #4173 messages pattern) and sits FLUSH on it, with
+ *      no Done bar and no clearance while it is focused. So the lift expression no
+ *      longer exists, and the rule now pins that: AriChatScreen must render its
+ *      composer inside the wrapper's `<KeyboardAvoidingView behavior="padding">`,
+ *      and must NOT carry DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE, the old
+ *      `composerOccupiedPxFor` lift, a keyboard-open ternary, or the pill-measuring
+ *      plumbing. AriChatScreen also leaves rule (D), which only applies to
+ *      surfaces that still budget the bar by hand. ASSERTION REPLACED: "the lift is
+ *      exactly keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE".
  *
  * Rule (B) still names 42 on purpose: those three surfaces add the clearance to a
  * `spacing.*` term and were NOT migrated by #1850 (two of them are additionally
@@ -156,7 +163,8 @@ const DERIVED_CLEARANCE = [
   "src/components/groupChat/GroupChatPanel.tsx",
   "src/components/support/SupportThread.native.tsx",
   "src/components/brand/BrandPaystackOnboardView.tsx",
-  "src/screens/ari/AriChatScreen.tsx",
+  // #4572 item 16: AriChatScreen LEFT this list. Its composer is flush on the
+  // keyboard now (no Done-bar budget), pinned by rule (E) below.
   // #2262 — the marketing composer, promoted out of (B). The budget lives in the
   // ROUTE now, not in ComposerV2Editor: the route owns the
   // SmartKeyboardAvoidingView and therefore owns the offset.
@@ -194,36 +202,33 @@ const IMPORTS_DERIVED = /import\s*\{[^}]*\bDONE_BAR_OCCUPIED\b[^}]*\}\s*from\s*[
 const USES_DERIVED = /\bDONE_BAR_OCCUPIED\b/;
 
 /**
- * (E) NO PILL-HEIGHT DOUBLE COUNT — INVERTED by #1890.
+ * (E) ARI COMPOSER IS FLUSH ON THE KEYBOARD — replaced by #4572 item 16.
  *
- * This rule used to require the OPPOSITE: that Ari's lift keep adding the
- * composer's measured height (`onLayout` + `setComposerHeight` + `composerHeight`
- * inside the addition). That was my own-goal, approved from #1850's spec text
- * without asking what the measurement was USED for.
- *
- * Measuring the pill is fine. Adding it to `inputWrap`'s `paddingBottom` is the
- * bug: `inputWrap` carries only paddingHorizontal/paddingTop and is the last
- * in-flow child of a flex:1 column, so its paddingBottom ALREADY positions the
- * pill's bottom edge. Adding the pill's own height lifts it a second time.
- * #1890 measured the result on glass — 61.0pt of gap on an iPhone SE3 and
- * 71.8dp on a physical Samsung, against a 12pt contract.
- *
- * So the rule now pins the INTENT it should have pinned all along: the
- * keyboard-open lift is EXACTLY the occluder budget — `keyboardHeight`, the
- * derived bar cost, and the promised visible clearance — and nothing else. That
- * catches a returning `composerHeight`, a returning `spacing.sm`, and a
- * returning numeric literal, without pinning the expression's text.
- *
- * `terms` is the exact identifier set the lift may contain. Any extra
- * identifier, and any numeric literal at all, is a violation.
+ * `required` patterns must match the comment-stripped source; `banned` must not.
+ * An unreadable subject is already exit 2 (the MISSING check in `run`), and an
+ * empty rule list is VACUOUS, so neither can read as a pass.
  */
-const NO_DOUBLE_COUNT = {
+export const ARI_COMPOSER_FLUSH = {
   rel: "src/screens/ari/AriChatScreen.tsx",
-  /** The keyboard-open consequent of the `keyboardHeight > 0 ? … : …` ternary. */
-  lift: /keyboardHeight\s*>\s*0\s*\?([^:]*)/,
-  terms: ["keyboardHeight", "DONE_BAR_OCCUPIED", "MIN_VISIBLE_CLEARANCE"],
-  /** Plumbing that only ever existed to feed the double count. */
+  required: [
+    [
+      /import\s*\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s*from\s*["'][^"']*wrappers\/SmartKeyboardAvoidingView["']/,
+      "the import of KeyboardAvoidingView from wrappers/SmartKeyboardAvoidingView",
+    ],
+    [
+      /<KeyboardAvoidingView\b[^>]*\bbehavior=["']padding["']/,
+      '<KeyboardAvoidingView behavior="padding"> around the composer',
+    ],
+  ],
   banned: [
+    [/\bDONE_BAR_OCCUPIED\b/, "DONE_BAR_OCCUPIED (the composer sits flush: no Done bar)"],
+    [/\bMIN_VISIBLE_CLEARANCE\b/, "MIN_VISIBLE_CLEARANCE (the composer sits flush: 0 clearance)"],
+    [/\bcomposerOccupiedPxFor\b/, "the old composerOccupiedPxFor lift"],
+    [
+      /keyboardHeight\s*>\s*0\s*\?/,
+      "a keyboard-open ternary (no keyboard height may position the composer; it rides the KeyboardAvoidingView)",
+    ],
+    [/styles\.inputWrap[\s\S]{0,1500}?\bkeyboardHeight\b/, "keyboardHeight inside the composer wrapper's style"],
     [/onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on a composer wrapper"],
     [/setComposerHeight\s*\(/, "a setComposerHeight(…) call"],
   ],
@@ -245,7 +250,7 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measu
   if (keyed.length === 0) empty.push("(B) keyed offset");
   if (nestedHosts.length === 0) empty.push("(C) provider nesting");
   if (derivedHosts.length === 0) empty.push("(D) derived clearance");
-  if (measured.length === 0) empty.push("(E) no pill-height double count");
+  if (measured.length === 0) empty.push("(E) Ari composer flush on the keyboard");
   if (empty.length > 0) {
     return {
       code: 2,
@@ -344,44 +349,25 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measu
     }
   }
 
-  // ---- (E) the Ari lift is the occluder budget and NOTHING else ------------
+  // ---- (E) the Ari composer is flush on the keyboard -----------------------
   for (const spec of measured) {
     const code = stripComments(get(spec.rel));
-
-    const m = spec.lift.exec(code);
-    if (m === null) {
-      // Cannot locate the lift ⇒ cannot verify it. Never a silent pass.
-      return {
-        code: 2,
-        failures: [
-          `${spec.rel}: could not locate the keyboard-open lift (\`keyboardHeight > 0 ? …\`). ` +
-            "This rule checks the SHAPE of that expression, so a rule that cannot find it checks " +
-            "nothing and would read identically to a rule that holds. Repoint it in the same PR " +
-            "that moves the expression.",
-        ],
-      };
+    for (const [re, what] of spec.required) {
+      if (!re.test(code)) {
+        failures.push(
+          `${spec.rel} no longer has ${what}. #4572 item 16: the Ari composer rides the keyboard ` +
+            "frame by frame in the keyboard-controller KeyboardAvoidingView and sits flush on it " +
+            "(no Done bar, 0 clearance); without the wrapper it falls back to a React-state lift " +
+            "that leaps to the keyboard's final height in one step.",
+        );
+      }
     }
-
-    const tokens = m[1].match(/[A-Za-z_$][\w$]*|\d+(?:\.\d+)?/g) ?? [];
-    const allowed = new Set(spec.terms);
-    const extra = [...new Set(tokens.filter((t) => !allowed.has(t)))];
-    if (extra.length > 0) {
-      failures.push(
-        `${spec.rel}: the keyboard-open lift contains ${extra.map((e) => `\`${e}\``).join(", ")} ` +
-          `on top of ${spec.terms.map((t) => `\`${t}\``).join(" + ")}. #1890: \`inputWrap\`'s ` +
-          "paddingBottom ALREADY positions the composer pill's bottom edge, so adding the pill's " +
-          "own measured height (or a spacing term, or a hand-typed number) lifts it a second time " +
-          "— measured at 61.0pt of dead gap on an iPhone SE3 and 71.8dp on a physical Samsung " +
-          "against a 12pt contract. The lift is the occluder budget and nothing else.",
-      );
-    }
-
     for (const [re, what] of spec.banned) {
       if (re.test(code)) {
         failures.push(
-          `${spec.rel} carries ${what} again. That plumbing existed only to feed the pill-height ` +
-            "double count #1890 deleted; measuring the pill is harmless, but nothing may consume " +
-            "the measurement in the lift, so re-adding it is how the defect comes back.",
+          `${spec.rel} carries ${what} again. #4572 item 16 removed it: the Ari composer is flush ` +
+            "on the keyboard, positioned by the library, with no Done-bar budget, no clearance " +
+            "term and no measured pill height (the #1890 double count).",
         );
       }
     }
@@ -392,6 +378,10 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measu
 
 // ───────────────────────────── self-test ──────────────────────────────────
 if (IS_MAIN && SELF_TEST) {
+  // #4572 — the Ari composer in a KeyboardAvoidingView, flush: no Done-bar budget.
+  const ARI_CLEAN =
+    `import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";\n` +
+    `<KeyboardAvoidingView behavior="padding"><View style={[styles.inputWrap, { paddingBottom: space[2] }]}/></KeyboardAvoidingView>`;
   const CLEAN = new Map([
     ["app/_layout.tsx", `import { KeyboardToolbarRoot } from "x";\n<KeyboardRoot><App/><KeyboardToolbarRoot/></KeyboardRoot>`],
     [
@@ -428,7 +418,7 @@ if (IS_MAIN && SELF_TEST) {
     ],
     [
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;`,
+      ARI_CLEAN,
     ],
   ]);
   const base = () => ({
@@ -437,7 +427,7 @@ if (IS_MAIN && SELF_TEST) {
     keyed: KEYED.map(([r, re]) => [r, re]),
     nestedHosts: [...NESTED_PROVIDER_HOSTS],
     derivedHosts: [...DERIVED_CLEARANCE],
-    measured: [{ ...NO_DOUBLE_COUNT }],
+    measured: [{ ...ARI_COMPOSER_FLUSH }],
   });
 
   const problems = [];
@@ -490,15 +480,15 @@ if (IS_MAIN && SELF_TEST) {
   }
 
   // 5b — (D) THE P2-6 HOLE: the import stays, the clearance term is DELETED.
-  //      (Post-#1890 this fixture also trips rule (E); the assertion below still
-  //      pins the (D) message specifically, which is what this case is about.)
   //      Before #1850 TEST this was GREEN — no literal, import present, and no
   //      Done-bar budget at all. The rule was satisfiable by doing nothing.
+  //      (#4572: the victim moved from AriChatScreen, which left rule (D), to
+  //      the Paystack view.)
   {
     const m = base();
     m.files.set(
-      "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+      "src/components/brand/BrandPaystackOnboardView.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView behavior="padding"/>`,
     );
     check("(D) imported but never used", m, 1, "never USES it");
   }
@@ -535,12 +525,11 @@ if (IS_MAIN && SELF_TEST) {
   }
 
   // 6 — (D) a hand-typed `+ 42` clearance term returns to a keyboard branch.
-  //     (Also trips (E) post-#1890; the assertion pins the (D) message.)
   {
     const m = base();
     m.files.set(
-      "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + 42 + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+      "src/components/support/SupportThread.native.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + 42 + 12 : 0;\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
     );
     check("(D) hand-typed +42 clearance term", m, 1, "hand-typed");
   }
@@ -569,58 +558,78 @@ if (IS_MAIN && SELF_TEST) {
     check("(B) offset becomes unconditional", m, 1, "keyboard-open");
   }
 
-  // 9b — (E) THE #1890 DEFECT ITSELF: the measured pill height is added back
-  //      into the lift. This is the fixture the rule existed to REQUIRE before
-  //      #1890 inverted it, and the one Seth could see on his device.
+  // 9b — (E) THE OLD LIFT RETURNS: keyboardHeight + the Done-bar term in a
+  //      keyboard-open ternary. ASSERTION REPLACED (#4572): "the lift is exactly
+  //      keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE".
   {
     const m = base();
     m.files.set(
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + composerHeight + MIN_VISIBLE_CLEARANCE : 0;`,
+      `${ARI_CLEAN}\nimport { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED : 0;`,
     );
-    check("(E) the pill height is added back into the lift", m, 1, "`composerHeight`");
+    check("(E) the Done-bar term returns to the Ari composer", m, 1, "DONE_BAR_OCCUPIED");
+    check("(E) a keyboard-open ternary returns", m, 1, "keyboard-open ternary");
   }
 
-  // 9b-ii — (E) a spacing term creeps back in (the stray spacing.sm #1890 found
-  //         riding alongside the double count).
+  // 9b-ii — (E) the KeyboardAvoidingView wrapper is removed (the composer falls
+  //         back to a React-state lift that leaps in one step).
   {
     const m = base();
     m.files.set(
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + spacing.sm + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;`,
+      `<View style={[styles.inputWrap, { paddingBottom: space[2] }]}/>`,
     );
-    check("(E) a stray spacing term in the lift", m, 1, "`spacing`");
+    check("(E) the KeyboardAvoidingView wrapper is gone", m, 1, "no longer has");
   }
 
-  // 9b-iii — (E) a hand-typed number replaces the named clearance.
+  // 9b-iii — (E) the wrapper stays but its behavior is not "padding".
   {
     const m = base();
     m.files.set(
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + 12 : 0;`,
+      ARI_CLEAN.replace('behavior="padding"', 'behavior="height"'),
     );
-    check("(E) a numeric literal in the lift", m, 1, "`12`");
+    check('(E) behavior is not "padding"', m, 1, "no longer has");
   }
 
-  // 9b-iv — (E) the measuring plumbing returns even though the lift looks clean.
-  //         Harmless on its own, but it is the half-step back to the defect.
+  // 9b-iv — (E) the clearance constant returns even with the wrapper in place.
   {
     const m = base();
     m.files.set(
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+      `${ARI_CLEAN}\nconst gap = MIN_VISIBLE_CLEARANCE;`,
+    );
+    check("(E) a clearance term returns", m, 1, "MIN_VISIBLE_CLEARANCE");
+  }
+
+  // 9b-v — (E) a keyboard height reaches the composer wrapper's own style.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      ARI_CLEAN.replace("{ paddingBottom: space[2] }", "{ paddingBottom: keyboardHeight }"),
+    );
+    check("(E) keyboardHeight in the composer wrapper style", m, 1, "keyboardHeight inside the composer wrapper");
+  }
+
+  // 9b-vi — (E) the pill-measuring plumbing returns (the #1890 double count).
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `${ARI_CLEAN}\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
     );
     check("(E) the composer-measuring plumbing returns", m, 1, "setComposerHeight");
   }
 
-  // 9b-v — (E) an unlocatable lift is exit 2, never a silent pass.
+  // 9b-vii — (E) a comment that mentions the old terms is prose, not a violation.
   {
     const m = base();
     m.files.set(
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = DONE_BAR_OCCUPIED;`,
+      `${ARI_CLEAN}\n// used to be keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0`,
     );
-    check("(E) an unlocatable lift is VACUOUS", m, 2, "could not locate");
+    check("(E) the old terms in a comment do not fail", m, 0);
   }
 
   // 9c — an empty (E) list is VACUOUS too.
@@ -650,7 +659,7 @@ if (IS_MAIN && SELF_TEST) {
     console.error("");
     process.exit(1);
   }
-  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 21 fixtures behaved as specified.");
+  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 24 fixtures behaved as specified.");
   process.exit(0);
 }
 
@@ -662,7 +671,7 @@ function main() {
     ...KEYED.map(([r]) => r),
     ...NESTED_PROVIDER_HOSTS,
     ...DERIVED_CLEARANCE,
-    NO_DOUBLE_COUNT.rel,
+    ARI_COMPOSER_FLUSH.rel,
   ])) {
     try {
       files.set(rel, fs.readFileSync(path.join(BIZ, rel), "utf8"));
@@ -677,7 +686,7 @@ function main() {
     keyed: KEYED,
     nestedHosts: NESTED_PROVIDER_HOSTS,
     derivedHosts: DERIVED_CLEARANCE,
-    measured: [NO_DOUBLE_COUNT],
+    measured: [ARI_COMPOSER_FLUSH],
   });
 
   if (result.code !== 0) {
@@ -690,7 +699,7 @@ function main() {
     `OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]: ${MOUNT_HOSTS.length} mount hosts render the toolbar; ` +
       `${KEYED.length} offsets stay keyboard-keyed; ${NESTED_PROVIDER_HOSTS.length} Modal windows nest it in their ` +
       `own provider; ${DERIVED_CLEARANCE.length} surfaces derive clearance from DONE_BAR_OCCUPIED; the Ari ` +
-      "lift is the occluder budget and nothing else.",
+      "composer rides a KeyboardAvoidingView flush on the keyboard (no Done-bar budget).",
   );
 }
 

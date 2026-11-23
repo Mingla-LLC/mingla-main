@@ -278,11 +278,9 @@
       "payments": "Nkọwa ịkwụ ụgwọ"
     },
     "a1": {
-      "headlineNamed": "Ndewo {{first}}. Ka anyị kwadebe akaụntụ gị ka ọ nabata ndebanye.",
-      "headline": "Ndewo. Ka anyị kwadebe akaụntụ gị ka ọ nabata ndebanye.",
-      "body": "Ọ na-ewe ihe dị ka nkeji 3: aha akara gị, obodo akụ gị, wee ịkwụ ụgwọ. M ga-eduzi gị.",
       "cardTitle": "Hazie akara gị",
       "minutes": "Ihe dị ka nkeji 3",
+      "eyebrowStep": "Nzọụkwụ {{current}} n'ime {{total}}",
       "setUp": "Hazie akara m",
       "withAri": "Mee ya na Ari",
       "withAriMessage": "Nyere m aka ịhazi akara m",

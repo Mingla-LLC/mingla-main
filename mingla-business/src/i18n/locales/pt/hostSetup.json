@@ -278,11 +278,9 @@
       "payments": "Dados de pagamento"
     },
     "a1": {
-      "headlineNamed": "Oi, {{first}}. Vamos deixar sua conta pronta para receber reservas.",
-      "headline": "Oi. Vamos deixar sua conta pronta para receber reservas.",
-      "body": "Leva uns 3 minutos: o nome da sua marca, seu país bancário e depois os pagamentos. Eu guio você.",
       "cardTitle": "Configure sua marca",
       "minutes": "Cerca de 3 minutos",
+      "eyebrowStep": "Etapa {{current}} de {{total}}",
       "setUp": "Configurar minha marca",
       "withAri": "Fazer com a Ari",
       "withAriMessage": "Me ajude a configurar minha marca",

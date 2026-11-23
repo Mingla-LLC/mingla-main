@@ -278,11 +278,9 @@
       "payments": "Butiran bayaran"
     },
     "a1": {
-      "headlineNamed": "Hai {{first}}. Mari sediakan akaun anda untuk menerima tempahan.",
-      "headline": "Hai. Mari sediakan akaun anda untuk menerima tempahan.",
-      "body": "Ia mengambil kira-kira 3 minit: nama jenama, negara bank, kemudian bayaran. Saya akan membimbing anda.",
       "cardTitle": "Sediakan jenama anda",
       "minutes": "Kira-kira 3 minit",
+      "eyebrowStep": "Langkah {{current}} daripada {{total}}",
       "setUp": "Sediakan jenama saya",
       "withAri": "Buat dengan Ari",
       "withAriMessage": "Bantu saya sediakan jenama saya",

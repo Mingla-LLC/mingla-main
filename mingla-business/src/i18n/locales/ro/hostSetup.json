@@ -278,11 +278,9 @@
       "payments": "Datele de plată"
     },
     "a1": {
-      "headlineNamed": "Salut, {{first}}. Hai să pregătim contul tău pentru rezervări.",
-      "headline": "Salut. Hai să pregătim contul tău pentru rezervări.",
-      "body": "Durează cam 3 minute: numele brandului, țara băncii, apoi plățile. Te ghidez eu.",
       "cardTitle": "Configurează-ți brandul",
       "minutes": "Cam 3 minute",
+      "eyebrowStep": "Pasul {{current}} din {{total}}",
       "setUp": "Configurează brandul meu",
       "withAri": "Fă-o cu Ari",
       "withAriMessage": "Ajută-mă să-mi configurez brandul",
