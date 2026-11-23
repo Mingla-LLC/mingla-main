@@ -9,6 +9,13 @@
 
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
+import {
+  clearTillStaffSession,
+  getTillStaffSession,
+  requestStepUp,
+  setTillStaffSession,
+} from "./tillStaffSession";
+import { pinRetryMessage } from "../components/venue/till/pinModel";
 
 type Json = Record<string, unknown>;
 
@@ -28,6 +35,9 @@ export class TillError extends Error {
   readonly nextAt: string | null;
   /** 08-O4 fix 1 (O4-T4): when the unit in use frees up (offer_space_taken). */
   readonly freeAt: string | null;
+  /** #4490 O5: a wrong PIN's tries left, a lock's end. */
+  triesLeft: number | null = null;
+  lockedUntil: string | null = null;
   constructor(
     code: string,
     item: string | null = null,
@@ -573,8 +583,11 @@ async function tillError(error: { message?: string; context?: unknown }): Promis
     try {
       const body = obj(await (context as Response).json());
       if (typeof body.code === "string" && body.code.length > 0) {
-        return new TillError(body.code, strOrNull(body.item), numOrNull(body.remainingMinor),
+        const e = new TillError(body.code, strOrNull(body.item), numOrNull(body.remainingMinor),
           { unitName: strOrNull(body.unitName), nextAt: strOrNull(body.nextAt), freeAt: strOrNull(body.freeAt) });
+        e.triesLeft = numOrNull(body.triesLeft);
+        e.lockedUntil = strOrNull(body.lockedUntil);
+        return e;
       }
     } catch {
       // An unreadable body falls through to the network mapping below.
@@ -584,12 +597,55 @@ async function tillError(error: { message?: string; context?: unknown }): Promis
   return new TillError(/failed to fetch|network|load failed/i.test(raw) ? "network" : "till_failed");
 }
 
-async function till<T>(body: Record<string, unknown>): Promise<T> {
+async function tillOnce<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke("venue-till", { body });
   if (error) throw await tillError(error as { message?: string; context?: unknown });
   const envelope = obj(data);
   if (envelope.kind !== "success") throw new TillError(str(envelope.code, "till_failed"));
   return envelope.data as T;
+}
+
+/** #4490 O5: the codes that mean "this device needs someone to switch in". */
+export const TILL_SESSION_LOST_CODES: readonly string[] = ["pin_session_required", "pin_session_invalid"];
+
+/**
+ * #4490 O5: every Till call carries the device's PIN session when there is one
+ * (in the POST body, never a URL). A lost session clears it here, so the Till
+ * shows "Who's selling?". A refund or a sent void that needs a fresh PIN asks
+ * the open sheet for it and retries; a wrong PIN asks again with the reason.
+ */
+async function till<T>(body: Record<string, unknown>): Promise<T> {
+  const venueId = typeof body.venueId === "string" ? body.venueId : "";
+  const session = venueId ? getTillStaffSession(venueId) : null;
+  const send = session !== null ? { ...body, staffSession: session.token } : body;
+  try {
+    return await tillOnce<T>(send);
+  } catch (err) {
+    if (!(err instanceof TillError) || session === null) throw err;
+    if (TILL_SESSION_LOST_CODES.includes(err.code)) {
+      clearTillStaffSession(venueId, "server");
+      throw err;
+    }
+    const purpose = body.action === "refund" ? "refund" : body.action === "void" ? "void_sent" : null;
+    if (err.code !== "pin_step_up_required" || purpose === null) throw err;
+    let message: string | null = null;
+    for (;;) {
+      const answer = await requestStepUp(venueId, purpose, message);
+      if (answer === null) throw new TillError("pin_step_up_cancelled");
+      try {
+        return await tillOnce<T>({ ...send, stepUp: { pin: answer.pin, ...(answer.memberId ? { memberId: answer.memberId } : {}) } });
+      } catch (retryErr) {
+        if (!(retryErr instanceof TillError)) throw retryErr;
+        if (TILL_SESSION_LOST_CODES.includes(retryErr.code)) {
+          clearTillStaffSession(venueId, "server");
+          throw retryErr;
+        }
+        const retry = pinRetryMessage(retryErr);
+        if (retry === null) throw retryErr;
+        message = retry;
+      }
+    }
+  }
 }
 
 export async function fetchTillCatalog(venueId: string): Promise<TillCatalog> {
@@ -968,4 +1024,144 @@ export function extendTillSession(input: {
   expectedVersion: number;
 }): Promise<TillSale> {
   return saleAction({ action: "extend_session", ...input });
+}
+
+// ---------------------------------------------------------------------------
+// #4490 spec 08 O5 part A — PINs and "Who's selling?".
+// ---------------------------------------------------------------------------
+
+export interface TillPinPerson {
+  memberId: string;
+  name: string;
+  role: string;
+  profile: string | null;
+  canSell: boolean;
+  canApprove: boolean;
+  canManage: boolean;
+}
+
+export interface TillPinStaff {
+  /** True only on a Till device login at this venue (the Till released there). */
+  gated: boolean;
+  venueName: string | null;
+  autoLockMinutes: number;
+  people: TillPinPerson[];
+  /** False: nobody who may manage the venue has a PIN (sign out by email code). */
+  managerHasPin: boolean;
+}
+
+export function mapTillPinStaff(v: unknown): TillPinStaff {
+  const r = obj(v);
+  return {
+    gated: r.gated === true,
+    venueName: strOrNull(r.venueName),
+    autoLockMinutes: num(r.autoLockMinutes, 2),
+    people: arr(r.staff).map((p) => {
+      const x = obj(p);
+      return {
+        memberId: str(x.memberId),
+        name: str(x.name, "Team member"),
+        role: str(x.role),
+        profile: strOrNull(x.profile),
+        canSell: x.canSell === true,
+        canApprove: x.canApprove === true,
+        canManage: x.canManage === true,
+      };
+    }).filter((p) => p.memberId.length > 0),
+    managerHasPin: r.managerHasPin === true,
+  };
+}
+
+export async function fetchTillPinStaff(venueId: string): Promise<TillPinStaff> {
+  return mapTillPinStaff(await tillOnce<unknown>({ action: "pin_staff", venueId }));
+}
+
+/** Switches a person in; the token goes to memory only (tillStaffSession). */
+export async function unlockTillPin(input: { venueId: string; memberId: string; pin: string }): Promise<void> {
+  const data = obj(await tillOnce<unknown>({ action: "pin_unlock", ...input }));
+  const member = obj(data.member);
+  const token = str(data.staffSession);
+  if (!/^[0-9a-f]{64}$/.test(token)) throw new TillError("till_failed");
+  setTillStaffSession({
+    venueId: input.venueId,
+    token,
+    memberId: str(member.memberId, input.memberId),
+    memberUserId: str(member.userId),
+    name: str(member.name, "Team member"),
+    canApprove: member.canApprove === true,
+    autoLockMinutes: num(data.autoLockMinutes, 2),
+  });
+}
+
+/** Ends the device's PIN session here and on the server ("Switch", auto-lock). */
+export async function endTillPin(venueId: string, reason: "ended" | "auto_lock" = "ended"): Promise<void> {
+  const session = getTillStaffSession(venueId);
+  clearTillStaffSession(venueId, reason === "auto_lock" ? "auto_lock" : null);
+  if (session === null) return;
+  await tillOnce<unknown>({ action: "pin_end", venueId, staffSession: session.token, reason });
+}
+
+/** Ends every PIN session of this device after a manager's PIN or a fresh email code. */
+export async function signOutTillDevice(input: { venueId: string; memberId?: string; pin?: string }): Promise<void> {
+  await tillOnce<unknown>({ action: "pin_sign_out", ...input });
+  clearTillStaffSession(input.venueId);
+}
+
+export interface TillPinStatus {
+  memberId: string;
+  tillDevice: boolean;
+  hasPin: boolean;
+  setAt: string | null;
+  hardLocked: boolean;
+  lockedUntil: string | null;
+}
+
+export function mapTillPinStatus(v: unknown): TillPinStatus {
+  const r = obj(v);
+  return {
+    memberId: str(r.memberId),
+    tillDevice: r.tillDevice === true,
+    hasPin: r.hasPin === true,
+    setAt: strOrNull(r.setAt),
+    hardLocked: r.hardLocked === true,
+    lockedUntil: strOrNull(r.lockedUntil),
+  };
+}
+
+/** The signed-in member's own PIN for a brand (Team > Till PIN). */
+export async function fetchMyTillPin(brandId: string): Promise<TillPinStatus> {
+  return mapTillPinStatus(await tillOnce<unknown>({ action: "pin_status", brandId }));
+}
+
+export async function setMyTillPin(input: { brandId: string; pin: string }): Promise<void> {
+  await tillOnce<unknown>({ action: "pin_set", ...input });
+}
+
+export interface TillPinMember {
+  memberId: string;
+  userId: string;
+  hasPin: boolean;
+  setAt: string | null;
+  hardLocked: boolean;
+  lockedUntil: string | null;
+}
+
+/** PIN state of the members the signed-in manager may reset. */
+export async function fetchTeamTillPins(brandId: string): Promise<TillPinMember[]> {
+  const data = obj(await tillOnce<unknown>({ action: "pin_team", brandId }));
+  return arr(data.members).map((m) => {
+    const x = obj(m);
+    return {
+      memberId: str(x.memberId),
+      userId: str(x.userId),
+      hasPin: x.hasPin === true,
+      setAt: strOrNull(x.setAt),
+      hardLocked: x.hardLocked === true,
+      lockedUntil: strOrNull(x.lockedUntil),
+    };
+  });
+}
+
+export async function resetTillPin(memberId: string): Promise<void> {
+  await tillOnce<unknown>({ action: "pin_reset", memberId });
 }

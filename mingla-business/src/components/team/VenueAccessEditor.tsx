@@ -17,6 +17,7 @@ import {
   capabilityOptionsFor,
   isVenueAccessAssignable,
   profileOptionsFor,
+  TILL_DEVICE_EXPLAINER,
   VENUE_ACCESS_PROFILES,
 } from "./venueAccessOptions";
 
@@ -147,6 +148,12 @@ export function VenueAccessEditor({
                     </Pressable>
                   ))}
                 </View>
+                {grant.profile === "till_device" ? (
+                  // #4490 spec 08 O5 (§2 screen 14): what a Till device login is.
+                  <Text style={styles.helper} testID="venue-access-till-device-explainer">
+                    {TILL_DEVICE_EXPLAINER}
+                  </Text>
+                ) : null}
                 {applicable.map((option) => {
                   const checked = grant.capabilities.includes(option.capability);
                   return (

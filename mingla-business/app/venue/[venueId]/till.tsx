@@ -1,4 +1,4 @@
-// orch-strict-grep-allow safearea-on-fullscreen-routes — renders TillScreen, which pads its root with useSafeAreaInsets (top and bottom)
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders TillGate → TillScreen / WhoIsSelling, which pad their roots with useSafeAreaInsets (top and bottom)
 /**
  * #4490 spec 08 O1 — the Till route (`/venue/[venueId]/till`). Full screen,
  * outside the venue rail. On web this route is its own chunk (expo-router
@@ -14,7 +14,7 @@
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 
-import { TillScreen } from "../../../src/components/venue/till/TillScreen";
+import { TillGate } from "../../../src/components/venue/till/TillGate";
 import { tillPrefillFrom, tillUuid } from "../../../src/components/venue/till/tillModel";
 
 export default function VenueTillRoute(): React.ReactElement | null {
@@ -22,5 +22,7 @@ export default function VenueTillRoute(): React.ReactElement | null {
   const venueId = tillUuid(params.venueId);
   if (venueId === null) return null;
   const checks = Array.isArray(params.checks) ? params.checks[0] : params.checks;
-  return <TillScreen venueId={venueId} prefill={tillPrefillFrom(params)} openChecksOnStart={checks === "1"} />;
+  // #4490 O5: a Till device login opens on "Who's selling?" (TillGate);
+  // every other account gets the Till exactly as before.
+  return <TillGate venueId={venueId} prefill={tillPrefillFrom(params)} openChecksOnStart={checks === "1"} />;
 }

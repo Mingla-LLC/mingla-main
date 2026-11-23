@@ -307,7 +307,7 @@ export const createDoorPayCodeForLines = async (input: {
  * card_present PaymentIntent for it. completeIntent answers in the door shape
  * (orderId = the Till payment id; no tickets).
  */
-export const createTillTapServer = (input: { venueId: string; paymentId: string }) => ({
+export const createTillTapServer = (input: { venueId: string; paymentId: string; staffSession?: string | null }) => ({
   createIntent: async (create: CreateDoorTapIntentInput): Promise<DoorTapIntent> => {
     const data = await invoke("door-tap-intent", {
       action: "create",
@@ -316,6 +316,8 @@ export const createTillTapServer = (input: { venueId: string; paymentId: string 
       venueId: input.venueId,
       paymentId: input.paymentId,
       clientRequestId: create.clientRequestId,
+      // #4490 O5: a Till device's PIN session (memory only); none otherwise.
+      ...(input.staffSession ? { staffSession: input.staffSession } : {}),
     });
     return {
       paymentIntentId: requireString(data, "paymentIntentId"),

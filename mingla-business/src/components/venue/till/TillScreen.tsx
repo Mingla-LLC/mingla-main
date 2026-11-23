@@ -80,6 +80,8 @@ import { openFloorPdf } from "../../../utils/floorPdf";
 import { STATION_COPY, stationErrorCopy } from "../station/stationCopy";
 import { runStationAction, StationError } from "../../../services/venueStationService";
 import { ReceiptStep } from "./ReceiptStep";
+import { TillStepUpHost } from "./TillStepUp";
+import type { TillPinPerson } from "../../../services/venueTillService";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
 import {
   basketLaunchedAfterClose,
@@ -124,15 +126,31 @@ export interface TillScreenProps {
   prefill?: TillPrefill | null;
   /** Open on the Open checks list (from Orders › Open checks). */
   openChecksOnStart?: boolean;
+  /** #4490 O5: on a Till device, "{name} is selling · Switch" (TillGate). */
+  sellerSlot?: React.ReactNode;
+  /** #4490 O5: who may approve a refund or a sent void on the spot (TillGate). */
+  stepUpApprovers?: readonly TillPinPerson[];
 }
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
 
-export function TillScreen({ venueId, prefill = null, openChecksOnStart = false }: TillScreenProps): React.ReactElement {
+const NO_APPROVERS: readonly TillPinPerson[] = [];
+
+/** #4490 O5: where a refund or sent void asks for a fresh PIN (inside its own sheet). */
+type StepUpProps = { venueId: string; approvers: readonly TillPinPerson[] };
+
+export function TillScreen({
+  venueId,
+  prefill = null,
+  openChecksOnStart = false,
+  sellerSlot = null,
+  stepUpApprovers = NO_APPROVERS,
+}: TillScreenProps): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const layout = floorLayoutFor(width);
+  const stepUpProps = useMemo<StepUpProps>(() => ({ venueId, approvers: stepUpApprovers }), [venueId, stepUpApprovers]);
   const catalogQuery = useTillCatalog(venueId);
   const catalog = catalogQuery.data ?? null;
   // #4490 spec 08 O3: the kitchen and bar screens, for those who may work them.
@@ -355,7 +373,8 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     ? TILL_COPY.closeCheck
     : ready && sale !== null ? TILL_COPY.pay(money(sale.remainingMinor)) : TILL_COPY.payPending;
   const nothingOnCheck = rows.length === 0 && draft.length === 0;
-  const canManageMoney = catalog?.canManageMoney === true;
+  // #4490 O5: on a Till device a manager with money rights can approve on the spot.
+  const canManageMoney = catalog?.canManageMoney === true || stepUpApprovers.length > 0;
   // #4490 O2: Tap to pay where this phone, this build, the brand and the
   // release all allow it (the matrix in tillTapAvailability).
   const tapBrand = useTapToPayBrandFacts(catalog?.brandId ?? null);
@@ -846,6 +865,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
       />
 
       <VoidSheet
+        stepUp={stepUpProps}
         row={voidRow}
         currency={currency}
         busy={busy}
@@ -950,6 +970,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
       />
 
       <LineRefundSheet
+        stepUp={stepUpProps}
         row={lineRefund}
         currency={currency}
         busy={busy}
@@ -977,6 +998,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const refundIn = refundHost(layout, Platform.OS, basketSheet);
   const refundSheet = (
     <RefundSheet
+      stepUp={stepUpProps}
       payment={paidPayments.find((p) => p.id === refundFor) ?? null}
       currency={currency}
       busy={busy}
@@ -1019,6 +1041,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
       <View style={styles.header}>
         <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={requestClose} testID="till-back" />
         <Text style={styles.title} numberOfLines={1}>{catalog?.venueName ?? TILL_COPY.title}</Text>
+        {sellerSlot}
         {stationsEntry ? (
           <Button
             label={STATION_COPY.openStations}
@@ -1053,7 +1076,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
                     <View style={styles.paidActions}>
                       <Button label={TILL_COPY.sendReceipt} variant="secondary" size="sm" onPress={() => setReceiptFor(p.id)}
                         testID={`till-receipt-open-${p.id}`} />
-                      {catalog?.canManageMoney === true && p.state !== "refunded" ? (
+                      {canManageMoney && p.state !== "refunded" ? (
                         <Button label={TILL_COPY.refund} variant="secondary" size="sm" onPress={() => setRefundFor(p.id)} />
                       ) : null}
                     </View>
@@ -1647,7 +1670,7 @@ function NameSheet({
   );
 }
 
-function VoidSheet({ row, currency, busy, onClose, onVoid }: { row: BasketRow | null; currency: string; busy: boolean; onClose: () => void; onVoid: (reason: string) => void }): React.ReactElement {
+function VoidSheet({ row, currency, busy, onClose, onVoid, stepUp }: { row: BasketRow | null; currency: string; busy: boolean; onClose: () => void; onVoid: (reason: string) => void; stepUp: StepUpProps }): React.ReactElement {
   const [reason, setReason] = useState<string>(TILL_COPY.voidReasons[0].label);
   useEffect(() => {
     setReason(TILL_COPY.voidReasons[0].label);
@@ -1656,7 +1679,8 @@ function VoidSheet({ row, currency, busy, onClose, onVoid }: { row: BasketRow | 
     <Sheet visible={row !== null} onClose={onClose} snapPoint={0.6} dismissDisabled={busy} testID="till-void">
       <View style={styles.grow}>
         <SheetHead title={row !== null ? TILL_COPY.voidItem(row.label) : TILL_COPY.void} onClose={onClose} disabled={busy} />
-        <SheetScrollLayout contentStyle={styles.sheetScroll}
+        <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
+          <SheetScrollLayout contentStyle={styles.sheetScroll}
           footer={<Button label={row !== null ? `${TILL_COPY.void} · ${formatCurrency(row.amountMinor, currency, true)}` : TILL_COPY.void}
             variant="destructive" size="lg" fullWidth loading={busy} onPress={() => onVoid(reason)} testID="till-void-confirm" />}>
           <Text style={styles.label}>{TILL_COPY.why}</Text>
@@ -1666,6 +1690,7 @@ function VoidSheet({ row, currency, busy, onClose, onVoid }: { row: BasketRow | 
             ))}
           </View>
         </SheetScrollLayout>
+        </TillStepUpHost>
       </View>
     </Sheet>
   );
@@ -1847,12 +1872,14 @@ function LineRefundSheet({
   busy,
   onClose,
   onRefund,
+  stepUp,
 }: {
   row: BasketRow | null;
   currency: string;
   busy: boolean;
   onClose: () => void;
   onRefund: (reason: string) => void;
+  stepUp: StepUpProps;
 }): React.ReactElement {
   const [reason, setReason] = useState<string>(TILL_COPY.refundReasons[0].label);
   useEffect(() => {
@@ -1862,7 +1889,8 @@ function LineRefundSheet({
     <Sheet visible={row !== null} onClose={onClose} snapPoint={0.6} dismissDisabled={busy} testID="till-line-refund">
       <View style={styles.grow}>
         <SheetHead title={row !== null ? TILL_COPY.refundLineTitle(row.label) : TILL_COPY.refund} onClose={onClose} disabled={busy} />
-        <SheetScrollLayout contentStyle={styles.sheetScroll}
+        <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
+          <SheetScrollLayout contentStyle={styles.sheetScroll}
           footer={<Button label={TILL_COPY.refundAmount(formatCurrency(row?.amountMinor ?? 0, currency, true))} variant="destructive"
             size="lg" fullWidth loading={busy} onPress={() => onRefund(reason)} testID="till-line-refund-confirm" />}>
           <Text style={styles.muted}>{TILL_COPY.refundLineBody}</Text>
@@ -1873,6 +1901,7 @@ function LineRefundSheet({
             ))}
           </View>
         </SheetScrollLayout>
+        </TillStepUpHost>
       </View>
     </Sheet>
   );
@@ -1884,12 +1913,14 @@ function RefundSheet({
   busy,
   onClose,
   onRefund,
+  stepUp,
 }: {
   payment: { id: string; amountMinor: number; tipMinor: number; refundedMinor: number } | null;
   currency: string;
   busy: boolean;
   onClose: () => void;
   onRefund: (amountMinor: number, reason: string) => void;
+  stepUp: StepUpProps;
 }): React.ReactElement {
   const max = payment === null ? 0 : payment.amountMinor + payment.tipMinor - payment.refundedMinor;
   const [amount, setAmount] = useState<number | null>(null);
@@ -1903,7 +1934,8 @@ function RefundSheet({
     <Sheet visible={payment !== null} onClose={onClose} snapPoint={0.7} dismissDisabled={busy} testID="till-refund">
       <View style={styles.grow}>
         <SheetHead title={TILL_COPY.refund} onClose={onClose} disabled={busy} />
-        <SheetScrollLayout keyboardAware contentStyle={styles.sheetScroll}
+        <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
+          <SheetScrollLayout keyboardAware contentStyle={styles.sheetScroll}
           footer={<Button label={TILL_COPY.refundAmount(formatCurrency(value, currency, true))} variant="primary" size="lg" fullWidth
             loading={busy} disabled={value <= 0 || value > max} onPress={() => onRefund(value, reason)} testID="till-refund-confirm" />}>
           <MoneyField label={TILL_COPY.amountToRefund} valueMinor={value} onChangeMinor={setAmount} currency={currency} testID="till-refund-amount" />
@@ -1914,6 +1946,7 @@ function RefundSheet({
             ))}
           </View>
         </SheetScrollLayout>
+        </TillStepUpHost>
       </View>
     </Sheet>
   );

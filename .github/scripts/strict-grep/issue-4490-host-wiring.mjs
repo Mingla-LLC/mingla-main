@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing, the Till's client request ids made as UUIDs that venue-till accepts, one per payment or refund attempt, with the paid step showing the server's recorded amount, the split step inside the one pay sheet with one attempt per share, and the session and seat sheets opened from the catalog) keeps its load-bearing lines.
+// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing, the Till's client request ids made as UUIDs that venue-till accepts, one per payment or refund attempt, with the paid step showing the server's recorded amount, the split step inside the one pay sheet with one attempt per share, and the session and seat sheets opened from the catalog, the step-up PIN pad inside the sheet that asked, the Till route through the PIN gate, the PIN session in memory only, Who's selling as screen content) keeps its load-bearing lines.
 /**
  * #4490 W3 fix 1 — the structural pins of eight #4490 mingla-business jest
  * suites, moved here as the additive strict-grep gate that
@@ -528,6 +528,49 @@ const PINS = [
     file: `${BIZ}/src/components/venue/till/__tests__/tillRequestIds.issue4490.o3fix4.render.test.tsx`,
     contains: ["const SERVER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;"],
     why: "the no-crypto render proof checks the exact pattern venue-till enforces",
+  },
+  // #4490 08-O5 part A: the step-up PIN pad renders INSIDE the sheet that asked
+  // (void, refund, line refund), never as a second native sheet; the Till
+  // route opens through the gate that shows Who's selling on a Till device;
+  // the PIN session lives in memory only and is cleared on sign-out.
+  {
+    id: "till-step-up-inside-its-sheet",
+    file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
+    contains: ['import { TillStepUpHost } from "./TillStepUp";'],
+    matches: [
+      /testID="till-void">[\s\S]{0,400}<TillStepUpHost venueId=\{stepUp\.venueId\} approvers=\{stepUp\.approvers\}>\s*<SheetScrollLayout/,
+      /testID="till-line-refund">[\s\S]{0,400}<TillStepUpHost venueId=\{stepUp\.venueId\} approvers=\{stepUp\.approvers\}>\s*<SheetScrollLayout/,
+      /testID="till-refund">[\s\S]{0,400}<TillStepUpHost venueId=\{stepUp\.venueId\} approvers=\{stepUp\.approvers\}>\s*<SheetScrollLayout/,
+    ],
+    why: "the fresh-PIN prompt for a refund or a sent void shows inside the open sheet: iOS refuses a second modal from one presenter (08-O3 fix 3)",
+  },
+  {
+    id: "till-step-up-host-has-no-sheet",
+    file: `${BIZ}/src/components/venue/till/TillStepUp.tsx`,
+    contains: ["if (request === null || session === null) return <>{children}</>;"],
+    absent: ["<Sheet", "<Modal", "ConfirmDialog"],
+    why: "the step-up host replaces the sheet's body; it never opens a sheet or modal of its own",
+  },
+  {
+    id: "till-route-opens-through-the-pin-gate",
+    file: `${BIZ}/app/venue/[venueId]/till.tsx`,
+    contains: ["<TillGate venueId={venueId}"],
+    absent: ["<TillScreen "],
+    why: "a Till device login must open on Who's selling (spec 08 §3 O5), every other account on the Till as before",
+  },
+  {
+    id: "till-pin-session-memory-only",
+    file: `${BIZ}/src/services/tillStaffSession.ts`,
+    contains: ["registerSignOutCleanup(clearAllTillStaffSessions);", "let state: State = { sessions: {}, ended: {}, stepUp: null };"],
+    absentMatches: [/from "@react-native-async-storage/, /\blocalStorage\./, /\bsessionStorage\./, /expo-secure-store/, /zustand\/middleware/],
+    why: "the PIN session token lives in memory only and sign-out clears it (Constitution 5, 6, 14; spec 08 §3 O5)",
+  },
+  {
+    id: "who-is-selling-no-sheet",
+    file: `${BIZ}/src/components/venue/till/WhoIsSelling.tsx`,
+    contains: ['testID="till-who"'],
+    absent: ["<Sheet", "<Modal", "ConfirmDialog"],
+    why: "Who's selling and its PIN pad are full-screen content of the Till route, never a native sheet",
   },
 ];
 

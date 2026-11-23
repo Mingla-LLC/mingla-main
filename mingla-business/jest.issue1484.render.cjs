@@ -36,6 +36,8 @@ module.exports = {
   },
   testMatch: [
     "**/__tests__/staySuiteShell.issue1484.desktopShell.render.test.tsx",
+    // #4490 08-O5 part A: the step-up PIN pad inside the sheet that asked.
+    "**/__tests__/tillPin.issue4490.o5a.render.test.tsx",
     "**/__tests__/stayInventoryManager.issue1484.formMeasure.render.test.tsx",
     "**/__tests__/stayLifecycleLayout.issue1944.render.test.tsx",
     // TESTER-owned adversarial suite (issue #1484 verdict). Registered here so

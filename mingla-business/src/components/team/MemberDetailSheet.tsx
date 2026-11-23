@@ -44,6 +44,7 @@ import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 import { VenueAccessEditor } from "./VenueAccessEditor";
+import { TillPinSection } from "./TillPinSection";
 
 // ORCH-1384 web eager-bundle budget fix — INLINE error-copy copy.
 //
@@ -259,6 +260,13 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
               />
             ) : null}
           </View>
+        ) : null}
+
+        {isAccepted ? (
+          // #4490 spec 08 O5 (§2 screen 13): your own Till PIN, or a manager's
+          // reset of this member's. Inline in this sheet, shown only while the
+          // Till is released; renders nothing otherwise.
+          <TillPinSection brandId={entry.brandId} memberId={entry.id} memberName={entry.inviteeName} />
         ) : null}
 
         {showPartnerDisconnect ? (

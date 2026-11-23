@@ -61,6 +61,10 @@ export const PROFILE_OPTIONS: readonly {
   { id: "custom", label: "Custom" },
 ];
 
+/** #4490 spec 08 O5 (§2 screen 14): the Till device profile's explainer. */
+export const TILL_DEVICE_EXPLAINER =
+  "This login stays signed in on a shared phone or tablet. Staff switch with their PIN.";
+
 /** Every venue type other than Stay. */
 const NON_STAY_CATEGORIES: readonly string[] = [
   "restaurant",

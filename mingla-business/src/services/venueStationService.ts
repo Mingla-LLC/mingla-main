@@ -5,6 +5,7 @@
  * StationError carrying the server's code; screens turn codes into words.
  */
 import { supabase } from "./supabase";
+import { getTillStaffSession } from "./tillStaffSession";
 import {
   parseStationBoard,
   parseStationTicket,
@@ -98,7 +99,11 @@ export interface FloorPdfLink {
 }
 
 export async function requestFloorPdf(request: FloorPdfRequest): Promise<FloorPdfLink> {
-  const { data, error } = await supabase.functions.invoke("venue-floor-pdf", { body: request });
+  // #4490 O5: a receipt is a Till action; on a Till device it carries the PIN
+  // session (memory only). Kitchen and test tickets run as the device.
+  const session = request.kind === "receipt" ? getTillStaffSession(request.venueId) : null;
+  const requestBody = session !== null ? { ...request, staffSession: session.token } : request;
+  const { data, error } = await supabase.functions.invoke("venue-floor-pdf", { body: requestBody });
   if (error) throw await stationErrorFrom(error as { message?: string; context?: unknown });
   const body = obj(data);
   if (typeof body.signedUrl !== "string" || body.signedUrl.length === 0) throw new StationError("floor_pdf_failed");

@@ -386,6 +386,19 @@ export const TILL_ERROR_COPY = {
   till_booking_not_found: "We couldn't find that booking. It may have been cancelled.",
   till_booking_other_table: "That booking is for another table. Seat them there, or move the booking first.",
   till_booking_not_seatable: "This booking can't be seated. Open it in Reservations.",
+  // #4490 08-O5 part A: PINs on a shared Till device (spec 08 §3 O5 copy).
+  pin_session_required: "Pick who's selling to carry on.",
+  pin_session_invalid: "This PIN session ended. Pick who's selling and enter your PIN.",
+  pin_step_up_required: "Enter your PIN again to confirm",
+  pin_step_up_cancelled: "Nothing was changed.",
+  pin_wrong: "Wrong PIN. Try again.",
+  pin_locked: "Locked for 5 minutes",
+  pin_hard_locked: "Ask a manager to unlock your PIN",
+  pin_device_limited: "Too many tries on this device. Wait 10 minutes, or ask a manager.",
+  pin_no_rights: "This needs someone with money rights. Pick who's approving.",
+  pin_weak: "Pick a PIN that's harder to guess. Not 1234, 0000 or one digit repeated.",
+  pin_invalid: "Use 4 to 6 digits.",
+  pin_email_code_required: "Enter the code we emailed to this Till's login, then sign out.",
 } as const satisfies Record<string, string>;
 
 export type TillErrorCode = keyof typeof TILL_ERROR_COPY;

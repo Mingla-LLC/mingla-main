@@ -16,6 +16,7 @@ import { color, space, type } from "../../../constants/designSystem";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { cancelTillCardPayment, TillError } from "../../../services/venueTillService";
 import { createTillTapServer } from "../../../services/terminal/doorTapEdge";
+import { getTillStaffSession } from "../../../services/tillStaffSession";
 import { TapToPaySaleFlow, type TapSaleState } from "../../../services/terminal/tapToPayFlow";
 import { getTapToPaySession } from "../../../services/terminal/tapToPaySession";
 import { formatCurrency } from "../../../utils/currency";
@@ -67,7 +68,7 @@ export function TillTapPanel({
       draft: EMPTY_DRAFT,
       clientRequestId: randomUuid(),
       terminal: client,
-      server: createTillTapServer({ venueId, paymentId }),
+      server: createTillTapServer({ venueId, paymentId, staffSession: getTillStaffSession(venueId)?.token ?? null }),
       onState: (next) => {
         if (flowRef.current !== flow) return;
         setState(next);
