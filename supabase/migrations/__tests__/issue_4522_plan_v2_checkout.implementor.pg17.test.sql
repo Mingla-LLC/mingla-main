@@ -106,6 +106,43 @@ BEGIN
   END IF;
 END $$;
 
+-- A-8 (W-1): a trip's start is its stored calendar date (UTC midnight, #4420),
+-- not the trip zone's day. 30 days before a 12 Mar trip is 10 Feb at 09:00
+-- local west of UTC, on UTC, east of UTC, and across New York's DST change;
+-- the plan closes when the departure day begins in the trip zone.
+DO $$
+DECLARE
+  c_plan constant jsonb := '{"v":2,"deposit":{"mode":"amount","amount_minor":30000},"count":3,"final_due_days_before_start":30}';
+  v_case record;
+  v_got jsonb;
+BEGIN
+  FOR v_case IN SELECT * FROM (VALUES
+    ('2027-03-12', 'America/New_York', '2027-02-10T14:00:00Z'),
+    ('2027-03-12', 'Africa/Lagos', '2027-02-10T08:00:00Z'),
+    ('2027-03-12', 'Asia/Tokyo', '2027-02-10T00:00:00Z'),
+    ('2027-03-12', 'UTC', '2027-02-10T09:00:00Z'),
+    ('2027-04-15', 'America/New_York', '2027-03-16T13:00:00Z')
+  ) v(start_date, tz, final_due) LOOP
+    v_got := public.issue_4522_plan_v2_schedule(120000, 1, c_plan,
+      (v_case.start_date || 'T00:00:00Z')::timestamptz, v_case.tz, '2026-11-23T15:00:00Z', 0, 0);
+    IF v_got->>'final_due_at' IS DISTINCT FROM v_case.final_due
+       OR v_got#>>'{rows,2,due_at}' IS DISTINCT FROM v_case.final_due THEN
+      RAISE EXCEPTION 'A-8 % %: final due %, last row %', v_case.start_date, v_case.tz,
+        v_got->>'final_due_at', v_got#>>'{rows,2,due_at}';
+    END IF;
+  END LOOP;
+  v_got := public.issue_4522_plan_v2_schedule(120000, 1, c_plan,
+    '2027-03-12T00:00:00Z', 'America/New_York', '2027-03-12T01:00:00Z', 0, 0);
+  IF v_got->>'availability' <> 'full_window' THEN
+    RAISE EXCEPTION 'A-8 the evening before departure (New York) is not closed, got %', v_got->>'availability';
+  END IF;
+  v_got := public.issue_4522_plan_v2_schedule(120000, 1, c_plan,
+    '2027-03-12T00:00:00Z', 'America/New_York', '2027-03-12T05:00:00Z', 0, 0);
+  IF v_got->>'availability' <> 'closed' THEN
+    RAISE EXCEPTION 'A-8 departure day (New York) is closed, got %', v_got->>'availability';
+  END IF;
+END $$;
+
 -------------------------------------------------------------------------------
 -- B. Parity with the TS mirror: 200 seeded cases (MINSTD, seed 4522) hashed.
 --    packages/offering-rendering/__tests__/issue_4522_trip_plan_v2_parity
@@ -169,7 +206,7 @@ BEGIN
   v_digest := md5(array_to_string(v_out, E'\n'));
   SELECT count(*) INTO v_rows FROM unnest(v_out) l WHERE l LIKE '%|plan|%';
   RAISE NOTICE 'ISSUE-4522 parity digest % (% of 200 cases took a plan)', v_digest, v_rows;
-  IF v_digest IS DISTINCT FROM 'ce9b99cb5f97b4e91a342a43b505f2a5' THEN
+  IF v_digest IS DISTINCT FROM '342cb624b2008d433818c99589f86866' THEN
     RAISE EXCEPTION 'B-1 parity digest moved: % (first lines: %)', v_digest, array_to_string(v_out[1:3], ' / ');
   END IF;
   IF v_rows < 40 THEN

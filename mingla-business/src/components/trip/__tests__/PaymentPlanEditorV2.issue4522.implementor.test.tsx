@@ -346,3 +346,32 @@ describe("#4522 S-17 the late-booking line is singular for one payment", () => {
     expect(line).not.toContain("1 payments");
   });
 });
+
+// issue #4522 W-1 — the host preview books its simulated traveler on the trip's
+// CALENDAR days (start stored as UTC midnight, #4420), in the trip zone. It
+// used `start - N days`: the previous evening west of UTC, so a New York
+// preview showed every date a day early (Dec 18 / Jan 14 / Feb 9).
+describe("#4522 W-1 — preview dates are the server's dates", () => {
+  test("a New York trip on 12 Mar: 60 days before books on 11 Jan; the final row is 10 Feb", async () => {
+    const { previewBookedAt } = await import("../PaymentPlanPreview");
+    const { computeTripPlanV2Schedule } = await import(
+      "../../../../../packages/offering-rendering/tripPlanV2Math"
+    );
+    const start = new Date("2027-03-12T00:00:00Z");
+    const booked = previewBookedAt(start, 60, 109, "America/New_York");
+    expect(booked.toISOString()).toBe("2027-01-11T17:00:00.000Z");
+    const schedule = computeTripPlanV2Schedule({
+      lineNetMinor: 120_000,
+      units: 1,
+      plan: { v: 2, deposit: { mode: "amount", amount_minor: 30_000 }, count: 3, final_due_days_before_start: 30 },
+      tripStartAt: start,
+      timeZone: "America/New_York",
+      bookedAt: previewBookedAt(start, 109, 109, "America/New_York", Date.parse("2026-11-23T15:00:00Z")),
+    });
+    expect(schedule.rows.map((row) => row.due_at)).toEqual([
+      "2026-12-19T14:00:00Z",
+      "2027-01-15T14:00:00Z",
+      "2027-02-10T14:00:00Z",
+    ]);
+  });
+});

@@ -77,7 +77,7 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
         setProblem("That deadline is not a real date and time.");
         return;
       }
-      const err = deadlineProblem(iso, tripStartIso, Date.now());
+      const err = deadlineProblem(iso, tripStartIso, Date.now(), zone);
       if (err !== null) {
         setProblem(err);
         return;

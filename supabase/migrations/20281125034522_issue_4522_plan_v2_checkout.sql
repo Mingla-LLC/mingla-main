@@ -69,6 +69,8 @@ DECLARE
   v_t bigint;
   v_count integer;
   v_auto boolean;
+  v_sdate date;
+  v_start_local timestamptz;
   v_fdate date;
   v_bdate date;
   v_days integer;
@@ -103,15 +105,20 @@ BEGIN
   v_t := v_p - v_d0;
   v_count := (p_plan->>'count')::integer;
   v_auto := COALESCE((p_plan->>'auto_adjust')::boolean, true);
-  v_fdate := (p_trip_start_at AT TIME ZONE v_tz)::date
-             - (p_plan->>'final_due_days_before_start')::integer;
+  -- W-1: a trip's dates are calendar dates stored as UTC midnight (#4420),
+  -- read as the stored Y-M-D at UTC everywhere they are shown. The trip time
+  -- zone gives only the times: the booking day, 09:00 due instants and the
+  -- moment the departure day begins (when the plan closes).
+  v_sdate := (p_trip_start_at AT TIME ZONE 'UTC')::date;
+  v_start_local := v_sdate::timestamp AT TIME ZONE v_tz;
+  v_fdate := v_sdate - (p_plan->>'final_due_days_before_start')::integer;
   v_final_at := (v_fdate + time '09:00') AT TIME ZONE v_tz;
   v_bdate := (p_booked_at AT TIME ZONE v_tz)::date;
   v_days := v_fdate - v_bdate;
 
   IF v_t + v_as = 0 THEN
     v_avail := 'full_deposit';
-  ELSIF p_booked_at >= p_trip_start_at THEN
+  ELSIF p_booked_at >= v_start_local THEN
     v_avail := 'closed';
   ELSIF v_days < 7 THEN
     v_avail := 'full_window';
@@ -209,7 +216,7 @@ $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint,bigint) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint,bigint) TO service_role;
 COMMENT ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint,bigint) IS
-  'Issue #4522 §6.1: one cart line''s v2 schedule from the booking day to the final due date (09:00 in the trip time zone, rows at least 7 days apart, whole-unit split, last row absorbs). Custom amounts are against the list price (p_line_list_minor) and scale under a discount; custom rows that cannot hold degrade the line to full_only. availability: plan | full_deposit | full_window | full_only | closed.';
+  'Issue #4522 §6.1: one cart line''s v2 schedule from the booking day to the final due date (the trip''s start is its stored calendar date at UTC, #4420; 09:00 in the trip time zone, rows at least 7 days apart, whole-unit split, last row absorbs). Custom amounts are against the list price (p_line_list_minor) and scale under a discount; custom rows that cannot hold degrade the line to full_only. availability: plan | full_deposit | full_window | full_only | closed.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Does this cart carry a v2 plan line the server can run?

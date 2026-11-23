@@ -181,7 +181,7 @@ BEGIN
     (SELECT string_agg(l, ' / ') FROM unnest(v_out) l WHERE l LIKE '%|ERR:%'));
   PERFORM pg_temp.check('F3 the cases exercise discounted custom plans', v_scaled >= 100 AND v_plans >= 150,
     v_scaled || ' scaled, ' || v_plans || ' plans');
-  PERFORM pg_temp.check('F3 parity digest', v_digest = 'c957a5ec0994457a7b719fd1a8ea4fde', v_digest);
+  PERFORM pg_temp.check('F3 parity digest', v_digest = '4cfb26a24c1d6a321f2ef953c849841a', v_digest);
 END $$;
 
 ROLLBACK;

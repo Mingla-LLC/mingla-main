@@ -11,6 +11,7 @@ import {
 
 import {
   computeTripPlanV2Schedule,
+  tripCalendarDayAt,
   type TripPaymentPlanV2,
 } from "../../../../packages/offering-rendering/tripPlanV2Math";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
@@ -32,6 +33,23 @@ const CHIPS = [60, 38, 20] as const;
 
 const clampLead = (value: number): number =>
   Math.max(PREVIEW_MIN_DAYS, Math.min(PREVIEW_MAX_DAYS, Math.round(value)));
+
+/**
+ * issue #4522 W-1 — the simulated booking instant. "Today" books now, as the
+ * server quote does; a lead of N days books at noon in the trip zone on the
+ * trip's start calendar date (its stored UTC Y-M-D, #4420) minus N. Never
+ * `start - N days`: the start is UTC midnight, the previous evening west of UTC.
+ */
+export const previewBookedAt = (
+  start: Date,
+  leadDays: number,
+  todayLead: number,
+  timeZone: string,
+  nowMs: number = Date.now(),
+): Date =>
+  leadDays === todayLead
+    ? new Date(nowMs)
+    : tripCalendarDayAt(start, leadDays, timeZone, 12);
 
 function formatMoney(amountMinor: number, currency: string): string {
   try {
@@ -88,12 +106,12 @@ export const PaymentPlanPreview: React.FC<PaymentPlanPreviewProps> = ({
         plan,
         tripStartAt: start,
         timeZone: tz,
-        bookedAt: new Date(start.getTime() - leadDays * DAY_MS),
+        bookedAt: previewBookedAt(start, leadDays, todayLead, tz),
       });
     } catch {
       return null;
     }
-  }, [leadDays, plan, start, totalAmountMinor, tz]);
+  }, [leadDays, plan, start, todayLead, totalAmountMinor, tz]);
 
   const chooseFromTrack = (locationX: number): void => {
     const ratio = Math.max(0, Math.min(1, locationX / Math.max(1, trackWidth)));

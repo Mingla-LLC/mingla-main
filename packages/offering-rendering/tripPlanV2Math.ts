@@ -10,7 +10,8 @@
  * digest of the SQL outputs byte for byte.
  *
  * All amounts are integers in minor units (kobo, cents). Days are calendar days
- * in the trip's time zone; every due instant is 09:00 local.
+ * in the trip's time zone; every due instant is 09:00 local. The trip's start
+ * is its stored calendar date (UTC Y-M-D, #4420), not the zone's day (W-1).
  *
  * Pure and dependency-free (I-MOR-0827-PACKAGE-ISOLATION).
  */
@@ -158,10 +159,17 @@ const civilFromDayNumber = (day: number): CivilDate => {
 const localDay = (instant: Date, timeZone: string): number =>
   civilDayNumber(zonedParts(instant.getTime(), timeZone));
 
-/** The UTC instant of 09:00 local time on a local day (PostgreSQL semantics). */
-const nineAmLocal = (day: number, timeZone: string): number => {
+/**
+ * issue #4522 W-1 — a trip's start is a CALENDAR DATE stored as UTC midnight
+ * (#4420): its day is the stored Y-M-D at UTC, never the trip zone's day.
+ */
+const calendarDay = (instant: Date): number =>
+  Math.floor(instant.getTime() / DAY_MS);
+
+/** The UTC instant of `hour`:00 local time on a local day (PostgreSQL semantics). */
+const wallLocal = (day: number, timeZone: string, hour: number): number => {
   const civil = civilFromDayNumber(day);
-  const wall = Date.UTC(civil.y, civil.m - 1, civil.d, 9, 0, 0);
+  const wall = Date.UTC(civil.y, civil.m - 1, civil.d, hour, 0, 0);
   const offsetAt = (instantMs: number): number => {
     const p = zonedParts(instantMs, timeZone);
     return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi, p.s) - instantMs;
@@ -170,6 +178,26 @@ const nineAmLocal = (day: number, timeZone: string): number => {
   guess = wall - offsetAt(guess);
   return guess;
 };
+
+/** The UTC instant of 09:00 local time on a local day (PostgreSQL semantics). */
+const nineAmLocal = (day: number, timeZone: string): number =>
+  wallLocal(day, timeZone, 9);
+
+/**
+ * issue #4522 W-1 — the instant of `hour`:00 in `timeZone` on the trip start's
+ * calendar date minus `daysBefore` (the start read as its UTC Y-M-D, #4420).
+ * The host preview books its simulated traveler with it.
+ */
+export function tripCalendarDayAt(
+  tripStartAt: Date,
+  daysBefore: number,
+  timeZone: string,
+  hour: number,
+): Date {
+  return new Date(
+    wallLocal(calendarDay(tripStartAt) - daysBefore, timeZone || "UTC", hour),
+  );
+}
 
 const isoSeconds = (instantMs: number): string =>
   new Date(instantMs).toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -220,8 +248,10 @@ export function computeTripPlanV2Schedule(
   const t = p - d0;
   const count = plan.count;
   const auto = plan.auto_adjust ?? true;
-  const fDay = localDay(input.tripStartAt, tz) -
-    plan.final_due_days_before_start;
+  // W-1: the start's calendar date (UTC Y-M-D); the zone gives the times.
+  const sDay = calendarDay(input.tripStartAt);
+  const startLocal = wallLocal(sDay, tz, 0);
+  const fDay = sDay - plan.final_due_days_before_start;
   const finalAt = nineAmLocal(fDay, tz);
   const bDay = localDay(input.bookedAt, tz);
   const days = fDay - bDay;
@@ -229,7 +259,7 @@ export function computeTripPlanV2Schedule(
   let availability: TripPlanV2Availability;
   let n = 0;
   if (t + addonSpread === 0) availability = "full_deposit";
-  else if (input.bookedAt.getTime() >= input.tripStartAt.getTime()) {
+  else if (input.bookedAt.getTime() >= startLocal) {
     availability = "closed";
   } else if (days < 7) availability = "full_window";
   else if (floorDiv(days, 7) < count && !auto) availability = "full_only";

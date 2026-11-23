@@ -592,6 +592,23 @@ const minusOneMinute = (time: string): string => {
 };
 
 /**
+ * issue #4522 W-1 — the instant a trip's departure day begins. A trip's dates
+ * are calendar dates stored as UTC midnight (#4420); its start day is that
+ * stored Y-M-D, and the day begins at 00:00 in the trip's zone. Reading the
+ * stored instant in the zone instead pulls a New York trip back to the
+ * previous evening (and a Tokyo trip forward to 09:00).
+ */
+export function tripDepartureStartIso(
+  tripStartIso: string | null,
+  timeZone: string,
+): string | null {
+  if (tripStartIso === null) return null;
+  const ms = Date.parse(tripStartIso);
+  if (!Number.isFinite(ms)) return null;
+  return instantFromWall(new Date(ms).toISOString().slice(0, 10), "00:00", timeZone);
+}
+
+/**
  * #4523 S-8 — what the booking-deadline picker may offer, in the trip's zone:
  * from now to just before the trip starts. On the start day only times
  * before the start are offered (a trip starting at 00:00 ends the choice the
@@ -607,7 +624,8 @@ export function deadlineBounds(
   const min = today?.date ?? now.toISOString().slice(0, 10);
   const bounds: { min: string; minTime?: string; max?: string; maxTime?: string } = { min };
   if (today !== null) bounds.minTime = today.time;
-  const start = tripStartIso === null ? null : wallInZone(tripStartIso, timeZone);
+  const departure = tripDepartureStartIso(tripStartIso, timeZone);
+  const start = departure === null ? null : wallInZone(departure, timeZone);
   if (start !== null) {
     if (start.time === "00:00") {
       bounds.max = shiftDay(start.date, -1);
@@ -624,12 +642,14 @@ export function deadlineProblem(
   deadlineIso: string,
   tripStartIso: string | null,
   now: number,
+  timeZone = "UTC",
 ): string | null {
   const ms = Date.parse(deadlineIso);
   if (!Number.isFinite(ms)) return "That deadline is not a real date and time.";
   if (ms <= now) return "Deadline must be in the future.";
-  if (tripStartIso !== null) {
-    const start = Date.parse(tripStartIso);
+  const departure = tripDepartureStartIso(tripStartIso, timeZone);
+  if (departure !== null) {
+    const start = Date.parse(departure);
     if (Number.isFinite(start) && ms >= start) return "Deadline must be before trip starts.";
   }
   return null;
