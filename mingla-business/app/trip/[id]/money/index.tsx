@@ -383,7 +383,7 @@ export default function TripMoneyRoute(): React.ReactElement {
       rowsByOrder.set(row.orderId, arr);
     }
     const statusByOrder = new Map(
-      ordersQuery.data.map((order) => [order.id, order.paymentStatus]),
+      ordersQuery.data.map((order) => [order.id, order]),
     );
     const installmentRows = [...rowsByOrder.values()].map((orderRows) => {
       const balance = balancesByOrder.get(orderRows[0].orderId);
@@ -394,7 +394,8 @@ export default function TripMoneyRoute(): React.ReactElement {
           : withServerPlanFigures(deriveInstallmentRow(orderRows), balance);
       // issue #4522 X-7 — a refunded or cancelled order shows that, not
       // "Collected · paid in full", and offers no charge, reminder or cancel.
-      const closed = closedOrderState(statusByOrder.get(derived.orderId));
+      const orderRow = statusByOrder.get(derived.orderId);
+      const closed = closedOrderState(orderRow?.paymentStatus, orderRow?.cancelledAt);
       return closed === null
         ? derived
         : { ...derived, closed, lastChargeStatus: closed, nextInstallment: null };

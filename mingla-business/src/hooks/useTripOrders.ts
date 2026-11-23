@@ -23,6 +23,12 @@ export interface TripOrderRow {
   buyerEmail: string | null;
   buyerPhone: string | null;
   paymentStatus: string;
+  /**
+   * issue #4522 G-8 — when the booking was cancelled (orders.cancelled_at). A
+   * card order cancelled with a full refund keeps payment_status
+   * 'partial_refund', so this is what says "Cancelled".
+   */
+  cancelledAt?: string | null;
   totalCents: number;
   currency: string;
   createdAt: string;
@@ -42,6 +48,7 @@ interface OrderRow {
   buyer_email: string | null;
   buyer_phone: string | null;
   payment_status: string;
+  cancelled_at: string | null;
   total_cents: number;
   currency: string;
   created_at: string;
@@ -68,7 +75,7 @@ export const useTripOrders = (
       const { data, error } = await supabase
         .from("orders")
         .select(
-          "id, buyer_name, buyer_email, buyer_phone, payment_status, total_cents, currency, created_at, intake_form_data",
+          "id, buyer_name, buyer_email, buyer_phone, payment_status, cancelled_at, total_cents, currency, created_at, intake_form_data",
         )
         .eq("event_id", eventId)
         .order("created_at", { ascending: false });
@@ -79,6 +86,7 @@ export const useTripOrders = (
         buyerEmail: row.buyer_email,
         buyerPhone: row.buyer_phone,
         paymentStatus: row.payment_status,
+        cancelledAt: row.cancelled_at ?? null,
         totalCents: row.total_cents,
         currency: row.currency,
         createdAt: row.created_at,

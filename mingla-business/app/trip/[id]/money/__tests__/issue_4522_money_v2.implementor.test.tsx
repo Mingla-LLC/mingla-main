@@ -388,6 +388,38 @@ describe("#4522 S-2 host money screen, plan-v2 orders", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
+  // issue #4522 G-8 — a card order the host cancelled and refunded in full keeps
+  // payment_status 'partial_refund'; only its cancel time says it is cancelled.
+  // Real shape: the order stores the deposit as its total ($200 of $800).
+  test.each([1, 2])("a cancelled, fully refunded plan-v%s card order shows Cancelled, with no reminder line", (planVersion) => {
+    installments = [
+      row({ id: "g8a", status: "refunded", amountCents: 20000, amountChargedCents: 20000, orderTotalCents: 20000, refundedAmountCents: 20000, collectedAt: "2026-11-20T09:00:00Z" }),
+      row({ id: "g8b", ordinal: 2, status: "cancelled", amountCents: 20000, amountChargedCents: 20000, orderTotalCents: 20000, dueAt: "2027-01-15T09:00:00Z" }),
+    ];
+    orders = [{ id: ORDER, buyerName: "C24S Buyer", buyerEmail: "c24s-buyer@example.test", buyerPhone: null,
+      paymentStatus: "partial_refund", cancelledAt: "2026-11-22T10:00:00Z", totalCents: 20000, currency: "USD",
+      createdAt: "2026-11-20T09:00:00Z", intakeFormData: null }];
+    balances = [host(rawBalance({
+      planVersion,
+      depositMinor: 20000,
+      paidMinor: 40000,
+      remainingMinor: 0,
+      totalMinor: 40000,
+      canPayAnyAmount: false,
+      minPaymentMinor: null,
+      maxPartialMinor: null,
+      nextPayment: null,
+    }))];
+    const tree = render();
+    expect(findToggleLabel(tree)).toContain("Cancelled");
+    press(tree, findToggleLabel(tree));
+    const out = text(tree);
+    expect(out).not.toContain("No reminder needed");
+    expect(out).not.toContain("Collected");
+    expect(charge(tree)).toBeUndefined();
+    TestRenderer.act(() => tree.unmount());
+  });
+
   test("a live plan-v2 order still offers Cancel & refund", () => {
     installments = [row({ id: "l1", amountCents: 90000, amountChargedCents: 90000 })];
     orders = [{ id: ORDER, buyerName: "C24S Buyer", buyerEmail: "c24s-buyer@example.test", buyerPhone: null,

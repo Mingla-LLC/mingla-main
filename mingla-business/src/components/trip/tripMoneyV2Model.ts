@@ -71,10 +71,19 @@ export const TRIP_MONEY_V2_BELOW_MINIMUM_COPY =
 /** issue #4522 X-8 — an overpayment refund stopped for Mingla support (needs ops). */
 export const TRIP_MONEY_V2_NEEDS_OPS_COPY = "Mingla support is handling the refund";
 
-/** issue #4522 X-7 — a refunded or cancelled order, from its payment status. */
-export function closedOrderState(paymentStatus: string | undefined): "refunded" | "cancelled" | null {
+/**
+ * issue #4522 X-7 / G-8 — a refunded or cancelled order. The payment status
+ * says it for a second-provider order; a card order the host cancelled keeps
+ * 'partial_refund' even after every part was refunded, so its cancel time
+ * (orders.cancelled_at) says "Cancelled" for it, old plan and new plan alike.
+ */
+export function closedOrderState(
+  paymentStatus: string | undefined,
+  cancelledAt?: string | null,
+): "refunded" | "cancelled" | null {
   if (paymentStatus === "refunded") return "refunded";
   if (paymentStatus === "cancelled") return "cancelled";
+  if (typeof cancelledAt === "string" && cancelledAt.length > 0) return "cancelled";
   return null;
 }
 
