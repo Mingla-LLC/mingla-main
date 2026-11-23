@@ -45,10 +45,20 @@ export const teamMemberIdentity = (
   };
 };
 
+/**
+ * #4579 — the server sends Mingla admins added automatically as ONE row with
+ * entry_kind 'mingla_team' and no user id, email or avatar. It is never a
+ * person: it is drawn by the Mingla section (minglaTeamService), not here.
+ */
+export const isMinglaTeamDirectoryRow = (row: unknown): boolean =>
+  typeof row === "object" && row !== null &&
+  (row as Record<string, unknown>).entry_kind === "mingla_team";
+
 export const parseBrandTeamDirectory = (data: unknown): BrandTeamDirectoryEntry[] => {
   if (!Array.isArray(data)) return [];
   return data.flatMap((row: unknown) => {
     if (typeof row !== "object" || row === null) return [];
+    if (isMinglaTeamDirectoryRow(row)) return [];
     const r = row as Record<string, unknown>;
     if (typeof r.user_id !== "string" || r.user_id.length === 0) return [];
     const s = (v: unknown): string | null => (typeof v === "string" ? v : null);

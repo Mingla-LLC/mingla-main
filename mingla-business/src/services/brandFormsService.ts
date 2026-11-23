@@ -1105,6 +1105,8 @@ export async function fetchGuestAnswers(
 export interface DoorReadRow {
   at: string;
   actorName: string | null;
+  /** #4579 — the staff member is a Mingla admin added to the brand (shown with the Mingla mark). */
+  actorIsMinglaTeam?: boolean;
   guestName: string | null;
   via: string | null;
   result: string | null;
@@ -1117,6 +1119,7 @@ export function parseDoorReads(data: unknown): DoorReadRow[] {
     return {
       at: str(r.at, "doorReads.at"),
       actorName: strOrNull(r.actorName),
+      actorIsMinglaTeam: r.actorIsMinglaTeam === true,
       guestName: strOrNull(r.guestName),
       via: strOrNull(r.via),
       result: strOrNull(r.result),

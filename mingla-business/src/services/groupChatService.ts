@@ -48,6 +48,8 @@ export interface EventGroupMessage {
   /** #4459: who on the team wrote a brand post (team-only read). */
   author_id?: string | null;
   author_name?: string | null;
+  /** #4579 — the brand post's author is a Mingla admin added to the brand. */
+  author_is_mingla_team?: boolean;
   reply_to_id: string | null;
   related_message_ids: string[];
 }
@@ -176,22 +178,25 @@ export async function listMessages(
   // wrote it); the team reads the author from brand_guest_post_authors.
   const brandIds = messages.filter((m) => m.sender_kind === "brand").map((m) => m.id);
   if (brandIds.length === 0) return { messages, error: null };
-  const { data: authors, error: authorsError } = await supabase
-    .from("brand_guest_post_authors")
-    .select("message_id, author_id")
-    .in("message_id", brandIds);
+  // #4579: names come from the server (issue_4579_brand_guest_post_authors), so a
+  // Mingla admin added to the brand is named by their public name and never by
+  // an email or handle; the client no longer reads profiles for this.
+  const { data: authors, error: authorsError } = await supabase.rpc("issue_4579_brand_guest_post_authors", {
+    p_conversation_id: conversationId,
+    p_message_ids: brandIds,
+  });
   if (authorsError) return { messages, error: null };
-  const authorIds = [...new Set(((authors ?? []) as Array<{ author_id: string | null }>).map((a) => a.author_id).filter((id): id is string => Boolean(id)))];
-  const { data: profiles } = authorIds.length > 0
-    ? await supabase.from("profiles").select("id, display_name, first_name, username").in("id", authorIds)
-    : { data: [] as Array<Record<string, unknown>> };
-  const names = new Map(((profiles ?? []) as Array<{ id: string; display_name?: string | null; first_name?: string | null; username?: string | null }>)
-    .map((p) => [p.id, p.display_name || p.first_name || p.username || "A teammate"]));
-  const byMessage = new Map(((authors ?? []) as Array<{ message_id: string; author_id: string | null }>).map((a) => [a.message_id, a.author_id]));
+  const byMessage = new Map(
+    ((authors ?? []) as Array<{ message_id: string; author_id: string | null; author_name: string | null; is_mingla_team?: boolean | null }>)
+      .filter((a) => Boolean(a.author_id))
+      .map((a) => [a.message_id, a]),
+  );
   return {
     messages: messages.map((m) => {
-      const author = byMessage.get(m.id) ?? null;
-      return author ? { ...m, author_id: author, author_name: names.get(author) ?? "A teammate" } : m;
+      const author = byMessage.get(m.id);
+      return author
+        ? { ...m, author_id: author.author_id, author_name: author.author_name ?? "A teammate", author_is_mingla_team: author.is_mingla_team === true }
+        : m;
     }),
     error: null,
   };

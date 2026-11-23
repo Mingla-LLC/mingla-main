@@ -16,6 +16,7 @@ import { useDoorReads } from "../../hooks/useBrandForms";
 import type { DoorReadRow } from "../../services/brandFormsService";
 import { logWhen } from "../../utils/formRequestLog";
 import { Button } from "../ui/Button";
+import { MinglaTeamMark } from "../team/MinglaTeamMark";
 import { DOOR_READS_COPY as COPY } from "./brandFormsCopy";
 import { errorSentence } from "./useFormsToast";
 
@@ -58,9 +59,17 @@ export const DoorReadLog: React.FC<DoorReadLogProps> = ({ eventId }) => {
         </Text>
       ) : (
         reads.data.map((row, i) => (
-          <Text key={`${row.at}-${i}`} style={styles.line}>
-            {doorReadLine(row)}
-          </Text>
+          // #4579: a Mingla admin added to the brand carries the Mingla mark.
+          row.actorIsMinglaTeam === true ? (
+            <View key={`${row.at}-${i}`} style={styles.markedLine} testID="door-read-log-mingla">
+              <MinglaTeamMark size={14} />
+              <Text style={[styles.line, styles.markedText]}>{doorReadLine(row)}</Text>
+            </View>
+          ) : (
+            <Text key={`${row.at}-${i}`} style={styles.line}>
+              {doorReadLine(row)}
+            </Text>
+          )
         ))
       )}
     </View>
@@ -78,6 +87,8 @@ const styles = StyleSheet.create({
   },
   title: { ...type.row, color: color.text1 },
   line: { ...type.small, color: color.text1 },
+  markedLine: { flexDirection: "row", alignItems: "center", gap: space[1] },
+  markedText: { flexShrink: 1 },
   muted: { ...type.small, color: color.text3 },
   warn: { ...type.small, color: color.warningText },
 });
