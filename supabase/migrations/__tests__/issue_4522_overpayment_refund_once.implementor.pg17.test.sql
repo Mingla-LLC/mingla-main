@@ -28,6 +28,8 @@
 --         unmatched webhook / listed refund for a known overpayment) is
 --         recorded once and alerts ops once with what was owed back and what
 --         was refunded; the recorded refund completing keeps it with ops.
+--   T6-1  an open recorded refund after a refund past the amount is still
+--         checked (never re-sent, never re-alerted); ops can act once it ends.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
@@ -468,6 +470,51 @@ BEGIN
   v := public.issue_4522_overpayment_refund_event('paystack', '9004', v_note_ref, 500000, 'succeeded', op, 1, true);
   PERFORM pg_temp.check('T5-1 ... its later and duplicate webhooks: no second alert',
     jsonb_array_length(v->'results') = 0 AND jsonb_array_length((pg_temp.op(op)).detail->'over_refunded') = 1, v::text);
+END
+$t$;
+
+-- ── T6 (sixth rework): after a refund past the amount ───────────────────
+--   T6-1 the recorded refund still open is checked again, never re-sent,
+--        never re-alerted; once it resolves ops can act.
+--   T6-2 a succeeded extra refund counts as returned: an ops retry after the
+--        recorded refund failed or was reversed sends nothing.
+--   T6-4 an extra refund that later fails stops counting (no second alert).
+DO $t$
+DECLARE
+  op uuid; v jsonb; v_raised boolean := false;
+  r6 uuid := '4522c300-0000-4000-8000-0000000000b6';
+  r7 uuid := '4522c300-0000-4000-8000-0000000000b7';
+  r8 uuid := '4522c300-0000-4000-8000-0000000000b8';
+  r9 uuid := '4522c300-0000-4000-8000-0000000000b9';
+BEGIN
+  -- T6-1
+  op := pg_temp.ng_overpayment(r6, 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9061');
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9062');
+  PERFORM pg_temp.check('T6-1 stopped for refunded-more with its recorded refund pending: still due for a check',
+    (pg_temp.op(op)).needs_ops_reason = 'provider_refunded_more'
+    AND jsonb_array_length(public.issue_4522_overpayments_due(r6, now(), 5)) = 1
+    AND public.issue_4522_overpayments_due(NULL, now() + interval '6 minutes', 1000)
+          @> jsonb_build_array(jsonb_build_object('overpaymentId', op)));
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T6-1 ... the sweep reads the recorded refund by its id: no new refund, no new alert',
+    v->>'action' = 'verify' AND v->>'alertOps' = 'false' AND jsonb_array_length(v->'attempts') = 1
+    AND v->'attempts'->0->>'providerRefundId' = '9061' AND pg_temp.n_attempts(op) = 1, v::text);
+  BEGIN
+    PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN v_raised := true;
+  END;
+  PERFORM pg_temp.check('T6-1 ... ops retry is refused while it is pending', v_raised);
+  v := public.issue_4522_finish_overpayment_refund(op, 1, 'succeeded', '9061');
+  PERFORM pg_temp.check('T6-1 ... it completes: stays with ops, no alert, no longer due',
+    (pg_temp.op(op)).state = 'needs_ops' AND v->>'alertOps' = 'false'
+    AND jsonb_array_length(public.issue_4522_overpayments_due(r6, now(), 5)) = 0, v::text);
+  v := public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T6-1 ... ops retry is accepted and closes it without a new refund',
+    (pg_temp.op(op)).state = 'refunded' AND pg_temp.n_attempts(op) = 1, v::text);
+
 END
 $t$;
 

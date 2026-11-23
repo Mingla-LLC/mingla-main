@@ -832,7 +832,11 @@ REVOKE ALL ON FUNCTION public.issue_4522_overpayment_committed_minor(uuid) FROM 
 -- The overpayments that need the edge's attention now: new ones, failed
 -- ones whose retry is due, and ones with a refund at the provider whose
 -- answer is older than a few minutes (checked by its refund id). needs_ops
--- is never listed: only an ops action or a matched provider refund moves it.
+-- is never listed (only an ops action or a matched provider refund moves
+-- it), except T6-1: one stopped for 'provider_refunded_more' whose recorded
+-- refund is still open at the provider is checked by that refund's id as
+-- when refund_pending (no new refund, no new alert), so ops can act once it
+-- resolves.
 CREATE FUNCTION public.issue_4522_overpayments_due(
   p_order_id uuid DEFAULT NULL,
   p_now timestamptz DEFAULT now(),
@@ -849,7 +853,14 @@ AS $fn$
            WHERE (p_order_id IS NULL OR order_id = p_order_id)
              AND (state = 'held'
                   OR (state = 'refund_failed' AND COALESCE(next_attempt_at, p_now) <= p_now)
-                  OR (state = 'refund_pending' AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')))
+                  OR (state = 'refund_pending' AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes'))
+                  OR (state = 'needs_ops' AND needs_ops_reason = 'provider_refunded_more'
+                      AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')
+                      AND EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                                   WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending'))
+                      AND NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                                       WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending')
+                                         AND a.provider_refund_id IS NULL)))
            ORDER BY created_at, id
            LIMIT greatest(COALESCE(p_limit, 100), 1)) op
 $fn$;
@@ -1212,7 +1223,8 @@ BEGIN
                              THEN left(COALESCE(p_error, p_outcome), 300) ELSE last_error END,
            updated_at = p_now
      WHERE id = v_att.id;
-    UPDATE public.order_overpayments SET updated_at = p_now WHERE id = v_op.id AND state = 'refund_pending';
+    UPDATE public.order_overpayments SET updated_at = p_now
+     WHERE id = v_op.id AND (state = 'refund_pending' OR needs_ops_reason = 'provider_refunded_more');
     RETURN jsonb_build_object('ok', true, 'changed', false, 'state', v_op.state, 'attemptNo', v_att.attempt_no,
       'attemptState', v_prev);
   END IF;
