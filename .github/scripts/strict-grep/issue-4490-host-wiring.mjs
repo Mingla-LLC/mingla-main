@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the station rail routing) keeps its load-bearing lines.
+// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, the station rail routing) keeps its load-bearing lines.
 /**
  * #4490 W3 fix 1 — the structural pins of eight #4490 mingla-business jest
  * suites, moved here as the additive strict-grep gate that
@@ -341,6 +341,24 @@ const PINS = [
       'kind: "kitchen_ticket", venueId, orderId: waitingRound.orderId',
     ],
     why: "the Till shows Ready to take out with Picked up, and Nobody has accepted with Print ticket (§11 T5/T7)",
+  },
+  {
+    id: "till-iphone-one-modal-per-presenter",
+    file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
+    contains: [
+      "const nestInBasket = basketSheetsNest(layout, Platform.OS);",
+      "{nestInBasket ? null : basketLaunchedSheets}",
+      'onClose={closeBasket} snapPoint={0.9} testID="till-basket-sheet"',
+      "onPick={openCheckSheet}",
+      "onDismissed={checkActionsGone}",
+      'snapPoint={0.6} onDismissed={onDismissed} testID="till-check-actions-sheet"',
+    ],
+    matches: [
+      /testID="till-basket-sheet">\s*<View style=\{styles\.sheetPad\}>\{basket\}<\/View>[\s\S]{0,600}\{nestInBasket \? basketLaunchedSheets : null\}\s*\{refundIn === "basket" \? refundSheet : null\}\s*<\/Sheet>/,
+      /const basketLaunchedSheets = \(\s*<>\s*<PaymentSheet[\s\S]*?<NameSheet[\s\S]*?<VoidSheet[\s\S]*?<CheckActionsSheet[\s\S]*?<MoveSheet[\s\S]*?<HandoverSheet[\s\S]*?<LineRefundSheet[\s\S]*?<\/>\s*\);/,
+    ],
+    absentMatches: [/<PaymentSheet[\s\S]*<PaymentSheet/, /<RefundSheet[\s\S]*<RefundSheet/, /onPick=\{\(next\) => setCheckSheet\(next\)\}/],
+    why: "on an iPhone the sheets the basket opens present from the basket's own modal, and Move / Hand over / Rename open only once the actions sheet has gone: iOS refuses a second modal from one presenter (O3-S1)",
   },
   {
     id: "till-hears-station-changes",

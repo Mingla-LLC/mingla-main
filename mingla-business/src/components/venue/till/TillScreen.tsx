@@ -18,7 +18,7 @@
  * rotation is O3; this holds at 390, 768, 1024 and 1440.)
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -68,6 +68,14 @@ import { STATION_COPY, stationErrorCopy } from "../station/stationCopy";
 import { runStationAction, StationError } from "../../../services/venueStationService";
 import { ReceiptStep } from "./ReceiptStep";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
+import {
+  basketLaunchedAfterClose,
+  basketSheetsNest,
+  checkSheetGone,
+  pickCheckSheet,
+  refundHost,
+  type TillCheckSheet,
+} from "./tillSheetModel";
 import {
   addToDraft,
   basketRows,
@@ -133,7 +141,23 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const [toast, setToast] = useState<ToastState>(null);
   const [busy, setBusy] = useState(false);
   const [leaveAsk, setLeaveAsk] = useState(false);
-  const [checkSheet, setCheckSheet] = useState<"actions" | "move" | "handover" | "rename" | null>(null);
+  const [checkSheet, setCheckSheet] = useState<TillCheckSheet | null>(null);
+  // #4490 O3-S1: Move / Hand over / Rename open once the actions sheet has gone (iOS).
+  const queuedCheckSheet = useRef<TillCheckSheet | null>(null);
+  const openCheckSheet = useCallback((next: TillCheckSheet): void => {
+    const step = pickCheckSheet(next, Platform.OS);
+    queuedCheckSheet.current = step.queued;
+    setCheckSheet(step.shown);
+  }, []);
+  const closeCheckSheet = useCallback((): void => {
+    queuedCheckSheet.current = null;
+    setCheckSheet(null);
+  }, []);
+  const checkActionsGone = useCallback((): void => {
+    const step = checkSheetGone({ shown: null, queued: queuedCheckSheet.current });
+    queuedCheckSheet.current = null;
+    if (step.shown !== null) setCheckSheet(step.shown);
+  }, []);
   const [lineRefund, setLineRefund] = useState<BasketRow | null>(null);
   const serversQuery = useTillServers(venueId, checkSheet === "actions" || checkSheet === "handover");
 
@@ -242,6 +266,24 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     setPayOpen(false);
     setSaleId(null);
     setDraft([]);
+  };
+
+  // #4490 O3-S1: on an iPhone the basket is a native modal, so every sheet it
+  // opens renders INSIDE it (see tillSheetModel). Closing the basket closes
+  // them with it, so no state says a sheet is open that is not on screen.
+  const nestInBasket = basketSheetsNest(layout, Platform.OS);
+  const closeBasket = (): void => {
+    setBasketSheet(false);
+    const left = basketLaunchedAfterClose(
+      { pay: payOpen, name: nameSheet, voidRow: voidRow !== null, lineRefund: lineRefund !== null, check: checkSheet, refund: refundFor !== null },
+      nestInBasket,
+    );
+    if (!left.pay) setPayOpen(false);
+    if (!left.name) setNameSheet(false);
+    if (!left.voidRow) setVoidRow(null);
+    if (!left.lineRefund) setLineRefund(null);
+    if (left.check === null) closeCheckSheet();
+    if (!left.refund) setRefundFor(null);
   };
 
   // #4490 O3 A2: a 15 s clock for "Not accepted · {n} min" (the server's times).
@@ -562,121 +604,29 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     email: string | null;
   }): Promise<{ sendsLeft: number }> => actions.receipt.mutateAsync({ saleId, ...input });
 
-  return (
-    <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="till-screen">
-      <View style={styles.header}>
-        <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={requestClose} testID="till-back" />
-        <Text style={styles.title} numberOfLines={1}>{catalog?.venueName ?? TILL_COPY.title}</Text>
-        {stationsEntry ? (
-          <Button
-            label={STATION_COPY.openStations}
-            variant="secondary"
-            size="sm"
-            onPress={() => router.push(stationHref(venueId) as never)}
-            testID="till-open-stations"
-          />
-        ) : null}
-        <Button
-          label={`${TILL_COPY.checks} · ${checksQuery.data?.open.length ?? 0}`}
-          variant="secondary"
-          size="sm"
-          onPress={() => setChecksOpen(true)}
-          testID="till-checks-open"
-        />
-      </View>
-      {tabs.length > 1 ? (
-        <Segmented options={tabs} value={activeTab} onChange={(k) => setTab(k)} style={styles.tabs} />
-      ) : null}
-      <View style={[styles.main, layout !== "phone" && styles.mainWide]}>
-        <ScrollView style={styles.grow} contentContainerStyle={styles.catalogScroll}>
-          {catalogBody}
-          {paidPayments.length > 0 ? (
-            <View style={styles.paidList}>
-              {paidPayments.map((p) => (
-                <ListRow
-                  key={p.id}
-                  title={`${p.method === "cash" ? TILL_COPY.cash : p.method === "own_machine" ? TILL_COPY.ownMachine : paidLabel(p)} · ${money(p.amountMinor + p.tipMinor)}`}
-                  subtitle={p.reference}
-                  trailing={
-                    <View style={styles.paidActions}>
-                      <Button label={TILL_COPY.sendReceipt} variant="secondary" size="sm" onPress={() => setReceiptFor(p.id)}
-                        testID={`till-receipt-open-${p.id}`} />
-                      {catalog?.canManageMoney === true && p.state !== "refunded" ? (
-                        <Button label={TILL_COPY.refund} variant="secondary" size="sm" onPress={() => setRefundFor(p.id)} />
-                      ) : null}
-                    </View>
-                  }
-                />
-              ))}
-            </View>
-          ) : null}
-        </ScrollView>
-        {layout !== "phone" ? <View style={styles.side}>{basket}</View> : null}
-      </View>
-      {layout === "phone" ? (
-        <View style={styles.bottomBar}>
-          <Pressable accessibilityRole="button" onPress={() => setBasketSheet(true)} style={styles.bottomInfo} testID="till-basket-open">
-            <Text style={styles.h3}>{`${itemCount} · ${ready && sale !== null ? money(sale.remainingMinor) : "--"}`}</Text>
-          </Pressable>
-          <Button label={payLabel} variant="primary" size="md" disabled={nothingOnCheck || busy}
-            onPress={() => setBasketSheet(true)} testID="till-bar-pay" />
-        </View>
-      ) : null}
-
-      {layout === "phone" ? (
-        <Sheet visible={basketSheet} onClose={() => setBasketSheet(false)} snapPoint={0.9} testID="till-basket-sheet">
-          <View style={styles.sheetPad}>{basket}</View>
-        </Sheet>
-      ) : null}
-
-      <ChoicesSheet item={choicesFor} currency={currency} onClose={() => setChoicesFor(null)}
-        onAdd={(line) => {
-          setDraft((d) => addToDraft(d, line));
-          setChoicesFor(null);
-        }} />
-
-      <OfferSheet
-        state={offerSheet}
-        currency={currency}
-        busy={busy}
-        onChange={setOfferSheet}
-        onClose={() => setOfferSheet(null)}
-        onAdd={(lines, guestListEntryId) =>
-          void run(async () => {
-            if (offerSheet === null) return;
-            try {
-              const current = await ensureSale();
-              await actions.addOffer.mutateAsync({
-                saleId: current.id,
-                offeringId: offerSheet.offer.id,
-                lines,
-                guestListEntryId,
-                idempotencyKey: `offer:${randomId()}`,
-                expectedVersion: current.version,
-              });
-              setOfferSheet(null);
-            } catch (err) {
-              fail(err);
-            }
-          })
-        }
-      />
-
-      <ChecksSheet
-        visible={checksOpen}
-        checks={checksQuery.data ?? null}
-        loading={checksQuery.isLoading}
-        currency={currency}
-        onClose={() => setChecksOpen(false)}
-        onPick={(id) => {
-          setSaleId(id);
-          setDraft([]);
-          setChecksOpen(false);
+  // #4490 O3-S1: the sheets the basket opens (Pay, Save check, Void, line refund,
+  // the check's actions). On an iPhone they render inside the basket's Sheet.
+  const basketLaunchedSheets = (
+    <>
+      <PaymentSheet
+        visible={payOpen}
+        sale={sale}
+        tipsEnabled={catalog?.tipsEnabled ?? false}
+        tipBpsOptions={catalog?.tipBpsOptions ?? []}
+        onClose={() => setPayOpen(false)}
+        onPay={(input) => actions.pay.mutateAsync({ saleId: sale?.id as string, ...input })}
+        onNewSale={newSale}
+        onRefreshSale={() => {
+          if (saleId !== null) actions.refreshSale(saleId);
         }}
-        onNew={() => {
-          newSale();
-          setChecksOpen(false);
-        }}
+        onSendReceipt={({ channel: _channel, ...input }) => sendReceipt(input)}
+        venueId={venueId}
+        tapOffer={tapOffer}
+        onStartCard={({ method, ...input }) =>
+          method === "tap"
+            ? startTillTap({ venueId, saleId: sale?.id as string, platform: Platform.OS, ...input })
+            : startTillScan({ venueId, saleId: sale?.id as string, ...input })}
+        scanApi={scanApi}
       />
 
       <NameSheet
@@ -736,102 +686,14 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         }
       />
 
-      <RefundSheet
-        payment={paidPayments.find((p) => p.id === refundFor) ?? null}
-        currency={currency}
-        busy={busy}
-        onClose={() => setRefundFor(null)}
-        onRefund={(amountMinor, reason) =>
-          void run(async () => {
-            const payment = paidPayments.find((p) => p.id === refundFor);
-            if (payment === undefined) return;
-            try {
-              const left = payment.amountMinor - Math.min(payment.refundedMinor, payment.amountMinor);
-              await actions.refund.mutateAsync({
-                paymentId: payment.id,
-                amountMinor: Math.min(amountMinor, left),
-                tipMinor: amountMinor > left ? amountMinor - left : 0,
-                reason,
-                restock: false,
-                clientRequestId: randomId(),
-              });
-              setRefundFor(null);
-              setToast({ kind: "success", message: TILL_COPY.refunded });
-            } catch (err) {
-              fail(err);
-            }
-          })
-        }
-      />
-
-      <PaymentSheet
-        visible={payOpen}
-        sale={sale}
-        tipsEnabled={catalog?.tipsEnabled ?? false}
-        tipBpsOptions={catalog?.tipBpsOptions ?? []}
-        onClose={() => setPayOpen(false)}
-        onPay={(input) => actions.pay.mutateAsync({ saleId: sale?.id as string, ...input })}
-        onNewSale={newSale}
-        onRefreshSale={() => {
-          if (saleId !== null) actions.refreshSale(saleId);
-        }}
-        onSendReceipt={({ channel: _channel, ...input }) => sendReceipt(input)}
-        venueId={venueId}
-        tapOffer={tapOffer}
-        onStartCard={({ method, ...input }) =>
-          method === "tap"
-            ? startTillTap({ venueId, saleId: sale?.id as string, platform: Platform.OS, ...input })
-            : startTillScan({ venueId, saleId: sale?.id as string, ...input })}
-        scanApi={scanApi}
-      />
-
-      {/* Re-send a paid payment's receipt (any seller; three sends at most). */}
-      <Sheet visible={receiptPayment !== null} onClose={() => setReceiptFor(null)} snapPoint={0.7} testID="till-receipt-sheet">
-        <View style={styles.grow}>
-          <SheetHead
-            title={receiptPayment !== null ? `${TILL_COPY.sendReceipt} · ${receiptPayment.reference}` : TILL_COPY.sendReceipt}
-            onClose={() => setReceiptFor(null)}
-          />
-          <SheetScrollLayout keyboardAware contentStyle={styles.sheetScroll}>
-            {receiptPayment !== null ? (
-              <ReceiptStep
-                key={receiptPayment.id}
-                currency={currency}
-                sendsUsed={receiptPayment.receiptSends}
-                onSend={({ channel: _channel, ...input }) => sendReceipt({ paymentId: receiptPayment.id, ...input })}
-                onPrint={async () => {
-                  await openFloorPdf({ kind: "receipt", venueId, paymentId: receiptPayment.id });
-                }}
-                testID="till-receipt-resend"
-              />
-            ) : null}
-          </SheetScrollLayout>
-        </View>
-      </Sheet>
-
-      <ConfirmDialog
-        visible={leaveAsk}
-        onClose={() => setLeaveAsk(false)}
-        onConfirm={() => {
-          setLeaveAsk(false);
-          setDraft([]);
-          leaveTill();
-        }}
-        title={TILL_COPY.leaveTitle}
-        description={TILL_COPY.leaveBody}
-        confirmLabel={TILL_COPY.leaveConfirm}
-        cancelLabel={TILL_COPY.leaveKeep}
-        destructive
-        testID="till-leave"
-      />
-
       <CheckActionsSheet
         visible={checkSheet === "actions"}
         title={checkName}
         subtitle={sale !== null ? `${TILL_COPY.servingNow(currentServer)} · ${money(sale.totalDueMinor)}` : ""}
         hasTables={(catalog?.spots.length ?? 0) > 0}
-        onClose={() => setCheckSheet(null)}
-        onPick={(next) => setCheckSheet(next)}
+        onClose={closeCheckSheet}
+        onPick={openCheckSheet}
+        onDismissed={checkActionsGone}
       />
 
       <MoveSheet
@@ -920,6 +782,204 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
             }
           })
         }
+      />
+    </>
+  );
+
+  const refundIn = refundHost(layout, Platform.OS, basketSheet);
+  const refundSheet = (
+    <RefundSheet
+      payment={paidPayments.find((p) => p.id === refundFor) ?? null}
+      currency={currency}
+      busy={busy}
+      onClose={() => setRefundFor(null)}
+      onRefund={(amountMinor, reason) =>
+        void run(async () => {
+          const payment = paidPayments.find((p) => p.id === refundFor);
+          if (payment === undefined) return;
+          try {
+            const left = payment.amountMinor - Math.min(payment.refundedMinor, payment.amountMinor);
+            await actions.refund.mutateAsync({
+              paymentId: payment.id,
+              amountMinor: Math.min(amountMinor, left),
+              tipMinor: amountMinor > left ? amountMinor - left : 0,
+              reason,
+              restock: false,
+              clientRequestId: randomId(),
+            });
+            setRefundFor(null);
+            setToast({ kind: "success", message: TILL_COPY.refunded });
+          } catch (err) {
+            fail(err);
+          }
+        })
+      }
+    />
+  );
+
+  return (
+    <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="till-screen">
+      <View style={styles.header}>
+        <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={requestClose} testID="till-back" />
+        <Text style={styles.title} numberOfLines={1}>{catalog?.venueName ?? TILL_COPY.title}</Text>
+        {stationsEntry ? (
+          <Button
+            label={STATION_COPY.openStations}
+            variant="secondary"
+            size="sm"
+            onPress={() => router.push(stationHref(venueId) as never)}
+            testID="till-open-stations"
+          />
+        ) : null}
+        <Button
+          label={`${TILL_COPY.checks} · ${checksQuery.data?.open.length ?? 0}`}
+          variant="secondary"
+          size="sm"
+          onPress={() => setChecksOpen(true)}
+          testID="till-checks-open"
+        />
+      </View>
+      {tabs.length > 1 ? (
+        <Segmented options={tabs} value={activeTab} onChange={(k) => setTab(k)} style={styles.tabs} />
+      ) : null}
+      <View style={[styles.main, layout !== "phone" && styles.mainWide]}>
+        <ScrollView style={styles.grow} contentContainerStyle={styles.catalogScroll}>
+          {catalogBody}
+          {paidPayments.length > 0 ? (
+            <View style={styles.paidList}>
+              {paidPayments.map((p) => (
+                <ListRow
+                  key={p.id}
+                  title={`${p.method === "cash" ? TILL_COPY.cash : p.method === "own_machine" ? TILL_COPY.ownMachine : paidLabel(p)} · ${money(p.amountMinor + p.tipMinor)}`}
+                  subtitle={p.reference}
+                  trailing={
+                    <View style={styles.paidActions}>
+                      <Button label={TILL_COPY.sendReceipt} variant="secondary" size="sm" onPress={() => setReceiptFor(p.id)}
+                        testID={`till-receipt-open-${p.id}`} />
+                      {catalog?.canManageMoney === true && p.state !== "refunded" ? (
+                        <Button label={TILL_COPY.refund} variant="secondary" size="sm" onPress={() => setRefundFor(p.id)} />
+                      ) : null}
+                    </View>
+                  }
+                />
+              ))}
+            </View>
+          ) : null}
+        </ScrollView>
+        {layout !== "phone" ? <View style={styles.side}>{basket}</View> : null}
+      </View>
+      {layout === "phone" ? (
+        <View style={styles.bottomBar}>
+          <Pressable accessibilityRole="button" onPress={() => setBasketSheet(true)} style={styles.bottomInfo} testID="till-basket-open">
+            <Text style={styles.h3}>{`${itemCount} · ${ready && sale !== null ? money(sale.remainingMinor) : "--"}`}</Text>
+          </Pressable>
+          <Button label={payLabel} variant="primary" size="md" disabled={nothingOnCheck || busy}
+            onPress={() => setBasketSheet(true)} testID="till-bar-pay" />
+        </View>
+      ) : null}
+
+      {layout === "phone" ? (
+        <Sheet visible={basketSheet} onClose={closeBasket} snapPoint={0.9} testID="till-basket-sheet">
+          <View style={styles.sheetPad}>{basket}</View>
+          {/* #4490 O3-S1 (I-SUB-SHEET-INSIDE-PARENT): on an iPhone the sheets the
+              basket opens are JSX descendants of this Sheet, so each presents
+              from the basket's own modal (iOS stacks it) instead of beside it
+              on the screen, which UIKit refuses. Do not move them back out. */}
+          {nestInBasket ? basketLaunchedSheets : null}
+          {refundIn === "basket" ? refundSheet : null}
+        </Sheet>
+      ) : null}
+      {nestInBasket ? null : basketLaunchedSheets}
+      {refundIn === "screen" ? refundSheet : null}
+
+      <ChoicesSheet item={choicesFor} currency={currency} onClose={() => setChoicesFor(null)}
+        onAdd={(line) => {
+          setDraft((d) => addToDraft(d, line));
+          setChoicesFor(null);
+        }} />
+
+      <OfferSheet
+        state={offerSheet}
+        currency={currency}
+        busy={busy}
+        onChange={setOfferSheet}
+        onClose={() => setOfferSheet(null)}
+        onAdd={(lines, guestListEntryId) =>
+          void run(async () => {
+            if (offerSheet === null) return;
+            try {
+              const current = await ensureSale();
+              await actions.addOffer.mutateAsync({
+                saleId: current.id,
+                offeringId: offerSheet.offer.id,
+                lines,
+                guestListEntryId,
+                idempotencyKey: `offer:${randomId()}`,
+                expectedVersion: current.version,
+              });
+              setOfferSheet(null);
+            } catch (err) {
+              fail(err);
+            }
+          })
+        }
+      />
+
+      <ChecksSheet
+        visible={checksOpen}
+        checks={checksQuery.data ?? null}
+        loading={checksQuery.isLoading}
+        currency={currency}
+        onClose={() => setChecksOpen(false)}
+        onPick={(id) => {
+          setSaleId(id);
+          setDraft([]);
+          setChecksOpen(false);
+        }}
+        onNew={() => {
+          newSale();
+          setChecksOpen(false);
+        }}
+      />
+
+      {/* Re-send a paid payment's receipt (any seller; three sends at most). */}
+      <Sheet visible={receiptPayment !== null} onClose={() => setReceiptFor(null)} snapPoint={0.7} testID="till-receipt-sheet">
+        <View style={styles.grow}>
+          <SheetHead
+            title={receiptPayment !== null ? `${TILL_COPY.sendReceipt} · ${receiptPayment.reference}` : TILL_COPY.sendReceipt}
+            onClose={() => setReceiptFor(null)}
+          />
+          <SheetScrollLayout keyboardAware contentStyle={styles.sheetScroll}>
+            {receiptPayment !== null ? (
+              <ReceiptStep
+                key={receiptPayment.id}
+                currency={currency}
+                sendsUsed={receiptPayment.receiptSends}
+                onSend={({ channel: _channel, ...input }) => sendReceipt({ paymentId: receiptPayment.id, ...input })}
+                onPrint={async () => {
+                  await openFloorPdf({ kind: "receipt", venueId, paymentId: receiptPayment.id });
+                }}
+                testID="till-receipt-resend"
+              />
+            ) : null}
+          </SheetScrollLayout>
+        </View>
+      </Sheet>
+
+      <ConfirmDialog
+        visible={leaveAsk}
+        onClose={() => setLeaveAsk(false)}
+        onConfirm={() => {
+          setLeaveAsk(false);
+          setDraft([]);
+          leaveTill();
+        }}
+        title={TILL_COPY.leaveTitle}
+        description={TILL_COPY.leaveBody}
+        confirmLabel={TILL_COPY.leaveConfirm}
+        cancelLabel={TILL_COPY.leaveKeep}
+        destructive
+        testID="till-leave"
       />
 
       <Toast visible={toast !== null} kind={toast?.kind ?? "info"} message={toast?.message ?? ""} onDismiss={() => setToast(null)} testID="till-toast" />
@@ -1210,6 +1270,7 @@ function CheckActionsSheet({
   hasTables,
   onClose,
   onPick,
+  onDismissed,
 }: {
   visible: boolean;
   title: string;
@@ -1217,9 +1278,11 @@ function CheckActionsSheet({
   hasTables: boolean;
   onClose: () => void;
   onPick: (next: "move" | "handover" | "rename") => void;
+  /** #4490 O3-S1: the sheet has really gone; the picked sheet opens then (iOS). */
+  onDismissed: () => void;
 }): React.ReactElement {
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint={0.6} testID="till-check-actions-sheet">
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.6} onDismissed={onDismissed} testID="till-check-actions-sheet">
       <View style={styles.grow}>
         <SheetHead title={title} onClose={onClose} />
         <SheetScrollLayout contentStyle={styles.sheetScroll}>

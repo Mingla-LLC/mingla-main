@@ -43,6 +43,9 @@ module.exports = {
     // never dark — the exact failure mode this branch had to report for
     // `venueSuiteShell.orch1184.fullwidth.adversarial.render.test.tsx` (#1486).
     "**/__tests__/suiteDesktopShell.issue1484.boundary.adversarial.render.test.tsx",
+    // #4490 spec 08 O3 fix 3 (O3-S1): the iPhone Till presents one native modal per
+    // presenter (Pay from inside the basket's sheet). Native Sheet + iOS platform.
+    "**/__tests__/tillSheets.issue4490.o3fix3.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",
