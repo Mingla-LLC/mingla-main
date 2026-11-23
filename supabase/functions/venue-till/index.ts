@@ -17,6 +17,9 @@
 //   quote     { saleId }                                    → sale (+ cardTotalMinor: null in O1)
 //   pay_cash  { saleId, amountMinor, tipMinor, cashGivenMinor, clientRequestId, expectedVersion }
 //   pay_own_machine { saleId, amountMinor, tipMinor, clientRequestId, expectedVersion }
+//             → { sale, paymentId, method, amountMinor, tipMinor, state, changeMinor, replayed }
+//               (08-O3 fix 5: the amount is the one the server RECORDED for this
+//               payment; a replay answers the original payment's facts)
 //   refund    { paymentId, amountMinor, tipMinor, reason, restock, clientRequestId }
 //             | { lineId, reason, clientRequestId }   (a paid offer line, in full:
 //               the money comes back and its booking is cancelled)
@@ -169,6 +172,10 @@ export const TILL_SAFE_CODES = [
   "till_receipt_phone_invalid",
   // #4490 O2 fix 1 (O2-T3): the rolling-hour pay-link text windows.
   "pay_code_text_window",
+  // #4490 08-O3 fix 5 (O3-S3): a request id already used on this check for a
+  // different payment or refund (another method, amount, tip, payment or
+  // line). Nothing moved.
+  "till_request_reused",
 ] as const;
 
 // deno-lint-ignore no-explicit-any
@@ -893,9 +900,18 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           l.kind === "menu_round" && l.fulfillmentStatus === "placed"
         ).map((l) => l.orderId);
         if (data.replayed !== true) await firePlaced(justSent);
+        // 08-O3 fix 5 (O3-S3): the answer carries what the server RECORDED for
+        // this payment (a replay: the original payment), never the caller's
+        // numbers. Read from the row when the database answer predates the
+        // fix (edge deployed before its migration).
+        const facts = await recordedPayment(data);
         return ok({
           sale: data.sale,
           paymentId: data.paymentId,
+          method: facts.method,
+          amountMinor: facts.amountMinor,
+          tipMinor: facts.tipMinor,
+          state: facts.state,
           changeMinor: data.changeMinor ?? null,
           replayed: data.replayed === true,
         });
@@ -1214,6 +1230,45 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
 
       default:
         return json(400, { code: "unknown_action" });
+    }
+
+    /**
+     * 08-O3 fix 5: the facts the server recorded for a payment it answered.
+     * From the RPC answer; if the database predates the fix, from the row;
+     * if that read fails too, nulls (the client then reads the check's own
+     * payment row): never the caller's numbers, never a failure for money
+     * that was taken.
+     */
+    async function recordedPayment(data: Record<string, unknown>): Promise<{
+      method: string | null;
+      amountMinor: number | null;
+      tipMinor: number | null;
+      state: string | null;
+    }> {
+      const fin = (v: unknown): number | null =>
+        typeof v === "number" && Number.isFinite(v) ? v : null;
+      const txt = (v: unknown): string | null => typeof v === "string" ? v : null;
+      if (fin(data.amountMinor) !== null && fin(data.tipMinor) !== null) {
+        return {
+          method: txt(data.method),
+          amountMinor: fin(data.amountMinor),
+          tipMinor: fin(data.tipMinor),
+          state: txt(data.state),
+        };
+      }
+      const row = await client.from("venue_till_payments")
+        .select("method, amount_minor, tip_minor, state").eq("id", str(data.paymentId)).maybeSingle();
+      const r = (row?.data ?? null) as Record<string, unknown> | null;
+      if (row?.error || r === null) {
+        console.error("[venue-till] recorded payment read failed", row?.error?.message ?? "no row");
+        return { method: null, amountMinor: null, tipMinor: null, state: null };
+      }
+      return {
+        method: txt(r.method),
+        amountMinor: fin(r.amount_minor),
+        tipMinor: fin(r.tip_minor),
+        state: txt(r.state),
+      };
     }
 
     async function paymentAtVenue(paymentId: string): Promise<Record<string, unknown> | null> {

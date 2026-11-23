@@ -125,6 +125,19 @@ export async function handleTillCreate(
   }
   const stripe = deps.stripe();
 
+  // #4490 08-O3 fix 5: a till request id is one card read for ONE payment. The
+  // same id sent for another Till payment is refused before anything is
+  // written or sent to Stripe (it used to fall through to the unique index
+  // and answer server_error). Event-scope intents (till_payment_id NULL) never
+  // match `not.eq`, so they are not looked at.
+  const { data: reused } = await supabase.from("door_tap_intents")
+    .select("till_payment_id")
+    .eq("client_request_id", clientRequestId)
+    .not("till_payment_id", "eq", paymentId)
+    .maybeSingle();
+  if (reused) {
+    return jsonResponse({ error: "till_request_reused" }, 409);
+  }
   // Replay: same payment, same PaymentIntent (never a second charge).
   const { data: existing } = await supabase.from("door_tap_intents")
     .select(

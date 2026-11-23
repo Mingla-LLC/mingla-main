@@ -15,6 +15,10 @@
 // fail the sweep's Till read; the O2F1 tests below are new (O2-T1: the switch
 // closes create / location / the reader token for every role while cancel,
 // complete and seen stay open; O2-T5: the sweep before the #4490 migrations).
+//
+// TEST-MOD-APPROVED #4490 (08-O3 fix 5): the fake answers the new "is this
+// request id already another Till payment's" read (option reusedBy); one test
+// appended at the end (O3F5-T1). Nothing else changed.
 import {
   assert,
   assertEquals,
@@ -43,6 +47,7 @@ function makeDb(
     sweepRows?: unknown[];
     tillOn?: boolean;
     sweepError?: { code: string; message: string };
+    reusedBy?: string;
   } = {},
 ) {
   return new FakeDb(
@@ -130,6 +135,14 @@ function makeDb(
         return { data: null, error: null };
       }
       if (op.table === "door_tap_intents" && op.action === "select") {
+        if (
+          op.filters.some(([f, c]) => f === "not.eq" && c === "till_payment_id")
+        ) {
+          return {
+            data: opts.reusedBy ? { till_payment_id: opts.reusedBy } : null,
+            error: null,
+          };
+        }
         if (
           op.filters.some(([f, c]) => f === "not.is" && c === "till_payment_id")
         ) {
@@ -585,4 +598,32 @@ Deno.test("O2F1-T5 sweep before the #4490 migrations: a missing till_payment_id 
   // A 42703 about another column is a real failure, not the deploy gap.
   const otherColumn = await run({ code: "42703", message: "column door_tap_intents.buyer_name does not exist" });
   assertEquals(otherColumn.failed, 1);
+});
+
+Deno.test("O3F5-T1 till create: a request id already used for ANOTHER Till payment is refused 409 till_request_reused before anything is written or sent to Stripe", async () => {
+  const db = makeDb({ reusedBy: "44900700-0000-4000-8000-0000000000d9" });
+  const stripe = fakeStripe();
+  const res = await createDoorTapIntentHandler({
+    serviceClient: () => db,
+    userIdFromAuthHeader: auth,
+    stripe: () => stripe.client,
+  })(
+    post({
+      action: "create",
+      scope: "till",
+      platform: "ios",
+      venueId: VENUE,
+      paymentId: PAYMENT,
+      clientRequestId: REQ,
+    }),
+  );
+  assertEquals([res.status, (await res.json()).error], [
+    409,
+    "till_request_reused",
+  ]);
+  assertEquals(db.opsOn("door_tap_intents", "insert").length, 0);
+  assertEquals(
+    stripe.calls.filter((c) => c.method === "paymentIntents.create").length,
+    0,
+  );
 });
