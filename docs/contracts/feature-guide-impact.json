@@ -54,7 +54,10 @@
         "app-mobile/src/utils/explorerProfileAuthRest.ts",
         "app-mobile/src/utils/explorerReactivation.ts",
         "app-mobile/src/utils/authCleanup.ts",
-        "app-mobile/src/utils/signedOutProfileError.ts"
+        "app-mobile/src/utils/signedOutProfileError.ts",
+        "app-mobile/src/constants/profileColumns.ts",
+        "app-mobile/src/services/profileAccessService.ts",
+        "app-mobile/src/services/authService.ts"
       ]
     },
     {
@@ -824,7 +827,9 @@
         "app-mobile/src/services/reportService.ts",
         "supabase/functions/open-view-once/handler.ts",
         "supabase/functions/open-view-once/index.ts",
-        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql"
+        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql",
+        "app-mobile/src/services/boardService.ts",
+        "app-mobile/src/services/sessionMembershipService.ts"
       ]
     },
     {
@@ -890,7 +895,10 @@
         "app-mobile/src/components/connections/friendsSheetModel.ts",
         "app-mobile/src/components/profile/circle/CircleAvatarTile.tsx",
         "app-mobile/src/services/circleService.ts",
-        "app-mobile/src/types/circle.ts"
+        "app-mobile/src/types/circle.ts",
+        "app-mobile/src/hooks/useFriendProfile.ts",
+        "app-mobile/src/hooks/useFriends.ts",
+        "app-mobile/src/services/friendsService.ts"
       ]
     },
     {
@@ -1743,7 +1751,10 @@
         "mingla-admin/src/pages/PeopleConsolePage.jsx",
         "supabase/functions/admin-person-activity/function-policy.json",
         "supabase/functions/admin-person-activity/index.ts",
-        "supabase/migrations/20281118024226_issue_4226_people_journey.sql"
+        "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
+        "mingla-admin/src/components/CommandPalette.jsx",
+        "mingla-admin/src/services/adminProfileContactsService.js",
+        "mingla-admin/src/lib/profileContactsPure.js"
       ]
     },
     {
@@ -3361,7 +3372,8 @@
         "mingla-business/src/utils/messageLinks.ts",
         "mingla-business/src/utils/threadRailPreference.ts",
         "mingla-business/src/utils/webDocumentCss.ts",
-        "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql"
+        "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
+        "mingla-business/src/services/brandGroupRosterService.ts"
       ]
     },
     {
@@ -5175,7 +5187,8 @@
         "mingla-business/app/auth/callback.tsx",
         "mingla-business/src/components/auth/SignedInNotFoundNotice.tsx",
         "mingla-business/app/auth/index.tsx",
-        "mingla-business/src/context/AuthContext.tsx"
+        "mingla-business/src/context/AuthContext.tsx",
+        "mingla-business/src/hooks/useOwnProfilePhoneOnFile.ts"
       ]
     },
     {
