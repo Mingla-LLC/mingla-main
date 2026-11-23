@@ -24,3 +24,11 @@ test("every ADD COLUMN clause contributes a definition", () => {
   const result = parseMigration("fixture.sql", "ALTER TABLE public.events ADD COLUMN one text, ADD COLUMN two text, ADD COLUMN three text, ADD COLUMN four text;");
   for (const name of ["one","two","three","four"]) assert.ok(result.definitions.has(`col:${name}`));
 });
+// TEST-MOD-APPROVED #4490 (08-O3 part A): a column declared in a file's own CREATE TABLE is credited.
+test("a file's own CREATE TABLE columns satisfy its own references; table constraints are not columns", () => {
+  const result = parseMigration("fixture.sql", "CREATE TABLE public.t (id uuid PRIMARY KEY, ready_at timestamptz, note text CHECK (note <> ''), CONSTRAINT t_ok CHECK (id IS NOT NULL), UNIQUE (id, ready_at));");
+  for (const name of ["id", "ready_at", "note"]) assert.ok(result.ownColumns.has(`col:${name}`), name);
+  for (const name of ["constraint", "unique", "check"]) assert.ok(!result.ownColumns.has(`col:${name}`), name);
+  // Own columns never become chain definitions (a skipped file's columns are not credited to others).
+  assert.ok(!result.definitions.has("col:ready_at"));
+});

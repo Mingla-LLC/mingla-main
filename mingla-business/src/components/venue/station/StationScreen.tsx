@@ -10,7 +10,8 @@
  * reloaded after Start (the address keeps `started=1`) is muted by the browser
  * until a tap, so it says "Tap to turn sound on" (T17). iOS/Android have no
  * audio module in this build: "Sound needs the latest app", tickets still
- * flash ([TRANSITIONAL], see stationSound.ts).
+ * flash (the native player is transitional and exits when the store build
+ * that carries expo-audio ships; see stationSound.ts).
  *
  * The screen stays awake while the board is open (useScreenAwake, no
  * brightness change). In the background the order push is the alert.

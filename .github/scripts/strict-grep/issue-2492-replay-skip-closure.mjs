@@ -401,6 +401,46 @@ export function parseMigration(name, rawSql) {
     "gi",
   );
   while ((m = tableRe.exec(top))) definitions.add(`table:${bareName(m[1])}`);
+  // #4490 (spec 08 O3): a column declared inside this file's OWN `CREATE TABLE
+  // (...)` satisfies this file's own references to that name. Only `ADD
+  // COLUMN` was credited, so a file that creates `t (ready_at timestamptz, …)`
+  // and then reads `ready_at` was reported as depending on whichever skipped
+  // migration happened to `ADD COLUMN ready_at` to an unrelated table. These
+  // are kept apart from `definitions` (they never enter either chain: crediting
+  // every CREATE TABLE column of a skipped file would flag every common column
+  // name), and are consulted only for the file that declares them. Only the
+  // top-level elements of the column list are read, and table constraints
+  // (CONSTRAINT, PRIMARY, UNIQUE, CHECK, FOREIGN, EXCLUDE, LIKE) never pose as
+  // columns.
+  const ownColumns = new Set();
+  const createRe = new RegExp(
+    `\\bCREATE\\s+(?:UNLOGGED\\s+|TEMP\\s+|TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${QUALIFIED}\\s*\\(`,
+    "gi",
+  );
+  const leadRe = new RegExp(`^(${IDENT})`);
+  while ((m = createRe.exec(top))) {
+    const elements = [];
+    let depth = 1;
+    let start = createRe.lastIndex;
+    for (let i = start; i < top.length && depth > 0; i += 1) {
+      const ch = top[i];
+      if (ch === "(") depth += 1;
+      else if (ch === ")") {
+        depth -= 1;
+        if (depth === 0) elements.push(top.slice(start, i));
+      } else if (ch === "," && depth === 1) {
+        elements.push(top.slice(start, i));
+        start = i + 1;
+      }
+    }
+    for (const element of elements) {
+      const lead = leadRe.exec(element.trim());
+      if (lead === null) continue;
+      const column = bareName(lead[1]);
+      if (/^(constraint|primary|unique|check|foreign|exclude|like)$/.test(column)) continue;
+      ownColumns.add(`col:${column}`);
+    }
+  }
   // #4130: read EVERY `ADD COLUMN` clause of an ALTER TABLE statement, not only
   // the first. `ALTER TABLE public.orders ADD COLUMN a …, ADD COLUMN
   // refunded_amount_cents …;` (orch_0787) defines both columns; reading only
@@ -434,7 +474,7 @@ export function parseMigration(name, rawSql) {
     while ((hit = idRe.exec(region))) referenced.add(hit[0].toLowerCase());
   }
 
-  return { name, definitions, referenced, bodiesUnchecked, unresolved };
+  return { name, definitions, ownColumns, referenced, bodiesUnchecked, unresolved };
 }
 
 // ---------------------------------------------------------------------------
@@ -748,6 +788,8 @@ export function analyseTrees({ workflows, migrations }) {
           if (filteredChain.has(object)) continue;
           // A CREATE OR REPLACE in this very file is a definition, not a reference.
           if (info.definitions.has(object)) continue;
+          // #4490 (08-O3): nor is a column this file declares in its own CREATE TABLE.
+          if (info.ownColumns.has(object)) continue;
           const identifier = object.slice(object.indexOf(":") + 1);
           if (!info.referenced.has(identifier)) continue;
           violations.push({
@@ -815,6 +857,16 @@ function selfTest() {
   const broken = { ...migrations, "004_bad.sql": "CREATE VIEW public.bad AS SELECT id FROM public.hidden;" };
   if (!analyseTrees({ workflows, migrations: broken }).violations.some(v => v.check === "C-1")) throw new Error("missing prerequisite accepted");
   if (!analyseTrees({ workflows, migrations: {} }).violations.length) throw new Error("empty migration tree accepted");
+  // #4490 (08-O3): a file's own CREATE TABLE column is its own definition.
+  const ownColumn = {
+    ...migrations,
+    "002_skip.sql": "CREATE TABLE public.hidden(id int); ALTER TABLE public.base ADD COLUMN ready_at timestamptz;",
+    "005_own.sql": "CREATE TABLE public.own (id int, ready_at timestamptz, CONSTRAINT own_ok CHECK (id > 0)); CREATE VIEW public.own_view AS SELECT ready_at FROM public.own;",
+  };
+  if (analyseTrees({ workflows, migrations: ownColumn }).violations.length) throw new Error("own CREATE TABLE column rejected");
+  const { "005_own.sql": _own, ...withoutOwn } = ownColumn;
+  const foreignColumn = { ...withoutOwn, "006_bad.sql": "CREATE VIEW public.bad2 AS SELECT ready_at FROM public.base;" };
+  if (!analyseTrees({ workflows, migrations: foreignColumn }).violations.some(v => v.check === "C-1")) throw new Error("skipped ADD COLUMN reader accepted");
   console.log("#2492 self-test PASS");
 }
 
