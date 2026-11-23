@@ -458,10 +458,13 @@ BEGIN
   v := public.issue_4490_till_attach_round(v_sale, v_r, '44900100-0000-4000-8000-000000000005', NULL);
   PERFORM public.t4490o1_ok((SELECT pickup_code IS NOT NULL AND buyer_name IS NULL FROM public.venue_orders WHERE id = v_r),
     'O1-DB35 a counter round with no name is allowed for a Till check');
+  -- TEST-MOD-APPROVED #4490 (08-O5 part A): a Till device login is never the actor of a payment row
+  -- (I-4490-TILL-DEVICE-NEVER-ACTS-ALONE, 20280809611490), so this hand-written cancelled payment is
+  -- taken by the seller (02); the late-money rule it proves is unchanged.
   INSERT INTO public.venue_till_payments (sale_id, method, amount_minor, tip_minor, state, taken_by_user_id,
     device_user_id, server_user_id, client_request_id, cash_given_minor)
-  VALUES (v_sale, 'own_machine', 275000, 0, 'cancelled', '44900100-0000-4000-8000-000000000005',
-    '44900100-0000-4000-8000-000000000005', '44900100-0000-4000-8000-000000000005', gen_random_uuid(), NULL)
+  VALUES (v_sale, 'own_machine', 275000, 0, 'cancelled', '44900100-0000-4000-8000-000000000002',
+    '44900100-0000-4000-8000-000000000002', '44900100-0000-4000-8000-000000000005', gen_random_uuid(), NULL)
   RETURNING id INTO v_pay;
   v := public.issue_4490_till_apply_payment(v_pay);
   PERFORM public.t4490o1_ok((v->>'paidLate')::boolean
