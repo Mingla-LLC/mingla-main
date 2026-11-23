@@ -650,6 +650,19 @@ BEGIN
     AND has_function_privilege('authenticated', 'public.issue_4579_restore_mingla_team(uuid)', 'EXECUTE')
     AND has_function_privilege('authenticated', 'public.issue_4579_mingla_team_state(uuid)', 'EXECUTE'),
     'T-8 hosts can call remove, restore and state');
+  -- SC-12, two layers: clients hold no column privilege on the three columns,
+  -- and the source guard refuses a change from a client role regardless.
+  PERFORM pg_temp.ok(NOT has_column_privilege('authenticated', 'public.brand_team_members', 'granted_via', 'UPDATE')
+    AND NOT has_column_privilege('authenticated', 'public.brand_team_members', 'granted_admin_user_id', 'UPDATE')
+    AND NOT has_column_privilege('authenticated', 'public.brand_team_members', 'removal_reason', 'UPDATE')
+    AND NOT has_column_privilege('authenticated', 'public.brand_team_members', 'granted_via', 'INSERT'),
+    'T-8 SC-12 clients have no write privilege on granted_via, granted_admin_user_id, removal_reason');
+  PERFORM pg_temp.ok((SELECT prosrc LIKE '%current_user IN (''authenticated'', ''anon'')%'
+                         AND prosrc LIKE '%ERRCODE = ''42501''%'
+                        FROM pg_proc WHERE oid = 'public.issue_4579_tg_member_source()'::regprocedure)
+    AND EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'issue_4579_member_source'
+                 AND tgrelid = 'public.brand_team_members'::regclass AND tgenabled = 'O'),
+    'T-8 SC-12 the source guard trigger refuses client changes (42501)');
   PERFORM pg_temp.ok((SELECT relrowsecurity FROM pg_class WHERE oid = 'public.brand_mingla_team_optouts'::regclass)
     AND (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.brand_mingla_admin_optouts'::regclass),
     'T-8 both opt-out tables have RLS on');
