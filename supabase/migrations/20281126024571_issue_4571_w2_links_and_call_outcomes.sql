@@ -105,6 +105,10 @@ $$;
 REVOKE ALL ON FUNCTION public.ops_4571_activity_stage_at() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER ops_4571_activity_stage_at BEFORE INSERT ON public.crm_activity
   FOR EACH ROW EXECUTE FUNCTION public.ops_4571_activity_stage_at();
+-- #4571 W2: ALWAYS, so a load run with session_replication_role = replica (a
+-- data repair, a test fixture) still fills stage_at instead of failing the
+-- NOT NULL below. It only fills a missing value; it never refuses a write.
+ALTER TABLE public.crm_activity ENABLE ALWAYS TRIGGER ops_4571_activity_stage_at;
 
 -- Existing rows: the latest stage move at or before the entry, else the
 -- pipeline's first stage. A stage move keeps the stage it left.

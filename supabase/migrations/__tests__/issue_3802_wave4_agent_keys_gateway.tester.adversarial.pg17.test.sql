@@ -465,7 +465,11 @@ begin
       not exists (
         select 1 from jsonb_array_elements(v_agent #> '{result,records}') a
         join jsonb_array_elements(v_screen -> 'records') s on s ->> 'id' = a ->> 'id'
-        where (a - 'last_touch' - 'last_reply') is distinct from s));
+        -- #4571 W3: the screen's record carries its own last_touch (who by name, channel,
+        -- outcome); the agent's is the same touch with more of it, so both name one touch.
+        where (a - 'last_touch' - 'last_reply') is distinct from (s - 'last_touch')
+           or (a #>> '{last_touch,at}') is distinct from (s #>> '{last_touch,at}')
+           or (a #>> '{last_touch,channel}') is distinct from (s #>> '{last_touch,channel}')));
     perform pg_temp.t3802ta_ok('TA-4', w || ': no deleted record is found',
       not exists (select 1 from jsonb_array_elements(v_agent #> '{result,records}') a
                    join public.crm_records c on c.id = (a ->> 'id')::uuid where c.deleted_at is not null));

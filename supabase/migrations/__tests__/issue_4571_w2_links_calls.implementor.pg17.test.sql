@@ -350,6 +350,13 @@ begin
   insert into public.crm_activity (record_id, kind, actor_email, body) values (pg_temp.id('pc'), 'note', 'seth.w24571@test.local', 'Raw writer.');
   perform pg_temp.chk('STAGE', 'any other writer gets the record''s stage now',
     (select stage_at from public.crm_activity where record_id = pg_temp.id('pc') and body = 'Raw writer.'), 'contacted');
+  -- A load run with triggers off for replicas (a repair, a fixture) still gets its stage.
+  set local session_replication_role = replica;
+  insert into public.crm_activity (record_id, kind, actor_email, body) values (pg_temp.id('pc'), 'note', 'seth.w24571@test.local', 'Replica writer.');
+  set local session_replication_role = origin;
+  perform pg_temp.chk('STAGE', 'a replica-role load still gets the record''s stage (ALWAYS trigger)',
+    (select stage_at from public.crm_activity where record_id = pg_temp.id('pc') and body = 'Replica writer.'), 'contacted');
+  perform pg_temp.chk('STAGE', 'the stage_at gate fires always', (select tgenabled::text from pg_trigger where tgname = 'ops_4571_activity_stage_at'), 'A');
   perform pg_temp.chk('STAGE', 'no entry is without a stage', (select count(*)::text from public.crm_activity where stage_at is null), '0');
   -- The backfill, run on a fixture history: a touch before any move is in the
   -- first stage, after a move in the stage moved to.
@@ -365,7 +372,7 @@ begin
     (pg_temp.id('lp'), 'touch', 'seth.w24571@test.local', 'email', 'inbound', 'bf-3', '2026-01-06T10:00:00Z');
   update public.crm_activity set stage_at = null where record_id = pg_temp.id('lp') and occurred_at < '2026-02-01';
   execute (select sql from tx_src where k = 'backfill');
-  alter table public.crm_activity enable trigger ops_4571_activity_stage_at;
+  alter table public.crm_activity enable always trigger ops_4571_activity_stage_at;
   alter table public.crm_activity alter column stage_at set not null;
   perform pg_temp.chk('STAGE', 'the backfill reads the stage_move history',
     (select string_agg(coalesce(body, from_stage || '>' || to_stage) || '=' || stage_at, ',' order by occurred_at)
