@@ -499,6 +499,8 @@ export const detectDeviceTimezone = (): string => {
 };
 
 export interface DefaultTimezoneForBrandInput {
+  /** issue #4522 G-5 — the brand's own zone (brands.default_timezone), read first. */
+  brandZone?: string | null;
   payoutCountry?: string | null;
   currency?: string | null;
   deviceZone?: string | null;
@@ -507,6 +509,8 @@ export interface DefaultTimezoneForBrandInput {
 export const defaultTimezoneForBrand = (
   input: DefaultTimezoneForBrandInput = {},
 ): string => {
+  const brandZone = (input.brandZone ?? "").trim();
+  if (brandZone.length > 0 && isRuntimeZone(brandZone)) return brandZone;
   const country = (input.payoutCountry ?? "").trim().toUpperCase();
   if (country.length > 0) {
     const fromCountry = COUNTRY_DEFAULT_ZONE[country];

@@ -857,6 +857,7 @@ export const ExperienceCreatorWizard: React.FC<
     initialDraft?.when,
     guestPrivacy,
     {
+      brandZone: brand?.defaultTimezone ?? null,
       payoutCountry: brand?.payoutCountry ?? brand?.paymentCountry ?? null,
       currency: brand?.defaultCurrency ?? null,
     },

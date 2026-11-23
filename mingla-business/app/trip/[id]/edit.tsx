@@ -108,10 +108,12 @@ export default function TripEditRoute(): React.ReactElement {
       const trip = await createTripDraftMutation.mutateAsync({
         brandId: currentBrand.id,
         ...(initialTitle !== undefined ? { initialTitle } : {}),
-        // #4523 S-9 — a new trip lives in the brand's zone (its payout country
-        // or currency), else the host's device zone; never UTC by default, so
-        // the calendar's "today" is the host's today.
+        // #4523 S-9 — a new trip lives in the brand's zone (#4522 G-5: the
+        // brand's own zone first, then its payout country or currency), else
+        // the host's device zone; never UTC by default, so the calendar's
+        // "today" is the host's today.
         timezone: defaultTimezoneForBrand({
+          brandZone: currentBrand.defaultTimezone ?? null,
           payoutCountry: currentBrand.payoutCountry ?? currentBrand.paymentCountry ?? null,
           currency: currentBrand.defaultCurrency ?? null,
           deviceZone: detectDeviceTimezone(),
