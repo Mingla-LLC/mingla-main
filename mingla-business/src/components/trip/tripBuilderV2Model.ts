@@ -218,6 +218,21 @@ export function builderStepComplete(
   return own.length > 0 && own.every((i) => i.done);
 }
 
+/**
+ * #4522 S-18 — what the rail draws for a step other than the current one: a
+ * tick only when the step's own items are met AND the host has opened it; every
+ * other step is plainly "todo". (Left undefined, the rail itself would tick every
+ * step before the current one.) A fresh draft's default $0 package already meets
+ * the pricing items, so an unopened step never ticks.
+ */
+export function builderRailState(
+  items: ReadonlyArray<ChecklistItem>,
+  step: BuilderStep,
+  furthestOpened: number,
+): "done" | "todo" {
+  return step <= furthestOpened && builderStepComplete(items, step) ? "done" : "todo";
+}
+
 /** The first unmet item, for the top-bar Publish tap. */
 export function firstOpenItem(items: ReadonlyArray<ChecklistItem>): ChecklistItem | null {
   return items.find((i) => !i.done) ?? null;

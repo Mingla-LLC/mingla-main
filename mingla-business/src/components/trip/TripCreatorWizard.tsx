@@ -220,7 +220,7 @@ import {
   autosaveRetryDelayMs,
   builderStepForLegacyStep,
   buildPublishChecklist,
-  builderStepComplete,
+  builderRailState,
   // issue #4522 deploy window — share_payment_plan only when it can matter.
   shouldSendSharePaymentPlan,
   dirtySaveGroups,
@@ -2617,6 +2617,11 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   // wizard's existing publish check already points (`publishError`); no new
   // validation rule. Continue never blocks a step on its own (it saves and
   // moves on), so every visible step is as reachable as Continue makes it.
+  // #4522 S-18 — the furthest step the host has opened in this session.
+  const [furthestBuilderStep, setFurthestBuilderStep] = useState<number>(() => step);
+  useEffect(() => {
+    setFurthestBuilderStep((prev) => (step > prev ? step : prev));
+  }, [step]);
   const visibleStepperSteps = useMemo<StepperStep[]>(() => {
     const base = V2
       ? BUILDER_STEPPER_STEPS
@@ -2638,13 +2643,15 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       if (V2) {
         const n = Number(item.id.slice(5));
         if (!isBuilderStep(n)) return item;
-        if (n !== step && builderStepComplete(publishChecklist, n)) {
-          return { ...item, state: "done" as const };
-        }
+        if (n === step) return item;
+        // S-18: a step is ticked only when its own checklist items are met AND
+        // the host has reached it; every other step is explicitly "todo" (left
+        // undefined the rail would tick every step before the current one).
+        return { ...item, state: builderRailState(publishChecklist, n, furthestBuilderStep) };
       }
       return item;
     });
-  }, [inviteEnabled, publishError, publishChecklist, step]);
+  }, [inviteEnabled, publishError, publishChecklist, step, furthestBuilderStep]);
   const visibleStepNumber = !V2 && !inviteEnabled && step === 8 ? 7 : step;
   const visibleStepCount = V2 ? BUILDER_STEP_COUNT : inviteEnabled ? STEP_COUNT : STEP_COUNT - 1;
   const stepIdx = visibleStepNumber - 1;

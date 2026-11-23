@@ -33,6 +33,7 @@ import {
   firstOpenItem,
   pricingSignature,
   publishUnlockLine,
+  builderRailState,
   builderStepComplete,
   type ChecklistInput,
   type SaveGroup,
@@ -164,6 +165,16 @@ describe("step rail ticks", () => {
   test("a fresh draft ticks nothing", () => {
     const items = buildPublishChecklist(FRESH);
     expect([1, 2, 3, 4].filter((n) => builderStepComplete(items, n as 1 | 2 | 3 | 4))).toEqual([]);
+  });
+  // #4522 S-18 (second pass) — a fresh draft's default $0 package meets the
+  // pricing items, and the rail itself ticks every step before the current one
+  // unless told "todo". FAILS ON REVERT: Pricing & policy ticked on a fresh draft.
+  test("the rail ticks a met step only once the host has opened it; the rest are todo", () => {
+    const withFreePackage = buildPublishChecklist({ ...FRESH, hasPricedPackage: true });
+    expect(builderStepComplete(withFreePackage, 3)).toBe(true);
+    expect(builderRailState(withFreePackage, 3, 1)).toBe("todo");
+    expect(builderRailState(withFreePackage, 3, 3)).toBe("done");
+    expect(builderRailState(buildPublishChecklist(FRESH), 1, 4)).toBe("todo");
   });
   test("a step ticks when its own items are met; the publish step only when all are", () => {
     const items = buildPublishChecklist({ ...FRESH, title: READY.title, description: READY.description,
@@ -384,7 +395,7 @@ describe("wizard wiring", () => {
     expect(wizard).toContain("const publishUnlock = V2 ? publishUnlockLine(publishChecklist) : null;");
     expect(wizard).toMatch(/V2 && publishUnlock !== null \? \(\s*<Text style=\{styles\.publishUnlockHint\} testID="trip-wizard-publish-unlock">\s*\{publishUnlock\}/);
     expect(wizard).toContain("handleBuilderPublishTap");
-    expect(wizard).toContain("builderStepComplete(publishChecklist, n)");
+    expect(wizard).toContain("builderRailState(publishChecklist, n, furthestBuilderStep)");
   });
 
   test("a package created by an earlier save in the same run is never created twice", () => {
