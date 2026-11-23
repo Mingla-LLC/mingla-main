@@ -14,7 +14,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { color, space, type } from "../../../constants/designSystem";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
-import { cancelTillCardPayment } from "../../../services/venueTillService";
+import { cancelTillCardPayment, TillError } from "../../../services/venueTillService";
 import { createTillTapServer } from "../../../services/terminal/doorTapEdge";
 import { TapToPaySaleFlow, type TapSaleState } from "../../../services/terminal/tapToPayFlow";
 import { getTapToPaySession } from "../../../services/terminal/tapToPaySession";
@@ -23,8 +23,8 @@ import { randomUuid } from "../../../utils/randomId";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Spinner } from "../../ui/Spinner";
-import { TILL_COPY } from "./tillCopy";
-import { tillTapPanelCopy } from "./tillTapPanelModel";
+import { TILL_COPY, tillErrorCopy } from "./tillCopy";
+import { tillTapPanelCopy, tillTapResumedCopy } from "./tillTapPanelModel";
 
 export interface TillTapPanelProps {
   venueId: string;
@@ -35,6 +35,8 @@ export interface TillTapPanelProps {
   /** The tap ended without money (declined and given up, not on this phone…): back to choosing. */
   onScanInstead: () => void;
   onBusyChange: (busy: boolean) => void;
+  /** O2 fix 3: found waiting on reopen; no reader is started, only Cancel payment. */
+  resumed?: boolean;
 }
 
 const EMPTY_DRAFT = { lines: [], eventDateId: null, buyerPhone: null, phoneCountryIso: null, buyerName: null };
@@ -47,12 +49,14 @@ export function TillTapPanel({
   onPaid,
   onScanInstead,
   onBusyChange,
+  resumed = false,
 }: TillTapPanelProps): React.ReactElement {
   const [state, setState] = useState<TapSaleState>({ kind: "idle" });
   const flowRef = useRef<TapToPaySaleFlow | null>(null);
   const paidRef = useRef(false);
 
   useEffect(() => {
+    if (resumed) return undefined;
     const client = getTapToPaySession().client;
     if (client === null) {
       setState({ kind: "not_on_this_phone" });
@@ -79,9 +83,11 @@ export function TillTapPanel({
       flowRef.current = null;
       if (!paidRef.current) void flow.closeSale().catch((e: unknown) => reportNonFatal("till.tap-close", e));
     };
-  }, [venueId, paymentId]);
+  }, [venueId, paymentId, resumed]);
 
-  const copy = tillTapPanelCopy(state);
+  const copy = resumed ? tillTapResumedCopy() : tillTapPanelCopy(state);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   useEffect(() => {
     onBusyChange(copy.busy);
     if (state.kind === "approved" && !paidRef.current) {
@@ -102,13 +108,31 @@ export function TillTapPanel({
     onScanInstead();
   };
 
+  const cancelResumed = async (): Promise<void> => {
+    if (cancelBusy) return;
+    setCancelBusy(true);
+    setCancelError(null);
+    try {
+      await cancelTillCardPayment({ venueId, paymentId });
+      onScanInstead();
+    } catch (e) {
+      setCancelError(tillErrorCopy(e instanceof TillError ? e.code : "till_failed"));
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
   return (
     <View style={styles.box} testID="till-tap-panel">
       <Text style={styles.big}>{formatCurrency(chargedMinor, currency, true)}</Text>
       {copy.busy ? <Spinner size={36} /> : null}
       <Text style={styles.title} accessibilityLiveRegion="polite" testID="till-tap-state">{copy.title}</Text>
       {copy.danger !== null ? <Banner tone="danger" title={copy.danger} /> : null}
+      {cancelError !== null ? <Banner tone="danger" title={cancelError} /> : null}
       <View style={styles.actions}>
+        {resumed ? (
+          <Button label={TILL_COPY.cancelPayment} variant="secondary" size="md" fullWidth loading={cancelBusy} onPress={() => void cancelResumed()} testID="till-tap-cancel-resumed" />
+        ) : null}
         {copy.canTryAnother ? (
           <Button label={TILL_COPY.tryAnotherCard} variant="primary" size="lg" fullWidth onPress={() => void flowRef.current?.tryAnotherCard()} testID="till-tap-again" />
         ) : null}

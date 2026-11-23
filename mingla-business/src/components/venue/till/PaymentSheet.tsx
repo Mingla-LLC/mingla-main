@@ -30,16 +30,20 @@ import { ListRow } from "../../ui/ListRow";
 import { MoneyField } from "../../ui/MoneyField";
 import { Chip } from "../../ui/Pill";
 import { Sheet } from "../../ui/Sheet";
+import { Spinner } from "../../ui/Spinner";
 import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { ReceiptStep } from "./ReceiptStep";
 import { TillScanPanel } from "./TillScanPanel";
 import { TillTapPanel } from "./TillTapPanel";
 import type { TillTapOffer } from "./tillTapAvailability";
-import { paidLabel } from "./tillPayModel";
+import { paidLabel, resumeLivePayment, scanPanelState } from "./tillPayModel";
 import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
 import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 
-type Step = "choose" | "cash" | "own" | "scan" | "tap" | "paid";
+type Step = "choose" | "cash" | "own" | "scan" | "tap" | "paid" | "resuming";
+
+/** O2 fix 3: how often a failed read of the live code is tried again. */
+const RESUME_RETRY_MS = 3000;
 type PaidMethod = "cash" | "own_machine" | "tap" | "scan";
 
 export interface PaymentSheetProps {
@@ -114,6 +118,10 @@ export function PaymentSheet({
   } | null>(null);
   const [card, setCard] = useState<TillCardStart | null>(null);
   const [tapBusy, setTapBusy] = useState(false);
+  // O2 fix 3: a live payment found on opening (read once per opening of the sheet).
+  const [tapResumed, setTapResumed] = useState(false);
+  const [resumeTry, setResumeTry] = useState(0);
+  const resumeDone = useRef(false);
   // One id per payment attempt: a retry of the same tap reuses it.
   const requestId = useRef<string>(randomId());
 
@@ -131,8 +139,71 @@ export function PaymentSheet({
     setResult(null);
     setCard(null);
     setTapBusy(false);
+    setTapResumed(false);
+    resumeDone.current = false;
     requestId.current = randomId();
   }, [visible]);
+
+  // O2-B1: a check that already has a live card payment opens on that payment's
+  // waiting panel (the same panels, not a second one), never on methods the
+  // server refuses. A scan code is read back for its link; a tap with no reader
+  // to resume shows waiting with Cancel payment.
+  useEffect(() => {
+    if (!visible || sale === null || resumeDone.current) return undefined;
+    const live = resumeLivePayment(sale, Date.now());
+    if (live.kind === "none") {
+      resumeDone.current = true;
+      return undefined;
+    }
+    const p = live.payment;
+    const base = {
+      paymentId: p.id,
+      amountMinor: p.amountMinor,
+      tipMinor: p.tipMinor,
+      chargedMinor: p.chargedMinor ?? p.amountMinor + p.tipMinor,
+      sale: null,
+    };
+    if (live.kind === "tap") {
+      resumeDone.current = true;
+      setCard({ ...base, code: null, payUrl: null, expiresAt: null });
+      setTapResumed(true);
+      setStep("tap");
+      return undefined;
+    }
+    setStep("resuming");
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    void scanApi
+      .fetchStatus(live.code)
+      .then((st) => {
+        if (!alive) return;
+        const panel = scanPanelState(
+          { status: st.status, paymentState: st.paymentState, payStarted: st.payStarted, expiresAt: st.expiresAt },
+          Date.now(),
+        );
+        if (st.payUrl === null || (panel !== "waiting" && panel !== "paying")) {
+          // Paid, closed or past its time since the sheet was last open: the
+          // check shows the truth, and the methods are open again.
+          resumeDone.current = true;
+          onRefreshSale();
+          setStep("choose");
+          return;
+        }
+        resumeDone.current = true;
+        setCard({ ...base, code: st.code, payUrl: st.payUrl, expiresAt: st.expiresAt });
+        setStep("scan");
+      })
+      .catch(() => {
+        if (!alive) return;
+        // The read failed: try again shortly rather than showing a dead end.
+        timer = setTimeout(() => setResumeTry((n) => n + 1), RESUME_RETRY_MS);
+      });
+    return () => {
+      alive = false;
+      if (timer !== null) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, sale, resumeTry]);
 
   // O1-B1: the typed amount is what is taken, never quietly swapped for the
   // balance; an amount above what is left is refused in words and blocks the
@@ -225,7 +296,9 @@ export function PaymentSheet({
   };
 
   const title =
-    step === "paid"
+    step === "resuming"
+      ? TILL_COPY.scanToPay
+      : step === "paid"
       ? TILL_COPY.paymentTaken
       : step === "cash"
       ? TILL_COPY.cash
@@ -249,6 +322,12 @@ export function PaymentSheet({
   let footer: React.ReactNode = null;
   if (sale === null) {
     body = <Text style={styles.muted}>{TILL_COPY.payPending}</Text>;
+  } else if (step === "resuming") {
+    body = (
+      <View style={[styles.body, styles.center]} testID="till-pay-resuming">
+        <Spinner size={36} />
+      </View>
+    );
   } else if (step === "choose") {
     body = (
       <View style={styles.body}>
@@ -373,6 +452,7 @@ export function PaymentSheet({
         onBusyChange={setTapBusy}
         onPaid={() => cardPaid("tap", TILL_COPY.tapToPay)}
         onScanInstead={backToChoose}
+        resumed={tapResumed}
       />
     );
   } else if (step === "own") {

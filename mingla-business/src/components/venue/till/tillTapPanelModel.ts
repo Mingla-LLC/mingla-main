@@ -50,3 +50,17 @@ export const tillTapPanelCopy = (state: TapSaleState): TillTapPanelCopy => {
       return { ...base, title: TILL_COPY.tapToPay };
   }
 };
+
+/**
+ * #4490 O2 fix 3: a tap payment found already waiting when the sheet reopened.
+ * This phone cannot pick the reader back up, so the panel says the payment is
+ * waiting and offers the working cancel (pay_card_cancel), never a dead end.
+ */
+export const tillTapResumedCopy = (): TillTapPanelCopy => ({
+  title: TILL_COPY.waitingForPayment,
+  danger: null,
+  busy: false,
+  canTryAnother: false,
+  canSaveAgain: false,
+  canScanInstead: false,
+});

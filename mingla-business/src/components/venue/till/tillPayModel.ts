@@ -72,6 +72,37 @@ export const latePayments = (sale: TillSale | null): Array<{ payment: TillPaymen
     .map((payment) => ({ payment, canKeep: open && sale.remainingMinor > 0 && payment.refundedMinor === 0 }));
 };
 
+/**
+ * #4490 O2 fix 3 (O2-B1): what the pay sheet opens on. A check that already has
+ * a live card payment (a scan code still open, or a tap not yet finished) lands
+ * on that payment's waiting panel, never on the method list the server would
+ * refuse. Paid, cancelled, expired and no-payment checks open on the methods as
+ * before. Read from the sale's own projection; nothing new is asked of the server.
+ */
+export type PayResume =
+  | { kind: "none" }
+  | { kind: "scan"; payment: TillPayment; code: string }
+  | { kind: "tap"; payment: TillPayment };
+
+export const resumeLivePayment = (sale: TillSale | null, nowMs: number): PayResume => {
+  if (sale === null || (sale.state !== "open" && sale.state !== "paying")) return { kind: "none" };
+  for (const payment of sale.payments) {
+    if (payment.state !== "pending") continue;
+    if (payment.method === "scan") {
+      const pc = payment.payCode;
+      if (pc === null || !TILL_CODE_RE.test(pc.code)) continue;
+      const panel = scanPanelState(
+        { status: pc.status, paymentState: payment.state, payStarted: pc.payStarted, expiresAt: pc.expiresAt },
+        nowMs,
+      );
+      if (panel === "waiting" || panel === "paying") return { kind: "scan", payment, code: pc.code };
+    } else if (payment.method === "tap") {
+      return { kind: "tap", payment };
+    }
+  }
+  return { kind: "none" };
+};
+
 /** "Card {amount}, includes fees" only when the card takes more than the bill. */
 export const cardTotalDiffers = (amountMinor: number, tipMinor: number, chargedMinor: number | null): boolean =>
   chargedMinor !== null && chargedMinor > amountMinor + tipMinor;
