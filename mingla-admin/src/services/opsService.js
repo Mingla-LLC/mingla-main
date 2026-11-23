@@ -135,6 +135,12 @@ export const fetchCalendar = (from, to, today) =>
 // [from, to) instants, read beside ops_calendar (which it does not change).
 export const fetchCalendarCalls = (fromIso, toIso, showTest) =>
   call(() => supabase.rpc("admin_calendar_calls", { p_from: fromIso, p_to: toIso, p_show_test: !!showTest }));
+// #4571 W5 (the Week view): a host or creator card's next phone follow-up, and the
+// open Work cards due, for the same days. Both take at most 100 days.
+export const fetchCalendarCallbacks = (from, to) =>
+  call(() => supabase.rpc("ops_calendar_callbacks", { p_from: from, p_to: to }));
+export const fetchCalendarWorkDue = (from, to) =>
+  call(() => supabase.rpc("ops_calendar_work_due", { p_from: from, p_to: to }));
 export const fetchRunwayReport = (from, to, today) =>
   call(() => supabase.rpc("ops_runway_report", { p_from: from || null, p_to: to || null, p_today: today || null }));
 export const fetchAnchorDetail = (kind, id, today) =>

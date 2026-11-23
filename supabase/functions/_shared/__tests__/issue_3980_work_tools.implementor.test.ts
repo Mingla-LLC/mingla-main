@@ -250,9 +250,9 @@ Deno.test("#3980 the edge routes the work tools to the ops gateway and keeps the
 });
 
 Deno.test("#3980 the gateway names exactly these tools, and every function a tool reaches exists", () => {
-  const migrations = [
-    ...Deno.readDirSync(new URL("supabase/migrations/", ROOT)),
-  ]
+  const files = [...Deno.readDirSync(new URL("supabase/migrations/", ROOT))]
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const migrations = files
     .filter((e) => /3980.*\.sql$/.test(e.name))
     .map((e) => read(`supabase/migrations/${e.name}`))
     .join("\n");
@@ -268,10 +268,15 @@ Deno.test("#3980 the gateway names exactly these tools, and every function a too
     /c_tools constant text\[\] := ARRAY\[([^\]]*)\]/,
   )![1].match(/'([a-z_]+)'/g)!.map((s) => s.slice(1, -1));
   assertEquals(tools, NAMES);
+  // #4571 W5: the Calendar's call-back and Work due functions live in a #4571 migration.
+  const functions = files
+    .filter((e) => /(3980|4571).*\.sql$/.test(e.name))
+    .map((e) => read(`supabase/migrations/${e.name}`))
+    .join("\n");
   for (const t of TEAM_AGENT_WORK_TOOLS) {
     for (const fn of t.reaches) {
       assert(
-        new RegExp(`CREATE FUNCTION public\\.${fn}\\(`).test(migrations),
+        new RegExp(`CREATE FUNCTION public\\.${fn}\\(`).test(functions),
         `${t.name} reaches ${fn}`,
       );
     }

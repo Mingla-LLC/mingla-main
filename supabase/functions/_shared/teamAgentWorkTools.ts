@@ -665,6 +665,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     title: "Read the calendar",
     description:
       "Read the Calendar for up to 100 days: events public on Mingla with their runway, expected events from host cards, go-live deadlines, promotion start dates and planned content. " +
+      "The calls layer lists booked demos (time in your person's zone, status, name or venue, the linked host card or needs_linking) and scheduled call-backs (a host or creator card's next follow-up on the phone); the work_due layer lists open Work cards and subtasks due in the days. Neither carries an email address or a phone number. " +
       LINK_TIMES + " " + DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       from: DATE,
@@ -674,17 +675,19 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
         items: {
           type: "string",
           maxLength: 12,
-          enum: ["live", "expected", "deadlines", "promotions", "content"],
-          hint: "Use live, expected, deadlines, promotions or content",
+          enum: ["live", "expected", "deadlines", "promotions", "content", "calls", "work_due"],
+          hint: "Use live, expected, deadlines, promotions, content, calls or work_due",
         },
         minItems: 1,
-        maxItems: 5,
+        maxItems: 7,
         hint: "Send the layers to read",
       },
       today: DATE,
     }, ["from", "to"]),
     annotations: READ,
-    reaches: ["ops_calendar"],
+    // #4571 W5: the call-backs and Work due functions; demos come from
+    // admin_calendar_calls inside the same call.
+    reaches: ["ops_calendar", "ops_calendar_callbacks", "ops_calendar_work_due"],
     writes: false,
     adminOnly: false,
     peopleText: true,
@@ -910,6 +913,9 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
     excluded: "the sprint review note is written by people",
   },
   ops_calendar: { tools: ["list_calendar"] },
+  // #4571 W5: the Week view's two reads; an agent reads them as list_calendar's calls and work_due layers.
+  ops_calendar_callbacks: { tools: ["list_calendar"] },
+  ops_calendar_work_due: { tools: ["list_calendar"] },
   ops_runway_report: { tools: ["runway_report"] },
   ops_anchor_detail: {
     excluded:

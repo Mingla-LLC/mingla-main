@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4571_list_calendar_calls.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4571-w5-list-calendar-calls",
+  "profile": "deno-1.46-stripe"
+}

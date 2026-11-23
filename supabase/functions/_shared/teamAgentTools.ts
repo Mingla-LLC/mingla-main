@@ -1465,6 +1465,15 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   crm_record_set_owners: { tools: ["set_owners"] },
   // #4571 W3: the host and creator card.
   crm_record_set_people: { tools: ["set_owners"] },
+  // #4571 W4: linking a booked demo to a host card is a person's decision. An agent
+  // reads each card's demos with get_record.
+  crm_demo_inbox: { excluded: "a person reviews the demos that need linking" },
+  crm_demo_inbox_count: { excluded: "the banner count is for people" },
+  crm_demo_suggestions: { excluded: "a person confirms which host card a demo belongs to" },
+  crm_demo_link: { excluded: "a person links a booked demo to a host card" },
+  crm_demo_create_record: { excluded: "a person makes the host card from a booking" },
+  crm_demo_not_a_host: { excluded: "a person says a booking is not a host" },
+  crm_demo_unlink: { excluded: "a person takes a demo off a host card" },
   crm_record_work: {
     excluded:
       "the card's Work list is for people; an agent reads Work cards with list_work and my_work",
