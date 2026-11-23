@@ -33,6 +33,15 @@
 --   T6-2  a succeeded extra refund counts as returned: an ops retry after the
 --         recorded refund failed or was reversed sends nothing.
 --   T6-4  an extra refund that later fails stops counting, no second alert.
+--   Rework 7  a second-provider create is never re-sent: unseen past the
+--         in-flight ceiling it goes to ops once (provider_refund_unconfirmed);
+--         ops retry is the only way to send again; the first provider is
+--         unchanged.
+--   T7-1  an extra refund that settled it is recorded on the row as the
+--         recorded refund would be (and the view shows it returned, T7-6).
+--   T7-2  ops retry is refused while an extra refund is pending (re-read).
+--   T7-4  a total counting extra refunds is trusted only after a re-read.
+--   T7-5  a check that changes nothing pauses a stopped row 5 minutes.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
@@ -42,7 +51,10 @@
 -- update, drop the begin's reconcile or busy step, let a refund without its id
 -- reverse a succeeded one, drop the over-amount adoption, or drop the known
 -- refund check, keep a reversed refund counted on its row, or drop the
--- unmatched-refund record (issue_4522_overpayment_extra_refund) -> red.
+-- unmatched-refund record (issue_4522_overpayment_extra_refund), drop the
+-- unconfirmed hand-off or its retry release, the pending-extra retry refusal,
+-- the re-read before trusting extra refunds, the extra refund's adoption as
+-- an attempt, or the no-change updated_at touch -> red.
 
 BEGIN;
 
@@ -506,6 +518,13 @@ BEGIN
   PERFORM pg_temp.check('T6-1 ... the sweep reads the recorded refund by its id: no new refund, no new alert',
     v->>'action' = 'verify' AND v->>'alertOps' = 'false' AND jsonb_array_length(v->'attempts') = 1
     AND v->'attempts'->0->>'providerRefundId' = '9061' AND pg_temp.n_attempts(op) = 1, v::text);
+  -- T7-5: a check that changes nothing pauses it 5 minutes, so stopped rows
+  -- never take the whole due list on every sweep.
+  UPDATE public.order_overpayments SET updated_at = now() - interval '1 hour' WHERE id = op;
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9061');
+  PERFORM pg_temp.check('T7-5 ... a check with no change pauses it: not due a minute later, due again after 5 minutes',
+    NOT public.issue_4522_overpayments_due(NULL, now() + interval '1 minute', 1000) @> jsonb_build_array(jsonb_build_object('overpaymentId', op))
+    AND public.issue_4522_overpayments_due(NULL, now() + interval '6 minutes', 1000) @> jsonb_build_array(jsonb_build_object('overpaymentId', op)));
   BEGIN
     PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
   EXCEPTION WHEN SQLSTATE 'PT409' THEN v_raised := true;
