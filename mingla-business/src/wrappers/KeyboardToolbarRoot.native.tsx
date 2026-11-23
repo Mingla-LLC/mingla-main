@@ -31,8 +31,8 @@ import { color, materials, space, type } from "../constants/designSystem";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { DONE_BAR_OCCUPIED } from "./keyboardClearance.native";
 import {
+  doneBarShown,
   getDoneBarSuppressed,
-  setDoneBarSuppressed,
   subscribeDoneBarSuppressed,
 } from "./doneBarSuppression";
 import { useKeyboardIsVisible } from "./useKeyboardIsVisible";
@@ -253,10 +253,6 @@ export const KeyboardToolbarRoot: React.FC = () => {
     getDoneBarSuppressed,
     getDoneBarSuppressed,
   );
-  useEffect(() => {
-    // A dismissal that never blurs the field must not strand the flag.
-    if (!visible) setDoneBarSuppressed(false);
-  }, [visible]);
   const scoped = useSyncExternalStore(
     subscribeAvailabilityToolbar,
     getAvailabilityToolbarSnapshot,
@@ -278,7 +274,7 @@ export const KeyboardToolbarRoot: React.FC = () => {
     event.preventDefault();
     current.focusNext();
   }, []);
-  if (!visible || suppressed) return null;
+  if (!doneBarShown(visible, suppressed)) return null;
   if (scoped !== null) {
     return (
       <DoneBarDock>

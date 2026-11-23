@@ -23,6 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  doneBarShown,
   getDoneBarSuppressed,
   setDoneBarSuppressed,
   subscribeDoneBarSuppressed,
@@ -74,9 +75,10 @@ describe("#4572 — the Ari composer rides the keyboard and sits flush", () => {
   });
 
   it("every other field keeps the Done bar: the toolbar hides only while the flag is up", () => {
-    expect(toolbarNative).toMatch(/if\s*\(!visible\s*\|\|\s*suppressed\)\s*return null;/);
-    // A dismissal that never fires a blur (Android back) cannot strand the flag.
-    expect(toolbarNative).toMatch(/if\s*\(!visible\)\s*setDoneBarSuppressed\(false\)/);
+    expect(toolbarNative).toMatch(/if\s*\(!doneBarShown\(visible,\s*suppressed\)\)\s*return null;/);
+    // #4572 P2-2: the toolbar only READS the flag. Clearing it when the keyboard
+    // hid brought the Done bar back after an Android back-button dismissal.
+    expect(toolbarNative).not.toMatch(/setDoneBarSuppressed/);
     // The flag lives in one library-free module; nothing else raises it.
     const raisers = ["../AriChatScreen.tsx"].filter((rel) => /setDoneBarSuppressed\(true\)/.test(code(read(rel))));
     expect(raisers).toEqual(["../AriChatScreen.tsx"]);
@@ -105,5 +107,26 @@ describe("#4572 — the Done-bar suppression flag", () => {
     off();
     setDoneBarSuppressed(true);
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("#4572 P2-2 — Android back hides the keyboard but keeps the composer focused", () => {
+  afterEach(() => setDoneBarSuppressed(false));
+
+  it("re-tapping the still-focused composer reopens the keyboard with no Done bar", () => {
+    // Focus: the composer raises the flag; the keyboard shows.
+    setDoneBarSuppressed(true);
+    expect(doneBarShown(true, getDoneBarSuppressed())).toBe(false);
+    // Back button: the keyboard hides, no blur fires. Nothing draws.
+    expect(doneBarShown(false, getDoneBarSuppressed())).toBe(false);
+    // Re-tap: no new focus event, the keyboard shows again. Still no Done bar.
+    expect(doneBarShown(true, getDoneBarSuppressed())).toBe(false);
+  });
+
+  it("another field keeps its Done bar once the composer blurs", () => {
+    setDoneBarSuppressed(true);
+    setDoneBarSuppressed(false); // focusing another field blurs the composer first
+    expect(doneBarShown(true, getDoneBarSuppressed())).toBe(true);
+    expect(doneBarShown(false, getDoneBarSuppressed())).toBe(false);
   });
 });

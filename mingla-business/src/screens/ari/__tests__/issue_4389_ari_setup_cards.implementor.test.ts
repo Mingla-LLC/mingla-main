@@ -9,7 +9,12 @@ import * as path from "path";
 import { redactSensitiveDigits } from "../../../components/ari/ariRedaction";
 import { ARI_SETUP_COPY, payoutCountryLabel } from "../../../components/ari/ariSetupCopy";
 import { BRAND_SETUP_BANNED_WORDS } from "../../../components/brand/brandSetupCopy";
-import { emptyBrandChips, firstRunGreeting } from "../../../utils/firstRunState";
+import {
+  WIDE_SETUP_CARD_MIN_PANE_PX,
+  emptyBrandChips,
+  firstRunGreeting,
+  noBrandSetupCardLayout,
+} from "../../../utils/firstRunState";
 
 const read = (rel: string): string => fs.readFileSync(path.join(__dirname, rel), "utf8");
 
@@ -168,5 +173,33 @@ describe("#4389 cards render from their inputs", () => {
     press(notice, "ari-sensitive-open");
     expect(onOpen).toHaveBeenCalledTimes(1);
     notice.unmount();
+  });
+});
+
+describe("#4572 item 16 P2-1 — the no-brand card picks two columns by the Ari pane width", () => {
+  test("1024 px window: the pane beside Conversations is too narrow, so the card stacks", () => {
+    // About 480 px of Ari pane at the 1024 breakpoint (nav + Conversations pane).
+    expect(noBrandSetupCardLayout({ isWideDesktop: true, isWeb: true, paneWidth: 484 })).toBe("web");
+    expect(noBrandSetupCardLayout({ isWideDesktop: true, isWeb: true, paneWidth: WIDE_SETUP_CARD_MIN_PANE_PX - 1 })).toBe("web");
+    // Not measured yet: never the squeezed two-column card.
+    expect(noBrandSetupCardLayout({ isWideDesktop: true, isWeb: true, paneWidth: null })).toBe("web");
+  });
+  test("1280 and 1440 px windows give the pane room for two columns", () => {
+    expect(noBrandSetupCardLayout({ isWideDesktop: true, isWeb: true, paneWidth: WIDE_SETUP_CARD_MIN_PANE_PX })).toBe("wide");
+    expect(noBrandSetupCardLayout({ isWideDesktop: true, isWeb: true, paneWidth: 900 })).toBe("wide");
+  });
+  test("phone and narrow web are unchanged", () => {
+    expect(noBrandSetupCardLayout({ isWideDesktop: false, isWeb: false, paneWidth: 390 })).toBe("phone");
+    expect(noBrandSetupCardLayout({ isWideDesktop: false, isWeb: true, paneWidth: 1200 })).toBe("web");
+  });
+  test("the screen measures the Ari pane and never picks the card by the breakpoint alone", () => {
+    const src = read("../AriChatScreen.tsx");
+    expect(src).toMatch(/layout=\{noBrandSetupCardLayout\(\{[\s\S]{0,120}paneWidth:\s*ariPaneWidth/);
+    expect(src).not.toMatch(/layout=\{isWideDesktop \? "wide"/);
+    expect(src).toMatch(/setAriPaneWidth\(/);
+    // Button labels never wrap onto two lines.
+    const card = read("../../../components/ari/AriSetupCard.tsx");
+    expect(card).toMatch(/btnPrimaryLabel\}\s*numberOfLines=\{1\}/);
+    expect(card).toMatch(/btnSecondaryLabel\}\s*numberOfLines=\{1\}/);
   });
 });

@@ -83,7 +83,12 @@ import { trackBrandSetup } from "../../components/brand/brandSetupAnalytics";
 import type { Brand } from "../../store/currentBrandStore";
 import { usePickBrand } from "../../hooks/usePickBrand";
 // #4389 A1–A5 — setup cards from the server checklist; digits redacted before send.
-import { AriCreateBrandNotice, AriSensitiveNotice, AriSetupCard, AriSkipPaymentsCard } from "../../components/ari/AriSetupCard";
+import {
+  AriCreateBrandNotice,
+  AriSensitiveNotice,
+  AriSetupCard,
+  AriSkipPaymentsCard,
+} from "../../components/ari/AriSetupCard";
 import { a3NoticeFor, type A3Notice } from "../../components/ari/ariCreateBrandOutcome";
 import { ARI_SETUP_COPY } from "../../components/ari/ariSetupCopy";
 import { redactSensitiveDigits, wantsToSkipPayments } from "../../components/ari/ariRedaction";
@@ -133,6 +138,7 @@ import {
   NO_BRAND_PLACEHOLDER,
   firstRunGreeting,
   isFirstRunLocked,
+  noBrandSetupCardLayout,
 } from "../../utils/firstRunState";
 import type { AgentMessage, AriFirstRunHint } from "../../services/agentChatService";
 import {
@@ -344,6 +350,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
    * consumer and the same two-column layout.
    */
   const { isWideDesktop } = useResponsiveLayout();
+  const [ariPaneWidth, setAriPaneWidth] = useState<number | null>(null);
   const sitesParams = useLocalSearchParams<{
     sitesIntent?: string | string[];
     brandId?: string | string[];
@@ -1435,7 +1442,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     noBrandStage ? (
       <AriSetupCard
         brandName={null}
-        layout={isWideDesktop ? "wide" : Platform.OS === "web" ? "web" : "phone"}
+        layout={noBrandSetupCardLayout({
+          isWideDesktop,
+          isWeb: Platform.OS === "web",
+          paneWidth: ariPaneWidth,
+        })}
         doneCount={0}
         onSetUp={() => router.push("/brand/new" as never)}
         onWithAri={
@@ -1735,6 +1746,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           styles.ariPane,
           websiteSplit && !websiteSetup && isWideDesktop ? styles.websiteAriPane : null,
         ]}
+        onLayout={(event) => {
+          // #4572 item 16 (P2-1): the no-brand card picks its layout by this width.
+          const next = Math.round(event.nativeEvent.layout.width);
+          setAriPaneWidth((previous) => (previous === next ? previous : next));
+        }}
       >
         {/* #4389 AB — Ari's one top bar: the brand chip (same as Home), then
           Chats and Ari settings. First run (no Home tab) keeps Messages and

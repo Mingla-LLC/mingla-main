@@ -76,7 +76,9 @@ const NoBrandSetupCard: React.FC<{
         ]}
         testID="ari-setup-start"
       >
-        <Text style={styles.btnPrimaryLabel}>{C.a1.setUp}</Text>
+        <Text style={styles.btnPrimaryLabel} numberOfLines={1}>
+          {C.a1.setUp}
+        </Text>
       </Pressable>
       {onWithAri ? (
         <Pressable
@@ -91,7 +93,9 @@ const NoBrandSetupCard: React.FC<{
           testID="ari-setup-with-ari"
         >
           <View style={styles.a1AriDot} />
-          <Text style={styles.btnSecondaryLabel}>{C.a1.withAri}</Text>
+          <Text style={styles.btnSecondaryLabel} numberOfLines={1}>
+            {C.a1.withAri}
+          </Text>
         </Pressable>
       ) : null}
     </View>

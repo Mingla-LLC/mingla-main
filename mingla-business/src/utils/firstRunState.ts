@@ -215,3 +215,25 @@ export function firstRunGreeting(args: {
     chips: emptyBrandChips(args.remembered),
   };
 }
+
+/**
+ * #4572 item 16 (P2-1): the two-column card needs room beside the Conversations
+ * pane. At the 1024 px wide-desktop breakpoint the Ari pane is far narrower than
+ * the window, so the card is chosen by the measured pane width, not by the
+ * window breakpoint alone. Below the floor (or before the pane is measured) a
+ * wide desktop gets the stacked web card.
+ */
+export const WIDE_SETUP_CARD_MIN_PANE_PX = 640;
+
+export function noBrandSetupCardLayout(input: {
+  isWideDesktop: boolean;
+  isWeb: boolean;
+  paneWidth: number | null;
+}): "phone" | "web" | "wide" {
+  if (input.isWideDesktop) {
+    return input.paneWidth !== null && input.paneWidth >= WIDE_SETUP_CARD_MIN_PANE_PX
+      ? "wide"
+      : "web";
+  }
+  return input.isWeb ? "web" : "phone";
+}
