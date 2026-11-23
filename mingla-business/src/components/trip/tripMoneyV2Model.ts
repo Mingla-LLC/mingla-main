@@ -71,6 +71,13 @@ export const TRIP_MONEY_V2_BELOW_MINIMUM_COPY =
 /** issue #4522 X-8 — an overpayment refund stopped for Mingla support (needs ops). */
 export const TRIP_MONEY_V2_NEEDS_OPS_COPY = "Mingla support is handling the refund";
 
+/** issue #4522 X-7 — a refunded or cancelled order, from its payment status. */
+export function closedOrderState(paymentStatus: string | undefined): "refunded" | "cancelled" | null {
+  if (paymentStatus === "refunded") return "refunded";
+  if (paymentStatus === "cancelled") return "cancelled";
+  return null;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function rowChip(row: OrderInstallmentForBrand): TripMoneyV2Chip | null {

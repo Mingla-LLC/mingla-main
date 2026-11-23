@@ -20,6 +20,7 @@ type Props = Record<string, unknown>;
 const chargeMutate = jest.fn();
 let installments: unknown[] = [];
 let balances: unknown[] = [];
+let orders: unknown[] = [];
 
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ id: "4878b0a2-d135-4ec2-bae0-d3c306ad59dd" }),
@@ -46,7 +47,7 @@ jest.mock("../../../../../src/hooks/useTrips", () => ({
   useTrip: () => ({ isLoading: false, isError: false, data: { brandId: "brand-1", pricingTiers: [] } }),
 }));
 jest.mock("../../../../../src/hooks/useTripOrders", () => ({
-  useTripOrders: () => ({ isLoading: false, isError: false, data: [], refetch: jest.fn() }),
+  useTripOrders: () => ({ isLoading: false, isError: false, data: orders, refetch: jest.fn() }),
 }));
 jest.mock("../../../../../src/hooks/useOrderInstallments", () => ({
   useInstallmentsForBrandTrips: () => ({ isLoading: false, isError: false, data: installments, refetch: jest.fn() }),
@@ -179,6 +180,7 @@ const charge = (tree: ReturnType<typeof render>): Node | undefined =>
 describe("#4522 S-2 host money screen, plan-v2 orders", () => {
   beforeEach(() => {
     chargeMutate.mockClear();
+    orders = [];
   });
 
   test("mid-plan: the server's $600 owed, not $0.00, and the plan terms line", () => {
@@ -352,6 +354,51 @@ describe("#4522 S-2 host money screen, plan-v2 orders", () => {
     const tree = render();
     press(tree, findToggleLabel(tree));
     expect(text(tree)).toContain("Paid $300.00 more than the balance · Refunded");
+    TestRenderer.act(() => tree.unmount());
+  });
+
+  // issue #4522 X-7 — a refunded or cancelled plan-v2 order is not "Collected · paid in full".
+  test.each([
+    ["refunded", "Refunded"],
+    ["cancelled", "Cancelled"],
+  ])("a %s order shows %s, with no charge, reminder or Cancel & refund", (paymentStatus, label) => {
+    installments = [
+      row({ id: "c1", status: "cancelled" }),
+      row({ id: "c2", ordinal: 2, status: "cancelled", dueAt: "2027-01-15T09:00:00Z" }),
+      row({ id: "c3", ordinal: 3, status: "cancelled", dueAt: "2027-02-10T09:00:00Z" }),
+    ];
+    orders = [{ id: ORDER, buyerName: "C24S Buyer", buyerEmail: "c24s-buyer@example.test", buyerPhone: null,
+      paymentStatus, totalCents: 30000, currency: "USD", createdAt: "2026-11-20T09:00:00Z", intakeFormData: null }];
+    balances = [host(rawBalance({
+      remainingMinor: 0,
+      totalMinor: 30000,
+      canPayAnyAmount: false,
+      minPaymentMinor: null,
+      maxPartialMinor: null,
+      nextPayment: null,
+    }))];
+    const tree = render();
+    expect(findToggleLabel(tree)).toBe(`C24S Buyer, paid $300.00 of $300.00, ${label}`);
+    press(tree, findToggleLabel(tree));
+    const out = text(tree);
+    expect(out).not.toContain("No reminder needed");
+    expect(out).not.toContain("Collected");
+    expect(charge(tree)).toBeUndefined();
+    expect(byLabel(tree, "Cancel and refund C24S Buyer's booking")).toBeUndefined();
+    TestRenderer.act(() => tree.unmount());
+  });
+
+  test("a live plan-v2 order still offers Cancel & refund", () => {
+    installments = [row({ id: "l1", amountCents: 90000, amountChargedCents: 90000 })];
+    orders = [{ id: ORDER, buyerName: "C24S Buyer", buyerEmail: "c24s-buyer@example.test", buyerPhone: null,
+      paymentStatus: "paid", totalCents: 30000, currency: "USD", createdAt: "2026-11-20T09:00:00Z", intakeFormData: null }];
+    balances = [host(rawBalance({
+      nextPayment: { installmentId: "l1", dueAt: "2026-12-19T09:00:00Z", amountMinor: 90000, status: "scheduled" },
+      openRows: [{ installmentId: "l1", dueAt: "2026-12-19T09:00:00Z", amountMinor: 90000, addonPortionMinor: 0, planLineId: "t1", status: "scheduled" }],
+    }))];
+    const tree = render();
+    press(tree, findToggleLabel(tree));
+    expect(byLabel(tree, "Cancel and refund C24S Buyer's booking")).toBeDefined();
     TestRenderer.act(() => tree.unmount());
   });
 

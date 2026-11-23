@@ -40,6 +40,7 @@ import {
 import { featureFlags } from "../../../../src/config/featureFlags";
 import {
   buildTripMoneyV2View,
+  closedOrderState,
   TRIP_MONEY_V2_CHIP_LABEL,
   TRIP_MONEY_V2_BELOW_MINIMUM_COPY,
   TRIP_MONEY_V2_IN_FLIGHT_COPY,
@@ -83,7 +84,13 @@ interface TravelerMoneyRow {
   planSchedule: InstallmentScheduleDisplaySchedule | null;
   /** issue #4522 S-2 — a plan-v2 order, read from the server balance; null otherwise. */
   v2: TripMoneyV2View | null;
+  /**
+   * issue #4522 X-7 — the order was refunded or cancelled: nothing is left to
+   * collect or cancel, whatever its rows add up to. Null for a live order.
+   */
+  closed: "refunded" | "cancelled" | null;
 }
+
 
 function formatCurrency(cents: number, currency: string): string {
   return withCurrencyGlyph(
@@ -229,6 +236,7 @@ function deriveInstallmentRow(rows: OrderInstallmentForBrand[]): TravelerMoneyRo
     outstandingCents,
     nextInstallment,
     lastChargeStatus: head.orderAtRisk ? "at_risk" : attempted?.status ?? "scheduled",
+    closed: null,
     planSchedule: {
       fullPriceCents: head.orderTotalCents,
       depositCents,
@@ -280,6 +288,7 @@ function deriveV2InstallmentRow(
     lastChargeStatus,
     planSchedule: null,
     v2,
+    closed: null,
   };
 }
 
@@ -348,11 +357,20 @@ export default function TripMoneyRoute(): React.ReactElement {
       arr.push(row);
       rowsByOrder.set(row.orderId, arr);
     }
+    const statusByOrder = new Map(
+      ordersQuery.data.map((order) => [order.id, order.paymentStatus]),
+    );
     const installmentRows = [...rowsByOrder.values()].map((orderRows) => {
       const balance = balancesByOrder.get(orderRows[0].orderId);
-      return balance === undefined
+      const derived = balance === undefined
         ? deriveInstallmentRow(orderRows)
         : deriveV2InstallmentRow(orderRows, balance);
+      // issue #4522 X-7 — a refunded or cancelled order shows that, not
+      // "Collected · paid in full", and offers no charge, reminder or cancel.
+      const closed = closedOrderState(statusByOrder.get(derived.orderId));
+      return closed === null
+        ? derived
+        : { ...derived, closed, lastChargeStatus: closed, nextInstallment: null };
     });
     const paidInFullRows = ordersQuery.data
       .filter((order) => !rowsByOrder.has(order.id))
@@ -372,6 +390,7 @@ export default function TripMoneyRoute(): React.ReactElement {
         lastChargeStatus: "collected",
         planSchedule: null,
         v2: null,
+        closed: null,
       }));
     const rows = [...installmentRows, ...paidInFullRows]
       .filter((row) => moneyFilter === "all" || row.orderAtRisk)
@@ -892,6 +911,8 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
   compact = false,
 }) => {
   const recentReminder = useRecentReminderForOrder(row.orderId);
+  // issue #4522 X-7 — nothing to charge or remind on a refunded / cancelled order.
+  if (row.closed !== null) return null;
   // issue #4522 S-2 — a settled plan-v2 order is paid in full; while a
   // traveler payment processes, nothing else may charge; a balance below the
   // provider's minimum stays owed but cannot be charged (no Charge now).
@@ -977,16 +998,20 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
       <>
         <View style={styles.moneyDivider} />
         <V2Ledger row={row} view={row.v2} retryMutation={retryMutation} />
-        <View style={styles.moneyDivider} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
-          accessibilityHint="Opens cancellation preview with refund amount and reason field"
-          style={styles.moneyRefundBtn}
-          onPress={onCancel}
-        >
-          <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
-        </Pressable>
+        {row.closed === null ? (
+          <>
+            <View style={styles.moneyDivider} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
+              accessibilityHint="Opens cancellation preview with refund amount and reason field"
+              style={styles.moneyRefundBtn}
+              onPress={onCancel}
+            >
+              <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
+            </Pressable>
+          </>
+        ) : null}
       </>
     );
   }
@@ -1048,16 +1073,20 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
           Paid in full at booking. No installment ledger for this traveller.
         </Text>
       )}
-      <View style={styles.moneyDivider} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
-        accessibilityHint="Opens cancellation preview with refund amount and reason field"
-        style={styles.moneyRefundBtn}
-        onPress={onCancel}
-      >
-        <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
-      </Pressable>
+      {row.closed === null ? (
+        <>
+          <View style={styles.moneyDivider} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
+            accessibilityHint="Opens cancellation preview with refund amount and reason field"
+            style={styles.moneyRefundBtn}
+            onPress={onCancel}
+          >
+            <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
+          </Pressable>
+        </>
+      ) : null}
     </>
   );
 };
