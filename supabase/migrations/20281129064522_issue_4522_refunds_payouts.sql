@@ -30,6 +30,10 @@
 --   issue_3872_refund_share_trigger (20271221003872) — an overpayment refund
 --     reverses no referral share (none was earned on money the plan did not
 --     owe) and adds nothing to the reversal basis of later refunds (T3-4).
+--   issue_3645_release_projected_totals (20280508003645),
+--   authorize_stripe_payout_execution (20280422003645) and
+--   authorize_paystack_payout_execution (20280602003645) — section 8: a
+--     payout never pays the host money that went back to a traveler.
 --   issue_2097_finalize_refund_attempt (20280305003281) and
 --   biz_cancel_trip_booking_commit (20260612000000) — pass 6 (S9-1): a plan
 --     order's charges are separate money: the order row holds the deposit
@@ -56,7 +60,10 @@ BEGIN
     ('public.issue_3645_cancel_refund_installment(uuid,text,text)','ba50142f4b8b940893a4c870c54d62da'),
     ('public.issue_3872_refund_share_trigger()','416d98679e62a948931f9c675d2c45df'),
     ('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)','38eca7ecb7dc35ec12052a6a6e41f3c1'),
-    ('public.biz_cancel_trip_booking_commit(uuid,text[],integer,timestamptz)','1c72d9102f9b3af8ca61ce8bb544510d')
+    ('public.biz_cancel_trip_booking_commit(uuid,text[],integer,timestamptz)','1c72d9102f9b3af8ca61ce8bb544510d'),
+    ('public.issue_3645_release_projected_totals(uuid)','74819965113d92d5f27dbe71e31ea99a'),
+    ('public.authorize_stripe_payout_execution(uuid,uuid,integer,timestamptz)','02024b64f8ac98326be5703410241645'),
+    ('public.authorize_paystack_payout_execution(uuid,uuid,timestamptz)','d8c549c1a96ce54133cd8055c5e8219a')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -949,8 +956,17 @@ BEGIN
     PERFORM public.issue_4522_sync_row_payout_hold(oi.id)
        FROM public.order_installments oi
       WHERE oi.order_id = NEW.order_id AND oi.stripe_payment_intent_id = NEW.payment_intent_id;
+    -- Section 8 (gap 2): a payout already holding the order's deposit or
+    -- sale is held too while this provider refund is unrecorded.
+    PERFORM public.issue_4522_sync_order_payouts(NEW.order_id);
   ELSIF TG_TABLE_NAME = 'paystack_refund_attempts' THEN
-    PERFORM public.issue_4522_sync_row_payout_hold(NEW.source_id);
+    IF NEW.source_type = 'order_installment' THEN
+      PERFORM public.issue_4522_sync_row_payout_hold(NEW.source_id);
+      PERFORM public.issue_4522_sync_order_payouts(oi.order_id)
+         FROM public.order_installments oi WHERE oi.id = NEW.source_id;
+    ELSE
+      PERFORM public.issue_4522_sync_order_payouts(NEW.source_id);
+    END IF;
   ELSE
     PERFORM public.issue_4522_sync_row_payout_hold(NEW.installment_id);
   END IF;
@@ -965,10 +981,825 @@ CREATE TRIGGER issue_4522_refund_payout_hold
   EXECUTE FUNCTION public.issue_4522_refund_payout_hold_trigger();
 CREATE TRIGGER issue_4522_refund_payout_hold
   AFTER INSERT OR UPDATE OF status ON public.paystack_refund_attempts
-  FOR EACH ROW WHEN (NEW.source_type = 'order_installment')
+  FOR EACH ROW WHEN (NEW.source_type IN ('order_installment', 'order'))
   EXECUTE FUNCTION public.issue_4522_refund_payout_hold_trigger();
 CREATE TRIGGER issue_4522_refund_payout_hold
   AFTER INSERT ON public.order_installment_refund_applications
   FOR EACH ROW EXECUTE FUNCTION public.issue_4522_refund_payout_hold_trigger();
+
+-- ---------------------------------------------------------------------------
+-- 8. A host is never paid money that went back to a traveler (gaps 1 and 2 of
+--    "Rework I"; Seth, 2026-11-23: "Yes, fix it here").
+--    A sale is attached to a payout release with what it is worth at that
+--    moment; payout_release_items is append-only, so a later refund never
+--    reached the release (main: a fully refunded ₦286,500 item stayed due).
+--    One formula now says what each order sale or instalment charge is worth
+--    (issue_4522_payout_item_now) and issue_3645_release_projected_totals,
+--    the one projection every unpaid-release writer already uses, reads it:
+--      * recorded refunds since attach come off (never above the item);
+--      * while a refund of the order is pending, or the provider refunded and
+--        our books have not recorded it, the sale is held at 0 (the deposit
+--        too: gap 2);
+--      * other sources (RSVP, venue, stay) are unchanged.
+--    Writers:
+--      * issue_4522_sync_release_refunds (the one owner): an unpaid release
+--        not being sent takes the projection, atomically with the refund that
+--        changed it; a paid release opens or grows its #3645
+--        post_release_refund payout debt, recovered from the next payouts; a
+--        release being sent is left alone and synced when its outcome is
+--        recorded (the status trigger below).
+--      * the execution guard in both authorize functions re-reads the
+--        projection under the release lock and never sends more.
+--    Every refund-recording path reaches the owner through triggers on the
+--    rows it settles (refunds, orders, order_installments, provider refund
+--    attempts), so no refund path needs its own call. The refund paths never
+--    wait on a busy release (SKIP LOCKED) and never fail because of a payout:
+--    the guard at execution is the backstop.
+-- ---------------------------------------------------------------------------
+
+-- 8a0. A cancelled booking whose last refund did not go through (G-4: the
+--      provider refused it before any money moved, the booking stays
+--      cancelled): every sale of it is held from payouts until a refund is
+--      recorded. A cancel that refunds nothing writes no refund row.
+CREATE FUNCTION public.issue_4522_cancel_refund_unsettled(p_order_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+  SELECT EXISTS (
+    SELECT 1 FROM public.orders o
+     WHERE o.id = p_order_id AND o.cancelled_at IS NOT NULL
+       AND (SELECT r.status FROM public.refunds r WHERE r.order_id = o.id
+             ORDER BY r.created_at DESC, r.id DESC LIMIT 1) IN ('failed', 'cancelled'))
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_cancel_refund_unsettled(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- 8a. What one payout item is worth now: (refunded, net, settled net).
+--     net is 0 while a refund of its charge is pending or unrecorded;
+--     settled net counts recorded refunds only (what a paid release owes back).
+CREATE FUNCTION public.issue_4522_payout_item_now(
+  p_source_type text, p_source_id uuid, p_gross integer, p_refunded integer,
+  p_disputed integer, p_fee integer, p_net integer)
+RETURNS TABLE (refunded_cents bigint, net_cents bigint, settled_net_cents bigint)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_order uuid;
+  v_refunded bigint;
+  v_fee bigint := p_fee;
+  v_held boolean := false;
+  v_settled bigint;
+BEGIN
+  IF p_source_type = 'order' THEN
+    -- The same figures the payout sweep attaches an order with.
+    SELECT o.id, o.refunded_amount_cents,
+           greatest(0, coalesce(o.stripe_application_fee_amount_cents, 0) - coalesce((
+             SELECT sum(rf.application_fee_refunded_cents) FROM public.refunds rf
+              WHERE rf.order_id = o.id AND rf.status = 'succeeded'
+                AND rf.application_fee_refund_status = 'succeeded_positive'), 0))
+      INTO v_order, v_refunded, v_fee
+      FROM public.orders o WHERE o.id = p_source_id;
+    v_held := EXISTS (SELECT 1 FROM public.refunds r
+                       WHERE r.order_id = p_source_id AND r.status = 'pending'
+                         AND r.order_installment_id IS NULL)
+      OR EXISTS (SELECT 1 FROM public.ticket_refund_attempts a
+                   JOIN public.refunds r ON r.id = a.refund_id
+                  WHERE a.order_id = p_source_id AND a.buyer_refund_id IS NOT NULL
+                    AND r.status <> 'succeeded' AND r.order_installment_id IS NULL)
+      OR EXISTS (SELECT 1 FROM public.paystack_refund_attempts pa
+                   LEFT JOIN public.refunds r ON r.id = pa.local_refund_id
+                  WHERE pa.source_type = 'order' AND pa.source_id = p_source_id
+                    AND pa.status <> 'failed'
+                    AND (pa.status IN ('accepted', 'processed') OR pa.provider_refund_id IS NOT NULL)
+                    AND r.status IS DISTINCT FROM 'succeeded')
+      OR public.issue_4522_cancel_refund_unsettled(p_source_id);
+  ELSIF p_source_type = 'order_installment' THEN
+    SELECT oi.order_id, oi.refunded_amount_cents INTO v_order, v_refunded
+      FROM public.order_installments oi WHERE oi.id = p_source_id;
+    v_held := EXISTS (SELECT 1 FROM public.refunds r
+                       WHERE r.order_id = v_order AND r.status = 'pending'
+                         AND (r.order_installment_id IS NULL OR r.order_installment_id = p_source_id))
+      OR public.issue_4522_row_refund_unrecorded(p_source_id)
+      OR public.issue_4522_cancel_refund_unsettled(v_order);
+  END IF;
+  IF v_order IS NULL THEN
+    RETURN QUERY SELECT p_refunded::bigint, p_net::bigint, p_net::bigint;
+    RETURN;
+  END IF;
+  v_settled := least(p_net::bigint,
+    greatest(0, p_gross::bigint - v_refunded - p_disputed - v_fee));
+  RETURN QUERY SELECT greatest(p_refunded::bigint, least(p_gross::bigint, v_refunded)),
+    CASE WHEN v_held THEN 0::bigint ELSE v_settled END, v_settled;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_payout_item_now(text, uuid, integer, integer, integer, integer, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_payout_item_now(text, uuid, integer, integer, integer, integer, integer)
+  TO service_role;
+
+-- 8b. One ops alert per release and cause, through the #3645 alert outbox
+--     (existing kinds; the sweep picks the words from the message prefix).
+--     p_kind NULL: the release provider's attempt-cap kind.
+CREATE FUNCTION public.issue_4522_alert_payout_refund(
+  p_release_id uuid, p_kind text, p_message text, p_now timestamptz DEFAULT now())
+RETURNS void
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  INSERT INTO public.payout_release_alert_outbox (
+    release_id, alert_kind, idempotency_key, brand_id, error_message, created_at, updated_at)
+  SELECT r.id,
+         coalesce(p_kind, CASE WHEN r.provider = 'stripe' THEN 'stripe_attempt_cap' ELSE 'paystack_attempt_cap' END),
+         'issue_4522:' || split_part(p_message, ':', 1) || ':' || r.id::text,
+         r.brand_id, left(p_message, 1000), p_now, p_now
+    FROM public.brand_payout_releases r WHERE r.id = p_release_id
+  ON CONFLICT (release_id, alert_kind) DO NOTHING;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_alert_payout_refund(uuid, text, text, timestamptz)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- 8c. What a paid release owes back: what its sales were worth when it was
+--     paid (the paying claim's snapshot, #3645 2e-1; without one, the items
+--     as attached) minus what they are worth now after recorded refunds
+--     (a refund still pending is not owed back until it settles).
+CREATE FUNCTION public.issue_4522_release_refund_liability(p_release_id uuid, p_with_holds boolean DEFAULT false)
+RETURNS bigint
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_paid bigint;
+  v_now bigint;
+  v_unheld bigint;
+BEGIN
+  SELECT (s.projected->>'items_net_cents')::bigint INTO v_paid
+    FROM public.brand_payout_releases r
+    JOIN public.payout_release_claim_snapshots s ON s.id = r.paid_snapshot_id
+   WHERE r.id = p_release_id;
+  IF v_paid IS NULL THEN
+    SELECT coalesce(sum(i.net_cents), 0) INTO v_paid
+      FROM public.payout_release_items i WHERE i.release_id = p_release_id;
+  END IF;
+  SELECT t.items_net_cents INTO v_now FROM public.issue_3645_release_projected_totals(p_release_id) t;
+  -- p_with_holds: a refund the provider has made (or is making) counts as
+  -- refunded even before our books record it (the cap below uses this).
+  SELECT CASE WHEN p_with_holds THEN 0 ELSE coalesce(sum(n.settled_net_cents - n.net_cents), 0) END INTO v_unheld
+    FROM public.payout_release_items i
+   CROSS JOIN LATERAL public.issue_4522_payout_item_now(
+     i.source_type, i.source_id, i.gross_cents, i.refunded_cents,
+     i.disputed_cents, i.mingla_fee_cents, i.net_cents) n
+   WHERE i.release_id = p_release_id AND i.source_type IN ('order', 'order_installment');
+  RETURN greatest(0, v_paid - (coalesce(v_now, 0) + v_unheld));
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_release_refund_liability(uuid, boolean)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- 8d. The one owner. Returns what it did: projected | debt | busy | <status>.
+--     p_wait = false (refund paths): never wait on a release a sweep or a
+--     payout holds; the execution guard catches what this skips.
+CREATE FUNCTION public.issue_4522_sync_release_refunds(
+  p_release_id uuid, p_wait boolean DEFAULT false, p_now timestamptz DEFAULT now())
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_rel public.brand_payout_releases%ROWTYPE;
+  v_p record;
+  v_target bigint;
+  v_room integer;
+  v_debt public.organiser_payout_debts%ROWTYPE;
+BEGIN
+  SELECT * INTO v_rel FROM public.brand_payout_releases WHERE id = p_release_id;
+  IF NOT FOUND THEN RETURN 'not_found'; END IF;
+
+  IF v_rel.status = 'released' THEN
+    IF public.issue_4522_release_refund_liability(p_release_id) <= 0 THEN
+      RETURN 'released';
+    END IF;
+    -- A debt must not be lost: wait. Same lock order as
+    -- record_paystack_refund_outcome (the release, then the released pool).
+    SELECT * INTO v_rel FROM public.brand_payout_releases WHERE id = p_release_id FOR UPDATE;
+    IF v_rel.status <> 'released' THEN
+      RETURN public.issue_4522_sync_release_refunds(p_release_id, p_wait, p_now);
+    END IF;
+    PERFORM 1 FROM public.brand_payout_releases r
+     WHERE r.brand_id = v_rel.brand_id AND r.currency = v_rel.currency AND r.status = 'released'
+       AND (v_rel.event_id IS NULL OR r.event_id IS NOT DISTINCT FROM v_rel.event_id)
+     ORDER BY r.id FOR UPDATE;
+    -- What the host was paid for sales since refunded. The debt is set to
+    -- at least this (never added to): record_paystack_refund_outcome grows
+    -- the same debt from its own per-refund adjustments the same way, so
+    -- whichever records a refund first, it is counted once.
+    v_target := public.issue_4522_release_refund_liability(p_release_id);
+    v_room := public.organiser_refund_debt_room_cents(
+      v_rel.brand_id, v_rel.currency, v_rel.event_id, p_release_id);
+    v_target := least(v_target, v_room::bigint);
+    IF v_target <= 0 THEN RETURN 'released'; END IF;
+    SELECT * INTO v_debt FROM public.organiser_payout_debts
+     WHERE origin_release_id = p_release_id AND kind = 'post_release_refund' FOR UPDATE;
+    IF NOT FOUND THEN
+      PERFORM public.convert_postponement_debt_to_permanent(
+        p_release_id, 'post_release_refund', v_target::integer, p_now);
+    ELSIF v_target > v_debt.principal_cents THEN
+      UPDATE public.organiser_payout_debts
+         SET principal_cents = v_target::integer, status = 'open', closed_at = NULL, updated_at = p_now
+       WHERE id = v_debt.id;
+    END IF;
+    RETURN 'debt';
+  END IF;
+
+  IF p_wait THEN
+    SELECT * INTO v_rel FROM public.brand_payout_releases WHERE id = p_release_id FOR UPDATE;
+  ELSE
+    SELECT * INTO v_rel FROM public.brand_payout_releases WHERE id = p_release_id
+      FOR UPDATE SKIP LOCKED;
+    IF NOT FOUND THEN RETURN 'busy'; END IF;
+  END IF;
+  IF v_rel.status = 'released' THEN
+    RETURN public.issue_4522_sync_release_refunds(p_release_id, true, p_now);
+  END IF;
+  -- Being sent (claimed, or Paystack legs planned or under way), closed or
+  -- failed: never moved here.
+  IF NOT public.issue_3645_release_settleable(p_release_id) THEN
+    RETURN v_rel.status;
+  END IF;
+  SELECT * INTO v_p FROM public.issue_3645_settle_release_projection(p_release_id, p_now);
+  UPDATE public.brand_payout_releases
+     SET refunded_cents = v_p.refunded_cents, disputed_cents = v_p.disputed_cents,
+         net_release_cents = v_p.net_release_cents, updated_at = p_now
+   WHERE id = p_release_id
+     AND (refunded_cents, disputed_cents, net_release_cents)
+         IS DISTINCT FROM (v_p.refunded_cents, v_p.disputed_cents, v_p.net_release_cents);
+  RETURN 'projected';
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_sync_release_refunds(uuid, boolean, timestamptz)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_sync_release_refunds(uuid, boolean, timestamptz)
+  TO service_role;
+
+-- 8e. Every release holding the order's sale or one of its charges. Called
+--     from refund-recording rows: it never raises (a refund the provider has
+--     made is always recorded); a failure is a warning plus one ops alert.
+CREATE FUNCTION public.issue_4522_sync_order_payouts(p_order_id uuid)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_release uuid;
+  v_n integer := 0;
+BEGIN
+  IF p_order_id IS NULL THEN RETURN 0; END IF;
+  FOR v_release IN
+    SELECT DISTINCT i.release_id FROM public.payout_release_items i
+     WHERE (i.source_type = 'order' AND i.source_id = p_order_id)
+        OR (i.source_type = 'order_installment' AND i.source_id IN (
+              SELECT oi.id FROM public.order_installments oi WHERE oi.order_id = p_order_id))
+     ORDER BY 1
+  LOOP
+    BEGIN
+      PERFORM public.issue_4522_sync_release_refunds(v_release, false, now());
+      v_n := v_n + 1;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'issue_4522_sync_order_payouts release=% sqlstate=% message=%',
+        v_release, SQLSTATE, SQLERRM;
+      BEGIN
+        PERFORM public.issue_4522_alert_payout_refund(v_release, NULL,
+          format('payout_refund_sync_failed: order %s %s %s', p_order_id, SQLSTATE, SQLERRM), now());
+      EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'issue_4522_sync_order_payouts alert failed release=%', v_release;
+      END;
+    END;
+  END LOOP;
+  RETURN v_n;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_sync_order_payouts(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.issue_4522_refund_payout_sync_trigger()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF TG_TABLE_NAME = 'orders' THEN
+    PERFORM public.issue_4522_sync_order_payouts(NEW.id);
+  ELSIF TG_TABLE_NAME = 'payout_release_items' THEN
+    -- Attached this transaction (the sweep holds the release): take the
+    -- projection now, so a sale attached while a refund was pending or
+    -- already recorded is never due in full.
+    BEGIN
+      PERFORM public.issue_4522_sync_release_refunds(NEW.release_id, true, now());
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'issue_4522 attach sync release=% sqlstate=% message=%',
+        NEW.release_id, SQLSTATE, SQLERRM;
+    END;
+  ELSE
+    PERFORM public.issue_4522_sync_order_payouts(NEW.order_id);
+  END IF;
+  RETURN NULL;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_refund_payout_sync_trigger() FROM PUBLIC, anon, authenticated, service_role;
+
+-- At commit, after every row of the refund is settled (one consistent state,
+-- whichever order a refund path writes refunds, orders and rows in).
+CREATE CONSTRAINT TRIGGER issue_4522_refund_payout_sync
+  AFTER INSERT OR UPDATE OF status ON public.refunds
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW WHEN (NEW.order_id IS NOT NULL)
+  EXECUTE FUNCTION public.issue_4522_refund_payout_sync_trigger();
+CREATE CONSTRAINT TRIGGER issue_4522_refund_payout_sync
+  AFTER UPDATE OF refunded_amount_cents ON public.orders
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW WHEN (OLD.refunded_amount_cents IS DISTINCT FROM NEW.refunded_amount_cents)
+  EXECUTE FUNCTION public.issue_4522_refund_payout_sync_trigger();
+CREATE CONSTRAINT TRIGGER issue_4522_refund_payout_sync
+  AFTER UPDATE OF refunded_amount_cents ON public.order_installments
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW WHEN (OLD.refunded_amount_cents IS DISTINCT FROM NEW.refunded_amount_cents)
+  EXECUTE FUNCTION public.issue_4522_refund_payout_sync_trigger();
+CREATE CONSTRAINT TRIGGER issue_4522_refund_payout_sync
+  AFTER INSERT ON public.payout_release_items
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW WHEN (NEW.source_type IN ('order', 'order_installment'))
+  EXECUTE FUNCTION public.issue_4522_refund_payout_sync_trigger();
+
+-- A release whose payout was under way when a refund landed is synced when
+-- the outcome is recorded: paid → the refund becomes its payout debt;
+-- returned to pending (or blocked) → it takes the projection. Never raises
+-- (the payout's own record must always be written).
+CREATE FUNCTION public.issue_4522_release_outcome_sync_trigger()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  BEGIN
+    PERFORM public.issue_4522_sync_release_refunds(NEW.id, true, now());
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'issue_4522 outcome sync release=% sqlstate=% message=%', NEW.id, SQLSTATE, SQLERRM;
+    BEGIN
+      PERFORM public.issue_4522_alert_payout_refund(NEW.id, NULL,
+        format('payout_refund_sync_failed: %s %s', SQLSTATE, SQLERRM), now());
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'issue_4522 outcome sync alert failed release=%', NEW.id;
+    END;
+  END;
+  RETURN NULL;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_release_outcome_sync_trigger() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER issue_4522_release_outcome_sync
+  AFTER UPDATE OF status ON public.brand_payout_releases
+  FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status AND NEW.status <> 'in_flight')
+  EXECUTE FUNCTION public.issue_4522_release_outcome_sync_trigger();
+
+-- 8e2. G-2: a refund debt on an order payout never exceeds what the host
+--      was paid for the sales since refunded (main's second-provider outcome
+--      books every trip refund, instalments included, against the order's
+--      payout at the full refunded amount). Charges never paid out come off
+--      their own unpaid release instead (the owner above). Never below what
+--      was already recovered.
+CREATE FUNCTION public.issue_4522_refund_debt_cap_trigger()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_cap bigint;
+BEGIN
+  -- Only where the payout's own sales were refunded (a refund row or a
+  -- provider refund attempt for them); a debt opened on other grounds is
+  -- left as it is.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.payout_release_items i
+      LEFT JOIN public.order_installments oi ON i.source_type = 'order_installment' AND oi.id = i.source_id
+     WHERE i.release_id = NEW.origin_release_id AND i.source_type IN ('order', 'order_installment')
+       AND (EXISTS (SELECT 1 FROM public.refunds r
+                     WHERE r.order_id = CASE WHEN i.source_type = 'order' THEN i.source_id ELSE oi.order_id END)
+            OR EXISTS (SELECT 1 FROM public.paystack_refund_attempts pa
+                        WHERE pa.source_type = i.source_type AND pa.source_id = i.source_id))) THEN
+    RETURN NEW;
+  END IF;
+  v_cap := greatest(public.issue_4522_release_refund_liability(NEW.origin_release_id, true), NEW.recovered_cents);
+  IF NEW.principal_cents > v_cap THEN
+    NEW.principal_cents := v_cap::integer;
+    IF NEW.principal_cents <= NEW.recovered_cents THEN
+      NEW.status := 'closed';
+      NEW.closed_at := coalesce(NEW.closed_at, now());
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_refund_debt_cap_trigger() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER issue_4522_refund_debt_cap
+  BEFORE INSERT OR UPDATE OF principal_cents ON public.organiser_payout_debts
+  FOR EACH ROW WHEN (NEW.kind = 'post_release_refund')
+  EXECUTE FUNCTION public.issue_4522_refund_debt_cap_trigger();
+
+-- 8f. One ops alert when a refund after payout becomes a payout debt
+--     (whichever #3645 path opened it).
+CREATE FUNCTION public.issue_4522_refund_debt_alert_trigger()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  PERFORM public.issue_4522_alert_payout_refund(NEW.origin_release_id, NULL,
+    format('payout_refund_debt_opened: %s %s owed back from the next payouts', NEW.principal_cents, upper(NEW.currency)),
+    now());
+  RETURN NULL;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_refund_debt_alert_trigger() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER issue_4522_refund_debt_alert
+  AFTER INSERT OR UPDATE OF principal_cents ON public.organiser_payout_debts
+  FOR EACH ROW WHEN (NEW.kind = 'post_release_refund' AND NEW.principal_cents > 0)
+  EXECUTE FUNCTION public.issue_4522_refund_debt_alert_trigger();
+
+-- 8g. The projection reads what each sale is worth now (body as
+--     20280508003645 except the now_ lateral and its two uses).
+CREATE OR REPLACE FUNCTION public.issue_3645_release_projected_totals(
+  p_release_id uuid
+) RETURNS TABLE (
+  refunded_cents integer,
+  disputed_cents integer,
+  net_release_cents integer,
+  items_net_cents bigint,
+  withheld_cents bigint
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+  WITH rel AS (
+    SELECT r.id, r.provider,
+      -- #3645 2d: Σ(amount − converted − returned) over the release's
+      -- applications, not the attach-time columns, so debt handed back by
+      -- issue_3645_return_unrecovered_release_debt is no longer withheld.
+      public.issue_3645_release_effective_withheld(r.id) AS withheld
+    FROM public.brand_payout_releases r
+    WHERE r.id = p_release_id
+  ), items AS (
+    SELECT
+      item.gross_cents::bigint AS gross,
+      item.refunded_cents::bigint AS refunded,
+      item.disputed_cents::bigint AS disputed,
+      item.net_cents::bigint AS net,
+      -- Paystack: same evidence as paystack_release_has_unresolved_dispute
+      -- (unresolved, or resolved against the merchant).
+      CASE WHEN rel.provider = 'paystack' THEN coalesce((
+        SELECT sum(dispute.amount_cents::bigint)
+        FROM public.paystack_disputes dispute
+        WHERE (
+            (item.source_type = 'order' AND dispute.order_id = item.source_id)
+            OR (
+              item.source_type = 'rsvp_contribution'
+              AND dispute.rsvp_contribution_id = item.source_id
+            )
+            OR (
+              item.source_type = 'venue_menu_order'
+              AND dispute.venue_menu_order_id = item.source_id
+            )
+            OR (
+              item.source_type = 'order_installment'
+              AND dispute.order_installment_id = item.source_id
+            )
+            OR (
+              item.source_type = 'venue_reservation'
+              AND EXISTS (
+                SELECT 1
+                FROM public.reservation_checkout_sessions checkout
+                WHERE checkout.id = item.source_id
+                  AND checkout.reservation_id = dispute.venue_reservation_id
+              )
+            )
+          )
+          AND (
+            dispute.is_resolved IS NOT TRUE
+            OR lower(coalesce(dispute.resolution, '')) IN (
+              'merchant-accepted', 'merchant_accepted', 'accepted'
+            )
+          )
+      ), 0) ELSE 0 END AS paystack_hold,
+      coalesce(stay.refunded, 0) AS stay_refunded,
+      greatest(coalesce(stay.disputed, 0), 0) AS stay_disputed,
+      greatest(coalesce(stay.net_hold, 0), 0) AS stay_net_hold,
+      -- issue #4522 (section 8): what the sale is worth now, after the
+      -- refunds recorded (or still being made) since it was attached.
+      now_.refunded_cents AS now_refunded,
+      now_.net_cents AS now_net
+    FROM rel
+    JOIN public.payout_release_items item ON item.release_id = rel.id
+    LEFT JOIN LATERAL (
+      SELECT
+        sum(hold.refunded_cents)::bigint AS refunded,
+        sum(hold.disputed_cents)::bigint AS disputed,
+        sum(hold.net_hold_cents)::bigint AS net_hold
+      FROM public.stay_payout_release_holds hold
+      WHERE item.source_type = 'stay_reservation'
+        AND hold.release_id = rel.id
+        AND hold.line_id = item.source_id
+    ) stay ON true
+    CROSS JOIN LATERAL public.issue_4522_payout_item_now(
+      item.source_type, item.source_id, item.gross_cents, item.refunded_cents,
+      item.disputed_cents, item.mingla_fee_cents, item.net_cents
+    ) now_
+  ), per_item AS (
+    SELECT
+      least(gross, now_refunded + stay_refunded) AS refunded,
+      disputed + least(net, paystack_hold) + stay_disputed AS disputed,
+      now_net - least(now_net, paystack_hold + stay_net_hold) AS net
+    FROM items
+  )
+  SELECT
+    least(coalesce(sum(per_item.refunded), 0), 2147483647)::integer,
+    least(coalesce(sum(per_item.disputed), 0), 2147483647)::integer,
+    -- maturity_recredit_cents stays out: claims pay net + recredit.
+    greatest(0, least(
+      coalesce(sum(per_item.net), 0)
+        - rel.withheld,
+      2147483647
+    ))::integer,
+    coalesce(sum(per_item.net), 0)::bigint,
+    rel.withheld
+  FROM rel
+  LEFT JOIN per_item ON true
+  GROUP BY rel.withheld;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_3645_release_projected_totals(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3645_release_projected_totals(uuid) TO service_role;
+
+-- 8h. The execution guards (bodies as 20280422003645 / 20280602003645 except
+--     the marked issue #4522 section 8 hunks).
+CREATE OR REPLACE FUNCTION public.authorize_stripe_payout_execution(
+  p_release_id uuid,
+  p_claim_id uuid,
+  p_amount_cents integer,
+  p_now timestamptz DEFAULT now()
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_release public.brand_payout_releases;
+  v_event_status text;
+  v_expected integer;
+  v_owed record;  -- issue #4522 section 8
+BEGIN
+  SELECT * INTO v_release
+  FROM public.brand_payout_releases
+  WHERE id=p_release_id AND provider='stripe'
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'stripe_release_not_found' USING ERRCODE='P0002';
+  END IF;
+  IF v_release.stripe_execution_claim_id IS DISTINCT FROM p_claim_id
+     OR v_release.status<>'in_flight'
+     OR v_release.stripe_payout_id IS NOT NULL THEN
+    RAISE EXCEPTION 'stale_stripe_execution_claim' USING ERRCODE='P0001';
+  END IF;
+  -- #3645: like Paystack, fail closed while a stay dispute held on this
+  -- unpaid release is open. Won returns the hold; lost keeps it and unblocks.
+  IF public.issue_3645_stay_release_has_open_dispute(p_release_id) THEN
+    UPDATE public.brand_payout_releases
+    SET status='pending',
+        error_message='stay_dispute_open',
+        stripe_execution_claim_id=NULL,
+        stripe_execution_claimed_at=NULL,
+        updated_at=p_now
+    WHERE id=p_release_id;
+    RETURN false;
+  END IF;
+  v_expected:=v_release.net_release_cents+v_release.maturity_recredit_cents;
+  IF p_amount_cents IS DISTINCT FROM v_expected OR v_expected<=0 THEN
+    RAISE EXCEPTION 'stripe_release_amount_not_ledger_exact'
+      USING ERRCODE='P0001';
+  END IF;
+
+  IF v_release.event_id IS NOT NULL THEN
+    SELECT e.status INTO v_event_status
+    FROM public.events e
+    WHERE e.id=v_release.event_id;
+    IF v_event_status IS NULL THEN
+      UPDATE public.brand_payout_releases
+      SET status='blocked_anchor',
+          error_message='missing_live_event_truth',
+          stripe_execution_claim_id=NULL,
+          stripe_execution_claimed_at=NULL,
+          updated_at=p_now
+      WHERE id=p_release_id;
+      RETURN false;
+    END IF;
+    IF v_event_status='cancelled' THEN
+      UPDATE public.brand_payout_releases
+      SET status='cancelled_event',
+          error_message='event_cancelled_before_stripe_payout',
+          stripe_execution_claim_id=NULL,
+          stripe_execution_claimed_at=NULL,
+          updated_at=p_now
+      WHERE id=p_release_id;
+      RETURN false;
+    END IF;
+  END IF;
+
+  IF v_release.releasable_at > p_now THEN
+    UPDATE public.brand_payout_releases
+    SET status='pending',
+        error_message='release_no_longer_mature',
+        stripe_execution_claim_id=NULL,
+        stripe_execution_claimed_at=NULL,
+        updated_at=p_now
+    WHERE id=p_release_id;
+    RETURN false;
+  END IF;
+
+  -- issue #4522 section 8: the last check before money moves. A refund (or
+  -- an unrecorded provider refund) since this release's sales were attached
+  -- lowered what it owes: never send the old amount. Store what it owes,
+  -- put it back for the next claim, and tell ops once.
+  SELECT * INTO v_owed FROM public.issue_3645_release_projected_totals(p_release_id);
+  IF v_owed.net_release_cents < v_release.net_release_cents THEN
+    UPDATE public.brand_payout_releases
+    SET refunded_cents=v_owed.refunded_cents,
+        disputed_cents=v_owed.disputed_cents,
+        net_release_cents=v_owed.net_release_cents,
+        status='pending',
+        error_message='payout_refund_unreconciled',
+        stripe_execution_claim_id=NULL,
+        stripe_execution_claimed_at=NULL,
+        updated_at=p_now
+    WHERE id=p_release_id;
+    PERFORM public.issue_4522_alert_payout_refund(p_release_id, 'paystack_plan_exceeds_due',
+      format('payout_refund_unreconciled: stripe due %s > owed %s',
+        v_release.net_release_cents::bigint+v_release.maturity_recredit_cents,
+        v_owed.net_release_cents::bigint+v_release.maturity_recredit_cents), p_now);
+    RETURN false;
+  END IF;
+
+  RETURN true;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.authorize_stripe_payout_execution(uuid, uuid, integer, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.authorize_stripe_payout_execution(uuid, uuid, integer, timestamptz) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.authorize_paystack_payout_execution(
+  p_release_id uuid,
+  p_claim_id uuid,
+  p_now timestamptz DEFAULT now()
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_release public.brand_payout_releases%ROWTYPE;
+  v_event_status text;
+  v_plan_cents bigint;  -- #3645 bundle 4
+  v_due_cents bigint;  -- #3645 bundle 4
+  v_owed record;  -- issue #4522 section 8
+BEGIN
+  SELECT * INTO v_release
+  FROM public.brand_payout_releases
+  WHERE id = p_release_id AND provider = 'paystack'
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'paystack_release_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  -- Fail closed before the stale-claim check so a dispute arriving between
+  -- claim and authorization cleanly cancels that attempt without provider I/O.
+  IF public.paystack_release_has_unresolved_dispute(p_release_id) THEN
+    UPDATE public.brand_payout_releases
+    SET status = 'pending',
+        error_message = 'paystack_dispute_open',
+        paystack_execution_claim_id = NULL,
+        paystack_execution_claimed_at = NULL,
+        updated_at = p_now
+    WHERE id = p_release_id;
+    RETURN false;
+  END IF;
+
+  IF v_release.paystack_execution_claim_id IS DISTINCT FROM p_claim_id
+     OR v_release.status <> 'in_flight'
+     OR v_release.paystack_transfer_code IS NOT NULL THEN
+    RAISE EXCEPTION 'stale_paystack_execution_claim' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF v_release.event_id IS NOT NULL THEN
+    SELECT status INTO v_event_status
+    FROM public.events
+    WHERE id = v_release.event_id;
+    IF v_event_status IS NULL THEN
+      UPDATE public.brand_payout_releases
+      SET status = 'blocked_anchor',
+          error_message = 'missing_live_event_truth',
+          paystack_execution_claim_id = NULL,
+          paystack_execution_claimed_at = NULL,
+          updated_at = p_now
+      WHERE id = p_release_id;
+      RETURN false;
+    END IF;
+    IF v_event_status = 'cancelled' THEN
+      UPDATE public.brand_payout_releases
+      SET status = 'cancelled_event',
+          error_message = 'event_cancelled_before_paystack_transfer',
+          paystack_execution_claim_id = NULL,
+          paystack_execution_claimed_at = NULL,
+          updated_at = p_now
+      WHERE id = p_release_id;
+      RETURN false;
+    END IF;
+  END IF;
+
+  IF v_release.releasable_at > p_now THEN
+    UPDATE public.brand_payout_releases
+    SET status = 'pending',
+        error_message = 'release_no_longer_mature',
+        paystack_execution_claim_id = NULL,
+        paystack_execution_claimed_at = NULL,
+        updated_at = p_now
+    WHERE id = p_release_id;
+    RETURN false;
+  END IF;
+
+  -- issue #4522 section 8: a refund (or an unrecorded provider refund)
+  -- since this release's sales were attached lowers what it owes before the
+  -- plan check below, which then refuses the larger plan and alerts ops.
+  SELECT * INTO v_owed FROM public.issue_3645_release_projected_totals(p_release_id);
+  IF v_owed.net_release_cents < v_release.net_release_cents THEN
+    UPDATE public.brand_payout_releases
+    SET refunded_cents = v_owed.refunded_cents,
+        disputed_cents = v_owed.disputed_cents,
+        net_release_cents = v_owed.net_release_cents,
+        updated_at = p_now
+    WHERE id = p_release_id;
+    v_release.net_release_cents := v_owed.net_release_cents;
+  END IF;
+
+  -- #3645 bundle 4: the organiser legs were planned from the pool at claim
+  -- time. If a hold or refund has since lowered what this release owes
+  -- (its net plus recredits), sending that plan would overpay the host.
+  -- Never send it: put the release back, keep the legs (a leg may already
+  -- be at Paystack), and alert ops. If the release owes the plan again (a
+  -- dispute won), the next claim sends it unchanged.
+  SELECT coalesce(sum(
+    leg.principal_cents::bigint + leg.estimated_fee_cents + leg.stamp_duty_cents
+  ), 0)
+  INTO v_plan_cents
+  FROM public.payout_transfer_legs leg
+  WHERE leg.release_id = p_release_id
+    AND leg.kind = 'organiser'
+    AND leg.status NOT IN ('failed', 'reversed');
+  v_due_cents := v_release.net_release_cents::bigint + coalesce((
+    SELECT sum(a.amount_cents)
+    FROM public.payout_ledger_adjustments a
+    WHERE a.release_id = p_release_id AND a.kind = 'maturity_recredit'
+  ), 0);
+  IF v_plan_cents > v_due_cents THEN
+    UPDATE public.brand_payout_releases
+    SET status = 'pending',
+        error_message = 'paystack_plan_exceeds_due',
+        paystack_execution_claim_id = NULL,
+        paystack_execution_claimed_at = NULL,
+        updated_at = p_now
+    WHERE id = p_release_id;
+    INSERT INTO public.payout_release_alert_outbox (
+      release_id, alert_kind, idempotency_key, brand_id, error_message,
+      created_at, updated_at
+    ) VALUES (
+      p_release_id, 'paystack_plan_exceeds_due',
+      'paystack_plan_exceeds_due:' || p_release_id::text,
+      v_release.brand_id,
+      left(format('plan %s > due %s', v_plan_cents, v_due_cents), 1000),
+      p_now, p_now
+    ) ON CONFLICT (release_id, alert_kind) DO NOTHING;
+    RETURN false;
+  END IF;
+
+  RETURN true;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.authorize_paystack_payout_execution(uuid, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.authorize_paystack_payout_execution(uuid, uuid, timestamptz) TO service_role;
 
 COMMIT;

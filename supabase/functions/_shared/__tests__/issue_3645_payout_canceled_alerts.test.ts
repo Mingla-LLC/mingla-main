@@ -16,6 +16,9 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { routeStripeEvent } from "../stripeWebhookRouter.ts";
 import {
+  PAYOUT_REFUND_DEBT_OPENED_ERROR,
+  PAYOUT_REFUND_SYNC_FAILED_ERROR,
+  PAYOUT_REFUND_UNRECONCILED_ERROR,
   payoutReleaseAlertCopyFor,
   STRIPE_PAYOUT_CANCELED_ERROR,
 } from "../../payout-release-sweep/index.ts";
@@ -202,4 +205,27 @@ Deno.test("#3645 the sweep's alert sender words every outbox row through the can
   // The dedupe key is per copy type, so a cancel and a real cap alert for the
   // same release are separate notifications.
   assertEquals(sender.includes("`${copy.type}:${release.release_id}`"), true);
+});
+
+// Issue #4522 — the refund alerts the database files under existing outbox
+// kinds (20281129064522 section 8) are worded by their message prefix, on
+// any kind, and never read as an attempt cap or a Paystack plan.
+Deno.test("#4522 refund payout alerts get their own words on any kind", () => {
+  const cases: Array<[string, string, string]> = [
+    ["paystack_plan_exceeds_due", `${PAYOUT_REFUND_UNRECONCILED_ERROR}: stripe due 143250 > owed 95500`, "ops.payout_release_refund_unreconciled"],
+    ["stripe_attempt_cap", `${PAYOUT_REFUND_DEBT_OPENED_ERROR}: 9550 USD owed back from the next payouts`, "ops.payout_release_refund_debt_opened"],
+    ["paystack_attempt_cap", `${PAYOUT_REFUND_DEBT_OPENED_ERROR}: 30000000 NGN owed back from the next payouts`, "ops.payout_release_refund_debt_opened"],
+    ["paystack_attempt_cap", `${PAYOUT_REFUND_SYNC_FAILED_ERROR}: 40P01 deadlock detected`, "ops.payout_release_refund_sync_failed"],
+  ];
+  for (const [kind, message, type] of cases) {
+    const copy = payoutReleaseAlertCopyFor(kind, message);
+    assertEquals(copy.type, type);
+    assertEquals(copy.bodyLead.includes("exhausted"), false);
+    assertEquals(copy.title.includes("Paystack"), false);
+  }
+  // Main's own plan alert keeps its words.
+  assertEquals(
+    payoutReleaseAlertCopyFor("paystack_plan_exceeds_due", "plan 28650000 > due 0").type,
+    "ops.paystack_payout_release_plan_exceeds_due",
+  );
 });
