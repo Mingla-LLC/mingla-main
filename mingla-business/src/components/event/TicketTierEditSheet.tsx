@@ -342,7 +342,7 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
     }}
     disabled={disabled}
     accessibilityRole="switch"
-    accessibilityState={{ checked: value, disabled }}
+    accessibilityState={disabled ? { checked: value, disabled: true } : { checked: value }}
     accessibilityLabel={accessibilityLabel}
     accessibilityHint={disabled ? sub : undefined}
     style={styles.toggleRow}

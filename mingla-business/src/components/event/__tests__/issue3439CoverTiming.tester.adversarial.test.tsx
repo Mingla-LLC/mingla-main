@@ -57,6 +57,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/draftEventValidation")) return { validatePublish: () => [], validateStep: () => [], computePublishability: () => ({ status: "ready" }) };
     if (name.endsWith("/draftRsvpValidation")) return { validateRsvpPublish: () => [], validateRsvpStep: () => [] };
     if (name.endsWith("/draftEventPristine")) return { isDraftEventPristine: () => false };
+    // #4572 7e — the brand-zone default is pure, so it is supplied REAL.
+    if (name.endsWith("/timezones")) return jest.requireActual("../../../utils/timezones");
     if (name.endsWith("/brandPayout")) return { payoutGateStatus: () => "ready" };
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};

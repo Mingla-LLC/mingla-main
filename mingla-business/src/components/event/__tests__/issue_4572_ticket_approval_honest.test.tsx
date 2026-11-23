@@ -187,7 +187,7 @@ describe("#4572 7c ticket approval is honest", () => {
     const tree = await mount(onSave, ticket({ approvalRequired: true }));
     const sw = approvalSwitch(tree);
     expect(sw.props.disabled).toBe(false);
-    expect(sw.props.accessibilityState).toEqual({ checked: true, disabled: false });
+    expect(sw.props.accessibilityState).toEqual({ checked: true });
     expect(textOf(sw)).toContain(
       "Not checked yet: guests get their ticket straight away. Turn this off to remove the label.",
     );

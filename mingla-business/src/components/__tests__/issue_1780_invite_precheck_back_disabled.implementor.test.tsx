@@ -404,6 +404,10 @@ const BOUNDARY: Record<string, () => unknown> = {
   }),
   draftRsvpValidation: () => ({ validateRsvpPublish: () => [], validateRsvpStep: () => [] }),
   draftEventPristine: () => ({ isDraftEventPristine: () => false }),
+  // #4572 7e: the Event and RSVP wizards read the brand-zone default. Pure, so
+  // it is supplied REAL (no brand here, so it never changes the draft).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  timezones: () => require("../../utils/timezones"),
   brandPayout: () => ({
     payoutGateStatus: () => "active",
     isBrandPayoutReady: () => true,

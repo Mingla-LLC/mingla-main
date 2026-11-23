@@ -75,6 +75,8 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/draftRsvpValidation")) return { validateRsvpPublish: () => [], validateRsvpStep: () => [] };
     if (name.endsWith("/draftEventValidation")) return { validateStep: () => [] };
     if (name.endsWith("/draftEventPristine")) return { isDraftEventPristine: () => false };
+    // #4572 7e — the brand-zone default is pure, so it is supplied REAL.
+    if (name.endsWith("/timezones")) return jest.requireActual("../../../utils/timezones");
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
     // #3645 — pure, so it is supplied REAL: the order of "save, then publish".
