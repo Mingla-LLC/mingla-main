@@ -253,6 +253,25 @@ async function handleSitesRecovery(nowMs: number, body: Record<string, unknown>)
         });
         return { succeeded: result.succeeded };
       },
+      async claim(kind, closesAt, heartbeatFor) {
+        const { data, error } = await serviceClient.rpc("brand_site_recovery_watch_claim", {
+          p_kind: kind, p_closes_at: closesAt, p_heartbeat_for: heartbeatFor,
+        });
+        if (error) {
+          logError("sites recovery claim failed", error, { fn: "api-health-probe" });
+          return { claimed: false, prior: null, error: error.message };
+        }
+        const row = data && typeof data === "object" ? data as Record<string, unknown> : {};
+        const prior = row.prior && typeof row.prior === "object" ? row.prior as Record<string, unknown> : {};
+        return { claimed: row.claimed === true, prior, error: null };
+      },
+      async release(kind, closesAt, heartbeatFor, prior) {
+        const { error } = await serviceClient.rpc("brand_site_recovery_watch_release", {
+          p_kind: kind, p_closes_at: closesAt, p_heartbeat_for: heartbeatFor, p_prior: prior,
+        });
+        if (error) logError("sites recovery release failed", error, { fn: "api-health-probe" });
+        return { error: error ? error.message : null };
+      },
       nowMs: () => asOfMs,
     }, { dryRun });
     structuredLog(outcome.level === "ok" || outcome.level === "watch" ? "info" : "warn", "api_health sites recovery watch", { fn: "api-health-probe", outcome });

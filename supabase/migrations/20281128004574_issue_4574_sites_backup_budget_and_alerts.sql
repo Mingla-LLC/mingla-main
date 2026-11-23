@@ -316,6 +316,117 @@ REVOKE ALL ON FUNCTION public.brand_site_recovery_watch_record(text, timestamptz
 GRANT EXECUTE ON FUNCTION public.brand_site_recovery_watch_record(text, timestamptz, text, timestamptz, boolean) TO service_role;
 
 -- ---------------------------------------------------------------------------
+-- 5b. Claim before send (#4574 rework). Two overlapping runs (a manual call
+--     during a tick) must not both email, and an unreadable snapshot must not
+--     email every 15 minutes. The probe claims each email here BEFORE sending:
+--     the row lock serialises concurrent claims, the second sees the first's
+--     write and is refused. A send that reaches nobody releases its claim.
+--       warn/critical/expired: once per closing time, escalation always sends;
+--       recovered: only after a warn/critical/expired was claimed;
+--       heartbeat: once per last completion time;
+--       unproven: at most once per 2 hours (the one owner of that cadence).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.brand_site_recovery_watch_claim(
+  p_kind text,
+  p_closes_at timestamptz,
+  p_heartbeat_for timestamptz
+) RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $function$
+DECLARE
+  v_old public.brand_site_recovery_watch_state;
+  v_rank_old integer;
+  v_rank_new integer;
+  v_ok boolean;
+BEGIN
+  IF p_kind IS NULL OR p_kind NOT IN ('warn','critical','expired','recovered','heartbeat','unproven')
+    OR (p_kind IN ('warn','critical','expired','recovered') AND p_closes_at IS NULL)
+    OR (p_kind = 'heartbeat' AND p_heartbeat_for IS NULL) THEN
+    RAISE EXCEPTION 'sites_validation_failed';
+  END IF;
+  INSERT INTO public.brand_site_recovery_watch_state (id) VALUES (true)
+  ON CONFLICT (id) DO NOTHING;
+  SELECT * INTO STRICT v_old FROM public.brand_site_recovery_watch_state WHERE id FOR UPDATE;
+
+  IF p_kind IN ('warn','critical','expired') THEN
+    v_rank_new := CASE p_kind WHEN 'warn' THEN 1 WHEN 'critical' THEN 2 ELSE 3 END;
+    v_rank_old := CASE v_old.last_sent_level WHEN 'warn' THEN 1 WHEN 'critical' THEN 2 WHEN 'expired' THEN 3 ELSE 0 END;
+    v_ok := NOT (v_old.incident_closes_at = p_closes_at AND v_rank_old >= v_rank_new);
+    IF v_ok THEN
+      UPDATE public.brand_site_recovery_watch_state SET
+        last_sent_level = p_kind, incident_closes_at = p_closes_at, last_sent_at = clock_timestamp()
+      WHERE id;
+    END IF;
+  ELSIF p_kind = 'recovered' THEN
+    v_ok := v_old.last_sent_level IN ('warn','critical','expired');
+    IF v_ok THEN
+      UPDATE public.brand_site_recovery_watch_state SET
+        last_sent_level = 'recovered', incident_closes_at = p_closes_at, last_sent_at = clock_timestamp()
+      WHERE id;
+    END IF;
+  ELSIF p_kind = 'heartbeat' THEN
+    v_ok := v_old.heartbeat_for IS DISTINCT FROM p_heartbeat_for;
+    IF v_ok THEN
+      UPDATE public.brand_site_recovery_watch_state SET heartbeat_for = p_heartbeat_for WHERE id;
+    END IF;
+  ELSE
+    v_ok := v_old.unproven_sent_at IS NULL
+      OR v_old.unproven_sent_at <= clock_timestamp() - interval '2 hours';
+    IF v_ok THEN
+      UPDATE public.brand_site_recovery_watch_state SET unproven_sent_at = clock_timestamp() WHERE id;
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('claimed', v_ok, 'prior', to_jsonb(v_old) - 'id');
+END;
+$function$;
+COMMENT ON FUNCTION public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz) IS
+  '#4574: atomically claim one Sites recovery email before it is sent (row lock; the second of two concurrent claims is refused). service_role only.';
+REVOKE ALL ON FUNCTION public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.brand_site_recovery_watch_claim(text, timestamptz, timestamptz) TO service_role;
+
+-- Undo one claim whose email reached nobody, so the next check retries. Only
+-- the fields that claim wrote are restored, and only while they still hold
+-- what that claim wrote.
+CREATE OR REPLACE FUNCTION public.brand_site_recovery_watch_release(
+  p_kind text,
+  p_closes_at timestamptz,
+  p_heartbeat_for timestamptz,
+  p_prior jsonb
+) RETURNS void
+LANGUAGE plpgsql
+VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $function$
+BEGIN
+  IF p_kind IS NULL OR p_kind NOT IN ('warn','critical','expired','recovered','heartbeat','unproven')
+    OR p_prior IS NULL OR jsonb_typeof(p_prior) <> 'object' THEN
+    RAISE EXCEPTION 'sites_validation_failed';
+  END IF;
+  IF p_kind IN ('warn','critical','expired','recovered') THEN
+    UPDATE public.brand_site_recovery_watch_state SET
+      last_sent_level = p_prior->>'last_sent_level',
+      incident_closes_at = (p_prior->>'incident_closes_at')::timestamptz,
+      last_sent_at = (p_prior->>'last_sent_at')::timestamptz
+    WHERE id AND last_sent_level = p_kind AND incident_closes_at = p_closes_at;
+  ELSIF p_kind = 'heartbeat' THEN
+    UPDATE public.brand_site_recovery_watch_state SET
+      heartbeat_for = (p_prior->>'heartbeat_for')::timestamptz
+    WHERE id AND heartbeat_for = p_heartbeat_for;
+  ELSE
+    UPDATE public.brand_site_recovery_watch_state SET
+      unproven_sent_at = (p_prior->>'unproven_sent_at')::timestamptz
+    WHERE id AND unproven_sent_at IS DISTINCT FROM (p_prior->>'unproven_sent_at')::timestamptz;
+  END IF;
+END;
+$function$;
+COMMENT ON FUNCTION public.brand_site_recovery_watch_release(text, timestamptz, timestamptz, jsonb) IS
+  '#4574: release a Sites recovery email claim whose send reached nobody. service_role only.';
+REVOKE ALL ON FUNCTION public.brand_site_recovery_watch_release(text, timestamptz, timestamptz, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.brand_site_recovery_watch_release(text, timestamptz, timestamptz, jsonb) TO service_role;
+
+-- ---------------------------------------------------------------------------
 -- 6. Every 15 minutes on Supabase's scheduler (minute offset 4 keeps it off
 --    the hourly vendor tick at :00 and the 5-minute db check at :02).
 -- ---------------------------------------------------------------------------

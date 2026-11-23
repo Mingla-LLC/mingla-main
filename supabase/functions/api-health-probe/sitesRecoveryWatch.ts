@@ -70,11 +70,35 @@ export interface SitesAlert {
   paragraphs: string[];
 }
 
+export interface SitesWatchClaim {
+  claimed: boolean;
+  prior: Record<string, unknown> | null;
+  error: string | null;
+}
+
 export interface SitesWatchDeps {
   snapshot(): Promise<{ data: unknown; error: string | null }>;
   record(entry: SitesWatchRecord): Promise<{ error: string | null }>;
   send(alert: SitesAlert): Promise<{ succeeded: number }>;
   nowMs(): number;
+  /**
+   * #4574 rework: claim one email in SQL before sending it
+   * (brand_site_recovery_watch_claim). The probe always wires it; a fake
+   * without it falls back to the snapshot-state decision alone.
+   */
+  claim?(kind: SitesAlert["kind"], closesAt: string | null, heartbeatFor: string | null): Promise<SitesWatchClaim>;
+  /** Undo a claim whose email reached nobody (brand_site_recovery_watch_release). */
+  release?(kind: SitesAlert["kind"], closesAt: string | null, heartbeatFor: string | null, prior: Record<string, unknown>): Promise<{ error: string | null }>;
+}
+
+/**
+ * When the claim RPC itself fails (the database cannot be written either),
+ * an "unproven" email may go out only on the first 15-minute tick of every
+ * second UTC hour: at most one per 2 h with no stored state at all.
+ */
+export function statelessUnprovenSlot(nowMs: number): boolean {
+  const d = new Date(nowMs);
+  return d.getUTCHours() % 2 === 0 && d.getUTCMinutes() < 15;
 }
 
 export interface SitesWatchOutcome {
@@ -85,6 +109,9 @@ export interface SitesWatchOutcome {
   would_send: SitesAlert["kind"][];
   sent: SitesAlert["kind"][];
   send_failed: SitesAlert["kind"][];
+  /** Due, but another run already claimed it (or the 2 h unproven window is closed). */
+  not_claimed: SitesAlert["kind"][];
+  claim_errors: string[];
   record_error: string | null;
   dry_run: boolean;
   reason: string | null;
@@ -294,6 +321,8 @@ export async function runSitesRecoveryWatch(
     would_send: kinds,
     sent: [],
     send_failed: [],
+    not_claimed: [],
+    claim_errors: [],
     record_error: null,
     dry_run: opts.dryRun,
     reason: parsed.reason,
@@ -301,10 +330,37 @@ export async function runSitesRecoveryWatch(
   if (opts.dryRun) return outcome;
 
   for (const kind of kinds) {
+    const closesAt = kind === "heartbeat" || kind === "unproven" ? null : snapshot?.closes_at ?? null;
+    const heartbeatFor = kind === "heartbeat" ? snapshot?.last_completion_at ?? null : null;
+    let claim: SitesWatchClaim | null = null;
+    if (deps.claim) {
+      claim = await deps.claim(kind, closesAt, heartbeatFor);
+      if (claim.error) {
+        outcome.claim_errors.push(`${kind}: ${claim.error}`);
+        // No claim is possible. An unproven email (the database may be down)
+        // goes out only in the stateless 2 h slot; any other level falls back
+        // to the snapshot-state decision already made above.
+        if (kind === "unproven" && !statelessUnprovenSlot(nowMs)) {
+          outcome.not_claimed.push(kind);
+          continue;
+        }
+        claim = null;
+      } else if (!claim.claimed) {
+        outcome.not_claimed.push(kind);
+        continue;
+      }
+    }
     const alert = sitesAlertCopy(kind, snapshot, headroomH, parsed.reason, nowMs);
     const result = await deps.send(alert);
-    if (result.succeeded > 0) outcome.sent.push(kind);
-    else outcome.send_failed.push(kind);
+    if (result.succeeded > 0) {
+      outcome.sent.push(kind);
+    } else {
+      outcome.send_failed.push(kind);
+      if (claim && deps.release) {
+        const released = await deps.release(kind, closesAt, heartbeatFor, claim.prior ?? {});
+        if (released.error) outcome.claim_errors.push(`${kind} release: ${released.error}`);
+      }
+    }
   }
 
   // Only a delivered email moves the dedup state, so an undelivered alert is
