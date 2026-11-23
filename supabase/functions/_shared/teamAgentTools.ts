@@ -425,12 +425,12 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "my_day",
     title: "My day",
     description:
-      "What is on this person's plate: the records they own that are due today or overdue, how many records sit in each stage, monthly targets with progress, and how many beta leads are new. Reads only. " +
+      "What is on this person's plate: the records they own that are due today or overdue, how many records sit in each stage, monthly targets with progress, how many beta leads are new, and calls_due: how many of their hosts are on My calls today (Replied, Demo booked, Contacted and Prospect hosts due today or earlier). Reads only. " +
       DATES + " " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({ today: TODAY, time_zone: TIME_ZONE }),
     annotations: READ,
-    reaches: ["crm_home_summary", "team_draft_counts"],
+    reaches: ["crm_home_summary", "team_draft_counts", "crm_calls_queue"],
     writes: false,
     adminOnly: false,
     peopleText: true,
@@ -838,14 +838,14 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "set_owners",
     title: "Set owners",
     description:
-      "Set who owns 1 to 50 cards. owner_emails is the whole list for that card (team email addresses from get_started); an empty list means unassigned. Someone who is not on the team is refused by name. Each item has its own answer. " +
+      "Set who owns and who watches 1 to 50 cards. owner_emails is the whole owner list for that card (team email addresses from get_started); an empty list means unassigned. watcher_emails, when sent, is the whole watcher list (0 to 10; watchers hear about stage moves and see calls); leave it out to keep the watchers as they are. Nobody may own and watch one card (owner_and_watcher). Someone who is not on the team is refused by name. Each item has its own answer. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       items: {
         type: "array",
         items: {
           type: "object",
-          properties: { id: RECORD_ID, owner_emails: OWNERS },
+          properties: { id: RECORD_ID, owner_emails: OWNERS, watcher_emails: OWNERS },
           required: ["id", "owner_emails"],
           hint: "Send an object with id and owner_emails",
         },
@@ -855,7 +855,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
       },
     }, ["items"]),
     annotations: WRITE,
-    reaches: ["crm_record_set_owners"],
+    reaches: ["crm_record_set_owners", "crm_record_set_people"],
     writes: true,
     adminOnly: false,
     peopleText: true,
@@ -1464,18 +1464,12 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   crm_record_move_stage: { tools: ["move_stage"] },
   crm_record_set_owners: { tools: ["set_owners"] },
   // #4571 W3: the host and creator card.
-  crm_record_set_people: {
-    excluded:
-      "watchers are picked by people on the card; an agent sets owners with set_owners (it refuses an owner who is watching)",
-  },
+  crm_record_set_people: { tools: ["set_owners"] },
   crm_record_work: {
     excluded:
       "the card's Work list is for people; an agent reads Work cards with list_work and my_work",
   },
-  crm_calls_queue: {
-    excluded:
-      "My calls today is a person's own list; an agent reads due hosts with my_day and find_records",
-  },
+  crm_calls_queue: { tools: ["my_day"] },
   crm_identifier_set_followers: {
     excluded:
       "follower counts are read by a person, never guessed by an agent",

@@ -1734,10 +1734,18 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
     /CREATE FUNCTION public\.team_agent_content_call\([\s\S]*?\n\$\$;/
       .exec(CONTENT_MIGRATION);
   assert(contentGateway);
+  // #4571 W3: the gateway's latest body (20281126034571) adds watcher_emails to
+  // set_owners and calls_due to my_day; it keeps the same tool list.
+  const latestFile = Deno.readTextFileSync(new URL("../../../migrations/20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql", import.meta.url));
+  const latestGateway = latestFile.slice(latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), latestFile.indexOf("\n$function$", latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
+  assert(latestGateway.length > 1000, "the W3 gateway body was found");
+  assertEquals([...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(latestGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+    [...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(gateway[0])?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
   for (const t of TEAM_AGENT_TOOLS) {
     for (const fn of t.reaches) {
       assert(
         gateway[0].includes(`public.${fn}(`) ||
+          latestGateway.includes(`public.${fn}(`) ||
           contentGateway[0].includes(`public.${fn}(`),
         `the gateway never calls ${fn}`,
       );

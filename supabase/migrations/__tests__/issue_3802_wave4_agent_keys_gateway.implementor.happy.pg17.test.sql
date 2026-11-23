@@ -593,7 +593,9 @@ begin
   v_all := v_all || v;
   perform pg_temp.t3802k_check('K-4', 'my_day is the home summary of the key''s owner',
     (v::jsonb -> 'result')::text,
-    pg_temp.t3802k_as('growth', $q$select (public.crm_home_summary(null) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting'))::text$q$));
+    -- #4571 W3: and calls_due, the count of the person's My calls today.
+    pg_temp.t3802k_as('growth', $q$select (public.crm_home_summary(null) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting')
+                                          || jsonb_build_object('calls_due', public.crm_calls_queue(null)->'count'))::text$q$));
   perform pg_temp.t3802k_like('K-4', 'my_day refuses a date that is not a date',
     pg_temp.t3802k_gw('growth.claude', 'my_day', '{"today":"2026-13-45"}'), '%"token": "invalid_arguments"%today%2026-10-13%');
 
@@ -1436,7 +1438,8 @@ begin
     d_west || '/' || d_west || '/' || c_west);
   perform pg_temp.t3802k_check('K-14', 'that is what the same person''s browser asks for: its own date',
     (pg_temp.t3802k_gw('east', 'my_day')::jsonb -> 'result')::text,
-    pg_temp.t3802k_as('growth2', format($q$select (public.crm_home_summary(%L) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting'))::text$q$, d_east)));
+    pg_temp.t3802k_as('growth2', format($q$select (public.crm_home_summary(%L) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting')
+                                                   || jsonb_build_object('calls_due', public.crm_calls_queue(%L)->'count'))::text$q$, d_east, d_east)));
   v := pg_temp.t3802k_gw('nozone', 'my_day');
   perform pg_temp.t3802k_check('K-14', 'a key with no zone answers in UTC and says no zone is recorded',
     (v::jsonb -> 'dates')::text,

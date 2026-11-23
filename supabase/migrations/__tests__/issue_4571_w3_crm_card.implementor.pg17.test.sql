@@ -384,6 +384,50 @@ begin
 end;
 $t$;
 
+-- ───────────────────────────── CONNECTOR ─────────────────────────────
+create function pg_temp.gw(p_key text, p_tool text, p_args jsonb) returns text
+language plpgsql as $fn$
+declare v_out text;
+begin
+  perform pg_temp.next_request();
+  begin
+    set local role service_role;
+    execute format('select public.team_agent_call(%L, %L, %L::jsonb, %L)::text',
+      encode(sha256(convert_to(p_key, 'UTF8')), 'hex'), p_tool, p_args, 'w34571-test/1.0') into v_out;
+    reset role;
+    return v_out;
+  exception when others then
+    reset role;
+    return 'ERR:' || sqlstate || ':' || sqlerrm;
+  end;
+end;
+$fn$;
+do $t$
+declare v text; v_key text;
+begin
+  v := pg_temp.person('tao', $q$select public.team_agent_key_create('claude')::text$q$);
+  if v like 'ERR:%' then raise exception 'key not made: %', v; end if;
+  v_key := (v::jsonb)->>'key';
+  v := pg_temp.gw(v_key, 'set_owners', jsonb_build_object('items', jsonb_build_array(jsonb_build_object(
+         'id', pg_temp.id('pc'), 'owner_emails', jsonb_build_array(pg_temp.email('tao')),
+         'watcher_emails', jsonb_build_array(pg_temp.email('kemi'), pg_temp.email('abi'))))));
+  perform pg_temp.chk('CONNECTOR', 'set_owners with watcher_emails writes owners and watchers in one step',
+    (v::jsonb)->>'ok' || '/' || ((v::jsonb)#>>'{result,results,0,status}') || '/' ||
+    (select string_agg(watcher_email, ',' order by watcher_email) from public.crm_record_watchers where record_id = pg_temp.id('pc')),
+    'true/updated/abi.w34571@test.local,kemi.w34571@test.local');
+  v := pg_temp.gw(v_key, 'set_owners', jsonb_build_object('items', jsonb_build_array(jsonb_build_object(
+         'id', pg_temp.id('pc'), 'owner_emails', jsonb_build_array(pg_temp.email('tao'), pg_temp.email('kemi'))))));
+  perform pg_temp.lk('CONNECTOR', 'set_owners without watcher_emails keeps the watchers and refuses an owner who watches',
+    (v::jsonb)#>>'{result,results,0,error}', '%owner_and_watcher%');
+  v := pg_temp.gw(v_key, 'set_owners', jsonb_build_object('items', jsonb_build_array(jsonb_build_object(
+         'id', pg_temp.id('pc'), 'owner_emails', jsonb_build_array(pg_temp.email('tao')), 'watcher_emails', 'kemi'))));
+  perform pg_temp.lk('CONNECTOR', 'watcher_emails must be a list', v, '%invalid_watchers%');
+  v := pg_temp.gw(v_key, 'my_day', '{}'::jsonb);
+  perform pg_temp.chk('CONNECTOR', 'my_day carries calls_due, the same count as My calls today',
+    (v::jsonb)#>>'{result,calls_due}', (pg_temp.person('tao', 'select public.crm_calls_queue()::text')::jsonb)->>'count');
+end;
+$t$;
+
 -- ───────────────────────────── report ─────────────────────────────
 do $r$
 declare r record; v_fail integer := 0; v_all integer := 0;

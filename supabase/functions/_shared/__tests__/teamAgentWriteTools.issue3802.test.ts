@@ -142,7 +142,7 @@ Deno.test("#3802 W-1: twenty-six tools, each group together, each saying what it
     upsert_record: ["crm_record_create", "crm_record_log"],
     update_records: ["crm_record_update"],
     move_stage: ["crm_record_move_stage"],
-    set_owners: ["crm_record_set_owners"],
+    set_owners: ["crm_record_set_owners", "crm_record_set_people"],  // #4571 W3: watcher_emails
     log_activity: ["crm_record_log"],
     record_reply: ["crm_record_log", "crm_record_move_stage"],
   };
@@ -714,12 +714,10 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
       "content_calendar_duplicate_check",
       "content_calendar_undo",
       "crm_beta_lead_to_host",
-      // #4571 W3: My calls today, follower counts, the card's Work list and its watchers are people's.
-      "crm_calls_queue",
+      // #4571 W3: follower counts (read by a person) and the card's Work list (agents use list_work).
       "crm_identifier_set_followers",
       "crm_record_delete",
       "crm_record_restore",
-      "crm_record_set_people",
       "crm_record_undo_stage_move",
       "crm_record_work",
       "crm_target_set",
@@ -779,10 +777,18 @@ Deno.test("#3802 W-6: the manifest and the gateway's list in this migration are 
     ),
     TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name),
   );
+  // #4571 W3: the gateway's latest body (20281126034571) adds watcher_emails to
+  // set_owners and calls_due to my_day; it keeps the same tool list.
+  const latestFile = Deno.readTextFileSync(new URL("../../../migrations/20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql", import.meta.url));
+  const latestGateway = latestFile.slice(latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), latestFile.indexOf("\n$function$", latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
+  assert(latestGateway.length > 1000, "the W3 gateway body was found");
+  assertEquals([...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(latestGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+    [...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(gateway[0])?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
   for (const t of TEAM_AGENT_TOOLS) {
     for (const fn of t.reaches) {
       assert(
         gateway[0].includes(`public.${fn}(`) ||
+          latestGateway.includes(`public.${fn}(`) ||
           contentGateway[0].includes(`public.${fn}(`),
         `the gateway never calls ${fn}`,
       );

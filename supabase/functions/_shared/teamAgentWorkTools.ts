@@ -782,6 +782,9 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_work_get: { tools: ["list_work"] },
   ops_work_add: { tools: ["add_work"] },
   ops_work_update: { tools: ["update_work"] },
+  // #4571 W2: taking a link off a card (and, asked, off its subtasks). An agent
+  // sends the card's links without it through update_work, card by card.
+  ops_work_link_remove: { tools: ["update_work"] },
   ops_work_start: { tools: ["start_work"] },
   ops_work_close: { tools: ["close_work"] },
   ops_work_push_back: { tools: ["push_back"] },
