@@ -21672,6 +21672,8 @@
         "supabase/migrations/__tests__/issue_4508_one_place.tester.retest.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_contract_plan_terms.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_contract_plan_terms.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_custom_discount_exact.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_custom_discount_exact.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_discount_plan.tester.adversarial.pg17.test.sql",
@@ -27396,6 +27398,8 @@
         "supabase/migrations/__tests__/issue_4508_one_place.tester.retest.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_contract_plan_terms.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_contract_plan_terms.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_custom_discount_exact.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_custom_discount_exact.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_discount_plan.tester.adversarial.pg17.test.sql",
@@ -54738,5 +54742,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "019062410611c64f300c461a05825d1dd808ddaaf5329da989b90a4227bfb245"
+  "phase3eContractSha256": "c6b87114e2f93f6f7ae94a033f6d93c145d4119d29b331cc61c7f31fd76bdae4"
 }
