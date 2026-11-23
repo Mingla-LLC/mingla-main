@@ -5,7 +5,7 @@
  * chip), and the server checks both again.
  */
 
-import type { TillCatalog, TillLine, TillMenuItem, TillSale, TillServer } from "../../../services/venueTillService";
+import type { TillCatalog, TillLine, TillMenuItem, TillSale, TillServer, TillShare } from "../../../services/venueTillService";
 
 // ---------------------------------------------------------------- O3 A2
 /** #4490 spec 08 §11 T7: a sent round reads "Not accepted" from this many minutes. */
@@ -199,6 +199,27 @@ export function foodAndDrinkMinor(sale: TillSale | null): number {
     for (const item of line.items) if (!item.voided) total += item.lineTotalMinor;
   }
   return total;
+}
+
+/**
+ * #4490 08-O4 fix 2 (O4-B1): what a tip percentage is taken on for THIS
+ * payment. Spec 08 §2 pay sheet: a tip percentage is taken on food and drink
+ * before service charge; a payment that pays only part of the check (a share,
+ * a typed part, what is left after one) tips on its own part of that base.
+ * A by-item share: the food and drink it holds. Otherwise: food and drink
+ * scaled by this payment's part of the check (so the parts add up to the
+ * whole). Display only: the server takes the tip as sent (never more than
+ * the payment, spec §4 item 1).
+ */
+export function tipBaseMinor(sale: TillSale | null, share: TillShare | null, payAmountMinor: number): number {
+  if (sale === null) return 0;
+  const food = foodAndDrinkMinor(sale);
+  if (share !== null && share.mode === "by_item") {
+    return share.items.reduce((n, i) => n + (i.orderItemId !== null ? i.amountMinor : 0), 0);
+  }
+  const amount = share !== null ? share.amountMinor : payAmountMinor;
+  if (sale.totalDueMinor <= 0 || amount <= 0) return 0;
+  return Math.min(food, Math.round((food * amount) / sale.totalDueMinor));
 }
 
 /** Tip chips: "No tip" plus each configured percentage of food and drink. */

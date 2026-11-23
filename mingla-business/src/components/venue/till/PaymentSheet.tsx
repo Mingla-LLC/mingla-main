@@ -58,7 +58,7 @@ import {
   type TillAttempt,
 } from "./tillPayModel";
 import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
-import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
+import { cashPresets, changeDue, tipBaseMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 import { openFloorPdf } from "../../../utils/floorPdf";
 
 type Step = "choose" | "cash" | "own" | "scan" | "tap" | "paid" | "resuming" | "split";
@@ -132,7 +132,9 @@ export function PaymentSheet({
 }: PaymentSheetProps): React.ReactElement {
   const [step, setStep] = useState<Step>("choose");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
-  const [tipMinor, setTipMinor] = useState(0);
+  // 08-O4 fix 2 (O4-B1): the chip picked (its percentage), so the tip follows
+  // the amount being paid in THIS payment (a share, a part, what is left).
+  const [tipBps, setTipBps] = useState<number | null>(null);
   const [cashGiven, setCashGiven] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +171,7 @@ export function PaymentSheet({
     if (!visible) return;
     setStep("choose");
     setAmountMinor(null);
-    setTipMinor(0);
+    setTipBps(null);
     setCashGiven(null);
     setError(null);
     setResult(null);
@@ -256,9 +258,10 @@ export function PaymentSheet({
   const amountError = tillAmountError(amountMinor, due);
   const canChooseMethod = amountError === null && payAmount > 0;
   const tips = useMemo(
-    () => (tipsEnabled ? tipChoices(foodAndDrinkMinor(sale), tipBpsOptions) : []),
-    [sale, tipsEnabled, tipBpsOptions],
+    () => (tipsEnabled ? tipChoices(tipBaseMinor(sale, share, payAmount), tipBpsOptions) : []),
+    [sale, share, payAmount, tipsEnabled, tipBpsOptions],
   );
+  const tipMinor = tipBps === null ? 0 : tips.find((t) => t.bps === tipBps)?.minor ?? 0;
   const change = changeDue(cashGiven, payAmount, tipMinor);
   const presets = cashPresets(payAmount + tipMinor);
 
@@ -273,13 +276,14 @@ export function PaymentSheet({
     );
     attempt.current = current;
     try {
+      const expectedVersion = sale.version;
       const paid = await onPay({
         method,
         amountMinor: payAmount,
         tipMinor,
         cashGivenMinor,
         clientRequestId: current.id,
-        expectedVersion: sale.version,
+        expectedVersion,
         shareId: share?.id ?? null,
       });
       // Taken (or the first try's answer replayed): this attempt is over.
@@ -322,11 +326,12 @@ export function PaymentSheet({
     const current = tillAttemptFor(attempt.current, tillAttemptKey({ method, tipMinor, shareId: share?.id ?? null }));
     attempt.current = current;
     try {
+      const expectedVersion = sale.version;
       const started = await onStartCard({
         method,
         tipMinor,
         clientRequestId: current.id,
-        expectedVersion: sale.version,
+        expectedVersion,
         shareId: share?.id ?? null,
       });
       // The card payment exists on the server now; its panel follows it by
@@ -371,7 +376,7 @@ export function PaymentSheet({
   const payRest = (): void => {
     attempt.current = null;
     setAmountMinor(null);
-    setTipMinor(0);
+    setTipBps(null);
     setCashGiven(null);
     setError(null);
     setResult(null);
@@ -383,7 +388,7 @@ export function PaymentSheet({
   const payShare = (picked: TillShare): void => {
     attempt.current = null;
     setAmountMinor(null);
-    setTipMinor(0);
+    setTipBps(null);
     setCashGiven(null);
     setError(null);
     setResult(null);
@@ -533,8 +538,8 @@ export function PaymentSheet({
               <Chip
                 key={t.bps}
                 label={t.bps === 0 ? TILL_COPY.noTip : `${t.bps / 100}% · ${money(t.minor)}`}
-                selected={tipMinor === t.minor}
-                onPress={() => setTipMinor(t.minor)}
+                selected={(tipBps ?? 0) === t.bps}
+                onPress={() => setTipBps(t.bps === 0 ? null : t.bps)}
                 testID={`till-tip-${t.bps}`}
               />
             ))}
