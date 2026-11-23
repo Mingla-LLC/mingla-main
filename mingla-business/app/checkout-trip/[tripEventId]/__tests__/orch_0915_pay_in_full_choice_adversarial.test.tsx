@@ -70,12 +70,24 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
     // [TEST-MOD-APPROVED #3859] The resume record contains CartLine objects, so
     // the booking-local per-line decision survives refresh without mutating the
     // signed-in profile or falling back to a cart-wide scalar.
+    // issue #4522 E-2/E-3 — the restore moved into tripCheckoutResume.ts (one
+    // owner, unit-driven by issue_4522_back_from_provider); the screen hands it
+    // the cart setters, and the per-line choice is restored through
+    // setLinePaymentPlanChoice so the quoted choice follows the lines.
     expect(paymentSource).toContain("setLinePaymentPlanChoice");
     expect(restoreWindow).toContain("readCheckoutResumePayload");
-    expect(restoreWindow).toContain("setLineQuantity");
-    expect(restoreWindow).toContain("setBuyer(payload.buyer)");
+    expect(restoreWindow).toContain(
+      "{ setLineQuantity, setLinePaymentPlanChoice, setBuyer, restoreCheckoutAttempt }",
+    );
     expect(restoreWindow).not.toContain("setPaymentPlanChoice");
-    expect(restoreWindow).toContain('paymentPlanChoice: l.paymentPlanChoice ?? "full"');
+    const resumeSource = stripComments(
+      readBusiness("src/components/checkout/tripCheckoutResume.ts"),
+    );
+    expect(resumeSource).toContain("cart.setLineQuantity({");
+    expect(resumeSource).toContain("cart.setBuyer(payload.buyer)");
+    expect(resumeSource).toContain('const choice = line.paymentPlanChoice ?? "full";');
+    expect(resumeSource).toContain("cart.setLinePaymentPlanChoice(line.ticketTypeId, choice);");
+    expect(resumeSource).not.toContain("setPaymentPlanChoice(");
     expect(paymentSource).toContain(
       "writeCheckoutResumePayload(storage, tripEventId, {",
     );
