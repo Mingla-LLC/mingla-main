@@ -364,10 +364,46 @@ Deno.test("rework 7 Paystack: an unconfirmed refund goes to ops once with the ch
   assertEquals(alerts[0].s, "Trip overpayment refund not confirmed by the provider");
   const copy = alerts[0].p.join(" ");
   for (const part of ["Charge (paystack): ps_ref_7", "Still owed back to the traveler: 500000 (NGN minor units)",
-    "Refund sent: 500000 (NGN minor units) at 2028-11-25T10:00:00+00:00", "check the provider dashboard",
+    "Refund attempted: 500000 (NGN minor units) at 2028-11-25T10:00:00+00:00", "check the provider dashboard",
+    "the request may or may not have reached the provider",
     "If no refund exists, use issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>)",
-    "If one exists, do nothing: Mingla keeps checking and adopts it automatically"]) {
+    "If one exists, do nothing: Mingla keeps checking and adopts it automatically",
+    "keeps re-reading this charge's refunds for 7 days", "payout for this charge stays held for those 7 days"]) {
     assert(copy.includes(part), `${part} :: ${copy}`);
+  }
+  // Rework 9 (T8-1): it never claims the refund was sent when the send may not have reached the provider.
+  assert(!copy.includes("Mingla sent the provider"), copy);
+});
+
+Deno.test("rework 9 T8-1: a watched (refunded, ops-retried) overpayment re-reads the charge and sends nothing; an extra refund found alerts once", async () => {
+  const ps = { ...plan, provider: "paystack", providerRef: "ps_ref_9", currency: "NGN", refundMinor: 500000, remainingMinor: 0 };
+  const note = "mingla_overpay_refund:8f8f8f8f-1111-4222-8333-444455556666:1";
+  for (const listed of [[], [{ id: "rfd_orig", amount: 500000, status: "processed", merchantNote: note }]]) {
+    const db = scripted({
+      issue_4522_begin_overpayment_refund: [{ ...ps, action: "reconcile", watch: true }, { ok: true, done: true, state: "refunded" }],
+      issue_4522_overpayment_refund_event: [{ handled: true, results: [{ alertOps: true,
+        alertKind: "provider_refunded_more", overpaymentId: "8f8f8f8f-1111-4222-8333-444455556666", currency: "NGN",
+        providerRef: "ps_ref_9", overRefundedMinor: 500000, refundMinor: 500000, refundedMinor: 1000000, remainingMinor: 0 }] }],
+    });
+    const alerts: string[] = [];
+    const sent: unknown[] = [];
+    const outcome = await returnOverpayment(deps(db, stripe(newLog()), [], {
+      listPaystackRefunds: () => Promise.resolve(listed),
+      // deno-lint-ignore no-explicit-any
+      createPaystackRefund: ((p: unknown) => { sent.push(p); return Promise.reject(new Error("must not be called")); }) as any,
+      alertOps: (s) => { alerts.push(s); return Promise.resolve(); },
+    }), "op-1");
+    const events = db.calls.filter((c) => c.fn === "issue_4522_overpayment_refund_event");
+    assertEquals([outcome, sent.length, events.length, alerts], listed.length === 0
+      ? ["done", 0, 0, []]
+      : ["done", 0, 1, ["Trip overpayment refunded more than owed"]]);
+    if (events.length === 1) {
+      assertEquals([events[0].args?.p_attempt_no, events[0].args?.p_status, events[0].args?.p_provider_refund_id],
+        [1, "succeeded", "rfd_orig"]);
+    }
+    // The second plan was asked with reconciled = true (the watch reads once per pass).
+    assertEquals(db.calls.filter((c) => c.fn === "issue_4522_begin_overpayment_refund").map((c) => c.args?.p_reconciled),
+      [false, true]);
   }
 });
 

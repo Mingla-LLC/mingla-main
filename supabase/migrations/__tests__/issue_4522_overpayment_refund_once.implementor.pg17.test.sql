@@ -42,6 +42,10 @@
 --   T7-2  ops retry is refused while an extra refund is pending (re-read).
 --   T7-4  a total counting extra refunds is trusted only after a re-read.
 --   T7-5  a check that changes nothing pauses a stopped row 5 minutes.
+--   Rework 9 (T8-1)  after an ops retry closed an unanswered second-provider
+--         refund, the charge is re-read for 7 days (payout held): an original
+--         that completed with its webhook lost is recorded as refunded past
+--         the amount and stops for ops once; nothing found: released at 7 days.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
@@ -54,7 +58,9 @@
 -- unmatched-refund record (issue_4522_overpayment_extra_refund), drop the
 -- unconfirmed hand-off or its retry release, the pending-extra retry refusal,
 -- the re-read before trusting extra refunds, the extra refund's adoption as
--- an attempt, or the no-change updated_at touch -> red.
+-- an attempt, or the no-change updated_at touch, or (rework 9, T8-1) drop the
+-- retry watch from the due list, the begin's watched reconcile, its ceiling
+-- close or the watched payout hold -> red.
 
 BEGIN;
 
@@ -654,6 +660,61 @@ BEGIN
   v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('rework 7 ... then exactly one new attempt for the 500,000 owed',
     v->>'action' = 'create' AND (v->>'attemptNo')::int = 2 AND (v->>'amountMinor')::bigint = 500000, v::text);
+
+  -- Rework 9 (T8-1, tester AM11): the retry's refund completes; the ORIGINAL
+  -- (hidden ~40 h) completes later with its webhook lost. The lane's own
+  -- re-reads must find it and end exactly as with the webhook (AM10).
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 2, 'succeeded', 'rfd_u1_retry');
+  PERFORM pg_temp.check('rework 9 T8-1 after an ops retry the overpayment is refunded but WATCHED: the payout stays held',
+    (pg_temp.op(op)).state = 'refunded' AND (pg_temp.op(op)).detail ? 'retry_watch_from'
+    AND public.issue_4522_row_payout_blocked((pg_temp.op(op)).installment_id));
+  PERFORM pg_temp.check('rework 9 T8-1 ... watched rows are re-read every 5 minutes (not due at once, due after)',
+    NOT (public.issue_4522_overpayments_due(NULL, now(), 1000) @> jsonb_build_array(jsonb_build_object('overpaymentId', op)))
+    AND public.issue_4522_overpayments_due(NULL, now() + interval '6 minutes', 1000) @> jsonb_build_array(jsonb_build_object('overpaymentId', op)));
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, false, now() + interval '6 minutes');
+  PERFORM pg_temp.check('rework 9 T8-1 ... a watched pass re-reads the charge''s refunds (reconcile) and never creates',
+    v->>'action' = 'reconcile' AND (v->>'watch')::boolean AND v->>'provider' = 'paystack'
+    AND v->>'providerRef' = 'mingla-inst-' || u1::text || '-l1' AND pg_temp.n_attempts(op) = 2, v::text);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true, now() + interval '6 minutes');
+  PERFORM pg_temp.check('rework 9 T8-1 ... nothing new on the charge: done, no alert, still watched',
+    (v->>'done')::boolean AND v->>'alertOps' IS NULL AND pg_temp.n_attempts(op) = 2
+    AND public.issue_4522_row_payout_blocked((pg_temp.op(op)).installment_id), v::text);
+  -- The re-read lists the original with its own merchant note (attempt 1), processed.
+  v := public.issue_4522_overpayment_refund_event('paystack', 'rfd_u1_orig', 'mingla-inst-' || u1::text || '-l1',
+         500000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('rework 9 T8-1 ... the original found by the re-read: refunded more than owed, stopped for ops, one alert',
+    (pg_temp.op(op)).state = 'needs_ops' AND (pg_temp.op(op)).needs_ops_reason = 'provider_refunded_more'
+    AND (v->'results'->0->>'alertOps')::boolean AND v->'results'->0->>'alertKind' = 'provider_refunded_more'
+    AND (v->'results'->0->>'overRefundedMinor')::bigint = 500000
+    AND public.issue_4522_overpayment_back_minor(op) = 1000000
+    AND public.issue_4522_overpayment_returned_minor(op) = 500000
+    AND public.issue_4522_row_payout_blocked((pg_temp.op(op)).installment_id), v::text);
+  v := public.issue_4522_overpayment_refund_event('paystack', 'rfd_u1_orig', 'mingla-inst-' || u1::text || '-l1',
+         500000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('rework 9 T8-1 ... read again: never a second alert, figures unchanged',
+    COALESCE((v->'results'->0->>'alertOps')::boolean, false) = false
+    AND public.issue_4522_overpayment_back_minor(op) = 1000000 AND (pg_temp.op(op)).state = 'needs_ops', v::text);
+
+  -- Rework 9 (T8-1): nothing ever appears: the watch stops at the 7-day
+  -- ceiling (issue_4522_overpayment_pending_ceiling) and the payout is released.
+  op := pg_temp.ng_overpayment('4522c300-0000-4000-8000-0000000000c9', 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  UPDATE public.order_overpayment_refund_attempts SET created_at = now() - interval '25 hours', updated_at = now() - interval '10 minutes'
+   WHERE overpayment_id = op;
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 2, 'succeeded', 'rfd_c4_retry');
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, false, now() + interval '6 days 23 hours');
+  PERFORM pg_temp.check('rework 9 T8-1 ... still watched just inside 7 days', v->>'action' = 'reconcile'
+    AND public.issue_4522_row_payout_blocked((pg_temp.op(op)).installment_id), v::text);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, false, now() + interval '7 days 1 minute');
+  PERFORM pg_temp.check('rework 9 T8-1 ... past 7 days the watch closes: done, payout released, never due again, nothing sent',
+    (v->>'done')::boolean AND (pg_temp.op(op)).state = 'refunded' AND (pg_temp.op(op)).detail ? 'retry_watch_closed_at'
+    AND NOT public.issue_4522_row_payout_blocked((pg_temp.op(op)).installment_id)
+    AND NOT (public.issue_4522_overpayments_due(NULL, now() + interval '8 days', 1000)
+             @> jsonb_build_array(jsonb_build_object('overpaymentId', op)))
+    AND pg_temp.n_attempts(op) = 2, v::text);
 
   -- It existed after all: listed (or its webhook) with our merchant note: adopted, back with the lane.
   op := pg_temp.ng_overpayment(u2, 500000);

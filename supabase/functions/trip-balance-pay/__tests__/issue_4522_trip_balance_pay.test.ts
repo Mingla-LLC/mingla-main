@@ -493,3 +493,31 @@ Deno.test("T4-3 the Paystack new-card handoff applies the same rule before issui
   const balance = (await view.json()).balance;
   assertEquals([balance.maxPartialMinor, balance.providerMinimumMinor], [80000, 10000]);
 });
+
+// issue #4522 rework 9 (T8-6) — FAILS-ON-REVERT: drop the provider-minimum
+// refusal from the Paystack new-card handoff -> a balance link is issued for
+// a balance the provider cannot charge -> red.
+Deno.test("rework 9 T8-6: the Paystack new-card handoff issues no balance link for a balance below the provider minimum", async () => {
+  const fake = world("paystack", undefined, true, {
+    balance: { remainingMinor: 5000, providerMinimumMinor: 10000, minPaymentMinor: 10000, maxPartialMinor: null,
+      nextPayment: { installmentId: "next-1", dueAt: "2027-03-01T00:00:00Z", amountMinor: 5000 } },
+  });
+  const res = await handleTripBalancePay(
+    post({ action: "start", orderId: ORDER, amountMinor: 5000, expectedRemainingMinor: 5000,
+      clientKey: "client-key-t86a", method: "new_card" }, "buyer-jwt"),
+    { ...deps(fake, []), mintToken: () => "s".repeat(43) },
+  );
+  assertEquals(res.status, 409);
+  assertEquals(await res.json(), { error: "balance_below_provider_minimum" });
+  assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_issue_balance_link"), false);
+  // At the minimum the link is issued as before.
+  const at = world("paystack", undefined, true, {
+    balance: { remainingMinor: 10000, providerMinimumMinor: 10000, minPaymentMinor: 10000, maxPartialMinor: null },
+  });
+  const ok = await handleTripBalancePay(
+    post({ action: "start", orderId: ORDER, amountMinor: 10000, expectedRemainingMinor: 10000,
+      clientKey: "client-key-t86b", method: "new_card" }, "buyer-jwt"),
+    { ...deps(at, []), mintToken: () => "t".repeat(43) },
+  );
+  assertEquals((await ok.json()).kind, "open_page");
+});

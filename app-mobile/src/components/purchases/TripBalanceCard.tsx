@@ -11,7 +11,9 @@ import { useRouter } from "expo-router";
 import {
   formatTripBalanceMoney,
   supportsBalancePayments,
+  tripBalanceBelowProviderMinimum,
   tripBalanceOverpaymentLines,
+  tripBalanceSmallRemainderCopy,
 } from "@mingla/offering-rendering/tripBalance";
 
 import { useTripBalance } from "../../hooks/useTripBalance";
@@ -45,6 +47,10 @@ export function TripBalanceCard(
   // balance endpoint yet (the app can ship before the migrations).
   if (query.isError && isBalanceUnavailable(query.error)) return null;
   if (balance !== null && !supportsBalancePayments(balance)) return null;
+  // issue #4522 rework 9 (T8-6, I-4522-NEVER-WRITE-OFF) — a balance below
+  // what the provider can charge stays owed: the balance screen's line, no
+  // next payment and nothing to pay.
+  const tooSmall = balance !== null && tripBalanceBelowProviderMinimum(balance);
   return (
     <View style={styles.card}>
       <Text style={styles.eyebrow}>BALANCE</Text>
@@ -96,7 +102,16 @@ export function TripBalanceCard(
               refundedMinor={balance.overpaymentRefundedMinor}
               currency={balance.currency}
             />
-            {balance.nextPayment
+            {tooSmall
+              ? (
+                <Text style={styles.next}>
+                  {tripBalanceSmallRemainderCopy(
+                    money(balance.remainingMinor, balance.currency),
+                  )}
+                </Text>
+              )
+              : null}
+            {balance.nextPayment && !tooSmall
               ? (
                 <Text style={styles.next}>
                   Next{" "}
@@ -106,19 +121,21 @@ export function TripBalanceCard(
                 </Text>
               )
               : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Pay toward balance"
-              onPress={() =>
-                router.push(
-                  `/trip-balance/${encodeURIComponent(orderId)}` as never,
-                )}
-              style={(
-                { pressed },
-              ) => [styles.button, pressed && styles.pressed]}
-            >
-              <Text style={styles.buttonText}>Pay toward balance</Text>
-            </Pressable>
+            {tooSmall ? null : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Pay toward balance"
+                onPress={() =>
+                  router.push(
+                    `/trip-balance/${encodeURIComponent(orderId)}` as never,
+                  )}
+                style={(
+                  { pressed },
+                ) => [styles.button, pressed && styles.pressed]}
+              >
+                <Text style={styles.buttonText}>Pay toward balance</Text>
+              </Pressable>
+            )}
           </>
         )}
     </View>

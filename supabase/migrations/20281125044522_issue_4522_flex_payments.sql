@@ -437,6 +437,10 @@ REVOKE ALL ON FUNCTION public.issue_4522_overpayment_policy(uuid) FROM PUBLIC, a
 -- A collected row is kept out of payouts while part of it is overpayment not
 -- yet returned, or while it is a flexible payment not yet settled (the split
 -- between what it paid and what it overpaid is not known yet).
+-- Rework 9 (T8-1): also while a second-provider overpayment whose unanswered
+-- refund ops closed with 'retry' is still watched (detail.retry_watch_from,
+-- until the lane closes the watch after issue_4522_overpayment_pending_ceiling()):
+-- the original refund may yet complete at the provider with its webhook lost.
 CREATE FUNCTION public.issue_4522_row_payout_blocked(p_installment_id uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -446,7 +450,9 @@ SET search_path = public, pg_temp
 AS $fn$
   SELECT EXISTS (SELECT 1 FROM public.order_overpayments op
                   WHERE op.installment_id = p_installment_id
-                    AND op.state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops'))
+                    AND (op.state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops')
+                         OR (op.state = 'refunded' AND op.detail ? 'retry_watch_from'
+                             AND NOT (op.detail ? 'retry_watch_closed_at'))))
       OR EXISTS (SELECT 1 FROM public.order_installments oi
                   WHERE oi.id = p_installment_id AND oi.kind = 'flex' AND oi.status = 'collected'
                     AND NOT EXISTS (SELECT 1 FROM public.order_balance_events e
@@ -878,7 +884,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
   SELECT COALESCE(jsonb_agg(jsonb_build_object('overpaymentId', op.id, 'orderId', op.order_id,
-           'state', op.state) ORDER BY op.created_at, op.id), '[]'::jsonb)
+           'state', op.state) ORDER BY (op.state = 'refunded'), op.created_at, op.id), '[]'::jsonb)
     FROM (SELECT * FROM public.order_overpayments
            WHERE (p_order_id IS NULL OR order_id = p_order_id)
              AND (state = 'held'
@@ -893,8 +899,14 @@ AS $fn$
                                        WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending')
                                          AND a.provider_refund_id IS NULL)))
                            -- T7-2: an extra refund still pending is re-read on the charge
-                           OR detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb)))
-           ORDER BY created_at, id
+                           OR detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb))
+                  -- Rework 9 (T8-1): a refunded overpayment whose unanswered
+                  -- refund ops closed with 'retry' is watched: the charge's
+                  -- refunds are re-read (nothing is sent) until the watch closes.
+                  OR (state = 'refunded' AND detail ? 'retry_watch_from' AND NOT (detail ? 'retry_watch_closed_at')
+                      AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')))
+           -- Watched rows come after every row that may still need a refund.
+           ORDER BY (state = 'refunded'), created_at, id
            LIMIT greatest(COALESCE(p_limit, 100), 1)) op
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_overpayments_due(uuid, timestamptz, integer) FROM PUBLIC, anon, authenticated;
@@ -1084,6 +1096,32 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'overpayment_not_found');
   END IF;
   SELECT * INTO v_op FROM public.order_overpayments WHERE id = p_overpayment_id FOR UPDATE;
+  -- Rework 9 (T8-1): after ops closed an unanswered second-provider refund
+  -- with 'retry', the original may still complete at the provider with its
+  -- webhook lost. For issue_4522_overpayment_pending_ceiling() after that
+  -- retry the charge's refunds are re-read (action 'reconcile': the
+  -- original's own merchant note names this overpayment and attempt, so a
+  -- completed one is recorded as refunded past the amount, stopped for ops
+  -- once, payout kept held). Nothing is ever sent from here. Then the watch
+  -- closes and the host's payout for the charge is released.
+  IF v_op.state = 'refunded' AND v_op.detail ? 'retry_watch_from' AND NOT (v_op.detail ? 'retry_watch_closed_at') THEN
+    IF (v_op.detail->>'retry_watch_from')::timestamptz <= p_now - public.issue_4522_overpayment_pending_ceiling() THEN
+      UPDATE public.order_overpayments
+         SET detail = detail || jsonb_build_object('retry_watch_closed_at', p_now), updated_at = p_now
+       WHERE id = v_op.id;
+      PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_retry_watch_closed',
+        jsonb_build_object('overpayment_id', v_op.id, 'watched_from', v_op.detail->>'retry_watch_from'));
+      PERFORM public.issue_4522_sync_row_payout_hold(v_op.installment_id);
+    ELSIF NOT COALESCE(p_reconciled, false) THEN
+      UPDATE public.order_overpayments SET updated_at = p_now WHERE id = v_op.id;
+      RETURN jsonb_build_object('ok', true, 'done', false, 'action', 'reconcile',
+        'overpaymentId', v_op.id, 'orderId', v_op.order_id, 'installmentId', v_op.installment_id,
+        'brandId', (SELECT e.brand_id FROM public.orders o JOIN public.events e ON e.id = o.event_id
+                     WHERE o.id = v_op.order_id),
+        'provider', v_op.provider, 'providerRef', v_op.provider_ref, 'currency', trim(v_op.currency),
+        'refundMinor', v_op.refund_minor, 'state', v_op.state, 'watch', true);
+    END IF;
+  END IF;
   IF v_op.state IN ('refunded', 'applied') THEN
     RETURN jsonb_build_object('ok', true, 'done', true, 'state', v_op.state);
   END IF;
@@ -1725,6 +1763,7 @@ DECLARE
   v_att_id uuid;
   v_res jsonb;
   v_k integer := 0;
+  v_closed boolean := false;
 BEGIN
   IF p_action IS NULL OR p_action NOT IN ('retry', 'refunded_by_hand') THEN
     RAISE EXCEPTION 'overpayment_ops_action_invalid' USING ERRCODE = '22023';
@@ -1751,6 +1790,7 @@ BEGIN
                      WHERE overpayment_id = v_op.id AND state = 'creating' ORDER BY attempt_no LOOP
       PERFORM public.issue_4522_apply_overpayment_attempt_outcome(v_att_id, 'not_found', NULL,
         'ops_retry: no refund at the provider', p_now);
+      v_closed := true;
     END LOOP;
   END IF;
   IF EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
@@ -1768,6 +1808,9 @@ BEGIN
        SET state = 'held', needs_ops_reason = NULL, consecutive_failures = 0, next_attempt_at = NULL,
            ops_alerted_at = NULL, updated_at = p_now,
            detail = (detail - 'unconfirmed_alerted_at') || jsonb_build_object('ops_retry_at', p_now, 'ops_retry_by', p_actor)
+                    -- Rework 9 (T8-1): an unanswered refund was closed as never
+                    -- created: the charge is watched for it (see begin).
+                    || CASE WHEN v_closed THEN jsonb_build_object('retry_watch_from', p_now) ELSE '{}'::jsonb END
      WHERE id = v_op.id;
     PERFORM public.issue_3645_audit_installment(v_op.installment_id, 'tr3.installment_overpayment_ops_retry',
       jsonb_build_object('overpayment_id', v_op.id, 'actor', p_actor, 'note', left(COALESCE(p_note, ''), 300)));
@@ -2982,14 +3025,67 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'balance_changed',
       'amount_cents', v_row.amount_cents, 'schedule_version', v_row.schedule_version);
   END IF;
+  -- Rework 9 (T8-4): a row already marked for ANOTHER PaymentIntent that is
+  -- not known dead keeps it (the same id replays). A PaymentIntent is known
+  -- dead when its attempt failed (failed_at set; a retry keeps the failed
+  -- attempt's id on the row) or the cron released it
+  -- (issue_4522_release_unconfirmed_stripe_charge clears the id).
+  IF v_row.stripe_payment_intent_id IS NOT NULL AND v_row.stripe_payment_intent_id <> p_payment_intent_id
+     AND v_row.failed_at IS NULL THEN
+    RAISE EXCEPTION 'stripe_charge_already_in_flight' USING ERRCODE = 'PT409';
+  END IF;
+  -- failed_at is cleared with the mark, so a marked row is never mistaken
+  -- for a failed attempt's (dead) PaymentIntent.
   UPDATE public.order_installments
-     SET stripe_payment_intent_id = p_payment_intent_id, updated_at = now()
+     SET stripe_payment_intent_id = p_payment_intent_id, failed_at = NULL, updated_at = now()
    WHERE id = p_installment_id;
   RETURN v_claim || jsonb_build_object('marked', true, 'schedule_version', v_row.schedule_version);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer) TO service_role;
+
+-- Rework 9 (T8-3): a marked planned Stripe charge that the cron found never
+-- confirmed at the provider (it read the PaymentIntent back as cancelled
+-- after cancelling it) is released: the marker is cleared, so the row is
+-- charged normally again, and schedule_version moves on, so that charge uses
+-- a new idempotency key (the cancelled PaymentIntent's key would replay it).
+-- Also a retried row left scheduled with its failed attempt's PaymentIntent
+-- (a worker that died before marking). Only the row's own PaymentIntent,
+-- only while the row is still scheduled. Caller: process-scheduled-installments
+-- (service role).
+CREATE FUNCTION public.issue_4522_release_unconfirmed_stripe_charge(
+  p_installment_id uuid,
+  p_payment_intent_id text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order_id uuid;
+  v_n integer;
+BEGIN
+  SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
+  IF NOT FOUND OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
+  END IF;
+  UPDATE public.order_installments
+     SET stripe_payment_intent_id = NULL, schedule_version = schedule_version + 1, updated_at = now()
+   WHERE id = p_installment_id AND kind = 'scheduled' AND provider = 'stripe' AND status = 'scheduled'
+     AND stripe_payment_intent_id IS NOT DISTINCT FROM p_payment_intent_id
+     AND p_payment_intent_id IS NOT NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n = 0 THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_marked_for_this_payment');
+  END IF;
+  PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_stripe_charge_released_unconfirmed',
+    jsonb_build_object('payment_intent_id', p_payment_intent_id));
+  RETURN jsonb_build_object('ok', true, 'released', true, 'orderId', v_order_id);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_release_unconfirmed_stripe_charge(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_release_unconfirmed_stripe_charge(uuid, text) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_3645_begin_installment_attempt(p_installment_id uuid, p_method text, p_application_fee_cents bigint, p_atrisk_override boolean DEFAULT false, p_now timestamp with time zone DEFAULT now())
  RETURNS jsonb

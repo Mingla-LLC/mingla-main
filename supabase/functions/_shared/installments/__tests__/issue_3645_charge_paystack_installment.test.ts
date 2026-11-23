@@ -52,6 +52,7 @@ interface Harness {
   pushes: Array<Record<string, unknown>>;
   hosts: Array<Record<string, unknown>>;
   refunds: Array<Record<string, unknown>>;
+  alerts: Array<{ subject: string; paragraphs: string[] }>;
   fake: ReturnType<typeof fakeSupabase>;
   run: (
     opts?: { atRiskOverride?: boolean },
@@ -74,6 +75,7 @@ function harness(opts: {
     pushes: [],
     hosts: [],
     refunds: [],
+    alerts: [],
   } as unknown as Harness;
   h.fake = fakeSupabase({
     rpc: (name, args) => {
@@ -197,7 +199,10 @@ function harness(opts: {
         replayed: false,
       });
     },
-    alertOps: () => Promise.resolve(),
+    alertOps: (subject: string, paragraphs: string[]) => {
+      h.alerts.push({ subject, paragraphs });
+      return Promise.resolve();
+    },
     randomBytes: (n: number) => new Uint8Array(n).fill(7),
   };
   h.run = (o = {}) =>
@@ -275,6 +280,21 @@ Deno.test("#3645 SC-10 begin refused (attempt in flight / at risk / cancelled): 
     const r = await h.run();
     assertEquals(r, { outcome: "skipped", reason });
     assertEquals(h.charges.length, 0);
+  }
+});
+
+// issue #4522 rework 9 (T8-5) — FAILS-ON-REVERT: drop alertUnchargeableRemainder
+// from chargePaystackInstallment's refused begin -> red.
+Deno.test("#4522 T8-5: an attempt refused as below the provider minimum alerts ops once and never calls Paystack", async () => {
+  for (const alertOps of [true, false]) {
+    const h = harness({
+      begin: { ok: false, reason: "below_provider_minimum", alertOps, remainingMinor: 4000, order_id: ORDER, currency: "NGN" },
+    });
+    const r = await h.run();
+    assertEquals(r, { outcome: "skipped", reason: "below_provider_minimum" });
+    assertEquals(h.charges.length, 0);
+    assertEquals(h.alerts.map((a) => a.subject), alertOps ? ["A trip balance is too small to charge"] : []);
+    if (alertOps) assert(h.alerts[0].paragraphs.join(" ").includes(`Order: ${ORDER}; amount: 4000 NGN`));
   }
 });
 

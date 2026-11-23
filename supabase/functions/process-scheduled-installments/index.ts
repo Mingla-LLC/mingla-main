@@ -51,8 +51,11 @@ import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import {
   FLEX_IN_FLIGHT_CEILING_MS,
+  FLEX_RECLAIM_WINDOW_MS,
   type FlexStripe,
   loadFlexPaymentsToVerify,
+  type MarkedStripeCharge,
+  reconcileMarkedStripeCharges,
   verifyOpenFlexPayments,
 } from "../_shared/installments/flexReclaim.ts";
 import {
@@ -61,7 +64,10 @@ import {
 } from "../_shared/installments/overpaymentRefunds.ts";
 import { defaultOverpaymentDeps } from "../_shared/installments/overpaymentLane.ts";
 import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
-import { handleInstallmentPaymentSucceeded } from "../_shared/installmentWebhookHandlers.ts";
+import {
+  handleInstallmentPaymentFailed,
+  handleInstallmentPaymentSucceeded,
+} from "../_shared/installmentWebhookHandlers.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 
 const DEFAULT_BATCH_LIMIT = 500 as const;
@@ -78,6 +84,8 @@ type SchedulerResult = {
   notices_sent: number;
   reconciled: number;
   unknown: number;
+  /** issue #4522 (rework 9) — marked planned Stripe charges read back from Stripe. */
+  marked_charges?: { settled: number; failed: number; released: number; in_flight: number; error: number };
   /** issue #4522 (N3) — open flexible payments checked with their provider. */
   flex_verified?: { settled: number; released: number; in_flight: number; flagged: number; error: number };
   /** issue #4522 (N2) — overpayments returned to travelers (by outcome). */
@@ -99,6 +107,8 @@ export interface SchedulerDeps {
   flexStripe: () => FlexStripe;
   /** issue #4522 (N3) — the webhook's success path for a verified PaymentIntent. */
   settleStripe: (supabase: SupabaseClient, paymentIntent: Record<string, unknown>) => Promise<void>;
+  /** issue #4522 (rework 9) — the webhook's failure path for a refused PaymentIntent read back. */
+  failStripe: (supabase: SupabaseClient, paymentIntent: Record<string, unknown>) => Promise<void>;
   /** issue #4522 (N2) — the overpayment refund lane. */
   overpaymentDeps: (supabase: SupabaseClient) => OverpaymentRefundDeps;
   alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
@@ -527,6 +537,12 @@ export async function processScheduledInstallments(
         data: { object: paymentIntent },
       });
     },
+    failStripe: async (client, paymentIntent) => {
+      await handleInstallmentPaymentFailed(client, {
+        type: "payment_intent.payment_failed",
+        data: { object: paymentIntent },
+      });
+    },
     overpaymentDeps: defaultOverpaymentDeps,
     alertOps: installmentOpsAlert,
     ...(input.deps ?? {}),
@@ -583,6 +599,19 @@ export async function processScheduledInstallments(
       installment_id: "scheduler",
       reason: "notice_pass_failed",
     });
+  }
+  // issue #4522 (rework 9, T8-2 / T8-3) — before anything is charged, every
+  // marked planned Stripe charge whose outcome was never learned is read
+  // back, for every order (at risk or not).
+  if (planV2 && input.dryRun !== true) {
+    try {
+      result.marked_charges = await passMarkedStripeCharges(supabase, limit, deps);
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "marked_charge_pass_failed",
+      });
+    }
   }
   try {
     await passCDueAndRetry(
@@ -647,6 +676,46 @@ async function passDVerifyOpenFlex(
     },
     alertOps: deps.alertOps,
   }, open);
+}
+
+/**
+ * issue #4522 (rework 9) — planned Stripe rows still carrying a PaymentIntent
+ * while scheduled, untouched for the reclaim window: marked charges whose
+ * worker died or whose confirm answer was lost (see flexReclaim.ts).
+ */
+async function passMarkedStripeCharges(
+  supabase: SupabaseClient,
+  limit: number,
+  deps: SchedulerDeps,
+): Promise<{ settled: number; failed: number; released: number; in_flight: number; error: number }> {
+  const now = deps.now().getTime();
+  const { data, error } = await supabase.from("order_installments")
+    .select("id, order_id, stripe_payment_intent_id, failed_at, updated_at")
+    .eq("kind", "scheduled").eq("provider", "stripe").eq("status", "scheduled")
+    .not("stripe_payment_intent_id", "is", null).is("cancelled_at", null)
+    .lte("updated_at", new Date(now - FLEX_RECLAIM_WINDOW_MS).toISOString())
+    .order("updated_at", { ascending: true }).limit(Math.min(limit, 100));
+  if (error !== null) throw new Error(`marked_charge_query_failed:${error.message}`);
+  const charges: MarkedStripeCharge[] = [];
+  for (const raw of data ?? []) {
+    const row = raw as Record<string, unknown>;
+    if (typeof row.stripe_payment_intent_id !== "string") continue;
+    const touched = Date.parse(String(row.updated_at ?? ""));
+    charges.push({
+      installmentId: String(row.id),
+      orderId: String(row.order_id),
+      paymentIntentId: row.stripe_payment_intent_id,
+      marked: row.failed_at == null,
+      pastCeiling: Number.isFinite(touched) && now - touched >= FLEX_IN_FLIGHT_CEILING_MS,
+    });
+  }
+  return await reconcileMarkedStripeCharges({
+    supabase,
+    stripe: deps.flexStripe,
+    stripeAccountFor: (charge) => stripeAccountForOrder(supabase, charge.orderId),
+    settleStripe: (pi) => deps.settleStripe(supabase, pi),
+    failStripe: (pi) => deps.failStripe(supabase, pi),
+  }, charges);
 }
 
 async function stripeAccountForOrder(

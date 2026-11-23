@@ -61,6 +61,10 @@ export function fakeSupabase(handlers: FakeHandlers): FakeSupabase {
       },
       eq: filter("eq"),
       neq: filter("neq"),
+      not: (col: string, operator: string, val: unknown) => {
+        op.filters.push([`not.${operator}`, col, val]);
+        return chain;
+      },
       in: filter("in"),
       is: filter("is"),
       gt: filter("gt"),

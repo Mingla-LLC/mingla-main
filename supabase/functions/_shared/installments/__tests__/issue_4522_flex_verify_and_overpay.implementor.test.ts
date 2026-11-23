@@ -21,6 +21,7 @@ import {
   FLEX_IN_FLIGHT_CEILING_MS,
   FLEX_RECLAIM_WINDOW_MS,
   verifyOpenFlexPayments,
+  reconcileMarkedStripeCharges,
 } from "../flexReclaim.ts";
 import { isDefinitiveStripeRefusal, returnOverpayment } from "../overpaymentRefunds.ts";
 
@@ -363,4 +364,61 @@ Deno.test("N2 a resolved overpayment calls no provider", async () => {
   }, "op-1");
   assertEquals(outcome, "done");
   assertEquals(called, false);
+});
+
+// ── rework 9 (T8-2 / T8-3): a marked planned charge is read back and acted on its answer only ──
+// FAILS-ON-REVERT: settle, fail or release a marked charge without Stripe's
+// answer (or release one that succeeded / is processing) -> red.
+Deno.test("rework 9 T8-3: marked planned Stripe charges are settled, failed, released or kept only on Stripe's answer", async () => {
+  const cases: Array<[string, Record<string, unknown> | Error, boolean, string, string[]]> = [
+    ["succeeded", { status: "succeeded" }, true, "settled", ["retrieve", "settle"]],
+    ["processing", { status: "processing" }, true, "in_flight", ["retrieve"]],
+    ["requires_action", { status: "requires_action" }, true, "in_flight", ["retrieve"]],
+    ["never confirmed", { status: "requires_confirmation" }, true, "released", ["retrieve", "cancel", "release"]],
+    ["declined, answer lost", { status: "requires_payment_method", last_payment_error: { code: "card_declined" } }, true, "failed", ["retrieve", "fail"]],
+    ["failed attempt's id", { status: "requires_payment_method", last_payment_error: { code: "card_declined" } }, false, "released", ["retrieve", "cancel", "release"]],
+    ["already cancelled", { status: "canceled" }, true, "released", ["retrieve", "release"]],
+    ["no answer", new Error("timeout"), true, "in_flight", ["retrieve"]],
+  ];
+  for (const [label, answer, marked, outcome, steps] of cases) {
+    const seen: string[] = [];
+    const counts = await reconcileMarkedStripeCharges({
+      supabase: { rpc: (fn: string) => { seen.push(fn === "issue_4522_release_unconfirmed_stripe_charge" ? "release" : fn); return Promise.resolve({ data: { ok: true, released: true }, error: null }); } },
+      stripe: () => ({ paymentIntents: {
+        retrieve: () => { seen.push("retrieve"); return answer instanceof Error ? Promise.reject(answer) : Promise.resolve({ id: "pi_m", ...answer }); },
+        cancel: () => { seen.push("cancel"); return Promise.resolve({ id: "pi_m", status: "canceled" }); },
+      } }),
+      stripeAccountFor: () => Promise.resolve("acct_1"),
+      settleStripe: () => { seen.push("settle"); return Promise.resolve(); },
+      failStripe: () => { seen.push("fail"); return Promise.resolve(); },
+    }, [{ installmentId: "r1", orderId: "o1", paymentIntentId: "pi_m", marked, pastCeiling: false }]);
+    assertEquals([counts[outcome as keyof typeof counts], seen], [1, steps], label);
+  }
+  // A cancel that loses to a confirmation is read back: succeeded settles, never releases.
+  const seen: string[] = [];
+  let reads = 0;
+  const counts = await reconcileMarkedStripeCharges({
+    supabase: { rpc: () => { seen.push("release"); return Promise.resolve({ data: { ok: true }, error: null }); } },
+    stripe: () => ({ paymentIntents: {
+      retrieve: () => { reads += 1; return Promise.resolve({ id: "pi_m", status: reads === 1 ? "requires_confirmation" : "succeeded" }); },
+      cancel: () => Promise.reject(new Error("payment_intent_unexpected_state")),
+    } }),
+    stripeAccountFor: () => Promise.resolve("acct_1"),
+    settleStripe: () => { seen.push("settle"); return Promise.resolve(); },
+    failStripe: () => { seen.push("fail"); return Promise.resolve(); },
+  }, [{ installmentId: "r1", orderId: "o1", paymentIntentId: "pi_m", marked: true, pastCeiling: false }]);
+  assertEquals([counts.settled, seen], [1, ["settle"]]);
+  // A cancel whose answer is not "canceled" releases nothing: the row stays in flight.
+  const kept: string[] = [];
+  const keptCounts = await reconcileMarkedStripeCharges({
+    supabase: { rpc: () => { kept.push("release"); return Promise.resolve({ data: { ok: true }, error: null }); } },
+    stripe: () => ({ paymentIntents: {
+      retrieve: () => Promise.resolve({ id: "pi_m", status: "requires_confirmation" }),
+      cancel: () => Promise.resolve({ id: "pi_m", status: "processing" }),
+    } }),
+    stripeAccountFor: () => Promise.resolve("acct_1"),
+    settleStripe: () => { kept.push("settle"); return Promise.resolve(); },
+    failStripe: () => { kept.push("fail"); return Promise.resolve(); },
+  }, [{ installmentId: "r1", orderId: "o1", paymentIntentId: "pi_m", marked: true, pastCeiling: false }]);
+  assertEquals([keptCounts.in_flight, kept], [1, []]);
 });

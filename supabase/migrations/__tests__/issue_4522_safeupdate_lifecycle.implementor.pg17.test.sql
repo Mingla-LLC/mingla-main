@@ -491,3 +491,67 @@ BEGIN
   RAISE NOTICE 'G PASS: a changed row is never marked; claim refusals pass through; service role only';
 END
 $g$;
+
+-- H. Rework 9 (T8-3 / T8-4), as service_role under pg-safeupdate: a row
+--    marked for one PaymentIntent refuses another live one (PT409) and
+--    replays its own; the cron's release clears only the row's own marker and
+--    moves schedule_version on (a new charge key); a failed attempt's id on a
+--    retried row is dead and may be replaced.
+-- FAILS-ON-REVERT: drop the second-PaymentIntent refusal from
+-- issue_4522_mark_stripe_charge_in_flight, or the version bump from
+-- issue_4522_release_unconfirmed_stripe_charge -> red.
+DO $hfix$
+BEGIN
+  INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, currency,
+    payment_method, payment_status, source, installment_plan_root, payment_plan_terms)
+  VALUES ('4522cc00-0000-4000-8000-0000000000a4', '4522cc00-0000-4000-8000-000000000020', 'race3-buyer@example.test',
+    'Race3 Buyer', '+15554522003', 10000, 'USD', 'online_card', 'paid', 'online_checkout', true, '{"v":2}');
+  INSERT INTO public.order_installments(id, order_id, ordinal, amount_cents, currency, due_at, status, provider,
+    collection_method, ticket_type_id)
+  VALUES ('4522cc00-0000-4000-8000-0000000000b4', '4522cc00-0000-4000-8000-0000000000a4', 1, 10000, 'USD', now(),
+    'scheduled', 'stripe', 'auto_card', '4522cc00-0000-4000-8000-000000000030');
+END
+$hfix$;
+SET ROLE service_role;
+DO $h$
+DECLARE v jsonb; v_row uuid := '4522cc00-0000-4000-8000-0000000000b4'; v_raised boolean := false;
+BEGIN
+  v := public.issue_4522_mark_stripe_charge_in_flight(v_row, 'pi_h_1', 10000, 0);
+  IF NOT COALESCE((v->>'marked')::boolean, false) THEN RAISE EXCEPTION 'H-1 FAIL: %', v; END IF;
+  v := public.issue_4522_mark_stripe_charge_in_flight(v_row, 'pi_h_1', 10000, 0);
+  IF NOT COALESCE((v->>'marked')::boolean, false) THEN RAISE EXCEPTION 'H-2 FAIL: the same id replays: %', v; END IF;
+  BEGIN
+    PERFORM public.issue_4522_mark_stripe_charge_in_flight(v_row, 'pi_h_2', 10000, 0);
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN v_raised := true;
+  END;
+  IF NOT v_raised THEN RAISE EXCEPTION 'H-3 FAIL: a second live PaymentIntent was accepted'; END IF;
+  v := public.issue_4522_release_unconfirmed_stripe_charge(v_row, 'pi_h_2');
+  IF v->>'reason' IS DISTINCT FROM 'not_marked_for_this_payment' THEN RAISE EXCEPTION 'H-4 FAIL: %', v; END IF;
+  v := public.issue_4522_release_unconfirmed_stripe_charge(v_row, 'pi_h_1');
+  IF NOT COALESCE((v->>'released')::boolean, false) THEN RAISE EXCEPTION 'H-5 FAIL: %', v; END IF;
+  v := public.issue_4522_mark_stripe_charge_in_flight(v_row, 'pi_h_2', 10000, 0);
+  IF v->>'reason' IS DISTINCT FROM 'balance_changed' THEN RAISE EXCEPTION 'H-6 FAIL: the released key version moved on: %', v; END IF;
+  v := public.issue_4522_mark_stripe_charge_in_flight(v_row, 'pi_h_2', 10000, 1);
+  IF NOT COALESCE((v->>'marked')::boolean, false) THEN RAISE EXCEPTION 'H-7 FAIL: %', v; END IF;
+  IF has_function_privilege('authenticated', 'public.issue_4522_release_unconfirmed_stripe_charge(uuid, text)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.issue_4522_release_unconfirmed_stripe_charge(uuid, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'H-8 FAIL: service role only';
+  END IF;
+END
+$h$;
+RESET ROLE;
+UPDATE public.order_installments SET failed_at = now(), failure_reason = 'card_declined'
+ WHERE id = '4522cc00-0000-4000-8000-0000000000b4';
+SET ROLE service_role;
+DO $h2$
+DECLARE v jsonb;
+BEGIN
+  v := public.issue_4522_mark_stripe_charge_in_flight('4522cc00-0000-4000-8000-0000000000b4', 'pi_h_3', 10000, 1);
+  IF NOT COALESCE((v->>'marked')::boolean, false)
+     OR (SELECT failed_at FROM public.order_installments WHERE id = '4522cc00-0000-4000-8000-0000000000b4') IS NOT NULL THEN
+    RAISE EXCEPTION 'H-9 FAIL: a failed attempt''s id is dead and is replaced (and the mark clears failed_at): %', v;
+  END IF;
+  RAISE NOTICE 'H PASS: one live PaymentIntent per marked row; release clears only its own and moves the key on';
+END
+$h2$;
+RESET ROLE;
