@@ -78,6 +78,7 @@ import {
   lostMinglaRefunds,
   paymentRefundEntries,
   providerRefundedElsewhere,
+  providerRefundsForBooking,
 } from "./refundEntries.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { returnOrderOverpaymentsBestEffort } from "../_shared/installments/overpaymentLane.ts";
@@ -1033,6 +1034,10 @@ serve(async (req: Request): Promise<Response> => {
           p_refund_id: refundId,
           p_part: input.part,
           p_provider_refunded_elsewhere_cents: providerRefundedElsewhere(rows, input.merchantNote),
+          // Pass 12 (P12-1): the list itself, so a refund made outside
+          // Mingla (its dashboard) is booked on the charge once, by its
+          // provider reference, exactly as staff's "partly refunded already".
+          p_provider_refunds: providerRefundsForBooking(rows),
         },
       );
       // before the #4522 migration the resize does not exist: as main.

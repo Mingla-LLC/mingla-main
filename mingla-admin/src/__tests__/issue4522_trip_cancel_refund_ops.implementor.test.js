@@ -87,6 +87,8 @@ test("recording needs a provider refund reference; every action needs a 3-500 ch
 test("server refusals read in plain words", () => {
   assert.match(tripCancelErrorMessage(new Error("provider_refund_reference_already_used")), /already recorded on another refund/);
   assert.match(tripCancelErrorMessage(new Error("trip_cancel_refund_too_recent")), /15 minutes/);
+  // Pass 12 (P12-2): Mingla's own reference is named as such.
+  assert.match(tripCancelErrorMessage(new Error("provider_refund_reference_is_minglas")), /refund Mingla made.*Paystack dashboard/);
   assert.match(tripCancelErrorMessage(new Error("something else")), /could not be applied/);
 });
 

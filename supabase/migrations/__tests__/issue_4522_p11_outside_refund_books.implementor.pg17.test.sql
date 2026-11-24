@@ -11,7 +11,8 @@
 --        Paystack shows the whole N1M refunded from its dashboard. The part
 --        is recorded for what it asked and the other N500k is booked too:
 --        books N1M = provider, the host's item is worth 0.
---   K-3  a reference Mingla already holds is never booked twice.
+--   K-3  a reference Mingla already holds is never booked twice (pass 12:
+--        refused outright, the part left open).
 --   K-4  P11-4: a late seat refund that completes the charge after the
 --        cancel completed moves the order from partial_refund to refunded.
 -- FAILS ON REVERT (20281202084522 at 7defbe7cbd): K-1 books 50000000 (not
@@ -158,11 +159,18 @@ BEGIN
     amount_cents, currency, status, provider_refund_id, idempotency_key)
   VALUES ('order', v_o, NULL, 'mingla_p11k_' || v_o::text, 'other', 1, 'ngn', 'processed', 'psk-known-1', 'p11k-known');
   SELECT id INTO v_att FROM public.paystack_refund_attempts WHERE merchant_note = 'mingla_trip_refund:' || v_r || ':deposit';
-  v_res := public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops('4522b011-0000-4000-8000-000000000002', v_att,
-    'PSK-KNOWN-1', 'Paystack lists a Mingla refund', 100000000, 'ngn', 30000000, 30000000);
-  IF (v_res->>'outside_mingla')::boolean OR (v_res->>'outside_recorded_cents')::bigint <> 0
-     OR (SELECT refunded_amount_cents FROM public.orders WHERE id = v_o) <> 0 THEN
-    RAISE EXCEPTION 'K-3 a known reference is never booked twice: %', v_res;
+  -- Pass 12 (P12-2): Mingla's own reference is refused outright (nothing
+  -- booked, the part not used up).
+  BEGIN
+    v_res := public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops('4522b011-0000-4000-8000-000000000002', v_att,
+      'PSK-KNOWN-1', 'Paystack lists a Mingla refund', 100000000, 'ngn', 30000000, 30000000);
+    RAISE EXCEPTION 'K-3 a Mingla reference was accepted: %', v_res;
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN
+    IF SQLERRM <> 'provider_refund_reference_is_minglas' THEN RAISE; END IF;
+  END;
+  IF (SELECT refunded_amount_cents FROM public.orders WHERE id = v_o) <> 0
+     OR (SELECT metadata #> '{trip_cancel,ops_resolutions,deposit}' FROM public.refunds WHERE id = v_r) IS NOT NULL THEN
+    RAISE EXCEPTION 'K-3 a known reference is never booked twice and never uses up the part';
   END IF;
 END $$;
 

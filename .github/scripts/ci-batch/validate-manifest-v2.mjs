@@ -697,7 +697,7 @@ export function phase3dContractDigest(manifest) {
 // toward #4522: migrations renumbered 2028120203…16 above #4579
 // #4522 merge of main after #4591 release sync and #4592 venue order (68a54f2f30): kept main's 20281202004580 and 20281202014580 rows before the branch's 14 migrations (20281202033281..20281202163281 stay above them); re-sealed.
 // #4522 pass 10 rework (P10-1..P10-3): registered the #4522 implementor pg17 suite p10_late_sign_below_min (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "cc950db8b1c883351341a4ac87d8a2f510d8c81c9b591631641910af02fd5262";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f5ee3dd2d4b4a8672cbc7c728d9065eda4df7cf5ae416e468a692fdd473e51d8";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

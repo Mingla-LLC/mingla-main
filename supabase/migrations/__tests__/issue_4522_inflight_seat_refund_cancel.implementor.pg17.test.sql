@@ -148,7 +148,10 @@ BEGIN
     RAISE EXCEPTION 'F-3c a second claim returns nothing (ops told once)';
   END IF;
   IF has_function_privilege('authenticated', 'public.issue_4522_claim_trip_cancel_shortfalls(integer)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.issue_4522_trip_cancel_resize_charge(uuid, text, bigint)', 'EXECUTE') THEN
+     OR has_function_privilege('authenticated', 'public.issue_4522_trip_cancel_resize_charge(uuid, text, bigint, jsonb)', 'EXECUTE')
+     -- pass 12: the outside-refund booking is internal (no client role).
+     OR has_function_privilege('authenticated', 'public.issue_4522_book_outside_refund(uuid, text, text, bigint, text, bigint)', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.issue_4522_book_outside_refund(uuid, text, text, bigint, text, bigint)', 'EXECUTE') THEN
     RAISE EXCEPTION 'F-3d service role only';
   END IF;
 END $$;

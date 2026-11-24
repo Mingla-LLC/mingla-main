@@ -270,6 +270,8 @@ const TRIP_CANCEL_ERROR_WORDS = {
   provider_refund_list_unreadable: "Paystack's refund list for this payment could not be read just now, so nothing was recorded. Try again in a few minutes.",
   refunded_elsewhere_needs_provider_check: "This needs Paystack's refund list checked first. Refresh the page and try again.",
   trip_cancel_refund_not_below_minimum: "This amount is not below Paystack's minimum. Refresh the queue.",
+  // Pass 12 (P12-2)
+  provider_refund_reference_is_minglas: "That reference is a refund Mingla made, so nothing was recorded. Enter the reference of the refund made from the Paystack dashboard.",
 };
 
 /** Plain words for a failed trip cancel action (falls back to the page's). */

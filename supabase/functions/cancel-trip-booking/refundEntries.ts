@@ -117,6 +117,20 @@ export function providerRefundedElsewhere(
 }
 
 /**
+ * Pass 12 (P12-1): Paystack's refund list of one charge as the database
+ * books it (issue_4522_trip_cancel_resize_charge, p_provider_refunds): every
+ * row with its provider id, amount, status and merchant note. The database
+ * decides which are outside Mingla (never a Mingla note or reference).
+ */
+export function providerRefundsForBooking(
+  rows: Array<{ id: string; amount: number; status: string; merchantNote: string }>,
+): Array<{ id: string; amount: number; status: string; merchant_note: string }> {
+  return rows
+    .filter((row) => row.id.trim() !== "" && Number.isSafeInteger(row.amount) && row.amount > 0)
+    .map((row) => ({ id: row.id.trim(), amount: row.amount, status: row.status, merchant_note: row.merchantNote }));
+}
+
+/**
  * Pass 8 (P8-2): Mingla's own refunds of this charge that the provider's list
  * shows made while Mingla has no answer recorded (status not 'processed'):
  * each is recorded from the read-back with the provider's id and status.
