@@ -26,15 +26,25 @@ export function installStaleChunkReload({
   log = () => {},
 } = {}) {
   const handler = (event) => {
-    event.preventDefault?.();
     let last = 0;
-    try { last = Number(storage.getItem(CHUNK_RELOAD_KEY)) || 0; } catch { /* storage blocked */ }
+    try {
+      last = Number(storage.getItem(CHUNK_RELOAD_KEY)) || 0;
+    } catch {
+      log("skipped-no-storage", event?.payload);
+      return; // guard unreadable: a bad deploy could loop, so let the error throw
+    }
     const t = now();
     if (last && t - last < CHUNK_RELOAD_WINDOW_MS) {
       log("skipped", event?.payload);
+      return; // let the error reach React.lazy and the ErrorBoundary
+    }
+    try {
+      storage.setItem(CHUNK_RELOAD_KEY, String(t));
+    } catch {
+      log("skipped-no-storage", event?.payload);
       return;
     }
-    try { storage.setItem(CHUNK_RELOAD_KEY, String(t)); } catch { /* storage blocked */ }
+    event.preventDefault?.();
     log("reloading", event?.payload);
     win.location.reload();
   };

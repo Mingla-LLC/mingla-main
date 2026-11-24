@@ -61,12 +61,29 @@ describe("stale chunk reload handler", () => {
     fire();
     clock.t = 1000 + 5000;
     const ev = fire();
-    assert.equal(ev.prevented, true);
+    assert.equal(ev.prevented, false, "a skip lets the error through");
     assert.equal(w.reloads, 1);
     assert.deepEqual(logs, ["reloading", "skipped"]);
     clock.t = 1000 + 31000;
     fire();
     assert.equal(w.reloads, 2);
+  });
+  it("S-2b blocked storage: no reload, error let through", () => {
+    const w = fakeWin();
+    w.location.owner = w;
+    const logs = [];
+    const bad = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
+    installStaleChunkReload({ win: w, storage: bad, now: () => 1, log: (o) => logs.push(o) });
+    const ev = { prevented: false, preventDefault() { this.prevented = true; } };
+    w.listeners["vite:preloadError"](ev);
+    assert.equal(w.reloads, 0);
+    assert.equal(ev.prevented, false);
+    assert.deepEqual(logs, ["skipped-no-storage"]);
+    const onlyWrite = { getItem: () => null, setItem() { throw new Error("blocked"); } };
+    const w2 = fakeWin(); w2.location.owner = w2;
+    installStaleChunkReload({ win: w2, storage: onlyWrite, now: () => 1, log: () => {} });
+    w2.listeners["vite:preloadError"]({ preventDefault() {} });
+    assert.equal(w2.reloads, 0);
   });
   it("S-3 recognises chunk-load messages only", () => {
     for (const m of [
