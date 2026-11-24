@@ -628,10 +628,11 @@ const CountryStep: React.FC<{
     // `selected` is read at the moment the server value moves, not tracked.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
-  // Forbidden pre-check: a member below brand admin sees why before tapping.
-  // A missing role row is left to the server (it refuses with "forbidden").
+  // Forbidden pre-check: payout settings are owner-only (#4579), so anyone who
+  // is not the brand owner sees the country read-only, with the reason, and no
+  // Continue to tap. A missing role row is left to the server (it refuses).
   const role = useCurrentBrandRole(brandId);
-  const forbidden = !role.isLoading && !role.isError && role.role !== null && role.rank < BRAND_ROLE_RANK.brand_admin;
+  const forbidden = !role.isLoading && !role.isError && role.role !== null && role.rank < BRAND_ROLE_RANK.brand_owner;
   const option = payoutCountryOption(selected);
   const locale = useMemo(() => Intl.DateTimeFormat().resolvedOptions().locale, []);
 
@@ -694,7 +695,9 @@ const CountryStep: React.FC<{
         {option !== null ? (
           <Text style={styles.footnote}>{C.f2.footnote(option.name, option.currency)}</Text>
         ) : null}
-        <Button testID="brand-setup-country-continue" label={C.f2.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={selected === null || offline || forbidden || !authReady || save.isPending || (locked && selected !== current)} loading={save.isPending} />
+        {forbidden ? null : (
+          <Button testID="brand-setup-country-continue" label={C.f2.cta} onPress={submit} variant="primary" size="lg" fullWidth disabled={selected === null || offline || forbidden || !authReady || save.isPending || (locked && selected !== current)} loading={save.isPending} />
+        )}
         {error !== null ? <Text style={[styles.helper, styles.errorText]} accessibilityRole="alert">{error}</Text> : null}
         <InlineWriteError writeError={writeError} testID="brand-setup-country-error" />
         {keyboardUp ? null : (

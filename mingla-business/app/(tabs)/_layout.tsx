@@ -53,6 +53,7 @@ import { shouldShowTabBar, visibleTabsForRank } from "../../src/utils/navTabGate
 import { useFirstRunStage } from "../../src/hooks/useFirstRunStage";
 import { useCreatorAccount } from "../../src/hooks/useCreatorAccount";
 import { FirstRunStageContext } from "../../src/context/FirstRunStageContext";
+import { TabBarVisibilityContext } from "../../src/context/TabBarVisibilityContext";
 import { useFirstRunStore } from "../../src/store/firstRunStore";
 import {
   firstRunRedirect,
@@ -206,6 +207,8 @@ export default function TabsLayout(): React.ReactElement {
 
   return (
     <FirstRunStageContext.Provider value={firstRunContext}>
+    {/* #4579/#4572 — screens read whether the tab bar is really drawn. */}
+    <TabBarVisibilityContext.Provider value={!hideBottomNav}>
     <View style={styles.host}>
       <DesktopCanvas>
         {/* ORCH-1320 (biz Account-tab Apple crash) — FINDING, do not "disable the
@@ -269,6 +272,7 @@ export default function TabsLayout(): React.ReactElement {
         <GlobalSearchSheetHost />
       </Suspense>
     </View>
+    </TabBarVisibilityContext.Provider>
     </FirstRunStageContext.Provider>
   );
 }

@@ -72,6 +72,9 @@ export interface InputBarProps {
   onChangeText?: (text: string) => void;
   hasReadyAttachments?: boolean;
   inputRef?: React.RefObject<React.ElementRef<typeof TextInput> | null>;
+  /** #4572 — the screen hides the Done bar while this field is focused. */
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 export const InputBar: React.FC<InputBarProps> = ({
@@ -85,6 +88,8 @@ export const InputBar: React.FC<InputBarProps> = ({
   onChangeText,
   hasReadyAttachments = false,
   inputRef,
+  onFocus,
+  onBlur,
 }) => {
   const [internalText, setInternalText] = useState("");
   const text = value ?? internalText;
@@ -169,6 +174,8 @@ export const InputBar: React.FC<InputBarProps> = ({
         multiline
         style={[styles.input, Platform.OS === "web" && (WEB_INPUT_PROPS.style as object)]}
         accessibilityLabel="Ask Ari"
+        onFocus={onFocus}
+        onBlur={onBlur}
         maxLength={4096}
         {...(Platform.OS === "web" ? { rows: WEB_INPUT_PROPS.rows } : {})}
         onKeyPress={(event) => {

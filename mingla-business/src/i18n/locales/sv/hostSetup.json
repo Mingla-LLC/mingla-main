@@ -25,7 +25,7 @@
       "noMatch": "Inget bankland matchar '{{query}}'.",
       "cantPayOut": "Mingla kan inte betala ut dit än",
       "locked": "Utbetalningar är redan inställda för en bank i {{country}}. Koppla först från betalningar för att använda ett annat land.",
-      "forbidden": "Bara varumärkets ägare eller en admin kan ändra bankland.",
+      "forbidden": "Bara varumärkets ägare kan ändra utbetalningsinställningarna.",
       "conflict": "Det här ändrades på en annan enhet till {{country}}.",
       "keep": "Behåll",
       "change": "Ändra",
@@ -278,11 +278,9 @@
       "payments": "Betalningsuppgifter"
     },
     "a1": {
-      "headlineNamed": "Hej {{first}}. Nu gör vi ditt konto redo för bokningar.",
-      "headline": "Hej. Nu gör vi ditt konto redo för bokningar.",
-      "body": "Det tar ungefär 3 minuter: varumärkets namn, ditt bankland och sedan betalningar. Jag guidar dig.",
       "cardTitle": "Ställ in ditt varumärke",
       "minutes": "Ungefär 3 minuter",
+      "eyebrowStep": "Steg {{current}} av {{total}}",
       "setUp": "Ställ in mitt varumärke",
       "withAri": "Gör det med Ari",
       "withAriMessage": "Hjälp mig ställa in mitt varumärke",

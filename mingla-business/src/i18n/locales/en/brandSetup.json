@@ -25,7 +25,7 @@
       "noMatch": "No bank country matches '{{query}}'.",
       "cantPayOut": "Mingla can't pay out there yet",
       "locked": "Payouts are already set up for a bank in {{country}}. To use another country, disconnect payments first.",
-      "forbidden": "Only the brand owner or an admin can change the bank country.",
+      "forbidden": "Only the brand owner can change payout settings.",
       "conflict": "This was changed on another device to {{country}}.",
       "keep": "Keep",
       "change": "Change",
