@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/marketing-send/issue_4596_no_silent_zero.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4596-no-silent-zero",
+  "profile": "deno-2-unit"
+}

@@ -278,8 +278,8 @@ async function resolveSuppressedEmails(
 /**
  * Resolve a discriminated-union audience query into per-recipient rows.
  *
- * Phase B supports `brand_buyers` + `event_buyers`. `brand_followers` and
- * `custom_segment` throw — they're reserved for later phases (I-PROPOSED-BP).
+ * `brand_buyers` resolves from orders here. Every other kind is answered by
+ * its database owner (#4596: `event_buyers` too). `custom_segment` throws.
  */
 // deno-lint-ignore no-explicit-any -- SupabaseClient generic type defined client-side
 export async function resolveAudience(
@@ -290,8 +290,28 @@ export async function resolveAudience(
   switch (query.kind) {
     case "brand_buyers":
       return await resolveBrandBuyers(client, query.brand_id);
-    case "event_buyers":
-      return await resolveEventBuyers(client, query.event_id);
+    case "event_buyers": {
+      // #4596 (A2 Q4) — older Host builds still schedule this kind. It is no
+      // longer resolved from paid orders here: the database's one event
+      // audience owner answers it (paid buyers plus going RSVP guests, de-
+      // duplicated, with the combined lane's consent and send rules).
+      if (campaignId === undefined) {
+        throw new Error("event_audience_campaign_context_required");
+      }
+      const { data, error } = await client.rpc(
+        "biz_marketing_event_send_audience_v1",
+        { p_campaign_id: campaignId },
+      );
+      if (error) {
+        throw new Error(`event_audience_failed:${error.message}`);
+      }
+      const result = data as Partial<ResolveResult> | null;
+      if (
+        result === null || typeof result.brand_id !== "string" ||
+        !Array.isArray(result.rows)
+      ) throw new Error("event_audience_invalid_response");
+      return result as ResolveResult;
+    }
     case "brand_followers":
     case "brand_circle_extended": {
       if (campaignId === undefined) {
@@ -440,49 +460,6 @@ async function resolveBrandBuyers(
     suppressedPhones,
     suppressedEmails,
   );
-}
-
-// deno-lint-ignore no-explicit-any
-async function resolveEventBuyers(
-  client: SupabaseClient<any, "public", any>,
-  eventId: string,
-): Promise<ResolveResult> {
-  assertUuid(eventId, "resolveEventBuyers.eventId");
-
-  const { data: ordersData, error: ordersError } = await client
-    .from("orders")
-    .select(
-      `id, event_id, buyer_email, buyer_name, buyer_phone, buyer_phone_e164,
-       total_cents, currency, payment_status, confirmed_at, created_at,
-       events!inner ( id, title, brand_id )`,
-    )
-    .in("payment_status", ["paid", "partial_refund"])
-    .eq("event_id", eventId)
-    .order("created_at", { ascending: false });
-
-  if (ordersError) {
-    throw new Error(`audience_orders_query_failed:${ordersError.message}`);
-  }
-  const orders = (ordersData ?? []) as unknown as OrderRow[];
-  const brandId = orders[0]?.events?.brand_id ?? null;
-
-  let unsubs: UnsubRow[] = [];
-  if (brandId !== null) {
-    assertUuid(brandId, "resolveEventBuyers.brandId (server-derived)");
-    const { data: unsubData, error: unsubError } = await client
-      .from("marketing_unsubscribes")
-      .select("contact_email, channel, scope, brand_id")
-      .or(`scope.eq.global,and(scope.eq.brand,brand_id.eq.${brandId})`);
-    if (unsubError) {
-      throw new Error(`audience_unsubs_query_failed:${unsubError.message}`);
-    }
-    unsubs = (unsubData ?? []) as unknown as UnsubRow[];
-  }
-
-  const suppressedPhones = await resolveSuppressedPhones(client, brandId);
-  const suppressedEmails = await resolveSuppressedEmails(client);
-
-  return aggregate(orders, unsubs, brandId, suppressedPhones, suppressedEmails);
 }
 
 // Exported for unit testing (META-ORCH-1161 Sub-B) — pure function, no client.
