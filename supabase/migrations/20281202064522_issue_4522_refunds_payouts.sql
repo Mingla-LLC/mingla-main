@@ -2361,4 +2361,287 @@ $fn$;
 REVOKE ALL ON FUNCTION public.authorize_paystack_payout_execution(uuid, uuid, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.authorize_paystack_payout_execution(uuid, uuid, timestamptz) TO service_role;
 
+-- ---------------------------------------------------------------------------
+-- 9. Seventh pass (H-2 ops tool; Seth, 2026-11-23: "yes build the ops tool").
+--    A second-provider trip cancel refund that was sent and never answered is
+--    never re-sent automatically, so the cancel could stay unfinished for
+--    ever. Staff finish it from Admin > Refund operations, the way an
+--    overpayment is resolved by hand (issue_4522_resolve_overpayment_by_ops):
+--      refunded_at_provider — the provider's dashboard shows the refund:
+--        staff give its reference and that one charge refund is recorded
+--        through record_paystack_refund_outcome, exactly as the refund
+--        webhook or the cancel's read-back records it ('processed'), so
+--        issue_4522_record_confirmed_cancel_refund records the charge, the
+--        payout holds and any payout debt follow as for a confirmed refund.
+--        The cancel's failure count restarts and its next resume (the
+--        instalment run, or the host pressing Cancel & refund again) finds
+--        every refund made, commits it, settles the booking's status and
+--        sends the traveler's refund email once (first_completion).
+--      escalate — the provider shows no refund: the reason is recorded and
+--        the item marked escalated. No money changes; nothing is re-sent.
+--    Nothing here calls the provider, re-sends or writes anything off.
+--    Staff only: the caller's own session (auth.uid()) must be an active
+--    admin (is_admin_user(), as admin-source-refund-operations checks).
+-- ---------------------------------------------------------------------------
+
+-- A sent second-provider refund of a cancel in progress with no answer yet,
+-- untouched for 15 minutes (a send in flight is never raced).
+CREATE FUNCTION public.issue_4522_trip_attempt_unanswered(p_attempt public.paystack_refund_attempts)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT p_attempt.status = 'pending' AND p_attempt.provider_refund_id IS NULL
+     AND p_attempt.error_message = 'provider_call_started'
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_attempt_unanswered(public.paystack_refund_attempts) FROM PUBLIC, anon, authenticated, service_role;
+
+-- One cancel in progress, as the Refund operations panel shows it: the
+-- order, the trip, and each charge refund with its state.
+CREATE FUNCTION public.issue_4522_trip_cancel_ops_view(p_refund_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT jsonb_build_object(
+           'refund_id', r.id, 'order_id', r.order_id, 'trip_name', e.title,
+           'currency', lower(btrim(r.currency)), 'provider', 'paystack',
+           'cancel_amount_cents', r.amount_cents,
+           'unconfirmed_amount_cents', COALESCE(sum(pa.amount_cents)
+             FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)), 0),
+           'waiting_since', min(pa.updated_at) FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)),
+           'escalated', COALESCE(bool_or((r.metadata #>> ARRAY['trip_cancel', 'ops_resolutions',
+               split_part(pa.merchant_note, ':', 3), 'outcome']) = 'escalate')
+             FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)), false),
+           'charges', jsonb_agg(jsonb_build_object(
+               'attempt_id', pa.id,
+               'part', split_part(pa.merchant_note, ':', 3),
+               'ordinal', oi.ordinal,
+               'amount_cents', pa.amount_cents,
+               'currency', pa.currency,
+               'state', CASE WHEN pa.status = 'processed' THEN 'recorded'
+                             WHEN public.issue_4522_trip_attempt_unanswered(pa) THEN 'unanswered'
+                             WHEN pa.status = 'accepted' THEN 'accepted'
+                             WHEN pa.status = 'failed' THEN 'refused'
+                             ELSE 'not_sent' END,
+               'actionable', public.issue_4522_trip_attempt_unanswered(pa)
+                             AND pa.updated_at <= now() - interval '15 minutes',
+               'ops_resolution', r.metadata #> ARRAY['trip_cancel', 'ops_resolutions',
+                                                     split_part(pa.merchant_note, ':', 3)],
+               'waiting_since', CASE WHEN public.issue_4522_trip_attempt_unanswered(pa) THEN pa.updated_at END)
+             ORDER BY oi.ordinal NULLS FIRST, pa.created_at))
+    FROM public.refunds r
+    JOIN public.orders o ON o.id = r.order_id
+    JOIN public.events e ON e.id = o.event_id
+    JOIN public.paystack_refund_attempts pa
+      ON pa.local_refund_id = r.id AND pa.merchant_note LIKE 'mingla_trip_refund:' || r.id::text || ':%'
+    LEFT JOIN public.order_installments oi
+      ON split_part(pa.merchant_note, ':', 3) <> 'deposit'
+     AND oi.id::text = split_part(pa.merchant_note, ':', 3)
+   WHERE r.id = p_refund_id AND r.status = 'pending' AND r.order_installment_id IS NULL
+     AND r.metadata ? 'trip_cancel' AND NOT (r.metadata->'trip_cancel' ? 'completed_at')
+   GROUP BY r.id, e.title
+  HAVING bool_or(public.issue_4522_trip_attempt_unanswered(pa))
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_ops_view(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- The queue: every cancel in progress with a refund sent and unanswered for
+-- 15 minutes or more, oldest first. Admin only.
+CREATE FUNCTION public.issue_4522_list_unanswered_trip_cancel_refunds()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF auth.uid() IS NULL OR NOT COALESCE(public.is_admin_user(), false) THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  RETURN COALESCE((
+    SELECT jsonb_agg(v ORDER BY v->>'waiting_since', v->>'refund_id')
+      FROM (SELECT public.issue_4522_trip_cancel_ops_view(x.id) AS v
+              FROM (SELECT DISTINCT r.id
+                      FROM public.refunds r
+                      JOIN public.paystack_refund_attempts pa ON pa.local_refund_id = r.id
+                     WHERE r.status = 'pending' AND r.metadata ? 'trip_cancel'
+                       AND NOT (r.metadata->'trip_cancel' ? 'completed_at')
+                       AND pa.merchant_note LIKE 'mingla_trip_refund:' || r.id::text || ':%'
+                       AND public.issue_4522_trip_attempt_unanswered(pa)
+                       AND pa.updated_at <= now() - interval '15 minutes'
+                     LIMIT 200) x) q
+     WHERE v IS NOT NULL), '[]'::jsonb);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_list_unanswered_trip_cancel_refunds() FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_4522_list_unanswered_trip_cancel_refunds() TO authenticated;
+
+CREATE FUNCTION public.issue_4522_get_unanswered_trip_cancel_refund(p_refund_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF auth.uid() IS NULL OR NOT COALESCE(public.is_admin_user(), false) THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  RETURN public.issue_4522_trip_cancel_ops_view(p_refund_id);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_get_unanswered_trip_cancel_refund(uuid) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_4522_get_unanswered_trip_cancel_refund(uuid) TO authenticated;
+
+-- The staff action. p_attempt_id: the unanswered charge refund
+-- (paystack_refund_attempts.id). p_amount_cents / p_currency: what the panel
+-- showed; a different one is refused (the item changed under the viewer).
+-- A second identical call is a no-op that returns the same result.
+CREATE FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(
+  p_attempt_id uuid,
+  p_outcome text,
+  p_provider_refund_reference text,
+  p_reason text,
+  p_amount_cents bigint DEFAULT NULL,
+  p_currency text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_actor uuid := auth.uid();
+  v_att public.paystack_refund_attempts;
+  v_refund public.refunds;
+  v_order_id uuid;
+  v_part text;
+  v_ref text;
+  v_reason text;
+  v_prior jsonb;
+  v_entry jsonb;
+  v_result jsonb;
+BEGIN
+  IF v_actor IS NULL OR NOT COALESCE(public.is_admin_user(), false) THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  IF p_outcome IS NULL OR p_outcome NOT IN ('refunded_at_provider', 'escalate') THEN
+    RAISE EXCEPTION 'trip_cancel_ops_outcome_invalid' USING ERRCODE = '22023';
+  END IF;
+  v_reason := btrim(COALESCE(p_reason, ''));
+  IF length(v_reason) < 3 OR length(v_reason) > 500 THEN
+    RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = '22023';
+  END IF;
+  v_ref := NULLIF(btrim(COALESCE(p_provider_refund_reference, '')), '');
+  IF p_outcome = 'refunded_at_provider' AND (v_ref IS NULL OR length(v_ref) > 200) THEN
+    RAISE EXCEPTION 'provider_refund_reference_required' USING ERRCODE = '22023';
+  END IF;
+  IF p_outcome = 'escalate' THEN v_ref := NULL; END IF;
+
+  SELECT * INTO v_att FROM public.paystack_refund_attempts WHERE id = p_attempt_id;
+  IF NOT FOUND OR v_att.local_refund_id IS NULL
+     OR v_att.merchant_note NOT LIKE 'mingla_trip_refund:' || v_att.local_refund_id::text || ':%' THEN
+    RAISE EXCEPTION 'trip_cancel_refund_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  SELECT order_id INTO v_order_id FROM public.refunds WHERE id = v_att.local_refund_id;
+  -- the instalment graph's order (event → order → rows), as every writer.
+  IF v_order_id IS NULL OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
+    RAISE EXCEPTION 'trip_cancel_refund_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  SELECT * INTO v_att FROM public.paystack_refund_attempts WHERE id = p_attempt_id FOR UPDATE;
+  SELECT * INTO v_refund FROM public.refunds WHERE id = v_att.local_refund_id FOR UPDATE;
+  v_part := split_part(v_att.merchant_note, ':', 3);
+  v_prior := v_refund.metadata #> ARRAY['trip_cancel', 'ops_resolutions', v_part];
+
+  -- Idempotent replay: the same answer again returns what was recorded.
+  IF v_prior IS NOT NULL AND v_prior->>'outcome' = p_outcome
+     AND (p_outcome = 'escalate' OR v_prior->>'reference' = v_ref) THEN
+    RETURN v_prior || jsonb_build_object('ok', true, 'idempotent_replay', true);
+  END IF;
+  IF v_prior->>'outcome' = 'refunded_at_provider' THEN
+    RAISE EXCEPTION 'trip_cancel_refund_already_resolved' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_att.status = 'processed' THEN
+    RAISE EXCEPTION 'trip_cancel_refund_already_confirmed' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_refund.status <> 'pending' OR v_refund.order_installment_id IS NOT NULL
+     OR NOT (v_refund.metadata ? 'trip_cancel') OR v_refund.metadata->'trip_cancel' ? 'completed_at' THEN
+    RAISE EXCEPTION 'trip_cancel_not_in_progress' USING ERRCODE = 'PT409';
+  END IF;
+  IF NOT public.issue_4522_trip_attempt_unanswered(v_att) THEN
+    RAISE EXCEPTION 'trip_cancel_refund_not_unanswered' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_att.updated_at > now() - interval '15 minutes' THEN
+    RAISE EXCEPTION 'trip_cancel_refund_too_recent' USING ERRCODE = 'PT409';
+  END IF;
+  IF (p_amount_cents IS NOT NULL AND p_amount_cents <> v_att.amount_cents)
+     OR (p_currency IS NOT NULL AND lower(btrim(p_currency)) <> v_att.currency)
+     OR lower(btrim(v_refund.currency)) <> v_att.currency THEN
+    RAISE EXCEPTION 'trip_cancel_refund_amount_or_currency_mismatch' USING ERRCODE = '22023';
+  END IF;
+
+  v_entry := jsonb_build_object('outcome', p_outcome, 'attempt_id', v_att.id, 'refund_id', v_refund.id,
+    'order_id', v_refund.order_id, 'part', v_part, 'amount_cents', v_att.amount_cents,
+    'currency', v_att.currency, 'reason', left(v_reason, 500), 'by', v_actor, 'at', now());
+
+  IF p_outcome = 'refunded_at_provider' THEN
+    IF EXISTS (SELECT 1 FROM public.paystack_refund_attempts
+                WHERE provider_refund_id = v_ref AND id <> v_att.id)
+       OR EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts WHERE provider_refund_id = v_ref)
+       OR EXISTS (SELECT 1 FROM public.refunds WHERE stripe_refund_id = v_ref) THEN
+      RAISE EXCEPTION 'provider_refund_reference_already_used' USING ERRCODE = 'PT409';
+    END IF;
+    -- The one recording path of a confirmed second-provider refund (the
+    -- refund webhook and the cancel's read-back use it too).
+    PERFORM public.record_paystack_refund_outcome(v_att.source_type, v_att.source_id, v_att.local_refund_id,
+      v_att.transaction_reference, v_att.merchant_note, v_ref, v_att.amount_cents, 'processed', NULL);
+    -- issue_4522_record_confirmed_cancel_refund never raises; staff are
+    -- told, and nothing is kept, if the charge did not record.
+    IF (v_part <> 'deposit' AND NOT EXISTS (
+          SELECT 1 FROM public.order_installment_refund_applications a
+           WHERE a.refund_id = v_refund.id AND a.installment_id = v_part::uuid))
+       OR (SELECT refunded_amount_cents FROM public.orders WHERE id = v_refund.order_id)
+          IS DISTINCT FROM public.issue_4522_order_charge_refunded_cents(v_refund.order_id) THEN
+      RAISE EXCEPTION 'trip_cancel_refund_not_recorded' USING ERRCODE = 'P0001';
+    END IF;
+    v_entry := v_entry || jsonb_build_object('reference', v_ref);
+  END IF;
+
+  -- Recorded on the cancel itself. A recorded part restarts the failure
+  -- count (as an overpayment retry does) so the next resume finishes it.
+  UPDATE public.refunds
+     SET metadata = jsonb_set(metadata, '{trip_cancel}',
+           (metadata->'trip_cancel')
+           || jsonb_build_object('ops_resolutions',
+                COALESCE(metadata #> '{trip_cancel,ops_resolutions}', '{}'::jsonb)
+                || jsonb_build_object(v_part, v_entry))
+           || CASE WHEN p_outcome = 'refunded_at_provider'
+                THEN jsonb_build_object('failures', 0, 'last_attempt_at', now() - interval '2 minutes')
+                ELSE '{}'::jsonb END)
+   WHERE id = v_refund.id;
+
+  INSERT INTO public.audit_log (user_id, brand_id, event_id, action, target_type, target_id, after)
+  SELECT v_actor, e.brand_id, e.id,
+         CASE WHEN p_outcome = 'refunded_at_provider' THEN 'trip_cancel_refund.recorded_by_ops'
+              ELSE 'trip_cancel_refund.escalated_by_ops' END,
+         'order', o.id,
+         jsonb_build_object('refund_id', v_refund.id, 'attempt_id', v_att.id, 'part', v_part,
+           'amount_cents', v_att.amount_cents, 'currency', v_att.currency)
+    FROM public.orders o JOIN public.events e ON e.id = o.event_id
+   WHERE o.id = v_refund.order_id;
+
+  v_result := v_entry || jsonb_build_object('ok', true, 'idempotent_replay', false,
+    'unanswered_left', (SELECT count(*) FROM public.paystack_refund_attempts pa
+                         WHERE pa.local_refund_id = v_refund.id
+                           AND public.issue_4522_trip_attempt_unanswered(pa)));
+  RETURN v_result;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text) TO authenticated;
+COMMENT ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text) IS
+  'Issue #4522 (H-2): staff finish a second-provider trip cancel refund that was sent and never answered. refunded_at_provider records it with the provider reference through record_paystack_refund_outcome (as a confirmed refund) and restarts the cancel''s resume, which completes the cancel and sends the buyer email once; escalate records the reason only. Never calls the provider, never re-sends, never writes off. Admin session only (is_admin_user).';
+
 COMMIT;

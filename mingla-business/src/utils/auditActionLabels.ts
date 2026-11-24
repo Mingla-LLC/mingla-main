@@ -127,6 +127,10 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "tr3.installment_overpayment_refunded",
   "tr3.installment_overpayment_event_unmatched",
   "tr3.installment_overpayment_ops_retry",
+  // #4522 H-2 — Mingla staff finished a second-provider trip cancel refund the
+  // provider never answered (issue_4522_resolve_trip_cancel_refund_by_ops).
+  "trip_cancel_refund.recorded_by_ops",
+  "trip_cancel_refund.escalated_by_ops",
   // ORCH-0914 [Trip Money tab redesign] — operator-initiated installment
   // actions emitted by biz_manual_charge_installment +
   // biz_send_installment_reminder RPCs.
@@ -810,6 +814,20 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "Mingla restarted the refund of an extra payment.",
         category: "payouts_refunds",
         iconHint: "pound",
+      };
+    case "trip_cancel_refund.recorded_by_ops":
+      return {
+        title: "Cancel refund confirmed by Mingla",
+        detail: "Mingla confirmed with the payment partner that a cancelled booking's refund went through, and recorded it.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "trip_cancel_refund.escalated_by_ops":
+      return {
+        title: "Cancel refund being checked",
+        detail: "The payment partner shows no refund yet for part of a cancelled booking. Mingla is looking into it.",
+        category: "payouts_refunds",
+        iconHint: "flag",
       };
     case "INSTALLMENT_CHARGED_MANUALLY":
       return {

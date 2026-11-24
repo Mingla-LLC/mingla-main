@@ -21745,6 +21745,8 @@
         "supabase/migrations/__tests__/issue_4522_safeupdate_lifecycle.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_switch_on.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_switch_on.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_trip_cancel_refund_ops.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_trip_cancel_refund_ops.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4541_forms_blast_push.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4541_forms_blast_push.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4541_forms_fixes.implementor.pg17.test.sql",
@@ -27536,6 +27538,8 @@
         "supabase/migrations/__tests__/issue_4522_safeupdate_lifecycle.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_switch_on.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_switch_on.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_trip_cancel_refund_ops.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_trip_cancel_refund_ops.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4541_forms_blast_push.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4541_forms_blast_push.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4541_forms_fixes.implementor.pg17.test.sql",
@@ -54892,5 +54896,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "e04e4c906a83498fc693a47460f20db4eddd2662c794f9501a85495e63232482"
+  "phase3eContractSha256": "af278f07ca946375a07728f8b8d36b5a7373783c24c070728e281beb94db63dd"
 }
