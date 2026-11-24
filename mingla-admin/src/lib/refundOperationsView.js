@@ -9,6 +9,24 @@
 /** One table row for either kind of queue item. */
 export function queueRowModel(item) {
   const row = item?.safeSummary ?? {};
+  if (item?.itemKind === "trip_cancel_refund") {
+    const hours = waitingHours(row.waiting_since);
+    return {
+      key: `${item.itemKind}:${item.itemId}`,
+      kind: "trip_cancel",
+      id: row.refund_id ?? item.itemId,
+      source: "Trip cancel, part unconfirmed",
+      amountCents: row.unconfirmed_amount_cents ?? null,
+      currency: typeof row.currency === "string" ? row.currency.toUpperCase() : null,
+      provider: providerName(row.provider),
+      buyer: null,
+      fee: null,
+      financial: null,
+      ops: row.escalated
+        ? "Escalated"
+        : hours === null ? "Needs review" : `Waiting ${hours} h`,
+    };
+  }
   if (item?.itemKind === "refund_operation") {
     return {
       key: `${item.itemKind}:${item.itemId}`,
@@ -82,4 +100,100 @@ export function validateActionReason(raw) {
   if (text.length < 3) return "Write why you are doing this (at least 3 characters). It is saved on the refund.";
   if (text.length > 500) return "Keep the reason under 500 characters.";
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #4522 (H-2) — a second-provider trip cancel refund that was sent and
+// never answered. Staff either record it (the provider shows it refunded) or
+// escalate it (the provider shows none). Nothing is ever re-sent from here.
+
+/** Whole hours since an ISO time, or null when unknown. */
+export function waitingHours(since, now = Date.now()) {
+  const at = since ? Date.parse(since) : NaN;
+  if (!Number.isFinite(at)) return null;
+  return Math.max(0, Math.floor((now - at) / 3_600_000));
+}
+
+function providerName(provider) {
+  return provider === "paystack" ? "Paystack" : provider ?? null;
+}
+
+/** Queue items for the stuck trip cancels (listed after the captured queue). */
+export function tripCancelQueueItems(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && typeof row.refund_id === "string")
+    .map((row) => ({
+      itemKind: "trip_cancel_refund",
+      itemId: row.refund_id,
+      safeSummary: row,
+    }));
+}
+
+const CHARGE_STATE_WORDS = {
+  recorded: "Refunded, recorded",
+  unanswered: "Sent, no answer",
+  accepted: "Accepted by Paystack, not yet confirmed",
+  refused: "Refused by Paystack",
+  not_sent: "Not sent yet",
+};
+
+/** One line per charge of the cancel: deposit, then Payment N. */
+export function tripCancelChargeRows(detail) {
+  return (detail?.charges ?? []).map((charge) => ({
+    key: charge.attempt_id,
+    attemptId: charge.attempt_id,
+    label: charge.part === "deposit"
+      ? "Deposit"
+      : Number.isInteger(charge.ordinal) ? `Payment ${charge.ordinal}` : "Payment",
+    amountCents: charge.amount_cents,
+    currency: charge.currency ?? detail?.currency ?? null,
+    state: charge.state,
+    stateLabel: CHARGE_STATE_WORDS[charge.state] ?? "Not finished",
+    actionable: charge.actionable === true,
+    escalated: charge.ops_resolution?.outcome === "escalate",
+  }));
+}
+
+export const TRIP_CANCEL_OUTCOMES = [
+  { value: "refunded_at_provider", label: "Paystack shows it refunded: record it" },
+  { value: "escalate", label: "Paystack shows no refund: escalate (nothing is re-sent from here)" },
+];
+
+/**
+ * Field errors for the trip cancel form, or null when it can be sent.
+ * The provider refund reference is required to record; the reason always.
+ */
+export function validateTripCancelResolution({ outcome, reference, reason }) {
+  const errors = {};
+  if (outcome !== "refunded_at_provider" && outcome !== "escalate") {
+    errors.outcome = "Choose what Paystack shows for this refund.";
+  }
+  const ref = String(reference ?? "").trim();
+  if (outcome === "refunded_at_provider") {
+    if (ref.length === 0) errors.reference = "Enter the Paystack refund reference to record it.";
+    else if (ref.length > 200) errors.reference = "The refund reference is too long. Check it in Paystack.";
+  }
+  const reasonProblem = validateActionReason(reason);
+  if (reasonProblem) errors.reason = reasonProblem;
+  return Object.keys(errors).length > 0 ? errors : null;
+}
+
+const TRIP_CANCEL_ERROR_WORDS = {
+  provider_refund_reference_already_used: "That refund reference is already recorded on another refund. Check it in Paystack.",
+  provider_refund_reference_required: "Enter the Paystack refund reference to record it.",
+  trip_cancel_refund_already_confirmed: "Paystack has already confirmed this refund. Refresh the queue.",
+  trip_cancel_refund_already_resolved: "This refund was already recorded. Refresh the queue.",
+  trip_cancel_refund_not_unanswered: "This refund is no longer waiting on Paystack. Refresh the queue.",
+  trip_cancel_not_in_progress: "This cancel is already finished. Refresh the queue.",
+  trip_cancel_refund_too_recent: "This refund was sent in the last 15 minutes. Wait for Paystack to answer, then try again.",
+  trip_cancel_refund_amount_or_currency_mismatch: "This refund changed since you opened it. Refresh the queue and try again.",
+  trip_cancel_refund_not_recorded: "The refund could not be recorded, so nothing was saved. Try again or ask engineering.",
+  reason_invalid_length: "Write why you are doing this (3 to 500 characters).",
+};
+
+/** Plain words for a failed trip cancel action (falls back to the page's). */
+export function tripCancelErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error?.message ?? error ?? "");
+  const known = Object.keys(TRIP_CANCEL_ERROR_WORDS).find((code) => message.includes(code));
+  return known ? TRIP_CANCEL_ERROR_WORDS[known] : refundQueueErrorMessage(error, "action");
 }

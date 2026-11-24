@@ -4,17 +4,23 @@ import {
   actOnSourceRefund,
   appendCapturedQueuePage,
   getSourceRefundOperation,
+  getUnansweredTripCancelRefund,
   isSessionExpiredError,
   listSourceRefundOperations,
+  listUnansweredTripCancelRefunds,
   recoverSourceRefundAttention,
+  resolveTripCancelRefund,
   SESSION_EXPIRED_MESSAGE,
 } from "../services/refundOperationsService";
 import {
   exceptionDetail,
   queueRowModel,
   refundQueueErrorMessage,
+  tripCancelErrorMessage,
+  tripCancelQueueItems,
   validateActionReason,
 } from "../lib/refundOperationsView";
+import { TripCancelRefundPanel } from "../components/refunds/TripCancelRefundPanel";
 import { useAuth } from "../context/AuthContext";
 import { PageHeader } from "../components/ui/PageHeader";
 import { SectionCard } from "../components/ui/Card";
@@ -59,13 +65,40 @@ export function RefundOperationsPage() {
   const [recoveryContact, setRecoveryContact] = useState("");
   const [recoveryReason, setRecoveryReason] = useState("");
   const [recoveryNotice, setRecoveryNotice] = useState("");
+  // #4522 (H-2): stuck second-provider trip cancels, listed after the queue.
+  const [tripItems, setTripItems] = useState([]);
+  const [tripLoadError, setTripLoadError] = useState("");
+  const [selectedTrip, setSelectedTrip] = useState(null);
+  const [tripActionError, setTripActionError] = useState("");
+  const [tripNotice, setTripNotice] = useState("");
 
   const load = useCallback(async () => {
     setError("");
     setMoreError("");
     setSessionExpired(false);
+    setTripLoadError("");
     try {
-      setView(await listSourceRefundOperations());
+      // #4522 (H-2): before its migration is applied the trip cancel list is
+      // empty (the function is missing), so the queue reads exactly as before.
+      const [queue, trips] = await Promise.all([
+        listSourceRefundOperations(),
+        listUnansweredTripCancelRefunds().then(
+          (rows) => ({ rows }),
+          (tripError) => ({ tripError }),
+        ),
+      ]);
+      setView(queue);
+      if (trips.tripError) {
+        if (isSessionExpiredError(trips.tripError)) {
+          setSessionExpired(true);
+          setError(SESSION_EXPIRED_MESSAGE);
+          return;
+        }
+        setTripItems([]);
+        setTripLoadError("Couldn't load stuck trip cancel refunds. Refresh to try again.");
+      } else {
+        setTripItems(tripCancelQueueItems(trips.rows));
+      }
       setCheckedAt(new Date());
     } catch (caught) {
       if (isSessionExpiredError(caught)) {
@@ -121,6 +154,32 @@ export function RefundOperationsPage() {
   const select = async (item) => {
     setOpenError("");
     resetPanel();
+    setSelectedTrip(null);
+    setTripActionError("");
+    setTripNotice("");
+    if (item.itemKind === "trip_cancel_refund") {
+      setSelected(null);
+      setSelectedException(null);
+      setOpening(item.itemId);
+      try {
+        const detail = await getUnansweredTripCancelRefund(item.itemId);
+        if (!detail) {
+          setOpenError("This refund is no longer in the queue. Refresh to see the latest.");
+          return;
+        }
+        setSelectedTrip(detail);
+      } catch (caught) {
+        if (isSessionExpiredError(caught)) {
+          setSessionExpired(true);
+          setError(SESSION_EXPIRED_MESSAGE);
+          return;
+        }
+        setOpenError(refundQueueErrorMessage(caught, "open"));
+      } finally {
+        setOpening(null);
+      }
+      return;
+    }
     if (item.itemKind !== "refund_operation") {
       setSelected(null);
       setSelectedException(exceptionDetail(item));
@@ -173,6 +232,33 @@ export function RefundOperationsPage() {
         setError(SESSION_EXPIRED_MESSAGE);
       } else {
         setActionError(refundQueueErrorMessage(caught, "action"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  // #4522 (H-2): record or escalate one unanswered trip cancel refund.
+  const resolveTrip = async (input) => {
+    const refundId = selectedTrip?.refund_id;
+    if (!refundId) return;
+    setBusy(true);
+    setTripActionError("");
+    setTripNotice("");
+    try {
+      await resolveTripCancelRefund(input);
+      setTripNotice(
+        input.outcome === "refunded_at_provider"
+          ? "Recorded. The cancel finishes on the next run: the traveler gets their refund email and the host's payout updates."
+          : "Escalated. Nothing was re-sent and no money changed.",
+      );
+      setSelectedTrip(await getUnansweredTripCancelRefund(refundId));
+      await load();
+    } catch (caught) {
+      if (isSessionExpiredError(caught)) {
+        setSessionExpired(true);
+        setError(SESSION_EXPIRED_MESSAGE);
+      } else {
+        setTripActionError(tripCancelErrorMessage(caught));
       }
     } finally {
       setBusy(false);
@@ -273,7 +359,7 @@ export function RefundOperationsPage() {
     ]
     : [];
 
-  const items = view?.items ?? [];
+  const items = [...tripItems, ...(view?.items ?? [])];
 
   if (!view && !error) {
     return (
@@ -384,6 +470,11 @@ export function RefundOperationsPage() {
           </div>
         </SectionCard>
       )}
+      {tripLoadError && (
+        <div role="alert" className="rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-3 text-sm">
+          {tripLoadError}
+        </div>
+      )}
       {moreError && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-3 text-sm">
           {moreError}
@@ -422,6 +513,21 @@ export function RefundOperationsPage() {
             <p className="text-[var(--color-text-secondary)]">{selectedException.nextStep}</p>
           </div>
         </SectionCard>
+      )}
+      {tripNotice && (
+        <div role="status" className="rounded-lg border border-[var(--gray-200)] p-3 text-sm">
+          {tripNotice}
+        </div>
+      )}
+      {selectedTrip && (
+        <TripCancelRefundPanel
+          key={selectedTrip.refund_id}
+          detail={selectedTrip}
+          money={money}
+          busy={busy}
+          error={tripActionError}
+          onResolve={resolveTrip}
+        />
       )}
       {selected && (
         <SectionCard title="Live details">

@@ -120,3 +120,75 @@ export function appendCapturedQueuePage(current, page) {
   }
   return { ...page, items };
 }
+
+// Issue #4522 (H-2) — a second-provider trip cancel refund that was sent and
+// never answered. These are database functions called with the admin's own
+// session (they check is_admin_user() and record auth.uid() as who acted),
+// so a 401 gets the same one refresh-and-retry as invokeWithRefresh.
+const MISSING_SCHEMA_CODES = new Set(["42883", "PGRST202"]);
+
+/** True only for "this function does not exist yet" (deploy window). */
+export function isMissingTripCancelLane(error) {
+  return typeof error?.code === "string" && MISSING_SCHEMA_CODES.has(error.code);
+}
+
+async function callAdminRpc(name, args) {
+  const { supabase } = await import("../lib/supabase");
+  let result = await supabase.rpc(name, args);
+  if (result?.status === 401) {
+    await supabase.auth.refreshSession();
+    result = await supabase.rpc(name, args);
+  }
+  return result;
+}
+
+function rpcError(error, status) {
+  const err = new Error(error?.message ?? "rpc_failed");
+  err.code = error?.code ?? null;
+  err.status = status ?? null;
+  return err;
+}
+
+/**
+ * The stuck trip cancels for the queue. Before the #4522 migration is applied
+ * the function does not exist: the queue then lists none (exactly as main).
+ */
+export async function listUnansweredTripCancelRefunds(rpc = callAdminRpc) {
+  const { data, error, status } = await rpc(
+    "issue_4522_list_unanswered_trip_cancel_refunds",
+    {},
+  );
+  if (error) {
+    if (isMissingTripCancelLane(error)) return [];
+    throw rpcError(error, status);
+  }
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getUnansweredTripCancelRefund(refundId, rpc = callAdminRpc) {
+  const { data, error, status } = await rpc(
+    "issue_4522_get_unanswered_trip_cancel_refund",
+    { p_refund_id: refundId },
+  );
+  if (error) throw rpcError(error, status);
+  return data ?? null;
+}
+
+export async function resolveTripCancelRefund(
+  { attemptId, outcome, reference, reason, amountCents, currency },
+  rpc = callAdminRpc,
+) {
+  const { data, error, status } = await rpc(
+    "issue_4522_resolve_trip_cancel_refund_by_ops",
+    {
+      p_attempt_id: attemptId,
+      p_outcome: outcome,
+      p_provider_refund_reference: outcome === "refunded_at_provider" ? reference : null,
+      p_reason: reason,
+      p_amount_cents: amountCents,
+      p_currency: currency,
+    },
+  );
+  if (error) throw rpcError(error, status);
+  return data;
+}
