@@ -324,11 +324,23 @@ const settle = async (): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 };
+// Every mounted Till is unmounted inside act() after its test, so no render
+// the screen scheduled (window size, queries) runs after Jest tears the
+// environment down ("import a file after the Jest environment has been torn
+// down" failed the render lanes with every test green).
+const liveTills: RenderTree[] = [];
+afterEach(async () => {
+  const trees = liveTills.splice(0);
+  await TestRenderer.act(async () => {
+    for (const tree of trees) tree.unmount();
+  });
+});
 const mount = async (): Promise<RenderTree> => {
   let tree: RenderTree | null = null;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(<TillScreen venueId="v1" />);
   });
+  liveTills.push(tree as unknown as RenderTree);
   return tree as unknown as RenderTree;
 };
 const openPay = async (t: RenderTree): Promise<void> => {
