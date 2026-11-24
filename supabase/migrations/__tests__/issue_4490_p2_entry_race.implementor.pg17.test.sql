@@ -6,6 +6,13 @@
 -- FAILS-ON-REVERT: drop the pool FOR UPDATE in issue_4490_hold_offer_internal -> R-1a / R-1b.
 \set ON_ERROR_STOP on
 CREATE EXTENSION IF NOT EXISTS dblink;
+-- Suite-owned database (#4490): this suite COMMITs its fixtures for the dblink
+-- race, so it records the feature flags it switches on and, at the end,
+-- removes everything it committed (see the cleanup block at the end).
+CREATE TABLE public.t4490_cleanup_flags AS
+SELECT k AS flag_key, f.is_enabled, f.flag_key IS NOT NULL AS existed
+FROM unnest(ARRAY['VENUE_OFFERS_READS', 'VENUE_OFFERS_WRITES', 'STAY_RESERVE_READS', 'STAY_RESERVE_WRITES']) k
+LEFT JOIN public.feature_flags f ON f.flag_key = k;
 BEGIN;
 -- (shared #4490 P2 suite fixture; copied into each suite)
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -264,3 +271,69 @@ BEGIN
   RAISE NOTICE 'PASS  R-1c the day holds exactly 10 guests, never 20';
 END
 $r1c$;
+
+-- Suite-owned cleanup (#4490). The fixtures were COMMITted for the race, and
+-- later suites in the same replayed database reuse the same fixture ids,
+-- helper names and slugs. Remove every row whose uuid columns name the
+-- fixture namespace (44907000-...), then, round by round, every row that
+-- points at a removed row, so nothing this suite made (or left orphaned)
+-- survives; drop the helpers and restore the feature flags as they were.
+DO $cleanup$
+DECLARE
+  r record;
+  v_cond text;
+  v_deleted integer;
+  v_total integer;
+  v_round integer := 0;
+BEGIN
+  SET LOCAL session_replication_role = replica;
+  CREATE TEMP TABLE t4490_gone (id uuid PRIMARY KEY) ON COMMIT DROP;
+  LOOP
+    v_round := v_round + 1;
+    v_total := 0;
+    FOR r IN
+      SELECT n.nspname, c.relname,
+             array_agg(a.attname::text ORDER BY a.attnum) AS cols,
+             bool_or(a.attname = 'id') AS has_id
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+        AND a.atttypid = 'uuid'::regtype
+      WHERE c.relkind = 'r' AND n.nspname IN ('public', 'auth')
+      GROUP BY n.nspname, c.relname
+    LOOP
+      SELECT string_agg(format('(%1$I::text LIKE %2$L OR %1$I IN (SELECT g.id FROM t4490_gone g))', col, '44907000-%'), ' OR ')
+        INTO v_cond FROM unnest(r.cols) col;
+      IF r.has_id THEN
+        EXECUTE format(
+          'WITH d AS (DELETE FROM %I.%I WHERE %s RETURNING id) INSERT INTO t4490_gone SELECT id FROM d WHERE id IS NOT NULL ON CONFLICT DO NOTHING',
+          r.nspname, r.relname, v_cond);
+        GET DIAGNOSTICS v_deleted = ROW_COUNT;
+      ELSE
+        EXECUTE format('DELETE FROM %I.%I WHERE %s', r.nspname, r.relname, v_cond);
+        GET DIAGNOSTICS v_deleted = ROW_COUNT;
+      END IF;
+      v_total := v_total + v_deleted;
+    END LOOP;
+    EXIT WHEN v_total = 0 OR v_round >= 25;
+  END LOOP;
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 't4490\_%'
+  LOOP
+    EXECUTE format('DROP FUNCTION %s', r.sig);
+  END LOOP;
+  FOR r IN
+    SELECT c.relname FROM pg_class c
+    WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND c.relname LIKE 't4490\_%'
+      AND c.relname <> 't4490_cleanup_flags'
+  LOOP
+    EXECUTE format('DROP TABLE public.%I', r.relname);
+  END LOOP;
+  DELETE FROM public.feature_flags f
+  USING public.t4490_cleanup_flags s WHERE s.flag_key = f.flag_key AND NOT s.existed;
+  UPDATE public.feature_flags f SET is_enabled = s.is_enabled
+  FROM public.t4490_cleanup_flags s WHERE s.flag_key = f.flag_key AND s.existed;
+  DROP TABLE public.t4490_cleanup_flags;
+END
+$cleanup$;

@@ -326,7 +326,7 @@ const expectedAfter4452 = (base) => {
 // forward again.
 const I4490_OLD_HEADER = I4452_NEW_HEADER;
 const I4490_NEW_HEADER =
-  "# Signature count: 215 (intended-public 42, internally-gated 108, predicate/read-helper 62, PostGIS 3).";
+  "# Signature count: 216 (intended-public 42, internally-gated 108, predicate/read-helper 63, PostGIS 3).";
 const I4490_ANCHOR = I4452_SIGNATURES[1];
 const I4490_SIGNATURES = [
   "pg_public_venue_page(p_brand_slug text, p_venue_slug text)",
@@ -352,6 +352,18 @@ const I4490_BLOCK = [
 ].join("\n");
 const I4490_SLOTS_PRIOR = "pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid)";
 const I4490_SLOTS_NEXT = "pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid, p_space_id uuid)";
+// The four-argument line STAYS, directly above the five-argument one, with this
+// comment: the pre-#1931 and pre-#2117 replay lanes skip the #4490 P5 migration
+// that replaces the reader, so those lanes still hold the four-argument
+// definer and the anon gate there must find it allowlisted. In the full chain
+// it is gone (the gate prints it as a stale line, never a failure).
+const I4490_SLOTS_KEPT = [
+  I4490_SLOTS_PRIOR,
+  "# #4490 P5: the same public slot reader with the optional space filter. The 4-argument line above",
+  "# stays because the pre-#1931 and pre-#2117 replay lanes skip the #4490 P5 migration that",
+  "# replaces it; in the full chain only this 5-argument signature exists.",
+  I4490_SLOTS_NEXT,
+].join("\n");
 const I4490_NAMES = [
   "pg_public_venue_page(",
   "pg_venue_offer_availability(",
@@ -367,12 +379,13 @@ const rewind4490 = (base) => {
     I4490_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
     base.includes(`${I4490_ANCHOR}\n${I4490_BLOCK}\n`) &&
     countExactLine(base, I4490_SLOTS_NEXT) === 1 &&
-    countExactLine(base, I4490_SLOTS_PRIOR) === 0 &&
+    countExactLine(base, I4490_SLOTS_PRIOR) === 1 &&
+    base.includes(`\n${I4490_SLOTS_KEPT}\n`) &&
     countExactLine(base, I4490_NEW_HEADER) === 1
   ) {
     return swapLine(
       base.replace(`${I4490_ANCHOR}\n${I4490_BLOCK}\n`, `${I4490_ANCHOR}\n`).replace(I4490_NEW_HEADER, I4490_OLD_HEADER),
-      I4490_SLOTS_NEXT,
+      I4490_SLOTS_KEPT,
       I4490_SLOTS_PRIOR,
     );
   }
@@ -395,7 +408,7 @@ const expectedAfter4490 = (base) => {
   return swapLine(
     base.replace(I4490_OLD_HEADER, I4490_NEW_HEADER).replace(`${I4490_ANCHOR}\n`, `${I4490_ANCHOR}\n${I4490_BLOCK}\n`),
     I4490_SLOTS_PRIOR,
-    I4490_SLOTS_NEXT,
+    I4490_SLOTS_KEPT,
   );
 };
 
@@ -893,6 +906,8 @@ const runSelfTest = () => {
     ["#4490 table-slots line not swapped", head.replace(`\n${I4490_SLOTS_NEXT}\n`, `\n${I4490_SLOTS_PRIOR}\n`), false],
     ["#4490 table-slots line kept beside the new one", head.replace(`\n${I4490_SLOTS_NEXT}\n`, `\n${I4490_SLOTS_PRIOR}\n${I4490_SLOTS_NEXT}\n`), false],
     ["#4490 table-slots line dropped", head.replace(`\n${I4490_SLOTS_NEXT}\n`, "\n"), false],
+    ["#4490 kept four-argument line dropped", head.replace(`\n${I4490_SLOTS_PRIOR}\n`, "\n"), false],
+    ["#4490 kept-line comment substituted", head.replace("# #4490 P5: the same public slot reader", "# #4490 P5: approved somehow"), false],
   ];
   for (const [name, candidate, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate }).length === 0;

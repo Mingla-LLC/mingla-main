@@ -952,6 +952,7 @@ insert into w5_owner_views values
   ('claimed_venues_public_view', 'reads brands and place_pool; exposes only claimed venues and their public hours'),
   ('events_public_view', 'reads events (anon has no SELECT on events); pinned by the #2489 address-privacy gate'),
   ('public_menus_view', 'reads venue_listings and brands, which anon cannot read directly; exposes only published menus'),
+  ('public_menu_sold_out_view', '#4490 O5: the sold-out twin of public_menus_view (same joins and columns), for the guest page''s Sold out pills; reads venue_listings and brands, which anon cannot read directly; exposes only published menus'),
   ('venue_public_view', 'reads venue_listings and brands, which anon cannot read directly; exposes only public venue facts');
 
 create temp view w5_fn as
