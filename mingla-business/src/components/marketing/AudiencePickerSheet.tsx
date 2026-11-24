@@ -234,11 +234,11 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         }
         // #4596 — every event's audience comes from the server's one owner:
         // paid buyers plus going RSVP guests, de-duplicated.
-        if (actorId == null) throw new Error("Sign in again to load audiences.");
-        const eventAudiences = await listEventAudiences({
-          actor_id: actorId,
-          brand_id: brandId,
-        });
+        // Signed out (no actor) there is no host to ask for; the composer
+        // always passes one.
+        const eventAudiences = actorId == null
+          ? []
+          : await listEventAudiences({ actor_id: actorId, brand_id: brandId });
         // 1) Pull paid orders for this brand (the brand rollup row only).
         //    Same join shape as the audience service uses — RLS-gated.
         const { data: orderData, error: orderErr } = await supabase
