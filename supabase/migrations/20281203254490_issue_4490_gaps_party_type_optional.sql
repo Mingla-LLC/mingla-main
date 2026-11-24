@@ -9,6 +9,9 @@
 -- 20281129704572_issue_4572_event_types.sql, so each of the four re-emitted
 -- bodies carries #4572's 26-value canonical event type list (the 15 party
 -- types plus exhibition .. tasting); otherwise this re-emit would undo #4572.
+-- Both publish gates also keep #4420's caller-scoped event response
+-- (issue_4420_event_json_for_caller, 20280724004420): a hidden-address event
+-- never hands its address back to a caller the address rule hides it from.
 
 CREATE OR REPLACE FUNCTION public.business_publish_event_draft(p_event_id uuid, p_draft_payload jsonb, p_client_revision integer DEFAULT NULL::integer)
  RETURNS jsonb
@@ -678,7 +681,7 @@ BEGIN
   WHERE ed.event_id = p_event_id;
 
   RETURN jsonb_build_object(
-    'event', to_jsonb(v_event),
+    'event', public.issue_4420_event_json_for_caller(to_jsonb(v_event)),
     'brand', jsonb_build_object(
       'id', v_brand.id,
       'slug', v_brand.slug,
@@ -1032,7 +1035,7 @@ BEGIN
     FROM public.event_dates ed WHERE ed.event_id = p_event_id;
 
   RETURN jsonb_build_object(
-    'event', to_jsonb(v_event),
+    'event', public.issue_4420_event_json_for_caller(to_jsonb(v_event)),
     'brand', jsonb_build_object('id', v_brand.id, 'slug', v_brand.slug, 'name', v_brand.name),
     'tickets', '[]'::jsonb,
     'eventDates', v_event_dates_rows,

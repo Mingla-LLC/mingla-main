@@ -5,10 +5,15 @@
 -- A-1 live patch (both patchers) with an empty list: refused without a venue, accepted with one.
 -- A-2 a non-canonical list is still refused at a venue.
 -- A-3 clearing the venue of a scheduled event with no party type is refused; a draft may clear it.
--- A-4 the publish (event + RSVP) gates carry the venue clause and keep the literal the #2333 gate bounds on.
+-- A-4 the publish (event + RSVP) gates carry the venue clause and keep the literal the #2333 gate bounds on,
+--     and both answer #4420's caller-scoped event json (issue_4420_event_json_for_caller).
+-- A-5 publishing a hidden-address event at a venue: the host's answer keeps the street and place id the
+--     stored row withholds, and equals #4420's caller rule applied to the row (fix 4, P1-B).
 --
 -- FAILS-ON-REVERT (seen 19 Nov): with the pre-264490 patchers and set_event_venue re-emitted in the same transaction,
 -- A-1b fails with party_types_required (A-3a and A-4 would fail next: no refusal, no venue clause).
+-- FAILS-ON-REVERT (fix 4, 24 Nov): with the 435a9edd8c publish gates ('event', to_jsonb(v_event)) A-4 fails
+-- (no caller-scoped json) and, with A-4 removed, A-5b fails (the host's answer has no street or place id).
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -126,10 +131,80 @@ BEGIN
        OR position('party_types_required' in v_src) = 0 THEN
       RAISE EXCEPTION 'A-4 FAIL: % lost the venue clause or the literal', v_fn;
     END IF;
+    IF v_fn LIKE 'public.business_publish_%'
+       AND position('issue_4420_event_json_for_caller(to_jsonb(v_event))' in v_src) = 0 THEN
+      RAISE EXCEPTION 'A-4 FAIL: % answers the raw event row, not #4420''s caller-scoped event json', v_fn;
+    END IF;
   END LOOP;
-  RAISE NOTICE 'PASS  A-4 all four gates carry the venue clause';
+  RAISE NOTICE 'PASS  A-4 all four gates carry the venue clause; both publish gates keep #4420''s caller-scoped event json';
 END
 $test$;
+
+-- A-5 (08-O5 fix 4): publishing a hidden-address event at a venue answers the event the way
+-- #4420's caller rule (issue_4420_event_json_for_caller) shows it: the host gets the street and
+-- the place id back, though the stored row withholds them; a caller the rule hides it from
+-- would get the row as stored.
+DO $a5$
+DECLARE
+  v_owner uuid := '44902600-0000-4000-8000-000000000005';
+  v_stranger uuid := '44902600-0000-4000-8000-000000000006';
+  v_brand uuid := '44902600-0000-4000-9000-000000000050';
+  v_venue uuid := '44902600-0000-4000-9000-0000000000a5';
+  v_event uuid;
+  v_res jsonb;
+  v_row jsonb;
+BEGIN
+  INSERT INTO auth.users(id, email) VALUES (v_owner, 'hidden-4490@example.test'), (v_stranger, 'stranger-4490@example.test');
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_owner, 'hidden-4490@example.test'), (v_stranger, 'stranger-4490@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency, payment_provider, payment_country, pricing_region, pricing_currency)
+    VALUES (v_brand, v_owner, 'Hidden address 4490', 'hidden-address-4490', 'NGN', 'paystack', 'NG', 'NG', 'NGN');
+  INSERT INTO public.venue_listings (id, brand_id, slug, name, lat, lng, venue_category, claim_status, country_code)
+    VALUES (v_venue, v_brand, 'hiddenaddress4490', 'Hidden Hall', 6.45, 3.41, 'play', 'verified', 'NG');
+  PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  v_event := (public.business_create_event_draft(v_brand, jsonb_build_object(
+    'title', 'Secret night', 'timezone', 'Africa/Lagos', 'currency', 'NGN',
+    'theme', '{"business_draft":{"requestedVisibility":"public"}}'::jsonb)) #>> '{event,id}')::uuid;
+  PERFORM public.issue_4490_set_event_venue(v_event, v_venue, NULL, 'shared', NULL, NULL);
+  v_res := public.business_publish_event_draft(v_event, jsonb_build_object(
+    'title', 'Secret night', 'timezone', 'Africa/Lagos', 'currency', 'NGN',
+    'location_text', 'Hidden Hall', 'location', jsonb_build_object('lat', 6.45, 'lng', 3.41),
+    'locationProviderPlaceId', 'ChIJhidden4490',
+    'theme', jsonb_build_object('business_draft', jsonb_build_object(
+      'requestedVisibility', 'public', 'format', 'in_person', 'city', 'Lagos',
+      'hideAddressUntilTicket', true,
+      'location', jsonb_build_object('venueName', 'Hidden Hall', 'address', '12 Hidden Street, Lagos'),
+      'locationProviderPlaceId', 'ChIJhidden4490',
+      'tickets', jsonb_build_array(jsonb_build_object('name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
+      'partyTypes', jsonb_build_array(),
+      'whenMode', 'single',
+      'when', jsonb_build_object('date', to_char(now() + interval '10 days', 'YYYY-MM-DD'), 'doorsOpen', '20:00', 'endsAt', '23:00')))));
+  SELECT to_jsonb(e.*) INTO v_row FROM public.events e WHERE e.id = v_event;
+
+  IF v_row #> '{theme,business_event,location,address}' IS NOT NULL
+     OR v_row #> '{theme,business_event,locationProviderPlaceId}' IS NOT NULL THEN
+    RAISE EXCEPTION 'A-5a FAIL: the stored row of a hidden-address event still carries the street or place id';
+  END IF;
+  RAISE NOTICE 'PASS  A-5a the stored row withholds the street and place id (#4420)';
+  IF v_res #>> '{event,theme,business_event,location,address}' IS DISTINCT FROM '12 Hidden Street, Lagos'
+     OR v_res #>> '{event,theme,business_event,locationProviderPlaceId}' IS DISTINCT FROM 'ChIJhidden4490'
+     OR v_res #>> '{event,theme,business_event,location,venueName}' IS DISTINCT FROM 'Hidden Hall' THEN
+    RAISE EXCEPTION 'A-5b FAIL: the host''s publish answer lost the street, place id or venue name: %', v_res #> '{event,theme}';
+  END IF;
+  RAISE NOTICE 'PASS  A-5b the host''s publish answer keeps the street, place id and venue name';
+  IF v_res -> 'event' IS DISTINCT FROM public.issue_4420_event_json_for_caller(v_row) THEN
+    RAISE EXCEPTION 'A-5c FAIL: the publish answer is not #4420''s caller-scoped event json';
+  END IF;
+  RAISE NOTICE 'PASS  A-5c the publish answer is exactly issue_4420_event_json_for_caller of the row';
+  PERFORM set_config('request.jwt.claim.sub', v_stranger::text, true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_stranger, 'role', 'authenticated')::text, true);
+  IF public.issue_4420_event_json_for_caller(v_row) #> '{theme,business_event,location,address}' IS NOT NULL
+     OR public.issue_4420_event_json_for_caller(v_row) #>> '{theme,business_event,location,venueName}' IS DISTINCT FROM 'Hidden Hall' THEN
+    RAISE EXCEPTION 'A-5d FAIL: the caller rule does not withhold the street from a stranger';
+  END IF;
+  RAISE NOTICE 'PASS  A-5d for a caller the rule hides it from, the same json omits only the street and place id';
+END
+$a5$;
 
 ROLLBACK;
 \echo 'issue #4490 07-A: all cases passed'

@@ -11,9 +11,11 @@
 --      without sharing the old per-option count is unchanged.
 -- X-5  per_day with a 12:00-23:59 window and several starts is accepted (Rule A gone).
 -- X-6  publishing with an empty cover URL keeps the server's cover and does not raise.
+-- X-7  #3645's paid-with-no-priced-option guard survives this file's re-emit (it runs after #3645).
 --
 -- FAILS-ON-REVERT: restore the 2..50 group check -> X-1a; restore the blank-name "Standard" fallback -> X-3a;
--- drop the shared-types branch of slot_taken -> X-4a; restore the persist-mismatch raise for an empty URL -> X-6a.
+-- drop the shared-types branch of slot_taken -> X-4a; restore the persist-mismatch raise for an empty URL -> X-6a;
+-- delete the #3645 2C block from the price-options re-emit -> X-7a (seen 24 Nov at 435a9edd8c: published, no raise).
 
 BEGIN;
 
@@ -141,6 +143,18 @@ SELECT public.t4490_ok(
   NOT EXISTS (SELECT 1 FROM public.ticket_types WHERE event_id = (SELECT v FROM x_ids WHERE k = 'event') AND deleted_at IS NULL
               AND name IN ('Standard', 'Option 2', 'Option 3')),
   'X-3c every saved option carries the name the host typed');
+
+-- X-7 #3645 kept (fix 4, P1-A): this file runs after #3645's 20280806003645, so its re-emit
+-- carries the paid-with-no-priced-option guard: a paid whole-price experience whose options
+-- are all 0 is refused, never published free.
+SELECT public.t4490_expect(
+  format($$SELECT public.issue_3281_apply_experience_price_options(%L, 'NGN', 'whole', 500000, NULL,
+    '[{"name":"Solo","price_cents":0,"price_basis":"person"},{"name":"Pair","price_cents":0,"price_basis":"person"}]'::jsonb, false)$$, (SELECT v FROM x_ids WHERE k = 'event')),
+  'P0001', 'experience_price_invalid', 'X-7a a paid whole-price experience with only 0 options is refused (#3645 2C)');
+SELECT public.t4490_ok(
+  position('issue_3645_2c: paid with no priced option' in pg_get_functiondef(
+    'public.issue_3281_apply_experience_price_options(uuid,text,text,integer,integer,jsonb,boolean)'::regprocedure)) > 0,
+  'X-7b the live body keeps #3645''s guard alongside the #4490 changes');
 
 -- X-4 shared spots -----------------------------------------------------------------------
 DO $x4$

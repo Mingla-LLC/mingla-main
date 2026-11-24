@@ -52,10 +52,12 @@ BEGIN
   -- change (an event at a venue may skip the event type: the four gates;
   -- venue type facet counts: discover_v2_facets_exact), keeping #4572's 26
   -- slugs. after_4490_md5 pins that combined body (minus the 11 slugs) byte
-  -- for byte; any other edit still fails.
+  -- for byte; any other edit still fails. Re-pinned (08-O5 fix 4) for the two
+  -- publish gates once they kept #4420's issue_4420_event_json_for_caller
+  -- response (the earlier pin had frozen the body that dropped it).
   FOR r IN SELECT * FROM (VALUES
-    ('public.business_publish_event_draft(uuid,jsonb,integer)', 'b5a2bb9f4a2dbd19d914b925d08ae4e0', 'd90ec802e63d850b7715f74d4eb02628'),
-    ('public.business_publish_rsvp_draft(uuid,jsonb,integer)', '6635f49bbebb7ba09da411b5f5a881af', '94f95336ac7f256e2ebb5d4af0fab8c4'),
+    ('public.business_publish_event_draft(uuid,jsonb,integer)', 'b5a2bb9f4a2dbd19d914b925d08ae4e0', '380f6d168fe358760f36def4739fa76f'),
+    ('public.business_publish_rsvp_draft(uuid,jsonb,integer)', '6635f49bbebb7ba09da411b5f5a881af', '47a0282455e070abede427a71374f344'),
     ('public.business_patch_event_taxonomy(uuid,text,text[],text[],text[],numeric,numeric,text,text)', '4eaa731aeab4cf795b8abc8080192535', '91a320a72f58cc17f465b94490a6993d'),
     ('public.business_patch_event_taxonomy_with_place(uuid,text,text[],text[],text[],numeric,numeric,text,text,text)', 'bdd3783db3c61393050236dde3e20e1b', '4315878d494dab8ed476eda82cea19d3'),
     ('public.ari_execute_event_operation(uuid,text,jsonb)', '672cbb4224667612226408656dd44f9c', NULL),

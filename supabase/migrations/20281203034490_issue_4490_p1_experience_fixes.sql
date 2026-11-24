@@ -16,7 +16,9 @@
 --      raises.
 --
 -- Bodies are the latest definitions (20271122003281, 20271123003281,
--- 20270712001780) with only the marked #4490 changes. Grants are kept by
+-- 20270712001780, and #3645's paid-with-no-priced-option guard from
+-- 20280806003645, which this file now runs after) with only the marked #4490
+-- changes. Grants are kept by
 -- CREATE OR REPLACE. Static SQL. Local stack only until Seth says otherwise.
 
 BEGIN;
@@ -135,6 +137,17 @@ BEGIN
      WHERE COALESCE((o.value->>'price_cents')::integer, 0) > 0
   ) THEN
     RAISE EXCEPTION 'experience_price_invalid';
+  END IF;
+  -- issue #3645 bundle 2C: the mirror of the rule above. A paid whole-price
+  -- experience (positive total) whose options are all 0 has no price: it
+  -- would sell free without the host choosing free. Per-stop takes its
+  -- price from the stops, so it is not checked here.
+  IF p_pricing_mode = 'whole' AND p_legacy_total_cents > 0 AND NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_price_options) o
+     WHERE COALESCE((o.value->>'price_cents')::integer, 0) > 0
+  ) THEN
+    RAISE EXCEPTION 'experience_price_invalid'
+      USING DETAIL = 'issue_3645_2c: paid with no priced option';
   END IF;
 
   FOR v_opt IN SELECT value FROM jsonb_array_elements(p_price_options)
