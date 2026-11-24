@@ -66,12 +66,14 @@ describe("R-1 the demo lock is never offered as a move", () => {
   });
   it("the tile and the card swap the move for the lock and Book a demo", () => {
     const tile = read("components/crm/RecordCard.jsx");
-    assert.match(tile, /nextLocked = !!next && moveBlocker\(def, record, next\.id\)\?\.token === "demo_required"/);
+    // #4571 design v5: one moveBlocker answer decides the lock (and the creator's Mark signed).
+    assert.match(tile, /const block = next \? moveBlocker\(def, record, next\.id\) : null;/);
+    assert.match(tile, /const nextLocked = block\?\.token === "demo_required";/);
     assert.match(tile, /\{next && nextLocked && \(/);
-    assert.match(tile, /\{next && !nextLocked && \(/);
+    assert.match(tile, /\{next && !nextLocked && !signGate && \(/);
     assert.match(tile, />\s*Book a demo\s*</);
     const card = read("components/crm/RecordPanel.jsx");
-    assert.match(card, /\{next && !nextLocked && \(/);
+    assert.match(card, /\{nextLocked \? \(/);
     assert.match(card, /data-next-locked=""/);
     assert.match(card, /data-gate-action=""/);
     assert.match(card, /demoLocked\(def, record, s\.id\)/, "the stage menu disables a locked stage");
@@ -80,7 +82,7 @@ describe("R-1 the demo lock is never offered as a move", () => {
 
 describe("R-2 a tile's hidden text stays inside the board", () => {
   it("the tile and the board scroller are positioned", () => {
-    assert.match(read("components/crm/RecordCard.jsx"), /"relative group flex min-w-0 flex-col gap-1\.5/);
+    assert.match(read("components/crm/RecordCard.jsx"), /"relative group flex min-w-0 flex-col gap-2/);
     assert.match(read("components/crm/PipelineBoard.jsx"), /className="relative max-w-full overflow-x-auto/);
   });
 });

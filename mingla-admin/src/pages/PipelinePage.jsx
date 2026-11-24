@@ -705,6 +705,7 @@ function PipelinePage({ pipeline, onTabChange }) {
               stack={stack}
               firstSize={ready && openId && state.card !== NEW_CARD ? "record" : "default"}
               over={stack.side?.kind === "card" || stack.side?.kind === "thread"}
+              firstTitle={openRecordInList?.name || ""}
               first={
                 ready && state.card === NEW_CARD && !holding ? (
                   <Drawer open onClose={closeCard} title={`New ${singular}`}>

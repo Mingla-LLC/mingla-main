@@ -286,14 +286,14 @@ export function RecordCard({
           {openWork > 0 && <span data-open-work="" className="sr-only"> ({openWork} open work)</span>}
         </span>
         {next && nextLocked && (
-          <Button variant="secondary" size="sm" className="min-h-11 shrink-0 sm:min-h-8" icon={Calendar} data-gate-action=""
+          <Button variant="secondary" size="sm" className="min-h-11 shrink-0" icon={Calendar} data-gate-action=""
             disabled={disabled || pending} title={lockedNextTitle(next)} aria-label={lockedNextLabel(next, record)}
             onClick={(e) => { e.stopPropagation(); onOpen(record); }}>
             Book a demo
           </Button>
         )}
         {next && signGate && (
-          <Button variant="secondary" size="sm" className="min-h-11 shrink-0 sm:min-h-8" icon={Lock} data-sign-gate=""
+          <Button variant="secondary" size="sm" className="min-h-11 shrink-0" icon={Lock} data-sign-gate=""
             disabled={disabled || pending} title={`${next.label} needs the agreement marked as signed. Open the card to mark it.`}
             aria-label={`${next.label} is locked for ${record.name}. Open the card to mark the agreement signed.`}
             onClick={(e) => { e.stopPropagation(); onOpen(record, { field: "agreement" }); }}>
@@ -301,7 +301,7 @@ export function RecordCard({
           </Button>
         )}
         {next && !nextLocked && !signGate && (
-          <Button variant="secondary" size="sm" className="min-h-11 shrink-0 sm:min-h-8" iconRight={ArrowRight}
+          <Button variant="secondary" size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight}
             disabled={disabled || pending} title={`Move to ${next.label}`} aria-label={`Move ${record.name} to ${next.label}`}
             onClick={(e) => { e.stopPropagation(); onMove(record, next.id); }}>
             {next.label}

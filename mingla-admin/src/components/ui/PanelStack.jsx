@@ -152,7 +152,7 @@ function panelWidth(size, both, narrow, fallback) {
  * "Back to <panel one>" closing panel two. Hosts and creators use it for a
  * Work card opened from a record.
  */
-export function PanelStack({ stack = null, first = null, second = null, narrow: forceNarrow, firstSize = "default", over = false }) {
+export function PanelStack({ stack = null, first = null, second = null, narrow: forceNarrow, firstSize = "default", over = false, firstTitle = "" }) {
   const screenNarrow = useNarrow();
   const narrow = forceNarrow ?? (over && !!first && !!second ? true : screenNarrow);
   const rootRef = useRef(null);
@@ -202,7 +202,7 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
   const secondBack = trailTop
     ? { label: `Back to ${trailTop.title || "the last item"}`, onClick: stack.back }
     : narrow && hasFirst && stack?.closeSide
-      ? { label: `Back to ${titles[1] || "the first panel"}`, onClick: stack.closeSide }
+      ? { label: `Back to ${titles[1] || firstTitle || "the first panel"}`, onClick: stack.closeSide }
       : null;
   const firstSlot = useMemo(() => ({ slot: 1, register: registerFirst, back: null }), [registerFirst]);
   const secondSlot = useMemo(() => ({ slot: 2, register: registerSecond, back: secondBack }), [registerSecond, secondBack?.label, secondBack?.onClick]); // eslint-disable-line react-hooks/exhaustive-deps

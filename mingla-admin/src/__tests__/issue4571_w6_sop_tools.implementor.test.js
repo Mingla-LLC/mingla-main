@@ -110,7 +110,9 @@ describe("C-1 cadence round (the W3 tile reads the server's cadence)", () => {
   });
   it("the card panel and the tile both use the one helper", () => {
     assert.match(read("components/crm/RecordHygiene.jsx"), /cadenceWords\(record\)/);
-    assert.match(read("components/crm/RecordCard.jsx"), /const round = cadenceWords\(record\);/);
+    // #4571 design v5: the card's status line reads the round through lib/recordCardModel.js.
+    assert.match(read("lib/recordCardModel.js"), /const round = cadenceWords\(record\);/);
+    assert.match(read("components/crm/RecordPanel.jsx"), /const round = cadenceWords\(record\);/);
   });
 });
 
@@ -134,8 +136,9 @@ describe("N-2 the Team dashboard shows the weekly numbers from the server", () =
     assert.match(read("services/crmService.js"), /supabase\.rpc\("crm_outreach_numbers", \{ p_from: from, p_to: to \}\)/);
   });
   it("the tile shows the round and a reply that suggests Replied", () => {
-    const tile = read("components/crm/RecordCard.jsx");
-    assert.match(tile, /record\.suggest_replied/);
+    // #4571 design v5: the status line (lib/recordCardModel.js cardStatus) carries the reply; the tile marks it.
+    assert.match(read("lib/recordCardModel.js"), /record\.suggest_replied/);
+    assert.match(read("components/crm/RecordCard.jsx"), /reply: \{ "data-tile-replied": "" \}/);
     const hygiene = read("components/crm/RecordHygiene.jsx");
     assert.match(hygiene, /onRequestMove\(record, "replied"\)/, "one click moves it through the normal move");
   });

@@ -1,7 +1,7 @@
 // Issue #4571 (design v5) — the pure rules behind a host or creator card on
 // the board: the amber problem count and the one status line. No React.
-import { cadenceWords } from "./crmModel";
-import { hostMissing, hostReasons, localWhen } from "./opsModel";
+import { cadenceWords } from "./crmModel.js";
+import { hostMissing, hostReasons, localWhen } from "./opsModel.js";
 
 /**
  * #4571 design v5: what needs fixing on a host card (No owner; Missing type,

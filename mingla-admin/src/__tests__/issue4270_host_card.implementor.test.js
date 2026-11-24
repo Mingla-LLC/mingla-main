@@ -76,9 +76,10 @@ describe("C-1 the host card's order", () => {
   it("Stage, people, Needs attention, Work, Demos, Calls, Plan, On Mingla, Brand and team, then Details", () => {
     const at = (needle) => { const i = drawer.indexOf(needle); assert.ok(i > 0, `missing ${needle}`); return i; };
     const order = [
+      // #4571 design v5: the header row (stage), then Needs attention first, then the Follow-up grid.
       at('data-record-section="stage"'),
-      at('data-record-section="people"'),
       at('data-needs-attention=""'),
+      at('data-record-section="people"'),
       at("<HostToDoSection"),
       at("<DemosSection record={record}"),
       at("<CallsSection activity="),
@@ -96,8 +97,11 @@ describe("C-1 the host card's order", () => {
     for (const words of ['label="Stage"', 'label="Next follow-up"', 'label="Due"', "Move to {next.label}", 'label="Owners"', 'label="Watching"', "Needs attention", "Assign to me", "Fill in", "Log call"]) assert.ok(top.includes(words), words);
     assert.doesNotMatch(drawer, /type="date"/, "#4523: no typed date field");
     const fold = drawer.slice(drawer.indexOf("<DetailsFold isHosts detailsRef"), drawer.indexOf("</DetailsFold>"));
-    for (const words of ['label="ICP"', 'label="Region"', "<IdentifiersField", "<ContactRuleField", "Preferred channel", 'label="Source"', "Channels used", "<MinglaLinkField", "Imported from ClickUp", "<RecentTouchNotice", "<LogForm", "<ActivityLog"]) assert.ok(fold.includes(words), words);
-    assert.match(drawer, /Details · contact rule, imports, log and activity/);
+    for (const words of ['label="ICP"', 'label="Region"', "<IdentifiersField", "<ContactRuleField", "Preferred channel", 'label="Source"', "Channels used", "<MinglaLinkField", "Imported from ClickUp"]) assert.ok(fold.includes(words), words);
+    // #4571 design v5: Activity (signals, the log form, notes, the timeline) is its own section after Details.
+    const activity = drawer.slice(drawer.indexOf('data-record-section="activity"'));
+    for (const words of ["<RecentTouchNotice", "<LogForm", "<ActivityLog"]) assert.ok(activity.includes(words) && !fold.includes(words), words);
+    assert.match(drawer, /Details · contact, type, region, contact rule, channels and imports/);
   });
   it("a deep link to a folded field opens Details first", () => {
     assert.match(drawer, /const fold = target\?\.closest\?\.\("details"\)/);

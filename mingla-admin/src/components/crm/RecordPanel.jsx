@@ -338,7 +338,7 @@ function GridRow({ label, children, id }) {
   );
 }
 
-const ICON_BTN = "min-h-11 min-w-11 shrink-0 justify-center px-0 sm:min-h-9 sm:min-w-9";
+const ICON_BTN = "min-h-11 min-w-11 shrink-0 justify-center px-0";
 
 /**
  * Everything about one host or creator. Each field saves by itself when it
@@ -1076,19 +1076,19 @@ export function RecordPanel({
           ))}
         </PropChip>
         {nextLocked ? (
-          <Button size="sm" className="min-h-11 min-w-0 shrink sm:min-h-9" icon={Lock} data-gate-action="" data-next-locked="" disabled={locked}
+          <Button size="sm" className="min-h-11 min-w-0 shrink" icon={Lock} data-gate-action="" data-next-locked="" disabled={locked}
             title={`${next.label} is locked until a demo is linked. Book one.`} aria-label={`${next.label} locked. Book a demo`}
             onClick={() => { const box = demosRef.current; box?.scrollIntoView?.({ block: "center" }); box?.querySelector?.("a, button")?.focus?.(); }}>
             <span className="truncate">Book a demo</span>
           </Button>
         ) : signGate ? (
-          <Button size="sm" className="min-h-11 min-w-0 shrink sm:min-h-9" icon={Lock} data-sign-gate="" disabled={locked}
+          <Button size="sm" className="min-h-11 min-w-0 shrink" icon={Lock} data-sign-gate="" disabled={locked}
             title={`${next.label} needs the agreement marked as signed`} aria-label={`${next.label} locked. Mark the agreement signed`}
             onClick={() => { const box = document.getElementById(fid("agreement")); box?.scrollIntoView?.({ block: "center" }); box?.focus?.(); }}>
             <span className="truncate">Mark signed</span>
           </Button>
         ) : next ? (
-          <Button size="sm" className="min-h-11 min-w-0 shrink sm:min-h-9" iconRight={ArrowRight} disabled={locked || pending} title={`Move to ${next.label}`} onClick={() => onRequestMove(record, next.id)}>
+          <Button size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight} disabled={locked || pending} title={`Move to ${next.label}`} onClick={() => onRequestMove(record, next.id)}>
             <span className="truncate">Move to {next.label}</span>
           </Button>
         ) : null}
@@ -1097,7 +1097,7 @@ export function RecordPanel({
         <Button variant="ghost" size="sm" className={ICON_BTN} icon={MessageSquare} data-thread-button="" title="Thread" aria-label="Thread" onClick={focusNote} />
         <Popover label="More actions" role="menu" align="right" width="w-56" dataAttr="record-more"
           button={<MoreHorizontal aria-hidden="true" className="h-4 w-4" />}
-          buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] sm:min-h-9 sm:min-w-9">
+          buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]">
           {(close) => (
             <>
               {!record.archived_at && <MenuItem disabled={locked || pending} onClick={() => { close(); setHygieneAsk({ mode: "merge", tick: Date.now() }); }}>Merge a duplicate…</MenuItem>}
