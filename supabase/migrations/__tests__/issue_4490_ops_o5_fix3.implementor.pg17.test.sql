@@ -5,6 +5,13 @@
 -- refused; a payment replay after a refund changes nothing; the guest refund
 -- decision from a Till device login needs a fresh PIN).
 -- The suite owns its fixture and rolls back.
+-- Fix 4 adds: F1d-pdf (the day-close PDF source, issue_4490_day_close_pdf, consumes
+-- its export step-up so the PDF's PIN cannot also export the CSV) and F2-7 (a
+-- sold-out request retried with no fresh PIN answers its stored result and spends
+-- no approval: the replay is checked before the step-up is taken).
+-- FAILS-ON-REVERT (fix 4, 24 Nov): day_close_pdf without its step-up take -> F1d-pdf-1
+-- (no error); sold_out_resolve taking the step-up before the replay check (as at
+-- 435a9edd8c) -> F2-7a (pin_step_up_required).
 --
 -- MINGLA-INVARIANT: I-4490-STEP-UP-BOUND-SINGLE-USE | issue #4490 | a money write recorded for a Till device (device_user_id <> actor) needs a fresh step-up approval for that purpose and that target on the device's live PIN session, taken and marked consumed in the write's own transaction (issue_4490_pin_step_up_take): every Till refund row (even by the switched-in member), a sent void, a day reopen, a day export, a sold-out refund, a money-returning sold-out swap and a guest refund approved from a Till device login; one approval authorises one request.
 -- MINGLA-INVARIANT: I-4490-SWAP-MONEY-IS-A-REFUND | issue #4490 | a sold-out swap that gives any money back needs the refund rights (event_manager+) and, on a Till device, a swap_refund step-up; a swap that gives nothing back keeps the swap rules.
@@ -473,6 +480,36 @@ $exportok$;
 SELECT public.t3f_expect($q$SELECT public.issue_4490_day_export('44906180-0000-4000-9000-0000000000b1', public.t3f_id('dayB')::date,
   public.t3f_u(1), public.t3f_u(5))$q$, 'P0001', 'pin_step_up_required',
   'F1d-4 a second export needs a second PIN');
+-- F1d-pdf (fix 4, P3-1): the day-close PDF consumes its export approval in the
+-- database (issue_4490_day_close_pdf), so the PIN typed for the PDF cannot also
+-- authorise a CSV export of the same day.
+SELECT public.t3f_expect($q$SELECT public.issue_4490_day_close_pdf('44906180-0000-4000-9000-0000000000b1', public.t3f_id('dayB')::date,
+  public.t3f_u(1), public.t3f_u(5))$q$, 'P0001', 'pin_step_up_required',
+  'F1d-pdf-1 the day-close PDF on the Till device needs a fresh PIN');
+DO $pdfok$
+DECLARE
+  b uuid := '44906180-0000-4000-9000-0000000000b1';
+  v jsonb;
+BEGIN
+  PERFORM public.issue_4490_pin_approve(public.t3f_hash(public.t3f_id('tokB')), public.t3f_u(5), b, NULL,
+    NULL, '9157', 'export', b::text || ':' || public.t3f_id('dayB'));
+  v := public.issue_4490_day_close_pdf(b, public.t3f_id('dayB')::date, public.t3f_u(1), public.t3f_u(5));
+  PERFORM public.t3f_ok(v->>'state' = 'closed', 'F1d-pdf-2 with an export approval for this day the PDF source answers the day');
+  PERFORM public.t3f_ok(NOT EXISTS (SELECT 1 FROM public.venue_pin_approvals
+                                    WHERE venue_id = b AND purpose = 'export' AND consumed_at IS NULL),
+    'F1d-pdf-3 the PDF consumed its approval (none left unused)');
+END
+$pdfok$;
+SELECT public.t3f_expect($q$SELECT public.issue_4490_day_export('44906180-0000-4000-9000-0000000000b1', public.t3f_id('dayB')::date,
+  public.t3f_u(1), public.t3f_u(5))$q$, 'P0001', 'pin_step_up_required',
+  'F1d-pdf-4 the PIN typed for the PDF does not also export the CSV of that day');
+SELECT public.t3f_ok((public.issue_4490_day_close_pdf('44906180-0000-4000-9000-0000000000b1', public.t3f_id('dayB')::date,
+    public.t3f_u(1), NULL))->>'state' = 'closed',
+  'F1d-pdf-5 the owner on their own account prints the day-close PDF with no PIN');
+SELECT public.t3f_ok(NOT has_function_privilege('authenticated', 'public.issue_4490_day_close_pdf(uuid,date,uuid,uuid)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.issue_4490_day_close_pdf(uuid,date,uuid,uuid)', 'EXECUTE')
+    AND has_function_privilege('service_role', 'public.issue_4490_day_close_pdf(uuid,date,uuid,uuid)', 'EXECUTE'),
+  'F1d-pdf-6 the PDF source is internal (service role only)');
 DO $exportnoreopen$
 DECLARE
   b uuid := '44906180-0000-4000-9000-0000000000b1';
@@ -594,6 +631,40 @@ BEGIN
   PERFORM public.t3f_ok((r->>'refundMinor')::bigint = 500000, 'F2-6 with a refund approval for this order it refunds 5,000.00');
 END
 $devrefundok$;
+-- F2-7 (fix 4, P3-2): the same request retried with no fresh PIN answers what it
+-- did (the replay is checked before any step-up is taken), moves no money and
+-- spends no approval.
+DO $devrefundreplay$
+DECLARE
+  a uuid := '44906180-0000-4000-9000-0000000000a1';
+  r jsonb;
+  v_refunds integer;
+  v_spare uuid;
+BEGIN
+  SELECT count(*) INTO v_refunds FROM public.source_refunds
+   WHERE source_type = 'venue_menu_order' AND source_id = public.t3f_id('o3')::uuid;
+  r := public.issue_4490_order_sold_out_resolve(public.t3f_id('o3')::uuid,
+    ARRAY[public.t3f_line(public.t3f_id('o3')::uuid, public.t3f_id('x')::uuid)], 'refund', NULL,
+    public.t3f_u(1), public.t3f_u(5), 'f3-dev-refund');
+  PERFORM public.t3f_ok((r->>'replayed')::boolean AND (r->>'refundMinor')::bigint = 500000
+      AND (SELECT count(*) FROM public.source_refunds
+            WHERE source_type = 'venue_menu_order' AND source_id = public.t3f_id('o3')::uuid) = v_refunds,
+    'F2-7a the device refund retried without a fresh PIN answers the stored refund, nothing more');
+  PERFORM public.issue_4490_pin_approve(public.t3f_hash(public.t3f_id('tokO')), public.t3f_u(5), a, NULL,
+    NULL, '9157', 'refund', public.t3f_id('o3'));
+  SELECT id INTO v_spare FROM public.venue_pin_approvals
+   WHERE venue_id = a AND purpose = 'refund' AND lower(target) = lower(public.t3f_id('o3')) AND consumed_at IS NULL;
+  r := public.issue_4490_order_sold_out_resolve(public.t3f_id('o3')::uuid,
+    ARRAY[public.t3f_line(public.t3f_id('o3')::uuid, public.t3f_id('x')::uuid)], 'refund', NULL,
+    public.t3f_u(1), public.t3f_u(5), 'f3-dev-refund');
+  PERFORM public.t3f_ok((r->>'replayed')::boolean
+      AND (SELECT consumed_at IS NULL FROM public.venue_pin_approvals WHERE id = v_spare),
+    'F2-7b a replay spends no approval');
+  -- Leave nothing unused for the cases below.
+  UPDATE public.venue_pin_approvals SET consumed_at = now(), consumed_txid = txid_current(), consumed_ref = 't3f:spent'
+   WHERE id = v_spare;
+END
+$devrefundreplay$;
 -- F4: one key, two different line sets.
 DO $key1$
 DECLARE

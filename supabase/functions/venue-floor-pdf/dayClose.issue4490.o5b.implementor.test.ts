@@ -1,5 +1,5 @@
 // #4490 spec 08 O5 part B — the day-close PDF (Print on "Day closed"):
-// venue-floor-pdf kind day_close reads the day from issue_4490_day_summary
+// venue-floor-pdf kind day_close reads the day from issue_4490_day_close_pdf
 // (money rights, the PIN session on a Till device, the device recorded),
 // renders it with buildDayClosePdf (currency as a code, the difference in
 // words, names never emails) and delivers it on the same private bucket with a
@@ -181,7 +181,7 @@ function world(
           error: null,
         });
       }
-      if (name === "issue_4490_day_summary") {
+      if (name === "issue_4490_day_close_pdf") {
         return Promise.resolve(
           options.summaryError
             ? { data: null, error: options.summaryError }
@@ -257,7 +257,7 @@ Deno.test("C1 the day close prints: the summary as the person, the private bucke
   const body = await res.json();
   assert(String(body.signedUrl).startsWith("https://storage.test/"));
   assertEquals(body.filename, "day-close-sat-21-nov-2026.pdf");
-  const s = w.calls.find((c) => c.name === "issue_4490_day_summary")!;
+  const s = w.calls.find((c) => c.name === "issue_4490_day_close_pdf")!;
   assertEquals(s.params, {
     p_venue_id: VENUE,
     p_date: "2026-11-21",
@@ -307,7 +307,7 @@ Deno.test("C3 on a Till device: no PIN session, no PDF; in a session it needs a 
   );
   assertEquals(res.status, 401);
   assertEquals((await res.json()).code, "pin_session_required");
-  assert(!w.calls.some((c) => c.name === "issue_4490_day_summary"));
+  assert(!w.calls.some((c) => c.name === "issue_4490_day_close_pdf"));
   w = world({ device: true });
   res = await w.handle(
     req({
@@ -319,7 +319,7 @@ Deno.test("C3 on a Till device: no PIN session, no PDF; in a session it needs a 
   );
   assertEquals(res.status, 403);
   assertEquals((await res.json()).code, "pin_step_up_required");
-  assert(!w.calls.some((c) => c.name === "issue_4490_day_summary"));
+  assert(!w.calls.some((c) => c.name === "issue_4490_day_close_pdf"));
   w = world({ device: true });
   res = await w.handle(
     req({
@@ -334,7 +334,7 @@ Deno.test("C3 on a Till device: no PIN session, no PDF; in a session it needs a 
   const approve = w.calls.find((c) => c.name === "issue_4490_pin_approve")!;
   assertEquals(approve.params.p_purpose, "export");
   assertEquals(approve.params.p_target, `${VENUE}:2026-11-21`);
-  const s = w.calls.find((c) => c.name === "issue_4490_day_summary")!;
+  const s = w.calls.find((c) => c.name === "issue_4490_day_close_pdf")!;
   assertEquals(s.params.p_actor, MANAGER);
   assertEquals(s.params.p_device_user, DEVICE);
 });

@@ -13,7 +13,7 @@
 // person's rights at that venue BEFORE anything is read for printing:
 //   kitchen_ticket / test_ticket -> stations on + issue_4490_can_kitchen
 //   receipt                      -> the Till on + issue_4490_can_sell, paid payment
-//   day_close                    -> the Till on + money rights (issue_4490_day_summary,
+//   day_close                    -> the Till on + money rights (issue_4490_day_close_pdf,
 //                                   O5 part B); { date } names the business day
 // Objects go to the PRIVATE venue-floor-pdfs bucket at <brand>/<venue>/<uuid>.pdf
 // (listed in venue_floor_pdfs first, so venue-offer-sweep deletes every one
@@ -66,7 +66,7 @@ const SAFE: Record<string, number> = {
   floor_pdf_not_found: 404,
   venue_not_found: 404,
   floor_pdf_not_ready: 409,
-  // O5 part B: the day close comes from issue_4490_day_summary.
+  // O5 part B: the day close comes from issue_4490_day_close_pdf (the day summary).
   day_out_of_range: 400,
   pin_session_required: 401,
   pin_session_invalid: 401,
@@ -338,7 +338,7 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
     // a live PIN session (staffSession in the body) and is made as that
     // member. Kitchen and test tickets are station work: the device itself.
     // O5 part B: the day close is money: a PIN session on a Till device, money
-    // rights (checked by issue_4490_day_summary with the device recorded).
+    // rights (checked by issue_4490_day_close_pdf with the device recorded).
     let pdfActor = userId;
     let pdfDevice: string | null = null;
     if (kind === "receipt" || kind === "day_close") {
@@ -365,7 +365,10 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
     let sourceData: unknown;
     let sourceError: unknown;
     if (kind === "day_close") {
-      const r = await client.rpc("issue_4490_day_summary", {
+      // #4490 08-O5 fix 3: issue_4490_day_close_pdf consumes the export
+      // approval made above (single use, in the database), so the PDF's PIN
+      // can never also authorise a CSV export of the same day.
+      const r = await client.rpc("issue_4490_day_close_pdf", {
         p_venue_id: venueId,
         p_date: dayDate,
         p_actor: pdfActor,

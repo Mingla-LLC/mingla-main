@@ -45,7 +45,8 @@
 --    refunded (or cancelled after payment) is a replay that changes nothing;
 --    it no longer flips the order back to "paid" (P9).
 --
--- The day-close PDF step-up (6), the Till-device step-up on the guest refund
+-- The day-close PDF consumes its export step-up in the database
+-- (issue_4490_day_close_pdf, section 6). The Till-device step-up on the guest refund
 -- decision at the edge (7), the fail-closed PIN gate (8) and the CSV formula
 -- guard (9) are edge and client changes. The new columns are on
 -- venue_pin_approvals (no new venue_id column), so the #2099 pending-venue
@@ -339,6 +340,30 @@ SELECT pg_temp.issue_4490_o5f3_patch(
   END IF;$new$
 );
 
+-- The day-close PDF is an export of the day too: on a Till device it consumes
+-- the export approval the PDF's PIN made (single use), so that approval can
+-- never also authorise a CSV export of the same day. issue_4490_day_summary
+-- itself takes nothing (the Till's summary screen and the close and reopen
+-- answers read it).
+CREATE FUNCTION public.issue_4490_day_close_pdf(p_venue_id uuid, p_date date, p_actor uuid, p_device_user uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  PERFORM public.issue_4490_pin_step_up_take(p_venue_id, p_actor, p_device_user, 'export',
+    p_venue_id::text || ':' || COALESCE(p_date::text, ''),
+    'export_pdf:' || gen_random_uuid()::text, true);
+  RETURN public.issue_4490_day_summary(p_venue_id, p_date, p_actor, p_device_user);
+END;
+$function$;
+
+COMMENT ON FUNCTION public.issue_4490_day_close_pdf(uuid, date, uuid, uuid) IS
+  '#4490 08-O5 fix 3: the day-close PDF source. On a Till device it consumes the export step-up for that '
+  'venue''s day (single use), then answers issue_4490_day_summary. Internal (service role).';
+
 -- ===========================================================================
 -- 7. Sold out after payment: step-up, money-returning swaps, key reuse.
 -- ===========================================================================
@@ -363,24 +388,26 @@ SELECT pg_temp.issue_4490_o5f3_patch(
      AND v_order.metadata->'sold_out_resolutions' ? v_key THEN
     RETURN (v_order.metadata->'sold_out_resolutions'->v_key) || jsonb_build_object('replayed', true);
   END IF;$old$,
-  $new$  -- #4490 08-O5 fix 3: on a Till device a sold-out refund consumes a refund
-  -- approval for this order (always); a swap takes a swap_refund approval
-  -- when one was given (required below only if the swap returns money).
-  v_step := public.issue_4490_pin_step_up_take(v_order.venue_id, p_actor, p_device_user,
-    CASE WHEN p_resolution = 'refund' THEN 'refund' ELSE 'swap_refund' END, v_order.id::text,
-    'sold_out:' || gen_random_uuid()::text, p_resolution = 'refund');
-  PERFORM public.issue_4490_pin_actor_assert(v_order.venue_id, p_actor, p_device_user);
-
-  SELECT array_agg(DISTINCT x ORDER BY x) INTO v_ids FROM unnest(p_item_ids) x;
+  $new$  SELECT array_agg(DISTINCT x ORDER BY x) INTO v_ids FROM unnest(p_item_ids) x;
   -- A replay of the same request answers what it did; the same key for other
-  -- lines (or the other resolution) is refused (#4490 08-O5 fix 3, P7).
+  -- lines (or the other resolution) is refused (#4490 08-O5 fix 3, P7). The
+  -- replay is answered before any step-up is taken (like a Till refund), so a
+  -- retry needs no fresh PIN and never spends one.
   IF v_order.metadata->'sold_out_resolutions' ? v_key THEN
     IF (v_order.metadata->'sold_out_resolutions'->v_key->'orderItemIds') IS NOT DISTINCT FROM to_jsonb(v_ids)
        AND (v_order.metadata->'sold_out_resolutions'->v_key->>'resolution') IS NOT DISTINCT FROM p_resolution THEN
       RETURN (v_order.metadata->'sold_out_resolutions'->v_key) || jsonb_build_object('replayed', true);
     END IF;
     RAISE EXCEPTION 'sold_out_key_reused' USING ERRCODE = 'PT409';
-  END IF;$new$
+  END IF;
+
+  -- #4490 08-O5 fix 3: on a Till device a sold-out refund consumes a refund
+  -- approval for this order (always); a swap takes a swap_refund approval
+  -- when one was given (required below only if the swap returns money).
+  v_step := public.issue_4490_pin_step_up_take(v_order.venue_id, p_actor, p_device_user,
+    CASE WHEN p_resolution = 'refund' THEN 'refund' ELSE 'swap_refund' END, v_order.id::text,
+    'sold_out:' || gen_random_uuid()::text, p_resolution = 'refund');
+  PERFORM public.issue_4490_pin_actor_assert(v_order.venue_id, p_actor, p_device_user);$new$
 );
 SELECT pg_temp.issue_4490_o5f3_patch(
   'public.issue_4490_order_sold_out_resolve(uuid,uuid[],text,uuid,uuid,uuid,text)'::regprocedure,
@@ -438,6 +465,10 @@ REVOKE ALL ON FUNCTION public.issue_4490_pin_step_up_take(uuid, uuid, uuid, text
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4490_pin_step_up_take(uuid, uuid, uuid, text, text, text, boolean)
   TO service_role;
+REVOKE ALL ON FUNCTION public.issue_4490_day_close_pdf(uuid, date, uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_day_close_pdf(uuid, date, uuid, uuid)
+  TO service_role;
 
 COMMIT;
 
@@ -448,5 +479,5 @@ COMMIT;
 -- pg_venue_order_finalize_payment from 20281203724490;
 -- issue_4490_order_sold_out_resolve from 20281203734490;
 -- biz_venue_order_refund_decision from 20270319001846; then DROP FUNCTION
--- issue_4490_pin_step_up_take and the three consumed_* columns, and restore
+-- issue_4490_day_close_pdf and issue_4490_pin_step_up_take and the three consumed_* columns, and restore
 -- the two purpose checks without swap_refund.

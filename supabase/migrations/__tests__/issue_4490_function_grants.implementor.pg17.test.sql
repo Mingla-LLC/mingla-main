@@ -71,6 +71,7 @@
 -- role only), the orderable rule and the stock guard trigger (invoker helpers); the functions it
 -- re-emits or patches (till send, till void, the finalizer, the floor audit, the day summary) keep
 -- their classes.
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 4): 20281203754490 also adds issue_4490_day_close_pdf (internal).
 -- TEST-MOD-APPROVED #4490 (08-O5 fix 3): 20281203754490 adds issue_4490_pin_step_up_take (internal); the
 -- functions it patches keep their classes.
 -- TEST-MOD-APPROVED #4490 (08-O5 fix 1): 20281203734490 adds the line refund kind rule and the
@@ -643,6 +644,8 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_venue_hours_capture()', 'internal'),
   -- 08-O5 fix 3 (20281203754490): the step-up take (single-use approvals), internal.
   ('issue_4490_pin_step_up_take(uuid,uuid,uuid,text,text,text,boolean)', 'internal'),
+  -- 08-O5 fix 4 (20281203754490): the day-close PDF source consumes its export step-up, internal.
+  ('issue_4490_day_close_pdf(uuid,date,uuid,uuid)', 'internal'),
   ('issue_4490_station_has_screen(uuid,text)', 'internal'),
   -- 08-O3 part A (20281203584490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
