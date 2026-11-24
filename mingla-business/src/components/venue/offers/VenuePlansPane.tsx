@@ -12,7 +12,8 @@ import { useRouter } from "expo-router";
 import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import type { PublicVenueReservationBar } from "@mingla/brand-rendering/PublicVenueScreen";
-import { formatVenueMoney, type VenueFeaturePlanView } from "@mingla/brand-rendering/venueFeaturePage";
+import type { VenueFeaturePlanView } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 
 import { radius, space, type } from "../../../constants/designSystem";
 import { EntryButton, EntryNote, entryStyles } from "./EntryUi";

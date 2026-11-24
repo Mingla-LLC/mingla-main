@@ -56,7 +56,7 @@ import {
   guestPayState,
   type TillPayView,
 } from "../../../src/components/venue/till/tillPayModel";
-import { tillErrorCopy } from "../../../src/components/venue/till/tillCopy";
+import { tillErrorCopy } from "../../../src/components/venue/till/tillErrorCopy";
 import { formatCurrency } from "../../../src/utils/currency";
 import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
 

@@ -32,3 +32,6 @@ export { VisitMembership } from "../offers/VisitMembership";
 export { VisitWaitlist } from "../offers/VisitWaitlist";
 export { VisitGuestList } from "../features/guestlist/VisitGuestList";
 export { VenueOfferBookRouteScreen } from "./VenueOfferBookRouteScreen";
+// The Host's "move a booking" step reads the guest's day times through these.
+export { venueOfferGuestService } from "../../../services/venueOfferGuestService";
+export { sessionChipsFor } from "@mingla/brand-rendering/venueOffers/hireModel";

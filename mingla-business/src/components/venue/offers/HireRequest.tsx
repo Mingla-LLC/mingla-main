@@ -18,7 +18,7 @@ import { createThemePalette, resolveTheme, type ResolvedTheme, type ThemePalette
 import { boldFontFamily, neutralHair, statusOn } from "@mingla/offering-rendering/themePalette";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { OfferingChipRow, OfferingChoiceChip, OfferingStepper } from "@mingla/offering-rendering/OfferingDecideParts";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import { entryDateLabel, holdUntilText, venueAddressLine, venueClock } from "@mingla/brand-rendering/venueOffers/entryModel";
 import {
   OCCASIONS,

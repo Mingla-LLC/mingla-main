@@ -14,7 +14,7 @@
  */
 
 import { supabase } from "./supabase";
-import { fetchTillPinStaff } from "./venueTillService";
+import { fetchTillPinStaff } from "./tillPinService";
 
 /** The device sign-out step on the Till route. */
 export function tillSignOutHref(venueId: string): string {

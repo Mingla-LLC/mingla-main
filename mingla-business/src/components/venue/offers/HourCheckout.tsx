@@ -16,7 +16,7 @@ import { createThemePalette, resolveTheme, type ResolvedTheme, type ThemePalette
 import { boldFontFamily, statusOn } from "@mingla/offering-rendering/themePalette";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import {
   countdownText,
   entryDateLabel,

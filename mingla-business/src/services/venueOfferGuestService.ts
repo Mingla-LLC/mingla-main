@@ -46,6 +46,7 @@ import {
 } from "@mingla/brand-rendering/venueOffers/hireModel";
 
 import { supabase } from "./supabase";
+import { VenueOfferGuestError, invoke, textClaimLink } from "./venueOfferGuestInvoke";
 
 /** #4490 P4 — a space's public photos and its outline on the venue's site plan. */
 export interface HireSpaceMedia {
@@ -54,53 +55,9 @@ export interface HireSpaceMedia {
   planShape: { x: number; y: number; w: number; h: number } | null;
 }
 
-export class VenueOfferGuestError extends Error {
-  readonly code: string;
-  readonly remaining: number | null;
-  readonly status: number | null;
-  readonly detail: { placeName?: string; capacity?: number; layout?: string } | null;
-  constructor(
-    code: string,
-    status: number | null,
-    remaining: number | null = null,
-    detail: { placeName?: string; capacity?: number; layout?: string } | null = null,
-  ) {
-    super(code);
-    this.name = "VenueOfferGuestError";
-    this.code = code;
-    this.status = status;
-    this.remaining = remaining;
-    this.detail = detail;
-  }
-}
-
-async function invoke(body: Record<string, unknown>): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke("venue-offers", { body });
-  if (error) {
-    const response = (error as { context?: unknown }).context as Response | undefined;
-    if (response && typeof response.json === "function") {
-      const parsed = (await response.json().catch(() => ({}))) as {
-        code?: unknown;
-        remaining?: unknown;
-        detail?: unknown;
-      };
-      const detail = parsed.detail !== null && typeof parsed.detail === "object"
-        ? parsed.detail as { placeName?: string; capacity?: number; layout?: string }
-        : null;
-      throw new VenueOfferGuestError(
-        typeof parsed.code === "string" ? parsed.code : "offer_request_failed",
-        typeof response.status === "number" ? response.status : null,
-        typeof parsed.remaining === "number" ? parsed.remaining : null,
-        detail,
-      );
-    }
-    throw new VenueOfferGuestError("offer_request_failed", null);
-  }
-  if (!data || typeof data !== "object" || (data as { kind?: unknown }).kind !== "success") {
-    throw new VenueOfferGuestError("offer_request_failed", null);
-  }
-  return (data as { data: unknown }).data;
-}
+// #4490 — the error and the edge call live in a leaf (venueOfferGuestInvoke.ts)
+// so the claim card can text a link without loading every guest offer model.
+export { VenueOfferGuestError } from "./venueOfferGuestInvoke";
 
 export interface EntryPaymentRedirect {
   kind: "requires_redirect";
@@ -482,15 +439,7 @@ export const venueOfferGuestService = {
 
   /** #4490 Explorer W1: re-send the app link by text to the phone on the booking (at most 3). */
   async textClaimLink(input: { groupId: string; token: string | null }): Promise<{ remaining: number; phoneLast4: string | null }> {
-    const raw = (await invoke({
-      action: "text_claim_link",
-      groupId: input.groupId,
-      ...(input.token ? { token: input.token } : {}),
-    })) as Record<string, unknown> | null;
-    return {
-      remaining: typeof raw?.remaining === "number" ? raw.remaining : 0,
-      phoneLast4: typeof raw?.phoneLast4 === "string" ? raw.phoneLast4 : null,
-    };
+    return textClaimLink(input);
   },
 
   async get(input: { groupId: string; token: string | null }): Promise<EntryBooking> {

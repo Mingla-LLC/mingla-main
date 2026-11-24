@@ -32,7 +32,7 @@ import {
   venueOfferErrorCopy,
   windowText,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 
 import { radius, size, space, type } from "../../../constants/designSystem";
 import {

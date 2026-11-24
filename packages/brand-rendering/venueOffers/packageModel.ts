@@ -11,7 +11,7 @@
  * Same rules as `entryModel.ts`: no React, no network, no clock (callers pass
  * `now`). Money is minor units; the server computes every total.
  */
-import { formatVenueMoney } from "../venueFeaturePage";
+import { formatVenueMoney } from "../venueMoney";
 import {
   entryDateLabel,
   entryDayTiles,

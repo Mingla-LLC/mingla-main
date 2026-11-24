@@ -22,7 +22,7 @@ import { BuyerClaimCard } from "../../offering/LazyPublicParts";
 import { Icon } from "../../ui/Icon";
 import { entryStyles } from "./EntryUi";
 import { Button } from "../../ui/Button";
-import { VenueOfferGuestError, venueOfferGuestService } from "../../../services/venueOfferGuestService";
+import { VenueOfferGuestError, textClaimLink } from "../../../services/venueOfferGuestInvoke";
 
 export interface VenueHandoff {
   shortUrl: string | null;
@@ -129,7 +129,7 @@ function TextMeTheLink({
   const send = async (): Promise<void> => {
     setState({ phase: "sending", line: null });
     try {
-      const out = await venueOfferGuestService.textClaimLink({ groupId, token });
+      const out = await textClaimLink({ groupId, token });
       setState({ phase: "sent", line: TEXT_LINK_COPY.sent(out.phoneLast4) });
     } catch (caught) {
       const code = caught instanceof VenueOfferGuestError ? caught.code : "offer_request_failed";

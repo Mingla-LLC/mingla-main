@@ -26,11 +26,11 @@ import {
   resetTillPin,
   setMyTillPin,
   TillError,
-} from "../../services/venueTillService";
+} from "../../services/tillPinService";
 import { Button } from "../ui/Button";
 import { PinPad } from "../venue/till/PinPad";
 import { PIN_COPY, pinIsWeak } from "../venue/till/pinModel";
-import { tillErrorCopy } from "../venue/till/tillCopy";
+import { tillErrorCopy } from "../venue/till/tillErrorCopy";
 
 export const tillPinTeamKeys = {
   mine: (brandId: string) => ["tillPin", brandId, "mine"] as const,

@@ -13,7 +13,7 @@
  * `now`). Money is minor units; the server computes every total — the amount
  * a guest is asked to pay is always the server's own number.
  */
-import { formatVenueMoney } from "../venueFeaturePage";
+import { formatVenueMoney } from "../venueMoney";
 import {
   entryDateLabel,
   parseEntryOfferDetail,

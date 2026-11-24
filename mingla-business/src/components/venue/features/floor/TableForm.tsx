@@ -9,7 +9,7 @@
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 
 import { color, space, type } from "../../../../constants/designSystem";
 import { useTouchFloor } from "../../../../hooks/useTouchFloor";

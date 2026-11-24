@@ -14,7 +14,8 @@
  * Money is minor units with the currency's exponent; the server computes every
  * total and this module only formats what it was given.
  */
-import { formatVenueMoney, venueDateLabel } from "../venueFeaturePage";
+import { formatVenueMoney } from "../venueMoney";
+import { venueDateLabel } from "../venueValues";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Wire shapes (parsed fail-closed)

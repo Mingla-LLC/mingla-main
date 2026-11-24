@@ -73,7 +73,8 @@ import {
   OfferingStepper,
 } from "@mingla/offering-rendering/OfferingDecideParts";
 import { OfferingSubLabel } from "@mingla/offering-rendering/OfferingSectionTitle";
-import { formatVenueMoney, type VenueFeatureTablesView } from "@mingla/brand-rendering/venueFeaturePage";
+import type { VenueFeatureTablesView } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import {
   confirmGuestVenueReservation,
 } from "../../services/venueGuestReservationService";

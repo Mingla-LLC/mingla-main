@@ -15,15 +15,15 @@ import { StyleSheet, Text, View } from "react-native";
 import { color, space, type } from "../../../constants/designSystem";
 import { reportNonFatal } from "../../../diagnostics/reportNonFatal";
 import { cancelTillCardPayment, TillError } from "../../../services/venueTillService";
-import { createTillTapServer } from "../../../services/terminal/doorTapEdge";
 import { getTillStaffSession } from "../../../services/tillStaffSession";
-import { TapToPaySaleFlow, type TapSaleState } from "../../../services/terminal/tapToPayFlow";
+import type { TapToPaySaleFlow, TapSaleState } from "../../../services/terminal/tapToPayFlow";
 import { getTapToPaySession } from "../../../services/terminal/tapToPaySession";
 import { formatCurrency } from "../../../utils/currency";
 import { randomUuid } from "../../../utils/randomId";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { Spinner } from "../../ui/Spinner";
+import { loadDoorSaleScreens } from "../../door/LazyDoorSaleScreens";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
 import { tillTapPanelCopy, tillTapResumedCopy } from "./tillTapPanelModel";
 
@@ -63,26 +63,42 @@ export function TillTapPanel({
       setState({ kind: "not_on_this_phone" });
       return undefined;
     }
-    const flow = new TapToPaySaleFlow({
-      scope: { kind: "till", venueId, paymentId },
-      draft: EMPTY_DRAFT,
-      clientRequestId: randomUuid(),
-      terminal: client,
-      server: createTillTapServer({ venueId, paymentId, staffSession: getTillStaffSession(venueId)?.token ?? null }),
-      onState: (next) => {
-        if (flowRef.current !== flow) return;
-        setState(next);
-      },
-      report: reportNonFatal,
-      onPaidAfterClose: () => {
-        // The check shows it (realtime / poll); nothing to do on a closed sheet.
-      },
-    });
-    flowRef.current = flow;
-    void flow.start();
+    // #4490 — the Terminal flow and the tap edge client load from the door
+    // card-sale chunk (the event door's Tap to Pay uses the same two), so the
+    // Till never bundles a second copy and nothing they share reaches __common.
+    let closed = false;
+    let flow: TapToPaySaleFlow | null = null;
+    void loadDoorSaleScreens()
+      .then((door) => {
+        if (closed) return;
+        const started: TapToPaySaleFlow = new door.TapToPaySaleFlow({
+          scope: { kind: "till", venueId, paymentId },
+          draft: EMPTY_DRAFT,
+          clientRequestId: randomUuid(),
+          terminal: client,
+          server: door.createTillTapServer({ venueId, paymentId, staffSession: getTillStaffSession(venueId)?.token ?? null }),
+          onState: (next) => {
+            if (flowRef.current !== started) return;
+            setState(next);
+          },
+          report: reportNonFatal,
+          onPaidAfterClose: () => {
+            // The check shows it (realtime / poll); nothing to do on a closed sheet.
+          },
+        });
+        flow = started;
+        flowRef.current = started;
+        void started.start();
+      })
+      .catch((e: unknown) => {
+        reportNonFatal("till.tap-load", e);
+        if (!closed) setState({ kind: "not_on_this_phone" });
+      });
     return () => {
+      closed = true;
       flowRef.current = null;
-      if (!paidRef.current) void flow.closeSale().catch((e: unknown) => reportNonFatal("till.tap-close", e));
+      const open = flow;
+      if (open !== null && !paidRef.current) void open.closeSale().catch((e: unknown) => reportNonFatal("till.tap-close", e));
     };
   }, [venueId, paymentId, resumed]);
 

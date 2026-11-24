@@ -109,3 +109,33 @@ function venueSpendRange(input: {
   const min = amount(input.minMinor);
   return input.maxMinor === null ? `${min}+` : `${min}–${amount(input.maxMinor)}`;
 }
+
+/**
+ * "₦4,000" for whole amounts, "₦4,000.50" otherwise. Falls back to the plain
+ * formatter when the engine has no narrow symbol for the currency.
+ */
+export function formatVenueMoney(
+  minor: number,
+  currencyCode: string,
+  exponent: number,
+): string {
+  if (!Number.isSafeInteger(minor) || minor < 0) return "—";
+  const whole = minor % 10 ** exponent === 0;
+  // W3 fix 3 (W3-N24): Hermes has no narrow naira symbol and prints
+  // "NGN 4,000"; the shared glyph rule (#3341) makes it "₦4,000" on every
+  // engine (spec 06 decision 14: Naira shows ₦). A no-op on V8.
+  try {
+    return withCurrencyGlyph(
+      new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: currencyCode,
+        currencyDisplay: "narrowSymbol",
+        minimumFractionDigits: whole ? 0 : exponent,
+        maximumFractionDigits: whole ? 0 : exponent,
+      }).format(minor / 10 ** exponent),
+      currencyCode,
+    );
+  } catch {
+    return withCurrencyGlyph(formatMinorCurrency(minor, currencyCode, exponent), currencyCode);
+  }
+}

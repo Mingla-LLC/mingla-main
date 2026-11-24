@@ -13,7 +13,8 @@ import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 import { OfferingRadioCard } from "@mingla/offering-rendering/OfferingDecideParts";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import type { PublicVenueReservationBar } from "@mingla/brand-rendering/PublicVenueScreen";
-import { formatVenueMoney, type VenueFeatureOfferView } from "@mingla/brand-rendering/venueFeaturePage";
+import type { VenueFeatureOfferView } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import { entryDateLabel } from "@mingla/brand-rendering/venueOffers/entryModel";
 import { packageCheckoutPath } from "@mingla/brand-rendering/venueOffers/packageModel";
 

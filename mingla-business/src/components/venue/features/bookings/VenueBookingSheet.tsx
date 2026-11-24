@@ -25,8 +25,10 @@ import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { useDamageDeposit } from "../../../../hooks/useVenueHire";
 import { useVenueOffers } from "../../../../hooks/useVenueOffers";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
-import { venueOfferGuestService } from "../../../../services/venueOfferGuestService";
-import { sessionChipsFor } from "@mingla/brand-rendering/venueOffers/hireModel";
+// #4490 — moving a booking reads the same day times the guest sees, so it
+// loads them from the Guest venue owner on use (never a static import: that
+// would put the guest offer models in both owners, i.e. in __common).
+import { loadVenueGuestScreens } from "../../guest/venueGuestOwner";
 import { venueLayoutSummary } from "@mingla/brand-rendering/venueOffers/layoutModel";
 import type {
   BookingChangeAction,
@@ -70,7 +72,11 @@ import {
   staffCancelWords,
   whenLine,
 } from "./bookingModel";
+
 import { shortBookingReference } from "../../../../utils/venueBookingReference";
+
+/** A time the booking can move to (the guest's own day times). */
+type MoveDayRow = { windowId: string; startsAt: string; status: string; remaining: number; label: string | null };
 
 const LazyToast = React.lazy(async () => {
   const mod = await import("../../../ui/Toast");
@@ -646,7 +652,7 @@ function DateForm({ b, brandId, venueId, onBack, onDone, offer }: FormProps & { 
   const today = todayIso(b.timezone);
   const [date, setDate] = useState<string>(b.window !== null && b.window.localDate > today ? b.window.localDate : addDays(today, 1));
   const [windowId, setWindowId] = useState<string | null>(null);
-  const [rows, setRows] = useState<Array<{ windowId: string; startsAt: string; status: string; remaining: number; label: string | null }> | null>(null);
+  const [rows, setRows] = useState<MoveDayRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const guests = b.lines.reduce((n, l) => n + l.guests, 0);
   const offeringId = b.offer.id;
@@ -657,7 +663,7 @@ function DateForm({ b, brandId, venueId, onBack, onDone, offer }: FormProps & { 
     setLoadError(null);
     if (offeringId === null) return undefined;
     // #4490 P4 follow-up: a hire moves to another session window, named like the guest sees it.
-    const load =
+    const load = loadVenueGuestScreens().then(({ venueOfferGuestService, sessionChipsFor }): Promise<MoveDayRow[]> =>
       b.hire !== null
         ? venueOfferGuestService.hireDays({ offeringId, from: date, to: date, guests }).then((r) =>
             sessionChipsFor(r, date, (offer?.hire?.sessions ?? []).map((x) => ({ ...x, weekdays: x.weekdays })), b.timezone, true).map((c) => ({
@@ -670,7 +676,8 @@ function DateForm({ b, brandId, venueId, onBack, onDone, offer }: FormProps & { 
           )
         : venueOfferGuestService
             .availability({ offeringId, from: date, to: date })
-            .then((r) => r.filter((x) => x.localDate === date).map((x) => ({ windowId: x.windowId, startsAt: x.startsAt, status: x.status, remaining: x.remaining, label: null })));
+            .then((r) => r.filter((x) => x.localDate === date).map((x) => ({ windowId: x.windowId, startsAt: x.startsAt, status: x.status, remaining: x.remaining, label: null }))),
+    );
     load
       .then((list) => {
         if (live) setRows(list);

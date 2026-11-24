@@ -18,7 +18,7 @@ import {
   type OfferingDateTile,
 } from "@mingla/offering-rendering/OfferingDecideParts";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import { entryDateLabel, venueOfferErrorCopy } from "@mingla/brand-rendering/venueOffers/entryModel";
 import {
   depositWords,

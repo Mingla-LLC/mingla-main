@@ -13,7 +13,7 @@ import {
   isVenueOfferBookingToken,
   readVenueOfferBookingToken,
 } from "../../../utils/venueOfferBookingTokens";
-import { parsePlanCharge, type VenuePlanCharge } from "@mingla/brand-rendering/venueFeaturePage";
+import { parsePlanCharge, type VenuePlanCharge } from "@mingla/brand-rendering/venueValues";
 
 export type GuestMemberStatus = "pending" | "active" | "payment_due" | "grace" | "lapsed" | "paused" | "requested" | "declined" | "cancelled";
 

@@ -28,7 +28,8 @@ import {
 import { accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 import type { PublicVenueReservationBar } from "@mingla/brand-rendering/PublicVenueScreen";
-import { formatVenueMoney, type VenueFeatureOfferView } from "@mingla/brand-rendering/venueFeaturePage";
+import type { VenueFeatureOfferView } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import {
   addDays,
   entryDateLabel,

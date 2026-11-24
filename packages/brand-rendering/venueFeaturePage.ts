@@ -24,9 +24,15 @@
  * `venueCategory` is read nowhere in this file. A venue type is a label and a
  * starting preset only (see `venueCategoryProfile.ts`).
  */
-import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import type { PublicVenueTab } from "./publicVenueTabState";
-import { formatMinorCurrency } from "./venueMoney";
+import { formatVenueMoney } from "./venueMoney";
+import { parsePlanCharge, venueDateLabel, type VenuePlanCharge } from "./venueValues";
+
+// #4490 — the money, date and plan-charge helpers live in small leaves
+// (venueMoney.ts, venueValues.ts) so the Guest and Host venue screens that
+// only format a price or a date never load this page model.
+export { formatVenueMoney } from "./venueMoney";
+export { parsePlanCharge, venueDateLabel, type VenuePlanCharge } from "./venueValues";
 import {
   venueClockMinutes,
   venueWallClock,
@@ -192,38 +198,6 @@ export interface VenueFeaturePlanView {
    * fees). Null when the server did not send it: then no total is shown.
    */
   charge?: VenuePlanCharge | null;
-}
-
-/** #4490 06-W4 fix 1 (W4-N2): a plan payment's money, in minor units, as the server charges it. */
-export interface VenuePlanCharge {
-  baseMinor: number;
-  feeMinor: number;
-  /** The VAT: added on top (`vatMode` "added") or the part of the base that is VAT ("included"). */
-  taxMinor: number;
-  /** What the payment page asks for. */
-  totalMinor: number;
-  vatMode: "added" | "included" | "none";
-  vatRatePct: number;
-}
-
-/** A server charge block (`plans[].charge`, `plan.charge`, `paymentDue`); null when it is not one. Fail closed. */
-export function parsePlanCharge(raw: unknown): VenuePlanCharge | null {
-  if (!isRecord(raw)) return null;
-  const base = asInt(raw.baseMinor);
-  const total = asInt(raw.totalMinor) ?? asInt(raw.amountMinor);
-  const tax = asInt(raw.taxMinor) ?? 0;
-  const fee = asInt(raw.feeMinor) ?? 0;
-  if (base === null || total === null || base < 0 || total < 0) return null;
-  const rate = typeof raw.vatRatePct === "number" && Number.isFinite(raw.vatRatePct) ? raw.vatRatePct
-    : typeof raw.vatRatePct === "string" && Number.isFinite(Number(raw.vatRatePct)) ? Number(raw.vatRatePct) : 0;
-  return {
-    baseMinor: base,
-    feeMinor: fee,
-    taxMinor: tax,
-    totalMinor: total,
-    vatMode: raw.vatMode === "added" || raw.vatMode === "included" ? raw.vatMode : "none",
-    vatRatePct: rate,
-  };
 }
 
 export interface PublicVenueFeaturesView {
@@ -544,36 +518,6 @@ export function parsePublicVenueFeatures(
 // Money
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * "₦4,000" for whole amounts, "₦4,000.50" otherwise. Falls back to the plain
- * formatter when the engine has no narrow symbol for the currency.
- */
-export function formatVenueMoney(
-  minor: number,
-  currencyCode: string,
-  exponent: number,
-): string {
-  if (!Number.isSafeInteger(minor) || minor < 0) return "—";
-  const whole = minor % 10 ** exponent === 0;
-  // W3 fix 3 (W3-N24): Hermes has no narrow naira symbol and prints
-  // "NGN 4,000"; the shared glyph rule (#3341) makes it "₦4,000" on every
-  // engine (spec 06 decision 14: Naira shows ₦). A no-op on V8.
-  try {
-    return withCurrencyGlyph(
-      new Intl.NumberFormat("en", {
-        style: "currency",
-        currency: currencyCode,
-        currencyDisplay: "narrowSymbol",
-        minimumFractionDigits: whole ? 0 : exponent,
-        maximumFractionDigits: whole ? 0 : exponent,
-      }).format(minor / 10 ** exponent),
-      currencyCode,
-    );
-  } catch {
-    return withCurrencyGlyph(formatMinorCurrency(minor, currencyCode, exponent), currencyCode);
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Hours: several windows a day, and special days
 // ═══════════════════════════════════════════════════════════════════════════
@@ -636,40 +580,6 @@ export function venueHoursText(
   return day.isClosed || day.windows.length === 0
     ? "Closed"
     : day.windows.map((w) => `${w.open}–${w.close}`).join(", ");
-}
-
-const MONTH_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-const WEEKDAY_SHORT_MON_FIRST = [
-  "Mon",
-  "Tue",
-  "Wed",
-  "Thu",
-  "Fri",
-  "Sat",
-  "Sun",
-] as const;
-
-/** "Fri 25 Dec" from `2026-12-25`, with no timezone maths (a calendar date). */
-export function venueDateLabel(date: string): string {
-  if (!DATE_ONLY.test(date)) return date;
-  const [y, m, d] = date.split("-").map(Number);
-  const utc = new Date(Date.UTC(y, m - 1, d));
-  if (Number.isNaN(utc.getTime()) || utc.getUTCMonth() !== m - 1) return date;
-  const mondayFirst = (utc.getUTCDay() + 6) % 7;
-  return `${WEEKDAY_SHORT_MON_FIRST[mondayFirst]} ${d} ${MONTH_SHORT[m - 1]}`;
 }
 
 export interface VenueSpecialDayRow {

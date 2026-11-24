@@ -60,7 +60,7 @@ export function OrderSoldOutSection(props: OrderSoldOutSectionProps): React.Reac
     enabled: session !== null,
     staleTime: 60_000,
     // Loaded on use: a signed-in account (no PIN session) never pulls the Till transport.
-    queryFn: async () => (await import("../../../services/venueTillService")).fetchTillPinStaff(props.venueId),
+    queryFn: async () => (await import("../../../services/tillPinService")).fetchTillPinStaff(props.venueId),
   });
   const body = <OrderSoldOutBody {...props} />;
   if (session === null) return body;

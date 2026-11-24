@@ -22,7 +22,7 @@ import {
 } from "@mingla/offering-rendering";
 import { boldFontFamily, statusOn } from "@mingla/offering-rendering/themePalette";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 
 import { radius, size, space, type } from "../../../constants/designSystem";
 import { usePublicVenueBySlug } from "../../../hooks/usePublicEvents";

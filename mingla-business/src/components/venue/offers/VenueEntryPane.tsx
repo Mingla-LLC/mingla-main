@@ -15,7 +15,7 @@ import { OfferingChipRow, OfferingChoiceChip } from "@mingla/offering-rendering/
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import type { PublicVenueReservationBar } from "@mingla/brand-rendering/PublicVenueScreen";
 import type { VenueFeatureOfferView } from "@mingla/brand-rendering/venueFeaturePage";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import { entryDateLabel, guestsText } from "@mingla/brand-rendering/venueOffers/entryModel";
 
 import { space, type } from "../../../constants/designSystem";

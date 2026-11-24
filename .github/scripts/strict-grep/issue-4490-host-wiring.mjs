@@ -296,7 +296,9 @@ const PINS = [
   // word; the suites keep every behavioural test.
   {
     id: "till-error-codes-have-words",
-    file: `${BIZ}/src/components/venue/till/tillCopy.ts`,
+    // The refusal words moved to their own leaf (tillErrorCopy.ts, re-exported by
+    // tillCopy.ts) so the guest pay page and Team load them without the Till.
+    file: `${BIZ}/src/components/venue/till/tillErrorCopy.ts`,
     slice: "export const TILL_ERROR_COPY = {",
     contains: () => tillServerCodes().map((code) => `\n  ${code}:`),
     why: "every refusal the venue-till edge can send has its own row in the Till's words (O1-B1)",

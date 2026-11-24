@@ -6,7 +6,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 import { accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import type { PackageExtraView } from "@mingla/brand-rendering/venueOffers/packageModel";
 
 import { radius, space, type } from "../../../constants/designSystem";

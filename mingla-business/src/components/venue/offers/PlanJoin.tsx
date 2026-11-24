@@ -19,7 +19,7 @@ import { boldFontFamily } from "@mingla/offering-rendering/themePalette";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
 import { OfferingDateStrip, type OfferingDateTile } from "@mingla/offering-rendering/OfferingDecideParts";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import { addDays, entryDateLabel, venueToday } from "@mingla/brand-rendering/venueOffers/entryModel";
 
 import { radius, size, space, type } from "../../../constants/designSystem";

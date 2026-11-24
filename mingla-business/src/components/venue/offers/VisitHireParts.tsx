@@ -14,7 +14,7 @@ import { StyleSheet, Text, View } from "react-native";
 import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 import { neutralHair, statusOn } from "@mingla/offering-rendering/themePalette";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 import { countdownText, entryDateLabel, holdSecondsLeft } from "@mingla/brand-rendering/venueOffers/entryModel";
 import {
   damageDepositGuestLine,

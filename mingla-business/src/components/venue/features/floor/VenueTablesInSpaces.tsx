@@ -11,7 +11,7 @@
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
 
 import { color, radius, space, type } from "../../../../constants/designSystem";
 import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
