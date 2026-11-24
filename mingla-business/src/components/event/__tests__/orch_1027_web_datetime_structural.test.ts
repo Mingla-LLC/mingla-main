@@ -251,8 +251,17 @@ describe("issue #1027 / #4523 — web date fields are picked on a visible contro
       }),
     );
     expectNoHiddenOrOsPicker(tree);
-    const times = tree.root.findAll((n) => n.type === "input" && n.props.type === "time");
-    expect(times.map((n) => n.props["data-testid"]).sort()).toEqual(["creator-when-doors-web", "creator-when-ends-web"]);
+    // TEST-MOD-APPROVED #4490 (N136): Doors / Ends on web are the 24-hour
+    // TimeField (typing works), not native <input type="time">; each is still a
+    // visible control whose change commits the draft.
+    const nativeTimes = tree.root.findAll((n) => n.type === "input" && n.props.type === "time");
+    expect(nativeTimes).toHaveLength(0);
+    const timeFields = tree.root.findAll(
+      (n) =>
+        ["creator-when-doors-web", "creator-when-ends-web"].includes(String(n.props.testID)) &&
+        typeof n.props.onChangeValue === "function",
+    );
+    expect([...new Set(timeFields.map((n) => String(n.props.testID)))].sort()).toEqual(["creator-when-doors-web", "creator-when-ends-web"]);
 
     await press(tree, "creator-when-date");
     const days = dayIds(tree, "creator-when-date");
