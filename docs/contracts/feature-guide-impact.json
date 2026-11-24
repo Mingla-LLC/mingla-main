@@ -1967,7 +1967,8 @@
         "mingla-admin/src/services/adminMoneyActService.js",
         "mingla-admin/src/services/adminMoneyService.js",
         "mingla-admin/src/lib/orderOverpayments.js",
-        "mingla-admin/src/lib/tripOrderBalance.js"
+        "mingla-admin/src/lib/tripOrderBalance.js",
+        "mingla-admin/src/lib/moneyFormat.js"
       ]
     },
     {
@@ -3958,7 +3959,8 @@
         "mingla-business/src/components/trip/TripGuideReviewSections.tsx",
         "mingla-business/src/components/trip/TripListCard.tsx",
         "mingla-business/src/components/trip/TripManageMenu.tsx",
-        "mingla-business/src/utils/tripWizardBrandSwitch.ts"
+        "mingla-business/src/utils/tripWizardBrandSwitch.ts",
+        "mingla-business/src/hooks/useTripOrders.ts"
       ]
     },
     {
@@ -5647,7 +5649,11 @@
         "supabase/functions/_shared/installments/overpaymentRefunds.ts",
         "supabase/functions/_shared/installments/overpaymentLane.ts",
         "supabase/functions/_shared/installments/paidInFullNotice.ts",
-        "supabase/functions/_shared/installments/installmentOpsAlert.ts"
+        "supabase/functions/_shared/installments/installmentOpsAlert.ts",
+        "mingla-business/src/components/trip/tripCartPlanChoice.ts",
+        "supabase/functions/_shared/email/installmentMissedRolloverEmail.ts",
+        "supabase/functions/_shared/installments/chargeInstallment.ts",
+        "supabase/functions/_shared/installments/unrecordedRefunds.ts"
       ]
     },
     {
@@ -5856,7 +5862,8 @@
         "mingla-business/app/checkout-experience/[experienceEventId]/buyer.tsx",
         "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
         "mingla-business/app/checkout-experience/[experienceEventId]/payment.tsx",
-        "mingla-business/app/checkout-trip/[tripEventId]/intake.tsx"
+        "mingla-business/app/checkout-trip/[tripEventId]/intake.tsx",
+        "mingla-business/src/components/checkout/tripCheckoutResume.ts"
       ]
     },
     {
@@ -5906,7 +5913,8 @@
       "capability_key": "experiences-create",
       "paths": [
         "mingla-business/app/experience/[id]/edit.tsx",
-        "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+        "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
+        "mingla-business/src/hooks/useExperienceDraftAdapter.ts"
       ]
     },
     {
@@ -6100,7 +6108,12 @@
         "supabase/functions/_shared/guestPackPointer.ts",
         "supabase/functions/_shared/orderConfirmationMessage.ts",
         "supabase/functions/ticket-confirmation-dispatch/index.ts",
-        "supabase/migrations/20281122024548_issue_4548_event_guest_packs.sql"
+        "supabase/migrations/20281122024548_issue_4548_event_guest_packs.sql",
+        "mingla-business/src/components/checkout/quoteMoney.ts",
+        "packages/offering-rendering/ticketQuoteCopy.ts",
+        "mingla-business/src/utils/currency.ts",
+        "supabase/functions/ticket-checkout-create/replayedSessionExtras.ts",
+        "supabase/functions/ticket-checkout-create/supersedeCheckout.ts"
       ]
     },
     {
