@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4522-CANCEL-PASS11-STAFF-FIRST | issue #4522 | Staff "partly refunded already" checks the caller is active Mingla staff before any lookup or Paystack read and never returns a provider figure to anyone else; the trip refund email never says a part paid to the traveler directly, or refunded earlier from the provider's dashboard, was issued to the card.
+// MINGLA-INVARIANT: I-4522-CANCEL-PASS11-STAFF-FIRST | issue #4522 | Staff "partly refunded already" checks the caller is current Mingla staff before any lookup or Paystack read and never returns a provider figure to anyone else; the trip refund email never says a part paid to the traveler directly, or refunded earlier from the provider's dashboard, was issued to the card.
 /**
  * issue #4522 pass 11 (P11-2 / P11-3), edge side.
  * FAILS ON REVERT: without the isAdmin check P11-2a reaches attemptCharge and
