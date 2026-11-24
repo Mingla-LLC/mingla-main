@@ -146,7 +146,8 @@ describe("issue #3281 date deletion", () => {
     expect(nextUnloaded.extras).toBeUndefined();
     // The editor refuses the emptied extra before the save reaches the server.
     expect(validateTicketExtra(next.extras![0], { tierIsFree: false })).toBe(
-      "Choose at least one date for this extra.",
+      // #3281 S7: the host copy says "add-on".
+      "Choose at least one date for this add-on.",
     );
   });
 

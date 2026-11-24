@@ -67,17 +67,27 @@ describe("#3859 unsupported trip installment capability", () => {
     expect(pricingSource).toMatch(
       /const planSuspended = !paymentPlansAvailable/,
     );
+    // [TEST-MOD-APPROVED #4522] The plan switch and both plan editors gained
+    // more locks (shared first-package plan, v2 rollback, staged authoring);
+    // an unsupported provider still disables the switch and locks the editor.
     expect(pricingSource).toMatch(
-      /disabled=\{disabled === true \|\| planLocked \|\| planSuspended\}/,
+      /disabled=\{\s*disabled === true \|\|\s*planLocked \|\|\s*planSuspended \|\|/,
     );
     expect(pricingSource).toMatch(
-      /locked=\{planLocked \|\| planSuspended\}/,
+      /locked=\{planLocked \|\| planSuspended \|\| sharedFollower\}/,
+    );
+    expect(pricingSource).toMatch(
+      /locked=\{\s*planLocked \|\|\s*planSuspended \|\|/,
     );
   });
 
   test("draft and published previews never expose an unsupported schedule", () => {
+    // [TEST-MOD-APPROVED #4522] The wizard half is now a behaviour test:
+    // issue_4522_trip_wizard_flag_off_gates.implementor.test.tsx mounts the
+    // real wizard and asserts the review preview carries no schedule. The
+    // source still derives the preview plan from the capability.
     expect(wizardSource).toContain(
-      "installmentSchedule: paymentPlansAvailable ? p.paymentPlan : null",
+      "const paymentPlan = paymentPlansAvailable ? p.paymentPlan : null;",
     );
     expect(publishedEditorSource).toMatch(
       /const plannerPreviewSchedule =\s*!paymentPlansAvailable \|\|/,
@@ -93,7 +103,10 @@ describe("#3859 unsupported trip installment capability", () => {
     );
     expect(refusal).toBeGreaterThan(0);
     expect(bankGate).toBeGreaterThan(refusal);
-    expect(wizardSource).toContain("setStep(4)");
+    // [TEST-MOD-APPROVED #4522] The Pricing step index is a named constant
+    // (step 4 with the builder off, step 3 with it on).
+    expect(wizardSource).toContain("setStep(PRICING_STEP)");
+    expect(wizardSource).toMatch(/const PRICING_STEP: StepIndex = V2 \? 3 : 4;/);
     expect(wizardSource).toContain(
       "paymentPlansAvailable={paymentPlansAvailable}",
     );

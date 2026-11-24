@@ -96,6 +96,9 @@ async function mount(element: React.ReactElement): Promise<RenderTree> {
 }
 
 let mockIsWideDesktop = true;
+// #4523: the availability dates are DateField (the Mingla calendar, loaded lazily); this layout sweep is about the
+// text fields, so DateField is a null host here.
+jest.mock("../../ui/DateField", () => ({ DateField: () => null }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({
   WIDE_DESKTOP_MIN_WIDTH: 1024,
   useResponsiveLayout: () => ({
@@ -539,7 +542,7 @@ describe("#1501 — the CALL SITE's axis matches its real parent", () => {
 
     // Vacuity guard on the oracle itself: if the parse broke, "every declared
     // field was rendered" would be trivially true.
-    expect(declared.length).toBeGreaterThanOrEqual(17);
+    expect(declared.length).toBeGreaterThanOrEqual(15); // #4523: 2 availability date inputs became DateField
     expect(declared).toContain("stay-offering-no-show");
     expect(declared).toContain("stay-night-quantity");
 
@@ -696,8 +699,6 @@ describe("#1501 — the CALL SITE's axis matches its real parent", () => {
     const audited = await auditSweep();
     const seen = new Set(audited.map((field) => field.testID));
     for (const id of [
-      "stay-availability-from-field",
-      "stay-availability-to-field",
       "stay-night-quantity-field",
       "stay-night-price-field",
       "stay-place-start-time-field",

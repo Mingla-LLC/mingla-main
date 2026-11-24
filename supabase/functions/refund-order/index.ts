@@ -33,7 +33,11 @@
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import {
+  addOnRefundRpcError,
   isRefundLineRequest,
+  parseAddOnRefundLines,
+  planRemovalOnlyResponse,
+  refundRpcLines,
   type RefundLineRequest,
   serverRefundLines,
 } from "../_shared/refundServerLines.ts";
@@ -49,9 +53,11 @@ import {
   isPaystackRefundBelowMinimumError,
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
+  paystackExpectedTransactionId,
   paystackRefundTransaction,
   persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
   refundEverPermittedProviderCall,
@@ -85,6 +91,8 @@ function mapRpcErrorToHttp(errorMessage: string): {
   detail: string;
 } {
   // ORCH-0787 RPC raises with predictable prefixes (P0001..P0012 + permission_denied + line_overrefund:...)
+  const addOnError = addOnRefundRpcError(errorMessage);
+  if (addOnError !== null) return addOnError;
   const msg = errorMessage.toLowerCase();
   if (msg.includes("permission_denied")) {
     return { code: "permission_denied", status: 403, detail: errorMessage };
@@ -166,8 +174,14 @@ serve(async (req: Request): Promise<Response> => {
     ? body.lines.filter(isRefundLine)
     : [];
 
+  // Issue #3281 S4 — optional add-on lines refunded on their own.
+  const addOnLines = parseAddOnRefundLines(body.addOnLines);
+
   if (!orderId) return jsonResponse({ error: "order_id_required" }, 400);
-  if (lines.length === 0) {
+  if (addOnLines === null) {
+    return jsonResponse({ error: "refund_lines_invalid" }, 400);
+  }
+  if (lines.length === 0 && addOnLines.length === 0) {
     return jsonResponse({ error: "refund_lines_required" }, 400);
   }
   if (reason.trim().length < 10 || reason.trim().length > 200) {
@@ -190,7 +204,7 @@ serve(async (req: Request): Promise<Response> => {
     "biz_refund_order",
     {
       p_order_id: orderId,
-      p_lines: lines,
+      p_lines: refundRpcLines(lines, addOnLines),
       p_reason: reason,
       p_idempotency_key: idempotencyKey,
     },
@@ -206,6 +220,10 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const pending = pendingResult as Record<string, unknown>;
+  // Issue #3281 S5 — a spread add-on taken off the trip plan before any of it
+  // was collected: nothing to refund, so no provider call and no commit.
+  const planRemoval = planRemovalOnlyResponse(pending);
+  if (planRemoval !== null) return jsonResponse(planRemoval);
   const refundId = String(pending.refund_id ?? "");
   const amountCents = Number(pending.amount_cents ?? 0);
   const currency = String(pending.currency ?? "GBP");
@@ -353,7 +371,9 @@ serve(async (req: Request): Promise<Response> => {
   // Issue #4271: did this request reach refunds.create?
   const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
-    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
+    // Seventh pass (H-7): by reference only with the #4522 schema (its commit records the refund).
+    const byReference = await planV2SchemaAvailable(supabase);
+    const transaction = paystackRefundTransaction(paymentIntentId, chargeId, byReference);
     if (!transaction) {
       return jsonResponse(
         {
@@ -366,6 +386,7 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const paystackRefund = await createPaystackRefund({
         transaction,
+        ...paystackExpectedTransactionId(paymentIntentId, chargeId, byReference),
         merchantNote: `mingla_refund:${refundId}`,
         amountSubunits: pending.is_full_refund === true
           ? undefined

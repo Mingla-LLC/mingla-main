@@ -164,6 +164,7 @@ jest.mock("../../../../src/components/trip/TripPaymentChoice", () => ({
   TripPaymentChoice: () => null,
 }));
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   CartProvider,
   useCart,
@@ -249,11 +250,19 @@ const payIsTappable = (tree: Renderer): boolean =>
 const mountPaymentScreen = async (): Promise<Renderer> => {
   let tree!: Renderer;
   await act(async () => {
+    // The trip payment screen reads the React Query client (it invalidates the
+    // trip's quote after a refusal), so it mounts under a real provider as the
+    // app root does.
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
     tree = TestRenderer.create(
-      <CartProvider>
-        <SeedCart />
-        <PaymentScreen />
-      </CartProvider>,
+      <QueryClientProvider client={client}>
+        <CartProvider>
+          <SeedCart />
+          <PaymentScreen />
+        </CartProvider>
+      </QueryClientProvider>,
     );
   });
   return tree;

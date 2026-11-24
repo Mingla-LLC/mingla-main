@@ -24,6 +24,7 @@ import {
   ROUND3_PRIVATE_REEMITS,
   ROUND3_REEMITS,
 } from "./issue_3645_ledger_followup_round3_reemit_hunks.ts";
+import { PAYOUT_REFUND_REEMITS } from "./issue_4522_payout_refund_reemit_hunks.ts";
 
 const DIR = "supabase/migrations";
 const TARGET_FILE = TARGET.slice(DIR.length + 1);
@@ -76,7 +77,7 @@ Deno.test("#3645 bundle 4 the target is still the latest definition of what it d
   for (const file of files().filter((f) => f > TARGET_FILE)) {
     const later = definitions(Deno.readTextFileSync(`${DIR}/${file}`));
     for (const name of mine) {
-      const superseded = ROUND3_REEMITS.some((r) =>
+      const superseded = [...ROUND3_REEMITS, ...PAYOUT_REFUND_REEMITS].some((r) =>
         r.fn === name && r.target === `${DIR}/${file}`
       );
       assert(

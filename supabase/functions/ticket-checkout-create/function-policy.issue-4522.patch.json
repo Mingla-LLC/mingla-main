@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4522",
+  "target": {
+    "kind": "function",
+    "name": "ticket-checkout-create"
+  },
+  "basePolicySha256": "9938d33e849b60c5327d03db0987711b31347f8abe7f8beffad115da988e4266",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "RESEND_API_KEY",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "dd2037c27192abb7a9eaecad25c253afc9361ebf1fa681094a46f0b24b2f61f6",
+  "reason": "Issue #4522 trip payment plans: plan checkout now reaches the shared Stripe ops alert email (_shared/stripeOpsAlertEmail.ts), so the existing RESEND_API_KEY is an explicit deployment requirement."
+}

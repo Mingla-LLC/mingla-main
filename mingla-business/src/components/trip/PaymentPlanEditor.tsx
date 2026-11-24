@@ -19,16 +19,12 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 
 import {
   radius,
@@ -37,15 +33,9 @@ import {
   materials,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
-// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
-// Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
-// installment fixed-due-date picker was broken on web.
-import { WebDateTimeInput } from "../ui/WebDateTimeInput";
-import {
-  calendarDateToPickerDate,
-  formatCalendarDate,
-  pickerDateToInputValue,
-} from "../../utils/calendarDate";
+// #4523 — an installment's fixed due date is picked on the shared Mingla calendar.
+import { DateField } from "../ui/DateField";
+import { formatCalendarDate } from "../../utils/calendarDate";
 // #3372 — naira plan amounts show "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
@@ -358,9 +348,6 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
   locked,
   lockedReason,
 }) => {
-  const [openDatePickerOrdinal, setOpenDatePickerOrdinal] =
-    useState<number | null>(null);
-
   const validation = useMemo(
     () => (value !== null ? validateSchedule(value) : null),
     [value],
@@ -540,19 +527,6 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
     [onChange, value],
   );
 
-  const onDateChange = useCallback(
-    (ordinal: number) =>
-      (event: DateTimePickerEvent, selected?: Date): void => {
-        if (Platform.OS !== "ios") setOpenDatePickerOrdinal(null);
-        if (event.type === "dismissed" || selected === undefined) return;
-        // Issue #3801 — the picker returns a LOCAL day; `toISOString()` reads
-        // it at UTC and wrote the previous day east of UTC.
-        if (Number.isNaN(selected.getTime())) return;
-        updateInstallmentDate(ordinal, pickerDateToInputValue(selected));
-      },
-    [updateInstallmentDate],
-  );
-
   // ---------- render ----------
   return (
     <GlassCard
@@ -657,54 +631,20 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 />
                 <Text style={styles.daysSuffix}>days after booking</Text>
               </View>
-            ) : Platform.OS === "web" ? (
-              /* issue #1027 Thread B (Class 2) — visible native <input type=date>
-                 on web (the DateTimePicker below has no web build). */
-              <WebDateTimeInput
-                type="date"
+            ) : (
+              <DateField
+                label="Due date"
+                accessibilityLabel={`Installment ${inst.ordinal} due date`}
                 value={inst.fixed_date ?? ""}
                 min={todayPlusDays(1)}
-                ariaLabel={`Installment ${inst.ordinal} due date`}
-                testID={`payplan-date-web-${inst.ordinal}`}
+                placeholder="Pick a date"
+                testID={`payplan-date-${inst.ordinal}`}
                 onChangeValue={(v) => {
                   if (v.length === 0) return;
                   updateInstallmentDate(inst.ordinal, v);
                 }}
               />
-            ) : (
-              <Pressable
-                onPress={() => setOpenDatePickerOrdinal(inst.ordinal)}
-                accessibilityRole="button"
-                accessibilityLabel={`Installment ${inst.ordinal} due date`}
-                accessibilityHint="Opens date picker"
-                style={styles.dateInputRow}
-              >
-                <Text style={styles.dateInputText}>
-                  {inst.fixed_date !== undefined && inst.fixed_date !== null
-                    ? formatDateForDisplay(inst.fixed_date)
-                    : "Pick a date"}
-                </Text>
-              </Pressable>
             )}
-            {openDatePickerOrdinal === inst.ordinal &&
-            mode === "fixed" &&
-            Platform.OS !== "web" ? (
-              <DateTimePicker
-                value={
-                  // Issue #3801 — seed with the stored calendar day as a local
-                  // day, so the picker opens on the day that is stored.
-                  calendarDateToPickerDate(inst.fixed_date ?? null) ??
-                  calendarDateToPickerDate(todayPlusDays(30)) ??
-                  new Date()
-                }
-                mode="date"
-                display={Platform.OS === "ios" ? "inline" : "default"}
-                themeVariant="dark"
-                textColor={color.text1}
-                minimumDate={new Date(`${todayPlusDays(1)}T00:00:00Z`)}
-                onChange={onDateChange(inst.ordinal)}
-              />
-            ) : null}
             {rowError !== undefined ? (
               <Text style={styles.rowError}>{rowError}</Text>
             ) : null}
@@ -902,23 +842,6 @@ const styles = StyleSheet.create({
     color: color.text2,
     fontSize: 14,
     marginLeft: space[2],
-  },
-  // Date input
-  dateInputRow: {
-    minHeight: 44,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-    borderRadius: radius.md,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: color.lineStrong,
-    backgroundColor: materials.chrome.glassFill,
-    marginTop: space[2],
-    justifyContent: "center",
-  },
-  dateInputText: {
-    color: color.text1,
-    fontSize: 15,
   },
   // Row error
   rowError: {

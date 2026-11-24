@@ -6,10 +6,9 @@
   "types": "index.ts",
   "react-native": "index.ts",
   "license": "UNLICENSED",
-  "description": "#4514 — the one question model's renderers (short text, long text, choice, multi choice, date, number) and the form orchestrator, shared by trip checkout and brand forms. Props-only: the host app injects its design tokens, its Icon and its web date input, and renders file upload itself (C11). No app src/ imports (I-4514-ONE-QUESTION-MODEL).",
+  "description": "#4514 — the one question model's renderers (short text, long text, choice, multi choice, date, number) and the form orchestrator, shared by trip checkout and brand forms. Props-only: the host app injects its design tokens, its Icon and its date input (the host's Mingla calendar field, #4523), and renders file upload itself (C11). No app src/ imports (I-4514-ONE-QUESTION-MODEL).",
   "peerDependencies": {
     "react": "*",
-    "react-native": "*",
-    "@react-native-community/datetimepicker": "*"
+    "react-native": "*"
   }
 }

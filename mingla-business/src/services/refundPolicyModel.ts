@@ -25,6 +25,13 @@ export interface RefundPolicy {
   kind: RefundPolicyKind;
   /** Sorted DESC by days_before_start; refund_pct non-increasing. */
   tiers: RefundPolicyTier[];
+  /**
+   * #4522 — optional keys the server already accepts (`validate_refund_policy`).
+   * `deposit_non_refundable` is written only when on. `no_refunds` is read but
+   * not written by the Host builder until a buyer surface renders it.
+   */
+  no_refunds?: boolean;
+  deposit_non_refundable?: boolean;
 }
 
 // Locked defaults per SPEC §10 Q1 + DESIGN §5.1 — operator-overridable

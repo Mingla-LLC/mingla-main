@@ -15,7 +15,8 @@ import { Icon } from "../ui/Icon";
 import { TrackedTouchableOpacity } from "../TrackedTouchableOpacity";
 import { useQueryClient } from "@tanstack/react-query";
 import { savedCardKeys } from "../../hooks/queryKeys";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { CalendarEmbed } from "@mingla/calendar/CalendarField";
+import { deviceTimeZone, LIGHT_INLINE_CALENDAR_CONFIG, useExplorerCalendarLabels } from "../calendar/explorerInlineCalendar";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 // #1703 — relative, like the other card-identity imports in this tree: the CI
 // guards import it under plain `node --test` with no `npm install`.
@@ -35,13 +36,18 @@ import { useTranslation } from "react-i18next";
 import { PINNED_BAR, PINNED_PRIMARY, SPINE } from "./spineTokens";
 import { pinnedPrimaryStyles } from "./pinnedPrimary";
 
+const toYmd = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const toHm = (d: Date): string => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+const noopDone = (): void => undefined;
+
 
 // META-ORCH-0991 Wave B Batch 4: the iOS date/time picker <Modal> (a flex-end
 // white sheet) → fixed ['45%'] BaseBottomSheet snap. Fits the picker spinner
 // (height 200) + header; fixed snap (NOT enableDynamicSizing) per the Batch-3
 // off-screen lesson. ONLY this modal is converted; the rest of ActionButtons is
 // untouched, and the Android native DateTimePicker branch stays as-is.
-const DATE_TIME_PICKER_SNAP_POINTS = ['45%'];
+const DATE_TIME_PICKER_SNAP_POINTS = ['85%'];
 
 interface ActionButtonsProps {
   card: ExpandedCardData;
@@ -118,6 +124,7 @@ export default function ActionButtons({
   initialScheduleAt = null,
 }: ActionButtonsProps) {
   const { t } = useTranslation(['expanded_details', 'common']);
+  const calendarLabels = useExplorerCalendarLabels();
   const [isSaving, setIsSaving] = useState(false);
   // #4347 rework (V-1) — the SYNCHRONOUS in-flight guard. `isSaving` is state,
   // so two taps in one frame both read it as false before it renders; this ref
@@ -128,7 +135,6 @@ export default function ActionButtons({
   const [showDateTimePicker, setShowDateTimePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<Date>(new Date());
-  const [pickerMode, setPickerMode] = useState<"date" | "time">("date");
   const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
   const [availabilityCheck, setAvailabilityCheck] = useState<{
     isOpen: boolean;
@@ -136,8 +142,6 @@ export default function ActionButtons({
     reason?: string;
   } | null>(null);
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false);
-  // ORCH-0690 S-2: holds the Android-OK'd date while the preview/confirm Alert is open.
-  const [pendingDateConfirmation, setPendingDateConfirmation] = useState<Date | null>(null);
   const setDateTimePickerVisible = useCallback(
     (isOpen: boolean) => {
       setShowDateTimePicker(isOpen);
@@ -296,57 +300,20 @@ export default function ActionButtons({
       initialScheduleAt instanceof Date && initialScheduleAt.getTime() > now.getTime() ? initialScheduleAt : now;
     setSelectedDate(opening);
     setSelectedTime(opening);
-    setPickerMode("date");
     setDateTimePickerVisible(true);
   };
 
-  const handleDateTimePickerChange = (event: any, date?: Date) => {
-    if (Platform.OS === "android") {
-      if (event.type === "dismissed") {
-        setDateTimePickerVisible(false);
-        setPendingDateConfirmation(null);
-        return;
-      }
-
-      if (date) {
-        if (pickerMode === "date") {
-          // ORCH-0690 S-2: Android calendar dialog OK'd. Stage the date and surface
-          // a preview/confirm Alert before advancing to time-mode. User can review
-          // the picked date and back out to pick a different day.
-          setDateTimePickerVisible(false);
-          setPendingDateConfirmation(date);
-          showAndroidDateConfirmation(date);
-        } else {
-          // Time selected on Android — combine and run shared confirmAndSchedule.
-          const combinedDateTime = new Date(selectedDate);
-          combinedDateTime.setHours(date.getHours());
-          combinedDateTime.setMinutes(date.getMinutes());
-          setSelectedTime(combinedDateTime);
-          setSelectedDateTime(combinedDateTime);
-          setDateTimePickerVisible(false);
-          confirmAndSchedule(combinedDateTime);
-        }
-      }
-    } else {
-      // [ORCH-0690 RC-1] Do NOT call setPickerMode("time") in this branch.
-      // iOS uses display="spinner" which emits onChange per wheel tick. Auto-flipping
-      // to time-mode here means one wheel notch commits the date and hijacks user
-      // intent before they can reach the Next button. Mode advancement is owned
-      // EXCLUSIVELY by handleDatePickerConfirm (the Next button).
-      if (date) {
-        if (pickerMode === "date") {
-          // Spinner tick — update selectedDate ONLY.
-          setSelectedDate(date);
-          setSelectedTime(date);
-        } else {
-          // Time mode spinner tick — update selectedTime; final commit via Done button.
-          const combinedDateTime = new Date(selectedDate);
-          combinedDateTime.setHours(date.getHours());
-          combinedDateTime.setMinutes(date.getMinutes());
-          setSelectedTime(combinedDateTime);
-        }
-      }
-    }
+  // #4523: date and time are chosen together on the shared Mingla calendar, on both
+  // platforms. Done commits once; changing month never changes anything.
+  const handleCalendarChosen = (next: { date: string; time: string }) => {
+    const [y, m, d] = next.date.split("-").map(Number);
+    const [h, min] = next.time.split(":").map(Number);
+    const combinedDateTime = new Date(y, m - 1, d, h, min, 0, 0);
+    setSelectedDate(combinedDateTime);
+    setSelectedTime(combinedDateTime);
+    setSelectedDateTime(combinedDateTime);
+    setDateTimePickerVisible(false);
+    confirmAndSchedule(combinedDateTime);
   };
 
   // ORCH-0690 S-7: shared availability + scheduling helper. Replaces duplicated
@@ -373,7 +340,6 @@ export default function ActionButtons({
             onPress: () => {
               setSelectedDateTime(null);
               setSelectedTime(new Date());
-              setPickerMode('time');
               setDateTimePickerVisible(true);
             },
           },
@@ -413,7 +379,6 @@ export default function ActionButtons({
               setSelectedDateTime(null);
               // S-8: keep selectedDate; only reset selectedTime to now.
               setSelectedTime(new Date());
-              setPickerMode('time');
               setDateTimePickerVisible(true);
             },
           },
@@ -421,68 +386,6 @@ export default function ActionButtons({
         ],
       );
     }
-  };
-
-  // ORCH-0690 S-2: Android post-OK preview/confirm prompt. Lets the user review
-  // the picked date and either advance to time-mode or pick a different day.
-  const showAndroidDateConfirmation = (date: Date) => {
-    const formattedDate = date.toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-    });
-    Alert.alert(
-      t('expanded_details:action_buttons.confirm_date_title'),
-      t('expanded_details:action_buttons.confirm_date_message', { date: formattedDate }),
-      [
-        {
-          text: t('expanded_details:action_buttons.change_date'),
-          onPress: () => {
-            // Re-open calendar dialog. Keep pickerMode="date".
-            setPendingDateConfirmation(null);
-            setSelectedDate(date);
-            setDateTimePickerVisible(true);
-          },
-        },
-        {
-          text: t('expanded_details:action_buttons.pick_time'),
-          onPress: () => {
-            // Commit the date and advance to time-mode.
-            setSelectedDate(date);
-            setSelectedTime(date);
-            setPickerMode('time');
-            setPendingDateConfirmation(null);
-            setDateTimePickerVisible(true);
-          },
-        },
-      ],
-      {
-        cancelable: true,
-        onDismiss: () => setPendingDateConfirmation(null),
-      },
-    );
-  };
-
-  const handleTimePickerConfirm = () => {
-    const combinedDateTime = new Date(selectedDate);
-    combinedDateTime.setHours(selectedTime.getHours());
-    combinedDateTime.setMinutes(selectedTime.getMinutes());
-    setSelectedDateTime(combinedDateTime);
-    setDateTimePickerVisible(false);
-    confirmAndSchedule(combinedDateTime);
-  };
-
-  const handleDatePickerConfirm = () => {
-    // Accept the currently displayed date and advance to time picker.
-    // [ORCH-0690] This is now the SOLE iOS path that flips date → time.
-    setPickerMode("time");
-  };
-
-  // ORCH-0690 S-3: iOS "← Back to date" handler. Lets user revert from time-mode
-  // back to date-mode without losing selectedDate progress.
-  const handleBackToDate = () => {
-    setPickerMode("date");
-    // selectedDate intentionally preserved.
   };
 
   const proceedWithScheduling = async (scheduledDateTime: Date) => {
@@ -677,81 +580,48 @@ export default function ActionButtons({
   return (
     <View style={styles.pinnedWrap} testID="sheet-action-bar">
       {closedMessage}
-      {/* Date/Time Picker Modal */}
+      {/* Date/Time Picker Modal: one Mingla calendar sheet (date + time), both platforms (#4523). */}
       {showDateTimePicker && (
-        <>
-          {Platform.OS === "ios" ? (
-            <BaseBottomSheet
-              visible={showDateTimePicker}
-              onClose={() => setDateTimePickerVisible(false)}
-              snapPoints={DATE_TIME_PICKER_SNAP_POINTS}
-              wrapInRNModal
-              scrollMode="view"
-              accessibilityLabel={pickerMode === "date" ? t('expanded_details:action_buttons.select_date') : t('expanded_details:action_buttons.select_time')}
-              header={
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle} numberOfLines={1} ellipsizeMode="tail">
-                    {pickerMode === "date" ? t('expanded_details:action_buttons.select_date') : t('expanded_details:action_buttons.select_time')}
-                  </Text>
-                  <View style={styles.modalHeaderButtons}>
-                    <TrackedTouchableOpacity
-                      logComponent="ActionButtons"
-                      logId="picker_cancel"
-                      style={styles.modalCancelButton}
-                      onPress={() => setDateTimePickerVisible(false)}
-                    >
-                      <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
-                    </TrackedTouchableOpacity>
-                    {/* ORCH-0690 S-3: Back-to-date button visible only in time-mode */}
-                    {pickerMode === "time" && (
-                      <TrackedTouchableOpacity
-                        logComponent="ActionButtons"
-                        logId="picker_back_to_date"
-                        style={styles.modalCancelButton}
-                        onPress={handleBackToDate}
-                      >
-                        <Text style={styles.modalCancelText}>
-                          {t('expanded_details:action_buttons.back_to_date')}
-                        </Text>
-                      </TrackedTouchableOpacity>
-                    )}
-                    <TrackedTouchableOpacity
-                      logComponent="ActionButtons"
-                      logId="picker_done"
-                      style={styles.modalConfirmButton}
-                      onPress={pickerMode === "date" ? handleDatePickerConfirm : handleTimePickerConfirm}
-                    >
-                      <Text style={styles.modalConfirmText}>
-                        {pickerMode === "date" ? t('expanded_details:action_buttons.next') : t('expanded_details:action_buttons.done')}
-                      </Text>
-                    </TrackedTouchableOpacity>
-                  </View>
-                </View>
-              }
-            >
-              <DateTimePicker
-                value={pickerMode === "date" ? selectedDate : selectedTime}
-                mode={pickerMode}
-                is24Hour={false}
-                display="spinner"
-                onChange={handleDateTimePickerChange}
-                minimumDate={new Date()}
-                style={styles.dateTimePicker}
-                themeVariant="light"
-                textColor="#111827"
-              />
-            </BaseBottomSheet>
-          ) : (
-            <DateTimePicker
-              value={pickerMode === "date" ? selectedDate : selectedTime}
-              mode={pickerMode}
-              is24Hour={false}
-              display="default"
-              onChange={handleDateTimePickerChange}
-              minimumDate={new Date()}
-            />
-          )}
-        </>
+        <BaseBottomSheet
+          visible={showDateTimePicker}
+          onClose={() => setDateTimePickerVisible(false)}
+          snapPoints={DATE_TIME_PICKER_SNAP_POINTS}
+          wrapInRNModal
+          scrollMode="scroll"
+          accessibilityLabel={t('expanded_details:action_buttons.select_date')}
+          header={
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle} numberOfLines={1} ellipsizeMode="tail">
+                {t('expanded_details:action_buttons.select_date')}
+              </Text>
+              <View style={styles.modalHeaderButtons}>
+                <TrackedTouchableOpacity
+                  logComponent="ActionButtons"
+                  logId="picker_cancel"
+                  style={styles.modalCancelButton}
+                  onPress={() => setDateTimePickerVisible(false)}
+                >
+                  <Text style={styles.modalCancelText}>{t('expanded_details:action_buttons.cancel')}</Text>
+                </TrackedTouchableOpacity>
+              </View>
+            </View>
+          }
+        >
+          <CalendarEmbed
+            mode="datetime"
+            label={t('expanded_details:action_buttons.select_date')}
+            value={{ date: toYmd(selectedDate), time: toHm(selectedTime) }}
+            onChange={handleCalendarChosen}
+            min={toYmd(new Date())}
+            timeStepMinutes={15}
+            timeZone={deviceTimeZone()}
+            labels={calendarLabels}
+            config={LIGHT_INLINE_CALENDAR_CONFIG}
+            testID="schedule-calendar"
+            onDone={noopDone}
+            onCancel={() => setDateTimePickerVisible(false)}
+          />
+        </BaseBottomSheet>
       )}
 
       {/*

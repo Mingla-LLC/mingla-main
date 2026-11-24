@@ -90,6 +90,8 @@ export interface TripInstallmentScheduleData {
 
 export interface TripDetailTier {
   ticketTypeId: string;
+  /** #3281 S2 — the reader's raw `extras` for this package (public block). */
+  buyerExtras?: unknown;
   tierName: string;
   priceCents: number;
   currency: string;
@@ -311,6 +313,8 @@ interface RpcTripInclusion {
 interface RpcTripTier {
   id: string;
   ticketTypeId: string;
+  /** #3281 S2 — present only when the package has an add-on on sale. */
+  extras?: unknown;
   tierName: string;
   tierMetadata: Record<string, unknown> | null;
   priceCents: number;
@@ -390,6 +394,7 @@ async function fetchTripDetail(
 
   const rawTiers: TripDetailTier[] = (p.tiers ?? []).map((t) => ({
     ticketTypeId: t.ticketTypeId,
+    ...(t.extras !== undefined ? { buyerExtras: t.extras } : {}),
     tierName: t.tierName,
     priceCents: t.priceCents ?? 0,
     currency: t.currency ?? "",

@@ -304,6 +304,28 @@ async function resolveAndFindExistingRefund(params: {
   }
 }
 
+/**
+ * issue #4522 (T4-1): every refund Paystack lists on one transaction, so the
+ * overpayment lane can adopt refunds that already exist before it creates
+ * one. Null when the list cannot be trusted as complete (a full page).
+ */
+export async function listPaystackTransactionRefunds(params: {
+  transaction: string;
+  currency?: string;
+}): Promise<
+  Array<{ id: string; amount: number; status: string; merchantNote: string }> | null
+> {
+  const identity = await resolveTransactionIdentity({ reference: params.transaction, currency: params.currency });
+  const { rows } = await findExistingRefund({ transactionId: identity.id, merchantNote: "", amountSubunits: -1 });
+  if (rows.length >= 100) return null;
+  return rows.filter((row) => providerTransactionId(row.transaction) === identity.id).map((row) => ({
+    id: row.id === undefined ? "" : String(row.id),
+    amount: Number(row.amount ?? NaN),
+    status: typeof row.status === "string" ? row.status : "",
+    merchantNote: typeof row.merchant_note === "string" ? row.merchant_note : "",
+  }));
+}
+
 export async function reconcilePaystackRefund(params: {
   transaction: string;
   expectedTransactionId?: number;
@@ -327,6 +349,19 @@ function isDuplicateRefundSignal(
     signal.includes("duplicate");
 }
 
+/**
+ * issue #4522 pass 9 (P9-5): errors createPaystackRefund raised BEFORE it
+ * asked Paystack to make the refund (its minimum check, the transaction
+ * verify, the refund-list read, a state it will not send on). Nothing was
+ * sent. The error itself is unchanged for every caller; only callers that ask
+ * (paystackRefundNotSent) can tell "not sent" from "sent, no answer".
+ */
+const notSentErrors = new WeakSet<object>();
+
+export function paystackRefundNotSent(error: unknown): boolean {
+  return typeof error === "object" && error !== null && notSentErrors.has(error);
+}
+
 export async function createPaystackRefund(params: {
   transaction: string;
   expectedTransactionId?: number;
@@ -334,6 +369,29 @@ export async function createPaystackRefund(params: {
   amountSubunits?: number;
   currency?: string;
 }): Promise<PaystackRefundResult> {
+  let secret: string;
+  try {
+    const before = await paystackRefundPreSend(params);
+    if ("existing" in before) return before.existing;
+    secret = resolvePaystackSecretKey();
+  } catch (error) {
+    if (typeof error === "object" && error !== null) notSentErrors.add(error);
+    throw error;
+  }
+  return await sendPaystackRefund(params, secret);
+}
+
+/** Everything createPaystackRefund checks before it asks Paystack (P9-5). */
+async function paystackRefundPreSend(params: {
+  transaction: string;
+  expectedTransactionId?: number;
+  merchantNote: string;
+  amountSubunits?: number;
+  currency?: string;
+}): Promise<
+  | { existing: PaystackRefundResult }
+  | { sendable: true }
+> {
   if (
     params.amountSubunits !== undefined &&
     params.amountSubunits < PAYSTACK_MIN_REFUND_SUBUNITS
@@ -350,7 +408,7 @@ export async function createPaystackRefund(params: {
     params,
     partialOnly,
   );
-  if (reconciliation.existing) return reconciliation.existing;
+  if (reconciliation.existing) return { existing: reconciliation.existing };
   if (
     reconciliation.identity.state !== "success" &&
     !partialRefundFitsReversedTransaction(
@@ -364,8 +422,22 @@ export async function createPaystackRefund(params: {
       409,
     );
   }
+  return { sendable: true };
+}
 
-  const secret = resolvePaystackSecretKey();
+async function sendPaystackRefund(
+  params: {
+    transaction: string;
+    expectedTransactionId?: number;
+    merchantNote: string;
+    amountSubunits?: number;
+    currency?: string;
+  },
+  secret: string,
+): Promise<PaystackRefundResult> {
+  const partialOnly = {
+    tolerateUnreadableListWhenReversed: params.amountSubunits !== undefined,
+  };
   const res = await fetch(`${PAYSTACK_BASE_URL}/refund`, {
     method: "POST",
     headers: {
@@ -571,13 +643,43 @@ export async function persistPaystackRefundOutcome(
   }
 }
 
+/**
+ * Seventh pass (H-7): the transaction a refund names. The refund helper
+ * verifies it first, and Paystack's verify takes the transaction REFERENCE
+ * (GET /transaction/verify/:reference), so with referenceFirst the reference
+ * comes first and the numeric transaction id (kept in stripe_charge_id) is
+ * only the identity check (paystackExpectedTransactionId), as the
+ * source-refund lane and the duplicate-payment refund (F-3) do. Before, the
+ * numeric id went first and every host or Admin refund of a second-provider
+ * order was refused at verify (same on main). Callers pass referenceFirst
+ * only with the #4522 schema (planV2SchemaAvailable): on main's database
+ * the refund commit cannot yet record a second-provider refund, so there the
+ * lookup stays exactly as before (refused before any money moves).
+ */
 export function paystackRefundTransaction(
   primaryReference: string | null,
   chargeId: string | null,
+  referenceFirst = false,
 ): string | null {
+  if (referenceFirst && primaryReference && primaryReference.length > 0) {
+    return primaryReference;
+  }
   if (chargeId && chargeId.length > 0) return chargeId;
   if (primaryReference && primaryReference.length > 0) return primaryReference;
   return null;
+}
+
+/** Seventh pass (H-7): the numeric transaction id as the identity check, when the reference is named. */
+export function paystackExpectedTransactionId(
+  primaryReference: string | null,
+  chargeId: string | null,
+  referenceFirst = false,
+): { expectedTransactionId?: number } {
+  if (!referenceFirst || !primaryReference || primaryReference.length === 0) return {};
+  const id = Number(chargeId ?? NaN);
+  return Number.isSafeInteger(id) && id > 0 && String(id) === chargeId
+    ? { expectedTransactionId: id }
+    : {};
 }
 
 export function isRetryablePaystackRefundError(error: unknown): boolean {

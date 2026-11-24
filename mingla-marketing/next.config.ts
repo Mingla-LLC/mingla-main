@@ -253,6 +253,10 @@ const config: NextConfig = {
       ? { reactRemoveProperties: { properties: ['^data-testid$'] } }
       : {},
   reactStrictMode: true,
+  // #4523 — the Mingla calendar ships as TypeScript source from packages/calendar-web.
+  transpilePackages: ['@mingla/calendar-web'],
+  // The linked package lives one level up, so Turbopack's root is the repo root (#4523).
+  turbopack: { root: path.join(__dirname, '..') },
   devIndicators: false,
   // Pin trace root to this app so Next does not climb into the parent monorepo
   // and pick up the user-home lockfile.

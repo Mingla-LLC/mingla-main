@@ -6,6 +6,7 @@ import { MissingCityLayer } from "./MissingCityLayer";
 import { OwnersField } from "./OwnersField";
 import { addFormRuleNote, contactHit, contactRuleView, displayOwners, findDuplicates, identifiersToSend, stageLabel } from "../../lib/crmModel";
 import { contactCheck, newRequestKey } from "../../services/crmService";
+import { CalendarInput } from "@mingla/calendar-web";
 
 /** How long after the last key press the contactable check is asked. */
 const CONTACT_CHECK_MS = 400;
@@ -353,7 +354,7 @@ export function AddRecordForm({
           <input id={`${id}-next`} type="text" maxLength={200} value={values.next_action} disabled={disabled || busy} onChange={set("next_action")} placeholder="What happens next" className={CONTROL_CLASS} />
         </Field>
         <Field label="Due" htmlFor={`${id}-due`}>
-          <input id={`${id}-due`} type="date" value={values.due_on} disabled={disabled || busy} onChange={set("due_on")} className={CONTROL_CLASS} />
+          <CalendarInput id={`${id}-due`} mode="date" value={values.due_on} disabled={disabled || busy} onChange={set("due_on")} className={CONTROL_CLASS} />
         </Field>
         {!isHosts && (
           <>

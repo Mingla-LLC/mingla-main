@@ -90,6 +90,13 @@ export const purchaseKeys = {
     [...purchaseKeys.all, "guestPack", userId, eventId] as const,
 };
 
+// Issue #4522 — one balance key factory. Collection invalidates both this
+// detail and purchaseKeys.all so the receipt and schedule cannot diverge.
+export const tripBalanceKeys = {
+  all: ["tripBalance"] as const,
+  detail: (orderId: string) => [...tripBalanceKeys.all, orderId] as const,
+};
+
 // #4382 Wave 5 — Help & Support (support tickets, owned by the requester).
 export const supportKeys = {
   all: ["support"] as const,
@@ -193,6 +200,15 @@ export const brandFormKeys = {
   /** #4541 R2.10 — the checkout block's read for one event. */
   checkout: (eventId: string) =>
     [...brandFormKeys.all, 'checkout', eventId] as const,
+};
+
+// Issue #3281 S6 — an RSVP's add-ons: the RSVP page's list (by slug) and the
+// add-ons stored with the guest's own RSVP (the pass sheet).
+export const rsvpAddOnsKeys = {
+  all: ['rsvp-add-ons'] as const,
+  forPage: (brandSlug: string | null, eventSlug: string | null) =>
+    [...rsvpAddOnsKeys.all, 'page', brandSlug ?? 'none', eventSlug ?? 'none'] as const,
+  mine: (rsvpId: string) => [...rsvpAddOnsKeys.all, 'mine', rsvpId] as const,
 };
 
 // Issue #4261 — plans in chats (chat plans and deck matches share one entity).

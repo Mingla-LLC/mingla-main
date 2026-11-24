@@ -32,6 +32,7 @@
  * error text via semantic.errorText (E10) and a web focus ring (E12).
  */
 
+import { TripRefundPolicySection } from "./TripRefundPolicySection";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Platform,
@@ -75,6 +76,13 @@ export interface RefundPolicyEditorProps {
   onChange: (next: RefundPolicy | null) => void;
   /** issue #3284 E1 — defaults to "trip", which keeps the shipped trip editor. */
   offeringType?: RefundPolicyOfferingType;
+  /**
+   * #4522 — the 4-step builder: refund chips, "Custom…" (this editor) and the
+   * "Deposit is non-refundable" switch. It renders here so its presets load in
+   * this chunk and not in the wizard's (ORCH-1083).
+   */
+  builderV2?: boolean;
+  disabled?: boolean;
 }
 
 interface TemplateChip {
@@ -124,7 +132,7 @@ type WebPressableState = PressableStateCallbackType & {
 };
 const IS_WEB = Platform.OS === "web";
 
-export const RefundPolicyEditor: React.FC<RefundPolicyEditorProps> = ({
+const RefundPolicyEditorClassic: React.FC<RefundPolicyEditorProps> = ({
   value,
   onChange,
   offeringType = "trip",
@@ -529,6 +537,20 @@ const ClearPolicyControl: React.FC<ClearPolicyControlProps> = ({
     </View>
   );
 };
+
+export const RefundPolicyEditor: React.FC<RefundPolicyEditorProps> = (props) =>
+  props.builderV2 === true ? (
+    <TripRefundPolicySection
+      value={props.value}
+      onChange={props.onChange}
+      disabled={props.disabled}
+      renderCustomEditor={(value, onChange) => (
+        <RefundPolicyEditorClassic value={value} onChange={onChange} />
+      )}
+    />
+  ) : (
+    <RefundPolicyEditorClassic {...props} />
+  );
 
 const styles = StyleSheet.create({
   container: {

@@ -15,13 +15,12 @@ import {
   extrasCartDates,
   extrasLineDates,
   extrasParentCount,
-  extrasRefusalCopy,
-  extrasRefusalIn,
   extraSoldOutOnLine,
   fitExtrasToLine,
   parsePublicTicketExtras,
   withExtraQuantity,
 } from "../ticketExtrasCart.ts";
+import { extrasRefusalCopy, extrasRefusalIn } from "../ticketExtrasRefusal.ts";
 import {
   checkoutClientAttemptFingerprint,
   normalizeCheckoutV2Lines,
@@ -210,4 +209,27 @@ Deno.test("#3281 extras: a change of extras is a new checkout attempt", () => {
   assert(parsed.ok);
   // The cart keeps them sorted (withExtraQuantity), so the contract keeps the order it's given.
   assertEquals(parsed.lines[0].addOns?.map((entry) => entry.addOnId), [TOTE, DINNER]);
+});
+
+Deno.test("#4522 add-on payment mode is line identity and defaults by omission", () => {
+  const line = {
+    ticketTypeId: TICKET,
+    quantity: 2,
+    paymentPlanChoice: "installments" as const,
+    addOns: [{ addOnId: DINNER, quantity: 1 }],
+  };
+  const todayByDefault = checkoutClientAttemptFingerprint(attempt([line]));
+  const spread = checkoutClientAttemptFingerprint(
+    attempt([{ ...line, addonPaymentMode: "spread" }]),
+  );
+  assertNotEquals(todayByDefault, spread);
+  const parsed = normalizeCheckoutV2Lines([
+    { ...line, addonPaymentMode: "today" },
+  ]);
+  assert(parsed.ok);
+  assertEquals(parsed.lines[0].addonPaymentMode, "today");
+  assertEquals(
+    normalizeCheckoutV2Lines([{ ...line, addonPaymentMode: "later" }]),
+    { ok: false, error: "checkout_lines_invalid" },
+  );
 });

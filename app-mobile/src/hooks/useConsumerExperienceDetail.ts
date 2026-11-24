@@ -51,6 +51,8 @@ export type ConsumerExperiencePriceBasis = "person" | "group" | "block";
 
 export interface ConsumerExperienceTicket {
   ticketTypeId: string;
+  /** #3281 S2 — the reader's raw `extras` for this ticket (public block). */
+  buyerExtras?: unknown;
   name: string;
   priceCents: number;
   /** Server fee-grossed all-in (CENTS); null = free / RPC miss → base fallback. */
@@ -164,6 +166,8 @@ interface RpcStop {
 }
 interface RpcTicket {
   ticketTypeId: string;
+  /** #3281 S2 — present only when the ticket has an add-on on sale. */
+  extras?: unknown;
   name: string;
   priceCents: number;
   allInCents: number | null;
@@ -273,6 +277,7 @@ function mapRpcTicket(
   const priceBasis = parsePriceBasis(t.priceBasis);
   return {
     ticketTypeId: t.ticketTypeId,
+    ...(t.extras !== undefined ? { buyerExtras: t.extras } : {}),
     name: t.name,
     priceCents: t.priceCents ?? 0,
     priceAllInCents:

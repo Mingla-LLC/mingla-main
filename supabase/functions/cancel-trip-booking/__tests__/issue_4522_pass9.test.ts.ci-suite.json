@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/cancel-trip-booking/__tests__/issue_4522_pass9.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4522-10-cancel-pass9",
+  "profile": "deno-1.46-stripe"
+}

@@ -126,6 +126,8 @@ export const EditPublishedTripSettingsAccordion: React.FC<
           <RefundPolicyEditor
             value={refundPolicy}
             onChange={onRefundPolicyChange}
+            builderV2
+            disabled={submitting}
           />
         </View>
       </View>
@@ -182,7 +184,7 @@ export const EditPublishedTripSettingsAccordion: React.FC<
           <View style={styles.switchRowText}>
             <Text style={styles.switchLabel}>Private guest list</Text>
             <Text style={styles.switchHelp}>
-              Hide who's going and how many. Only you see the list.
+              {"Hide who's going and how many. Only you see the list."}
             </Text>
           </View>
           <Switch

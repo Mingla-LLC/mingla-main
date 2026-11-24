@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
 import { Card, CardTitle, Field, Hint, SectionHead, Segmented, Skeleton, Toggle, WButton, ui } from "../ui";
 import { PhotoSlot } from "../PhotoField";
@@ -15,7 +15,7 @@ import {
 import type { RichTextDoc } from "../../../../../../packages/site-contracts/src/richText.ts";
 import { ConflictBanner, DeleteEntry, EditorCrumb, RichTextEditor, editorFormChanged, saveErrorMessage, useEditorChrome } from "./EditorKit";
 
-import { color } from "../../../../constants/designSystem";
+import { DateField } from "../../../ui/DateField";
 type Form = {
   title: string;
   category: string | null;
@@ -135,22 +135,14 @@ export function StoryEditor({ entryId }: { entryId: string | "new" }): React.Rea
             ) : <Hint>No categories yet. Add them with Manage categories on the Stories list.</Hint>}
           </View>
           <View style={phone ? null : styles.cell}>
-            {Platform.OS === "web" ? (
-              <View>
-                <Text style={styles.label}>Date</Text>
-                {React.createElement("input", {
-                  type: "date",
-                  value: f.date,
-                  disabled: readOnly,
-                  "aria-label": "Date",
-                  "data-testid": "story-date",
-                  onChange: (event: { target: { value: string } }) => set({ date: event.target.value }),
-                  style: { minHeight: 44, borderRadius: 12, border: `1px solid ${color.lineStrong}`, background: color.fill.tableHead, color: color.text1, padding: "0 12px", fontSize: 14, colorScheme: "dark" },
-                })}
-              </View>
-            ) : (
-              <Field label="Date" value={f.date} placeholder="YYYY-MM-DD" editable={!readOnly} onChangeText={(date) => set({ date })} />
-            )}
+            <DateField
+              label="Date"
+              accessibilityLabel="Date"
+              value={f.date}
+              onChangeValue={(date) => set({ date })}
+              disabled={readOnly}
+              testID="story-date"
+            />
           </View>
         </View>
         <Text style={styles.label}>Main picture</Text>

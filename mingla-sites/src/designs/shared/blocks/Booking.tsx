@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- site media is first-party and immutable (/media). */
+import { SiteDateInput } from "../../../components/v2/SiteDateInput";
 import {
   availabilityRequestFor,
   availabilityKey,
@@ -167,17 +168,24 @@ export function heroTarget(block: SharedBlock, ctx: SharedContext): BookingTarge
 /** The hero booking bar (§5.5): blank fields with real input types; submit hands off to Mingla. */
 export function HeroBookingBar({ target, id, language }: { target: BookingTarget; id: string; language: string }) {
   const from = money(target.min_price_minor, target.currency, language);
-  const field = (name: string, label: string, type: "date" | "time" | "number") => (
+  const field = (name: string, label: string, type: "time" | "number") => (
     <label htmlFor={`${id}-${name}`}>
       <span className="mg-bk__k">{label}</span>
       <input id={`${id}-${name}`} name={name} type={type} {...(type === "number" ? { min: 1, max: 20, inputMode: "numeric" as const } : {})} />
     </label>
   );
+  // #4523: a date is picked on the Mingla calendar; it still submits through a hidden input of the same name.
+  const pickedDate = (name: string, label: string) => (
+    <label htmlFor={`${id}-${name}`}>
+      <span className="mg-bk__k">{label}</span>
+      <SiteDateInput id={`${id}-${name}`} name={name} />
+    </label>
+  );
   return (
     <HeroBookingForm target={target} from={from} submitLabel={target.kind === "venue_table" ? "Find a table" : target.kind === "stay" ? "Check dates" : "Book"}>
-      {target.kind === "venue_table" ? <>{field("date", "Date", "date")}{field("time", "Time", "time")}{field("party", "Guests", "number")}</> : null}
-      {target.kind === "stay" ? <>{field("checkin", "Check in", "date")}{field("checkout", "Check out", "date")}{field("guests", "Guests", "number")}</> : null}
-      {target.kind === "experience" ? <>{field("date", "Date", "date")}{field("guests", "Guests", "number")}</> : null}
+      {target.kind === "venue_table" ? <>{pickedDate("date", "Date")}{field("time", "Time", "time")}{field("party", "Guests", "number")}</> : null}
+      {target.kind === "stay" ? <>{pickedDate("checkin", "Check in")}{pickedDate("checkout", "Check out")}{field("guests", "Guests", "number")}</> : null}
+      {target.kind === "experience" ? <>{pickedDate("date", "Date")}{field("guests", "Guests", "number")}</> : null}
     </HeroBookingForm>
   );
 }

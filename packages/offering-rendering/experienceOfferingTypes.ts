@@ -57,6 +57,8 @@ export type ExperiencePriceBasis = "person" | "group" | "block";
 /** The ONE sellable ticket — a single all-in charge (no installments/deposit). */
 export interface ExperienceOfferingTicket {
   ticketTypeId: string;
+  /** issue #3281 S2 — the reader's raw `extras` for this option, unparsed. */
+  buyerExtras?: unknown;
   name: string;
   priceCents: number;
   /**

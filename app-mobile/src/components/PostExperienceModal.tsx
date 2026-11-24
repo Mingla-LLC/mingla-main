@@ -12,6 +12,11 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from './ui/Icon';
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { CalendarEmbed } from "@mingla/calendar/CalendarField";
+import { deviceTimeZone, LIGHT_INLINE_CALENDAR_CONFIG, useExplorerCalendarLabels } from "./calendar/explorerInlineCalendar";
+import { toDayString } from "../utils/programFormat";
+
+const noopDone = (): void => undefined;
 import { supabase } from "../services/supabase";
 import { CalendarService } from "../services/calendarService";
 import { useAppStore } from "../store/appStore";
@@ -81,6 +86,7 @@ export default function PostExperienceModal({
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(['modals', 'common']);
+  const calendarLabels = useExplorerCalendarLabels();
 
   // #1687 — the voluntary entry. Everything that differs from the scheduled
   // prompt keys off this one boolean.
@@ -546,22 +552,24 @@ export default function PostExperienceModal({
           makes them COMPLETELY invisible inside a modal that is deliberately not dismissible
           (COMMS-0140). */}
       {showDatePicker && (
-        <DateTimePicker
-          value={rescheduleDate || new Date()}
-          mode="date"
-          display={Platform.OS === "ios" ? "spinner" : "default"}
-          minimumDate={new Date()}
-          themeVariant="light"
-          textColor={colors.gray900}
-          onChange={(event, selectedDate) => {
-            if (Platform.OS === "android") {
-              setShowDatePicker(false);
-            }
-            if (selectedDate) {
-              setRescheduleDate(selectedDate);
-              setShowTimePicker(true);
-            }
+        <CalendarEmbed
+          mode="single"
+          label="Pick a new date"
+          value={rescheduleDate ? toDayString(rescheduleDate) : ""}
+          onChange={(day) => {
+            if (day === "") return;
+            const [y, m, d] = day.split("-").map(Number);
+            setRescheduleDate(new Date(y, m - 1, d, 12, 0, 0, 0));
+            setShowDatePicker(false);
+            setShowTimePicker(true);
           }}
+          min={toDayString(new Date())}
+          timeZone={deviceTimeZone()}
+          labels={calendarLabels}
+          config={LIGHT_INLINE_CALENDAR_CONFIG}
+          testID="reschedule-calendar"
+          onDone={noopDone}
+          onCancel={() => setShowDatePicker(false)}
         />
       )}
 

@@ -31,6 +31,7 @@ import {
   validateTripPackages,
   type ValidatedPackage,
 } from "../tripPackagesValidation";
+import type { TripPaymentPlanV2 } from "../tripPlanV2EditorModel";
 
 // ----- supabase mock (capture select + draft-graph RPC payloads) -----
 
@@ -450,6 +451,170 @@ describe("META-ORCH-1174 B2 — per-package description persists", () => {
 });
 
 // ============================================================================
+// #4522 — v2 plan persistence shares the same canonical graph write
+// ============================================================================
+
+describe("issue #4522 — v2 payment-plan persistence", () => {
+  const planV2: TripPaymentPlanV2 = {
+    v: 2,
+    deposit: { mode: "percent", pct: 25 },
+    count: 3,
+    final_due_days_before_start: 30,
+    auto_adjust: true,
+    flex: { enabled: false },
+    custom_amounts_minor: null,
+  };
+
+  test("a new package writes payment_plan without the legacy installments key", async () => {
+    listTiersRows = [];
+    listTicketRows = [];
+    rpcMock.mockImplementation(async (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      if (name === "biz_apply_trip_draft_graph") {
+        listTiersRows = [{
+          id: "tier-created",
+          event_id: "evt-1",
+          ticket_type_id: "tt-created",
+          tier_name: "Shared room",
+          tier_metadata: { payment_plan: planV2 },
+          deposit_type: null,
+          deposit_value: null,
+          installment_count: null,
+          installment_interval_days: null,
+          created_at: "2026-08-25T00:00:00Z",
+        }];
+        listTicketRows = [{
+          id: "tt-created",
+          event_id: "evt-1",
+          price_cents: 120_000,
+          currency: "USD",
+          quantity_total: 12,
+          is_unlimited: false,
+        }];
+        return { data: { ok: true }, error: null };
+      }
+      return { data: {}, error: null };
+    });
+
+    const created = await createTripPricingTier("evt-1", {
+      tierName: "Shared room",
+      priceCents: 120_000,
+      capacity: 12,
+      installmentSchedule: planV2,
+    });
+
+    const apply = rpcCalls.find((call) => call.name === "biz_apply_trip_draft_graph");
+    const metadata = (apply?.args.p_patch as {
+      tiers?: { tier_metadata?: Record<string, unknown> }[];
+    }).tiers?.[0]?.tier_metadata;
+    expect(metadata).toEqual({ payment_plan: planV2 });
+    expect(created.paymentPlan).toEqual(planV2);
+    expect(created.installmentSchedule).toBeNull();
+  });
+
+  test("v2 replaces v1 and saves share_payment_plan atomically", async () => {
+    seededTiersRow = {
+      id: "tier-1",
+      event_id: "evt-1",
+      ticket_type_id: "tt-1",
+      tier_name: "Standard",
+      tier_metadata: {
+        description: "Twin room",
+        installments: {
+          deposit_pct: 25,
+          installments: [{ ordinal: 1, pct: 75, days_after_booking: 30 }],
+        },
+      },
+    };
+    listTiersRows = [{
+      ...seededTiersRow,
+      tier_metadata: { description: "Twin room", payment_plan: planV2 },
+      deposit_type: null,
+      deposit_value: null,
+      installment_count: null,
+      installment_interval_days: null,
+      created_at: "2026-08-25T00:00:00Z",
+    }];
+    listTicketRows = [{
+      id: "tt-1",
+      event_id: "evt-1",
+      price_cents: 120_000,
+      currency: "USD",
+      quantity_total: 12,
+      is_unlimited: false,
+    }];
+
+    const updated = await updateTripPricing("evt-1", {
+      ticketTypeId: "tt-1",
+      tierName: "Standard",
+      priceCents: 120_000,
+      capacity: 12,
+      installmentSchedule: planV2,
+      sharePaymentPlan: true,
+    });
+
+    const apply = rpcCalls.find((call) => call.name === "biz_apply_trip_draft_graph");
+    const patch = apply?.args.p_patch as {
+      tiers?: { tier_metadata?: Record<string, unknown> }[];
+      settings?: Record<string, unknown>;
+    };
+    expect(patch.tiers?.[0]?.tier_metadata).toEqual({
+      description: "Twin room",
+      payment_plan: planV2,
+    });
+    expect(patch.settings).toEqual({ share_payment_plan: true });
+    expect(updated.paymentPlan).toEqual(planV2);
+    expect(updated.installmentSchedule).toBeNull();
+  });
+
+  test("switching back to a legacy plan removes payment_plan", async () => {
+    seededTiersRow = {
+      id: "tier-1",
+      event_id: "evt-1",
+      ticket_type_id: "tt-1",
+      tier_name: "Standard",
+      tier_metadata: { description: "Twin room", payment_plan: planV2 },
+    };
+    const legacy = {
+      deposit_pct: 25,
+      installments: [{ ordinal: 1, pct: 75, days_after_booking: 30 }],
+    };
+    listTiersRows = [{
+      ...seededTiersRow,
+      tier_metadata: { description: "Twin room", installments: legacy },
+      deposit_type: null,
+      deposit_value: null,
+      installment_count: null,
+      installment_interval_days: null,
+      created_at: "2026-08-25T00:00:00Z",
+    }];
+    listTicketRows = [{
+      id: "tt-1",
+      event_id: "evt-1",
+      price_cents: 120_000,
+      currency: "USD",
+      quantity_total: 12,
+      is_unlimited: false,
+    }];
+    const updated = await updateTripPricing("evt-1", {
+      ticketTypeId: "tt-1",
+      tierName: "Standard",
+      priceCents: 120_000,
+      capacity: 12,
+      installmentSchedule: legacy,
+    });
+
+    const apply = rpcCalls.find((call) => call.name === "biz_apply_trip_draft_graph");
+    const metadata = (apply?.args.p_patch as {
+      tiers?: { tier_metadata?: Record<string, unknown> }[];
+    }).tiers?.[0]?.tier_metadata;
+    expect(metadata).toEqual({ description: "Twin room", installments: legacy });
+    expect(updated.paymentPlan).toEqual(legacy);
+    expect(updated.installmentSchedule).toEqual(legacy);
+  });
+});
+
+// ============================================================================
 // 3. Source-level wiring (Step4 list + wizard persistence + publish gate)
 // ============================================================================
 
@@ -519,8 +684,10 @@ describe("META-ORCH-1174 B2 — wizard persists N packages via B1 service fns", 
     expect(WIZARD_SRC).toMatch(/validateTripPackages\(step4Draft\.packages\)/);
     // dock Publish disabled when packages invalid
     expect(WIZARD_SRC).toMatch(/!packagesValidation\.ok/);
-    // belt: handlePublishTap blocks + jumps to the pricing step (4)
-    expect(WIZARD_SRC).toMatch(/packagesValidation\.ok[\s\S]*?setStep\(4\)/);
+    // belt: handlePublishTap blocks + jumps to the current pricing section.
+    expect(WIZARD_SRC).toMatch(
+      /packagesValidation\.ok[\s\S]*?setStep\(PRICING_STEP\)/,
+    );
   });
 });
 

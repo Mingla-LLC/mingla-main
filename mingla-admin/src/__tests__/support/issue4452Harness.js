@@ -6,6 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+// [TEST-MOD-APPROVED #4522] #4523 puts the shared calendar (@mingla/calendar-web) in Admin components; harnesses need the same workspace alias Vite has.
+import { workspacePackagesPlugin } from "../_workspacePackagesPlugin.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const SRC = path.resolve(HERE, "..", "..");
@@ -44,7 +46,7 @@ export async function buildHarness(contents, { stubs = {}, name = "issue4452" } 
     platform: "node",
     format: "esm",
     jsx: "automatic",
-    plugins: [stubPlugin],
+    plugins: [stubPlugin, workspacePackagesPlugin],
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
     logLevel: process.env.HARNESS_LOG || "silent",
     define: { "process.env.NODE_ENV": '"production"', "import.meta.env.VITE_SUPABASE_URL": '"http://stub.local"', "import.meta.env.VITE_SUPABASE_ANON_KEY": '"stub"' },

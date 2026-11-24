@@ -25,13 +25,20 @@ export function createAdminRefundIdempotencyKey() {
   return crypto.randomUUID();
 }
 
-export async function refundOrder({ order_id, lines, reason, idempotencyKey }) {
+// #3281 S4: `addOnLines` = [{ order_add_on_line_item_id, quantity }] refunds
+// add-ons on their own; omitted when none are picked, so the body is unchanged.
+export async function refundOrder({ order_id, lines, addOnLines, reason, idempotencyKey }) {
   if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0) {
     throw new Error("idempotencyKey is required");
   }
   return invokeAdminWriteEdge(
     "admin-refund-order",
-    { order_id, lines, reason },
+    {
+      order_id,
+      lines,
+      ...(Array.isArray(addOnLines) && addOnLines.length > 0 ? { addOnLines } : {}),
+      reason,
+    },
     { idempotencyKey },
   );
 }

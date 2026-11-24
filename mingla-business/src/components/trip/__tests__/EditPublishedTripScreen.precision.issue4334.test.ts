@@ -9,7 +9,14 @@ import path from "node:path";
 import { describe, expect, test } from "@jest/globals";
 import { precisionFromPlaceDetails } from "@mingla/location-input";
 
-const src = fs.readFileSync(path.resolve(__dirname, "../EditPublishedTripScreen.tsx"), "utf8");
+const editor = fs.readFileSync(
+  path.resolve(__dirname, "../EditPublishedTripScreen.tsx"),
+  "utf8",
+);
+const src = fs.readFileSync(
+  path.resolve(__dirname, "../TripCreatorStep1Basics.tsx"),
+  "utf8",
+);
 
 /** Every `onPick={(place, ...) => { ... }}` body in the screen. */
 function onPickBodies(): string[] {
@@ -25,6 +32,7 @@ function onPickBodies(): string[] {
 
 describe("#4334 F-7 — published trip editor precision", () => {
   test("both pickers read the precision from the pick", () => {
+    expect(editor).toContain("<TripCreatorStep1Basics");
     const bodies = onPickBodies();
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toContain("departureCoordinatePrecision: precisionFromPlaceDetails(place)");

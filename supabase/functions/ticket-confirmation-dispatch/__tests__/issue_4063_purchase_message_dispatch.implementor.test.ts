@@ -38,3 +38,20 @@ Deno.test("#4063 every Resend path accepts and supplies a validated reply-to", (
   assertEquals(replyTos.length, sends.length);
   assert(sends.length >= 7);
 });
+
+Deno.test("#4522 E-7 a trip's confirmation dates are its calendar dates (UTC); events keep their zone", async () => {
+  const { formatDateRange, formatMessageTime } = await import("../../_shared/messageTime.ts");
+  assertStringIncludes(
+    source,
+    'const dateZone = isTrip ? "UTC" : context.bodyInput.event.timezone;',
+  );
+  assertStringIncludes(source, "formatMessageTime(startAt, dateZone)");
+  assertStringIncludes(source, "? formatDateRange(startAt, endAt, dateZone)");
+  // A 12–16 Mar New York trip, stored as UTC midnight (#4420).
+  const start = "2099-03-12T00:00:00.000Z";
+  const end = "2099-03-16T00:00:00.000Z";
+  assertStringIncludes(formatMessageTime(start, "UTC")?.date ?? "", "12 Mar 2099");
+  assertStringIncludes(formatDateRange(start, end, "UTC"), "12 Mar 2099 – ");
+  // the zone rule the trip used to get ("Wed 11 Mar" in New York)
+  assertStringIncludes(formatMessageTime(start, "America/New_York")?.date ?? "", "11 Mar 2099");
+});

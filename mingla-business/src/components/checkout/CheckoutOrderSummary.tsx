@@ -124,6 +124,9 @@ function QuoteLines(): React.ReactElement | null {
   }
   const discounted =
     quote !== null && quote.discountCents > 0 && quote.listSubtotalCents > 0;
+  // issue #3281 S-21 — the add-ons the server priced are lines of the order
+  // too ("Paid drink × 1 · $8.00"), as the details step already lists them.
+  const addOnRows = (quote?.extras ?? []).filter((extra) => extra.quantity > 0);
   return (
     <View style={styles.lines}>
       {rows.map((row) => (
@@ -138,6 +141,22 @@ function QuoteLines(): React.ReactElement | null {
           {row.netCents !== null && currency.length > 0 ? (
             <Text style={styles.lineAmount}>
               {formatCurrency(row.netCents, currency, true)}
+            </Text>
+          ) : null}
+        </View>
+      ))}
+      {addOnRows.map((extra) => (
+        <View
+          key={`add-on-${extra.ticketTypeId}-${extra.addOnId}`}
+          style={styles.lineRow}
+          testID="checkout-summary-add-on-line"
+        >
+          <Text style={styles.lineName} numberOfLines={2}>
+            {extra.addOnName} × {extra.quantity}
+          </Text>
+          {currency.length > 0 ? (
+            <Text style={styles.lineAmount}>
+              {formatCurrency(extra.totalCents, currency, true)}
             </Text>
           ) : null}
         </View>

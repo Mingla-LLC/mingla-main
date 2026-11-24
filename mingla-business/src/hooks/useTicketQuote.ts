@@ -21,6 +21,7 @@ export const ticketQuoteKeys = {
         line.byDate ?? null,
         line.addOns ?? null,
         line.paymentPlanChoice ?? null,
+        line.addonPaymentMode ?? null,
       ]),
       input.eventDateId ?? null,
       [...(input.eventDateIds ?? [])].sort(),

@@ -144,6 +144,10 @@ const EXACT_CMS_DEPENDENCIES = {
 };
 const EXACT_PUBLIC_DEPENDENCIES = {
   // `next` floor-checked separately — see NEXT_ADVISORY_FLOOR.
+  // #4523 — the shared Mingla calendar, an in-repo package linked by path. Only
+  // this exact local link is accepted: a registry version or any other spec
+  // for this name is still drift, and every other new package still fails.
+  "@mingla/calendar-web": "file:../packages/calendar-web",
   react: "19.2.6",
   "react-dom": "19.2.6",
 };
@@ -1726,6 +1730,8 @@ function selfTest() {
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
     ["publicPackage", '"next": "16.4.5"', '"@payloadcms/next": "3.88.0",\n    "next": "16.4.5"', "production dependency isolation"],
     ["publicPackage", '"next": "16.4.5"', '"next": "16.3.7"', "next advisory floor"],
+    // #4523 — the in-repo calendar link must stay a local path, never a registry pin.
+    ["publicPackage", '"@mingla/calendar-web": "file:../packages/calendar-web"', '"@mingla/calendar-web": "1.0.0"', "production dependency isolation"],
     ["cmsPackage", '"next": "16.4.6"', '"next": "15.5.0"', "next major must remain"],
     ["cmsPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],
     ["publicPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],

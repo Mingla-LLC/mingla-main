@@ -66,6 +66,14 @@ export interface TripDayEditorProps {
   onAddMedia?: () => void;
   onRemoveMedia?: (index: number) => void;
   onReorderMedia?: (from: number, to: number) => void;
+  /**
+   * #4522 — the 4-step builder: the day's date ("Day 1 · Fri 12 Mar") replaces
+   * the plain "Day N"; `dayCountLocked` removes Delete (the day count follows the
+   * trip dates); `dragHandle` is the grip a host drags to reorder days.
+   */
+  dateLabel?: string;
+  dayCountLocked?: boolean;
+  dragHandle?: React.ReactNode;
 }
 
 const NARRATIVE_MAX = 1000;
@@ -88,6 +96,9 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
   testID,
   brandId,
   eventId,
+  dateLabel,
+  dayCountLocked = false,
+  dragHandle,
   onAddMedia,
   onRemoveMedia,
   onReorderMedia,
@@ -106,7 +117,12 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
   return (
     <View style={styles.card} testID={testID}>
       <View style={styles.header}>
-        <Text style={styles.ordinalLabel}>Day {day.ordinal}</Text>
+        <View style={styles.headerLead}>
+          {dragHandle ?? null}
+          <Text style={styles.ordinalLabel} accessibilityRole="header">
+            {dateLabel ?? `Day ${day.ordinal}`}
+          </Text>
+        </View>
         <View style={styles.headerActions}>
           <Pressable
             onPress={onMoveUp}
@@ -130,6 +146,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
           >
             <Icon name="chevD" size={16} color={color.text2} />
           </Pressable>
+          {dayCountLocked ? null : (
           <Pressable
             onPress={onDelete}
             disabled={disabled || total <= 1}
@@ -144,6 +161,7 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
           >
             <Icon name="trash" size={16} color={color.text3} />
           </Pressable>
+          )}
         </View>
       </View>
 
@@ -288,6 +306,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: INPUT_BORDER,
     gap: space[1],
+  },
+  headerLead: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[2],
   },
   header: {
     flexDirection: "row",

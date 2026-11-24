@@ -63,7 +63,8 @@ describe("issue #3281 extras validation mirrors the database", () => {
       [{ name: "  " }, false, /name/],
       [{ priceGbp: -1 }, false, /less than nothing/],
       [{ priceGbp: 1.005 }, false, /two decimal places/],
-      [{}, true, /free ticket can only have free extras/],
+      // #3281 S7: the host copy says "add-ons".
+      [{}, true, /free ticket can only have free add-ons/],
       [{ capacity: 0 }, false, /Capacity must be 1 or more/],
       [{ capacity: 2, soldCount: 3 }, false, /below the 3 already sold/],
       [{ maxPerTicket: 21 }, false, /between 1 and 20/],

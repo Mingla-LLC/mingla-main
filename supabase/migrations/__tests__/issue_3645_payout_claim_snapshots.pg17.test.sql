@@ -73,6 +73,11 @@ BEGIN
     (v_old,  v_brand_st, '2e1-old',  'order', 'stripe', 'usd', v_now + interval '29 days', v_now + interval '30 days', 100, 0, 100, 'pending'),
     (v_st_a, v_brand_st, '2e1-st-a', 'order', 'stripe', 'usd', v_now - interval '2 days', v_now - interval '1 day', 12000, 2000, 10000, 'pending'),
     (v_ps_a, v_brand_ps, '2e1-ps-a', 'order', 'paystack', 'ngn', v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, 'pending');
+  -- issue #4522: the Paystack release S6 pays holds the sale it pays for
+  -- (authorize never sends more than a release's sales are worth).
+  INSERT INTO public.payout_release_items (release_id, source_type, source_id, gross_cents,
+    mingla_fee_cents, net_cents, source_finalized_at)
+  VALUES (v_ps_a, 'order', gen_random_uuid(), 10000, 1000, 9000, v_now - interval '2 days');
 
   INSERT INTO public.payout_ledger_adjustments (release_id, brand_id, currency, kind, amount_cents, idempotency_key)
   VALUES (v_st_a, v_brand_st, 'usd', 'maturity_recredit', 700, '2e1-recredit-a');
@@ -223,6 +228,9 @@ BEGIN
     anchor_end_at, releasable_at, gross_cents, mingla_fee_cents, net_release_cents, status
   ) VALUES (v_ps_b, v_brand_ps, '2e1-ps-b', 'order', 'paystack', 'ngn',
             v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, 'pending');
+  INSERT INTO public.payout_release_items (release_id, source_type, source_id, gross_cents,
+    mingla_fee_cents, net_cents, source_finalized_at)
+  VALUES (v_ps_b, 'order', gen_random_uuid(), 10000, 1000, 9000, v_now - interval '2 days');
   PERFORM public.claim_paystack_payout_releases(20, v_now);
   SELECT paystack_execution_claim_id INTO v_claim FROM public.brand_payout_releases WHERE id = v_ps_b;
   SELECT id INTO v_first FROM public.payout_release_claim_snapshots WHERE release_id = v_ps_b;
@@ -257,6 +265,9 @@ BEGIN
     anchor_end_at, releasable_at, gross_cents, mingla_fee_cents, net_release_cents, status
   ) VALUES (v_ps_c, v_brand_ps, '2e1-ps-c', 'order', 'paystack', 'ngn',
             v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, 'pending');
+  INSERT INTO public.payout_release_items (release_id, source_type, source_id, gross_cents,
+    mingla_fee_cents, net_cents, source_finalized_at)
+  VALUES (v_ps_c, 'order', gen_random_uuid(), 10000, 1000, 9000, v_now - interval '2 days');
   PERFORM public.claim_paystack_payout_releases(20, v_now);
   SELECT paystack_execution_claim_id INTO v_claim FROM public.brand_payout_releases WHERE id = v_ps_c;
   SELECT id INTO v_first FROM public.payout_release_claim_snapshots WHERE release_id = v_ps_c;
@@ -288,6 +299,9 @@ BEGIN
     anchor_end_at, releasable_at, gross_cents, mingla_fee_cents, net_release_cents, status
   ) VALUES (v_ps_d, v_brand_ps, '2e1-ps-d', 'order', 'paystack', 'ngn',
             v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, 'pending');
+  INSERT INTO public.payout_release_items (release_id, source_type, source_id, gross_cents,
+    mingla_fee_cents, net_cents, source_finalized_at)
+  VALUES (v_ps_d, 'order', gen_random_uuid(), 10000, 1000, 9000, v_now - interval '2 days');
   PERFORM public.claim_paystack_payout_releases(20, v_now);
   SELECT * INTO v_snap FROM public.payout_release_claim_snapshots WHERE release_id = v_ps_d;
   UPDATE public.brand_payout_releases SET status = 'released', released_at = v_now WHERE id = v_ps_d;
@@ -303,6 +317,9 @@ BEGIN
     anchor_end_at, releasable_at, gross_cents, mingla_fee_cents, net_release_cents, status
   ) VALUES (v_ps_e, v_brand_ps, '2e1-ps-e', 'order', 'paystack', 'ngn',
             v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, 'pending');
+  INSERT INTO public.payout_release_items (release_id, source_type, source_id, gross_cents,
+    mingla_fee_cents, net_cents, source_finalized_at)
+  VALUES (v_ps_e, 'order', gen_random_uuid(), 10000, 1000, 9000, v_now - interval '2 days');
   PERFORM public.claim_paystack_payout_releases(20, v_now);
   -- Claim A stops before planning; the release goes back.
   UPDATE public.brand_payout_releases

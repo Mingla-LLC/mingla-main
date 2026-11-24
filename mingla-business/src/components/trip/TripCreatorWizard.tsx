@@ -199,6 +199,38 @@ import {
   wizardInviteSummaryReady,
 } from "../invites/wizardInvitePublishGate";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
+// #4522 — the 4-step builder (flag `tripBuilderV2`). One component module and
+// one pure-rules module; with the flag off none of it runs.
+import {
+  TRIP_BUILDER_V2,
+  TripBuilderAutosavePill,
+  TripBuilderSectionTitle,
+  TripPublishChecklist,
+} from "./TripBuilderV2Parts";
+import { TripEarningsCard } from "./TripEarningsCard";
+import { TripInclusionChips } from "./TripInclusionChips";
+import { TripQuestionLibrary } from "./TripQuestionLibrary";
+import { TripPreviewPane, TripPreviewPeek } from "./TripBuilderPreview";
+import {
+  AUTOSAVE_DEBOUNCE_MS,
+  PREVIEW_PANE_MIN_WIDTH,
+  BUILDER_STEP_COUNT,
+  BUILDER_STEP_TITLES,
+  autosavePillState,
+  autosaveRetryDelayMs,
+  builderStepForLegacyStep,
+  buildPublishChecklist,
+  builderRailState,
+  // issue #4522 deploy window — share_payment_plan only when it can matter.
+  shouldSendSharePaymentPlan,
+  dirtySaveGroups,
+  firstOpenItem,
+  isBuilderStep,
+  pricingSignature,
+  publishUnlockLine,
+  type ChecklistItem,
+  type SaveGroup,
+} from "./tripBuilderV2Model";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 import { unsavedWork } from "../../hooks/useUnsavedChangesGuard";
 import { saveTripWizardBeforeBrandSwitch } from "../../utils/tripWizardBrandSwitch";
@@ -293,6 +325,24 @@ const STEPPER_STEPS: StepperStep[] = [
   { id: "step-8", label: STEP_TITLES[8] },
 ];
 
+// #4522 — read once; every v2 branch below is `V2 ? … : today's code`.
+const V2: boolean = TRIP_BUILDER_V2;
+const LAST_STEP: number = V2 ? BUILDER_STEP_COUNT : 8;
+/** The Pricing step: 3 in the 4-step builder, 4 in today's 8-step wizard. */
+const PRICING_STEP: StepIndex = V2 ? 3 : 4;
+const BUILDER_STEPPER_STEPS: StepperStep[] = [1, 2, 3, 4].map((n) => ({
+  id: `step-${n}`,
+  label: BUILDER_STEP_TITLES[n as 1 | 2 | 3 | 4],
+}));
+/** The step a cold open (`?step=`) lands on. */
+function resolveInitialBuilderStep(initialStep: number | undefined): StepIndex {
+  if (!V2) return resolveTripWizardInitialStep(initialStep);
+  if (typeof initialStep !== "number" || !Number.isInteger(initialStep)) return 1;
+  if (isBuilderStep(initialStep)) return initialStep;
+  // A return link written by the 8-step wizard (Review = 8): the publish step.
+  return initialStep >= 5 ? 4 : 1;
+}
+
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
   { label: "Hub", icon: "calendar", href: "/(tabs)/hub/trips", active: true },
@@ -304,6 +354,8 @@ const DESKTOP_WIZARD_NAV_ITEMS = [
 export function tripToStep1Draft(trip: Trip): Step1Draft {
   return {
     title: trip.title,
+    // #4522 — the description (step 1 of the 4-step builder).
+    description: trip.description ?? "",
     startAt: trip.businessTrip.startAt,
     endAt: trip.businessTrip.endAt,
     destinationPlaceId: trip.businessTrip.destinationPlaceId,
@@ -458,7 +510,7 @@ function tierToStep4Package(tier: Trip["pricingTiers"][number]): Step4Package {
     priceMajor: needsReentry ? "" : (tier.priceCents / 100).toFixed(2),
     description: tier.description ?? "",
     capacity: tier.quantityTotal,
-    paymentPlan: tier.installmentSchedule ?? null,
+    paymentPlan: tier.paymentPlan ?? tier.installmentSchedule ?? null,
     // Drafts have no sales; the per-package post-sale lock is server-enforced.
     soldCount: 0,
   };
@@ -484,6 +536,7 @@ export function tripToStep4Draft(trip: Trip): Step4Draft {
   return {
     packages,
     currency,
+    sharePaymentPlan: trip.sharePaymentPlan ?? false,
     // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
     pricingSwitches: {
       passTax: trip.pricingSwitches?.passTax ?? null,
@@ -630,6 +683,7 @@ export function isTripWizardPristine(
   const initStep1 = tripToStep1Draft(trip);
   if (
     step1Draft.title !== initStep1.title ||
+    (step1Draft.description ?? "") !== (initStep1.description ?? "") ||
     step1Draft.startAt !== initStep1.startAt ||
     step1Draft.endAt !== initStep1.endAt ||
     step1Draft.destinationPlaceId !== initStep1.destinationPlaceId ||
@@ -693,7 +747,9 @@ export function isTripWizardPristine(
   const initStep4 = tripToStep4Draft(trip);
   if (
     step4PackagesSignature(step4Draft.packages) !==
-    step4PackagesSignature(initStep4.packages)
+      step4PackagesSignature(initStep4.packages) ||
+    (step4Draft.sharePaymentPlan === true) !==
+      (initStep4.sharePaymentPlan === true)
   ) {
     return false;
   }
@@ -774,7 +830,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut } = useAuth();
-  const { isWideDesktop } = useResponsiveLayout();
+  const { isWideDesktop, width: viewportWidth } = useResponsiveLayout();
   // #3645 PR11c — Organiser Terms before first paid listing publish.
   const {
     blockPaidPublishUntilAccepted,
@@ -782,7 +838,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     gateElement: organiserTermsGateElement,
   } = useOrganiserTermsPublishGate(trip.brandId);
   const [step, setStep] = useState<StepIndex>(() =>
-    resolveTripWizardInitialStep(initialStep),
+    resolveInitialBuilderStep(initialStep),
   );
   const [step1Draft, setStep1Draft] = useState<Step1Draft>(tripToStep1Draft(trip));
   const [daysDraft, setDaysDraft] = useState<TripDayDraft[]>(tripToDaysDraft(trip));
@@ -1069,6 +1125,20 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
   const updateRefundPolicyMutation = useUpdateRefundPolicy();
   const updateBookingDeadlineMutation = useUpdateBookingDeadline();
+  // ORCH-0880 — one writer for a package's traveler questions: the schema builder
+  // and (#4522) the question library both go through it, so the dirty set that
+  // `autosaveStep6` reads is always right.
+  const handleIntakeSchemaChange = useCallback(
+    (ticketTypeId: string, next: IntakeSchema | null): void => {
+      setStep6Draft((prev) => {
+        const cloned = new Map(prev);
+        cloned.set(ticketTypeId, next);
+        return cloned;
+      });
+      dirtyTierIdsRef.current = new Set([...dirtyTierIdsRef.current, ticketTypeId]);
+    },
+    [],
+  );
   // ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 query + mutation.
   const intakeSchemasQuery = useTripIntakeSchemasByEvent(trip.id);
   const upsertIntakeSchemaMutation = useUpsertTripIntakeSchema();
@@ -1248,6 +1318,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             ? trip.pricingTiers.find((t) => t.ticketTypeId === p.ticketTypeId)
             : undefined;
         const priceCents = Math.round((parseFloat(p.priceMajor) || 0) * 100);
+        const paymentPlan = paymentPlansAvailable ? p.paymentPlan : null;
+        const legacyInstallmentSchedule =
+          paymentPlan !== null && "v" in paymentPlan ? null : paymentPlan;
         return {
           id: persisted?.id ?? `preview-tier-${idx}`,
           eventId: trip.id,
@@ -1259,7 +1332,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           quantityTotal: p.capacity,
           ticketsRemaining: persisted?.ticketsRemaining ?? null,
           isUnlimited: false,
-          installmentSchedule: paymentPlansAvailable ? p.paymentPlan : null,
+          installmentSchedule: legacyInstallmentSchedule,
+          paymentPlan,
           description:
             p.description.trim().length > 0 ? p.description.trim() : null,
         };
@@ -1283,6 +1357,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   const persistedTierIdsRef = useRef<Set<string>>(
     new Set(trip.pricingTiers.map((t) => t.ticketTypeId)),
   );
+  // #4522 — package key -> the ticket type id its create returned (see persistPackages).
+  const createdTierIdsByKeyRef = useRef<Map<string, string>>(new Map());
 
   // META-ORCH-1174 Leg B2 — persist the full N-package set:
   //   • a package WITH a ticketTypeId  → updateTripPricing (in-place; never
@@ -1298,22 +1374,35 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     // Map of clientKey → adopted ticketTypeId for the create-then-adopt step.
     const adopted = new Map<string, string>();
 
-    for (const pkg of currentPackages) {
+    for (const [packageIndex, pkg] of currentPackages.entries()) {
       const priceCents = Math.round((parseFloat(pkg.priceMajor) || 0) * 100);
       const capacity = pkg.capacity ?? 1;
       const tierName = pkg.name.trim() || "Standard";
       const descriptionPatch = pkg.description.trim();
-      if (pkg.ticketTypeId !== null) {
-        seenIds.add(pkg.ticketTypeId);
+      // #4522 — a package created by an earlier save in this session keeps the
+      // id it was given even when this closure still holds the draft from
+      // before the adoption (one 4-step save can write the same package twice).
+      const knownTicketTypeId =
+        pkg.ticketTypeId ?? createdTierIdsByKeyRef.current.get(pkg.key) ?? null;
+      if (knownTicketTypeId !== null) {
+        seenIds.add(knownTicketTypeId);
         await updatePricingMutation.mutateAsync({
           eventId: trip.id,
           revision,
           patch: {
-            ticketTypeId: pkg.ticketTypeId,
+            ticketTypeId: knownTicketTypeId,
             tierName,
             priceCents,
             capacity,
             installmentSchedule: pkg.paymentPlan,
+            ...(packageIndex === 0 &&
+            shouldSendSharePaymentPlan({
+              draftShare: step4Draft.sharePaymentPlan,
+              savedShare: trip.sharePaymentPlan,
+              plans: currentPackages.map((p) => p.paymentPlan),
+            })
+              ? { sharePaymentPlan: step4Draft.sharePaymentPlan === true }
+              : {}),
             description: descriptionPatch.length > 0 ? descriptionPatch : null,
             // Issue #3645 — any typed price (0 included) on a package whose
             // price was cleared removes the "price was cleared" marker.
@@ -1336,6 +1425,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         });
         seenIds.add(created.ticketTypeId);
         adopted.set(pkg.key, created.ticketTypeId);
+        createdTierIdsByKeyRef.current.set(pkg.key, created.ticketTypeId);
       }
     }
 
@@ -1364,7 +1454,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     }
   }, [
     step4Draft.packages,
+    step4Draft.sharePaymentPlan,
     trip.id,
+    trip.sharePaymentPlan,
     revision,
     updatePricingMutation,
     createTierMutation,
@@ -1434,6 +1526,16 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       revision,
       patch: {
         title: step1Draft.title.trim(),
+        // #4522 — only the 4-step builder authors a description; the 8-step
+        // wizard's save stays exactly what it was.
+        ...(V2
+          ? {
+              description:
+                (step1Draft.description ?? "").trim().length > 0
+                  ? (step1Draft.description ?? "").trim()
+                  : null,
+            }
+          : {}),
         businessTrip: {
           startAt: step1Draft.startAt,
           endAt: step1Draft.endAt,
@@ -1610,6 +1712,66 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     }
   }, [step6Draft, trip.id, revision, upsertIntakeSchemaMutation]);
 
+  // #4522 — one signature per save group. A group is saved only when its
+  // signature moved since the last save, so one edit never rewrites the rest.
+  const saveSigs = useMemo<Record<SaveGroup, string>>(
+    () => ({
+      basics: JSON.stringify(step1Draft),
+      days: JSON.stringify(daysDraft),
+      inclusions: JSON.stringify(inclusionsDraft),
+      pricing: pricingSignature(step4Draft),
+      policy: JSON.stringify(step5Draft),
+      intake: "",
+    }),
+    [step1Draft, daysDraft, inclusionsDraft, step4Draft, step5Draft],
+  );
+  const savedSigsRef = useRef<Record<SaveGroup, string> | null>(null);
+  if (savedSigsRef.current === null) savedSigsRef.current = saveSigs;
+  // A package whose price was cleared by a currency change cannot be saved until
+  // the host types it again (the server refuses it); it is not "pending".
+  const pricingBlockedByReentry = step4Draft.packages.some(
+    (p) => p.priceNeedsReentry === true && p.priceMajor.trim().length === 0,
+  );
+  const pendingSaveGroups = V2
+    ? dirtySaveGroups(
+        saveSigs,
+        savedSigsRef.current ?? saveSigs,
+        dirtyTierIdsRef.current.size > 0,
+      ).filter((g) => !(g === "pricing" && pricingBlockedByReentry))
+    : [];
+
+  // #4522 — the 4-step builder saves every changed group in one queue run.
+  const saveDirtyGroups = useCallback(async (): Promise<void> => {
+    const baseline = savedSigsRef.current ?? saveSigs;
+    const groups = dirtySaveGroups(saveSigs, baseline, dirtyTierIdsRef.current.size > 0).filter(
+      (g) => !(g === "pricing" && pricingBlockedByReentry),
+    );
+    for (const group of groups) {
+      if (group === "basics") await autosaveStep1();
+      else if (group === "days") await autosaveStep2();
+      else if (group === "inclusions") await autosaveStep3();
+      else if (group === "pricing") await autosaveStep4();
+      else if (group === "policy") await autosaveStep5();
+      else await autosaveStep6();
+      // Recorded only after the group landed, so a failure resends it.
+      if (group !== "intake") {
+        savedSigsRef.current = {
+          ...(savedSigsRef.current ?? saveSigs),
+          [group]: saveSigs[group],
+        };
+      }
+    }
+  }, [
+    saveSigs,
+    pricingBlockedByReentry,
+    autosaveStep1,
+    autosaveStep2,
+    autosaveStep3,
+    autosaveStep4,
+    autosaveStep5,
+    autosaveStep6,
+  ]);
+
   // Issue #3801 — the trip changed somewhere else: say so plainly, once per
   // refusal, and stop. Nothing is retried; Reload starts over from the server.
   const surfaceRevisionConflict = useCallback((): void => {
@@ -1649,7 +1811,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     try {
       await saveQueue.run(async () => {
         try {
-          if (step === 1) await autosaveStep1();
+          if (V2) await saveDirtyGroups();
+          else if (step === 1) await autosaveStep1();
           else if (step === 2) await autosaveStep2();
           else if (step === 3) await autosaveStep3();
           else if (step === 4) await autosaveStep4();
@@ -1678,6 +1841,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     revision,
     trip.id,
     step,
+    saveDirtyGroups,
     autosaveStep1,
     autosaveStep2,
     autosaveStep3,
@@ -1685,6 +1849,78 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     autosaveStep5,
     autosaveStep6,
   ]);
+
+  // #4522 — background autosave: 800ms after the last change, through the same
+  // one-save-at-a-time queue as Continue / Back / Close (never a second queue).
+  const [retryNonce, setRetryNonce] = useState<number>(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryAttemptRef = useRef<number>(0);
+  const runBackgroundSave = useCallback(async (): Promise<void> => {
+    if (saveQueue.isBusy()) return;
+    if (saveQueue.isConflicted()) {
+      surfaceRevisionConflict();
+      return;
+    }
+    try {
+      await autosaveCurrentStep();
+      retryAttemptRef.current = 0;
+    } catch (e) {
+      if (isTripRevisionConflict(e)) {
+        surfaceRevisionConflict();
+        return;
+      }
+      const attempt = retryAttemptRef.current;
+      retryAttemptRef.current = attempt + 1;
+      // Said once per run of failures, on the step; the pill says it after that.
+      if (attempt === 0) {
+        const code = readRpcFailureMessage(e);
+        showToast(
+          isTripSaveTimeout(e)
+            ? TRIP_SAVE_TIMEOUT_MESSAGE
+            : code === "price_reentry_required"
+              ? "Your brand's currency changed. Enter this package's price again."
+              : (resolveProviderNeutralPaidPublishGuardCopy(code)?.body ??
+                TRIP_STEP_SAVE_FAILED_MESSAGE),
+        );
+      }
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        setRetryNonce((n) => n + 1);
+      }, autosaveRetryDelayMs(attempt));
+    }
+  }, [saveQueue, surfaceRevisionConflict, autosaveCurrentStep, showToast]);
+  const hasPendingSave = pendingSaveGroups.length > 0;
+  useEffect(() => {
+    if (!V2 || !hasPendingSave || revisionConflict || isDiscarding) return undefined;
+    if (autosaveError && retryTimerRef.current !== null) return undefined;
+    const timer = setTimeout(() => {
+      void runBackgroundSave();
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return (): void => clearTimeout(timer);
+  }, [
+    hasPendingSave,
+    saveSigs,
+    step6Draft,
+    autosaveSavedAt,
+    retryNonce,
+    revisionConflict,
+    autosaveError,
+    isDiscarding,
+    runBackgroundSave,
+  ]);
+  useEffect(
+    () => (): void => {
+      if (retryTimerRef.current !== null) clearTimeout(retryTimerRef.current);
+    },
+    [],
+  );
+  const handlePillRetry = useCallback((): void => {
+    if (retryTimerRef.current !== null) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    void runBackgroundSave();
+  }, [runBackgroundSave]);
 
   // ----- Navigation -----
   // #3645 — a step save never sends the host to bank setup any more. A priced
@@ -1713,7 +1949,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       setPublishError(null);
       setStep((s) => {
         if (s === 6 && !inviteEnabled) return 8;
-        return s < 8 ? ((s + 1) as StepIndex) : s;
+        return s < LAST_STEP ? ((s + 1) as StepIndex) : s;
       });
     } catch (e) {
       // issue #1014 (rework F-1) — a currency-less brand pricing a PAID trip
@@ -2023,6 +2259,27 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
 
   // ----- Publish -----
   const handlePublishTap = useCallback(async (): Promise<void> => {
+    // #4522 — everything the host typed is saved before Publish reads the draft.
+    if (V2) {
+      if (saveQueue.isBusy()) {
+        await waitForSaveInFlight();
+        return;
+      }
+      if (saveQueue.isConflicted()) {
+        surfaceRevisionConflict();
+        return;
+      }
+      try {
+        await autosaveCurrentStep();
+      } catch (e) {
+        if (isTripRevisionConflict(e)) {
+          surfaceRevisionConflict();
+        } else {
+          showToast(isTripSaveTimeout(e) ? TRIP_SAVE_TIMEOUT_MESSAGE : TRIP_STEP_SAVE_FAILED_MESSAGE);
+        }
+        return;
+      }
+    }
     // ORCH-1118 — trip location must be a confirmed address pick before publish
     // (belt; the dock Publish disabled is the suspenders). Both departure AND
     // destination are hard-required — empty or dirty text blocks publish. Reveal
@@ -2043,7 +2300,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       return;
     }
     if (tripHasUnsupportedInstallments) {
-      setStep(4);
+      setStep(PRICING_STEP);
       showToast(
         "This payment setup doesn't support payment plans. The saved schedule is kept, but it can't be published or shown to buyers.",
       );
@@ -2068,7 +2325,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     // META-ORCH-1174 Leg B2 — every package must be valid before publish.
     // Surface the first failing reason + jump back to the pricing step.
     if (!packagesValidation.ok) {
-      setStep(4);
+      setStep(PRICING_STEP);
       showToast(packagesValidation.reason ?? "Fix your packages before publishing.");
       return;
     }
@@ -2119,6 +2376,10 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     inviteFlag.data,
     step4Draft,
     blockPaidPublishUntilAccepted,
+    saveQueue,
+    waitForSaveInFlight,
+    surfaceRevisionConflict,
+    autosaveCurrentStep,
   ]);
 
   useEffect(() => {
@@ -2126,6 +2387,61 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       void handlePublishTap();
     };
   }, [handlePublishTap]);
+
+  // #4522 — the publish checklist: one list, built from the same checks the
+  // publish tap already makes, each item naming the step that fixes it.
+  const publishChecklist = useMemo<ChecklistItem[]>(
+    () =>
+      V2
+        ? buildPublishChecklist({
+            title: step1Draft.title,
+            description: step1Draft.description ?? "",
+            hasCover: step1Draft.coverMediaUrl !== null,
+            startAt: step1Draft.startAt,
+            endAt: step1Draft.endAt,
+            placesValid: tripLocationValid,
+            days: daysDraft,
+            packagesOk: packagesValidation.ok,
+            hasPricedPackage: step4Draft.packages.some(
+              (p) => p.priceMajor.trim().length > 0 && p.priceNeedsReentry !== true,
+            ),
+            planOk: packagesValidation.ok && !tripHasUnsupportedInstallments,
+            bookingDeadline: step5Draft.bookingDeadline,
+            timeZone: trip.timezone ?? null,
+            payoutsReady: !(tripNeedsStripe || tripNeedsBankForInstallments),
+            invitesReady: invitePublishReady,
+          })
+        : [],
+    [
+      step1Draft,
+      daysDraft,
+      step4Draft.packages,
+      step5Draft.bookingDeadline,
+      trip.timezone,
+      tripLocationValid,
+      packagesValidation.ok,
+      tripHasUnsupportedInstallments,
+      tripNeedsStripe,
+      tripNeedsBankForInstallments,
+      invitePublishReady,
+    ],
+  );
+  // #4522 — Publish in the 4-step builder. With items open it says which and
+  // jumps to the first (never a dead tap); with none open it is today's publish.
+  // `handleChecklistJump` is declared further down; this reads it at tap time.
+  const checklistJumpRef = useRef<(item: ChecklistItem) => void>(() => undefined);
+  // #4522 S-18 — null when every checklist item is met.
+  const publishUnlock = V2 ? publishUnlockLine(publishChecklist) : null;
+  const handleBuilderPublishTap = useCallback(async (): Promise<void> => {
+    const open = firstOpenItem(publishChecklist);
+    if (open === null) {
+      await handlePublishTap();
+      return;
+    }
+    if (open.key === "places") setShowStep1AddressErrors(true);
+    showToast(publishUnlockLine(publishChecklist) ?? "Finish the checklist to publish.");
+    if (open.action !== "connect_bank") checklistJumpRef.current(open);
+  }, [publishChecklist, handlePublishTap, showToast]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     // Issue #3801 — publish commits the Step-1 draft first, so it is a save
@@ -2277,6 +2593,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   const prevAutosaveSavedAtRef = useRef<string | null>(autosaveSavedAt);
   useEffect(() => {
     if (
+      !V2 &&
       !isCreateMode &&
       autosaveSavedAt !== null &&
       autosaveSavedAt !== prevAutosaveSavedAtRef.current
@@ -2302,18 +2619,43 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   // wizard's existing publish check already points (`publishError`); no new
   // validation rule. Continue never blocks a step on its own (it saves and
   // moves on), so every visible step is as reachable as Continue makes it.
+  // #4522 S-18 — the furthest step the host has opened in this session.
+  const [furthestBuilderStep, setFurthestBuilderStep] = useState<number>(() => step);
+  useEffect(() => {
+    setFurthestBuilderStep((prev) => (step > prev ? step : prev));
+  }, [step]);
   const visibleStepperSteps = useMemo<StepperStep[]>(() => {
-    const base = inviteEnabled
-      ? STEPPER_STEPS
-      : STEPPER_STEPS.filter((item) => item.id !== "step-7");
-    return base.map((item) =>
-      publishError !== null && item.id === `step-${publishError.pointsToStep}`
-        ? { ...item, state: "error" as const, firstError: publishError.message }
-        : item,
-    );
-  }, [inviteEnabled, publishError]);
-  const visibleStepNumber = !inviteEnabled && step === 8 ? 7 : step;
-  const visibleStepCount = inviteEnabled ? STEP_COUNT : STEP_COUNT - 1;
+    const base = V2
+      ? BUILDER_STEPPER_STEPS
+      : inviteEnabled
+        ? STEPPER_STEPS
+        : STEPPER_STEPS.filter((item) => item.id !== "step-7");
+    const errorStep =
+      publishError === null
+        ? null
+        : V2
+          ? builderStepForLegacyStep(publishError.pointsToStep)
+          : publishError.pointsToStep;
+    return base.map((item) => {
+      if (publishError !== null && item.id === `step-${errorStep}`) {
+        return { ...item, state: "error" as const, firstError: publishError.message };
+      }
+      // #4522 — a step whose checklist items are all met shows a check
+      // (S-18: only a truly complete step; Publish only when all are met).
+      if (V2) {
+        const n = Number(item.id.slice(5));
+        if (!isBuilderStep(n)) return item;
+        if (n === step) return item;
+        // S-18: a step is ticked only when its own checklist items are met AND
+        // the host has reached it; every other step is explicitly "todo" (left
+        // undefined the rail would tick every step before the current one).
+        return { ...item, state: builderRailState(publishChecklist, n, furthestBuilderStep) };
+      }
+      return item;
+    });
+  }, [inviteEnabled, publishError, publishChecklist, step, furthestBuilderStep]);
+  const visibleStepNumber = !V2 && !inviteEnabled && step === 8 ? 7 : step;
+  const visibleStepCount = V2 ? BUILDER_STEP_COUNT : inviteEnabled ? STEP_COUNT : STEP_COUNT - 1;
   const stepIdx = visibleStepNumber - 1;
   const furthestReachableIdx = visibleStepperSteps.length - 1;
 
@@ -2359,14 +2701,37 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     autosaveCurrentStep,
     showToast,
   ]);
+  // #4522 — a checklist item jumps to its step with the field focused (title and
+  // description take focus; the other fields open at the top of their step).
+  const [focusField, setFocusField] = useState<"title" | "description" | null>(null);
+  const handleChecklistJump = useCallback(
+    (item: ChecklistItem): void => {
+      setFocusField(
+        item.key === "title" ? "title" : item.key === "description" ? "description" : null,
+      );
+      void handleStepJump(item.step - 1);
+    },
+    [handleStepJump],
+  );
+  checklistJumpRef.current = handleChecklistJump;
   const handleStepPress = useCallback((ordinal: number): void => {
     void handleStepJump(ordinal);
   }, [handleStepJump]);
 
-  const stepTitle = STEP_TITLES[step];
-  const stepSubtitle = step === 7
-    ? "Choose who to invite. Nothing sends until this trip is published."
-    : STEP_SUBTITLES[step];
+  const stepTitle = V2 && isBuilderStep(step) ? BUILDER_STEP_TITLES[step] : STEP_TITLES[step];
+  const stepSubtitle = V2
+    ? undefined
+    : step === 7
+      ? "Choose who to invite. Nothing sends until this trip is published."
+      : STEP_SUBTITLES[step];
+  // #4522 — the pill the host watches instead of a Continue tap.
+  const pill = autosavePillState({
+    saving: isAutosaving,
+    pending: hasPendingSave,
+    failed: autosaveError,
+    conflict: revisionConflict,
+    savedAt: autosaveSavedAt,
+  });
 
   // Autosave state copy for subtitle row.
   // Issue #3801 — honest: nothing retries on its own, so the header never
@@ -2427,6 +2792,40 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     [router],
   );
 
+  // #4522 — which of today's step bodies each step shows. The 4-step builder
+  // stacks the old bodies (Trip; Itinerary + Inclusions; Pricing + Policy;
+  // Intake + Invite + Review); flag off, one body per step exactly as before.
+  const shows = V2
+    ? {
+        basics: step === 1,
+        itinerary: step === 2,
+        inclusions: step === 2,
+        pricing: step === 3,
+        policy: step === 3,
+        intake: step === 4,
+        invite: step === 4,
+        review: step === 4,
+      }
+    : {
+        basics: step === 1,
+        itinerary: step === 2,
+        inclusions: step === 3,
+        pricing: step === 4,
+        policy: step === 5,
+        intake: step === 6,
+        invite: step === 7,
+        review: step === 8,
+      };
+
+  const showPreviewPane =
+    V2 && isWideDesktop && (viewportWidth ?? 0) >= PREVIEW_PANE_MIN_WIDTH;
+  const fromPriceMinor = useMemo<number | null>(() => {
+    const prices = step4Draft.packages
+      .map((p) => Math.round((parseFloat(p.priceMajor) || 0) * 100))
+      .filter((c) => c > 0);
+    return prices.length > 0 ? Math.min(...prices) : null;
+  }, [step4Draft.packages]);
+
   const renderDesktopAppRail = (): React.ReactElement => (
     <View style={styles.desktopAppRail}>
       <View style={styles.desktopRailBrandMark}>
@@ -2479,8 +2878,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           {step1Draft.title.trim().length > 0 ? step1Draft.title : "Untitled trip"}
         </Text>
         <Text style={styles.desktopStepRailSub} numberOfLines={1}>
-          {brand.name}{autosaveStateText.length > 0 ? ` · ${autosaveStateText}` : ""}
+          {V2 ? brand.name : `${brand.name}${autosaveStateText.length > 0 ? ` · ${autosaveStateText}` : ""}`}
         </Text>
+        {V2 ? <TripBuilderAutosavePill state={pill} onRetry={handlePillRetry} /> : null}
       </View>
       {/* #4420 B7 — the 280 clickable step list (done / current / error / todo). */}
       <Stepper
@@ -2512,14 +2912,29 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           <TopBar
             leftKind="brand"
             rightSlot={
-              <IconChrome
-                icon="close"
-                size={36}
-                onPress={handleClose}
-                // Issue #3801 — no Close while a save is on the wire.
-                disabled={submitting}
-                accessibilityLabel="Close wizard"
-              />
+              <View style={styles.topBarRightRow}>
+                {V2 ? (
+                  <Button
+                    label="Publish"
+                    variant="primary"
+                    size="sm"
+                    onPress={() => {
+                      void handleBuilderPublishTap();
+                    }}
+                    disabled={submitting || checkingInvitePublish}
+                    accessibilityLabel="Publish this trip"
+                    testID="trip-builder-top-publish"
+                  />
+                ) : null}
+                <IconChrome
+                  icon="close"
+                  size={36}
+                  onPress={handleClose}
+                  // Issue #3801 — no Close while a save is on the wire.
+                  disabled={submitting}
+                  accessibilityLabel="Close wizard"
+                />
+              </View>
             }
           />
         </View>
@@ -2548,6 +2963,19 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           </View>
           {/* #4420 — no separate "n/N" counter: the stepper's own n / N Steps
               button already shows it (the two read side by side). */}
+          {V2 ? (
+            <Button
+              label="Publish"
+              variant="primary"
+              size="sm"
+              onPress={() => {
+                void handleBuilderPublishTap();
+              }}
+              disabled={submitting || checkingInvitePublish}
+              accessibilityLabel="Publish this trip"
+              testID="trip-builder-top-publish"
+            />
+          ) : null}
         </View>
       )}
 
@@ -2559,7 +2987,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         </Text>
         <Text accessibilityRole={step === 7 ? "header" : undefined} style={styles.mobileStepTitle}>{stepTitle}</Text>
         {stepSubtitle ? <Text style={styles.mobileStepSub}>{stepSubtitle}</Text> : null}
-        {autosaveStateText.length > 0 ? (
+        {V2 ? (
+          <TripBuilderAutosavePill state={pill} onRetry={handlePillRetry} />
+        ) : autosaveStateText.length > 0 ? (
           <Text
             style={[
               styles.saveState,
@@ -2614,7 +3044,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               />
             </View>
           ) : null}
-          {step === 1 ? (
+          {shows.basics ? (
             <TripCreatorStep1Basics
               draft={step1Draft}
               onChange={handleStep1Change}
@@ -2625,9 +3055,11 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               showAddressErrors={showStep1AddressErrors}
               timeZone={trip.timezone ?? null}
               onCoverVideoProcessingChange={handleCoverVideoProcessingChange}
+              builderV2={V2}
+              focusField={focusField}
             />
           ) : null}
-          {step === 2 ? (
+          {shows.itinerary ? (
             <TripCreatorStep2Itinerary
               days={daysDraft}
               onChange={setDaysDraft}
@@ -2635,9 +3067,18 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               brandId={trip.brandId}
               eventId={trip.id}
               onShowToast={showToast}
+              builderV2={V2}
+              startAt={step1Draft.startAt}
             />
           ) : null}
-          {step === 3 ? (
+          {V2 && shows.inclusions ? (
+            <TripInclusionChips
+              items={inclusionsDraft}
+              onChange={setInclusionsDraft}
+              disabled={submitting}
+            />
+          ) : null}
+          {shows.inclusions ? (
             <TripCreatorStep3Inclusions
               items={inclusionsDraft}
               onChange={setInclusionsDraft}
@@ -2647,7 +3088,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               onShowToast={showToast}
             />
           ) : null}
-          {step === 4 ? (
+          {V2 && shows.pricing ? <TripBuilderSectionTitle title="Packages and prices" /> : null}
+          {shows.pricing ? (
             <TripCreatorStep4Pricing
               draft={step4Draft}
               onChange={(patch) => setStep4Draft((s) => ({ ...s, ...patch }))}
@@ -2656,25 +3098,48 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               // pricing step says the draft still saves.
               needsBankToPublish={tripNeedsStripe || tripNeedsBankForInstallments}
               paymentPlansAvailable={paymentPlansAvailable}
+              tripStartAt={step1Draft.startAt}
+              timeZone={trip.timezone ?? null}
+              addOnsEventId={trip.id}
             />
           ) : null}
           {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5
               Cancellation & deadline. brand.timezone seeds the brand-TZ label
               on BookingDeadlinePicker; missing TZ falls back to UTC. */}
-          {step === 5 ? (
+          {V2 && shows.policy ? <TripBuilderSectionTitle title="Cancellation and booking deadline" /> : null}
+          {shows.policy ? (
             <TripCreatorStep5Policy
               draft={step5Draft}
               onChange={(patch) => setStep5Draft((s) => ({ ...s, ...patch }))}
               tripStartIso={step1Draft.startAt}
               brandTimezone={trip.timezone ?? null}
               disabled={submitting}
+              builderV2={V2}
             />
           ) : null}
+          {V2 && shows.policy ? <TripEarningsCard draft={step4Draft} /> : null}
           {/* ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 per-tier intake
               schema builder + live preview. Per-tier state lives in step6Draft;
               touch tracking lives in dirtyTierIdsRef so autosaveStep6 only
               writes the tiers the planner actually changed. */}
-          {step === 6 ? (
+          {V2 && shows.intake ? <TripBuilderSectionTitle title="Traveler questions" /> : null}
+          {V2 && shows.intake ? (
+            <TripQuestionLibrary
+              tiers={trip.pricingTiers}
+              unsavedPackageCount={
+                step4Draft.packages.filter(
+                  (p) =>
+                    p.ticketTypeId === null &&
+                    !createdTierIdsByKeyRef.current.has(p.key),
+                ).length
+              }
+              schemasByTier={step6Draft}
+              onSchemaChange={handleIntakeSchemaChange}
+              onNotice={showToast}
+              disabled={submitting}
+            />
+          ) : null}
+          {shows.intake ? (
             <TripCreatorStep6Intake
               ticketTypes={trip.pricingTiers}
               schemasByTier={
@@ -2685,21 +3150,12 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
                   ),
                 )
               }
-              onSchemaChange={(ticketTypeId, next) => {
-                setStep6Draft((prev) => {
-                  const cloned = new Map(prev);
-                  cloned.set(ticketTypeId, next);
-                  return cloned;
-                });
-                dirtyTierIdsRef.current = new Set([
-                  ...dirtyTierIdsRef.current,
-                  ticketTypeId,
-                ]);
-              }}
+              onSchemaChange={handleIntakeSchemaChange}
               disabled={submitting}
             />
           ) : null}
-          {step === 7 && inviteEnabled ? (
+          {V2 && shows.invite && inviteEnabled ? <TripBuilderSectionTitle title="Invite people" /> : null}
+          {shows.invite && inviteEnabled ? (
             <InvitePeopleStep
               eventId={trip.id}
               brandId={trip.brandId}
@@ -2713,7 +3169,14 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               onPlanChange={handleInvitePlanChange}
             />
           ) : null}
-          {step === 8 ? (
+          {V2 && shows.review ? (
+            <TripPublishChecklist
+              items={publishChecklist}
+              onJump={handleChecklistJump}
+              onConnectBank={handleConnectStripe}
+            />
+          ) : null}
+          {shows.review ? (
             <TripCreatorStep5Review
               trip={previewTrip}
               brand={brand}
@@ -2724,9 +3187,10 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               onConnectStripe={handleConnectStripe}
               themeOverrides={step1Draft.themeOverrides}
               onThemeChange={handleReviewThemeChange}
+              hidePreview={V2}
             />
           ) : null}
-          {step === 8 ? (
+          {shows.review ? (
             <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote}
             estimateFailed={inviteEstimateFailed}
             listFailed={inviteListFailed}
@@ -2734,6 +3198,17 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           ) : null}
         </View>
       </ScrollView>
+
+      {/* #4522 — phones and narrow web: the preview peek bar above the dock. */}
+      {V2 && !showPreviewPane && !keyboardVisible ? (
+        <TripPreviewPeek
+          trip={previewTrip}
+          brand={brand}
+          themeOverrides={step1Draft.themeOverrides}
+          fromPriceMinor={fromPriceMinor}
+          currency={step4Draft.currency}
+        />
+      ) : null}
 
       {/* Dock — sleek floating glass card. Hidden when keyboard up. */}
       {keyboardVisible ? null : (
@@ -2756,7 +3231,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               fullWidth
               testID="trip-wizard-footer-cta"
             />
-          ) : step === 8 ? (
+          ) : step === (V2 ? BUILDER_STEP_COUNT : 8) ? (
                 // #1780 — Review (Publish) is Step 8 when Invite people is
                 // enabled and remains visible Step 7 when the flag is dark.
             <View style={styles.dockButtonRow}>
@@ -2785,26 +3260,37 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
                   }
                   variant="primary"
                   size="md"
-                  onPress={() => void handlePublishTap()}
+                  onPress={() => void (V2 ? handleBuilderPublishTap() : handlePublishTap())}
                   loading={submitting || checkingInvitePublish}
                   // ORCH-1076 Stream B — disable Publish for a paid trip on a
                   // Stripe-unready brand (proactive gate; mirrors events).
                   // ORCH-1118 — also disable until departure + destination are
                   // confirmed address picks (suspenders; belt in handlePublishTap).
                   // META-ORCH-1174 Leg B2 — and until every package is valid.
+                  // #4522 — the 4-step builder never greys Publish out for a reason it
+                  // does not state: a tap with items open jumps to the first one
+                  // and the checklist says what is left.
                   disabled={
-                    submitting ||
-                    tripNeedsStripe ||
-                    tripNeedsBankForInstallments ||
-                    tripHasUnsupportedInstallments ||
-                    !tripLocationValid ||
-                    !packagesValidation.ok ||
-                    !invitePublishReady ||
-                    checkingInvitePublish
+                    V2
+                      ? submitting || checkingInvitePublish || publishUnlock !== null
+                      : submitting ||
+                        tripNeedsStripe ||
+                        tripNeedsBankForInstallments ||
+                        tripHasUnsupportedInstallments ||
+                        !tripLocationValid ||
+                        !packagesValidation.ok ||
+                        !invitePublishReady ||
+                        checkingInvitePublish
                   }
                   fullWidth
                   testID="trip-wizard-footer-cta"
                 />
+                {/* #4522 S-18 (spec §9.5) — the reason Publish is not enabled yet. */}
+                {V2 && publishUnlock !== null ? (
+                  <Text style={styles.publishUnlockHint} testID="trip-wizard-publish-unlock">
+                    {publishUnlock}
+                  </Text>
+                ) : null}
               </View>
             </View>
           ) : (
@@ -2842,6 +3328,16 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         </GlassCard>
       )}
         </View>
+        {/* #4522 — wide web (>= 1180px): the live preview pane beside the form. */}
+        {showPreviewPane ? (
+          <View style={styles.previewPaneWrap}>
+            <TripPreviewPane
+              trip={previewTrip}
+              brand={brand}
+              themeOverrides={step1Draft.themeOverrides}
+            />
+          </View>
+        ) : null}
       </View>
 
       {/* Overlays at root — discard ConfirmDialog, publish ConfirmDialog, Toast wrap */}
@@ -2866,16 +3362,28 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         visible={pendingDayTrim !== null}
         onClose={handleKeepDatesAfterTrimQuestion}
         onConfirm={handleConfirmDayTrim}
-        title="Remove part of your itinerary?"
+        title={
+          V2 && pendingDayTrim !== null
+            ? pendingDayTrim.atRisk.length === 1
+              ? `Remove Day ${pendingDayTrim.atRisk[0].ordinal}?`
+              : `Remove ${pendingDayTrim.atRisk.length} days?`
+            : "Remove part of your itinerary?"
+        }
         description={
           pendingDayTrim !== null
-            ? describeItineraryDaysAtRisk(pendingDayTrim.atRisk)
+            ? V2
+              ? pendingDayTrim.atRisk.length === 1
+                ? "Its plan will be deleted."
+                : "Their plans will be deleted."
+              : describeItineraryDaysAtRisk(pendingDayTrim.atRisk)
             : ""
         }
         confirmLabel={
-          pendingDayTrim !== null && pendingDayTrim.atRisk.length > 1
-            ? "Remove days"
-            : "Remove day"
+          V2
+            ? "Remove"
+            : pendingDayTrim !== null && pendingDayTrim.atRisk.length > 1
+              ? "Remove days"
+              : "Remove day"
         }
         cancelLabel="Keep dates"
         destructive
@@ -2930,6 +3438,15 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+  },
+  previewPaneWrap: {
+    width: 340,
+    flexShrink: 0,
+  },
+  topBarRightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
   },
   kbAvoid: {
     flex: 1,
@@ -3123,6 +3640,12 @@ const styles = StyleSheet.create({
   },
   dockPublishCell: {
     flex: 2,
+  },
+  publishUnlockHint: {
+    marginTop: space[1],
+    fontSize: type.caption.fontSize,
+    color: color.text2,
+    textAlign: "center",
   },
   toastWrap: {
     position: "absolute",

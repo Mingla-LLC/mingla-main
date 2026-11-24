@@ -82,7 +82,18 @@ import {
   paystackChannelsForCountry,
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
-import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+import {
+  paystackInitializeTransaction,
+  paystackVerifyTransaction,
+} from "../_shared/paystack.ts";
+import { resolvePaystackTicketReturn } from "../_shared/paystackTicketReturnVerify.ts";
+import {
+  parseSupersedeRequest,
+  type SupersedeDeps,
+  supersedeHeldCheckout,
+  supersedeOpenBuyerCheckouts,
+} from "./supersedeCheckout.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 // Issue #3872 — explicit order totals written from the breakdown whose total is
 // the provider amount, on every path (hosted, native, Paystack, free).
 import {
@@ -120,6 +131,10 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+import {
+  REPLAY_EXTRAS_COLUMNS,
+  replayedSessionExtras,
+} from "./replayedSessionExtras.ts";
 import {
   brandFormRefusal,
   checkoutFormPayload,
@@ -159,7 +174,19 @@ import {
   TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
 import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
+import {
+  addOnsRideContractPlan,
+  checkoutQuotePlanChoice,
+  parseTripPlanV2ContractPlan,
+  tierRowsCarryPlanV2,
+  type TripPlanV2ContractPlan,
+} from "./tripPlanV2Contract.ts";
 import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
+import {
+  addOnLineDescriptions,
+  hostedLineDescription,
+  paystackAddOnCustomFields,
+} from "./addOnLineDescriptions.ts";
 // Issue #4271 — door pay code: the guest pays a host-made code on their phone.
 import {
   doorChargeMatchesCode,
@@ -493,6 +520,16 @@ const EXTRAS_REFUSALS = [
   "extra_capacity_exceeded",
   "extras_need_paid_ticket",
   "extras_not_on_installments",
+] as const;
+/**
+ * issue #4522 — the database's v2 trip-plan refusals, returned by these names.
+ * `installment_plan_unavailable` here means the booking date only allows paying
+ * in full (the client refreshes its quote); the others are stale-client inputs.
+ */
+const PLAN_V2_REFUSALS = [
+  "installment_plan_unavailable",
+  "addon_payment_mode_invalid",
+  "payment_plan_v2_unavailable",
 ] as const;
 type CheckoutMode = "create" | "preview" | "quote";
 // ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
@@ -1097,6 +1134,24 @@ export const createTicketCheckoutCreateHandler = (
       }
       paymentPlanChoice = body.payment_plan_choice;
     }
+    // issue #4522 — how add-ons on a v2 trip plan are paid ("today" joins the
+    // deposit, "spread" rides the plan rows). Inert while the server switch is
+    // off. It rides the cart lines (`addonPaymentMode`) so no RPC signature
+    // changes; absent => every RPC call below is byte-identical to today.
+    let addonPaymentMode: "today" | "spread" | null = null;
+    if (body.addonPaymentMode !== undefined && body.addonPaymentMode !== null) {
+      if (
+        body.addonPaymentMode !== "today" && body.addonPaymentMode !== "spread"
+      ) {
+        return jsonResponse({ error: "addon_payment_mode_invalid" }, 400);
+      }
+      addonPaymentMode = body.addonPaymentMode;
+    }
+    // The quote and the session RPCs read the choice from the lines; every
+    // other use of `lines` (idempotency, intake, capability) is unchanged.
+    const rpcLines = addonPaymentMode === null
+      ? lines
+      : lines.map((line) => ({ ...line, addonPaymentMode }));
 
     if (!eventId) return refuse({ error: "event_id_required" }, 400);
     if (buyerName.length < 2) {
@@ -1649,6 +1704,13 @@ export const createTicketCheckoutCreateHandler = (
       }
     };
 
+    // issue #4522 W-4 / S-1 — a v2 create's review quote prices its lines' own
+    // plan choice (its session scalar is "full" by contract).
+    const quotePaymentPlanChoice = checkoutQuotePlanChoice(
+      isCheckoutV2,
+      checkoutV2Lines,
+      paymentPlanChoice,
+    );
     const loadTicketQuote = async (): Promise<Record<string, unknown>> => {
       // Issue #4271 — a door code's lines are priced by the door rule: the
       // wrapper unlocks the code's own in-person-only tiers for this one
@@ -1666,7 +1728,7 @@ export const createTicketCheckoutCreateHandler = (
             p_booked_start_at: bookedStartAt,
             p_booked_end_at: bookedEndAt,
             p_booked_party_size: partySize,
-            p_payment_plan_choice: paymentPlanChoice,
+            p_payment_plan_choice: quotePaymentPlanChoice,
             p_discount_code: discountCode,
             p_buyer_email: buyerEmail,
             p_buyer_phone_e164: buyerPhoneE164,
@@ -1681,14 +1743,14 @@ export const createTicketCheckoutCreateHandler = (
       }
       const { data, error } = await supabase.rpc("issue_3872_ticket_quote", {
         p_event_id: eventId,
-        p_lines: lines,
+        p_lines: rpcLines,
         p_event_date_ids: orderedEventDateIds.length > 0
           ? orderedEventDateIds
           : null,
         p_booked_start_at: bookedStartAt,
         p_booked_end_at: bookedEndAt,
         p_booked_party_size: partySize,
-        p_payment_plan_choice: paymentPlanChoice,
+        p_payment_plan_choice: quotePaymentPlanChoice,
         p_discount_code: discountCode,
         p_buyer_email: buyerEmail,
         p_buyer_phone_e164: buyerPhoneE164,
@@ -1919,6 +1981,16 @@ export const createTicketCheckoutCreateHandler = (
         if (detail === "installment_amount_below_minimum") {
           return jsonResponse({ error: "installment_amount_below_minimum" }, 409);
         }
+        // issue #4522 — v2 plan refusals keep their own names for client copy.
+        const planV2Refusal = PLAN_V2_REFUSALS.find((token) =>
+          detail.includes(token)
+        );
+        if (planV2Refusal !== undefined) {
+          return jsonResponse(
+            { error: planV2Refusal },
+            planV2Refusal === "addon_payment_mode_invalid" ? 400 : 409,
+          );
+        }
         if (detail.includes("discount_code_invalid")) {
           return jsonResponse(
             { error: "invalid_request", detail: "discount_code_invalid" },
@@ -2110,7 +2182,10 @@ export const createTicketCheckoutCreateHandler = (
     // not enter this branch and remains byte-for-byte on its existing path.
     let selectedTripTierRows: Array<{
       ticket_type_id: string;
-      tier_metadata: { installments?: InstallmentTemplate } | null;
+      // issue #4522 — `payment_plan` is the v2 plan shape.
+      tier_metadata:
+        | { installments?: InstallmentTemplate; payment_plan?: unknown }
+        | null;
     }> = [];
     const selectionRequestsInstallments = isCheckoutV2
       ? checkoutV2Lines!.some((line) =>
@@ -2229,6 +2304,87 @@ export const createTicketCheckoutCreateHandler = (
         },
       )
       : { data: null, error: null };
+    // issue #4522 E-3 — one cart, one payable checkout. A buyer back from the
+    // provider page with a CHANGED cart names the checkout they were handed;
+    // it is closed (a card page expired at the provider first) before this
+    // one is opened. A replay of the same attempt (resolvedAttempt.data) is
+    // never closed.
+    const supersedeRequest = parseSupersedeRequest(body.supersedesCheckout);
+    // Pass 5 (F-1) — on a fresh v2 attempt every open provider page of the
+    // same buyer (email + phone) for this event is closed first, whether or
+    // not the browser still named it; a held checkout of another buyer is
+    // never closed or answered for (F-2). A paid one needs nothing: the new
+    // purchase goes on as its own checkout.
+    if (
+      isCheckoutV2 && tripGateRow?.event_type === "trip" &&
+      resolvedAttempt.error === null && resolvedAttempt.data === null
+    ) {
+      const supersedeBuyer = { email: buyerEmail, phoneE164: buyerPhoneE164 };
+      const supersedeDeps: SupersedeDeps = {
+        planV2Ready: () => planV2SchemaAvailable(supabase),
+        sha256Hex,
+        expireStripeCheckout: async (input) => {
+          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+          await stripeTicketCheckout().checkout.sessions.expire(
+            input.checkoutSessionId,
+            {},
+            {
+              stripeAccount: input.stripeAccountId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          );
+        },
+        retrieveStripeCheckout: async (input) => {
+          // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+          const read = await stripeTicketCheckout().checkout.sessions.retrieve(
+            input.checkoutSessionId,
+            {},
+            { stripeAccount: input.stripeAccountId },
+          );
+          return {
+            status: typeof read?.status === "string" ? read.status : null,
+            paymentStatus: typeof read?.payment_status === "string"
+              ? read.payment_status
+              : null,
+          };
+        },
+        resolvePaystackReturn: (session: { id: string; stripe_payment_intent_id: string | null }) =>
+          resolvePaystackTicketReturn(
+            supabase,
+            session,
+            paystackVerifyTransaction,
+          ),
+      };
+      const superseded = supersedeRequest === null
+        ? null
+        : await supersedeHeldCheckout(
+          supabase,
+          eventId,
+          supersedeRequest,
+          supersedeDeps,
+          supersedeBuyer,
+        );
+      const swept = superseded?.kind === "unavailable"
+        ? superseded
+        : await supersedeOpenBuyerCheckouts(
+          supabase,
+          eventId,
+          supersedeBuyer,
+          supersedeDeps,
+          null,
+        );
+      if ("kind" in swept && swept.kind === "unavailable") {
+        console.error(
+          "[ticket-checkout-create] held checkout not closed",
+          swept.reason,
+        );
+        return jsonResponse(
+          { error: "checkout_replace_unavailable", detail: swept.reason },
+          503,
+        );
+      }
+    }
     const ticketLinkSessionCall = resolvedAttempt.error === null &&
         resolvedAttempt.data === null && ticketLinkHash !== null
       ? await supabase.rpc(
@@ -2241,7 +2397,7 @@ export const createTicketCheckoutCreateHandler = (
           p_buyer_email: buyerEmail,
           p_buyer_phone_e164: buyerPhoneE164,
           p_marketing_opt_in: marketingOptIn,
-          p_lines: lines,
+          p_lines: rpcLines,
           p_idempotency_key: idempotencyKey,
           p_expires_at: queueEngaged
             ? "infinity"
@@ -2311,7 +2467,7 @@ export const createTicketCheckoutCreateHandler = (
           p_buyer_email: buyerEmail,
           p_buyer_phone_e164: buyerPhoneE164,
           p_marketing_opt_in: marketingOptIn,
-          p_lines: lines,
+          p_lines: rpcLines,
           p_idempotency_key: idempotencyKey,
           // Queued holds use the 'infinity' carrier (slice 2). Quiet / unarmed
           // path keeps the 15-minute clock byte-identical to today.
@@ -2435,6 +2591,16 @@ export const createTicketCheckoutCreateHandler = (
       if (sessionError?.message?.includes("ticket_not_valid_on_chosen_days")) {
         return jsonResponse({ error: "ticket_not_valid_on_chosen_days" }, 422);
       }
+      // issue #4522 — v2 plan refusals, by stable name for client copy.
+      const planV2Refusal = PLAN_V2_REFUSALS.find((token) =>
+        sessionError?.message?.includes(token)
+      );
+      if (planV2Refusal !== undefined) {
+        return jsonResponse(
+          { error: planV2Refusal },
+          planV2Refusal === "addon_payment_mode_invalid" ? 400 : 409,
+        );
+      }
       // issue #3281 — extras refusals, by stable name for client copy.
       const extrasRefusal = EXTRAS_REFUSALS.find((token) =>
         sessionError?.message?.includes(token)
@@ -2535,6 +2701,27 @@ export const createTicketCheckoutCreateHandler = (
     let session = sessionResult as Record<string, unknown>;
     await recordUnknownDiscountAttempt(session);
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
+    // issue #4522 E-4 — a replayed attempt's session comes from
+    // issue_3859_resolve_checkout_attempt, which predates add-ons and carries
+    // no extras. Read them from the session (as the create returned them), or
+    // the replay prices the cart without its add-ons, its contract
+    // fingerprint differs from the first call's and an unchanged add-on cart
+    // is sent to "Please review your order".
+    if (
+      resolvedAttempt.error === null && resolvedAttempt.data !== null &&
+      session.extrasTotalCents === undefined && checkoutSessionId.length > 0
+    ) {
+      const replayed = await replayedSessionExtras(() =>
+        supabase.from("ticket_checkout_session_add_on_items")
+          .select(REPLAY_EXTRAS_COLUMNS)
+          .eq("checkout_session_id", checkoutSessionId)
+          .order("ticket_add_on_id", { ascending: true })
+      );
+      if (replayed === null) {
+        return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+      }
+      session = { ...session, ...replayed };
+    }
     // Issue #4271 — one code pays once: a paid, cancelled or expired code
     // refuses the session under the code's row lock.
     if (doorPay !== null) {
@@ -2718,6 +2905,11 @@ export const createTicketCheckoutCreateHandler = (
           ...(requested?.addOns !== undefined
             ? { addOns: requested.addOns }
             : {}),
+          // issue #3281 S5 — so is how they ride a v2 plan (absent keeps
+          // every fingerprint and RPC body byte-identical).
+          ...(requested?.addonPaymentMode !== undefined
+            ? { addonPaymentMode: requested.addonPaymentMode }
+            : {}),
           expectedQuantity: requested === undefined
             ? undefined
             : expectedSessionLineQuantity(requested, sessionDayScope),
@@ -2742,9 +2934,39 @@ export const createTicketCheckoutCreateHandler = (
           row,
         ) => [row.ticket_type_id, row.tier_metadata]),
       );
+      // issue #4522 — a package with a v2 plan is planned by the database, so
+      // the money math has one owner. NULL (switch off, or no v2 line) keeps
+      // the legacy planner below, byte for byte.
+      let planV2: TripPlanV2ContractPlan | null = null;
+      if (tierRowsCarryPlanV2(selectedTripTierRows)) {
+        const { data: planV2Data, error: planV2Error } = await supabase.rpc(
+          "issue_4522_checkout_v2_plan",
+          {
+            p_checkout_session_id: checkoutSessionId,
+            p_lines: canonicalLines.map((line) => ({
+              ticketTypeId: line.ticketTypeId,
+              paymentPlanChoice: line.paymentPlanChoice,
+              ...(line.addonPaymentMode !== undefined
+                ? { addonPaymentMode: line.addonPaymentMode }
+                : {}),
+            })),
+          },
+        );
+        if (planV2Error !== null) {
+          if (planV2Error.message?.includes("installment_plan_unavailable")) {
+            return refuse({ error: "installment_plan_unavailable" }, 409);
+          }
+          return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+        }
+        try {
+          planV2 = parseTripPlanV2ContractPlan(planV2Data);
+        } catch {
+          return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+        }
+      }
       let computedPlan: ReturnType<typeof computeMultiLineInstallmentPlan>;
       try {
-        computedPlan = computeMultiLineInstallmentPlan({
+        computedPlan = planV2 ?? computeMultiLineInstallmentPlan({
           bookedAt: new Date(contractSessionRow.created_at),
           lines: canonicalLines.map((line) => ({
             ticketTypeId: line.ticketTypeId,
@@ -2764,17 +2986,18 @@ export const createTicketCheckoutCreateHandler = (
         return refuse({ error: "installment_deposit_invalid" }, 409);
       }
       try {
-        const listPlan = computeMultiLineInstallmentPlan({
-          bookedAt: new Date(contractSessionRow.created_at),
-          lines: canonicalLines.map((line) => ({
-            ticketTypeId: line.ticketTypeId,
-            lineTotalCents: line.listUnitPriceCents * line.quantity,
-            paymentPlanChoice: line.paymentPlanChoice,
-            template: tierByTicketType.get(line.ticketTypeId)?.installments ??
-              null,
-          })),
-        });
-        checkoutListSubtotalCents = listPlan.dueTodayCents;
+        checkoutListSubtotalCents = planV2 !== null
+          ? planV2.dueTodayListCents
+          : computeMultiLineInstallmentPlan({
+            bookedAt: new Date(contractSessionRow.created_at),
+            lines: canonicalLines.map((line) => ({
+              ticketTypeId: line.ticketTypeId,
+              lineTotalCents: line.listUnitPriceCents * line.quantity,
+              paymentPlanChoice: line.paymentPlanChoice,
+              template:
+                tierByTicketType.get(line.ticketTypeId)?.installments ?? null,
+            })),
+          }).dueTodayCents;
       } catch (error) {
         if (error instanceof MultiLineInstallmentError) {
           return refuse({ error: error.code }, 409);
@@ -2782,17 +3005,28 @@ export const createTicketCheckoutCreateHandler = (
         throw error;
       }
 
-      // issue #3281 — the session priced the extras; they are paid today in
-      // full and never ride a plan, so they add to both totals.
+      // issue #3281 — the session priced the extras. Without a plan they are
+      // paid today in full. On a v2 plan they ride it only when the database
+      // planned them (#3281 S5, add_on_rollout.plan_enabled): `spread` add-on
+      // cents already sit on the rows, the rest join today's charge.
       const extrasTotalCents = Number(session.extrasTotalCents ?? 0);
       if (!Number.isInteger(extrasTotalCents) || extrasTotalCents < 0) {
         return await checkoutReviewResponse("lines");
       }
-      if (extrasTotalCents > 0 && computedPlan.hasInstallments) {
+      const addOnsOnPlan = addOnsRideContractPlan(
+        planV2,
+        extrasTotalCents,
+        computedPlan.hasInstallments,
+      );
+      if (addOnsOnPlan === "refuse") {
         return refuse({ error: "extras_not_on_installments" }, 422);
       }
-      checkoutListSubtotalCents += extrasTotalCents;
-      const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents;
+      const addOnScheduledCents = addOnsOnPlan === "on_plan" && planV2 !== null
+        ? planV2.addOnScheduledCents
+        : 0;
+      checkoutListSubtotalCents += extrasTotalCents - addOnScheduledCents;
+      const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents -
+        addOnScheduledCents;
       const fullPriceCents = canonicalLines.reduce(
         (sum, line) => sum + line.totalCents,
         0,
@@ -2801,9 +3035,15 @@ export const createTicketCheckoutCreateHandler = (
       const installmentSchedule = computedPlan.hasInstallments
         ? {
           fullPriceCents,
-          depositCents: computedPlan.dueTodayCents,
+          // issue #3281 S5 — with add-ons on the plan, today's charge is the
+          // deposit (today add-ons included); otherwise unchanged.
+          depositCents: addOnsOnPlan === "on_plan"
+            ? dueTodayCents
+            : computedPlan.dueTodayCents,
           currency,
           installments: computedPlan.scheduled,
+          // issue #4522 — v2 schedule facts (absent for legacy plans).
+          ...(planV2 !== null ? planV2.summary : {}),
         }
         : null;
       checkoutV2Fingerprint = await sha256Hex(
@@ -2853,6 +3093,10 @@ export const createTicketCheckoutCreateHandler = (
             paymentPlanChoice: line.paymentPlanChoice,
             ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
             ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
+            // issue #3281 S5 — the bind re-plans the add-ons with this choice.
+            ...(line.addonPaymentMode !== undefined
+              ? { addonPaymentMode: line.addonPaymentMode }
+              : {}),
           })),
           p_due_today_cents: dueTodayCents,
           p_full_price_cents: fullPriceCents,
@@ -4081,6 +4325,14 @@ export const createTicketCheckoutCreateHandler = (
                 mingla_installment_count: String(psInstallmentCharges.length),
               }
               : {}),
+            // issue #3281 — one "Add-on: {name} × {qty}" field per add-on;
+            // absent for a cart without add-ons (byte-identical metadata).
+            ...((): { custom_fields?: ReturnType<typeof paystackAddOnCustomFields> } => {
+              const fields = paystackAddOnCustomFields(
+                addOnLineDescriptions(session.extras),
+              );
+              return fields.length === 0 ? {} : { custom_fields: fields };
+            })(),
           },
           // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
           // an UNSTAMPED brand that has a subaccount (pass it + the flat Mingla
@@ -4626,20 +4878,26 @@ export const createTicketCheckoutCreateHandler = (
                       : {}),
                     product_data: {
                       name: `Tickets — ${eventName}`,
-                      ...(checkoutListSubtotalCents > totalCents
-                        ? {
-                          description: `Includes ${
-                            checkoutDiscounts.map((entry) => entry.name).join(
-                              ", ",
-                            )
-                          } (−${
-                            formatMoneyCents(
-                              checkoutListSubtotalCents - totalCents,
-                              currency,
-                            )
-                          })`,
-                        }
-                        : {}),
+                      // issue #3281 — the discount note, then one
+                      // "Add-on: {name} × {qty}" per add-on; omitted when
+                      // there is neither (byte-identical to before).
+                      ...((): { description?: string } => {
+                        const description = hostedLineDescription(
+                          checkoutListSubtotalCents > totalCents
+                            ? `Includes ${
+                              checkoutDiscounts.map((entry) => entry.name)
+                                .join(", ")
+                            } (−${
+                              formatMoneyCents(
+                                checkoutListSubtotalCents - totalCents,
+                                currency,
+                              )
+                            })`
+                            : null,
+                          addOnLineDescriptions(session.extras),
+                        );
+                        return description === undefined ? {} : { description };
+                      })(),
                     },
                   },
                   quantity: 1,

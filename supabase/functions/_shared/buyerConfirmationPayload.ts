@@ -5,7 +5,7 @@ import {
   resolveChosenOccurrence,
   ticketDaysForOrder,
 } from "./chosenOccurrence.ts";
-import { formatMessageTime } from "./messageTime.ts";
+import { formatDateRange, formatMessageTime } from "./messageTime.ts";
 
 export interface BuyerConfirmationTicket {
   ticketId: string;
@@ -15,7 +15,8 @@ export interface BuyerConfirmationTicket {
 }
 
 export interface BuyerConfirmationReceipt {
-  lines: Array<{ qty: number; name: string; amountCents: number }>;
+  /** issue #4522 E-8 — `addOn: true` marks an add-on line (not a place). */
+  lines: Array<{ qty: number; name: string; amountCents: number; addOn?: true }>;
   discountLines: Array<{ label: string; amountCents: number }>;
   feesAndTaxCents: number;
   paidCents: number;
@@ -51,13 +52,18 @@ export interface BuyerConfirmationClient {
   ): PromiseLike<{ data: unknown; error: { message?: string } | null }>;
 }
 
+/** issue #3281 S4 — the receipt line for an add-on: "Add-on: {name}". */
+export function addOnReceiptName(name: string): string {
+  return `Add-on: ${name}`;
+}
+
 // issue #3281 — decision 8: a confirmation names what was bought. Read apart
 // from the receipt, so nothing about this read can block a guest's confirmation.
 async function readExtraLines(
   client: BuyerConfirmationClient,
   orderId: string,
   logPrefix: string,
-): Promise<Array<{ name: string; qty: number; amountCents: number }>> {
+): Promise<Array<{ name: string; qty: number; amountCents: number; addOn: true }>> {
   try {
     const result = (await client
       .from("order_add_on_line_items")
@@ -71,10 +77,13 @@ async function readExtraLines(
       });
     }
     if (!Array.isArray(result.data)) return [];
+    // issue #3281 S4 — receipts label each one "Add-on: {name}", so a free
+    // ticket's receipt shows exactly what was paid for.
     return result.data.map((row) => ({
-      name: row.add_on_name_at_order,
+      name: addOnReceiptName(row.add_on_name_at_order),
       qty: Math.max(Math.round(Number(row.quantity ?? 0)), 0),
       amountCents: safeCents(row.total_cents),
+      addOn: true as const,
     }));
   } catch (error) {
     console.error(`${logPrefix} extras lookup failed`, { orderId, error });
@@ -176,6 +185,35 @@ export function receiptDateLine(
     singleOccurrence.timezone ?? null,
   );
   return formatted === null ? null : `${formatted.date}, ${formatted.time}`;
+}
+
+/**
+ * issue #4522 E-7 — a trip's dates are its stored calendar dates (UTC
+ * midnight, #4420): "Fri 12 Mar 2027 – Tue 16 Mar 2027", never the start
+ * instant in the trip zone ("Thu 11 Mar 2027, 7:00 PM" in New York).
+ */
+export function tripReceiptDateLine(
+  occurrence: ChosenOccurrence | null,
+): string | null {
+  if (typeof occurrence?.start_at !== "string") return null;
+  const line = formatDateRange(
+    occurrence.start_at,
+    typeof occurrence.end_at === "string" ? occurrence.end_at : null,
+    "UTC",
+  );
+  return line.length > 0 ? line : null;
+}
+
+async function isTripEvent(
+  client: BuyerConfirmationClient,
+  eventId: string,
+): Promise<boolean> {
+  const { data, error } = (await client
+    .from("events")
+    .select("event_type")
+    .eq("id", eventId)
+    .maybeSingle()) as QueryResult<{ event_type: string | null }>;
+  return error === null && data?.event_type === "trip";
 }
 
 function receiptLines(
@@ -319,6 +357,7 @@ export async function buildBuyerConfirmationPayload(
       order.booked_start_at,
     ));
   const occurrence = chosen ?? (await masterOccurrence(client, eventId));
+  const trip = await isTripEvent(client, eventId);
   const claim = await mintClaimLink(client, "order", orderId);
 
   return {
@@ -336,8 +375,9 @@ export async function buildBuyerConfirmationPayload(
           ? safeCents(order.total_cents) + safeCents(order.tax_amount_cents)
           : safeCents(order.buyer_total_cents),
       currency: currency.trim(),
-      dateLine:
-        chosenDays !== null && chosenDays.length >= 2
+      dateLine: trip
+        ? tripReceiptDateLine(occurrence)
+        : chosenDays !== null && chosenDays.length >= 2
           ? receiptDateLine(chosenDays)
           : receiptDateLine(occurrence),
       orderRef: compactOrderRef(orderId),

@@ -24,6 +24,8 @@
       "@mingla/brand-assets/*": ["../packages/brand-assets/*"],
       "@mingla/help-content": ["../packages/help-content"],
       "@mingla/help-content/*": ["../packages/help-content/*"],
+      "@mingla/calendar": ["../packages/calendar"],
+      "@mingla/calendar/*": ["../packages/calendar/*"],
       "@mingla/card-identity": ["../packages/card-identity"],
       "@mingla/card-identity/*": ["../packages/card-identity/*"],
       "@mingla/sharing": ["../packages/sharing"],

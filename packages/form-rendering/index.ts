@@ -17,6 +17,7 @@ export {
   IntakeQuestionShortText,
   IntakeQuestionSingleChoice,
   type IntakeQuestionTextProps,
+  isBirthDateQuestion,
   LONG_TEXT_MAX,
   SHORT_TEXT_MAX,
 } from "./QuestionRenderers";

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/cancel-trip-booking/__tests__/issue_4522_deposit_kept_key.tester.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4522-deposit-kept-key-tester-adversarial",
+  "profile": "deno-1.46-stripe"
+}

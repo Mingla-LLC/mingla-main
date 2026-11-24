@@ -10,6 +10,8 @@
 // - Success shows only after the server confirms (200).
 // - Save and resume: answers are kept on this device for 7 days, consent never.
 
+import { CalendarInput } from '@mingla/calendar-web'
+import '@mingla/calendar-web/calendar.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type FormDefinition,
@@ -399,7 +401,7 @@ function DateField(props: FieldProps) {
         ))}
       </div>
       {mode === 'pick' ? (
-        <input id={id} className="fk-input" type="date" min={localToday()} onBlur={touch}
+        <CalendarInput id={id} className="fk-input" mode="date" min={localToday()} onBlur={touch} aria-label={field.label} clearable
           onChange={(e) => { props.onValue(field.key, e.target.value ? { from: e.target.value } : null, false); refresh() }} />
       ) : null}
     </FieldShell>

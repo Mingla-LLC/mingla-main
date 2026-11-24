@@ -14,7 +14,8 @@ describe("desktop wizard layout", () => {
     expect(eventWizard).toMatch(/import \{ useResponsiveLayout \}/);
     expect(tripWizard).toMatch(/import \{ useResponsiveLayout \}/);
     expect(eventWizard).toMatch(/const \{ isWideDesktop \} = useResponsiveLayout\(\)/);
-    expect(tripWizard).toMatch(/const \{ isWideDesktop \} = useResponsiveLayout\(\)/);
+    // #4522 — the trip builder also reads the viewport width (live preview pane).
+    expect(tripWizard).toMatch(/const \{ isWideDesktop, width: viewportWidth \} = useResponsiveLayout\(\)/);
   });
 
   it("adds a desktop step rail and constrained form pane to both creator wizards", () => {

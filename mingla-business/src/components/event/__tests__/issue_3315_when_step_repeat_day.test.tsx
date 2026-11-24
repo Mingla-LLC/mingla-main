@@ -8,7 +8,7 @@
  *
  * Same harness as orch_1027_web_datetime_native_input.test.tsx: stock
  * jest.config.cjs, react-native -> the manual mock (Platform.OS "web"), so the
- * first-occurrence row is a real WebDateTimeInput whose change reaches
+ * first-occurrence row is the DateField (stubbed, #4523) whose change reaches
  * commitPickerValue("date") — the one path iOS, Android and web share. The
  * draft lives in a tiny stateful harness so each patch re-renders the step the
  * way the wizard's store does.
@@ -34,6 +34,15 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
     __esModule: true,
     ScrollView: ({ children }: { children?: React.ReactNode }) =>
       ReactActual.createElement(ReactActual.Fragment, null, children),
+  };
+});
+// #4523: the date rows are `DateField` (the Mingla calendar, loaded lazily). It is a host stub here so the test
+// drives the SAME commit path (onChangeValue -> commitPickerValue) the calendar uses.
+jest.mock("../../ui/DateField", () => {
+  const ReactActual = require("react") as typeof React;
+  return {
+    __esModule: true,
+    DateField: (props: Record<string, unknown>) => ReactActual.createElement("DateFieldStub", props),
   };
 });
 jest.mock("../../ui/Sheet", () => ({ __esModule: true, Sheet: (): null => null }));
@@ -122,14 +131,12 @@ const tapMode = async (tree: Tree, label: string): Promise<void> => {
 };
 
 const pickFirstDate = async (tree: Tree, iso: string): Promise<void> => {
-  const input = tree.root
-    .findAll((n) => n.type === "input")
-    .find((n) => n.props["data-testid"] === "creator-when-date-web");
-  expect(input).toBeDefined();
+  const field = tree.root
+    .findAll((n) => n.type === "DateFieldStub")
+    .find((n) => n.props.testID === "creator-when-date");
+  expect(field).toBeDefined();
   await TestRenderer.act(async () => {
-    (input?.props.onChange as (e: { target: { value: string } }) => void)({
-      target: { value: iso },
-    });
+    (field?.props.onChangeValue as (value: string) => void)(iso);
   });
 };
 

@@ -25,6 +25,7 @@ import { postHogService } from "../../services/postHogService";
 import { stayGuestService } from "../../services/stayGuestService";
 import { supabase } from "../../services/supabase";
 import { PhoneInput } from "../onboarding/PhoneInput";
+import { renderExplorerStayCalendar } from "./explorerStayCalendar";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 type StayPhoneRenderer = NonNullable<StayGuestBookingProps["renderPhoneField"]>;
@@ -296,6 +297,7 @@ export function ConsumerStayGuestExperience({
       }}
       onSubmit={prepareQuote}
       renderPhoneField={renderPhoneField}
+      renderStayCalendar={renderExplorerStayCalendar}
       onConfirmQuote={confirm}
       onEditQuote={() => {
         setQuote(null);

@@ -14,6 +14,10 @@ import {
 } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
+import { installmentKeyVersionSuffix } from "./installmentIdempotencyKey.ts";
+import { orderHasPlanV2Terms, rollOverMissedPayment } from "./missedRollover.ts";
+import { planV2SchemaAvailable } from "./planV2Schema.ts";
+import { alertUnchargeableRemainder, installmentOpsAlert } from "./installmentOpsAlert.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import {
   MAX_RETRY_ATTEMPTS,
@@ -43,6 +47,8 @@ export type InstallmentRow = {
   due_at: string;
   status: string;
   retry_count: number;
+  /** issue #4522 — bumped by each rebalance; absent on older selects (0). */
+  schedule_version?: number | null;
   stripe_payment_intent_id: string | null;
 };
 
@@ -72,9 +78,21 @@ export type CreateInstallmentPIResult = {
   ok: boolean;
   chargeId?: string;
   error?: string;
-  outcome?: "collected" | "failed" | "skipped" | "at_risk_flagged";
+  outcome?: "collected" | "failed" | "skipped" | "at_risk_flagged" | "unknown";
   reason?: string;
 };
+
+/**
+ * issue #4522 (rework 9, T8-2) — only Stripe's refusal of the card itself
+ * (a card error, HTTP 402) proves a confirm did not charge. A timeout, a
+ * network error, a 5xx, a 409/429 or any other answer is unknown: the money
+ * may have moved.
+ */
+export function isDefiniteStripeDecline(error: unknown): boolean {
+  const e = error as { type?: unknown; statusCode?: unknown; rawType?: unknown; raw?: { type?: unknown } | null } | null;
+  return e?.type === "StripeCardError" || e?.statusCode === 402 || e?.rawType === "card_error" ||
+    e?.raw?.type === "card_error";
+}
 
 export type CreateInstallmentPIInput = {
   installmentId: string;
@@ -88,6 +106,8 @@ export type CreateInstallmentPIInput = {
   dryRun?: boolean;
   /** Tests only: a stand-in Stripe client. Production uses stripeTicketCheckout(). */
   stripe?: ReturnType<typeof stripeTicketCheckout>;
+  /** Tests only: a stand-in ops alert. Production uses the instalment ops alert. */
+  alertOps?: (subject: string, paragraphs: string[]) => Promise<void>;
 };
 
 function serviceClient(): SupabaseClient {
@@ -107,13 +127,16 @@ async function fireDunningEmail(
   failureReason: string,
 ): Promise<void> {
   try {
-    if (SUPABASE_URL === undefined || SUPABASE_SERVICE_ROLE_KEY === undefined) {
+    // Read when sent (as the webhook does), so a test can observe the send.
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl === undefined || serviceKey === undefined) {
       return;
     }
-    await fetch(`${SUPABASE_URL}/functions/v1/ticket-confirmation-dispatch`, {
+    await fetch(`${supabaseUrl}/functions/v1/ticket-confirmation-dispatch`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        authorization: `Bearer ${serviceKey}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -148,13 +171,24 @@ async function loadInstallmentContext(
     stripeAccount: StripeAccount;
   } | { error: string }
 > {
-  const { data: installment } = await supabase
-    .from("order_installments")
-    .select(
-      "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id",
-    )
-    .eq("id", installmentId)
-    .maybeSingle();
+  // issue #4522 (F6) — schedule_version exists only once #4522 is applied;
+  // before that the row reads exactly as it always did (version 0 key).
+  const planV2 = await planV2SchemaAvailable(supabase);
+  const { data: installment } = planV2
+    ? await supabase
+      .from("order_installments")
+      .select(
+        "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id, schedule_version",
+      )
+      .eq("id", installmentId)
+      .maybeSingle()
+    : await supabase
+      .from("order_installments")
+      .select(
+        "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id",
+      )
+      .eq("id", installmentId)
+      .maybeSingle();
   if (installment === null) return { error: "installment_not_found" };
 
   const inst = installment as InstallmentRow;
@@ -188,6 +222,44 @@ async function loadInstallmentContext(
     brand: brand as BrandRow,
     stripeAccount: stripeAccount as StripeAccount,
   };
+}
+
+/**
+ * Pass 5 (F-4) — what a SUCCEEDED charge whose post-confirm re-claim failed
+ * means, read from the row itself:
+ * - `applied`: the row was settled (collected) for this very PaymentIntent —
+ *   the success webhook or the read-back got there first;
+ * - `refund`: the money cannot be applied — the row, its order or its event
+ *   was cancelled, or the row was settled by a different charge;
+ * - `unknown`: anything else (the row could not be read, or it is still open
+ *   behind another guard): never refunded here; the webhook / read-back
+ *   records what was collected.
+ */
+export async function postConfirmVerdict(
+  supabase: SupabaseClient,
+  installmentId: string,
+  paymentIntentId: string,
+  reclaimReason: string | null,
+): Promise<"applied" | "refund" | "unknown"> {
+  const { data: row, error } = await supabase
+    .from("order_installments")
+    .select("status, stripe_payment_intent_id, cancelled_at")
+    .eq("id", installmentId)
+    .maybeSingle();
+  if (error !== null || row === null) return "unknown";
+  const r = row as { status?: unknown; stripe_payment_intent_id?: unknown; cancelled_at?: unknown };
+  const status = String(r.status ?? "");
+  if (status === "collected" || status === "refunded") {
+    return r.stripe_payment_intent_id === paymentIntentId && status === "collected" ? "applied" : "refund";
+  }
+  if (
+    status === "cancelled" || (r.cancelled_at !== null && r.cancelled_at !== undefined) ||
+    reclaimReason === "order_cancelled" || reclaimReason === "event_cancelled" ||
+    reclaimReason === "installment_cancelled"
+  ) {
+    return "refund";
+  }
+  return "unknown";
 }
 
 export async function createInstallmentPI(
@@ -244,6 +316,8 @@ export async function createInstallmentPI(
       | null;
     if (claimRow === null || claimRow.ok !== true) {
       const reason = String(claimRow?.reason ?? "not_chargeable");
+      // issue #4522 — a balance too small to charge stays owed; ops once.
+      await alertUnchargeableRemainder(claimRow as Record<string, unknown> | null, input.alertOps);
       return {
         ok: false,
         error: reason,
@@ -319,9 +393,16 @@ export async function createInstallmentPI(
     minglaApplicationFeeAmountCents,
     { shareMinor: referralShareMinor },
   );
+  // issue #4522 — version 0 keeps today's key; a rebalanced row adds `:v<n>`.
   const idempotencyKey =
-    `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
+    `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}` +
+    installmentKeyVersionSuffix(installment.schedule_version);
 
+  // issue #4522 — asked before any Stripe call (a probe outage throws here,
+  // never after a PaymentIntent exists).
+  const markInFlight = await planV2SchemaAvailable(supabase);
+  // issue #4522 (rework 9, T8-2) — set once the marked charge's confirm is sent.
+  let confirmSent = false;
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
     // Create unconfirmed, re-claim, then confirm — never confirm:true before reclaim
@@ -354,11 +435,22 @@ export async function createInstallmentPI(
 
     // Re-claim after unconfirmed create. If cancel won, cancel the PI (works
     // while unconfirmed) and skip — never confirm.
+    // issue #4522 (I-4522-CHARGE-IS-WHAT-IS-OWED) — with the #4522 schema the
+    // re-claim also marks the row in flight under the order lock, for exactly
+    // the amount and version this PaymentIntent was created with; a row that
+    // changed since is refused (balance_changed) and never confirmed.
     {
-      const { data: reclaim, error: reclaimError } = await supabase.rpc(
-        "claim_order_installment_for_charge",
-        { p_installment_id: installment.id },
-      );
+      const { data: reclaim, error: reclaimError } = markInFlight
+        ? await supabase.rpc("issue_4522_mark_stripe_charge_in_flight", {
+          p_installment_id: installment.id,
+          p_payment_intent_id: pi.id,
+          p_amount_cents: installment.amount_cents,
+          p_schedule_version: installment.schedule_version ?? 0,
+        })
+        : await supabase.rpc(
+          "claim_order_installment_for_charge",
+          { p_installment_id: installment.id },
+        );
       const reclaimRow = (reclaim ?? null) as
         | { ok?: boolean; reason?: string }
         | null;
@@ -367,6 +459,7 @@ export async function createInstallmentPI(
         reclaimRow === null ||
         reclaimRow.ok !== true
       ) {
+        const changed = reclaimRow?.reason === "balance_changed";
         try {
           // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
           await stripe.paymentIntents.cancel(pi.id, {}, {
@@ -380,16 +473,18 @@ export async function createInstallmentPI(
             cancelErr instanceof Error ? cancelErr.message : cancelErr,
           );
         }
+        const skipped = changed ? "balance_changed" : "cancelled_during_charge";
         return {
           ok: false,
-          error: "cancelled_during_charge",
+          error: skipped,
           outcome: "skipped",
-          reason: "cancelled_during_charge",
+          reason: skipped,
           chargeId: pi.id,
         };
       }
     }
 
+    confirmSent = true;
     // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
     pi = await stripe.paymentIntents.confirm(
       pi.id,
@@ -403,6 +498,14 @@ export async function createInstallmentPI(
     // Post-confirm safety reclaim. If cancel won between reclaim and confirm
     // and the PI already succeeded, refund fail-closed — cancel cannot undo a
     // succeeded charge.
+    // Pass 5 (F-4 / T9-3, same defect on main) — the re-claim also fails when
+    // the success webhook (or the cron's read-back) already settled the row
+    // for THIS PaymentIntent: that charge is applied, never refunded. A refund
+    // here happens only when the money truly cannot be applied (the row, its
+    // order or its event was cancelled, or the row was settled by another
+    // charge), and then ops are alerted once. Anything else stays with the
+    // webhook / read-back, which records what was collected.
+    let settledByWebhook = false;
     {
       const { data: postConfirm, error: postConfirmError } = await supabase.rpc(
         "claim_order_installment_for_charge",
@@ -411,13 +514,40 @@ export async function createInstallmentPI(
       const postConfirmRow = (postConfirm ?? null) as {
         ok?: boolean;
         reason?: string;
+        status?: string;
       } | null;
       if (
         postConfirmError !== null ||
         postConfirmRow === null ||
         postConfirmRow.ok !== true
       ) {
-        if (pi.status === "succeeded") {
+        const verdict = pi.status === "succeeded"
+          ? await postConfirmVerdict(supabase, installment.id, pi.id, postConfirmRow?.reason ?? null)
+          : null;
+        if (verdict === "applied") {
+          settledByWebhook = true;
+        } else if (verdict === "unknown") {
+          await writeAudit(supabase, {
+            user_id: null,
+            brand_id: brand.id,
+            event_id: order.event_id,
+            action: "tr3.installment_pi_settlement_left_to_webhook",
+            target_type: "order_installment",
+            target_id: installment.id,
+            after: {
+              ordinal: installment.ordinal,
+              stripe_payment_intent_id: pi.id,
+              reclaim_reason: postConfirmRow?.reason ?? postConfirmError?.message ?? "unknown",
+            },
+          });
+          return {
+            ok: false,
+            error: "post_confirm_unsettled",
+            outcome: "unknown",
+            reason: "post_confirm_unsettled",
+            chargeId: pi.id,
+          };
+        } else if (verdict === "refund") {
           try {
             // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
             await stripe.refunds.create(
@@ -437,6 +567,29 @@ export async function createInstallmentPI(
               }`,
             );
           }
+          await writeAudit(supabase, {
+            user_id: null,
+            brand_id: brand.id,
+            event_id: order.event_id,
+            action: "tr3.installment_cancelled_during_charge_refunded",
+            target_type: "order_installment",
+            target_id: installment.id,
+            after: {
+              ordinal: installment.ordinal,
+              amount_cents: installment.amount_cents,
+              stripe_payment_intent_id: pi.id,
+              reclaim_reason: postConfirmRow?.reason ?? "unknown",
+            },
+          });
+          await (input.alertOps ?? installmentOpsAlert)(
+            "A trip payment was refunded as soon as it was taken",
+            [
+              "A scheduled trip card payment went through after its booking or payment was closed, so it could not be applied and was refunded in full automatically.",
+              `Order: ${order.id}; instalment: ${installment.id}; PaymentIntent: ${pi.id}`,
+              `Amount: ${installment.amount_cents} ${installment.currency} (minor units); reason: ${postConfirmRow?.reason ?? "unknown"}`,
+              "Check the booking and the traveler's balance; nothing else was changed.",
+            ],
+          );
           return {
             ok: false,
             error: "cancelled_during_charge_refunded",
@@ -445,26 +598,28 @@ export async function createInstallmentPI(
             chargeId: pi.id,
           };
         }
-        try {
-          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-          await stripe.paymentIntents.cancel(pi.id, {}, {
-            idempotencyKey:
-              `installment-race-cancel:${installment.id}:${pi.id}:postconfirm`,
-            stripeAccount: stripeAccount.stripe_account_id,
-          });
-        } catch (cancelErr) {
-          console.error(
-            "[createInstallmentPI] best-effort PI cancel after post-confirm race failed",
-            cancelErr instanceof Error ? cancelErr.message : cancelErr,
-          );
+        if (!settledByWebhook) {
+          try {
+            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+            await stripe.paymentIntents.cancel(pi.id, {}, {
+              idempotencyKey:
+                `installment-race-cancel:${installment.id}:${pi.id}:postconfirm`,
+              stripeAccount: stripeAccount.stripe_account_id,
+            });
+          } catch (cancelErr) {
+            console.error(
+              "[createInstallmentPI] best-effort PI cancel after post-confirm race failed",
+              cancelErr instanceof Error ? cancelErr.message : cancelErr,
+            );
+          }
+          return {
+            ok: false,
+            error: "cancelled_during_charge",
+            outcome: "skipped",
+            reason: "cancelled_during_charge",
+            chargeId: pi.id,
+          };
         }
-        return {
-          ok: false,
-          error: "cancelled_during_charge",
-          outcome: "skipped",
-          reason: "cancelled_during_charge",
-          chargeId: pi.id,
-        };
       }
     }
 
@@ -509,13 +664,35 @@ export async function createInstallmentPI(
     const reason = `${stripeErr.code ?? stripeErr.type ?? "unknown"}:${
       stripeErr.message ?? ""
     }`.slice(0, 500);
+    // issue #4522 (rework 9, T8-2, I-4522-CHARGE-IS-WHAT-IS-OWED) — the row
+    // was marked in flight for exactly this charge and its confirm was sent:
+    // unless the card was refused, the money may have moved. The row stays in
+    // flight (its amount frozen) until the success / failure webhook or the
+    // cron's read-back of this PaymentIntent (reconcileMarkedStripeCharges)
+    // says what happened; it is never marked failed on an unknown answer.
+    if (markInFlight && confirmSent && !isDefiniteStripeDecline(err)) {
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: brand.id,
+        event_id: order.event_id,
+        action: "tr3.installment_pi_confirm_unknown",
+        target_type: "order_installment",
+        target_id: installment.id,
+        after: { ordinal: installment.ordinal, amount_cents: installment.amount_cents, reason },
+      });
+      return { ok: false, error: reason, outcome: "unknown", reason: "confirm_answer_unknown" };
+    }
     const nextRetryCount = installment.retry_count + 1;
-    const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-    const nextRetryAt = willBeAtRisk
+    const lastRetry = nextRetryCount >= MAX_RETRY_ATTEMPTS;
+    const nextRetryAt = lastRetry
       ? null
       : nextRetryAtAfterFailure(installment.due_at, nextRetryCount);
 
-    await supabase
+    // issue #4522 (D-7) — on a v2 order the payment_failed webhook sees this
+    // same decline; only the path whose "scheduled → failed" write lands
+    // counts it, moves it on or flags it, and emails the buyer (once).
+    const planV2Order = markInFlight && await orderHasPlanV2Terms(supabase, order.id);
+    const failedWrite = supabase
       .from("order_installments")
       .update({
         status: "failed",
@@ -527,7 +704,34 @@ export async function createInstallmentPI(
       })
       .eq("id", installment.id)
       .eq("status", "scheduled");
+    if (planV2Order) {
+      const { data: counted } = await failedWrite.select("id");
+      if (!Array.isArray(counted) || counted.length === 0) {
+        await writeAudit(supabase, {
+          user_id: null,
+          brand_id: brand.id,
+          event_id: order.event_id,
+          action: "tr3.installment_pi_failed",
+          target_type: "order_installment",
+          target_id: installment.id,
+          after: {
+            ordinal: installment.ordinal,
+            failure_reason: reason,
+            already_counted: true,
+            at_risk_flipped: false,
+          },
+        });
+        return { ok: false, error: reason, outcome: "failed", reason };
+      }
+    } else {
+      await failedWrite;
+    }
 
+    // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
+    // its later rows; otherwise the booking is flagged at risk as before.
+    const willBeAtRisk = lastRetry &&
+      !(await planV2SchemaAvailable(supabase) &&
+        await rollOverMissedPayment(supabase, installment.id));
     if (willBeAtRisk) {
       await supabase
         .from("orders")
@@ -564,4 +768,65 @@ export async function createInstallmentPI(
       reason,
     };
   }
+}
+
+/**
+ * issue #4522 — the PaymentIntent for a flexible ("pay any amount") payment on
+ * a v2 trip plan. Lives here because this file is the one owner of instalment
+ * PaymentIntents (I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER).
+ *
+ * Unlike a planned row it is buyer-present: the PaymentIntent is created
+ * unconfirmed and the buyer confirms it (PaymentSheet / Payment Element), so
+ * 3-D Secure can run. The flexible row was opened by
+ * issue_4522_begin_flex_payment, which is the claim (it blocks the cron);
+ * the webhook settles or closes it through the same metadata as any
+ * instalment. One idempotency key per flexible payment's client key.
+ */
+export interface FlexPaymentIntentStripe {
+  paymentIntents: {
+    create(
+      params: Record<string, unknown>,
+      options: { idempotencyKey: string; stripeAccount: string },
+    ): Promise<{ id: string; client_secret: string | null; status: string }>;
+  };
+}
+
+export async function createFlexPaymentIntent(input: {
+  stripe: FlexPaymentIntentStripe;
+  installmentId: string;
+  orderId: string;
+  brandId: string;
+  amountMinor: number;
+  currency: string;
+  customer: string;
+  savedPaymentMethodId: string | null;
+  applicationFeeMinor: number;
+  idempotencyKey: string;
+  stripeAccount: string;
+}): Promise<{ id: string; client_secret: string | null; status: string }> {
+  // orch-strict-grep-allow stripe-no-idempotency-key — the idempotency key IS passed in the options argument: one key per flexible payment's client key (flex:<order>:<clientKey>).
+  return await input.stripe.paymentIntents.create(
+    {
+      amount: input.amountMinor,
+      currency: input.currency,
+      customer: input.customer,
+      ...(input.savedPaymentMethodId !== null
+        ? { payment_method: input.savedPaymentMethodId }
+        : {}),
+      payment_method_types: ["card"],
+      ...(input.applicationFeeMinor > 0
+        ? { application_fee_amount: input.applicationFeeMinor }
+        : {}),
+      metadata: {
+        mingla_installment_id: input.installmentId,
+        mingla_order_id: input.orderId,
+        mingla_brand_id: input.brandId,
+        mingla_flex: "1",
+      },
+    },
+    {
+      idempotencyKey: input.idempotencyKey,
+      stripeAccount: input.stripeAccount,
+    },
+  );
 }

@@ -9,6 +9,9 @@ import {
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { CalendarEmbed } from "@mingla/calendar/CalendarField";
+import { deviceTimeZone, DARK_INLINE_CALENDAR_CONFIG, useExplorerCalendarLabels } from "../calendar/explorerInlineCalendar";
+import { toDayString } from "../../utils/programFormat";
 import DateOptionsGrid from "./DateOptionsGrid";
 import WeekendDaySelection from "./WeekendDaySelection";
 import ProposeDateTimeFooter from "./ProposeDateTimeFooter";
@@ -55,6 +58,8 @@ interface ProposeDateTimeModalProps {
   isCurated?: boolean;
 }
 
+const noopDone = (): void => undefined;
+
 export default function ProposeDateTimeModal({
   visible,
   onClose,
@@ -65,6 +70,7 @@ export default function ProposeDateTimeModal({
   isCurated = false,
 }: ProposeDateTimeModalProps) {
   const { t } = useTranslation(['activity', 'common']);
+  const calendarLabels = useExplorerCalendarLabels();
   const [selectedDateOption, setSelectedDateOption] = useState<
     "now" | "today" | "weekend" | "custom" | null
   >(null);
@@ -198,28 +204,19 @@ export default function ProposeDateTimeModal({
   // [ORCH-0649 — CONSTITUTION #2] Local parseTimeString + checkPlaceAvailability
   // DELETED. The shared scheduling helper owns the open/closed/unknown decision.
 
-  const handleDatePickerChange = (_event: any, date?: Date) => {
-    if (Platform.OS === "android") {
-      setShowDatePicker(false);
-    }
-
-    if (date) {
-      setCustomDate(date);
-      setIsAvailabilityChecked(false);
-      setIsPlaceOpen(false);
-      setProposedDateTime(null);
-      setAvailabilityIssueMessage(null);
-
-      // On Android, onChange fires once on OK — auto-advance to time picker.
-      // On iOS, onChange fires on every spinner scroll — the "Done" button handles the transition.
-      if (Platform.OS === "android") {
-        setShowTimePicker(true);
-      }
-    }
-  };
-
-  /** iOS only: user tapped "Done" on the date picker modal */
-  const handleDatePickerDone = () => {
+  /**
+   * #4523: the custom date is picked on the shared Mingla calendar, on both
+   * platforms. A day tap is the only thing that changes it (changing month never
+   * does), and it advances to the time step.
+   */
+  const handleCalendarDayPicked = (day: string) => {
+    if (day === "") return;
+    const [y, m, d] = day.split("-").map(Number);
+    setCustomDate(new Date(y, m - 1, d, 12, 0, 0, 0));
+    setIsAvailabilityChecked(false);
+    setIsPlaceOpen(false);
+    setProposedDateTime(null);
+    setAvailabilityIssueMessage(null);
     setShowDatePicker(false);
     setShowTimePicker(true);
   };
@@ -578,7 +575,7 @@ export default function ProposeDateTimeModal({
                   />
                 )}
 
-                {showDatePicker && Platform.OS === "ios" && (
+                {showDatePicker && (
                   <View
                     style={styles.inlinePickerPanel}
                     testID="propose-date-inline-picker"
@@ -589,22 +586,20 @@ export default function ProposeDateTimeModal({
                         <TouchableOpacity onPress={() => setShowDatePicker(false)}>
                           <Text style={styles.inlinePickerCancel}>{t('activity:proposeDateTimeModal.cancel')}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={handleDatePickerDone}>
-                          <Text style={styles.inlinePickerDone}>{t('activity:proposeDateTimeModal.done')}</Text>
-                        </TouchableOpacity>
                       </View>
                     </View>
-                    {/* ORCH-0908 (2026-05-21): iOS inline calendar grid keeps
-                        day selection scannable while staying inside this sheet. */}
-                    <DateTimePicker
-                      value={customDate}
-                      mode="date"
-                      display="inline"
-                      onChange={handleDatePickerChange}
-                      minimumDate={new Date()}
-                      style={styles.inlineDatePicker}
-                      themeVariant="dark"
-                      textColor="#FFFFFF"
+                    <CalendarEmbed
+                      mode="single"
+                      label={t('activity:proposeDateTimeModal.selectDate')}
+                      value={toDayString(customDate)}
+                      onChange={handleCalendarDayPicked}
+                      min={toDayString(new Date())}
+                      timeZone={deviceTimeZone()}
+                      labels={calendarLabels}
+                      config={DARK_INLINE_CALENDAR_CONFIG}
+                      testID="propose-date-calendar"
+                      onDone={noopDone}
+                      onCancel={() => setShowDatePicker(false)}
                     />
                   </View>
                 )}
@@ -669,15 +664,6 @@ export default function ProposeDateTimeModal({
       </BaseBottomSheet>
 
       {/* Android native pickers — render directly (native dialogs always on top) */}
-      {showDatePicker && Platform.OS === "android" && (
-        <DateTimePicker
-          value={customDate}
-          mode="date"
-          display="default"
-          onChange={handleDatePickerChange}
-          minimumDate={new Date()}
-        />
-      )}
       {showTimePicker && Platform.OS === "android" && (
         <DateTimePicker
           value={customTime || new Date()}

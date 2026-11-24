@@ -601,6 +601,14 @@ class InstallmentFakeDb {
     if (name === "issue_3645_clear_at_risk_if_settled") {
       return Promise.resolve({ data: { ok: true }, error: null });
     }
+    // issue #4522 (F6): these cases pin the pre-#4522 webhook, so the schema
+    // probe answers as a database before the #4522 migrations does.
+    if (name === "issue_4522_plan_v2_enabled") {
+      return Promise.resolve({
+        data: null,
+        error: { message: "Could not find the function", code: "PGRST202" },
+      });
+    }
     throw new Error(`unexpected installment RPC: ${name}`);
   }
 }

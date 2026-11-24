@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   checkoutReviewReasonCopy,
+  checkoutReviewTitle,
   ticketQuoteFeesAndTaxCents,
 } from "@mingla/offering-rendering/ticketQuoteCopy";
 import type {
@@ -165,7 +166,7 @@ export const TicketCheckoutReviewPanel: React.FC<
       <CheckoutHero
         tone="warning"
         icon="swap"
-        title="Your total changed"
+        title={checkoutReviewTitle(review)}
         body={checkoutReviewReasonCopy(review.detail)}
         testID="checkout-total-changed-hero"
       />

@@ -8,6 +8,7 @@ import {
   codeOf,
   httpStatusOf,
   readEdgeRefusal,
+  type CheckoutRefusal,
 } from "./checkoutErrorCopy";
 import type {
   BuyerDetails,
@@ -124,6 +125,13 @@ export interface TicketCheckoutCreateInput {
   checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
   /** One UUID retained by the cart across one logical create/retry. */
   checkoutAttemptId?: string;
+  /**
+   * issue #4522 E-3 — the checkout this cart was already handed, when the cart
+   * changed since (Back from the provider page, then a different choice). The
+   * server closes it before it opens the replacement, or answers
+   * `checkout_already_paid` when it was paid. Omitted otherwise.
+   */
+  supersedesCheckout?: { checkoutSessionId: string; buyerStatusToken: string };
   /**
    * #2879 / #2947 slice 3 — waiting-room opt-in. WEB ONLY.
    * Absent ⇒ today's behaviour exactly (never receive kind queued / waitlist_offered).
@@ -531,6 +539,17 @@ const isWorthRetrying = (error: unknown): boolean => {
   return status >= 500;
 };
 
+/**
+ * issue #4522 X-3 — the server could not start the payment with the provider
+ * (Stripe Checkout Session / PaymentIntent create, Paystack initialize). No
+ * payment window was ever handed to the guest.
+ */
+const PROVIDER_START_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "checkout_session_create_failed",
+  "payment_intent_create_failed",
+  "paystack_initialize_failed",
+]);
+
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -646,20 +665,32 @@ const invokeOrThrow = async <T>(
   }
   // issue #2511 — a 5xx comes back as a HANDLED error, not a throw, so the
   // retry decision has to be made here too, not only in the catch above.
+  let firstRefusal: CheckoutRefusal | null = null;
   if (
     retrying &&
     error !== null &&
     error !== undefined &&
     isWorthRetrying(error)
   ) {
-    await sleep(CHECKOUT_RETRY_DELAY_MS);
-    ({ data, error } = await invokeWithRetry(functionName, body));
+    // issue #4522 X-3 — a 5xx that NAMES a provider-start failure is the
+    // server's answer, not a blip: it has already parked that attempt, so a
+    // repeat can only be told "payment in progress" (a window that never
+    // opened). Surface the first answer instead; anything else retries as before.
+    firstRefusal = await readEdgeRefusal(error);
+    if (
+      firstRefusal.code === null ||
+      !PROVIDER_START_FAILURE_CODES.has(firstRefusal.code)
+    ) {
+      firstRefusal = null;
+      await sleep(CHECKOUT_RETRY_DELAY_MS);
+      ({ data, error } = await invokeWithRetry(functionName, body));
+    }
   }
   if (error) {
     // issue #2188 — carry the status + bounded token forward. `.message` is
     // deliberately UNCHANGED so no existing caller's behaviour shifts; the new
     // fields are additive and are what the copy mappers read.
-    const refusal = await readEdgeRefusal(error);
+    const refusal = firstRefusal ?? (await readEdgeRefusal(error));
     // issue #2511 — `error` is now `unknown` (the retry path widened it), so the
     // framework message is read defensively. The STRING IS UNCHANGED for every
     // shape supabase-js actually produces; #2188's contract that `.message` keeps
@@ -701,8 +732,10 @@ export const invokeTicketCheckoutRequest = <T>(
  * had. The access tokens are matched through it (not re-listed here) so the
  * #2101 contract keeps exactly one owner.
  */
+// issue #4522 W-10 — an unfinished payment holds the order for up to 15
+// minutes (the session's expiry), so the guest is told that, not "a minute".
 export const PAID_CHECKOUT_IN_PROGRESS_MESSAGE =
-  "You already have a payment in progress for this order. Finish it in the payment window, or wait about a minute and try again — you have not been charged twice.";
+  "You already have a payment in progress for this order. Finish it in the payment window, or try again in up to 15 minutes — you have not been charged twice.";
 
 export const PAID_CHECKOUT_UNAVAILABLE_MESSAGE =
   "This sale is no longer available — the organizer may have paused or changed this event. You have not been charged.";
@@ -775,6 +808,9 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
     return PRIVATE_TICKET_LINK_INACTIVE_MESSAGE;
   }
   if (code === "ticket_link_full") return PRIVATE_TICKET_LINK_FULL_MESSAGE;
+  if (code === "installment_schedule_past_due_at_booking") {
+    return "This plan's first payment date has passed. Choose Pay in full.";
+  }
   // issue #3281 — booked-start refusals arrive as bare error codes on paid too.
   {
     const bookedStartCopy = checkoutRefusalRaiseMessage(code);
@@ -877,6 +913,10 @@ export const createTicketCheckout = async (
             purchaseTermsAccepted: true,
           }
         : {}),
+      // issue #4522 E-3 — only when the cart changed after a provider hand-off.
+      ...(input.supersedesCheckout !== undefined
+        ? { supersedesCheckout: input.supersedesCheckout }
+        : {}),
       // #4514 wave 5 (C1) — `brandFormStep: 1` is the capability marker (this
       // client shows the Questions step; mirrors BRAND_FORM_CHECKOUT_STEP in
       // supabase/functions/_shared/brandFormsContract.ts). The step's answers
@@ -907,6 +947,9 @@ export const createTicketCheckout = async (
         // issue #3281 — extras only on v2, whose attempt id covers them; the
         // v1 idempotency key reads only tickets and quantities.
         addOns: isCheckoutV2 ? line.addOns : undefined,
+        addonPaymentMode: isCheckoutV2
+          ? line.addonPaymentMode
+          : undefined,
         ...(isCheckoutV2
           ? { paymentPlanChoice: explicitV2PlanChoice(line.ticketTypeId) }
           : {}),

@@ -560,6 +560,11 @@ const renderPublicEventPage = (
         return { offeringCalendarEntry: () => null, offeringCalendarLocation: () => null };
       case "./useAddToCalendar":
         return { useAddToCalendar: () => ({ open: () => undefined, chooser: null }) };
+      // #3281 S6 Harness registration only — ADDITION, no assertion changed.
+      // The public add-ons slot is off (the switch defaults off), so the
+      // RSVP add-on read and picker never load in this close-callback contract.
+      case "../addOns/publicAddOnsSlot":
+        return { publicAddOnsSlot: null };
       // #4572 7c: the page no longer imports buyerClaimCopy (the approval
       // toast is gone); the registration stays harmless for older trees.
       case "../../constants/buyerClaimCopy":

@@ -2564,7 +2564,11 @@ import type {
 // ORCH-1119 — TripDay now carries a media gallery; coerce the raw jsonb here so
 // this buyer-checkout trip read stays type-complete (and the gallery rides
 // through to any buyer-side render).
-import { coerceTripDayMedia } from "./tripsService";
+import {
+  coerceTripDayMedia,
+  loadPublicTripPlanV2Decoder,
+} from "./tripsService";
+import { featureFlags } from "../config/featureFlags";
 import { orderTripPricingTierRows } from "./tripPackages";
 import { asExtraGuestCount } from "../constants/guestListPrivacy";
 
@@ -2697,6 +2701,14 @@ export const getPublicTripById = async (
   // (ticket_types.display_order, then created_at, then id). The tiers query
   // has no order of its own, so heap order used to leak onto the public page.
   const orderedTiers = orderTripPricingTierRows<any>(tiers, ticketsById);
+  // issue #4522 S-1 — checkout reads the trip through THIS loader, so it must
+  // fill `paymentPlan` exactly as the `/t` slug loader does (same decoder).
+  const decodePaymentPlanV2 = await loadPublicTripPlanV2Decoder(
+    orderedTiers.map(
+      (t: { tier_metadata?: Record<string, unknown> | null }) => t.tier_metadata,
+    ),
+    featureFlags.tripPlanV2,
+  );
   const bt =
     (event.theme?.business_trip as Record<string, unknown> | undefined) ?? {};
   // ORCH-1130 Fix #1 — canonical start/end from the event_dates master row.
@@ -2806,6 +2818,8 @@ export const getPublicTripById = async (
         ticketsRemaining,
         isUnlimited,
         installmentSchedule,
+        paymentPlan:
+          decodePaymentPlanV2?.(t.tier_metadata?.payment_plan) ?? null,
         // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
         description:
           typeof t.tier_metadata?.description === "string"

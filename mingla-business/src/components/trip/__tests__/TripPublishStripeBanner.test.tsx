@@ -80,8 +80,12 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     // need a bank (tripNeedsBankForInstallments); every prior term retained.
     // [TEST-MOD-APPROVED #3859] A provider that cannot truthfully support the
     // saved installment plan is also a hard publish refusal.
+    // [TEST-MOD-APPROVED #4522] The dock Publish button now has a builder
+    // branch and an eight-step branch. The eight-step branch keeps every term;
+    // issue_4522_trip_wizard_flag_off_gates.implementor.test.tsx proves each
+    // one greys out Publish on the mounted wizard.
     expect(src).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*tripHasUnsupportedInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
+      /:\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*tripHasUnsupportedInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 

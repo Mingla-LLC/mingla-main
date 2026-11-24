@@ -148,6 +148,12 @@ export interface FoundationRsvpPreviewProps {
   // a country-code-aware phone field (@mingla/phone-input). Absent → plain field.
   renderPhoneField?: RsvpPhoneFieldRenderer;
   defaultPhoneCountry?: string;
+  /** issue #3281 S6 — the RSVP add-on picker slot and its readiness (RsvpOfferingBody). */
+  addOnsNode?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["addOnsNode"];
+  addOnsReady?: boolean;
+  /** issue #3281 S2 — "Add at checkout:" on the RSVP card, and the reader's list for it. */
+  addOns?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["addOns"];
+  rsvpAddOns?: unknown;
   onDownloadPass?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onDownloadPass"];
   onOpenClaim?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onOpenClaim"];
   renderClaimBody?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["renderClaimBody"];
@@ -206,6 +212,10 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     contributionState,
     renderPhoneField,
     defaultPhoneCountry,
+    addOnsNode,
+    addOnsReady,
+    addOns,
+    rsvpAddOns,
     onDownloadPass,
     onOpenClaim,
     renderClaimBody,
@@ -314,6 +324,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     contributionState,
     renderPhoneField,
     defaultPhoneCountry,
+    addOnsNode,
+    addOnsReady,
     onDownloadPass,
     passPresentation: "claim",
     onOpenClaim,
@@ -483,6 +495,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
           presentedByFollowerCount={presentedByFollowerCount}
           presentedByFollowerCountLoading={presentedByFollowerCountLoading}
           presentedByFollowerCountLabels={presentedByFollowerCountLabels}
+          addOns={addOns}
+          rsvpAddOns={rsvpAddOns}
           testID="orch-1163-rsvp-body"
         />
       </ParallaxCoverShell>

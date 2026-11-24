@@ -5,6 +5,7 @@
  * minimums (#3709). Create accepts lifetime; Mingla pauses at 98% of the cap.
  */
 
+import { CalendarInput } from "@mingla/calendar-web";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { AlertCard } from "../ui/Card";
@@ -290,8 +291,8 @@ export function StepBudget({
           <span className="block text-sm font-medium">
             Start ({scheduleTimeZone})
           </span>
-          <input
-            type="datetime-local"
+          <CalendarInput
+            mode="datetime"
             className="w-full h-9 rounded-md border border-[var(--gray-300)] px-2 text-sm"
             value={budget.startsAtLocal ?? ""}
             max={scheduleLimit?.maxLocal ?? undefined}
@@ -310,8 +311,8 @@ export function StepBudget({
           <span className="block text-sm font-medium">
             End ({scheduleTimeZone}){mode === "lifetime" ? " (required)" : ""}
           </span>
-          <input
-            type="datetime-local"
+          <CalendarInput
+            mode="datetime"
             className="w-full h-9 rounded-md border border-[var(--gray-300)] px-2 text-sm"
             value={budget.endsAtLocal ?? ""}
             max={scheduleLimit?.maxLocal ?? undefined}

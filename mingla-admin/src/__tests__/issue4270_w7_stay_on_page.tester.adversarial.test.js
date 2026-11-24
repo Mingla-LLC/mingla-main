@@ -22,6 +22,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+// [TEST-MOD-APPROVED #4522] #4523 puts the shared calendar (@mingla/calendar-web) in Admin components; this bundle now needs the same workspace alias Vite has, so the old plain esbuild call could no longer resolve them.
+import { workspacePackagesPlugin } from "./_workspacePackagesPlugin.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +64,7 @@ export const strip = (p) => html(<BrandGroupStrip onShowList={() => {}} onOpen={
 export const planCard = (p) => html(<PlanActivityCard {...p} />);`,
       resolveDir: HERE, sourcefile: "issue4270.w7.tester.harness.jsx", loader: "jsx",
     },
+    plugins: [workspacePackagesPlugin],
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
     loader: { ".js": "jsx" },
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url); if (typeof globalThis.WebSocket === "undefined") globalThis.WebSocket = class { constructor() { throw new Error("issue4270 W7 tester render test: no network"); } };' },

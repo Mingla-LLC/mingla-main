@@ -15,8 +15,12 @@
 
 import { describe, expect, test } from "@jest/globals";
 
-import type { Trip } from "../../services/tripsService";
-import { validateLiveTripFieldUpdate } from "../publishedTripEditGuards";
+import type { LiveTripPatch, Trip } from "../../services/tripsService";
+import {
+  liveTripEditNeedsBuyerReason,
+  NON_BUYER_EDIT_AUDIT_REASON,
+  validateLiveTripFieldUpdate,
+} from "../publishedTripEditGuards";
 
 const trip = (patch: Partial<Trip> = {}): Trip => ({
   id: "trip-1",
@@ -296,5 +300,102 @@ describe("ORCH-0876 — published trip edit guards (client-side fast-path)", () 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
     expect(result.trimmedReason).toBe("Updating the trip title to be clearer");
+  });
+});
+
+describe("#4522 — published trip reason boundary", () => {
+  test.each<[string, LiveTripPatch]>([
+    ["trip dates", { theme: { business_trip: { startAt: "2026-07-01T00:00:00.000Z" } } }],
+    ["package price", { pricing_tiers: [{ ticket_type_id: "ticket-1", price_cents: 160000 }] }],
+    ["removed day", { days: [{ ordinal: 1, title: "Arrival" }] }],
+    ["removed inclusion", { inclusions: [{ kind: "included", item: "Lodging", ordinal: 0 }] }],
+    [
+      "refund policy",
+      {
+        refund_policy: {
+          kind: "custom",
+          tiers: [],
+          deposit_non_refundable: true,
+        },
+      },
+    ],
+    ["earlier deadline", { booking_deadline: "2026-06-01T00:00:00.000Z" }],
+    [
+      "payment plan",
+      {
+        pricing_tiers: [{
+          ticket_type_id: "ticket-1",
+          tier_metadata: {
+            payment_plan: {
+              v: 2,
+              deposit: { mode: "percent", pct: 25 },
+              count: 3,
+              final_due_days_before_start: 30,
+              auto_adjust: true,
+              flex: { enabled: false },
+              custom_amounts_minor: null,
+            },
+          },
+        }],
+      },
+    ],
+  ])("asks for a reason for %s", (_label, patch) => {
+    expect(liveTripEditNeedsBuyerReason(trip(), patch)).toBe(true);
+  });
+
+  test.each<[string, LiveTripPatch]>([
+    ["description wording", { description: "A clearer trip description." }],
+    ["cover", { cover_media_url: "https://cdn.example/new.jpg", cover_media_type: "image" }],
+    [
+      "added day content",
+      {
+        days: [
+          { ordinal: 1, title: "Arrival", narrative: "Meet at the lobby." },
+          { ordinal: 2, title: "Day 2" },
+          { ordinal: 3, title: "Beach day" },
+        ],
+      },
+    ],
+    [
+      "added inclusion",
+      {
+        inclusions: [
+          { kind: "included", item: "Lodging", ordinal: 0 },
+          { kind: "included", item: "Breakfast", ordinal: 1 },
+          { kind: "included", item: "Airport transfer", ordinal: 2 },
+        ],
+      },
+    ],
+    [
+      "package description",
+      {
+        pricing_tiers: [{
+          ticket_type_id: "ticket-1",
+          tier_metadata: { description: "Now includes airport transfer." },
+        }],
+      },
+    ],
+    ["later deadline", { booking_deadline: "2026-06-08T00:00:00.000Z" }],
+  ])("does not ask for a reason for %s", (_label, patch) => {
+    const current =
+      _label === "later deadline"
+        ? trip({ bookingDeadline: "2026-06-05T00:00:00.000Z" })
+        : trip();
+    expect(liveTripEditNeedsBuyerReason(current, patch)).toBe(false);
+  });
+
+  test("the hidden reason still satisfies the canonical RPC audit gate", () => {
+    expect(NON_BUYER_EDIT_AUDIT_REASON.length).toBeGreaterThanOrEqual(10);
+    const result = validateLiveTripFieldUpdate(
+      trip(),
+      { description: "A clearer trip description." },
+      { "ticket-1": 0 },
+      0,
+      NON_BUYER_EDIT_AUDIT_REASON,
+    );
+    expect(result).toEqual({
+      ok: true,
+      trimmedReason: NON_BUYER_EDIT_AUDIT_REASON,
+    });
   });
 });

@@ -115,6 +115,7 @@ const resolveEventAcquisitionState =
 // public RSVP phone field is country-code aware. No new npm dependency.
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
+import { publicAddOnsSlot } from "../addOns/publicAddOnsSlot";
 import {
   resolvePrimaryRsvpPhoneCountry,
   useBusinessRsvpPhoneField,
@@ -135,6 +136,19 @@ import {
 
 // #4518 — loaded on intent (a tap on "Join waitlist"), not at boot: the
 // sheet was in the eager shared chunk of every Host web page.
+// issue #3281 S6 — the RSVP form's free add-on picker and its read, one
+// on-use chunk (used only while the Host add-ons switch is on).
+// A chunk that fails to load is logged and offers no add-ons; the RSVP works.
+const RsvpAddOnsPicker = React.lazy(() =>
+  import("../addOns/RsvpAddOnsOnUse").catch((error: unknown) => {
+    console.warn("[PublicEventPage] RSVP add-ons did not load", error);
+    return { default: (): null => null };
+  }),
+);
+const publicRsvpAddOnsKeys = {
+  forEvent: (brandSlug: string, eventSlug: string) =>
+    ["public-rsvp-add-ons", brandSlug, eventSlug] as const,
+};
 const JoinWaitlistSheet = React.lazy(() =>
   import("../waitlist/JoinWaitlistSheet").then((module) => ({
     default: module.JoinWaitlistSheet,
@@ -326,6 +340,9 @@ const mapTicket = (t: TicketStub): PublicTicketProps => ({
         ? "both"
         : "online",
   displayOrder: typeof t.displayOrder === "number" ? t.displayOrder : 0,
+  // issue #3281 S-21 — the add-ons on sale for this ticket; the page's
+  // "Add at checkout:" list reads them (the slot is null while extras are off).
+  ...(t.buyerExtras !== undefined ? { buyerExtras: t.buyerExtras } : {}),
 });
 
 // issue #2209 — THE EYEBROW'S DATE BLOCK, resolved from the event's REAL
@@ -1669,6 +1686,40 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // the one place to continue on every width, so there is no sticky panel.
   const stickyPanel = null;
 
+  // issue #3281 S6 — the RSVP's add-ons (the RSVP reader's `rsvpAddOns`, sent
+  // only while add_on_rollout.rsvp_enabled is on), read only while the Host
+  // add-ons switch is on. The guest's free picks go with a Going reply; the
+  // card lists them ("Add at checkout:"). Off, or none: the page is unchanged.
+  const rsvpAddOnsQuery = useQuery({
+    queryKey: publicRsvpAddOnsKeys.forEvent(event.brandSlug, event.eventSlug),
+    enabled: isRsvp && publicAddOnsSlot !== null,
+    staleTime: 30_000,
+    queryFn: () =>
+      import("../addOns/RsvpAddOnsOnUse").then((m) =>
+        m.fetchPublicRsvpAddOns(event.brandSlug, event.eventSlug),
+      ),
+  });
+  const rsvpAddOns = rsvpAddOnsQuery.data ?? undefined;
+  const [rsvpAddOnPicks, setRsvpAddOnPicks] = useState<
+    import("@mingla/offering-rendering/rsvpAddOnPicks").RsvpAddOnPick[]
+  >([]);
+  const [rsvpAddOnsReady, setRsvpAddOnsReady] = useState(true);
+  const rsvpAddOnsNode =
+    publicAddOnsSlot === null || rsvpAddOns === undefined
+      ? undefined
+      : (partySize: number) => (
+          <React.Suspense fallback={null}>
+            <RsvpAddOnsPicker
+              addOns={rsvpAddOns}
+              partySize={partySize}
+              picks={rsvpAddOnPicks}
+              onPicksChange={setRsvpAddOnPicks}
+              onReadyChange={setRsvpAddOnsReady}
+              palette={palette}
+            />
+          </React.Suspense>
+        );
+
   // ORCH-1150 — RSVP branch. An event_type='rsvp' row has zero tickets + no
   // checkout; it renders the Going/Not-going RsvpPublicBody and returns early.
   // The ticketed path below is BYTE-IDENTICAL (untouched) for every non-RSVP row.
@@ -1695,6 +1746,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
       claim: { shortUrl: string | null; code: string | null } | null;
       guests: import("@mingla/offering-rendering").RsvpSubmittedGuest[];
+      rsvpAddOns?: Array<{ name: string; quantity: number }>;
     }> => {
       // ORCH-1291 [rsvp-chip-in] — remember the just-submitted guest contact so an
       // anon web chip-in (a SEPARATE voluntary action AFTER the free RSVP) can
@@ -1723,6 +1775,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           plusCount: input.plusCount,
           guests: input.guests,
           brandForm: rsvpBrandFormPayload,
+          // issue #3281 S6 — free add-on picks travel with a Going reply only.
+          rsvpAddOns:
+            input.rsvpStatus === "going" && rsvpAddOnPicks.length > 0
+              ? rsvpAddOnPicks
+              : undefined,
         });
       } catch (error) {
         // The host changed the form (or the answers were refused): refetch it so
@@ -1764,10 +1821,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       if (result.credentials.length > 0) {
         captureWeb("rsvp_pass_viewed", { surface: "anonymous_web_success" });
       }
+      // issue #3281 S6 — the confirmation lists the add-ons that went with it.
+      if (input.rsvpStatus === "going" && rsvpAddOnPicks.length > 0) {
+        const { rsvpAddOnLines } = await import("../addOns/RsvpAddOnsOnUse");
+        return { ...result, rsvpAddOns: rsvpAddOnLines(rsvpAddOns, rsvpAddOnPicks) };
+      }
       return result;
     },
     [
       engagementScope,
+      rsvpAddOns,
+      rsvpAddOnPicks,
       event.id,
       event.currency,
       event.brandId,
@@ -2209,6 +2273,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           safeAreaTop={insets.top}
           safeAreaBottom={insets.bottom}
           testID="orch-1150-rsvp-public"
+          addOns={publicAddOnsSlot}
+          rsvpAddOns={rsvpAddOns}
+          addOnsNode={rsvpAddOnsNode}
+          addOnsReady={rsvpAddOnsReady}
           questionsNode={
             rsvpFormReadFailed ? (
               <View

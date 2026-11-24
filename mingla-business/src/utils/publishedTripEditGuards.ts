@@ -36,6 +36,94 @@ const REASON_MIN = 10;
 const REASON_MAX = 200;
 
 /**
+ * #4522 — the live-trip RPC still requires a 10–200 character audit reason for
+ * every write. Buyer-safe edits do not ask the host to invent one; this stable
+ * value keeps those writes visible in `trip_edit_log` without implying that a
+ * traveler supplied or saw a reason.
+ */
+export const NON_BUYER_EDIT_AUDIT_REASON = "Non-buyer-facing trip edit.";
+
+const hasOwn = (value: object, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
+/**
+ * #4522 §9.10 — the exact approved boundary for showing the host a change
+ * reason. The server continues to own refund/sales safety; this classifier
+ * owns only whether the review sheet asks for prose.
+ */
+export const liveTripEditNeedsBuyerReason = (
+  trip: Trip,
+  patch: LiveTripPatch,
+): boolean => {
+  const businessTrip = patch.theme?.business_trip;
+  if (
+    businessTrip !== undefined &&
+    (hasOwn(businessTrip, "startAt") || hasOwn(businessTrip, "endAt"))
+  ) {
+    return true;
+  }
+
+  if (patch.days !== undefined) {
+    const nextOrdinals = new Set(patch.days.map((day) => day.ordinal));
+    if (trip.days.some((day) => !nextOrdinals.has(day.ordinal))) return true;
+  }
+
+  if (patch.inclusions !== undefined) {
+    const inclusionKey = (kind: string, item: string): string => `${kind}:${item}`;
+    const nextKeys = new Set(
+      patch.inclusions.map((item) => inclusionKey(item.kind, item.item)),
+    );
+    if (
+      trip.inclusions.some(
+        (item) => !nextKeys.has(inclusionKey(item.kind, item.item)),
+      )
+    ) {
+      return true;
+    }
+  }
+
+  if (patch.pricing_tiers !== undefined) {
+    const oldByTicketType = new Map(
+      trip.pricingTiers.map((tier) => [tier.ticketTypeId, tier]),
+    );
+    for (const tier of patch.pricing_tiers) {
+      const old = oldByTicketType.get(tier.ticket_type_id);
+      if (
+        tier.price_cents !== undefined &&
+        (old === undefined || tier.price_cents !== old.priceCents)
+      ) {
+        return true;
+      }
+      // The published editor sends tier_metadata only for a plan or package
+      // description change. Compare the effective plan so a description-only
+      // edit remains buyer-safe while plan removal (`{}`) still asks why.
+      if (tier.tier_metadata !== undefined) {
+        const oldPlan = old?.paymentPlan ?? old?.installmentSchedule ?? null;
+        const nextPlan =
+          tier.tier_metadata.payment_plan ??
+          tier.tier_metadata.installments ??
+          null;
+        if (JSON.stringify(oldPlan) !== JSON.stringify(nextPlan)) return true;
+      }
+    }
+  }
+
+  if (patch.refund_policy !== undefined) return true;
+
+  if (
+    patch.booking_deadline !== undefined &&
+    patch.booking_deadline !== null
+  ) {
+    const next = Date.parse(patch.booking_deadline);
+    const old =
+      trip.bookingDeadline === null ? Number.POSITIVE_INFINITY : Date.parse(trip.bookingDeadline);
+    if (Number.isFinite(next) && next < old) return true;
+  }
+
+  return false;
+};
+
+/**
  * Pre-flight validate. Mirror of the RPC's §4 refund-gate logic.
  *
  * @param trip — current Trip (server snapshot before patch)

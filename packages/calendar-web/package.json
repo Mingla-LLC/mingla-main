@@ -1,0 +1,14 @@
+{
+  "name": "@mingla/calendar-web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "The Mingla calendar for plain React DOM apps (mingla-admin, mingla-sites, mingla-marketing) (#4523). Zero dependencies: it reuses the pure-TS core of @mingla/calendar by relative path and renders DOM only, so no react-native-web is pulled in.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./calendar.css": "./src/calendar.css"
+  },
+  "peerDependencies": {
+    "react": "*"
+  }
+}

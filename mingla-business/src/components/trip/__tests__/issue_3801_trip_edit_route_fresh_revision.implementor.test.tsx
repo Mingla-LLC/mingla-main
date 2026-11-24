@@ -138,6 +138,11 @@ const leaf = (name: string) => {
 };
 
 const BOUNDARY: Record<string, () => unknown> = {
+  // #4522 — the 4-step builder is dark: the route keeps creating the draft on mount.
+  featureFlags: () => ({ isFeatureEnabled: () => false }),
+  TripStartGate: () => ({ TripStartGate: () => null }),
+  // #4523 S-9 — a new trip's zone (pure; the real one).
+  timezones: () => jest.requireActual("../../../utils/timezones"),
   react: () => React,
   "react-native": () => ({
     ActivityIndicator: leaf("ActivityIndicator"),

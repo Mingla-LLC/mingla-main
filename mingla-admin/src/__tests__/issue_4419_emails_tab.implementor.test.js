@@ -33,6 +33,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+// [TEST-MOD-APPROVED #4522] #4523 puts the shared calendar (@mingla/calendar-web) in Admin components; this bundle now needs the same workspace alias Vite has, so the old plain esbuild call could no longer resolve them.
+import { workspacePackagesPlugin } from "./_workspacePackagesPlugin.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   EMAIL_VIEWS,
@@ -88,7 +90,7 @@ export function listElement(props) { return EmailsListBody({ onFilter() {}, onQu
   const out = await esbuild.build({
     stdin: { contents, resolveDir: HERE, sourcefile: "issue4419.harness.jsx", loader: "jsx" },
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
-    plugins: [fake],
+    plugins: [fake, workspacePackagesPlugin],
     loader: { ".js": "jsx", ".png": "dataurl", ".svg": "dataurl", ".css": "empty" },
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
     define: { "process.env.NODE_ENV": '"production"', "import.meta.env": "{}" },

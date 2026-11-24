@@ -83,3 +83,35 @@ describe("issue #3281 Round 1 PR 1a — Host wording / zone / money", () => {
     );
   });
 });
+
+// issue #4522 G-5 — a new trip lives in the brand's own zone first
+// (brands.default_timezone), then payout country, currency, device. Before:
+// a Tokyo brand paid in USD got New York (its booking-deadline eve 14 hours off).
+describe("issue #4522 G-5 — the brand's own zone comes first", () => {
+  it("reads brandZone before payout country, currency and device", () => {
+    expect(
+      defaultTimezoneForBrand({
+        brandZone: "Asia/Tokyo",
+        payoutCountry: "US",
+        currency: "USD",
+        deviceZone: "Europe/Berlin",
+      }),
+    ).toBe("Asia/Tokyo");
+  });
+  it("falls back as before when the brand has no zone or an unknown one", () => {
+    expect(
+      defaultTimezoneForBrand({ brandZone: null, payoutCountry: "NG", currency: "USD" }),
+    ).toBe("Africa/Lagos");
+    expect(
+      defaultTimezoneForBrand({ brandZone: "Not/AZone", payoutCountry: "NG" }),
+    ).toBe("Africa/Lagos");
+  });
+  it("the new-trip and experience call sites pass the brand's zone", () => {
+    expect(read("app/trip/[id]/edit.tsx")).toMatch(/brandZone: currentBrand\.defaultTimezone \?\? null/);
+    expect(read("src/components/experience/ExperienceCreatorWizard.tsx")).toMatch(
+      /brandZone: brand\?\.defaultTimezone \?\? null/,
+    );
+    expect(read("src/hooks/useExperienceDraftAdapter.ts")).toMatch(/brandZone: brandTzHints\?\.brandZone/);
+  });
+});
+

@@ -421,12 +421,36 @@ Deno.test("#3281 v2 keeps extras on their line, sorted, and refuses bad ones", (
   }
 });
 
+Deno.test("#4522 v2 keeps the add-on payment mode on its line and refuses unknown modes", () => {
+  const DINNER = "77777777-7777-4777-8777-777777777777";
+  const parsed = normalizeCheckoutV2ServerLines([{
+    ticketTypeId: VIP,
+    quantity: 2,
+    paymentPlanChoice: "installments",
+    addOns: [{ addOnId: DINNER, quantity: 1 }],
+    addonPaymentMode: "spread",
+  }]);
+  assert(parsed.ok);
+  assertEquals(parsed.lines[0].addonPaymentMode, "spread");
+  assertEquals(
+    normalizeCheckoutV2ServerLines([{
+      ticketTypeId: VIP,
+      quantity: 2,
+      paymentPlanChoice: "installments",
+      addOns: [{ addOnId: DINNER, quantity: 1 }],
+      addonPaymentMode: "later",
+    }]),
+    { ok: false, error: "checkout_lines_invalid" },
+  );
+});
+
 Deno.test("#3281 the session's extras join the bound total and the bind lines", () => {
   const source = Deno.readTextFileSync(
     new URL("../index.ts", import.meta.url),
   );
+  // #3281 S5: spread add-ons already on the plan rows are not charged today.
   assert(source.includes(
-    "const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents;",
+    "const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents -\n        addOnScheduledCents;",
   ));
   assert(source.includes("p_due_today_cents: dueTodayCents,"));
   assert(source.includes(

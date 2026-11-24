@@ -383,6 +383,123 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
     tree.unmount();
   });
 
+  test("the v2 trip-plan choice stays readable inside every checkout palette", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- load after setting the active palette for this case.
+    const { TripPlanV2CheckoutChoice } = require("../../trip/TripPlanV2CheckoutChoice") as typeof import("../../trip/TripPlanV2CheckoutChoice");
+    const tree = mount(
+      <View style={{ backgroundColor: color.canvas }}>
+        <TripPlanV2CheckoutChoice
+          plan={{
+            availability: "plan",
+            countOffered: 3,
+            countGiven: 2,
+            finalDueAt: "2027-05-01T13:00:00Z",
+            installmentSchedule: {
+              fullPriceCents: 100000,
+              depositCents: 20000,
+              currency: "USD",
+              planVersion: 2,
+              availability: "plan",
+              countOffered: 3,
+              countGiven: 2,
+              finalDueAt: "2027-05-01T13:00:00Z",
+              installments: [
+                { ordinal: 1, pct: 40, amountCents: 40000, dueAt: "2027-03-01T14:00:00Z", addonPortionCents: 0, sourceTicketTypeId: "tier" },
+                { ordinal: 2, pct: 40, amountCents: 40000, dueAt: "2027-05-01T13:00:00Z", addonPortionCents: 0, sourceTicketTypeId: "tier" },
+              ],
+            },
+          }}
+          value="installments"
+          onChange={() => undefined}
+          currency="USD"
+          dueTodayCents={22000}
+          fullPriceCents={110000}
+          addOnPlan={{
+            totalCents: 12000,
+            currency: "USD",
+            value: "today",
+            onChange: () => undefined,
+          }}
+          flexEnabled
+          daysUntilDeparture={90}
+          timeZone="America/New_York"
+        />
+      </View>,
+    );
+    const found = measureText(tree.root, color.canvas);
+    expect(found.map((entry) => entry.text)).toEqual(expect.arrayContaining([
+      "HOW YOU PAY",
+      "Pay in full",
+      "Add-ons ($120.00)",
+      "Pay today",
+      "Spread over my plan",
+      "You booked closer to the trip, so your plan has fewer payments.",
+      "You can pay more at any time from My trip.",
+      "We’ll remind you before each payment.",
+    ]));
+    expect(found.filter((entry) => entry.ratio < TEXT_MIN)).toEqual([]);
+    const outlines = tree.root.findAll(
+      (node: Instance) =>
+        typeof node.type === "string" &&
+        flat(node.props.style).borderColor === color.controlOutline,
+    );
+    expect(outlines.length).toBeGreaterThan(0);
+    tree.unmount();
+  });
+
+  test("the pay-toward-balance panel stays readable inside every checkout palette", () => {
+    const { TripBalancePanel } = require("../../trip/TripBalancePanel") as typeof import("../../trip/TripBalancePanel");
+    const tree = mount(
+      <View style={{ backgroundColor: color.canvas }}>
+        <TripBalancePanel
+          amountMinor={30000}
+          balance={{
+            orderId: "order-1",
+            currency: "USD",
+            depositMinor: 20000,
+            paidMinor: 40000,
+            remainingMinor: 90000,
+            totalMinor: 130000,
+            canPayAnyAmount: true,
+            minPaymentMinor: 10000,
+            maxPartialMinor: 90000,
+            providerMinimumMinor: 0,
+            paymentInFlight: false,
+            nextPayment: { installmentId: "i1", dueAt: "2027-03-01T00:00:00Z", amountMinor: 30000 },
+            openRows: [
+              { installmentId: "i1", dueAt: "2027-03-01T00:00:00Z", amountMinor: 30000 },
+              { installmentId: "i2", dueAt: "2027-04-01T00:00:00Z", amountMinor: 60000 },
+            ],
+            history: [{ installmentId: "deposit", kind: "deposit", status: "collected", amountMinor: 40000 }],
+            planVersion: 2,
+            heldCreditMinor: 0,
+            overpaymentRefundedMinor: 0,
+          }}
+          busy={false}
+          choice="next"
+          customAmount=""
+          onChoice={() => undefined}
+          onCustomAmount={() => undefined}
+          onPay={() => undefined}
+          tripTitle="Lagos Weekend"
+        />
+      </View>,
+    );
+    const found = measureText(tree.root, color.canvas);
+    expect(found.map((entry) => entry.text)).toEqual(expect.arrayContaining([
+      "Balance remaining",
+      "Choose what to pay",
+      "Minimum",
+      "Next payment",
+      "Pay it all",
+      "Other amount",
+      "Your remaining payments update after you pay",
+      "Paid so far",
+    ]));
+    expect(found.filter((entry) => entry.ratio < QUIET_TEXT_MIN)).toEqual([]);
+    tree.unmount();
+  });
+
   test.each(["primary", "secondary", "ghost"] as const)(
     "a %s button's label is readable, enabled and disabled (rendered)",
     (variant) => {

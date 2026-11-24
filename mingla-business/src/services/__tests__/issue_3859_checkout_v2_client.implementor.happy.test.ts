@@ -30,6 +30,7 @@ const EVENT_ID = "11111111-1111-4111-8111-111111111111";
 const BRAND_ID = "44444444-4444-4444-8444-444444444444";
 const STANDARD = "22222222-2222-4222-8222-222222222222";
 const VIP = "33333333-3333-4333-8333-333333333333";
+const DINNER = "55555555-5555-4555-8555-555555555555";
 const ATTEMPT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const buyer = {
   name: "Buyer",
@@ -47,6 +48,8 @@ const lines = [
     currency: "USD",
     isFree: false,
     paymentPlanChoice: "installments" as const,
+    addOns: [{ addOnId: DINNER, quantity: 1 }],
+    addonPaymentMode: "spread" as const,
   },
   {
     ticketTypeId: VIP,
@@ -93,7 +96,12 @@ test("#3859 web v2 sends mixed line choices and no checkout-wide scalar", async 
   expect(body.purchaseTermsAccepted).toBe(true);
   expect(body.lines.map((line: { paymentPlanChoice: string }) =>
     line.paymentPlanChoice)).toEqual(["installments", "full"]);
+  expect(body.lines[0]).toEqual(expect.objectContaining({
+    addOns: [{ addOnId: DINNER, quantity: 1 }],
+    addonPaymentMode: "spread",
+  }));
   expect(body).not.toHaveProperty("payment_plan_choice");
+  expect(body).not.toHaveProperty("addonPaymentMode");
   expect(body).not.toHaveProperty("brandId");
   expect(mockFireAdInitiateCheckout).toHaveBeenCalledWith("checkout-3697", {
     value: 500,

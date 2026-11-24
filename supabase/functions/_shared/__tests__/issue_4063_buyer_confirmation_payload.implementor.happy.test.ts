@@ -10,6 +10,7 @@ import {
   buyerPhoneLast4,
   compactOrderRef,
   receiptDateLine,
+  tripReceiptDateLine,
 } from "../buyerConfirmationPayload.ts";
 
 const ORDER_ID = "7f3a91c2-aaaa-bbbb-cccc-dddddddddddd";
@@ -203,7 +204,8 @@ Deno.test("#3281 a receipt names the extras bought with the tickets", async () =
   assert(payload !== null);
   assertEquals(payload.receipt.lines, [
     { qty: 2, name: "General admission", amountCents: 2000 },
-    { qty: 1, name: "Friday dinner", amountCents: 3500 },
+    // issue #4522 E-8 — marked, so a confirmation counts places, not lines
+    { qty: 1, name: "Add-on: Friday dinner", amountCents: 3500, addOn: true },
   ]);
 });
 
@@ -272,3 +274,75 @@ Deno.test(
     assertStringIncludes(line, "30 Aug");
   },
 );
+
+// issue #4522 E-7 / E-8 — a trip's confirmation names its calendar dates, and
+// an add-on line is marked so the page counts places, not lines.
+Deno.test("#4522 E-7 a trip's receipt date line is its stored calendar dates, never the zone's evening before", async () => {
+  // A 12–16 Mar trip in New York: stored as UTC midnight (#4420).
+  const trip = {
+    id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    start_at: "2099-03-12T00:00:00.000Z",
+    end_at: "2099-03-16T00:00:00.000Z",
+    timezone: "America/New_York",
+  };
+  assertEquals(tripReceiptDateLine(trip), "Thu 12 Mar 2099 – Mon 16 Mar 2099");
+  // what the event rule renders for the same row (the bug, for a trip)
+  assertStringIncludes(receiptDateLine(trip) ?? "", "11 Mar 2099");
+  assertEquals(tripReceiptDateLine({ ...trip, end_at: null }), "Thu 12 Mar 2099");
+  assertEquals(tripReceiptDateLine(null), null);
+
+  const tripClient = {
+    from(table: string) {
+      if (table === "events") {
+        return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { event_type: "trip" }, error: null }) }) }) };
+      }
+      if (table === "event_dates") {
+        return { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: trip, error: null }) }) }) }) };
+      }
+      if (table === "order_add_on_line_items") {
+        return { select: () => ({ eq: () => ({ order: () => Promise.resolve({
+          data: [{ add_on_name_at_order: "Airport transfer", quantity: 1, total_cents: 4500 }], error: null,
+        }) }) }) };
+      }
+      if (table === "orders") {
+        const q = client.from(table);
+        return q;
+      }
+      return client.from(table);
+    },
+    rpc: client.rpc,
+  };
+  const payload = await buildBuyerConfirmationPayload(tripClient, {
+    orderId: ORDER_ID,
+    eventId: EVENT_ID,
+    currency: "USD",
+    logPrefix: "[test]",
+    order: {
+      buyer_email: "buyer@example.test", buyer_phone_e164: null, buyer_user_id: null, purchased_by_user_id: null,
+      total_cents: 30000, tax_amount_cents: 0, buyer_fees_cents: 0, tax_cents: 0, buyer_total_cents: 30000,
+      event_date_id: null, booked_start_at: null,
+    },
+  });
+  assert(payload !== null);
+  assertEquals(payload.receipt.dateLine, "Thu 12 Mar 2099 – Mon 16 Mar 2099");
+  // E-8 — the add-on is a marked line; the ticket lines are not
+  const addOn = payload.receipt.lines.find((line) => line.name === "Add-on: Airport transfer");
+  assertEquals(addOn?.addOn, true);
+  assert(payload.receipt.lines.filter((line) => line.addOn !== true).every((line) => line.qty > 0));
+});
+
+Deno.test("#4522 E-7 an event's receipt date line is unchanged (its own zone, with the time)", async () => {
+  const payload = await buildBuyerConfirmationPayload(client, {
+    orderId: ORDER_ID,
+    eventId: EVENT_ID,
+    currency: "USD",
+    logPrefix: "[test]",
+  });
+  assert(payload !== null);
+  assertEquals(payload.receipt.dateLine, receiptDateLine({
+    id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    start_at: "2026-10-25T23:30:00.000Z",
+    end_at: "2026-10-26T01:30:00.000Z",
+    timezone: "America/New_York",
+  }));
+});

@@ -33,6 +33,7 @@ import { PeopleField } from "../people/PeopleField";
 import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords } from "../../lib/peopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
+import { CalendarInput } from "@mingla/calendar-web";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] ${FOCUS}`;
@@ -252,7 +253,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
         </div>
         <label className="flex min-w-0 flex-col gap-1">
           <span className={LABEL}>Due</span>
-          <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className={INPUT} aria-describedby="ticket-due-note" />
+          <CalendarInput mode="date" value={due} onChange={(e) => setDue(e.target.value)} className={INPUT} aria-describedby="ticket-due-note" />
           <span id="ticket-due-note" className="text-[12px] text-[var(--color-text-tertiary)]">{due ? `Due ${dayLabel(due)}` : "No date picked: it will be due in 7 days."}</span>
           <FieldError id="ticket-due-error" words={wordsFor("due_on")} />
         </label>

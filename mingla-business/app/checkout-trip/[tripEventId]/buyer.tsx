@@ -1018,27 +1018,33 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             {INTAKE_SCHEMA_LOADING_MESSAGE}
           </Text>
         ) : null}
-        <Pressable
-          onPress={continueDisabled ? showConsentHint : undefined}
-          accessibilityRole="button"
-          accessibilityLabel={continueLabel}
-        >
-          <View pointerEvents={continueDisabled ? "none" : "auto"}>
-            <Button
-              label={continueLabel}
-              onPress={handleContinue}
-              variant="primary"
-              size="lg"
-              fullWidth
-              loading={submitting}
-              // issue #3351 — `!intakeState.settled` fails the rail CLOSED while the
-              // intake schema read is unresolved or failed. Before this, an
-              // unresolved read read as "no questions", so a free trip with a
-              // required form submitted with no answers and took the server's 400.
-              disabled={continueDisabled}
+        {/* #4522 W-11 — the hint tap sits OVER the disabled button instead of
+            wrapping it: a button inside a button is invalid markup on web. */}
+        <View>
+          <Button
+            label={continueLabel}
+            onPress={handleContinue}
+            variant="primary"
+            size="lg"
+            fullWidth
+            loading={submitting}
+            // issue #3351 — `!intakeState.settled` fails the rail CLOSED while the
+            // intake schema read is unresolved or failed. Before this, an
+            // unresolved read read as "no questions", so a free trip with a
+            // required form submitted with no answers and took the server's 400.
+            disabled={continueDisabled}
+          />
+          {continueDisabled ? (
+            <Pressable
+              onPress={showConsentHint}
+              accessibilityRole="button"
+              accessibilityLabel={continueLabel}
+              accessibilityState={{ disabled: true }}
+              style={StyleSheet.absoluteFill}
+              testID="checkout-trip-continue-disabled-hint"
             />
-          </View>
-        </Pressable>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -1135,10 +1141,10 @@ const styles = checkoutStyles(() => StyleSheet.create({
     alignItems: "baseline",
     marginBottom: space[2],
   },
-  dueTodayLabel: { fontSize: 13, color: color.accent, fontWeight: "600" },
+  dueTodayLabel: { fontSize: 13, color: color.accentText, fontWeight: "600" },
   dueTodayValue: {
     fontSize: 16,
-    color: color.accent,
+    color: color.accentText,
     fontWeight: "700",
     letterSpacing: -0.2,
   },

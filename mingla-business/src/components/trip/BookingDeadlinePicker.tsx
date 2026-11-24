@@ -1,88 +1,42 @@
 /**
  * ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — <BookingDeadlinePicker />.
  *
- * Per SPEC_ORCH-0875 §3.5.2 + DESIGN_ORCH-0875 §4 (DECISION C — operator's
- * brand TZ explicit; picker shows "in {brand.timezone} — your brand timezone").
+ * #4522 / #4523: the deadline is picked on the shared Mingla calendar
+ * (`HostDateTimeField`) in the TRIP's time zone, not the phone's. The host sees
+ * the zone ("In Lagos time") and the saved value is the instant that wall clock
+ * is in that zone, so a host travelling, or a buyer abroad, never moves it.
+ * Nothing commits until the host presses Done in the calendar, and a deadline
+ * that is not in the future or not before the trip starts is said, not saved.
  *
- * Wraps @react-native-community/datetimepicker. Spinner writes to a *pending*
- * state; nothing commits to `value` until the operator taps "Set deadline".
- * "Cancel" discards the pending pick.
+ * The OS date spinner, the Android two-step and the browser datetime-local
+ * input this component used to carry are gone.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 
-import {
-  radius,
-  color,
-  space,
-} from "../../constants/designSystem";
-// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
-// Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
-// booking-deadline picker was broken on web.
-import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+import { color, space, type } from "../../constants/designSystem";
 import { timezoneCityName } from "../../utils/timezones";
-// #2664 — Android has no `datetime` picker mode. This component's picker was
-// gated `Platform.OS !== "web"`, so it reached Android and carried the same
-// unmount crash as the sale window; it just had not been reported yet.
+import { HostDateTimeField } from "../ui/HostCalendarFields";
+import { Switch } from "../ui/Switch";
 import {
-  type AndroidDateTimeStep,
-  combineAndroidDateAndTime,
-  seedAndroidTimeStep,
-} from "../../utils/androidDateTimeStep";
+  deadlineBounds,
+  deadlineProblem,
+  instantFromWall,
+  wallInZone,
+} from "./tripBuilderV2Model";
 
 export interface BookingDeadlinePickerProps {
   /** ISO timestamptz string, or null = no deadline set. */
   value: string | null;
-  /** Trip start ISO — used as maximumDate enforcement. */
+  /** Trip start ISO — the deadline must come before it. */
   tripStartIso: string | null;
-  /** Brand timezone label (e.g., "Asia/Bangkok"). Falls back to "UTC". */
+  /** The trip's IANA time zone. Falls back to "UTC". */
   brandTimezone: string | null;
   onChange: (next: string | null) => void;
 }
 
-function formatDeadlineForDisplay(
-  iso: string,
-  brandTimezone: string | null,
-): string {
-  try {
-    const date = new Date(iso);
-    const tz = brandTimezone ?? "UTC";
-    const formatter = new Intl.DateTimeFormat(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: tz,
-      timeZoneName: "short",
-    });
-    return formatter.format(date);
-  } catch {
-    return iso;
-  }
-}
-
-// issue #1027 Thread B — ISO instant → `YYYY-MM-DDTHH:MM` local wall-clock for
-// the web `datetime-local` input (mirrors the native picker, which also spins in
-// device-local time; the brand-timezone label is display-only on the chip).
-function isoToDatetimeLocal(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number): string => `${n}`.padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+const EMPTY = { date: "", time: "" } as const;
 
 export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
   value,
@@ -90,474 +44,120 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
   brandTimezone,
   onChange,
 }) => {
-  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
-  // Pending Date the operator is scrubbing in the spinner. Only flushed to
-  // `value` when they tap "Set deadline".
-  const [pendingDate, setPendingDate] = useState<Date | null>(null);
-  // #2664 — Android two-step. `androidStep` names the real Android mode on
-  // screen (`date` then `time`); `androidDatePart` holds the step-1 calendar
-  // date. `onChange` is called once, from both halves, or not at all.
-  const [androidStep, setAndroidStep] = useState<AndroidDateTimeStep | null>(
-    null,
-  );
-  const [androidDatePart, setAndroidDatePart] = useState<Date | null>(null);
-  // Track user intent independently of `value` so the controlled Switch flips
-  // immediately on tap (parent `value` is still null until the spinner is
-  // confirmed).
+  const zone = brandTimezone ?? "UTC";
   const [wantsDeadline, setWantsDeadline] = useState<boolean>(value !== null);
+  const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
     setWantsDeadline(value !== null);
   }, [value]);
 
-  const toggleOn = wantsDeadline;
-  // #4420 round-3 item 12: the city, never the IANA slug.
+  const wall = useMemo(
+    () => (value === null ? EMPTY : (wallInZone(value, zone) ?? EMPTY)),
+    [value, zone],
+  );
   const tzLabel = timezoneCityName(brandTimezone ?? "UTC");
-
-  const openPicker = useCallback(() => {
-    // Seed pending Date from current value, else default to +1h.
-    const seed =
-      value !== null
-        ? new Date(value)
-        : new Date(Date.now() + 60 * 60 * 1000);
-    setPendingDate(seed);
-    setValidationError(null);
-    // #2664 — Android starts on the DATE half. iOS keeps its single `datetime`
-    // spinner, which is a real mode there.
-    setAndroidStep(Platform.OS === "android" ? "date" : null);
-    setAndroidDatePart(null);
-    setPickerOpen(true);
-  }, [value]);
+  // #4523 S-8 — offer only what can be saved: from now to before the start.
+  const bounds = deadlineBounds(tripStartIso, zone);
 
   const handleToggle = useCallback(
-    (next: boolean) => {
-      if (next) {
-        setWantsDeadline(true);
-        openPicker();
-      } else {
-        setWantsDeadline(false);
-        onChange(null);
-        setPickerOpen(false);
-        setPendingDate(null);
-        setAndroidStep(null);
-        setAndroidDatePart(null);
-        setValidationError(null);
-      }
+    (next: boolean): void => {
+      setWantsDeadline(next);
+      setProblem(null);
+      if (!next) onChange(null);
     },
-    [onChange, openPicker],
+    [onChange],
   );
 
-  const handleEditTap = useCallback(() => {
-    openPicker();
-  }, [openPicker]);
-
-  const handlePickerChange = useCallback(
-    (event: DateTimePickerEvent, selectedDate?: Date) => {
-      if (Platform.OS === "android") {
-        // #2664 — Android picker is modal and has only `date`/`time` modes, so
-        // it runs as two dialogs. Cancelling EITHER abandons the whole edit:
-        // a dismiss on the time step must not persist the date already chosen.
-        if (event.type === "dismissed" || !selectedDate) {
-          setPickerOpen(false);
-          setPendingDate(null);
-          setAndroidStep(null);
-          setAndroidDatePart(null);
-          return;
-        }
-        if (androidStep === "date") {
-          // Step 1 of 2 — hold the calendar date, present the clock. The picker
-          // stays open and `onChange` has NOT been called.
-          setAndroidDatePart(selectedDate);
-          setAndroidStep("time");
-          return;
-        }
-        // Step 2 of 2 — combine both halves, then validate and commit inline
-        // (no separate Set button on Android — modal UX).
-        setPickerOpen(false);
-        setAndroidStep(null);
-        setAndroidDatePart(null);
-        if (androidDatePart === null) {
-          setPendingDate(null);
-          return;
-        }
-        const combined = combineAndroidDateAndTime(
-          androidDatePart,
-          selectedDate,
-        );
-        const err = validatePending(combined.getTime(), tripStartIso);
-        if (err !== null) {
-          setValidationError(err);
-          return;
-        }
-        setValidationError(null);
-        onChange(combined.toISOString());
+  const handlePick = useCallback(
+    (picked: { date: string; time: string }): void => {
+      if (picked.date === "" || picked.time === "") return;
+      const iso = instantFromWall(picked.date, picked.time, zone);
+      if (iso === null) {
+        setProblem("That deadline is not a real date and time.");
         return;
       }
-      // iOS spinner — just track the in-progress selection; don't commit yet.
-      if (selectedDate) {
-        setPendingDate(selectedDate);
-      }
-    },
-    [onChange, tripStartIso, androidStep, androidDatePart],
-  );
-
-  const handleConfirmPending = useCallback(() => {
-    if (pendingDate === null) {
-      setPickerOpen(false);
-      return;
-    }
-    const ms = pendingDate.getTime();
-    const err = validatePending(ms, tripStartIso);
-    if (err !== null) {
-      setValidationError(err);
-      return;
-    }
-    setValidationError(null);
-    onChange(pendingDate.toISOString());
-    setPickerOpen(false);
-    setPendingDate(null);
-  }, [onChange, pendingDate, tripStartIso]);
-
-  const handleCancelPending = useCallback(() => {
-    setPickerOpen(false);
-    setPendingDate(null);
-    setAndroidStep(null);
-    setAndroidDatePart(null);
-    setValidationError(null);
-    // If no value was ever set, flip the Switch back to off — the operator
-    // backed out of the picker without picking anything.
-    if (value === null) {
-      setWantsDeadline(false);
-    }
-  }, [value]);
-
-  // issue #1027 Thread B (Class 2) — web `datetime-local` commits on change. The
-  // browser gives a naive local wall-clock; `new Date(v)` reads it in the
-  // browser's local zone and `.toISOString()` stamps the instant — byte-parity
-  // with the native path (device-local Date → toISOString).
-  const handleWebDeadlineChange = useCallback(
-    (v: string): void => {
-      if (v.length === 0) return;
-      const picked = new Date(v);
-      if (Number.isNaN(picked.getTime())) return;
-      const err = validatePending(picked.getTime(), tripStartIso);
+      const err = deadlineProblem(iso, tripStartIso, Date.now(), zone);
       if (err !== null) {
-        setValidationError(err);
+        setProblem(err);
         return;
       }
-      setValidationError(null);
-      onChange(picked.toISOString());
-      setPickerOpen(false);
-      setPendingDate(null);
+      setProblem(null);
+      onChange(iso);
     },
-    [onChange, tripStartIso],
+    [onChange, tripStartIso, zone],
   );
-
-  const currentValueDate =
-    pendingDate ??
-    (value !== null ? new Date(value) : new Date(Date.now() + 60 * 60 * 1000));
-
-  const maxDate = tripStartIso !== null ? new Date(tripStartIso) : undefined;
-  const minDate = new Date();
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.eyebrow}>BOOKING DEADLINE</Text>
         <Switch
-          value={toggleOn}
+          value={wantsDeadline}
           onValueChange={handleToggle}
           accessibilityLabel="Set a booking deadline"
-          accessibilityHint="When on, bookings auto-close at the chosen date and time"
-          trackColor={{ false: color.line, true: color.accentLine }}
-          thumbColor={toggleOn ? color.accent : color.text3}
+          testID="booking-deadline-switch"
         />
       </View>
 
-      {!toggleOn && (
+      {!wantsDeadline ? (
         <Text style={styles.helper}>
           Bookings stay open until the trip starts. Turn on to set a cutoff.
         </Text>
-      )}
-
-      {toggleOn && value === null && !pickerOpen && (
-        <View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Pick a booking deadline"
-            hitSlop={8}
-            onPress={openPicker}
-            style={({ pressed }) => [
-              styles.pickButton,
-              pressed && styles.pickButtonPressed,
-            ]}
-          >
-            <Text style={styles.pickButtonLabel}>Pick a deadline</Text>
-          </Pressable>
-          <Text style={styles.helper}>
-            Bookings will auto-close at this moment in your brand's timezone ({tzLabel}).
-          </Text>
-        </View>
-      )}
-
-      {toggleOn && value !== null && !pickerOpen && (
-        <View style={styles.savedChip}>
-          <Text style={styles.savedChipPrimary}>
-            Closes {formatDeadlineForDisplay(value, brandTimezone)}
-          </Text>
-          <Text style={styles.savedChipMeta}>
-            In {tzLabel} — your brand timezone
-          </Text>
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel="Edit booking deadline"
-            hitSlop={8}
-            onPress={handleEditTap}
-            style={({ pressed }) => [
-              styles.editLinkRow,
-              pressed && styles.editLinkRowPressed,
-            ]}
-          >
-            <Text style={styles.editLinkText}>→ Edit deadline</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {toggleOn && pickerOpen && Platform.OS === "web" && (
-        /* issue #1027 Thread B (Class 2) — visible native datetime-local input
-           on web; commits on change (native DateTimePicker has no web build). */
-        <View style={styles.pickerWrap}>
-          <WebDateTimeInput
-            type="datetime-local"
-            value={isoToDatetimeLocal(currentValueDate.toISOString())}
-            min={isoToDatetimeLocal(minDate.toISOString())}
-            max={
-              maxDate !== undefined
-                ? isoToDatetimeLocal(maxDate.toISOString())
-                : undefined
-            }
-            ariaLabel="Pick booking deadline date and time"
-            hasError={validationError !== null}
-            testID="booking-deadline-web"
-            onChangeValue={handleWebDeadlineChange}
+      ) : (
+        <View style={styles.fieldWrap}>
+          <HostDateTimeField
+            label="Bookings close"
+            accessibilityLabel="Booking deadline date and time"
+            value={wall}
+            onChangeValue={handlePick}
+            min={bounds.min}
+            minTime={bounds.minTime}
+            max={bounds.max}
+            maxTime={bounds.maxTime}
+            timeZone={zone}
+            hasError={problem !== null}
+            placeholder="Pick a deadline"
+            testID="booking-deadline-field"
           />
+          <Text style={styles.helper} testID="booking-deadline-zone">
+            In {tzLabel} time — your trip&rsquo;s time zone
+          </Text>
         </View>
       )}
 
-      {toggleOn && pickerOpen && Platform.OS !== "web" && (
-        <View style={styles.pickerWrap}>
-          {pendingDate !== null && (
-            <Text style={styles.pendingPreview}>
-              {formatDeadlineForDisplay(pendingDate.toISOString(), brandTimezone)}
-            </Text>
-          )}
-          {/* #2664 — the picker element is split by platform. `datetime` is a
-              real iOS mode; Android registers only `date` and `time`, so it
-              steps through both. This is CreatorStep2When's proven shape. */}
-          {Platform.OS === "ios" ? (
-            <DateTimePicker
-              value={currentValueDate}
-              mode="datetime"
-              display="spinner"
-              minimumDate={minDate}
-              maximumDate={maxDate}
-              onChange={handlePickerChange}
-              themeVariant="dark"
-              textColor={color.text1}
-            />
-          ) : androidStep !== null ? (
-            <DateTimePicker
-              value={
-                androidStep === "time" && androidDatePart !== null
-                  ? seedAndroidTimeStep(androidDatePart, currentValueDate)
-                  : currentValueDate
-              }
-              mode={androidStep === "date" ? "date" : "time"}
-              display="default"
-              minimumDate={androidStep === "date" ? minDate : undefined}
-              maximumDate={androidStep === "date" ? maxDate : undefined}
-              onChange={handlePickerChange}
-            />
-          ) : null}
-          {Platform.OS === "ios" && (
-            <View style={styles.confirmRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Cancel deadline selection"
-                hitSlop={8}
-                onPress={handleCancelPending}
-                style={({ pressed }) => [
-                  styles.cancelButton,
-                  pressed && styles.cancelButtonPressed,
-                ]}
-              >
-                <Text style={styles.cancelButtonLabel}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Set this booking deadline"
-                hitSlop={8}
-                onPress={handleConfirmPending}
-                style={({ pressed }) => [
-                  styles.confirmButton,
-                  pressed && styles.confirmButtonPressed,
-                ]}
-              >
-                <Text style={styles.confirmButtonLabel}>Set deadline</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      )}
-
-      {validationError !== null && (
-        <Text style={styles.errorText} accessibilityLiveRegion="polite">
-          {validationError}
+      {problem !== null ? (
+        <Text style={styles.errorText} accessibilityLiveRegion="polite" testID="booking-deadline-error">
+          {problem}
         </Text>
-      )}
+      ) : null}
     </View>
   );
 };
 
-function validatePending(
-  selectedMs: number,
-  tripStartIso: string | null,
-): string | null {
-  if (selectedMs <= Date.now()) return "Deadline must be in the future.";
-  if (tripStartIso !== null) {
-    const tripStartMs = Date.parse(tripStartIso);
-    if (Number.isFinite(tripStartMs) && selectedMs >= tripStartMs) {
-      return "Deadline must be before trip starts.";
-    }
-  }
-  return null;
-}
-
 const styles = StyleSheet.create({
-  container: {
-    paddingVertical: space[2],
-  },
+  container: { paddingVertical: space[2], gap: space[2] },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: space[2],
   },
   eyebrow: {
-    fontSize: 11,
+    fontSize: type.label.fontSize,
+    lineHeight: type.label.lineHeight,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: color.accent,
+    color: color.text2,
   },
+  fieldWrap: { gap: space[2] },
   helper: {
-    fontSize: 13,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     color: color.text3,
-    marginTop: space[1],
-  },
-  pickButton: {
-    paddingVertical: space[2],
-    paddingHorizontal: space[4],
-    borderRadius: radius.md,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: color.accentLine,
-    backgroundColor: color.accentLine,
-    alignSelf: "flex-start",
-    minHeight: 44,
-    justifyContent: "center",
-  },
-  pickButtonPressed: {
-    opacity: 0.8,
-  },
-  pickButtonLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: color.accent,
-  },
-  savedChip: {
-    paddingVertical: space[1],
-  },
-  savedChipPrimary: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: color.text1,
-  },
-  savedChipMeta: {
-    fontSize: 12,
-    color: color.text3,
-    marginTop: 2,
-  },
-  editLinkRow: {
-    paddingVertical: space[1],
-    marginTop: space[1],
-  },
-  editLinkRowPressed: {
-    opacity: 0.7,
-  },
-  editLinkText: {
-    fontSize: 14,
-    color: color.accent,
-    fontWeight: "500",
   },
   errorText: {
-    fontSize: 12,
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
     color: color.danger,
-    marginTop: space[1],
-  },
-  pickerWrap: {
-    marginTop: space[1],
-  },
-  pendingPreview: {
-    fontSize: 13,
-    color: color.text2,
-    marginBottom: space[1],
-    textAlign: "center",
-  },
-  confirmRow: {
-    flexDirection: "row",
-    gap: space[2],
-    marginTop: space[2],
-    justifyContent: "flex-end",
-  },
-  cancelButton: {
-    paddingVertical: space[2],
-    paddingHorizontal: space[4],
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: "transparent",
-    minHeight: 44,
-    minWidth: 88,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cancelButtonPressed: {
-    opacity: 0.7,
-  },
-  cancelButtonLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: color.text2,
-  },
-  confirmButton: {
-    paddingVertical: space[2],
-    paddingHorizontal: space[4],
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: color.accentLine,
-    backgroundColor: color.accent,
-    minHeight: 44,
-    minWidth: 120,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  confirmButtonPressed: {
-    opacity: 0.85,
-  },
-  confirmButtonLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: color.text1,
   },
 });

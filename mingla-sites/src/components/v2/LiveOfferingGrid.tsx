@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- covers are served by the token-bound /om route (immutable, same origin). */
+import { SiteDateInput } from "./SiteDateInput";
 import { selectGridOfferings, type OfferingGridConfig } from "../../contracts/generated/offerings.ts";
 import type { SiteEventContext } from "../../lib/clientAnalytics";
 import type { LiveOfferings, OfferingCard } from "../../lib/offeringCards";
@@ -85,8 +86,8 @@ export function LiveOfferingGrid({ block, live, context, clearHref, eyebrow }: {
       {block.show_filters === true ? (
         <SiteSearchForm className="offering-filters" role="search" aria-label={`Search ${noun}`}>
           <label>Where<input type="text" name="where" maxLength={80} defaultValue={filters?.where ?? ""} /></label>
-          <label>From<input type="date" name="from" defaultValue={filters?.from ?? ""} /></label>
-          <label>To<input type="date" name="to" defaultValue={filters?.to ?? ""} /></label>
+          <label>From<SiteDateInput name="from" defaultValue={filters?.from ?? ""} ariaLabel="From" /></label>
+          <label>To<SiteDateInput name="to" defaultValue={filters?.to ?? ""} ariaLabel="To" /></label>
           <button type="submit" className="button accent">Search</button>
         </SiteSearchForm>
       ) : null}

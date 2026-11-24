@@ -352,9 +352,26 @@ BEGIN
   -- plan. Keep the full exact-key pin so no unrelated field can hitchhike.
   -- The prior exact-key list was incomplete once that buyer-facing fact shipped.
   IF v_top IS DISTINCT FROM
-     'bookingDeadline,bookingsClosed,brand,brandId,brandSlug,coverGallery,coverMediaAlt,coverMediaType,coverMediaUrl,currency,days,departureLat,departureLng,departureText,description,destinationLat,destinationLng,destinationText,endAt,id,inclusions,installmentCapabilityAvailable,refundPolicy,startAt,status,themeAnimationOverride,themeColorOverride,themeFontOverride,themeGradientOverride,tiers,timezone,title,tripSlug' THEN
+     'addOnRollout,bookingDeadline,bookingsClosed,brand,brandId,brandSlug,coverGallery,coverMediaAlt,coverMediaType,coverMediaUrl,currency,days,departureLat,departureLng,departureText,description,destinationLat,destinationLng,destinationText,endAt,id,inclusions,installmentCapabilityAvailable,refundPolicy,startAt,status,themeAnimationOverride,themeColorOverride,themeFontOverride,themeGradientOverride,tiers,timezone,title,tripSlug' THEN
     -- [TEST-MOD-APPROVED #1023] 20280430011023 adds the trip's gradient override.
     RAISE EXCEPTION 'A-07 FAIL: the response keys changed: %', v_top;
+  END IF;
+
+  -- [TEST-MOD-APPROVED #4522] #3281 adds the `addOnRollout` key (four add-on
+  -- rollout switches) to the public trip reader, so the exact-key pin above
+  -- gains it. The assertion below pins the key's own shape: exactly four
+  -- boolean switches and nothing else.
+  IF v_payload -> 'addOnRollout' IS NULL OR jsonb_typeof(v_payload -> 'addOnRollout') <> 'object' THEN
+    RAISE EXCEPTION 'A-07 FAIL: addOnRollout is missing or not an object: %', v_payload -> 'addOnRollout';
+  END IF;
+  SELECT string_agg(k, ',' ORDER BY k) INTO v_top FROM jsonb_object_keys(v_payload -> 'addOnRollout') AS k;
+  IF v_top IS DISTINCT FROM 'addOnsEnabled,addOnsOnPlanEnabled,freeParentEnabled,rsvpEnabled' THEN
+    RAISE EXCEPTION 'A-07 FAIL: addOnRollout keys changed: %', v_top;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM jsonb_each(v_payload -> 'addOnRollout') AS e WHERE jsonb_typeof(e.value) <> 'boolean'
+  ) THEN
+    RAISE EXCEPTION 'A-07 FAIL: an addOnRollout switch is not a boolean: %', v_payload -> 'addOnRollout';
   END IF;
 
   FOR v_tier IN

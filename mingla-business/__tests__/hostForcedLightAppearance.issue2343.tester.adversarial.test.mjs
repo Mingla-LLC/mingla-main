@@ -184,27 +184,14 @@ test("fixed native Light keeps ShareModal on its approved legible Light palette"
 });
 
 test("PaymentPlan containment cannot leak the native picker onto business web", () => {
+  // [TEST-MOD #4523] PaymentPlanEditor no longer has a web branch and a native
+  // branch: both platforms render the Host calendar DateField. Nothing native
+  // can leak onto business web only while no native picker or web date input
+  // is imported or rendered at all.
   const source = read(PAYMENT_PLAN);
-  const webBranch = source.indexOf('Platform.OS === "web" ? (');
-  const webInput = source.indexOf("<WebDateTimeInput", webBranch);
-  const nativeGuard = source.indexOf('Platform.OS !== "web" ? (', webInput);
-  const picker = source.indexOf("<DateTimePicker", nativeGuard);
-
-  assert.ok(
-    webBranch !== -1,
-    "PaymentPlan must retain its explicit web branch",
-  );
-  assert.ok(webInput > webBranch, "web must render WebDateTimeInput");
-  assert.ok(
-    nativeGuard > webInput,
-    "native picker must remain behind a non-web guard",
-  );
-  assert.ok(picker > nativeGuard, "guard must dominate the native picker");
-
-  const pickerEnd = source.indexOf("/>", picker);
-  const pickerSource = source.slice(picker, pickerEnd + 2);
-  assert.match(pickerSource, /themeVariant="dark"/);
-  assert.match(pickerSource, /textColor=\{color\.text1\}/);
-  assert.match(pickerSource, /minimumDate=\{new Date\(`/);
-  assert.match(pickerSource, /onChange=\{onDateChange\(inst\.ordinal\)\}/);
+  assert.ok(!source.includes("<DateTimePicker"), "no native picker may return to PaymentPlanEditor");
+  assert.ok(!source.includes("<WebDateTimeInput"), "no web-only date input may return beside the calendar field");
+  assert.ok(!source.includes("@react-native-community/datetimepicker"), "the native picker module must not be imported");
+  assert.match(source, /import \{ DateField \} from "\.\.\/ui\/DateField";/);
+  assert.match(source, /<DateField\b/);
 });

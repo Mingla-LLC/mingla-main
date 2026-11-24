@@ -252,7 +252,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // issue #3281 — kept here, not in a shared module, so it stays out of the
 // eager chunk; the tickets step says which extra changed.
 const EXTRAS_CHANGED_MESSAGE =
-  "One of your extras changed. Go back to your tickets to update it.";
+  "One of your add-ons changed. Go back to your tickets to update it.";
 const NAME_MIN_CHARS = 2;
 
 interface ValidationState {

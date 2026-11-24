@@ -43,6 +43,8 @@ jest.mock("../../../../../src/hooks/useTripOrders", () => ({
 jest.mock("../../../../../src/hooks/useOrderInstallments", () => ({
   useInstallmentsForBrandTrips: () => ({ isLoading: false, isError: false, data: installments, refetch: jest.fn() }),
   useRetryInstallment: () => ({ isPending: false, mutate: jest.fn() }),
+  // issue #4522 S-2 — no plan-v2 orders here: every row keeps the ledger view.
+  useTripEventBalances: () => ({ isLoading: false, isError: false, data: [], refetch: jest.fn() }),
 }));
 jest.mock("../../../../../src/hooks/useManualInstallmentActions", () => ({
   useChargeInstallmentNow: () => ({ isPending: false, mutate: chargeMutate }),

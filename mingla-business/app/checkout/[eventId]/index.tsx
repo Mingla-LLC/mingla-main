@@ -78,11 +78,17 @@ import {
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
-import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
+import {
+  extrasOfferableOnTicket,
+  FREE_PARENT_REFUSAL,
+  freeParentAddOnsNote,
+  withoutPaidAddOnsOnFreeLines,
+} from "../../../src/components/checkout/freeParentAddOnsNote";
+import { parsePublicTicketExtras } from "@mingla/offering-rendering/ticketExtrasCart";
 import {
   extrasRefusalCopy,
   extrasRefusalIn,
-} from "@mingla/offering-rendering/ticketExtrasCart";
+} from "@mingla/offering-rendering/ticketExtrasRefusal";
 // ORCH-0850 [End-not-start parity systemic]: route the past gate through the
 // canonical helper. Pre-0850 local `computeIsPast` used `new Date(event.date)
 // + 24h < Date.now()` which fired at 8pm EDT on the start day for any
@@ -109,6 +115,16 @@ const CheckoutDiscountCodeField = React.lazy(() =>
     (module) => ({ default: module.CheckoutDiscountCodeField }),
   ),
 );
+// #3281 — the add-on picker loads on use, only for a ticket that carries
+// add-ons: one chunk shared with the trip and experience carts, never in the
+// boot payload.
+const CartTicketExtras = React.lazy(() =>
+  import("../../../src/components/checkout/CartTicketExtras").then(
+    (module) => ({ default: module.CartTicketExtras }),
+  ),
+);
+const ticketHasAddOns = (buyerExtras: unknown): boolean =>
+  Array.isArray(buyerExtras) && buyerExtras.length > 0;
 
 const sortByDisplayOrder = (a: TicketStub, b: TicketStub): number =>
   a.displayOrder - b.displayOrder;
@@ -241,6 +257,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 
   const {
     lines,
+    quote,
     quoteStatus,
     quoteErrorCode,
     eventDateIds,
@@ -253,6 +270,32 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const extrasRefusal =
     quoteStatus === "error"
       ? extrasRefusalCopy(extrasRefusalIn(quoteErrorCode))
+      : null;
+  // issue #3281 W-8 — the server refuses a paid add-on on a free ticket while
+  // the free-parent switch is off. After that answer, stop offering paid add-ons
+  // on free tickets and take the paid ones off the cart, so the buyer is never
+  // left on "Couldn't get your price".
+  const [paidOnFreeRefused, setPaidOnFreeRefused] = useState(false);
+  const refusalToken = quoteStatus === "error" ? extrasRefusalIn(quoteErrorCode) : null;
+  const eventTickets = event?.tickets;
+  useEffect(() => {
+    if (refusalToken !== FREE_PARENT_REFUSAL) return;
+    setPaidOnFreeRefused(true);
+    const byTicket = new Map(
+      (eventTickets ?? []).map((ticket) => [ticket.id, parsePublicTicketExtras(ticket.buyerExtras)]),
+    );
+    const next = withoutPaidAddOnsOnFreeLines(lines, byTicket);
+    if (next === null) return;
+    for (const line of next) setLineQuantity(line);
+  }, [refusalToken, eventTickets, lines, setLineQuantity]);
+  const offerable = <T extends { buyerExtras?: unknown; isFree: boolean }>(ticket: T): T => ({
+    ...ticket,
+    buyerExtras: extrasOfferableOnTicket(ticket.buyerExtras, ticket.isFree, paidOnFreeRefused),
+  });
+  // issue #3281 S4 — a free ticket with paid add-ons: say what is being paid for.
+  const freeParentNote =
+    quoteStatus === "ready"
+      ? freeParentAddOnsNote(lines, quote?.extrasTotalCents)
       : null;
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
   const waitlistSheetOpened = useRef(false);
@@ -856,31 +899,47 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                         })
                       }
                     />
-                    <CartTicketExtras
-                      ticket={ticket}
-                      line={line}
-                      eventDateIds={eventDateIds}
-                      occurrences={occurrences}
-                      allDaysPass={publicEventQuery.data?.allDaysPass === true}
-                      currency={ticket.currency ?? event.currency ?? "GBP"}
-                    />
+                    {ticketHasAddOns(offerable(ticket).buyerExtras) ? (
+                      <React.Suspense fallback={null}>
+                        <CartTicketExtras
+                          ticket={offerable(ticket)}
+                          line={line}
+                          eventDateIds={eventDateIds}
+                          occurrences={occurrences}
+                          allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                          currency={ticket.currency ?? event.currency ?? "GBP"}
+                        />
+                      </React.Suspense>
+                    ) : null}
                   </View>
                 );
               })}
           {/* issue #3281 — per-date carts pick extras once per ticket, after the dates. */}
           {eventDateIds.length >= 2 && !sameTicketsForEveryDate
-            ? visibleTickets.map((ticket) => (
-                <CartTicketExtras
-                  key={`extras-${ticket.id}`}
-                  ticket={ticket}
-                  line={lines.find((l) => l.ticketTypeId === ticket.id)}
-                  eventDateIds={eventDateIds}
-                  occurrences={occurrences}
-                  allDaysPass={publicEventQuery.data?.allDaysPass === true}
-                  currency={ticket.currency ?? event.currency ?? "GBP"}
-                />
-              ))
+            ? visibleTickets.map((ticket) =>
+                ticketHasAddOns(offerable(ticket).buyerExtras) ? (
+                  <React.Suspense key={`extras-${ticket.id}`} fallback={null}>
+                    <CartTicketExtras
+                      ticket={offerable(ticket)}
+                      line={lines.find((l) => l.ticketTypeId === ticket.id)}
+                      eventDateIds={eventDateIds}
+                      occurrences={occurrences}
+                      allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                      currency={ticket.currency ?? event.currency ?? "GBP"}
+                    />
+                  </React.Suspense>
+                ) : null,
+              )
             : null}
+          {freeParentNote !== null ? (
+            <Text
+              style={styles.freeParentNote}
+              testID="issue-3281-free-parent-note"
+              accessibilityLiveRegion="polite"
+            >
+              {freeParentNote}
+            </Text>
+          ) : null}
           {extrasRefusal !== null ? (
             <Text
               style={styles.extrasRefusal}
@@ -966,6 +1025,11 @@ const styles = checkoutStyles(() => StyleSheet.create({
   hiddenOnWide: { display: "none" },
   extrasRefusal: {
     color: color.danger,
+    fontSize: 14,
+    marginTop: space[2],
+  },
+  freeParentNote: {
+    color: color.text2,
     fontSize: 14,
     marginTop: space[2],
   },

@@ -90,3 +90,20 @@ export const FEATURE_FLAG_PER_CONTEXT_DECK_STATE: boolean = true;
  * Default: __DEV__ only.
  */
 export const FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE: boolean = __DEV__;
+
+/**
+ * Issue #4522 — Explorer trip balance card and pay-toward-balance screen.
+ * Default true; an explicit "false" remains the emergency OTA kill switch.
+ * Exit: remove after the approved OTA has one clean rollout window.
+ */
+export const FEATURE_FLAG_TRIP_BALANCE: boolean =
+  process.env.EXPO_PUBLIC_FF_TRIP_BALANCE !== "false";
+
+/**
+ * Issue #3281 — add-ons on Explorer offering pages: "Add at checkout:" under
+ * each ticket, package and option, and the RSVP add-on picker. Same switch name
+ * as Host (EXPO_PUBLIC_FF_EXTRAS_ENABLED). Default false: pages render as before.
+ * Exit: remove once add-ons are switched on and one OTA window is clean.
+ */
+export const FEATURE_FLAG_ADD_ONS: boolean =
+  process.env.EXPO_PUBLIC_FF_EXTRAS_ENABLED === "true";
