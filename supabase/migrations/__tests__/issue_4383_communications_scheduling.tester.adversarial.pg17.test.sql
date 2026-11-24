@@ -259,7 +259,9 @@ begin
   perform pg_temp.chk('A5', 'cancel on a sent push is PT409 already_sending', v_e like 'PT409 already_sending%', v_e);
   reset role;
   select count(*) into v_n from public.notification_outbox where payload->>'push_id' = '43839999-0000-4000-c000-000000000002';
-  perform pg_temp.chk('A5', 'exactly one host row and nothing for explorers', v_n = 1
+  -- #4579: the active Mingla admin (Ada) is added to the brand as a brand admin
+  -- with full parity, so the brand has two hosts: one row each, no repeats.
+  perform pg_temp.chk('A5', 'exactly one row per host (owner and Mingla admin) and nothing for explorers', v_n = 2
     and not exists (select 1 from public.notification_outbox where payload->>'push_id' = '43839999-0000-4000-c000-000000000002' and category_key <> 'business.mingla_update'), v_n::text);
   perform pg_temp.chk('A5', 'the outbox payload carries exactly body, campaign_id, deep_link, push_id, title',
     not exists (select 1 from public.notification_outbox where payload->>'push_id' = '43839999-0000-4000-c000-000000000002'

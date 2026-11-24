@@ -311,13 +311,26 @@ BEGIN
         AND payload->>'ticket_id' = v_host_ticket::text) <> v_count THEN
     RAISE EXCEPTION 'reply_also_sent_status_push';
   END IF;
-  -- A staff status change does reach every brand member, once each.
+  -- A staff status change does reach every brand member, once each. #4579:
+  -- the active admin above (staff-4382) is added to every new brand as a
+  -- brand admin with full parity, so the brand has three members: host, mate
+  -- and that Mingla admin.
+  IF NOT EXISTS (SELECT 1 FROM public.brand_team_members
+      WHERE brand_id = v_brand AND user_id = v_staff AND role = 'brand_admin'
+        AND granted_via = 'mingla_admin' AND removed_at IS NULL) THEN
+    RAISE EXCEPTION 'active_mingla_admin_not_added_to_brand';
+  END IF;
   UPDATE public.support_tickets SET status = 'resolved' WHERE id = v_host_ticket;
   IF (SELECT count(*) FROM public.notification_outbox
       WHERE category_key = 'business.support_status_changed'
         AND payload->>'ticket_id' = v_host_ticket::text
-        AND payload->>'status' = 'resolved') <> 2 THEN
-    RAISE EXCEPTION 'brand_status_push_not_two_members';
+        AND payload->>'status' = 'resolved'
+        AND user_id IN (v_host, v_mate, v_staff)) <> 3
+     OR (SELECT count(*) FROM public.notification_outbox
+      WHERE category_key = 'business.support_status_changed'
+        AND payload->>'ticket_id' = v_host_ticket::text
+        AND payload->>'status' = 'resolved') <> 3 THEN
+    RAISE EXCEPTION 'brand_status_push_not_every_member';
   END IF;
   -- Explorer staff reply goes to the Explorer app category.
   UPDATE public.support_tickets SET status = 'open' WHERE id = v_explorer_ticket;
