@@ -84,6 +84,10 @@ function fakeFrom(table: string) {
     in: () => builder,
     is: () => builder,
     not: () => builder,
+    // [TEST-MOD-APPROVED #4490] 08-O5 fix 3: with no PIN gate function the edge reads the
+    // account's venue grants (fail closed for a Till device); this fake has none.
+    contains: () => builder,
+    limit: () => Promise.resolve({ data: [], error: null }),
     maybeSingle: () => Promise.resolve({ data, error: null }),
     single: () => Promise.resolve({ data, error: null }),
   };

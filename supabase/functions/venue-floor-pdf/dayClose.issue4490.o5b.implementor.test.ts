@@ -36,6 +36,7 @@ const VENUE = "44900613-0000-4000-9000-0000000000a1";
 const BRAND = "44900613-0000-4000-9000-000000000010";
 const USER = "44900613-0000-4000-8000-000000000003";
 const DEVICE = "44900613-0000-4000-8000-000000000007";
+const MANAGER = "44900613-0000-4000-8000-000000000009";
 const TOKEN = Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) =>
   b.toString(16).padStart(2, "0")
 ).join("");
@@ -172,6 +173,14 @@ function world(
           error: null,
         });
       }
+      // [TEST-MOD-APPROVED #4490] 08-O5 fix 3: the day-close PDF on a Till
+      // device asks for the export step-up; the approver is the manager.
+      if (name === "issue_4490_pin_approve") {
+        return Promise.resolve({
+          data: { ok: true, approverUserId: MANAGER, approvalId: "a1" },
+          error: null,
+        });
+      }
       if (name === "issue_4490_day_summary") {
         return Promise.resolve(
           options.summaryError
@@ -289,7 +298,9 @@ Deno.test("C2 the database's refusals keep their codes; nothing is rendered", as
   }
 });
 
-Deno.test("C3 on a Till device: no PIN session, no PDF; in a session it reads as the member with the device", async () => {
+// [TEST-MOD-APPROVED #4490] 08-O5 fix 3: in a session the PDF also needs the
+// export step-up (the same fresh PIN as the CSV); it then reads as the approver.
+Deno.test("C3 on a Till device: no PIN session, no PDF; in a session it needs a fresh PIN, then reads as the approver with the device", async () => {
   let w = world({ device: true });
   let res = await w.handle(
     req({ kind: "day_close", venueId: VENUE, date: "2026-11-21" }),
@@ -306,9 +317,25 @@ Deno.test("C3 on a Till device: no PIN session, no PDF; in a session it reads as
       staffSession: TOKEN,
     }),
   );
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).code, "pin_step_up_required");
+  assert(!w.calls.some((c) => c.name === "issue_4490_day_summary"));
+  w = world({ device: true });
+  res = await w.handle(
+    req({
+      kind: "day_close",
+      venueId: VENUE,
+      date: "2026-11-21",
+      staffSession: TOKEN,
+      stepUp: { pin: "4826" },
+    }),
+  );
   assertEquals(res.status, 200);
+  const approve = w.calls.find((c) => c.name === "issue_4490_pin_approve")!;
+  assertEquals(approve.params.p_purpose, "export");
+  assertEquals(approve.params.p_target, `${VENUE}:2026-11-21`);
   const s = w.calls.find((c) => c.name === "issue_4490_day_summary")!;
-  assertEquals(s.params.p_actor, USER);
+  assertEquals(s.params.p_actor, MANAGER);
   assertEquals(s.params.p_device_user, DEVICE);
 });
 

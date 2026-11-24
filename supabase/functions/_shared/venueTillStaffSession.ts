@@ -28,6 +28,7 @@ export type StepUpPurpose =
   | "void_sent"
   | "reopen"
   | "export"
+  | "swap_refund"
   | "sign_out";
 
 export type TillActor = {
@@ -96,11 +97,35 @@ export function isMissingPinFunction(
 }
 
 /**
+ * #4490 08-O5 fix 3: is this account a Till device at this venue by its grant
+ * (the venue.till_device capability), read straight from the tables. Used only
+ * when the PIN gate function cannot be found, so a Till device login never
+ * acts as itself (fail closed). A failed read answers "unknown" (null).
+ */
+export async function hasTillDeviceGrant(
+  client: Client,
+  venueId: string,
+  userId: string,
+): Promise<boolean | null> {
+  const { data, error } = await client.from("brand_team_member_venue_grants")
+    .select("venue_id, capabilities, brand_team_members!inner(user_id, removed_at)")
+    .eq("venue_id", venueId)
+    .eq("brand_team_members.user_id", userId)
+    .is("brand_team_members.removed_at", null)
+    .contains("capabilities", ["venue.till_device"])
+    .limit(1);
+  if (error) return null;
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
  * Who acts for this request at venueId.
  * - [TRANSITIONAL] deploy order (#4490 O5): while issue_4490_pin_gate does not
- *   exist (this function deployed before migration 20280809611490) no account
- *   is a gated device, so the request runs exactly as before O5. Any other
- *   error fails closed. Exit: the migration applied in production.
+ *   exist (this function deployed before migration 20280809611490) an account
+ *   that is not a Till device runs exactly as before O5. A Till device login
+ *   (or one whose grant cannot be read) is refused: it never acts as itself
+ *   (#4490 08-O5 fix 3, fail closed). Any other error fails closed. Exit: the
+ *   migration applied in production.
  */
 export async function resolveTillActor(
   client: Client,
@@ -125,7 +150,12 @@ export async function resolveTillActor(
     p_user_id: input.userId,
   });
   if (gate.error) {
-    if (isMissingPinFunction(gate.error)) return { ok: true, actor: self };
+    if (isMissingPinFunction(gate.error)) {
+      const device = await hasTillDeviceGrant(client, input.venueId, input.userId);
+      if (device === false) return { ok: true, actor: self };
+      console.error("[till-pin] gate missing; Till device or unknown grant refused");
+      return { ok: false, status: 503, code: "till_failed" };
+    }
     console.error("[till-pin] gate lookup failed", gate.error.code);
     return { ok: false, status: 500, code: "till_failed" };
   }

@@ -70,6 +70,11 @@ export const STOCK_STATUS: Record<string, number> = {
   already_refunded: 409,
   pin_session_required: 401,
   pin_session_invalid: 401,
+  // #4490 08-O5 fix 3: a sold-out refund or a swap that gives money back on a
+  // Till device needs a fresh PIN (the database asks); a request key reused
+  // for other lines is refused.
+  pin_step_up_required: 403,
+  sold_out_key_reused: 409,
 };
 
 // deno-lint-ignore no-explicit-any
@@ -249,14 +254,20 @@ export async function handleStockAction(
     return respond({ error: "sold_out_invalid" }, 400);
   }
   let runAs = actor.actorUserId;
-  if (resolution === "refund" && actor.isDevice) {
-    // A refund on a Till device follows the refund rule: a fresh PIN from
-    // someone with money rights (the seller, or a manager on the spot).
+  // A refund on a Till device follows the refund rule: a fresh PIN from
+  // someone with money rights (the seller, or a manager on the spot). A swap
+  // that gives money back is a refund too (#4490 08-O5 fix 3): the app sends
+  // the PIN when the database answers pin_step_up_required (or up front when
+  // it knows the swap is cheaper); a swap that gives nothing back needs none.
+  if (
+    actor.isDevice &&
+    (resolution === "refund" || (resolution === "swap" && body.stepUp != null))
+  ) {
     const step = await requireStepUp(client, {
       venueId,
       actor,
       stepUp: body.stepUp,
-      purpose: "refund",
+      purpose: resolution === "refund" ? "refund" : "swap_refund",
       target: orderId,
     });
     if (!step.ok) {

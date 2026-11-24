@@ -36,7 +36,7 @@ import {
 } from "../_shared/ticketPdf.ts";
 import { deliverPdf, type PdfStorage } from "../_shared/pdfDelivery.ts";
 import { tillReceiptMethodLabel } from "../_shared/email/tillReceiptEmail.ts";
-import { resolveTillActor } from "../_shared/venueTillStaffSession.ts";
+import { requireStepUp, resolveTillActor } from "../_shared/venueTillStaffSession.ts";
 
 export const FLOOR_PDF_BUCKET = "venue-floor-pdfs";
 export const FLOOR_PDF_TTL_SECONDS = 60;
@@ -346,6 +346,20 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
       if (!who.ok) return json(who.status, { code: who.code });
       pdfActor = who.actor.actorUserId;
       pdfDevice = who.actor.isDevice ? who.actor.deviceUserId : null;
+      // #4490 08-O5 fix 3: the day-close PDF is an export of the day: on a
+      // Till device it needs the same fresh PIN as the CSV (stepUp in the
+      // body; purpose export, this venue's day) and is made as the approver.
+      if (kind === "day_close" && who.actor.isDevice) {
+        const step = await requireStepUp(client, {
+          venueId,
+          actor: who.actor,
+          stepUp: body.stepUp,
+          purpose: "export",
+          target: `${venueId}:${dayDate}`,
+        });
+        if (!step.ok) return json(step.status, step.body);
+        pdfActor = step.approverUserId;
+      }
     }
 
     let sourceData: unknown;

@@ -61,6 +61,10 @@ export const DAY_CLOSE_SAFE_CODES = [
   "venue_not_found",
   "pin_session_required",
   "pin_session_invalid",
+  // #4490 08-O5 fix 3: the database asks for a fresh PIN (reopen, export);
+  // a close request from before a reopen is not a replay.
+  "pin_step_up_required",
+  "day_close_request_stale",
 ] as const;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,6 +103,7 @@ export function dayCloseSafeCode(error: RpcError | null | undefined): string {
 
 function statusFor(code: string, error: RpcError): number {
   if (code === "till_failed") return 500;
+  if (code === "pin_step_up_required") return 403;
   switch (error.code) {
     case "22023":
       return 400;

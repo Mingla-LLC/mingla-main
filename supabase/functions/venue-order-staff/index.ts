@@ -116,6 +116,7 @@ import {
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
 import { handleStockAction } from "./stockActions.ts";
+import { refundDecisionStepUp } from "./refundDecisionGate.ts";
 import { handleStationAction } from "./stationActions.ts";
 import { fireVenueOrderReady } from "../_shared/venueOrderNotify.ts";
 // Issue #3380 — the guest's phone is read WITH the country the waiter chose.
@@ -196,7 +197,7 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
     case "transition":
       return await handleTransition(req, body);
     case "refund_decision":
-      return await handleRefundDecision(req, body);
+      return await handleRefundDecision(supabase, req, body, userId);
     case "item_availability":
       return await handleItemAvailability(req, body);
     case "pause":
@@ -1261,6 +1262,14 @@ const TRANSITION_TARGETS = [
 ] as const;
 
 function mapQueueRpcError(message: string): Response {
+  // #4490 08-O5 fix 3: a Till device login approving a refund without a
+  // fresh PIN (or without a live PIN session) is asked for one.
+  if (message.includes("pin_step_up_required")) {
+    return jsonResponse({ error: "pin_step_up_required" }, 403);
+  }
+  if (message.includes("pin_session_required") || message.includes("pin_session_invalid")) {
+    return jsonResponse({ error: message.includes("pin_session_invalid") ? "pin_session_invalid" : "pin_session_required" }, 401);
+  }
   if (message.includes("not_authorized")) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
@@ -1354,8 +1363,10 @@ async function handleTransition(
  * the reason the guest will read. Either way a PERSON decided.
  */
 async function handleRefundDecision(
+  supabase: ServiceClient,
   req: Request,
   body: Record<string, unknown>,
+  userId: string,
 ): Promise<Response> {
   const orderId = typeof body.orderId === "string" && UUID_RE.test(body.orderId)
     ? body.orderId
@@ -1366,6 +1377,18 @@ async function handleRefundDecision(
   const note = typeof body.note === "string" ? body.note.slice(0, 280) : null;
   if (orderId === null) return jsonResponse({ error: "not_found" }, 404);
   if (decision === null) return jsonResponse({ error: "invalid_request" }, 400);
+
+  // #4490 08-O5 fix 3: approving on a Till device login needs a live PIN
+  // session and a fresh PIN for this order (refundDecisionGate.ts).
+  if (decision === "approved") {
+    const refused = await refundDecisionStepUp(supabase, {
+      orderId,
+      userId,
+      jwt: (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim(),
+      body,
+    }, jsonResponse);
+    if (refused !== null) return refused;
+  }
 
   const asUser = userClient(req);
   const { data, error } = await asUser.rpc("biz_venue_order_refund_decision", {

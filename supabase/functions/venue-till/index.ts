@@ -111,6 +111,7 @@ import { requestClientIp } from "../_shared/ticketLinkToken.ts";
 import { tapToPayReleased } from "../_shared/doorPayServer.ts";
 import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
 import {
+  hasTillDeviceGrant,
   isMissingPinFunction,
   jwtAuthSessionId,
   pinRefusal,
@@ -355,8 +356,13 @@ async function handlePinDevice(
       p_device_user: userId,
     });
     if (error) {
-      // [TRANSITIONAL] before migration 20280809611490 nobody is gated.
-      if (isMissingPinFunction(error)) return ok({ gated: false });
+      // [TRANSITIONAL] before migration 20280809611490 nobody is gated, but
+      // a Till device login never acts as itself (#4490 08-O5 fix 3: fail
+      // closed when its grant says Till device or cannot be read).
+      if (isMissingPinFunction(error)) {
+        const device = await hasTillDeviceGrant(client, venueId, userId);
+        return device === false ? ok({ gated: false }) : json(503, { code: "till_failed" });
+      }
       return tillFailure(error);
     }
     return ok(data);
@@ -472,6 +478,9 @@ export function tillSafeCode(error: RpcError | null | undefined): string {
 
 function statusFor(code: string, error: RpcError): number {
   if (code === "till_failed") return 500;
+  // #4490 08-O5 fix 3: the database asks for the fresh PIN (no approval for
+  // this purpose and target): the same answer requireStepUp gives.
+  if (code === "pin_step_up_required") return 403;
   switch (error.code) {
     case "22023":
       return 400;
