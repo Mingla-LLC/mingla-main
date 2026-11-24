@@ -104,6 +104,7 @@ module.exports = {
     "issue_4304_first_run_ari\\.implementor\\.test\\.ts$",
     "issue_4523_host_datetime_field\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs
     "issue_4523_datefield_month_nav\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs (RN preset, react-test-renderer); never the default node config
+    "issue_4523_form_date_question\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs (RN preset, react-test-renderer); its birth-date web cases fail on the default node config
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under
