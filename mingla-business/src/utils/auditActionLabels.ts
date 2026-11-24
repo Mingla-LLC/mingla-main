@@ -101,6 +101,32 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "tr3.installment_pi_failed",
   "tr3.installment_collected",
   "tr3.installment_failed_webhook",
+  // #4522 [trip partial payments] — installment charge outcomes emitted by
+  // _shared/installments/createInstallmentPI (writeAudit) and the plan v2 /
+  // flexible payment / overpayment RPCs (issue_3645_audit_installment and a
+  // direct audit_log insert for a superseded checkout). The SQL ones are not
+  // harvested by the gate; they are listed so the log shows words.
+  "tr3.installment_pi_settlement_left_to_webhook",
+  "tr3.installment_cancelled_during_charge_refunded",
+  "tr3.installment_pi_confirm_unknown",
+  "ticket_checkout.superseded",
+  "tr3.installment_below_provider_minimum_owed",
+  "tr3.installment_flex_released",
+  "tr3.installment_flex_stuck",
+  "tr3.installment_flex_late_amount_mismatch",
+  "tr3.installment_flex_late_collected",
+  "tr3.installment_short_collection",
+  "tr3.installment_stripe_charge_released_unconfirmed",
+  "tr3.installment_paystack_attempt_created",
+  "tr3.installment_overpayment_held",
+  "tr3.installment_overpayment_after_payout_attached",
+  "tr3.installment_overpayment_needs_ops",
+  "tr3.installment_overpayment_over_refunded",
+  "tr3.installment_overpayment_retry_watch_closed",
+  "tr3.installment_overpayment_refund_pending_long",
+  "tr3.installment_overpayment_refunded",
+  "tr3.installment_overpayment_event_unmatched",
+  "tr3.installment_overpayment_ops_retry",
   // ORCH-0914 [Trip Money tab redesign] — operator-initiated installment
   // actions emitted by biz_manual_charge_installment +
   // biz_send_installment_reminder RPCs.
@@ -637,6 +663,154 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         category: "orders",
         iconHint: "pound",
       };
+    // #4522 [trip partial payments] — charge outcomes and extra payments.
+    case "tr3.installment_pi_settlement_left_to_webhook":
+      return {
+        title: "Installment payment waiting to be recorded",
+        detail: "The card payment went through but was not recorded yet. It is recorded when our payment partner confirms it.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_cancelled_during_charge_refunded":
+      return {
+        title: "Installment refunded after a cancellation",
+        detail: "The booking was cancelled while this installment was being charged, so the payment was refunded in full.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "tr3.installment_pi_confirm_unknown":
+      return {
+        title: "Installment payment result not known yet",
+        detail: "We did not get a clear answer on this charge. It is not marked as failed and is checked again until our payment partner confirms what happened.",
+        category: "orders",
+        iconHint: "flag",
+      };
+    case "ticket_checkout.superseded":
+      return {
+        title: "Checkout replaced",
+        detail: "The buyer started a new checkout, so their earlier unfinished checkout was closed.",
+        category: "orders",
+        iconHint: "ticket",
+      };
+    case "tr3.installment_below_provider_minimum_owed":
+      return {
+        title: "Balance too small to charge",
+        detail: "What the traveler still owes is below the smallest amount that can be charged, so it is not charged automatically.",
+        category: "orders",
+        iconHint: "flag",
+      };
+    case "tr3.installment_flex_released":
+      return {
+        title: "Unfinished flexible payment closed",
+        detail: "A flexible payment the traveler started was closed before any money was taken.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_flex_stuck":
+      return {
+        title: "Flexible payment needs a check",
+        detail: "A flexible payment has been waiting for our payment partner for too long and was flagged for Mingla to check.",
+        category: "orders",
+        iconHint: "flag",
+      };
+    case "tr3.installment_flex_late_amount_mismatch":
+      return {
+        title: "Late payment for a different amount",
+        detail: "A payment arrived after it was closed, for an amount we did not ask for. It is returned in full and the plan is unchanged.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "tr3.installment_flex_late_collected":
+      return {
+        title: "Late flexible payment recorded",
+        detail: "A flexible payment arrived after it was closed and was counted toward the traveler's plan.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_short_collection":
+      return {
+        title: "Installment paid in part",
+        detail: "Less than the installment amount arrived. The rest was added back to the traveler's plan.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_stripe_charge_released_unconfirmed":
+      return {
+        title: "Unconfirmed charge cleared",
+        detail: "A card charge for this installment was never confirmed, so it was cleared and the installment can be charged again.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_paystack_attempt_created":
+      return {
+        title: "Installment payment started",
+        detail: "A payment attempt for this installment was started.",
+        category: "orders",
+        iconHint: "pound",
+      };
+    case "tr3.installment_overpayment_held":
+      return {
+        title: "Extra payment held for refund",
+        detail: "The traveler paid more than they owed. The extra is held and returned to them.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "tr3.installment_overpayment_after_payout_attached":
+      return {
+        title: "Extra payment found after a payout",
+        detail: "The traveler paid more than they owed after this payment was already in a payout. The extra is still returned to them and Mingla was told.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "tr3.installment_overpayment_needs_ops":
+      return {
+        title: "Extra payment refund needs a check",
+        detail: "Returning an extra payment to the traveler did not finish on its own and was passed to Mingla.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "tr3.installment_overpayment_over_refunded":
+      return {
+        title: "More refunded than the extra payment",
+        detail: "A refund of an extra payment came back larger than expected and was passed to Mingla to check.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "tr3.installment_overpayment_retry_watch_closed":
+      return {
+        title: "Extra payment refund check finished",
+        detail: "Mingla finished checking a retried refund of an extra payment. The payout for this payment is no longer held for it.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "tr3.installment_overpayment_refund_pending_long":
+      return {
+        title: "Extra payment refund still pending",
+        detail: "A refund of an extra payment has been waiting for our payment partner for a long time. Mingla was told.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "tr3.installment_overpayment_refunded":
+      return {
+        title: "Extra payment refunded",
+        detail: "The extra the traveler paid was returned to them in full.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "tr3.installment_overpayment_event_unmatched":
+      return {
+        title: "Refund update did not match",
+        detail: "Our payment partner sent a refund update that did not match the refund we sent, so it was not recorded.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "tr3.installment_overpayment_ops_retry":
+      return {
+        title: "Extra payment refund restarted",
+        detail: "Mingla restarted the refund of an extra payment.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
     case "INSTALLMENT_CHARGED_MANUALLY":
       return {
         title: "Installment charged manually",
@@ -727,6 +901,57 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
   }
 
   // ----- Dynamic pattern matchers -----
+
+  // #4522 — tr3.installment_overpayment_attempt_<state> (one refund attempt
+  // of an extra payment moved to a new state).
+  const overpaymentAttempt = action.match(
+    /^tr3\.installment_overpayment_attempt_(succeeded|failed|pending|creating)$/,
+  );
+  if (overpaymentAttempt !== null) {
+    const state = overpaymentAttempt[1];
+    const title =
+      state === "succeeded"
+        ? "Extra payment refund went through"
+        : state === "failed"
+          ? "Extra payment refund failed"
+          : state === "pending"
+            ? "Extra payment refund pending"
+            : "Extra payment refund started";
+    return {
+      title,
+      category: "payouts_refunds",
+      iconHint: state === "failed" ? "flag" : "pound",
+    };
+  }
+
+  // #4522 — tr3.installment_paystack_<outcome> after an unpaid pay link
+  // (outcome from issue_3645_count_installment_failure).
+  const unpaidOutcome = action.match(
+    /^tr3\.installment_paystack_(failed|at_risk|noop)$/,
+  );
+  if (unpaidOutcome !== null) {
+    const outcome = unpaidOutcome[1];
+    return outcome === "at_risk"
+      ? {
+          title: "Installment at risk",
+          detail: "Several payment attempts for this installment did not go through.",
+          category: "orders",
+          iconHint: "flag",
+        }
+      : outcome === "failed"
+        ? {
+            title: "Installment payment not completed",
+            detail: "The traveler did not finish paying this installment. It will be tried again.",
+            category: "orders",
+            iconHint: "flag",
+          }
+        : {
+            title: "Installment payment check skipped",
+            detail: "This installment was replaced, so nothing was counted.",
+            category: "orders",
+            iconHint: "pound",
+          };
+  }
 
   // stripe_connect.deadline_warning_<N>d_sent (N = 7, 3, 1, or any future)
   const deadlineMatch = action.match(
