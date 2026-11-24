@@ -10,6 +10,7 @@
  */
 
 import type { DayExport, DayExportRow, DayPerson } from "../services/venueDayCloseService";
+import { csvCell, csvTextCell } from "./csvCell";
 import { exportCsvText, type ExportResult } from "./guestCsvExport";
 
 // ISO 4217 minor units that are not 2 (the same list the floor PDFs use).
@@ -44,8 +45,15 @@ const METHOD: Record<string, string> = {
   room: "Charge to room",
 };
 
-function cell(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, "\"\"")}"` : value;
+// #4490 08-O5 fix 1 (O5-T2): the money columns stay plain numbers (a
+// negative amount is still a number); every other column may hold text a
+// person typed (a check name, a staff name), so it is written through the
+// shared formula-safe cell (utils/csvCell.csvTextCell).
+const AMOUNT_COLUMNS = new Set(["Amount", "Service charge", "Tip", "Guest-paid fee", "Refunded"]);
+const NUMERIC_AT = new Set(DAY_CLOSE_CSV_HEADER.flatMap((name, i) => (AMOUNT_COLUMNS.has(name) ? [i] : [])));
+
+function rowCells(values: readonly string[]): string {
+  return values.map((value, i) => (NUMERIC_AT.has(i) ? csvCell(value) : csvTextCell(value))).join(",");
 }
 
 /** A minor amount as a plain decimal ("18500.00", "1200" for zero-decimal currencies). */
@@ -88,8 +96,8 @@ export function dayCloseCsvRow(row: DayExportRow, currency: string): string[] {
 }
 
 export function serializeDayCloseCsv(data: DayExport): string {
-  const lines = [DAY_CLOSE_CSV_HEADER.map(cell).join(",")];
-  for (const row of data.rows) lines.push(dayCloseCsvRow(row, data.currency).map(cell).join(","));
+  const lines = [DAY_CLOSE_CSV_HEADER.map((name) => csvTextCell(name)).join(",")];
+  for (const row of data.rows) lines.push(rowCells(dayCloseCsvRow(row, data.currency)));
   return `${lines.join("\r\n")}\r\n`;
 }
 

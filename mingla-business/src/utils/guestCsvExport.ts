@@ -19,6 +19,7 @@
 import { Platform, Share } from "react-native";
 
 import { currencyCodeOrNull } from "./currency";
+import { csvCell } from "./csvCell";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import { isCompOrder } from "./compOrders";
@@ -41,20 +42,9 @@ export type ExportGuestRow =
   | { kind: "order"; id: string; order: OrderRecord; sortKey: string }
   | { kind: "door"; id: string; sale: DoorSaleRecord; sortKey: string };
 
-const csvEscape = (value: string | null): string => {
-  // #2411 — a zero-money online order legitimately has no currency. Preserve
-  // that truth as an empty CSV cell; never stringify null or invent a code.
-  const normalized = value ?? "";
-  if (
-    normalized.includes(",") ||
-    normalized.includes("\"") ||
-    normalized.includes("\n") ||
-    normalized.includes("\r")
-  ) {
-    return `"${normalized.replace(/"/g, "\"\"")}"`;
-  }
-  return normalized;
-};
+// The cell owner is utils/csvCell (#4490 08-O5 fix 1 moved this body there
+// unchanged, so the day-close export quotes exactly the same way).
+const csvEscape = csvCell;
 
 const formatYmd = (iso: string): string => {
   const d = new Date(iso);
