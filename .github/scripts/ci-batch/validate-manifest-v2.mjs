@@ -753,7 +753,8 @@ export function phase3dContractDigest(manifest) {
 // #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
 // issue #4490 merge of origin/main d3527e3b93 (#4579): kept both sides' rows (main's 20281202024579 and its two #4579 pg17 suites before the #4490 block, filename order; the #4579 exact-filename skips in the #1931 baseline and #2117 phase-1 lanes); re-sealed.
 // issue #4490 after #4579: migration 20281203774490 (Till staff names follow #4579's public-name rule) + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "2f79725ad617da7f9e5d537309fce2706e0487a04a11df2c2b7aca986fc6ef66";
+// issue #4490 08-O5 fix 5: migration 20281203784490 (a cheaper sold-out swap follows the one refund rule; canSwap / canSwapEven) + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3201bbff0fcd8598fde34b0353187f25222269e964496023b4d6ae4b5d916fb7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
