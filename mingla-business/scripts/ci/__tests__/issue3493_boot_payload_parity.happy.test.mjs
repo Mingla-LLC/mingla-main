@@ -5,6 +5,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -181,10 +182,36 @@ describe("#3493 VAT/pricing UI stays out of the eager shared chunk", () => {
       host,
       /import type \{ WhoCoversCostsSectionProps \} from "\.\/WhoCoversCostsSection";/,
     );
+    // #4522: the implementation may load through `WhoCoversCostsChunk`, the one
+    // lazy chunk shared with the trip builder's earnings card, as long as that
+    // module is only ever reached by a dynamic import (asserted below).
     assert.match(
       host,
-      /React\.lazy\(async \(\) => \{[\s\S]*await import\("\.\/WhoCoversCostsSection"\)/,
+      /React\.lazy\(async \(\) => \{[\s\S]*await import\("\.\/(WhoCoversCostsSection|WhoCoversCostsChunk)"\)/,
     );
     assert.match(host, /<React\.Suspense fallback=\{null\}>/);
+  });
+
+  test("the shared pricing chunk re-exports the section and is never imported eagerly", () => {
+    const chunk = readBusiness("src/components/pricing/WhoCoversCostsChunk.tsx");
+    assert.match(
+      chunk,
+      /export \{ WhoCoversCostsSection \} from "\.\/WhoCoversCostsSection";/,
+    );
+    const files = execFileSync(
+      "git",
+      ["grep", "-l", "WhoCoversCostsChunk", "--", "src", "app"],
+      { cwd: BUSINESS, encoding: "utf8" },
+    )
+      .split("\n")
+      .filter((f) => f && !f.includes("__tests__"));
+    for (const file of files) {
+      const source = readBusiness(file);
+      assert.doesNotMatch(
+        source,
+        /(^|\n)\s*(import|export)[^\n]*from\s+"[^"]*WhoCoversCostsChunk"/,
+        file,
+      );
+    }
   });
 });
