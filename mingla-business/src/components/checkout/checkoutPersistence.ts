@@ -66,6 +66,16 @@ export interface CheckoutResumePayload {
     totalCents: number;
     currency: string;
   };
+  /**
+   * issue #4522 E-3 — the client attempt id this cart sent. After the reload
+   * the provider's Back button causes, an unchanged cart sends it again, so the
+   * server answers with the same checkout instead of opening a second one.
+   * Optional for older entries; unchecked here (the tracker checks it).
+   */
+  checkoutAttempt?: {
+    fingerprint: string;
+    id: string;
+  };
 }
 
 export const checkoutResumeStorageKey = (eventId: string): string =>
@@ -80,7 +90,10 @@ const isCartLine = (value: unknown): value is CartLine => {
     typeof v.quantity === "number" &&
     typeof v.unitPrice === "number" &&
     typeof v.currency === "string" &&
-    typeof v.isFree === "boolean"
+    typeof v.isFree === "boolean" &&
+    (v.addonPaymentMode === undefined ||
+      v.addonPaymentMode === "today" ||
+      v.addonPaymentMode === "spread")
   );
 };
 

@@ -47,6 +47,13 @@ export interface RefundPreview {
   currency: string;
   perPaymentRefund: PerPaymentRefund[];
   installmentsToCancel: number;
+  /** issue #4522 — the deposit a "Deposit is non-refundable" trip keeps. */
+  depositKeptCents?: number;
+  /**
+   * issue #4522 G-3 / G-4 — the booking is already cancelled and this refund
+   * is still being finished; confirming resumes it (never a second refund).
+   */
+  inProgress?: boolean;
 }
 
 export interface CancelTripBookingResult {
@@ -82,7 +89,11 @@ export type CancelTripBookingErrorCode =
   | "begin_failed"
   | "compute_failed"
   | "network_error"
-  | "internal_error";
+  | "internal_error"
+  // issue #4522 pass 5 (T9-2) — a charge can still land; nothing was cancelled.
+  | "balance_payment_in_flight"
+  // issue #4522 G-3 / G-4 — cancelled; part of the refund is still being finished.
+  | "refund_in_progress";
 
 export interface CancelTripBookingError extends Error {
   code: CancelTripBookingErrorCode;
@@ -114,7 +125,31 @@ const makeError = (
   return err;
 };
 
-const userMessageFor = (code: string): string => {
+/**
+ * issue #4522 G-10 — what a HOST is told where a traveler is told to "contact
+ * the organizer": the host is the organizer. Only the lines that name the
+ * organizer differ; every other line is the same for both.
+ */
+const hostMessageFor = (code: string): string | null => {
+  switch (code) {
+    case "no_trip_start_date":
+      return "This trip has no scheduled start date. Add one in the trip editor, then try again.";
+    case "missing_connected_account":
+      return "This brand isn't set up for refunds yet. Finish payout setup, then try again.";
+    case "stripe_refund_failed":
+      return "Couldn't process the refund. Try again, or contact Mingla support.";
+    case "refund_in_progress":
+      return "The booking is cancelled, but part of the refund isn't finished yet. Mingla keeps trying and emails the traveler when it's done. You can also try again in a few minutes.";
+    default:
+      return null;
+  }
+};
+
+const userMessageFor = (code: string, host = false): string => {
+  if (host) {
+    const hostLine = hostMessageFor(code);
+    if (hostLine !== null) return hostLine;
+  }
   switch (code) {
     case "order_not_found":
       return "Reservation not found.";
@@ -137,6 +172,10 @@ const userMessageFor = (code: string): string => {
       return "This brand isn't set up for refunds. Contact the organizer.";
     case "stripe_refund_failed":
       return "Couldn't process the refund. Try again or contact the organizer.";
+    case "balance_payment_in_flight":
+      return "A payment on this trip is already processing. Nothing was cancelled. Try again in a few minutes.";
+    case "refund_in_progress":
+      return "Your booking is cancelled. Your refund isn't finished yet; we'll email you when it is.";
     case "ledger_insert_failed_after_stripe_success":
     case "commit_failed_after_stripe_success":
       return "Refund was processed but we couldn't update our records. Refresh to confirm.";
@@ -183,7 +222,13 @@ async function invokeCancelTripBooking(
     }
     const code = (payload?.error ?? "internal_error") as CancelTripBookingErrorCode;
     const detail = payload?.detail ?? (response.error as Error).message ?? "Cancel failed";
-    throw makeError(code, userMessageFor(code), detail, httpStatus, {
+    // issue #4522 G-3 / G-4 — a finished cancel says its refund is complete.
+    if (code === "already_cancelled" && (payload as { operation?: unknown } | null)?.operation === "completed") {
+      throw makeError(code, "This reservation is already cancelled and its refund is complete.", detail, httpStatus);
+    }
+    // A traveler's call carries the cancel-link token; a host's call is signed in.
+    const hostCall = body.token === undefined;
+    throw makeError(code, userMessageFor(code, hostCall), detail, httpStatus, {
       currentRefundTotalCents: payload?.currentRefundTotalCents,
       partialSucceededRefunds: payload?.partialSucceededRefunds,
     });
@@ -221,6 +266,11 @@ function unwrapPreview(raw: unknown): RefundPreview {
         }))
       : [],
     installmentsToCancel: Number(data.installmentsToCancel ?? 0),
+    // issue #4522 — what "Deposit is non-refundable" keeps. The cancel edge
+    // sends only payment entries and this one number, whichever shape the
+    // database answered in (supabase/functions/cancel-trip-booking/refundEntries.ts).
+    ...(Number(data.depositKeptCents) > 0 ? { depositKeptCents: Number(data.depositKeptCents) } : {}),
+    ...(data.inProgress === true ? { inProgress: true } : {}),
   };
 }
 

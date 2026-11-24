@@ -50,6 +50,25 @@ const FN = "brand-person-ingest-worker";
 const FUNCTIONS = loadFunctions();
 const MIGRATIONS = loadMigrations();
 
+// [TEST-MOD-APPROVED #4522] The gate (issue-2290-queue-worker-has-cron-caller.mjs)
+// credits calls made from `supabase/functions/_shared/**` as callers. #4522 made
+// cancel-trip-booking a machine-only claim worker that the installment run in
+// _shared reaches, so the two whole-repo cases below must hand `analyze` the same
+// shared source the gate does (they passed "" before, which hid that caller).
+const readTree = (dir) => {
+  const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name !== "node_modules" && e.name !== "__tests__") out.push(...readTree(full));
+    } else if (/\.(ts|tsx|js|mjs)$/.test(e.name) && !/\.test\.[a-z]+$/.test(e.name)) {
+      out.push(fs.readFileSync(full, "utf8"));
+    }
+  }
+  return out;
+};
+const SHARED_SOURCE = readTree(path.join(REPO_ROOT, "supabase/functions/_shared")).join("\n");
+
 // ── INSTANCE ────────────────────────────────────────────────────────────────
 
 test("T-1 the #2290 migration exists and schedules the ingest worker", () => {
@@ -113,7 +132,7 @@ test("T-6 the worker itself is untouched and still opens only on a machine beare
 // ── CLASS ───────────────────────────────────────────────────────────────────
 
 test("T-7 against the real repo, the ingest worker is cron-scheduled and the gate is green", () => {
-  const { workers, violations } = analyze(FUNCTIONS, MIGRATIONS, "");
+  const { workers, violations } = analyze(FUNCTIONS, MIGRATIONS, SHARED_SOURCE);
 
   const worker = workers.find((w) => w.name === FN);
   assert.ok(worker, `${FN} must be recognised as a machine-only claim worker`);
@@ -133,7 +152,7 @@ test("T-8 FAILS-ON-REVERT: deleting the cron.schedule makes the gate report the 
     "the #2290 migration must actually have been removed from the fixture set",
   );
 
-  const { violations } = analyze(FUNCTIONS, migrations, "");
+  const { violations } = analyze(FUNCTIONS, migrations, SHARED_SOURCE);
   assert.deepEqual(
     violations.map((v) => v.name),
     [FN],

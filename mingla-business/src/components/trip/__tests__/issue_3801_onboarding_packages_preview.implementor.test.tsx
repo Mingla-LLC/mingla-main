@@ -75,6 +75,8 @@ const BOUNDARY: Record<string, () => unknown> = {
   EventCoverMedia: () => ({ EventCoverMedia: nothing }),
   Icon: () => ({ Icon: nothing }),
   CollapsibleDescription: () => ({ CollapsibleDescription: leaf("CollapsibleDescription") }),
+  // [TEST-MOD-APPROVED #3281] Harness registration only: the public add-ons slot (null = switch off).
+  publicAddOnsSlot: () => ({ publicAddOnsSlot: null }),
 };
 
 function loadPreview(): React.ComponentType<Record<string, unknown>> {

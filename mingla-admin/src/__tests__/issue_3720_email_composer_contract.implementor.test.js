@@ -57,7 +57,8 @@ describe("#3720 exact Admin email composer contract", () => {
 
   it("has send-now and timezone-aware scheduling without a client count cap", () => {
     assert.match(COMPOSER, /Send now/);
-    assert.match(COMPOSER, /datetime-local/);
+    // [TEST-MOD-APPROVED #4522] #4523 replaced the typed datetime-local input with the shared calendar's date-and-time picker, so the scheduler is now <CalendarInput mode="datetime">.
+    assert.match(COMPOSER, /<CalendarInput mode="datetime"/);
     assert.match(COMPOSER, /resolvedOptions\(\)\.timeZone/);
     assert.equal(COMPOSER.includes("DAILY_EMAIL_LIMIT"), false);
     assert.equal(COMPOSER.includes("limitReached"), false);

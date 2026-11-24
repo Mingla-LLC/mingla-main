@@ -145,12 +145,15 @@ const styles = checkoutStyles(() =>
  * "You're in." (spec §4.2 Confirm). Null when the receipt is not back yet.
  */
 export function youreInLine(
-  receipt: { lines: ReadonlyArray<{ qty: number }>; dateLine: string | null } | null | undefined,
+  receipt: { lines: ReadonlyArray<{ qty: number; addOn?: true }>; dateLine: string | null } | null | undefined,
   offeringName: string,
   noun: { one: string; many: string },
 ): string | null {
   if (receipt === null || receipt === undefined) return null;
-  const count = receipt.lines.reduce((sum, line) => sum + line.qty, 0);
+  // issue #4522 E-8 — places are counted, not lines: an add-on is not a place.
+  const count = receipt.lines
+    .filter((line) => line.addOn !== true)
+    .reduce((sum, line) => sum + line.qty, 0);
   if (count <= 0) return null;
   const what = `${count} ${count === 1 ? noun.one : noun.many} for ${offeringName}`;
   const when = receipt.dateLine?.trim() ?? "";

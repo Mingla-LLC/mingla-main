@@ -6,11 +6,15 @@ import { fakeSupabase, ok, type TableOp } from "./issue_3645_fake_supabase.ts";
 
 const INST = "33333333-3333-4333-8333-333333333333";
 
-function setup(row: Record<string, unknown>, opts: { checkpoint?: Record<string, unknown>; liveLinks?: number } = {}) {
+function setup(
+  row: Record<string, unknown>,
+  opts: { checkpoint?: Record<string, unknown>; liveLinks?: number; claims?: boolean[]; reason?: string } = {},
+) {
   const calls: string[] = [];
   const emails: string[] = [];
   const fake = fakeSupabase({
     rpc: (name) => {
+      if (name === "issue_4522_claim_paid_in_full_notice") return ok(opts.claims?.shift() ?? false);
       if (name === "issue_3645_checkpoint_pay_link_installment") return ok(opts.checkpoint ?? { ok: false, reason: "checkpoint_not_reached" });
       if (name === "issue_3645_issue_pay_link") return ok({ ok: true, link_id: "l1" });
       return ok({ ok: true });
@@ -33,11 +37,15 @@ function setup(row: Record<string, unknown>, opts: { checkpoint?: Record<string,
   const deps = {
     createInstallmentPI: (input: Record<string, unknown>) => {
       calls.push(`stripe:${input.brandId}`);
-      return Promise.resolve({ ok: true, outcome: "collected" as const, chargeId: "pi_1" });
+      return Promise.resolve(opts.reason === undefined
+        ? { ok: true, outcome: "collected" as const, chargeId: "pi_1" }
+        : { ok: false, outcome: "skipped" as const, reason: opts.reason, error: opts.reason });
     },
     chargePaystackInstallment: () => {
       calls.push("paystack_auto");
-      return Promise.resolve({ outcome: "collected" as const });
+      return Promise.resolve(opts.reason === undefined
+        ? { outcome: "collected" as const }
+        : { outcome: "skipped" as const, reason: opts.reason });
     },
     dispatchBuyerEmail: (kind: string) => {
       emails.push(kind);
@@ -96,4 +104,43 @@ Deno.test("#3645 I-3645-PS-4: routing never reads brands.payment_provider", asyn
   assert(!t.fake.tableOps.some((op) => op.table === "brands" || (op.columns ?? "").includes("payment_provider")));
   const src = await Deno.readTextFile(new URL("../chargeInstallment.ts", import.meta.url));
   assert(!src.replace(/\/\*[\s\S]*?\*\//g, "").includes("payment_provider"));
+});
+
+Deno.test("#4522 I-4522-NEVER-WRITE-OFF: a balance too small to charge is skipped on both providers, never settled or emailed", async () => {
+  for (const provider of ["stripe", "paystack"]) {
+    const t = setup({ provider, collection_method: "auto_card", order_id: "o1" },
+      { reason: "below_provider_minimum", claims: [true] });
+    assertEquals((await t.run()).reason, "below_provider_minimum");
+    // No paid-in-full email and no paid-in-full claim: it is still owed.
+    assertEquals(t.emails, [], provider);
+    assertEquals(t.fake.rpcCalls.some((c) => c.name === "issue_4522_claim_paid_in_full_notice"), false, provider);
+  }
+});
+
+Deno.test("#4522 I-4522-NEVER-WRITE-OFF: a pay-link row too small to charge gets no link, no failure, and one ops alert", async () => {
+  const alerts: string[][] = [];
+  const t = setup({ provider: "paystack", collection_method: "pay_link" },
+    { checkpoint: { ok: false, reason: "below_provider_minimum", alertOps: true, remainingMinor: 9999, order_id: "o1", currency: "NGN" } });
+  const r = await chargeInstallment({
+    supabase: t.fake.client as never, installmentId: INST, trigger: "cron",
+    deps: { now: () => new Date("2027-03-01T13:00:00Z"),
+      alertOps: (s: string, p: string[]) => { alerts.push([s, ...p]); return Promise.resolve(); },
+      dispatchBuyerEmail: (kind: string) => { t.emails.push(kind); return Promise.resolve(true); } } as never,
+  });
+  assertEquals(r, { outcome: "skipped", reason: "below_provider_minimum" });
+  assertEquals(t.emails, []);
+  assertEquals(t.fake.rpcCalls.some((c) => c.name === "issue_3645_issue_pay_link"), false);
+  assertEquals(alerts.length, 1);
+  assertEquals(alerts[0][0], "A trip balance is too small to charge");
+  assert(alerts[0][2].includes("o1") && alerts[0][2].includes("9999") && alerts[0][2].includes("NGN"));
+  // Once: the database answers alertOps only the first time.
+  const again = setup({ provider: "paystack", collection_method: "pay_link" },
+    { checkpoint: { ok: false, reason: "below_provider_minimum", alertOps: false } });
+  const before = alerts.length;
+  await chargeInstallment({
+    supabase: again.fake.client as never, installmentId: INST, trigger: "cron",
+    deps: { now: () => new Date("2027-03-01T13:00:00Z"),
+      alertOps: (s: string) => { alerts.push([s]); return Promise.resolve(); } } as never,
+  });
+  assertEquals(alerts.length, before);
 });

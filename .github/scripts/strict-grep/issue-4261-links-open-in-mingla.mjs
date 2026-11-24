@@ -76,6 +76,11 @@ export const ALLOWLIST = new Map([
     issue: "#2227",
     reason: "Payment provider authorization page for a stay.",
   }],
+  ["app/trip-balance/[orderId].tsx", {
+    count: 1,
+    issue: "#4522",
+    reason: "Payment provider authorization page for a trip balance payment (Paystack new card). openBrowserAsync, never openAuthSession and never a host WebView.",
+  }],
   ["app/stay/[groupId].tsx", {
     count: 1,
     issue: "#2227",

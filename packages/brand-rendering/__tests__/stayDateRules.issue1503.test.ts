@@ -359,37 +359,33 @@ describe("#1503 T-19…T-23 · source pins (the swap cannot be silently reverted
     expect(source).toContain("timezone: detail.timezone");
   });
 
-  test("T-22 the native picker lives ONLY in the .native.tsx half of the split", () => {
+  test("T-22 (#4523) neither half of the split carries a picker or a date box; the native half keeps the SC-8 marker", () => {
     const web = codeOnly(readPackageFile("StayDateRangeField.tsx"));
     const native = codeOnly(readPackageFile("StayDateRangeField.native.tsx"));
-    expect(web).toContain("export function StayDateRangeField");
+    const rows = codeOnly(readPackageFile("StayDateRangeRows.tsx"));
+    expect(rows).toContain("export function StayDateRangeRows");
+    expect(web).toContain("StayDateRangeRows as StayDateRangeField");
     expect(native).toContain("export function StayDateRangeField");
-    expect(web).not.toContain("@react-native-community/datetimepicker");
-    expect(native).toContain("@react-native-community/datetimepicker");
+    for (const src of [web, native, rows]) {
+      expect(src).not.toContain("@react-native-community/datetimepicker");
+      expect(src).not.toMatch(/type=["']date["']/);
+      expect(src).not.toContain("showPicker");
+      expect(src).not.toContain(".click()");
+    }
     // The SC-8 tripwire string must EXIST in the native half, otherwise the
     // web-export grep that proves the split holds would be vacuously green.
     // Runtime-attached (`nativeID` on the root View) so a minifier cannot
-    // dead-code it away — an unused exported const IS eliminated, and a grep
-    // for an eliminated string proves nothing.
+    // dead-code it away.
     expect(native).toContain("stay-date-range-field-native-only-1503");
     expect(native).toContain("nativeID={STAY_DATE_RANGE_FIELD_NATIVE_MARKER}");
     expect(web).not.toContain("stay-date-range-field-native-only-1503");
-    // The web half must render a REAL, visible input — never the banned hidden
-    // input + showPicker()/.click() bridge (I-PROPOSED-1027-WEB-NATIVE-DATE-INPUT).
-    expect(web).toContain('type="date"');
-    expect(web).not.toContain("showPicker");
-    expect(web).not.toContain(".click()");
-    expect(web).not.toContain('pointerEvents: "none"');
-    // A FULLY transparent control is the banned mechanism; the 0.55 dim on the
-    // disabled check-out row is a legitimate affordance, so match only a literal
-    // zero, never `0.55`.
-    expect(web).not.toMatch(/opacity:\s*0(?![.\d])/);
+    expect(rows).not.toContain("stay-date-range-field-native-only-1503");
   });
 
   test("T-23 the package stays self-contained and UTC-free", () => {
     for (const name of [
       "stayDateRules.ts",
-      "StayDateRangeField.tsx",
+      "StayDateRangeRows.tsx",
       "StayDateRangeField.native.tsx",
     ]) {
       const source = codeOnly(readPackageFile(name));

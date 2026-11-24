@@ -9,6 +9,11 @@ export interface InstallmentReminderEmailInput {
   nextInstallmentDueAt: string;
   bookingId: string;
   unsubscribeUrl: string;
+  /**
+   * issue #4522 — "Pay toward your balance" link (a balance-link page) for a
+   * trip whose plan lets the traveler pay any amount. Absent → unchanged.
+   */
+  balanceUrl?: string | null;
 }
 
 export interface InstallmentReminderEmailResult {
@@ -24,6 +29,21 @@ function escapeHtml(raw: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/** issue #4522 — the shared "Pay toward your balance" link (HTML). */
+export function balanceLinkHtml(url: string | null | undefined): string {
+  return typeof url === "string" && url.startsWith("https://")
+    ? `
+    <p style="font-size:16px;line-height:1.55;margin:0 0 24px;"><a href="${escapeHtml(url)}" style="color:#1a1a1a;font-weight:600;">Pay toward your balance</a>. Your later payments shrink to match.</p>`
+    : "";
+}
+
+/** issue #4522 — the same link in the plain-text part. */
+export function balanceLinkText(url: string | null | undefined): string[] {
+  return typeof url === "string" && url.startsWith("https://")
+    ? ["", `Pay toward your balance: ${url}`]
+    : [];
 }
 
 export function renderInstallmentReminderEmail(
@@ -54,7 +74,7 @@ export function renderInstallmentReminderEmail(
       <p style="font-size:18px;font-weight:600;margin:0 0 4px;">${safeAmount}</p>
       <p style="font-size:15px;margin:0;color:#444;">Due ${safeDueAt}</p>
     </div>
-    <p style="font-size:16px;line-height:1.55;margin:0 0 24px;">Update your card if needed so your place stays covered.</p>
+    <p style="font-size:16px;line-height:1.55;margin:0 0 24px;">Update your card if needed so your place stays covered.</p>${balanceLinkHtml(input.balanceUrl)}
     <p style="font-size:13px;color:#888;line-height:1.5;margin:32px 0 0;">You received this because you booked ${safeTripTitle} on Mingla. <a href="${safeUnsubscribeUrl}" style="color:#888;">Manage email preferences</a>.</p>
   </div>
 </body>
@@ -72,6 +92,7 @@ export function renderInstallmentReminderEmail(
     `Due: ${input.nextInstallmentDueAt}`,
     "",
     "Update your card if needed so your place stays covered.",
+    ...balanceLinkText(input.balanceUrl),
     "",
     `Manage email preferences: ${input.unsubscribeUrl}`,
   ].join("\n");

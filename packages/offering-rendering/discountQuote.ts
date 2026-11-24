@@ -6,6 +6,9 @@
  * a discounted checkout total.
  */
 
+import type { TicketQuotePlanV2 } from "./ticketQuotePlanV2Contract";
+import type { CheckoutAddOnPaymentMode } from "./ticketCheckoutContract";
+
 export type DiscountCodeReason =
   | "not_found"
   | "paused"
@@ -147,6 +150,10 @@ export interface TicketQuote {
   totalCents: number;
   installmentChargeSchedule?: InstallmentChargeSchedule;
   planTotalBuyerCents?: number;
+  /** issue #4522 — server availability + schedule for an authored v2 plan. */
+  paymentPlanV2?: TicketQuotePlanV2;
+  /** issue #4522 — server-accepted add-on choice for a v2 plan. */
+  addonPaymentMode?: CheckoutAddOnPaymentMode;
   /** issue #3281 — the extras the server priced; absent before extras shipped. */
   extras?: TicketQuoteExtra[];
   extrasTotalCents?: number;

@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { formatQuoteMoney } from "./quoteMoney";
 import {
   neutralControl,
   themeTextAccent,
@@ -29,16 +30,7 @@ const DiscountReasonText = React.lazy(() =>
 export type BuyerDiscountSurface =
   "web_event" | "web_experience" | "web_trip" | "web_venue" | "web_deposit";
 
-const money = (minor: number, currency: string): string => {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(minor / 100);
-  } catch {
-    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
-  }
-};
+const money = formatQuoteMoney;
 
 export interface DiscountCodeFieldProps {
   value: string | null;

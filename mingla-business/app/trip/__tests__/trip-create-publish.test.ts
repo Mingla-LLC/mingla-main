@@ -73,8 +73,15 @@ describe("ORCH-0859 — trip create + wizard + publish contract", () => {
     // [TEST-MOD-APPROVED #1780] Invite people is the new Step 7 and Review /
     // Publish moves to Step 8. The tap wrapper awaits authoritative invite
     // plan/quote refresh before it may open confirmation.
+    // #4522 — the publish dock shows on the last step (8, or the 4-step
+    // builder's BUILDER_STEP_COUNT); the builder (tripBuilderV2) taps through
+    // handleBuilderPublishTap, which runs the same handlePublishTap once the
+    // publish checklist is clear; the eight-step fallback calls it directly.
     expect(wizardSource).toMatch(
-      /step === 8[\s\S]{0,1800}onPress=\{\(\) => void handlePublishTap\(\)\}/,
+      /step === \(V2 \? BUILDER_STEP_COUNT : 8\) \?[\s\S]{0,1800}onPress=\{\(\) => void \(V2 \? handleBuilderPublishTap\(\) : handlePublishTap\(\)\)\}/,
+    );
+    expect(wizardSource).toMatch(
+      /const handleBuilderPublishTap = useCallback\(async \(\): Promise<void> => \{\s*const open = firstOpenItem\(publishChecklist\);\s*if \(open === null\) \{\s*await handlePublishTap\(\);/,
     );
   });
 

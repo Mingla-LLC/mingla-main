@@ -1,3 +1,4 @@
+import { SiteDateInput } from "../../../components/v2/SiteDateInput";
 import type { OfferingFilters } from "../../../contracts/generated/offerings.ts";
 import { SiteSearchForm } from "../../../components/PreviewLinks";
 import { SiteLink } from "../parts";
@@ -30,12 +31,12 @@ export function TripFilters({ variant, action, filters }: { variant: "hero" | "p
         {hero ? <div className="search-divider v-search-divider" /> : null}
         <div className={cell}>
           <label htmlFor={`${prefix}from`} className="micro-label v-block">From</label>
-          <input id={`${prefix}from`} name="from" type="date" defaultValue={filters?.from ?? undefined} className="search-input" />
+          <SiteDateInput id={`${prefix}from`} name="from" defaultValue={filters?.from ?? undefined} className="search-input" />
         </div>
         {hero ? <div className="search-divider v-search-divider" /> : null}
         <div className={cell}>
           <label htmlFor={`${prefix}to`} className="micro-label v-block">To</label>
-          <input id={`${prefix}to`} name="to" type="date" defaultValue={filters?.to ?? undefined} className="search-input" />
+          <SiteDateInput id={`${prefix}to`} name="to" defaultValue={filters?.to ?? undefined} className="search-input" />
         </div>
         <button type="submit" className={hero ? "btn btn--primary btn--on-photo v-search-submit v-search-submit--hero" : "btn btn--primary v-search-submit"}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">

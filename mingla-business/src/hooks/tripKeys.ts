@@ -28,4 +28,8 @@ export const tripKeys = {
   guide: (eventId: string) => [...tripKeys.detail(eventId), "guide"] as const,
   publicGuide: (eventId: string) =>
     [...tripKeys.public(), "guide", eventId] as const,
+  // Issue #3281 — each package's add-ons for the trip checkout, read from the
+  // public trip reader (the trip-by-id checkout read has none).
+  publicAddOnsBySlug: (brandSlug: string, tripSlug: string) =>
+    [...tripKeys.public(), "addOns", brandSlug, tripSlug] as const,
 };

@@ -1,11 +1,7 @@
 /** Four-filter control for Discover > Stays. Issue #1423. */
 
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import React, { useState } from "react";
 import {
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,9 +21,12 @@ import {
 } from "../../constants/designSystem";
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { Icon, type IconName } from "../ui/Icon";
+import { CalendarEmbed } from "@mingla/calendar/CalendarField";
+import { deviceTimeZone, DARK_INLINE_CALENDAR_CONFIG, useExplorerCalendarLabels } from "../calendar/explorerInlineCalendar";
+
+const noopDone = (): void => undefined;
 
 type SheetKind = "destination" | "dates" | "guests" | "filters" | null;
-type DateField = "checkIn" | "checkOut" | null;
 export type StayFilterField = Exclude<SheetKind, null> | "clear";
 
 interface Props {
@@ -160,15 +159,13 @@ export const StayFilterChips: React.FC<Props> = ({ filters, onChange }) => {
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [draft, setDraft] = useState<DiscoverStayFilters>(filters);
-  const [dateField, setDateField] = useState<DateField>(null);
+  const calendarLabels = useExplorerCalendarLabels();
 
   const open = (next: Exclude<SheetKind, null>): void => {
     setDraft(filters);
-    setDateField(null);
     setSheet(next);
   };
   const close = (): void => {
-    setDateField(null);
     setSheet(null);
   };
   const apply = (): void => {
@@ -177,26 +174,7 @@ export const StayFilterChips: React.FC<Props> = ({ filters, onChange }) => {
     close();
   };
 
-  const onDateChange = (event: DateTimePickerEvent, selected?: Date): void => {
-    if (Platform.OS === "android") setDateField(null);
-    if (event.type === "dismissed" || selected === undefined || dateField === null) return;
-    const value = ymd(selected);
-    if (dateField === "checkIn") {
-      setDraft((current) => ({
-        ...current,
-        checkIn: value,
-        checkOut:
-          current.checkOut !== null && current.checkOut > value ? current.checkOut : null,
-      }));
-    } else {
-      setDraft((current) => ({ ...current, checkOut: value }));
-    }
-  };
-
   const today = new Date();
-  const checkInDate = parseYmd(draft.checkIn, today);
-  const tomorrow = new Date(checkInDate);
-  tomorrow.setDate(tomorrow.getDate() + 1);
   const dateLabel = filters.checkIn && filters.checkOut
     ? `${shortDate(filters.checkIn)} – ${shortDate(filters.checkOut)}`
     : "Dates";
@@ -284,31 +262,32 @@ export const StayFilterChips: React.FC<Props> = ({ filters, onChange }) => {
             <Text style={styles.sheetTitle}>Choose your dates</Text>
             <Text style={styles.sheetBody}>Availability is checked across every room and night.</Text>
             <View style={styles.dateRow}>
-              <Pressable style={styles.dateField} onPress={() => setDateField("checkIn")}>
+              <View style={styles.dateField} accessibilityRole="text">
                 <Text style={styles.fieldEyebrow}>CHECK-IN</Text>
                 <Text style={styles.fieldValue}>{shortDate(draft.checkIn)}</Text>
-              </Pressable>
-              <Pressable
-                style={styles.dateField}
-                onPress={() => setDateField("checkOut")}
-                disabled={draft.checkIn === null}
-              >
+              </View>
+              <View style={styles.dateField} accessibilityRole="text">
                 <Text style={styles.fieldEyebrow}>CHECKOUT</Text>
-                <Text style={[styles.fieldValue, draft.checkIn === null && styles.disabledText]}>
-                  {shortDate(draft.checkOut)}
-                </Text>
-              </Pressable>
+                <Text style={styles.fieldValue}>{shortDate(draft.checkOut)}</Text>
+              </View>
             </View>
-            {dateField !== null ? (
-              <DateTimePicker
-                value={dateField === "checkIn" ? checkInDate : parseYmd(draft.checkOut, tomorrow)}
-                mode="date"
-                display={Platform.OS === "ios" ? "inline" : "default"}
-                minimumDate={dateField === "checkIn" ? today : tomorrow}
-                onChange={onDateChange}
-                themeVariant="dark"
-              />
-            ) : null}
+            {/* #4523: one calendar for the whole stay. Changing month only moves the view; nothing
+                is written to the draft until Done, so the check-in can no longer drift on a month change. */}
+            <CalendarEmbed
+              mode="range"
+              unit="nights"
+              minLength={1}
+              label="Choose your dates"
+              value={{ start: draft.checkIn ?? "", end: draft.checkOut ?? "" }}
+              onChange={(range) => setDraft((current) => ({ ...current, checkIn: range.start, checkOut: range.end }))}
+              min={ymd(today)}
+              timeZone={deviceTimeZone()}
+              labels={calendarLabels}
+              config={DARK_INLINE_CALENDAR_CONFIG}
+              testID="stay-dates-calendar"
+              onDone={noopDone}
+              onCancel={noopDone}
+            />
             {draft.checkIn !== null ? (
               <Pressable
                 onPress={() => setDraft((current) => ({ ...current, checkIn: null, checkOut: null }))}

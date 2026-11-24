@@ -7,6 +7,7 @@
 // #4339: each strip has a time zone. It shows only from 00:00 on "Shows on"
 // to 23:59 on "Show until" in that zone; the database decides
 // (links_strip_window) and the list shows its Scheduled / Live / Ended status.
+import { CalendarInput } from "@mingla/calendar-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowRight, ArrowUp, ExternalLink, GripVertical, MapPin, Pencil, Pin, Plus } from "lucide-react";
 import { Button } from "../ui/Button";
@@ -303,10 +304,10 @@ export function LinksPagePanel() {
             </div>
             <div>
               <label htmlFor="links-strip-until" className={LABEL}>Show until <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span></label>
-              <input
+              <CalendarInput
                 id="links-strip-until"
                 ref={(node) => { fieldRefs.current.showsUntil = node; }}
-                type="date"
+                mode="date"
                 min={draft.showsOn || undefined}
                 value={draft.showsUntil}
                 onChange={(e) => update({ showsUntil: e.target.value })}

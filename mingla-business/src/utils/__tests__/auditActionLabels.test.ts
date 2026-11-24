@@ -263,3 +263,63 @@ describe("#3645 — production actions that used to fall through", () => {
     );
   });
 });
+
+describe("#4522 trip partial payment audit actions", () => {
+  const PROVIDER_WORDS = /stripe|paystack/i;
+  const EMITTED_BY_4522 = [
+    "tr3.installment_pi_settlement_left_to_webhook",
+    "tr3.installment_cancelled_during_charge_refunded",
+    "tr3.installment_pi_confirm_unknown",
+    "ticket_checkout.superseded",
+    "tr3.installment_below_provider_minimum_owed",
+    "tr3.installment_flex_released",
+    "tr3.installment_flex_stuck",
+    "tr3.installment_flex_late_amount_mismatch",
+    "tr3.installment_flex_late_collected",
+    "tr3.installment_short_collection",
+    "tr3.installment_stripe_charge_released_unconfirmed",
+    "tr3.installment_paystack_attempt_created",
+    "tr3.installment_overpayment_held",
+    "tr3.installment_overpayment_after_payout_attached",
+    "tr3.installment_overpayment_needs_ops",
+    "tr3.installment_overpayment_over_refunded",
+    "tr3.installment_overpayment_retry_watch_closed",
+    "tr3.installment_overpayment_refund_pending_long",
+    "tr3.installment_overpayment_refunded",
+    "tr3.installment_overpayment_event_unmatched",
+    "tr3.installment_overpayment_ops_retry",
+  ];
+  const DYNAMIC_4522 = [
+    "tr3.installment_overpayment_attempt_succeeded",
+    "tr3.installment_overpayment_attempt_failed",
+    "tr3.installment_overpayment_attempt_pending",
+    "tr3.installment_overpayment_attempt_creating",
+    "tr3.installment_paystack_failed",
+    "tr3.installment_paystack_at_risk",
+    "tr3.installment_paystack_noop",
+  ];
+
+  for (const slug of [...EMITTED_BY_4522, ...DYNAMIC_4522]) {
+    test(`${slug} has its own label, names no provider and never shows the code`, () => {
+      const out = resolveAuditActionLabel(slug);
+      expect(out.category).not.toBe("other");
+      expect(out.title).not.toMatch(PROVIDER_WORDS);
+      expect(out.title).not.toMatch(/tr3|_/);
+      if (out.detail !== undefined) {
+        expect(out.detail).not.toMatch(PROVIDER_WORDS);
+        expect(out.detail).not.toContain(slug);
+      }
+    });
+  }
+
+  test("every static #4522 action is registered for the audit-label gate", () => {
+    for (const slug of EMITTED_BY_4522) expect(KNOWN_STATIC_SLUGS).toContain(slug);
+  });
+
+  test("the four refund-attempt states read differently", () => {
+    const titles = new Set(
+      DYNAMIC_4522.slice(0, 4).map((s) => resolveAuditActionLabel(s).title),
+    );
+    expect(titles.size).toBe(4);
+  });
+});

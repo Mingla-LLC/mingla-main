@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { applyAdCreditWithdrawFromPaystackRefund } from "./adCreditWebhook.ts";
+import { planV2SchemaAvailable } from "./installments/planV2Schema.ts";
+import {
+  applyOverpaymentRefundEvent,
+  paystackOverpaymentRefundEvent,
+} from "./installments/overpaymentRefunds.ts";
+import { installmentOpsAlert } from "./installments/installmentOpsAlert.ts";
 
 function text(value: unknown): string {
   return typeof value === "string"
@@ -45,6 +51,28 @@ export async function handlePaystackRefundEvent(
     }
     merchantNote = merchantNote || text(attempt?.merchant_note);
     transaction = transaction || text(attempt?.transaction_reference);
+  }
+  // issue #4522 (T3-1 / T3-2) — a trip overpayment refund (its stored refund
+  // id, or its merchant note mingla_overpay_refund:<id>:<n>), or a refund made
+  // in the dashboard on a transaction that carries an unreturned overpayment
+  // (often with no merchant note at all), resolves that overpayment; it is
+  // never dropped as an unknown marker. Nothing to match before #4522 is applied.
+  if (
+    (providerRefundId || merchantNote) && transaction &&
+    await planV2SchemaAvailable(supabase)
+  ) {
+    const overpaymentHandled = await applyOverpaymentRefundEvent(
+      supabase,
+      paystackOverpaymentRefundEvent(
+        eventName,
+        providerRefundId,
+        merchantNote,
+        transaction,
+        Number(data.amount ?? data.deducted_amount ?? 0),
+      ),
+      installmentOpsAlert,
+    );
+    if (overpaymentHandled) return;
   }
   if (!merchantNote || !transaction) {
     console.warn(

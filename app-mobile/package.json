@@ -94,6 +94,7 @@
     "@gorhom/bottom-sheet": "5.2.8",
     "@mingla/brand-assets": "file:../packages/brand-assets",
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
+    "@mingla/calendar": "file:../packages/calendar",
     "@mingla/card-identity": "file:../packages/card-identity",
     "@mingla/form-rendering": "file:../packages/form-rendering",
     "@mingla/sharing": "file:../packages/sharing",

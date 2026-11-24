@@ -139,6 +139,7 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "t",
   // #4490 Explorer W1: /visit/<id> and /visit/waitlist/<id>.
   "visit",
+  "trip-balance",
 ]);
 
 /** `scheme:` prefix per RFC 3986. Anything without one is a relative path (R-1). */

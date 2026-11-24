@@ -182,6 +182,14 @@ describe("issue #4420 round 3", () => {
       "1 ticket for Rooftop.",
     );
     expect(youreInLine(null, "Rooftop", noun)).toBeNull();
+    // issue #4522 E-8 — one room plus one add-on is one place, not two
+    expect(
+      youreInLine(
+        { lines: [{ qty: 1 }, { qty: 1, addOn: true }], dateLine: "Fri 12 Mar 2027 – Tue 16 Mar 2027" },
+        "Zanzibar",
+        { one: "place", many: "places" },
+      ),
+    ).toBe("1 place for Zanzibar, Fri 12 Mar 2027 – Tue 16 Mar 2027.");
   });
 
   test("R3-5 the offering strip: phone only, host face title", () => {

@@ -302,6 +302,8 @@ export const PACKAGE_CONSUMERS = {
   "blog-document": ["mingla-admin", "mingla-marketing"],
   "brand-assets": ["mingla-admin", "mingla-business"],
   "brand-rendering": ["mingla-business"],
+  "calendar": ["mingla-business"],
+  "calendar-web": ["mingla-admin", "mingla-marketing", "mingla-sites"],
   "card-identity": ["mingla-business"],
   // #4514 — the brand form renderer (buyer web, link page, Host builder preview).
   "form-rendering": ["mingla-business"],

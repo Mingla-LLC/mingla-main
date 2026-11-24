@@ -150,7 +150,8 @@ Deno.test("issue #1175 rework: trip retries preserve durable identity after canc
 
   assert(
     trip.includes(
-      "entry.refund_cents === entry.paid_cents\n          ? undefined",
+      // issue #4522 seventh pass (H-1): the whole charge as made (chargeCents)
+      "entry.refund_cents === chargeCents(entry)\n          ? undefined",
     ),
     "full trip refund no longer omits amount",
   );

@@ -205,3 +205,41 @@ describe("ORCH-0859 / issue #1971 — a trip draft carries its brand currency, n
     expect(body.match(/v_currency/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
 });
+
+// #4523 S-9 — a new trip is created in the brand's zone (spec §4.6: the brand
+// zone, the device's as the fallback), so the builder's calendar "today" is
+// the host's today, not UTC's. FAILS ON REVERT: p_seed carries no timezone and
+// the route does not pass one (the server then defaults to UTC).
+describe("#4523 S-9 a new trip's time zone", () => {
+  const stubCreate = (captured: { fn: string; args: Record<string, unknown> }[]): void => {
+    rpcMock.mockImplementation((fn: string, args: Record<string, unknown>) => {
+      captured.push({ fn, args });
+      if (fn === "biz_create_trip_draft") {
+        return Promise.resolve({ data: { event: { id: "event-1" } }, error: null });
+      }
+      return Promise.resolve({ data: 0, error: null });
+    });
+    const chain: Record<string, unknown> = {};
+    for (const k of ["select", "eq", "is", "in", "order"]) chain[k] = () => chain;
+    chain.maybeSingle = () => Promise.resolve({ data: null, error: null });
+    fromMock.mockImplementation(() => chain);
+  };
+
+  test("the seed carries the zone it is given, and none when not given", async () => {
+    const captured: { fn: string; args: Record<string, unknown> }[] = [];
+    stubCreate(captured);
+    await createTripDraft({ brandId: "brand-1", timezone: "Africa/Lagos" }, "owner").catch(() => undefined);
+    await createTripDraft({ brandId: "brand-1" }, "owner").catch(() => undefined);
+    const seeds = captured.filter((c) => c.fn === "biz_create_trip_draft").map((c) => c.args.p_seed);
+    expect(seeds[0]).toMatchObject({ timezone: "Africa/Lagos" });
+    expect(seeds[1]).not.toHaveProperty("timezone");
+  });
+
+  test("the trip route passes the brand's zone, falling back to the device's", () => {
+    const route = readFileSync(join(__dirname, "..", "..", "..", "app", "trip", "[id]", "edit.tsx"), "utf8");
+    // [TEST-MOD-APPROVED #4522] G-5 made a new trip read the brand's own time zone first
+    // (brandZone), then the payout country, the currency, and last the device's zone, so the
+    // call now carries a brandZone line before payoutCountry that the old pattern did not allow.
+    expect(route).toMatch(/timezone: defaultTimezoneForBrand\(\{\s*brandZone: currentBrand\.defaultTimezone \?\? null,\s*payoutCountry: currentBrand\.payoutCountry \?\? currentBrand\.paymentCountry \?\? null,\s*currency: currentBrand\.defaultCurrency \?\? null,\s*deviceZone: detectDeviceTimezone\(\),/);
+  });
+});

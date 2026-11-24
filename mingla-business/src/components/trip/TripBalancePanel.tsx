@@ -1,0 +1,383 @@
+import React, { useMemo } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  aggregateTripBalanceSchedule,
+  formatTripBalanceMoney,
+  rebalanceTripPlan,
+  TRIP_BALANCE_SET_DATES_COPY,
+  type TripBalance,
+  type TripBalanceChoice,
+  tripBalanceOptions,
+  tripBalanceOverpaymentLines,
+  tripBalancePaidSoFar,
+} from "@mingla/offering-rendering/tripBalance";
+
+import { radius, space, type } from "../../constants/designSystem";
+import { color, themedStyles } from "../../theme/surfaceTokens";
+import { Button } from "../ui/Button";
+import { Input } from "../ui/Input";
+import { localeForCurrency } from "../../utils/currency";
+
+/** issue #4522 S-16 — the shared balance money rule ("₦900,000", "$0.49"). */
+export function balanceMoney(amountMinor: number, currency: string): string {
+  return formatTripBalanceMoney(amountMinor, currency, localeForCurrency(currency));
+}
+
+/**
+ * issue #4522 W-11 — the empty "Other amount" hint, by the shared money rule
+ * (a whole amount shows no decimals): "0", never "0.00" on a naira balance.
+ */
+export function otherAmountPlaceholder(currency: string): string {
+  return balanceMoney(0, currency).replace(/[^\d.,]/g, "");
+}
+
+const due = (value: string): string => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" })
+      .format(date);
+};
+
+interface Props {
+  balance: TripBalance;
+  tripTitle: string;
+  brandName?: string;
+  choice: TripBalanceChoice;
+  customAmount: string;
+  amountMinor: number | null;
+  customError?: string | null;
+  busy?: boolean;
+  onChoice: (choice: TripBalanceChoice) => void;
+  onCustomAmount: (value: string) => void;
+  onPay: () => void;
+}
+
+export function TripBalancePanel({
+  balance,
+  tripTitle,
+  brandName,
+  choice,
+  customAmount,
+  amountMinor,
+  customError,
+  busy = false,
+  onChoice,
+  onCustomAmount,
+  onPay,
+}: Props): React.ReactElement {
+  const styles = balanceStyles;
+  const options = tripBalanceOptions(balance);
+  const after = useMemo(
+    () =>
+      amountMinor === null ? balance.openRows : rebalanceTripPlan(
+        balance.openRows,
+        amountMinor,
+        balance.minPaymentMinor,
+        balance.providerMinimumMinor,
+      ),
+    [amountMinor, balance.minPaymentMinor, balance.openRows, balance.providerMinimumMinor],
+  );
+  const progress = balance.totalMinor > 0
+    ? Math.min(100, Math.max(0, (balance.paidMinor / balance.totalMinor) * 100))
+    : 100;
+  return (
+    <View style={styles.stack}>
+      <View style={styles.hero}>
+        <Text style={styles.eyebrow}>{brandName ?? "MINGLA TRIP"}</Text>
+        <Text style={styles.trip}>{tripTitle}</Text>
+        <Text style={styles.label}>Balance remaining</Text>
+        <Text
+          accessibilityLabel={`${
+            balanceMoney(balance.remainingMinor, balance.currency)
+          } remaining`}
+          style={styles.balance}
+        >
+          {balanceMoney(balance.remainingMinor, balance.currency)}
+        </Text>
+        <View
+          accessibilityRole="progressbar"
+          accessibilityValue={{
+            min: 0,
+            max: balance.totalMinor,
+            now: balance.paidMinor,
+          }}
+          style={styles.track}
+        >
+          <View style={[styles.progress, { width: `${progress}%` }]} />
+        </View>
+        <Text style={styles.progressCopy}>
+          {balanceMoney(balance.paidMinor, balance.currency)} paid of{" "}
+          {balanceMoney(balance.totalMinor, balance.currency)}
+        </Text>
+        {/* issue #4522 (N5, S-5) — money paid beyond the trip price, returned. */}
+        <TripBalanceOverpayment balance={balance} />
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Choose what to pay</Text>
+        {!balance.canPayAnyAmount
+          ? (
+            // issue #4522 S-15 (spec §7) — flexible payments are off.
+            <Text style={styles.muted} testID="trip-balance-set-dates">
+              {TRIP_BALANCE_SET_DATES_COPY}
+            </Text>
+          )
+          : null}
+        <View style={styles.options}>
+          {options.map((option) => {
+            const selected = choice === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                accessibilityRole="radio"
+                accessibilityLabel={option.label}
+                accessibilityState={{ checked: selected }}
+                onPress={() => onChoice(option.key)}
+                style={({ pressed }) => [
+                  styles.option,
+                  selected && styles.optionSelected,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.optionLabel}>{option.label}</Text>
+                <Text style={styles.optionAmount}>
+                  {option.amountMinor === null
+                    ? "Enter amount"
+                    : balanceMoney(option.amountMinor, balance.currency)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {choice === "other"
+          ? (
+            <View style={styles.custom}>
+              <Input
+                accessibilityLabel="Other payment amount"
+                variant="number"
+                onChangeText={onCustomAmount}
+                // issue #4522 W-11 — choosing "Other amount" puts the cursor
+                // here; the hint follows the shared money rule ("0").
+                autoFocus
+                placeholder={otherAmountPlaceholder(balance.currency)}
+                value={customAmount}
+              />
+              {customError
+                ? (
+                  <Text accessibilityRole="alert" style={styles.error}>
+                    {customError}
+                  </Text>
+                )
+                : null}
+            </View>
+          )
+          : null}
+        {choice !== "other" && customError
+          ? (
+            <Text accessibilityRole="alert" style={styles.error}>
+              {customError}
+            </Text>
+          )
+          : null}
+      </View>
+
+      {amountMinor !== null
+        ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              Your remaining payments update after you pay
+            </Text>
+            <View style={styles.scheduleColumns}>
+              <Schedule
+                title="Now"
+                rows={aggregateTripBalanceSchedule(balance.openRows)}
+                currency={balance.currency}
+              />
+              <Schedule
+                title={`After paying ${
+                  balanceMoney(amountMinor, balance.currency)
+                }`}
+                rows={after}
+                currency={balance.currency}
+              />
+            </View>
+          </View>
+        )
+        : null}
+
+      {tripBalancePaidSoFar(balance).length > 0
+        ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Paid so far</Text>
+            {tripBalancePaidSoFar(balance).map((row) => (
+              <View key={row.key} style={styles.historyRow}>
+                <Text style={styles.muted}>
+                  {row.kind === "deposit" ? "Deposit" : "Payment"}
+                </Text>
+                <Text style={styles.historyAmount}>
+                  {balanceMoney(row.amountMinor, balance.currency)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )
+        : null}
+
+      <Button
+        disabled={busy || amountMinor === null || balance.paymentInFlight}
+        fullWidth
+        label={busy
+          ? "Starting payment…"
+          : amountMinor === null
+          ? "Choose an amount"
+          : `Pay ${balanceMoney(amountMinor, balance.currency)}`}
+        onPress={onPay}
+        size="lg"
+      />
+      {balance.paymentInFlight
+        ? (
+          <Text style={styles.notice}>
+            A payment on this trip is already processing. Check again in a
+            moment.
+          </Text>
+        )
+        : null}
+    </View>
+  );
+}
+
+/** issue #4522 (N5, S-5) — being refunded, and already refunded. */
+export function TripBalanceOverpayment(
+  { balance }: { balance: Pick<TripBalance, "heldCreditMinor" | "overpaymentRefundedMinor" | "currency"> },
+): React.ReactElement | null {
+  const styles = balanceStyles;
+  const lines = tripBalanceOverpaymentLines(
+    balance,
+    (minor) => balanceMoney(minor, balance.currency),
+  );
+  if (lines.length === 0) return null;
+  return (
+    <View style={styles.overpayment} testID="trip-balance-overpayment">
+      {lines.map((line) => (
+        <Text key={line} style={styles.muted}>{line}</Text>
+      ))}
+    </View>
+  );
+}
+
+function Schedule(
+  { title, rows, currency }: {
+    title: string;
+    rows: TripBalance["openRows"];
+    currency: string;
+  },
+): React.ReactElement {
+  const styles = balanceStyles;
+  return (
+    <View style={styles.schedule}>
+      <Text style={styles.scheduleTitle}>{title}</Text>
+      {rows.length === 0
+        ? <Text style={styles.paidFull}>Paid in full</Text>
+        : rows.map((row) => (
+          <View key={row.installmentId} style={styles.scheduleRow}>
+            <Text style={styles.muted}>{due(row.dueAt)}</Text>
+            <Text style={styles.scheduleAmount}>
+              {balanceMoney(row.amountMinor, currency)}
+            </Text>
+          </View>
+        ))}
+    </View>
+  );
+}
+
+const balanceStyles = themedStyles(() =>
+  StyleSheet.create({
+    stack: { width: "100%", gap: space[5] },
+    hero: {
+      padding: space[6],
+      borderRadius: radius.lg,
+      backgroundColor: color.card,
+      borderWidth: 1,
+      borderColor: color.lineStrong,
+    },
+    eyebrow: {
+      ...type.small,
+      color: color.accentText,
+      fontWeight: "800",
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+    },
+    trip: { ...type.h2, color: color.text1, marginTop: space[2] },
+    label: { ...type.small, color: color.text3, marginTop: space[6] },
+    balance: { ...type.display, color: color.text1, marginTop: space[1] },
+    track: {
+      height: 8,
+      borderRadius: radius.full,
+      backgroundColor: color.fill.inset,
+      overflow: "hidden",
+      marginTop: space[4],
+    },
+    progress: {
+      height: "100%",
+      borderRadius: radius.full,
+      backgroundColor: color.accent,
+    },
+    progressCopy: { ...type.small, color: color.text2, marginTop: space[2] },
+    section: {
+      padding: space[5],
+      borderRadius: radius.lg,
+      backgroundColor: color.card,
+      borderWidth: 1,
+      borderColor: color.lineStrong,
+      gap: space[4],
+    },
+    sectionTitle: { ...type.h2, color: color.text1 },
+    options: { flexDirection: "row", flexWrap: "wrap", gap: space[3] },
+    option: {
+      flexGrow: 1,
+      flexBasis: "45%",
+      minHeight: 84,
+      padding: space[4],
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: color.controlOutline,
+      backgroundColor: color.fill.input,
+      justifyContent: "space-between",
+    },
+    optionSelected: {
+      borderColor: color.accent,
+      backgroundColor: color.fill.step,
+    },
+    optionLabel: { ...type.small, color: color.text2, fontWeight: "700" },
+    optionAmount: { ...type.h2, color: color.text1, marginTop: space[2] },
+    pressed: { opacity: 0.72 },
+    custom: { gap: space[2] },
+    error: { ...type.small, color: color.errorText },
+    scheduleColumns: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: space[3],
+    },
+    schedule: {
+      flex: 1,
+      padding: space[3],
+      borderRadius: radius.md,
+      backgroundColor: color.fill.inset,
+      gap: space[3],
+    },
+    scheduleTitle: { ...type.small, color: color.text2, fontWeight: "800" },
+    scheduleRow: { gap: 2 },
+    scheduleAmount: { ...type.body, color: color.text1, fontWeight: "800" },
+    muted: { ...type.small, color: color.text3 },
+    overpayment: { gap: space[1], marginTop: space[3] },
+    paidFull: { ...type.body, color: color.successText, fontWeight: "800" },
+    historyRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: space[3],
+    },
+    historyAmount: { ...type.body, color: color.text1, fontWeight: "700" },
+    notice: { ...type.small, color: color.text2, textAlign: "center" },
+  })
+);

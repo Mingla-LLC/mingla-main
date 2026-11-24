@@ -54,6 +54,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { ADS_RESULTS_CAVEAT, ADS_RESULTS_PROVEN, adsErrorWords, seenLabel } from "../lib/systemPages";
 import { Tabs } from "../components/ui/Tabs";
 import { CampaignsPage } from "./CampaignsPage";
+import { CalendarInput } from "@mingla/calendar-web";
 
 const PREFLIGHT_BADGE = {
   green: "success",
@@ -1030,8 +1031,8 @@ function CreativeLibraryPanel() {
               ))}
               <label className="block text-sm font-semibold">
                 Auto-archive after
-                <input
-                  type="datetime-local"
+                <CalendarInput
+                  mode="datetime"
                   value={tagDraft.dateLockedUntil}
                   onChange={(event) => setTagDraft((current) => ({
                     ...current,

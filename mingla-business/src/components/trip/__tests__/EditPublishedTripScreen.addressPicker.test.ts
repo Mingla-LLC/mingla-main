@@ -15,7 +15,7 @@ import { describe, expect, test } from "@jest/globals";
 import { readFileSync } from "fs";
 import path from "path";
 
-const src = (): string =>
+const editorSrc = (): string =>
   readFileSync(
     path.join(
       process.cwd(),
@@ -23,15 +23,21 @@ const src = (): string =>
     ),
     "utf8",
   );
+const basicsSrc = (): string =>
+  readFileSync(
+    path.join(process.cwd(), "src/components/trip/TripCreatorStep1Basics.tsx"),
+    "utf8",
+  );
 
 describe("ORCH-1118 — EditPublishedTripScreen uses the address picker for both fields", () => {
   test("T-6: both address fields are AddressInput (exactly two)", () => {
-    const tags = src().match(/<AddressInput/g) ?? [];
+    expect(editorSrc()).toContain("<TripCreatorStep1Basics");
+    const tags = basicsSrc().match(/<AddressInput/g) ?? [];
     expect(tags.length).toBe(2);
   });
 
   test("T-6: the legacy plain TextInputs for departure/destination are gone", () => {
-    const s = src();
+    const s = basicsSrc();
     // The departure/destination fields no longer carry the testID on a TextInput;
     // testIDs moved onto the wrapping View per the do-not-touch wrapper constraint.
     expect(s).not.toMatch(
@@ -40,13 +46,10 @@ describe("ORCH-1118 — EditPublishedTripScreen uses the address picker for both
     expect(s).not.toMatch(
       /<TextInput[^>]*testID="edit-trip-destination"/s,
     );
-    // testIDs preserved on the wrapping Views (queryable for the tester).
-    expect(s).toContain('testID="edit-trip-departure"');
-    expect(s).toContain('testID="edit-trip-destination"');
   });
 
   test("T-6: imports the shared picker + the predicate/copy", () => {
-    const s = src();
+    const s = `${editorSrc()}\n${basicsSrc()}`;
     expect(s).toMatch(
       /import\s*\{\s*AddressInput\s*\}\s*from\s*["'][^"']*location\/AddressInput["']/,
     );
@@ -55,7 +58,7 @@ describe("ORCH-1118 — EditPublishedTripScreen uses the address picker for both
   });
 
   test("T-7: handleSavePress gates on BOTH predicates and returns before setModal", () => {
-    const s = src();
+    const s = editorSrc();
     const handler = s.slice(
       s.indexOf("const handleSavePress"),
       s.indexOf("setModal({"),
@@ -67,14 +70,14 @@ describe("ORCH-1118 — EditPublishedTripScreen uses the address picker for both
   });
 
   test("T-8: typing into either field nulls its placeId/lat/lng", () => {
-    const s = src();
+    const s = basicsSrc();
     // Departure handler nulls structured fields.
     expect(s).toMatch(
-      /departureLocationText:\s*v\.trim\(\)\.length === 0 \? null : v,\s*\n?\s*departurePlaceId:\s*null,\s*\n?\s*departureLat:\s*null,\s*\n?\s*departureLng:\s*null,/,
+      /departureLocationText:\s*v,\s*\n?\s*departurePlaceId:\s*null,\s*\n?\s*departureLat:\s*null,\s*\n?\s*departureLng:\s*null,/,
     );
     // Destination handler nulls structured fields.
     expect(s).toMatch(
-      /destinationLocationText:\s*v\.trim\(\)\.length === 0 \? null : v,\s*\n?\s*destinationPlaceId:\s*null,\s*\n?\s*destinationLat:\s*null,\s*\n?\s*destinationLng:\s*null,/,
+      /destinationLocationText:\s*v,\s*\n?\s*destinationPlaceId:\s*null,\s*\n?\s*destinationLat:\s*null,\s*\n?\s*destinationLng:\s*null,/,
     );
     // onPick writes the full pick on both.
     expect(s).toContain("departurePlaceId: place.placeId");

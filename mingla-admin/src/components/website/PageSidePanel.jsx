@@ -3,6 +3,7 @@
 // "Questions from a form"), edit it within the limits, the pop-up's settings
 // with "See it as a visitor", Move up / Move down to the next free spot,
 // Remove, and the hero's words (48 / 24 / 200 / 28 with counters, Reset).
+import { CalendarInput } from "@mingla/calendar-web";
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Eye, Trash2 } from "lucide-react";
 import { Button } from "../ui/Button";
@@ -204,7 +205,7 @@ export function PageSidePanel({ page, panel, setPanel, canEdit, doc, tpl, onEdit
             <LimitedText label="Button" value={block.btn} limit={LIMITS.bannerBtn} disabled={!canEdit} onChange={(v) => set({ btn: v })} />
             <DestPicker value={block.to} forms={forms} disabled={!canEdit} onChange={(to) => set({ to })} />
             <label className="block text-[12.5px] font-semibold text-[var(--a-text2)]">Show until
-              <input type="date" value={block.show_until || ""} disabled={!canEdit} onChange={(e) => set({ show_until: e.target.value || null })}
+              <CalendarInput mode="date" value={block.show_until || ""} disabled={!canEdit} onChange={(e) => set({ show_until: e.target.value || null })}
                 className="mt-1.5 h-11 w-full rounded-xl border-[1.5px] border-[var(--a-line)] bg-[var(--color-background-primary)] px-3 text-sm font-normal" />
             </label>
           </>

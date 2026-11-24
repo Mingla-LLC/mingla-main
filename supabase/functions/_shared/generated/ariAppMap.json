@@ -1429,6 +1429,16 @@
       "capability_keys": []
     },
     {
+      "pattern": "/pay/balance/[token]",
+      "params": [
+        "token"
+      ],
+      "title": "Balance",
+      "title_source": "path",
+      "file": "mingla-business/app/pay/balance/[token].tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/pay/callback",
       "params": [],
       "title": "Pay callback",

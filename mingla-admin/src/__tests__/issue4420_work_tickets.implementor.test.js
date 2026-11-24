@@ -226,7 +226,10 @@ describe("T-3 the ticket form: the creator chooses the owner", () => {
     assert.equal(Object.hasOwn(buildTicketPayload({ ...form, due: "" }), "due_on"), false);
     const src = code("components/ops/TicketForm.jsx");
     assert.match(src, /useState\(\(\) => defaultTicketDue\(today\)\)/);
-    assert.match(src, /type="date"/, "the card form's own date control (CalendarInput is not on this branch)");
+    // #4523: the due date is picked on the shared calendar, never typed into a native date input.
+    assert.doesNotMatch(src, /type=["']date["']/, "no native date input on the ticket form");
+    assert.match(src, /import \{ CalendarInput \} from "@mingla\/calendar-web";/);
+    assert.match(src, /<CalendarInput mode="date" value=\{due\} onChange=\{\(e\) => setDue\(e\.target\.value\)\}[^>]*aria-describedby="ticket-due-note"/, "same value, same change handler, same described-by note");
   });
   it("carries the source conversation and a brand", () => {
     const p = buildTicketPayload({ ...form, conversationIds: ["c1", "c2"], brandId: "b1" }, { createdFrom: "conversation" });

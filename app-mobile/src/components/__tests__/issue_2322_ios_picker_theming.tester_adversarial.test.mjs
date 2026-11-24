@@ -32,25 +32,14 @@ function onboardingDobRegion() {
   return source.slice(start, end);
 }
 
-test("T-3: the onboarding DOB wheel pins the light tone and its own palette token", () => {
-  const pickers = pickerElements(onboardingDobRegion());
-  assert.equal(pickers.length, 1, "expected exactly one DOB picker in onboarding step 1");
-  assert.match(pickers[0], /themeVariant\s*=\s*["']light["']/);
-  assert.match(pickers[0], /textColor\s*=\s*\{colors\.text\.primary\}/);
-  assert.doesNotMatch(pickers[0], /themeVariant\s*=\s*\{[^}]+\}/);
-});
-
-test("T-3: both reschedule wheels pin light with PostExperienceModal's flat palette", () => {
-  const source = read(POST_EXPERIENCE);
-  const regionStart = source.indexOf("[#2322]");
-  assert.notEqual(regionStart, -1, "the load-bearing picker comment must exist");
-  const pickers = pickerElements(source.slice(regionStart));
-  assert.equal(pickers.length, 2, "expected the reschedule date and time wheels");
-  for (const picker of pickers) {
-    assert.match(picker, /themeVariant\s*=\s*["']light["']/);
-    assert.match(picker, /textColor\s*=\s*\{colors\.gray900\}/);
-    assert.doesNotMatch(picker, /themeVariant\s*=\s*\{[^}]+\}/);
-  }
+test("T-3: the onboarding DOB and the reschedule date are the Mingla calendar, not an OS wheel (#4523)", () => {
+  assert.equal(pickerElements(onboardingDobRegion()).length, 0, "no OS wheel in the onboarding DOB region");
+  const post = read(POST_EXPERIENCE);
+  const wheels = pickerElements(post);
+  assert.equal(wheels.length, 1, "only the reschedule TIME wheel remains");
+  assert.match(wheels[0], /mode\s*=\s*["']time["']/);
+  assert.match(wheels[0], /themeVariant\s*=\s*["']light["']/);
+  assert.match(wheels[0], /textColor\s*=\s*\{colors\.gray900\}/);
 });
 
 test("T-4: neither repaired component may branch picker appearance on the device", () => {

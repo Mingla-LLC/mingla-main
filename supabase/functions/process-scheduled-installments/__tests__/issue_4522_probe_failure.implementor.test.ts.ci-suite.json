@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/process-scheduled-installments/__tests__/issue_4522_probe_failure.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4522-cron-probe-failure",
+  "profile": "deno-1.46-stripe"
+}

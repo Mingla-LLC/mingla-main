@@ -35,7 +35,18 @@ import {
 import {
   useInstallmentsForBrandTrips,
   useRetryInstallment,
+  useTripEventBalances,
 } from "../../../../src/hooks/useOrderInstallments";
+import { featureFlags } from "../../../../src/config/featureFlags";
+import {
+  buildTripMoneyV2View,
+  closedOrderState,
+  TRIP_MONEY_V2_CHIP_LABEL,
+  TRIP_MONEY_V2_BELOW_MINIMUM_COPY,
+  TRIP_MONEY_V2_IN_FLIGHT_COPY,
+  type TripMoneyV2Chip,
+  type TripMoneyV2View,
+} from "../../../../src/components/trip/tripMoneyV2Model";
 import {
   useChargeInstallmentNow,
   useRecentReminderForOrder,
@@ -45,6 +56,7 @@ import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import { useTripOrders } from "../../../../src/hooks/useTripOrders";
 import { useTrip } from "../../../../src/hooks/useTrips";
 import type {
+  HostTripBalance,
   OrderInstallmentForBrand,
   OrderInstallmentStatus,
 } from "../../../../src/services/orderInstallmentsService";
@@ -70,7 +82,21 @@ interface TravelerMoneyRow {
   nextInstallment: OrderInstallmentForBrand | null;
   lastChargeStatus: LastChargeStatus;
   planSchedule: InstallmentScheduleDisplaySchedule | null;
+  /** issue #4522 S-2 — a plan-v2 order, read from the server balance; null otherwise. */
+  v2: TripMoneyV2View | null;
+  /**
+   * issue #4522 X-7 — the order was refunded or cancelled: nothing is left to
+   * collect or cancel, whatever its rows add up to. Null for a live order.
+   */
+  closed: "refunded" | "cancelled" | null;
+  /**
+   * issue #4522 pass 5 — an older plan the server balance says is paid in
+   * full (nothing left, no open row): no reminder is offered. Only set from
+   * the server balance, so main's view (no balance reader) is unchanged.
+   */
+  serverSettled?: boolean;
 }
+
 
 function formatCurrency(cents: number, currency: string): string {
   return withCurrencyGlyph(
@@ -136,6 +162,8 @@ function statusLabel(status: LastChargeStatus): string {
       return "Refunded";
     case "cancelled":
       return "Cancelled";
+    case "superseded":
+      return "Rebalanced";
     default:
       return status;
   }
@@ -214,6 +242,7 @@ function deriveInstallmentRow(rows: OrderInstallmentForBrand[]): TravelerMoneyRo
     outstandingCents,
     nextInstallment,
     lastChargeStatus: head.orderAtRisk ? "at_risk" : attempted?.status ?? "scheduled",
+    closed: null,
     planSchedule: {
       fullPriceCents: head.orderTotalCents,
       depositCents,
@@ -225,6 +254,66 @@ function deriveInstallmentRow(rows: OrderInstallmentForBrand[]): TravelerMoneyRo
         dueAt: row.dueAt,
       })),
     },
+    v2: null,
+  };
+}
+
+/**
+ * issue #4522 S-2 — a plan-v2 order: paid, owed and next come from the
+ * server's balance (issue_4522_balance), never from summing rows here.
+ */
+function deriveV2InstallmentRow(
+  rows: OrderInstallmentForBrand[],
+  balance: HostTripBalance,
+): TravelerMoneyRow {
+  const head = rows[0];
+  const v2 = buildTripMoneyV2View({
+    rows,
+    balance,
+    money: (minor) => formatCurrency(minor, balance.currency),
+  });
+  const lastChargeStatus: LastChargeStatus = head.orderAtRisk
+    ? "at_risk"
+    : v2.settled
+      ? "collected"
+      : v2.nextOpenRow?.status === "failed"
+        ? "failed"
+        : "scheduled";
+  return {
+    orderId: head.orderId,
+    buyerName: head.buyerName,
+    buyerEmail: head.buyerEmail,
+    orderTotalCents: balance.totalMinor,
+    currency: balance.currency,
+    orderAtRisk: head.orderAtRisk,
+    installments: rows,
+    isPaidInFull: false,
+    paidToDateCents: balance.paidMinor,
+    outstandingCents: balance.remainingMinor,
+    nextInstallment: v2.nextOpenRow,
+    lastChargeStatus,
+    planSchedule: null,
+    v2,
+    closed: null,
+  };
+}
+
+/**
+ * issue #4522 E-5 — an older plan's order stores only its deposit as the order
+ * total, so summing its rows here showed "$0.00 / $200.00 · $200.00 left" for
+ * $200 paid of $800. Its paid / total / left come from the server balance
+ * (issue_4522_balance); its layout, schedule and actions stay as they were.
+ */
+function withServerPlanFigures(
+  row: TravelerMoneyRow,
+  balance: HostTripBalance,
+): TravelerMoneyRow {
+  return {
+    ...row,
+    orderTotalCents: balance.totalMinor,
+    paidToDateCents: balance.paidMinor,
+    outstandingCents: balance.remainingMinor,
+    serverSettled: balance.remainingMinor === 0 && row.nextInstallment === null,
   };
 }
 
@@ -246,7 +335,13 @@ export default function TripMoneyRoute(): React.ReactElement {
   const installmentsQuery = useInstallmentsForBrandTrips(brandId, {
     tripEventId: typeof eventId === "string" ? eventId : undefined,
     atRiskOnly: moneyFilter === "atRisk",
+    planV2: featureFlags.tripPlanV2,
   });
+  // issue #4522 S-2 — plan-v2 balances (server truth); off with the switch.
+  const balancesQuery = useTripEventBalances(
+    typeof eventId === "string" ? eventId : null,
+    featureFlags.tripPlanV2,
+  );
   const toastMessage = useCallback((input: {
     kind: "success" | "warning" | "error";
     message: string;
@@ -274,13 +369,37 @@ export default function TripMoneyRoute(): React.ReactElement {
     if (installmentsQuery.data === undefined || ordersQuery.data === undefined) {
       return null;
     }
+    const balancesByOrder = new Map<string, HostTripBalance>();
+    if (featureFlags.tripPlanV2) {
+      if (balancesQuery.data === undefined) return null;
+      for (const balance of balancesQuery.data) {
+        balancesByOrder.set(balance.orderId, balance);
+      }
+    }
     const rowsByOrder = new Map<string, OrderInstallmentForBrand[]>();
     for (const row of installmentsQuery.data) {
       const arr = rowsByOrder.get(row.orderId) ?? [];
       arr.push(row);
       rowsByOrder.set(row.orderId, arr);
     }
-    const installmentRows = [...rowsByOrder.values()].map(deriveInstallmentRow);
+    const statusByOrder = new Map(
+      ordersQuery.data.map((order) => [order.id, order]),
+    );
+    const installmentRows = [...rowsByOrder.values()].map((orderRows) => {
+      const balance = balancesByOrder.get(orderRows[0].orderId);
+      const derived = balance === undefined
+        ? deriveInstallmentRow(orderRows)
+        : balance.planVersion === 2
+          ? deriveV2InstallmentRow(orderRows, balance)
+          : withServerPlanFigures(deriveInstallmentRow(orderRows), balance);
+      // issue #4522 X-7 — a refunded or cancelled order shows that, not
+      // "Collected · paid in full", and offers no charge, reminder or cancel.
+      const orderRow = statusByOrder.get(derived.orderId);
+      const closed = closedOrderState(orderRow?.paymentStatus, orderRow?.cancelledAt);
+      return closed === null
+        ? derived
+        : { ...derived, closed, lastChargeStatus: closed, nextInstallment: null };
+    });
     const paidInFullRows = ordersQuery.data
       .filter((order) => !rowsByOrder.has(order.id))
       .filter((order) => order.paymentStatus === "paid")
@@ -298,6 +417,8 @@ export default function TripMoneyRoute(): React.ReactElement {
         nextInstallment: null,
         lastChargeStatus: "collected",
         planSchedule: null,
+        v2: null,
+        closed: null,
       }));
     const rows = [...installmentRows, ...paidInFullRows]
       .filter((row) => moneyFilter === "all" || row.orderAtRisk)
@@ -309,7 +430,7 @@ export default function TripMoneyRoute(): React.ReactElement {
       });
     const atRiskOrderCount = installmentRows.filter((row) => row.orderAtRisk).length;
     return { rows, atRiskOrderCount };
-  }, [installmentsQuery.data, moneyFilter, ordersQuery.data]);
+  }, [balancesQuery.data, installmentsQuery.data, moneyFilter, ordersQuery.data]);
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -369,6 +490,7 @@ export default function TripMoneyRoute(): React.ReactElement {
         <MoneyRouteBody
           installmentsQuery={installmentsQuery}
           ordersQuery={ordersQuery}
+          balancesQuery={balancesQuery}
           moneyData={moneyData}
           moneyFilter={moneyFilter}
           setMoneyFilter={setMoneyFilter}
@@ -394,6 +516,7 @@ export default function TripMoneyRoute(): React.ReactElement {
 interface MoneyRouteBodyProps {
   installmentsQuery: ReturnType<typeof useInstallmentsForBrandTrips>;
   ordersQuery: ReturnType<typeof useTripOrders>;
+  balancesQuery: ReturnType<typeof useTripEventBalances>;
   moneyData: {
     rows: TravelerMoneyRow[];
     atRiskOrderCount: number;
@@ -412,6 +535,7 @@ interface MoneyRouteBodyProps {
 const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
   installmentsQuery,
   ordersQuery,
+  balancesQuery,
   moneyData,
   moneyFilter,
   setMoneyFilter,
@@ -432,14 +556,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
   // (decision on #4420, 11-14). The at-risk path keeps its own confirm above.
   const [pendingCharge, setPendingCharge] = useState<TravelerMoneyRow | null>(null);
 
-  if (installmentsQuery.isLoading || ordersQuery.isLoading || moneyData === null) {
-    return (
-      <View style={{ paddingVertical: space[7], alignItems: "center" }}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
-  if (installmentsQuery.isError || ordersQuery.isError) {
+  if (installmentsQuery.isError || ordersQuery.isError || balancesQuery.isError) {
     return (
       <View style={styles.emptyState}>
         <Icon name="bell" size={32} color={color.danger} />
@@ -448,6 +565,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
           onPress={() => {
             void installmentsQuery.refetch();
             void ordersQuery.refetch();
+            void balancesQuery.refetch();
           }}
           accessibilityRole="button"
           accessibilityLabel="Retry loading money table"
@@ -455,6 +573,13 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
         >
           <Text style={styles.moneyRetryBtnText}>Retry</Text>
         </Pressable>
+      </View>
+    );
+  }
+  if (installmentsQuery.isLoading || ordersQuery.isLoading || moneyData === null) {
+    return (
+      <View style={{ paddingVertical: space[7], alignItems: "center" }}>
+        <ActivityIndicator />
       </View>
     );
   }
@@ -730,6 +855,9 @@ const TravelerMoneyTableRow: React.FC<TravelerRowProps> = (props) => {
 };
 
 const PlanCell: React.FC<{ row: TravelerMoneyRow }> = ({ row }) => {
+  if (row.v2 !== null) {
+    return <Text style={styles.tableCellText}>{row.v2.termsLine}</Text>;
+  }
   if (row.isPaidInFull) {
     return <Text style={styles.tableCellText}>Paid in full</Text>;
   }
@@ -766,6 +894,12 @@ const StatusPill: React.FC<{ status: LastChargeStatus }> = ({ status }) => {
 };
 
 function formatNextInstallment(row: TravelerMoneyRow): string {
+  if (row.v2 !== null) {
+    const next = row.v2.nextPayment;
+    return next === null
+      ? "—"
+      : `${formatMoneyDate(next.dueAt)} · ${formatCurrency(next.amountMinor, row.currency)}`;
+  }
   if (row.nextInstallment === null) return "—";
   return `${formatMoneyDate(row.nextInstallment.dueAt)} · ${formatCurrency(row.nextInstallment.amountChargedCents, row.nextInstallment.currency)}`;
 }
@@ -805,14 +939,26 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
   compact = false,
 }) => {
   const recentReminder = useRecentReminderForOrder(row.orderId);
-  const canCharge = row.nextInstallment !== null && !row.isPaidInFull;
+  // issue #4522 X-7 — nothing to charge or remind on a refunded / cancelled order.
+  if (row.closed !== null) return null;
+  // issue #4522 S-2 — a settled plan-v2 order is paid in full; while a
+  // traveler payment processes, nothing else may charge; a balance below the
+  // provider's minimum stays owed but cannot be charged (no Charge now).
+  // (A settled v2 order has no next open row, so canCharge is already false.)
+  const settled = row.isPaidInFull || row.v2?.settled === true || row.serverSettled === true;
+  const inFlight = row.v2?.paymentInFlight === true;
+  const belowMinimum = row.v2?.belowProviderMinimum === true;
+  const canCharge = row.nextInstallment !== null && !row.isPaidInFull && !inFlight && !belowMinimum;
   const sendPayLink = row.nextInstallment?.collectionMethod === "pay_link" ||
     row.nextInstallment?.buyerAction === "approval_required";
   const reminderDisabled = row.isPaidInFull ||
+    settled ||
+    inFlight ||
+    belowMinimum ||
     recentReminder.data !== null ||
     recentReminder.isLoading ||
     sendReminderMutation.isPending;
-  const reminderCopy = row.isPaidInFull
+  const reminderCopy = settled
     ? "No reminder needed — paid in full"
     : recentReminder.data !== null
       ? "Already reminded in the past 24h"
@@ -854,6 +1000,16 @@ const RowActions: React.FC<TravelerRowProps & { compact?: boolean }> = ({
       >
         <Text style={styles.moneyActionBtnSecondaryText}>{reminderCopy}</Text>
       </Pressable>
+      {inFlight && !settled ? (
+        <Text style={styles.moneyBookingMeta} testID="trip-money-in-flight">
+          {TRIP_MONEY_V2_IN_FLIGHT_COPY}
+        </Text>
+      ) : null}
+      {belowMinimum && !inFlight ? (
+        <Text style={styles.moneyBookingMeta} testID="trip-money-below-minimum">
+          {TRIP_MONEY_V2_BELOW_MINIMUM_COPY}
+        </Text>
+      ) : null}
     </View>
   );
 };
@@ -865,6 +1021,28 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
   onCancel,
 }) => {
   if (!expanded) return null;
+  if (row.v2 !== null) {
+    return (
+      <>
+        <View style={styles.moneyDivider} />
+        <V2Ledger row={row} view={row.v2} retryMutation={retryMutation} />
+        {row.closed === null ? (
+          <>
+            <View style={styles.moneyDivider} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
+              accessibilityHint="Opens cancellation preview with refund amount and reason field"
+              style={styles.moneyRefundBtn}
+              onPress={onCancel}
+            >
+              <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
+            </Pressable>
+          </>
+        ) : null}
+      </>
+    );
+  }
   return (
     <>
       <View style={styles.moneyDivider} />
@@ -923,17 +1101,142 @@ const ExpandedLedger: React.FC<TravelerRowProps> = ({
           Paid in full at booking. No installment ledger for this traveller.
         </Text>
       )}
-      <View style={styles.moneyDivider} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
-        accessibilityHint="Opens cancellation preview with refund amount and reason field"
-        style={styles.moneyRefundBtn}
-        onPress={onCancel}
-      >
-        <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
-      </Pressable>
+      {row.closed === null ? (
+        <>
+          <View style={styles.moneyDivider} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Cancel and refund ${buyerLabel(row)}'s booking`}
+            accessibilityHint="Opens cancellation preview with refund amount and reason field"
+            style={styles.moneyRefundBtn}
+            onPress={onCancel}
+          >
+            <Text style={styles.moneyRefundBtnText}>Cancel &amp; refund</Text>
+          </Pressable>
+        </>
+      ) : null}
     </>
+  );
+};
+
+function v2ChipStyle(chip: TripMoneyV2Chip): { pill: object; text: object } {
+  switch (chip) {
+    case "paid":
+    case "paid_partial":
+      return {
+        pill: styles.moneyStatusPillCollected,
+        text: styles.moneyStatusPillTextCollected,
+      };
+    case "failed":
+      return {
+        pill: styles.moneyStatusPillFailed,
+        text: styles.moneyStatusPillTextFailed,
+      };
+    case "scheduled":
+    case "rebalanced":
+    case "refunded":
+    case "cancelled":
+      return { pill: styles.moneyStatusPillScheduled, text: {} };
+    default: {
+      const unreachable: never = chip;
+      return unreachable;
+    }
+  }
+}
+
+/** issue #4522 S-2 (spec §9.11) — a plan-v2 order's rows, overpayment and History. */
+const V2Ledger: React.FC<{
+  row: TravelerMoneyRow;
+  view: TripMoneyV2View;
+  retryMutation: ReturnType<typeof useRetryInstallment>;
+}> = ({ row, view, retryMutation }) => {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  let paymentNumber = 0;
+  return (
+    <View testID={`trip-money-v2-ledger-${row.orderId}`}>
+      <Text style={styles.moneyBookingMeta}>{view.termsLine}</Text>
+      {view.ledger.map((entry) => {
+        const chipLabel = TRIP_MONEY_V2_CHIP_LABEL[entry.chip];
+        const chipStyle = v2ChipStyle(entry.chip);
+        const inst = entry.installment;
+        // Set rows are numbered; a traveler's own flexible payment is not one of them.
+        const isFlex = inst?.kind === "flex";
+        if (entry.kind === "payment" && !isFlex) paymentNumber += 1;
+        const when = entry.dueAt === null ? "" : ` · ${formatMoneyDate(entry.dueAt)}`;
+        const label = entry.kind === "deposit"
+          ? "Deposit"
+          : isFlex
+            ? `Payment${when}`
+            : `Payment ${paymentNumber}${when}`;
+        const amount = formatCurrency(entry.amountMinor, row.currency);
+        return (
+          <View
+            key={entry.key}
+            style={{ marginBottom: space[1] }}
+            accessibilityRole="text"
+            accessibilityLabel={`${label}, ${amount}, ${chipLabel}`}
+          >
+            <View style={styles.moneyInstallmentRow}>
+              <Text style={styles.moneyInstallmentLabel}>{label}</Text>
+              <Text style={styles.moneyInstallmentAmount}>{amount}</Text>
+              <View style={[styles.moneyStatusPill, chipStyle.pill]}>
+                <Text style={[styles.moneyStatusPillText, chipStyle.text]}>{chipLabel}</Text>
+              </View>
+            </View>
+            {inst !== null && entry.chip === "scheduled" ? (
+              <Text style={styles.moneyBookingMeta}>{installmentMethodLine(inst)}</Text>
+            ) : null}
+            {inst !== null && entry.chip === "failed" ? (
+              <>
+                <Text style={styles.moneyFailureReason}>
+                  {friendlyFailureCopy(inst.failureReason)}
+                </Text>
+                <Pressable
+                  onPress={() => retryMutation.mutate(inst.id)}
+                  disabled={retryMutation.isPending || view.paymentInFlight}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Retry ${label} for ${buyerLabel(row)}`}
+                  accessibilityHint="Queues a charge attempt on the next cron run"
+                  accessibilityState={{ disabled: retryMutation.isPending || view.paymentInFlight }}
+                  style={[
+                    styles.moneyRetryBtn,
+                    (retryMutation.isPending || view.paymentInFlight) && styles.moneyRetryBtnDisabled,
+                  ]}
+                >
+                  <Text style={styles.moneyRetryBtnText}>
+                    {retryMutation.isPending ? "Retrying..." : "Retry now"}
+                  </Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+        );
+      })}
+      {view.overpaymentLines.map((line) => (
+        <Text key={line} style={styles.moneyBookingMeta}>{line}</Text>
+      ))}
+      {view.history.length > 0 ? (
+        <>
+          <Pressable
+            onPress={() => setHistoryOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: historyOpen }}
+            accessibilityLabel="History"
+            style={styles.moneyHistoryToggle}
+          >
+            <Text style={styles.moneyActionBtnText}>History</Text>
+            <Icon name={historyOpen ? "chevU" : "chevD"} size={16} color={color.text2} />
+          </Pressable>
+          {historyOpen
+            ? view.history.map((item) => (
+              <Text key={item.key} style={styles.moneyBookingMeta}>
+                {formatMoneyDate(item.at)} · {item.text}
+              </Text>
+            ))
+            : null}
+        </>
+      ) : null}
+    </View>
   );
 };
 
@@ -1210,6 +1513,12 @@ const styles = StyleSheet.create({
     fontSize: type.caption.fontSize,
     color: color.danger,
     marginTop: 2,
+  },
+  moneyHistoryToggle: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[1],
   },
   moneyDivider: {
     height: 1,

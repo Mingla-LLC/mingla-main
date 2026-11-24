@@ -194,6 +194,10 @@ export const minorFromMajor = (value: number, currency: string): number => {
   return Math.round(value * minorUnitFactor(normalizeCurrency(currency)));
 };
 
+/** The locale formatCurrency pairs with a currency (issue #4522 balance money). */
+export const localeForCurrency = (currency: string): string =>
+  LOCALE_BY_CURRENCY[normalizeCurrency(currency)] ?? "en-GB";
+
 /**
  * Sensible-default locale per currency. Avoids requiring callers to know
  * which locale to pair. Defaults to en-GB for unknown codes.

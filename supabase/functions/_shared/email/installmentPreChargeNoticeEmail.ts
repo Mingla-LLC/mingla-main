@@ -2,6 +2,7 @@
 // instalment charged automatically to the saved card. Keeps the promise the
 // buyer terms already make: "We'll email you before each charge."
 import { escapeEmailHtml, formatDueDate, formatInstallmentAmount, installmentEmailLayout } from "./formatDueDate.ts";
+import { balanceLinkText } from "./installmentReminderEmail.ts";
 
 export interface InstallmentPreChargeNoticeInput {
   buyerName: string | null;
@@ -13,6 +14,11 @@ export interface InstallmentPreChargeNoticeInput {
   timezone: string | null;
   /** Card ending shown when known; otherwise "your saved card". */
   cardLast4: string | null;
+  /**
+   * issue #4522 — "Pay toward your balance" link (a balance-link page) for a
+   * trip whose plan lets the traveler pay any amount. Absent → unchanged.
+   */
+  balanceUrl?: string | null;
 }
 
 export function renderInstallmentPreChargeNoticeEmail(input: InstallmentPreChargeNoticeInput) {
@@ -29,6 +35,9 @@ export function renderInstallmentPreChargeNoticeEmail(input: InstallmentPreCharg
       `Hi ${escapeEmailHtml(name)},`,
       `Your <strong>${escapeEmailHtml(amount)}</strong> payment for <strong>${escapeEmailHtml(input.tripTitle)}</strong> with ${escapeEmailHtml(input.brandName)} is due on ${escapeEmailHtml(date)}. We'll charge ${escapeEmailHtml(card)} automatically.`,
       "Nothing to do if your card is ready. Your bank may ask you to approve the payment.",
+      ...(typeof input.balanceUrl === "string" && input.balanceUrl.startsWith("https://")
+        ? [`<a href="${escapeEmailHtml(input.balanceUrl)}">Pay toward your balance</a>. Your later payments shrink to match.`]
+        : []),
     ],
     footer: `You received this because you booked ${escapeEmailHtml(input.tripTitle)} on Mingla.`,
   });
@@ -39,6 +48,7 @@ export function renderInstallmentPreChargeNoticeEmail(input: InstallmentPreCharg
     "",
     `Your ${amount} payment for ${input.tripTitle} with ${input.brandName} is due on ${date}. We'll charge ${card} automatically.`,
     "Nothing to do if your card is ready. Your bank may ask you to approve the payment.",
+    ...balanceLinkText(input.balanceUrl),
   ].join("\n");
   return { subject, html, text };
 }

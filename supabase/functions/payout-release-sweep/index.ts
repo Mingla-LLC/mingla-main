@@ -358,8 +358,40 @@ export function payoutReleaseAlertCopyFor(
         "had its Stripe payout canceled, so the money is back in the organiser's Stripe balance and the release is marked failed. Decide whether to re-send it",
     };
   }
+  // Issue #4522 — a host is never paid money that went back to a traveler.
+  // The database files these under existing outbox kinds (one per release
+  // and cause); the message prefix picks the words, whatever the kind.
+  if (errorMessage.startsWith(PAYOUT_REFUND_UNRECONCILED_ERROR)) {
+    return {
+      type: "ops.payout_release_refund_unreconciled",
+      title: "Organiser payout stopped: a refund was not yet taken off it",
+      bodyLead:
+        "was not sent because refunds made after its sales were added lowered what it owes. It now owes the lower amount and the next payout run sends that. Check why the refund had not reached the payout",
+    };
+  }
+  if (errorMessage.startsWith(PAYOUT_REFUND_DEBT_OPENED_ERROR)) {
+    return {
+      type: "ops.payout_release_refund_debt_opened",
+      title: "Refund after payout: the organiser owes it back",
+      bodyLead:
+        "was already paid out when one of its sales was refunded. The refunded part is now a payout debt that comes off the organiser's next payouts",
+    };
+  }
+  if (errorMessage.startsWith(PAYOUT_REFUND_SYNC_FAILED_ERROR)) {
+    return {
+      type: "ops.payout_release_refund_sync_failed",
+      title: "A refund could not be taken off an organiser payout",
+      bodyLead:
+        "could not be updated for a refund. Execution re-checks it before any money moves; check the payout and any payout debt by hand",
+    };
+  }
   return payoutReleaseAlertCopy(kind);
 }
+
+/** Issue #4522 — the message prefixes the database writes for refund alerts. */
+export const PAYOUT_REFUND_UNRECONCILED_ERROR = "payout_refund_unreconciled";
+export const PAYOUT_REFUND_DEBT_OPENED_ERROR = "payout_refund_debt_opened";
+export const PAYOUT_REFUND_SYNC_FAILED_ERROR = "payout_refund_sync_failed";
 
 export function providerReferenceRoute(
   provider: FeeCandidate["provider"],

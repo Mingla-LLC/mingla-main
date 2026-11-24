@@ -36,6 +36,13 @@ import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRo
 import { formatCurrency } from "../../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../../src/utils/deferAfterDismiss";
 import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
+import { useTripEventBalances } from "../../../../../src/hooks/useOrderInstallments";
+import { featureFlags } from "../../../../../src/config/featureFlags";
+import {
+  derivePlanOrderView,
+  PLAN_ORDER_OPEN_MONEY_COPY,
+  PLAN_ORDER_REFUND_NOTE_COPY,
+} from "../../../../../src/utils/planOrderScreen";
 import { useBrandPayoutScreen } from "../../../../../src/hooks/useBrandPayoutScreen";
 import { PAYOUT_STATE_COPY } from "../../../../../src/utils/payoutScreen";
 import { isCompOrder } from "../../../../../src/utils/compOrders";
@@ -240,6 +247,22 @@ export default function OrderDetailRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
+  // issue #4522 G-7 — a trip order bought on a payment plan (an older plan or
+  // the new one) is one the server's balance reader lists. Asked for trips
+  // only (the reader refuses any other offering); an event, or a server that
+  // has no reader yet, keeps this screen exactly as it was.
+  const planBalancesQuery = useTripEventBalances(
+    event?.event_type === "trip" && typeof eventId === "string" ? eventId : null,
+    featureFlags.tripPlanV2,
+  );
+  const planBalance =
+    order === null
+      ? null
+      : (planBalancesQuery.data?.find((b) => b.orderId === order.id) ?? null);
+  // While the reader answers, a trip order shows no refund buttons rather than
+  // flashing ones that do not apply to it.
+  const planBalancePending =
+    event?.event_type === "trip" && featureFlags.tripPlanV2 && planBalancesQuery.isPending;
   // issue #3284 — occurrences for the refund-terms caption (per-day orders count
   // from their earliest day). Keyed like every other public read of this event.
   const publicEventQuery = usePublicEventById(
@@ -515,10 +538,26 @@ export default function OrderDetailRoute(): React.ReactElement {
         : linkedPayout.hostState === "scheduled"
           ? `Paid · payout scheduled for ${new Date(linkedPayout.dueAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}`
           : `Paid · payout: ${PAYOUT_STATE_COPY[linkedPayout.hostState].label.toLowerCase()}`;
+  const planView =
+    planBalance === null ? null : derivePlanOrderView(order, planBalance);
+  const planBanner: StatusBannerSpec | null =
+    planView === null
+      ? null
+      : planView.banner.tone === "cancelled"
+        ? {
+            bgColor: color.fill.tile,
+            borderColor: color.lineStrong,
+            iconName: "close",
+            iconColor: color.text3,
+            copy: planView.banner.copy,
+          }
+        : { ...baseBanner, copy: planView.banner.copy };
   const banner =
-    payoutBannerCopy === null
-      ? baseBanner
-      : { ...baseBanner, copy: payoutBannerCopy };
+    planBanner !== null
+      ? planBanner
+      : payoutBannerCopy === null
+        ? baseBanner
+        : { ...baseBanner, copy: payoutBannerCopy };
   const initials = getInitials(order.buyer.name);
 
   // ---- Primary action button derivation (ORCH-0787) ----
@@ -532,6 +571,14 @@ export default function OrderDetailRoute(): React.ReactElement {
     showCancelOrder,
     showSecondaryPartialFromFull,
   } = deriveActionFlags(order, canRefund);
+  // issue #4522 G-7 — the single-order refund sheet cannot size a plan order;
+  // its refunds are made from the trip's money screen (Cancel & refund).
+  const offerRefundFull = showRefundFull && planBalance === null && !planBalancePending;
+  const offerRefundAgain =
+    showRefundPartialAgain && planBalance === null && !planBalancePending;
+  const offerPartialFromFull = showSecondaryPartialFromFull && planBalance === null;
+  const showPlanRefundNote =
+    planBalance !== null && canRefund && planView !== null && !planView.cancelled;
   // A door sale opens the door refund sheet (it picks the seats itself);
   // every other paid order opens the provider refund sheet.
   const doorRefundLoading =
@@ -695,27 +742,41 @@ export default function OrderDetailRoute(): React.ReactElement {
               </Pressable>
             </View>
           ) : null}
-          <DetailRow
-            label="Fees & tax"
-            value={
-              order.currency === null
-                ? "—"
-                : formatCurrency(feesAndTaxCents, order.currency, true)
-            }
-            mono
-          />
-          <DetailRow
-            label="Total"
-            value={
-              buyerTotalCents === 0
-                ? "Free"
-                : order.currency === null
-                  ? "—"
-                  : formatCurrency(buyerTotalCents, order.currency, true)
-            }
-            mono
-            bold
-          />
+          {planView !== null ? (
+            <>
+              <DetailRow label="Paid" value={planView.paid} mono bold />
+              {planView.left !== null ? (
+                <DetailRow label="Left to pay" value={planView.left} mono />
+              ) : null}
+              {planView.tripTotal !== null ? (
+                <DetailRow label="Trip total" value={planView.tripTotal} mono />
+              ) : null}
+            </>
+          ) : (
+            <>
+              <DetailRow
+                label="Fees & tax"
+                value={
+                  order.currency === null
+                    ? "—"
+                    : formatCurrency(feesAndTaxCents, order.currency, true)
+                }
+                mono
+              />
+              <DetailRow
+                label="Total"
+                value={
+                  buyerTotalCents === 0
+                    ? "Free"
+                    : order.currency === null
+                      ? "—"
+                      : formatCurrency(buyerTotalCents, order.currency, true)
+                }
+                mono
+                bold
+              />
+            </>
+          )}
           <DetailRow
             label="Method"
             value={PAYMENT_METHOD_LABEL[order.paymentMethod]}
@@ -808,7 +869,7 @@ export default function OrderDetailRoute(): React.ReactElement {
 
         {/* Primary actions */}
         <View style={styles.actionsCol}>
-          {showRefundFull ? (
+          {offerRefundFull ? (
             <>
               <Button
                 label="Refund order"
@@ -820,7 +881,7 @@ export default function OrderDetailRoute(): React.ReactElement {
                 disabled={doorRefundLoading}
                 accessibilityLabel="Refund order"
               />
-              {showSecondaryPartialFromFull ? (
+              {offerPartialFromFull ? (
                 <Pressable
                   onPress={() => setRefundSheetMode("partial")}
                   accessibilityRole="button"
@@ -833,7 +894,7 @@ export default function OrderDetailRoute(): React.ReactElement {
             </>
           ) : null}
 
-          {showRefundPartialAgain ? (
+          {offerRefundAgain ? (
             <Button
               label="Refund again"
               onPress={() => openRefund("partial")}
@@ -857,7 +918,25 @@ export default function OrderDetailRoute(): React.ReactElement {
             />
           ) : null}
 
-          {canResend ? (
+          {showPlanRefundNote ? (
+            <View testID="plan-order-refund-note" style={styles.planRefundNote}>
+              <Text style={styles.cancelLedgerCopy}>
+                {PLAN_ORDER_REFUND_NOTE_COPY}
+              </Text>
+              <Button
+                label={PLAN_ORDER_OPEN_MONEY_COPY}
+                onPress={() =>
+                  router.push(`/trip/${order.eventId}/money` as never)
+                }
+                variant="secondary"
+                size="md"
+                fullWidth
+                accessibilityLabel={PLAN_ORDER_OPEN_MONEY_COPY}
+              />
+            </View>
+          ) : null}
+
+          {canResend && !(planView !== null && planView.cancelled) ? (
             <Button
               label="Resend ticket"
               onPress={handleResend}
@@ -1158,6 +1237,9 @@ const styles = StyleSheet.create({
   },
   cancelLedger: {
     marginBottom: 0,
+  },
+  planRefundNote: {
+    gap: space[3],
   },
   cancelLedgerCopy: {
     fontSize: 13,

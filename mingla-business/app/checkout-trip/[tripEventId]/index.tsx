@@ -27,6 +27,12 @@ import { radius as radiusTokens, space } from "../../../src/constants/designSyst
 import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
+import {
+  addOnsTheServerTakes,
+  useAddOnRollout,
+  useTripCheckoutAddOns,
+  type TripAddOnsByTicketType,
+} from "../../../src/hooks/useTripCheckoutAddOns";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
@@ -35,6 +41,7 @@ import { projectInstallmentSchedule } from "../../../src/utils/installmentSchedu
 // consumer identical). The deposit-due-today still comes from the existing
 // projectInstallmentSchedule; this only formats the already-computed cents.
 import { formatTripTierInstallmentNote } from "@mingla/offering-rendering";
+import { tripBookingClosesAt } from "../../../../packages/offering-rendering/tripPlanV2Math";
 import type { TripPricingTier } from "../../../src/services/tripsService";
 import type {
   TicketAvailableAt,
@@ -55,6 +62,7 @@ import {
 import {
   parseSeededTripLines,
   resolveSeededCartPlanChoice,
+  tierOffersPlan,
 } from "../../../src/components/trip/tripCartPlanChoice";
 
 import {
@@ -69,6 +77,7 @@ import {
 } from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+import { featureFlags } from "../../../src/config/featureFlags";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // trip checkout too (the event checkout already does; trips/experiences didn't,
 // undercounting started checkouts). Web-only (native no-op via the .web split).
@@ -85,13 +94,29 @@ const CheckoutDiscountCodeField = React.lazy(() =>
   ),
 );
 
+// #3281 — the event cart's add-on picker, loaded on use: its chunk is fetched
+// only when the add-ons flag is on and a package carries add-ons, so nothing
+// joins the boot payload or this route until then (the S2 readers carry them).
+const CartTicketExtras = React.lazy(() =>
+  import("../../../src/components/checkout/CartTicketExtras").then(
+    (module) => ({ default: module.CartTicketExtras }),
+  ),
+);
+
+/** #3281 — true only when the flag is on and the reader sent add-ons. */
+const showAddOnPicker = (buyerExtras: unknown): boolean =>
+  featureFlags.extras && Array.isArray(buyerExtras) && buyerExtras.length > 0;
+
 /**
  * Convert a TripPricingTier (DB shape) to a TicketStub (QuantityRow's
  * expected shape). Trip tiers are simpler than event tickets — no
  * visibility/door/sale-window mechanics — so we map straight defaults
  * for the buyer-checkout-irrelevant fields.
  */
-const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
+const tierToTicketStub = (
+  tier: TripPricingTier,
+  addOns?: TripAddOnsByTicketType,
+): TicketStub => ({
   id: tier.ticketTypeId,
   name: tier.tierName,
   priceGbp: tier.priceCents > 0 ? tier.priceCents / 100 : null,
@@ -120,12 +145,25 @@ const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
   saleStartAt: null,
   saleEndAt: null,
   availableAt: "online" as TicketAvailableAt,
+  // #3281 — the package's add-ons ride the stub, as on the event cart. The
+  // trip-by-id read has none, so they come from the public trip reader.
+  buyerExtras: tier.buyerExtras ?? addOns?.[tier.ticketTypeId],
 });
 
-const isTripPast = (endAtIso: string | null): boolean => {
-  if (endAtIso === null) return false;
-  const end = new Date(endAtIso).getTime();
-  return Number.isFinite(end) && end + 24 * 60 * 60 * 1000 < Date.now();
+// #3281 — a trip is one run: no per-date add-on scoping on its cart.
+const NO_EVENT_DATES: readonly string[] = [];
+const NO_OCCURRENCES: readonly never[] = [];
+
+// issue #4522 G-6 — a trip stops taking bookings when its departure day
+// begins in the trip's zone: the same instant the server refuses from.
+const isTripPast = (
+  startAtIso: string | null,
+  timeZone: string | null,
+): boolean => {
+  if (startAtIso === null) return false;
+  const start = new Date(startAtIso);
+  if (!Number.isFinite(start.getTime())) return false;
+  return Date.now() >= tripBookingClosesAt(start, timeZone || "UTC").getTime();
 };
 
 // #4420 — trip dates are calendar dates; read at UTC like the public page.
@@ -171,6 +209,31 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
   const brand = publicTripQuery.data?.brand ?? null;
+  // #3281 — each package's add-ons (read only while the add-ons flag is on).
+  const tripAddOnsRead = useTripCheckoutAddOns(
+    trip?.brandSlug ?? null,
+    trip?.slug ?? null,
+    featureFlags.extras,
+  ).data;
+  // #3281 G-9 — only add-ons the server's switches take with that package.
+  const addOnRollout = useAddOnRollout(
+    trip?.brandSlug ?? null,
+    trip?.slug ?? null,
+    featureFlags.extras,
+  );
+  const tripAddOns = React.useMemo(
+    () =>
+      addOnsTheServerTakes(
+        tripAddOnsRead,
+        (trip?.pricingTiers ?? []).map((t) => ({
+          ticketTypeId: t.ticketTypeId,
+          hasPlan: t.installmentSchedule !== null || (t.paymentPlan ?? null) !== null,
+          isFree: t.priceCents === 0,
+        })),
+        addOnRollout,
+      ),
+    [tripAddOnsRead, trip?.pricingTiers, addOnRollout],
+  );
 
   const {
     lines,
@@ -369,7 +432,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           qty,
           paymentPlanChoice:
             line.paymentPlanChoice === "installments" &&
-            tierById.get(line.ticketTypeId)?.installmentSchedule != null
+            tierOffersPlan(tierById.get(line.ticketTypeId))
               ? ("installments" as const)
               : ("full" as const),
         },
@@ -419,13 +482,13 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     // selection, the seeding effect above owns the funnel entry; the single-tier
     // auto-skip must NOT also fire (it would add tier[0] over the real selection).
     if (seededLinesParam.length > 0) return;
-    const skipTickets = trip.pricingTiers.map(tierToTicketStub);
+    const skipTickets = trip.pricingTiers.map((t) => tierToTicketStub(t));
     const sole = skipTickets[0];
     const outcome = decideAutoSkip({
       alreadyNavigated: autoSkipNavigatedRef.current,
       tripPresent: true,
       bookingsClosed: trip.bookingsClosed,
-      isPast: isTripPast(trip.businessTrip.endAt),
+      isPast: isTripPast(trip.businessTrip.startAt, trip.timezone),
       tiers: skipTickets.map((t) => ({
         id: t.id,
         isUnlimited: t.isUnlimited,
@@ -452,10 +515,9 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
         isFree: sole.isFree,
         quantity: 1,
-        paymentPlanChoice:
-          trip.pricingTiers[0]?.installmentSchedule != null
-            ? paymentPlanChoice
-            : "full",
+        paymentPlanChoice: tierOffersPlan(trip.pricingTiers[0])
+          ? paymentPlanChoice
+          : "full",
       });
       return;
     }
@@ -559,8 +621,8 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   }
 
   // Map pricing tiers → TicketStub for QuantityRow reuse.
-  const tickets = trip.pricingTiers.map(tierToTicketStub);
-  const isPast = isTripPast(trip.businessTrip.endAt);
+  const tickets = trip.pricingTiers.map((t) => tierToTicketStub(t, tripAddOns));
+  const isPast = isTripPast(trip.businessTrip.startAt, trip.timezone);
   const allSoldOut =
     tickets.length > 0 &&
     tickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) <= 0);
@@ -579,7 +641,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
             illustration="ticket"
             title={
               isPast
-                ? "This trip has ended"
+                ? "Bookings closed"
                 : tickets.length === 0
                   ? "Pricing isn't ready yet"
                   : "Sold out"
@@ -713,6 +775,24 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                     })
                   }
                 />
+                {showAddOnPicker(ticket.buyerExtras) ? (
+                  <React.Suspense fallback={null}>
+                    <CartTicketExtras
+                      ticket={ticket}
+                      line={lines.find(
+                        (line) => line.ticketTypeId === ticket.id,
+                      )}
+                      eventDateIds={NO_EVENT_DATES}
+                      occurrences={NO_OCCURRENCES}
+                      allDaysPass={false}
+                      currency={
+                        ticket.currency ??
+                        trip.pricingTiers[0]?.currency ??
+                        "USD"
+                      }
+                    />
+                  </React.Suspense>
+                ) : null}
               </View>
             );
           })}

@@ -22,6 +22,7 @@ module.exports = {
       __dirname,
       "src/test/reactI18next.render.mock.cjs",
     ),
+    "^@mingla/calendar/(.*)$": path.resolve(__dirname, "../packages/calendar/$1"),
     "^@mingla/offering-rendering/(.*)$": path.resolve(
       __dirname,
       "../packages/offering-rendering/$1",
@@ -270,12 +271,24 @@ module.exports = {
     // dark add sheet (tabs, code, found / shared / nothing), ask-to-send and
     // the confirmation-link step; Send to a friend draws dark.
     "**/__tests__/issue_4473_missing_ticket.implementor.render.test.tsx",
+    // issue #3281 S6 — Explorer's RSVP add-ons: the pass sheet's list and the reads/sends.
+    "**/__tests__/issue_3281_rsvp_add_ons_explorer.implementor.render.test.tsx",
     // issue #4473 — purchases shared with a second proven account (list,
     // read-only detail, owner note, Calendar) and "Is this your ticket?".
     "**/__tests__/issue_4473_shared_purchases.implementor.render.test.tsx",
     // issue #4473 device pass — one dark Done bar, in-sheet country picker,
     // per-kind shared notes, channel hint, keyboard closed before results.
     "**/__tests__/issue_4473_device_fixes.implementor.render.test.tsx",
+    // issue #4523 — the program pickers use the shared Mingla calendar: month
+    // changes never close it, a day tap picks once, a range commits on Done.
+    "**/__tests__/issue_4523_program_pickers_calendar.implementor.render.test.tsx",
+    // issue #4523 — Creator date of birth: year grid, three taps, 18+ only.
+    "**/__tests__/issue_4523_creator_dob.implementor.render.test.tsx",
+    // issue #4523 — Explorer inline calendars: stay dates and plan date never move on a month change.
+    "**/__tests__/issue_4523_explorer_inline_calendars.implementor.render.test.tsx",
+    // issue #4523 — form date questions (RSVP / brand forms) use the Mingla calendar.
+    "**/__tests__/issue_4523_rsvp_form_date.implementor.render.test.tsx",
+    "**/__tests__/issue_4522_trip_balance_card.implementor.render.test.tsx",
     // issue #4541 — the Explorer form screen, questions card, hand-off, draft
     // and sign-out, deep links and the form route, the app checkout's
     // questions (marker, answers, refusals), the RSVP read through the edge.

@@ -61,8 +61,6 @@ src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrand
 # introducing PRs merged without baselining; ORCH-1060 (main CI green-up)
 # baselines them with this rationale. Cycle-breaking refactor tracked separately.
 src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/useEventOrders.ts | src/store/currentBrandStore.ts | src/utils/clearAllStores.ts
-src/hooks/useBrands.ts | src/hooks/useEventOrders.ts | src/store/draftEventStore.ts | src/store/liveEventStore.ts
-src/hooks/useBrands.ts | src/hooks/useEventOrders.ts | src/store/draftEventStore.ts | src/utils/liveEventConverter.ts
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/usePublicEvents.ts | src/services/brandMapping.ts | src/services/publicEventsService.ts | src/store/currentBrandStore.ts | src/utils/deriveBrandStripeStatus.ts
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/usePublicEvents.ts | src/services/publicEventsService.ts | src/services/tripsService.ts | src/store/currentBrandStore.ts
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandStore.ts

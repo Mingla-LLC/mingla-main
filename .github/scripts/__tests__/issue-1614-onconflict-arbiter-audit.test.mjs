@@ -243,9 +243,16 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //       marks the 15-minute Sites recovery watch ready; arbiter: `id boolean
   //       PRIMARY KEY` in 20281128004574_issue_4574_sites_backup_budget_and_alerts.sql.
   //
+  // #4522 trip payment plans, census +1 (118):
+  //   +1  `refund_line_items (refund_id,order_line_item_id,installment_id)` —
+  //       cancel-trip-booking/index.ts resumes a half-written cancel by writing
+  //       only the missing refund lines (G-3); arbiter: `UNIQUE NULLS NOT
+  //       DISTINCT (refund_id, order_line_item_id, installment_id)` in
+  //       20260612000000_tr4_refund_tiers_booking_deadline.sql.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 117);
+  assert.equal(sites.length, 118);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

@@ -941,15 +941,21 @@ BEGIN
   -- measured on a PG17 full replay of dc553ef4d4 (matches main's CI batch);
   -- dropping exactly those two indexes measures 88 / 3158b5e3ff37207ce334bd6bb4caa0d7
   -- again. The seven fingerprinted functions are unchanged by #4473.
+  -- [TEST-MOD-APPROVED #4579] 20281202024579_issue_4579_mingla_admin_brand_access
+  -- adds idx_brand_team_members_issue_4579_auto_active (partial, on
+  -- granted_admin_user_id for active Mingla-admin memberships). Count 90 -> 91,
+  -- hash 0c4a5b0bc6ad79ab0337f55fcf540fe8 -> 08b137db6aca8637cbaba2d5aa286e72,
+  -- measured on a PG17 full replay of d3527e3b93 (matches main's CI batch);
+  -- dropping exactly that index measures 90 / 0c4a5b0bc6ad79ab0337f55fcf540fe8
+  -- again. The seven fingerprinted functions are unchanged by #4579.
   -- [TEST-MOD-APPROVED #4490] 20281203024490_issue_4490_p1_event_venue adds
-  -- the partial lookup index events_venue_id_idx (events.venue_id, for the
-  -- event/experience venue link). Count 90 -> 91,
-  -- hash 0c4a5b0bc6ad79ab0337f55fcf540fe8 -> e818c32c02d7e77cab2fe0be62bff3c8,
-  -- measured on a PG17 full replay of the #4490 branch; dropping exactly that
-  -- index measures 90 / 0c4a5b0bc6ad79ab0337f55fcf540fe8 again. The seven
-  -- fingerprinted functions are unchanged by #4490.
-  IF v_index_count <> 91
-    OR v_index_fingerprint <> 'e818c32c02d7e77cab2fe0be62bff3c8'
+  -- events_venue_id_idx (partial, venue_id IS NOT NULL; the venue's events
+  -- lookup) on top of #4579's index. Count 91 -> 92,
+  -- hash 08b137db6aca8637cbaba2d5aa286e72 -> 2241709009ca02e3a5616ef5de0fcfbb,
+  -- measured on a PG17 full replay of the #4490 branch after merging 97a75873e2;
+  -- dropping exactly that index measures 91 / 08b137db6aca8637cbaba2d5aa286e72 again.
+  IF v_index_count <> 92
+    OR v_index_fingerprint <> '2241709009ca02e3a5616ef5de0fcfbb'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

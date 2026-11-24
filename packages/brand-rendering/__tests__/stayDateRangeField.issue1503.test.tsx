@@ -18,6 +18,11 @@
  * asserts a positive fact (an exact node count, a known attribute value) that
  * cannot hold if the lookup matched nothing.
  *
+ * #4523: the date rows open the one Mingla range calendar (rendered by the host
+ * app through `renderCalendar`), so this suite now proves: no date input reaches
+ * the DOM, the rows keep their labels, the calendar is bounded by the venue
+ * rules, and a committed range goes through the same rules in the same order.
+ *
  * FAILS-ON-REVERT (verified by TRUE LINE DELETION):
  *   - restore the UTC seed in StayGuestBooking (`setUTCDate` +
  *     `toISOString().slice(0,10)`)          -> W-3 RED (gets 2026-08-05, wants 2026-08-04)
@@ -29,7 +34,7 @@
  */
 
 import type { PublicStayDetail } from "../stayGuest";
-import { StayDateRangeField } from "../StayDateRangeField";
+import { StayDateRangeField, type StayRangeCalendarArgs } from "../StayDateRangeField";
 import { StayGuestBooking } from "../StayGuestBooking";
 import {
   addStayDays,
@@ -57,25 +62,38 @@ const TestRenderer = require("react-test-renderer") as {
   act: (callback: () => Promise<void> | void) => Promise<void>;
 };
 
+/** The args the host calendar received, captured by the stub renderer. */
+let lastCalendarArgs: StayRangeCalendarArgs | null = null;
+const renderCalendar = (args: StayRangeCalendarArgs): null => {
+  lastCalendarArgs = args;
+  return null;
+};
+
 /**
- * React 19 requires the initial mount to happen inside `act`, so `create` is
- * wrapped rather than called bare (the same shape as
- * `webDateTimeInput.adversarial.1027.test.tsx`). Returns the mounted tree and
- * its two date inputs, and FAILS LOUDLY if the lookup matched nothing — the
- * vacuity guard for every interaction block below.
+ * Mounts the field (inside `act`, React 19), opens the calendar from the
+ * check-in row, and returns the host calendar's args. FAILS LOUDLY when the
+ * row or the calendar is missing — the vacuity guard for every block below.
  */
-async function mountField(
+async function openCalendar(
   value: StayDateRange,
   onChange: (next: StayDateRange, field: "check_in" | "check_out") => void,
-): Promise<{ tree: Tree; inputs: HostNode[] }> {
+  detail: PublicStayDetail = stayDetail(),
+): Promise<{ tree: Tree; args: StayRangeCalendarArgs }> {
+  lastCalendarArgs = null;
   let created: Tree | undefined;
   await TestRenderer.act(() => {
-    created = TestRenderer.create(fieldElement(value, stayDetail(), onChange));
+    created = TestRenderer.create(fieldElement(value, detail, onChange));
   });
   const tree = created as Tree;
-  const inputs = tree.root.findAll((node) => node.type === "input");
-  expect(inputs).toHaveLength(2);
-  return { tree, inputs };
+  const row = tree.root.findAll(
+    (node) => node.props.testID === "stay-date-check-in" && typeof node.props.onPress === "function",
+  )[0];
+  expect(row).toBeDefined();
+  await TestRenderer.act(() => {
+    (row.props.onPress as () => void)();
+  });
+  expect(lastCalendarArgs).not.toBeNull();
+  return { tree, args: lastCalendarArgs as unknown as StayRangeCalendarArgs };
 }
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -136,12 +154,6 @@ function inputTags(html: string): string[] {
   return html.match(/<input\b[^>]*>/g) ?? [];
 }
 
-/** Read one attribute off a raw `<input …>` tag. */
-function attr(tag: string, name: string): string | null {
-  const match = new RegExp(`${name}="([^"]*)"`).exec(tag);
-  return match === null ? null : match[1];
-}
-
 function fieldElement(
   value: StayDateRange,
   detail: PublicStayDetail,
@@ -160,79 +172,67 @@ function fieldElement(
   });
   return React.createElement(
     StayDateRangeField as unknown as React.FC<Record<string, unknown>>,
-    { value, bounds, palette: PALETTE, onChange },
+    { value, bounds, palette: PALETTE, onChange, renderCalendar, timeZone: detail.timezone },
   );
 }
 
-describe("#1503 W-1/W-2 · the buyer web control is a REAL, visible date input", () => {
-  test("W-1 (T-13, SC-1-Web) two <input type=\"date\"> nodes reach the DOM", () => {
+describe("#1503 W-1/W-2 · #4523: the stay dates are picked from the Mingla calendar, never a date box", () => {
+  test("W-1 no date input reaches the DOM; the two rows keep their labels", () => {
     const html = renderMarkup(
       fieldElement({ checkIn: "2026-08-04", checkOut: "2026-08-06" }, stayDetail()),
     );
-    const tags = inputTags(html);
-    // VACUITY GUARD — the markup really rendered, and the query really matched.
+    // VACUITY GUARD — the markup really rendered both rows.
     expect(html.length).toBeGreaterThan(100);
-    expect(tags).toHaveLength(2);
-    expect(tags.every((tag) => attr(tag, "type") === "date")).toBe(true);
-    expect(attr(tags[0], "aria-label")).toBe("Check-in");
-    expect(attr(tags[1], "aria-label")).toBe("Check-out");
-    expect(attr(tags[0], "value")).toBe("2026-08-04");
-    expect(attr(tags[1], "value")).toBe("2026-08-06");
-    // The labels the guest reads are rendered through RNW too.
+    expect(inputTags(html)).toHaveLength(0);
+    expect(html).not.toContain("showPicker");
     expect(html).toContain("Check-in");
     expect(html).toContain("Check-out");
+    expect(html).toContain('aria-label="Check-in date, currently August 4, 2026"');
+    expect(html).toContain('aria-label="Check-out date, currently August 6, 2026"');
   });
 
-  test("W-2 the inputs are hit-testable — no hidden-input bridge survives", () => {
+  test("W-2 the calendar is closed until a row is pressed, then opens once", async () => {
+    lastCalendarArgs = null;
     const html = renderMarkup(
       fieldElement({ checkIn: "2026-08-04", checkOut: "2026-08-06" }, stayDetail()),
     );
-    const tags = inputTags(html);
-    expect(tags).toHaveLength(2); // vacuity guard
-    for (const tag of tags) {
-      const style = attr(tag, "style") ?? "";
-      expect(style.length).toBeGreaterThan(10); // vacuity guard
-      expect(style).not.toMatch(/opacity:\s*0(?![.\d])/);
-      expect(style).not.toContain("pointer-events:none");
-      expect(style).not.toContain("display:none");
-      expect(style).not.toContain("visibility:hidden");
-      // colorScheme keeps the browser's own calendar popup readable on the
-      // dark brand surface.
-      expect(style).toContain("color-scheme:dark");
-      expect(style).toContain("min-height:46px");
-    }
+    expect(html.length).toBeGreaterThan(100); // vacuity guard
+    expect(lastCalendarArgs).toBeNull();
+    const { tree, args } = await openCalendar({ checkIn: "2026-08-04", checkOut: "2026-08-06" }, () => undefined);
+    expect(args.value).toEqual({ start: "2026-08-04", end: "2026-08-06" });
+    expect(args.timeZone).toBe("America/Los_Angeles");
+    await TestRenderer.act(() => {
+      tree.unmount();
+    });
   });
 
-  test("the check-out input is inert, and announced as inert, until check-in exists", () => {
+  test("the check-out row is inert, and announced as inert, until check-in exists", () => {
     const html = renderMarkup(
       fieldElement({ checkIn: "", checkOut: "" }, stayDetail()),
     );
-    const tags = inputTags(html);
-    expect(tags).toHaveLength(2); // vacuity guard
-    expect(attr(tags[0], "disabled")).toBeNull();
-    expect(tags[1]).toContain("disabled");
+    expect(html).toContain('aria-label="Check-in date, currently not set"'); // vacuity guard
+    const checkOut = /<[^>]*aria-label="Check-out date, currently not set"[^>]*>/.exec(html);
+    expect(checkOut).not.toBeNull();
+    expect(checkOut?.[0]).toContain('aria-disabled="true"');
     expect(html).toContain("Choose a check-in date first");
   });
 });
 
 describe("#1503 W-4 · past and beyond-horizon dates are UNSELECTABLE, not rejected later", () => {
-  test("W-4 (SC-3, SC-4) min is venue-local today and max is the clamped horizon", () => {
+  test("W-4 (SC-3, SC-4) the calendar starts at venue-local today and a stay starts no later than the clamped horizon", async () => {
     const detail = stayDetail({ bookingHorizonDays: 30 });
-    const html = renderMarkup(
-      fieldElement({ checkIn: "2026-08-04", checkOut: "2026-08-06" }, detail),
-    );
-    const tags = inputTags(html);
-    expect(tags).toHaveLength(2); // vacuity guard
+    const { tree, args } = await openCalendar({ checkIn: "2026-08-04", checkOut: "2026-08-06" }, () => undefined, detail);
     // Venue-local today in Los Angeles at 2026-08-04T01:00Z is 2026-08-03.
-    expect(attr(tags[0], "min")).toBe("2026-08-03");
-    expect(attr(tags[0], "max")).toBe(addStayDays("2026-08-03", 30));
-    // Check-out is anchored on check-in: at least one night, at most 365.
-    expect(attr(tags[1], "min")).toBe("2026-08-05");
-    expect(attr(tags[1], "max")).toBe(addStayDays("2026-08-04", 365));
-    // VACUITY GUARD — a dropped `min` would read `null`, and the horizon clamp
-    // really moved the ceiling off the 365-day default.
-    expect(attr(tags[0], "min")).not.toBeNull();
-    expect(attr(tags[0], "max")).not.toBe(addStayDays("2026-08-03", 365));
+    expect(args.min).toBe("2026-08-03");
+    expect(args.maxStart).toBe(addStayDays("2026-08-03", 30));
+    // A check-out can fall up to 365 nights after the last check-in.
+    expect(args.max).toBe(addStayDays(addStayDays("2026-08-03", 30), 365));
+    expect(args.maxLength).toBe(365);
+    // VACUITY GUARD — the horizon clamp really moved the start ceiling.
+    expect(args.maxStart).not.toBe(addStayDays("2026-08-03", 365));
+    await TestRenderer.act(() => {
+      tree.unmount();
+    });
   });
 });
 
@@ -253,21 +253,20 @@ describe("#1503 W-3 · the default range is VENUE-local (the UTC seeding defect)
           surface: SURFACE,
           theme: THEME,
           onSubmit: () => undefined,
+          renderStayCalendar: renderCalendar,
         },
       ),
     );
-    const tags = inputTags(html);
-    // VACUITY GUARD — the booking form really rendered the picker. If the date
-    // rows regressed to a TextInput this is 0 and the block fails here first.
-    expect(tags).toHaveLength(2);
-    expect(attr(tags[0], "aria-label")).toBe("Check-in");
+    // VACUITY GUARD — the booking form really rendered the picker rows, and no
+    // date box. If the rows regressed to a TextInput there would be an input.
+    expect(inputTags(html).filter((tag) => /type="date"/.test(tag))).toHaveLength(0);
     // THE FIX. Venue-local today in Los Angeles is 2026-08-03, so tomorrow is
     // the 4th. UTC has already rolled over to the 4th, so the old
     // `setUTCDate(getUTCDate() + 1)` seed produced the 5th — a form silently
     // pre-filled two days past the guest's own tomorrow.
-    expect(attr(tags[0], "value")).toBe("2026-08-04");
-    expect(attr(tags[1], "value")).toBe("2026-08-05");
-    expect(attr(tags[0], "value")).not.toBe("2026-08-05");
+    expect(html).toContain('aria-label="Check-in date, currently August 4, 2026"');
+    expect(html).toContain('aria-label="Check-out date, currently August 5, 2026"');
+    expect(html).not.toContain('aria-label="Check-in date, currently August 5, 2026"');
   });
 
   test("SC-6 the same instant for an America/New_York Stay seeds the NY tomorrow", () => {
@@ -282,70 +281,62 @@ describe("#1503 W-3 · the default range is VENUE-local (the UTC seeding defect)
           surface: SURFACE,
           theme: THEME,
           onSubmit: () => undefined,
+          renderStayCalendar: renderCalendar,
         },
       ),
     );
-    const tags = inputTags(html);
-    expect(tags).toHaveLength(2); // vacuity guard
+    expect(html).toContain("Check-in"); // vacuity guard
     // NY is 2026-08-03 21:00 at that instant, so tomorrow is the 4th.
-    expect(attr(tags[0], "value")).toBe("2026-08-04");
-    expect(attr(tags[0], "min")).toBe("2026-08-03");
+    expect(html).toContain('aria-label="Check-in date, currently August 4, 2026"');
   });
 });
 
-describe("#1503 W-5/W-6 · edits are committed through the shared rules", () => {
-  test("W-5 (T-15, SC-11) clearing a control forwards \"\" and does not throw", async () => {
+describe("#1503 W-5/W-6 · a committed range goes through the shared rules, check-in first", () => {
+  test("W-5 (SC-11) committing the same range changes nothing; closing keeps the dates", async () => {
     const seen: Array<[StayDateRange, string]> = [];
-    const { tree, inputs } = await mountField(
+    const { tree, args } = await openCalendar(
       { checkIn: "2026-08-04", checkOut: "2026-08-06" },
       (next, field) => seen.push([next, field]),
     );
-    let threw = false;
     await TestRenderer.act(() => {
-      try {
-        (inputs[0].props.onChange as (event: unknown) => void)({
-          target: { value: "" },
-        });
-      } catch {
-        threw = true;
-      }
+      args.onCommit({ start: "2026-08-04", end: "2026-08-06" });
     });
-    expect(threw).toBe(false);
-    expect(seen).toHaveLength(1);
-    expect(seen[0][0]).toEqual({ checkIn: "", checkOut: "" });
-    expect(seen[0][1]).toBe("check_in");
+    expect(seen).toHaveLength(0);
+    await TestRenderer.act(() => {
+      args.onClose();
+    });
+    expect(seen).toHaveLength(0);
     await TestRenderer.act(() => {
       tree.unmount();
     });
   });
 
-  test("W-6 (T-17, SC-5) a check-in at or past check-out CLEARS check-out", async () => {
-    const seen: StayDateRange[] = [];
-    const { tree, inputs } = await mountField(
+  test("W-6 (T-17, SC-5) a check-in at or past check-out CLEARS check-out before the new check-out lands", async () => {
+    const seen: Array<[StayDateRange, string]> = [];
+    const { tree, args } = await openCalendar(
       { checkIn: "2026-08-04", checkOut: "2026-08-06" },
-      (next) => seen.push(next),
+      (next, field) => seen.push([next, field]),
     );
     await TestRenderer.act(() => {
-      (inputs[0].props.onChange as (event: unknown) => void)({
-        target: { value: "2026-08-07" },
-      });
+      args.onCommit({ start: "2026-08-07", end: "2026-08-09" });
     });
-    expect(seen).toEqual([{ checkIn: "2026-08-07", checkOut: "" }]);
+    expect(seen).toEqual([
+      [{ checkIn: "2026-08-07", checkOut: "" }, "check_in"],
+      [{ checkIn: "2026-08-07", checkOut: "2026-08-09" }, "check_out"],
+    ]);
     await TestRenderer.act(() => {
       tree.unmount();
     });
   });
 
-  test("a check-in that still precedes check-out leaves the range intact", async () => {
+  test("a check-in that still precedes check-out leaves the range intact (one change)", async () => {
     const seen: StayDateRange[] = [];
-    const { tree, inputs } = await mountField(
+    const { tree, args } = await openCalendar(
       { checkIn: "2026-08-04", checkOut: "2026-08-06" },
       (next) => seen.push(next),
     );
     await TestRenderer.act(() => {
-      (inputs[0].props.onChange as (event: unknown) => void)({
-        target: { value: "2026-08-05" },
-      });
+      args.onCommit({ start: "2026-08-05", end: "2026-08-06" });
     });
     expect(seen).toEqual([{ checkIn: "2026-08-05", checkOut: "2026-08-06" }]);
     await TestRenderer.act(() => {

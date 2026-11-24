@@ -134,9 +134,9 @@ describe("ORCH-1120 — published-trip Settings editable refund/deadline/booking
       expect(code).not.toMatch(/updateBookingDeadline/);
     });
 
-    test("editedSectionKeys lights the Settings badge from the patch diff", () => {
+    test("editedSectionKeys lights the Pricing badge from the settings patch diff", () => {
       expect(code).toMatch(/p\.refund_policy !== undefined/);
-      expect(code).toMatch(/out\.add\("settings"\)/);
+      expect(code).toMatch(/out\.add\("pricing"\)/);
       // The old accordion-owned dirtiness lift is gone.
       expect(code).not.toMatch(/settingsDirty/);
     });

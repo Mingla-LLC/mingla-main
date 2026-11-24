@@ -63,10 +63,12 @@ import {
 // ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
 import { renderInstallmentDunningEmail } from "../_shared/email/installmentDunningEmail.ts";
+import { renderInstallmentMissedRolloverEmail } from "../_shared/email/installmentMissedRolloverEmail.ts";
 import { renderInstallmentDuplicateRefundedEmail } from "../_shared/email/installmentDuplicateRefundedEmail.ts";
 import { renderInstallmentPayLinkEmail } from "../_shared/email/installmentPayLinkEmail.ts";
 import { renderInstallmentPlanPaidInFullEmail } from "../_shared/email/installmentPlanPaidInFullEmail.ts";
 import { renderInstallmentPreChargeNoticeEmail } from "../_shared/email/installmentPreChargeNoticeEmail.ts";
+import { balanceLinkUrlForOrder } from "../_shared/installments/balanceLinks.ts";
 import { renderWaitlistSpotOpenEmail } from "../_shared/email/templates/waitlistSpotOpen.ts";
 import { renderWaitlistSpotOpenSms } from "../_shared/sms/templates/waitlistSpotOpen.ts";
 import {
@@ -1043,6 +1045,9 @@ async function handleInstallmentLifecycleEmail(
   const brandName = order.events.brands.name ?? "your host";
   let rendered: { subject: string; html: string; text: string };
   if (kind === "installment_pre_charge_notice") {
+    // issue #4522 — only an eligible v2 flex plan receives this link; the
+    // helper fails closed to null, leaving every other notice unchanged.
+    const balanceUrl = await balanceLinkUrlForOrder(supabase, orderId);
     rendered = renderInstallmentPreChargeNoticeEmail({
       buyerName: order.buyer_name,
       tripTitle,
@@ -1052,6 +1057,7 @@ async function handleInstallmentLifecycleEmail(
       dueAt: String(body.dueAt ?? row.due_at),
       timezone: order.events.timezone ?? null,
       cardLast4: typeof body.cardLast4 === "string" ? body.cardLast4 : null,
+      balanceUrl,
     });
   } else if (kind === "installment_pay_link") {
     const url = typeof body.payUrl === "string" ? body.payUrl : "";
@@ -1125,7 +1131,7 @@ async function handleInstallmentDunning(
 
   const { data: installment, error: installmentError } = await supabase
     .from("order_installments")
-    .select("id, ordinal, amount_cents, currency, retry_count, next_retry_at")
+    .select("id, ordinal, amount_cents, currency, retry_count, next_retry_at, status")
     .eq("id", installmentId)
     .maybeSingle();
   if (installmentError !== null || installment === null) {
@@ -1138,8 +1144,20 @@ async function handleInstallmentDunning(
     currency: string;
     retry_count: number;
     next_retry_at: string | null;
+    status?: string;
   };
 
+  // issue #4522 (D-7) — a superseded row owes nothing, so it never gets an
+  // "at risk" (or any) dunning email. When its missed amount was moved onto
+  // the later payments the buyer gets that notice instead; a row superseded
+  // any other way gets nothing. (Only the #4522 schema has superseded rows.)
+  if (inst.status === "superseded") {
+    return await handleMissedRolloverNotice(supabase, orderId, order, inst);
+  }
+
+  // issue #4522 — dunning offers the same optional balance payment route as
+  // reminders and pre-charge notices, without changing legacy plan emails.
+  const balanceUrl = await balanceLinkUrlForOrder(supabase, orderId);
   const rendered = renderInstallmentDunningEmail({
     recipient: { name: order.buyer_name, email: order.buyer_email },
     trip: { title: order.events.title ?? "your trip" },
@@ -1156,6 +1174,7 @@ async function handleInstallmentDunning(
       contactEmail: order.events.brands.contact_email,
     },
     order: { shortId: shortId(order.id) },
+    balanceUrl,
   });
 
   assertNotResendSandbox(rendered.from);
@@ -1173,6 +1192,78 @@ async function handleInstallmentDunning(
     kind: "installment_dunning",
     orderId,
     installmentId,
+    providerMessageId: sent.id,
+  });
+}
+
+/**
+ * issue #4522 (D-7) — the one notice for a payment moved onto the later
+ * payments. Amounts are read now: the missed row, and the next open payment.
+ */
+async function handleMissedRolloverNotice(
+  supabase: ReturnType<typeof serviceClient>,
+  orderId: string,
+  order: InstallmentEmailOrderJoin,
+  inst: { id: string; ordinal: number; amount_cents: number; currency: string },
+): Promise<Response> {
+  const { data: rolled, error: rolledError } = await supabase
+    .from("order_balance_events")
+    .select("id")
+    .eq("order_id", orderId)
+    .eq("reason", "missed_rollover")
+    .eq("trigger_installment_id", inst.id)
+    .limit(1);
+  if (rolledError !== null) {
+    return jsonResponse({ error: "rollover_lookup_failed" }, 500);
+  }
+  if (!Array.isArray(rolled) || rolled.length === 0) {
+    return jsonResponse({
+      kind: "installment_dunning",
+      skipped: "installment_superseded",
+    });
+  }
+  const { data: nextRows, error: nextError } = await supabase
+    .from("order_installments")
+    .select("amount_cents, due_at")
+    .eq("order_id", orderId)
+    .eq("kind", "scheduled")
+    .in("status", ["scheduled", "failed"])
+    .order("due_at", { ascending: true })
+    .limit(1);
+  if (nextError !== null) {
+    return jsonResponse({ error: "next_payment_lookup_failed" }, 500);
+  }
+  const next = Array.isArray(nextRows) && nextRows.length > 0
+    ? nextRows[0] as { amount_cents: number; due_at: string }
+    : null;
+  const balanceUrl = await balanceLinkUrlForOrder(supabase, orderId);
+  const rendered = renderInstallmentMissedRolloverEmail({
+    buyerName: order.buyer_name,
+    tripTitle: order.events.title ?? "your trip",
+    brandName: order.events.brands.name ?? "your host",
+    ordinal: Number(inst.ordinal),
+    amountCents: Number(inst.amount_cents),
+    currency: inst.currency,
+    nextPayment: next === null
+      ? null
+      : { amountCents: Number(next.amount_cents), dueAt: String(next.due_at) },
+    timezone: order.events.timezone ?? null,
+    balanceUrl,
+  });
+  assertNotResendSandbox(EMAIL_SENDERS.system);
+  const sent = await sendResendEmailWithAttachment({
+    from: formatSenderHeader(EMAIL_SENDERS.system),
+    to: order.buyer_email as string,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    attachments: [],
+    replyTo: eventUpdateReplyTo(order.events.brands.contact_email),
+  });
+  return jsonResponse({
+    kind: "installment_missed_rollover",
+    orderId,
+    installmentId: inst.id,
     providerMessageId: sent.id,
   });
 }
@@ -1492,8 +1583,12 @@ export const handler = async (req: Request): Promise<Response> => {
       }
     }
 
+    // issue #4522 E-7 — a trip's dates are its stored calendar dates (UTC
+    // midnight, #4420): read them at UTC, never in the trip zone (which put a
+    // 12–16 Mar New York trip on "Thu 11 Mar"). Events keep their own zone.
+    const dateZone = isTrip ? "UTC" : context.bodyInput.event.timezone;
     const messageTime = typeof startAt === "string"
-      ? formatMessageTime(startAt, context.bodyInput.event.timezone)
+      ? formatMessageTime(startAt, dateZone)
       : null;
     // Legacy and draft events can predate a materialised occurrence. That
     // must not hold a paid buyer's delivery hostage, so say what is known
@@ -1548,7 +1643,7 @@ export const handler = async (req: Request): Promise<Response> => {
         when: typeof startAt !== "string"
           ? "Date TBD"
           : isTrip || (chosenDays !== null && chosenDays.length >= 2)
-          ? formatDateRange(startAt, endAt, context.bodyInput.event.timezone)
+          ? formatDateRange(startAt, endAt, dateZone)
           : `${messageDate}, ${messageClock}`,
         place,
         detailLines: partyLine === null ? undefined : [partyLine],

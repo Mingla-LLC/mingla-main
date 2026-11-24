@@ -45,9 +45,7 @@ describe("ORCH-0876 — EditPublishedTripScreen save flow contract", () => {
   });
 
   test("pre-flights the client-side fast-path guard before the RPC", () => {
-    expect(SRC).toContain(
-      'import { validateLiveTripFieldUpdate } from "../../utils/publishedTripEditGuards"',
-    );
+    expect(SRC).toContain("validateLiveTripFieldUpdate,");
     // The preflight call must come BEFORE updateLiveTripMutation.mutateAsync
     const preflightIdx = SRC.indexOf("const preflight = validateLiveTripFieldUpdate(");
     const rpcIdx = SRC.indexOf("updateLiveTripMutation.mutateAsync");
@@ -80,41 +78,33 @@ describe("ORCH-0876 — EditPublishedTripScreen save flow contract", () => {
     expect(SRC).toMatch(/label="Save changes"[\s\S]*?disabled=\{submitting\}/);
   });
 
-  test("EditAfterPublishTripBanner renders above the section accordion", () => {
+  test("EditAfterPublishTripBanner renders above the four-section builder scroll", () => {
     expect(SRC).toContain(
       'import { EditAfterPublishTripBanner } from "./EditAfterPublishTripBanner"',
     );
-    // Banner appears before the SECTIONS.map(...) accordion.
-    const bannerIdx = SRC.indexOf("<EditAfterPublishTripBanner");
-    const sectionMapIdx = SRC.indexOf("SECTIONS.map((sec)");
+    // Banner appears before the four always-mounted sections.
+    const bannerIdx = SRC.lastIndexOf("<EditAfterPublishTripBanner");
+    const sectionMapIdx = SRC.lastIndexOf("BUILDER_SECTIONS.map((section)");
     expect(bannerIdx).toBeGreaterThan(-1);
     expect(sectionMapIdx).toBeGreaterThan(-1);
     expect(bannerIdx).toBeLessThan(sectionMapIdx);
   });
 
-  // [TEST-MOD-APPROVED ORCH-1062] — DRIFT UPDATE (intended, cited): ORCH-0880
-  // [Tr5 Traveler Intake Forms] added the "intake" section between Cover and
-  // Settings ("sits between Cover and Settings per DESIGN §6",
-  // EditPublishedTripScreen.tsx:172-173; the SectionKey union gained "intake" at
-  // :158). The locked order is now seven sections. This is a deliberate feature
-  // addition, not a regression — the expected value is updated to the proven
-  // current order at the same (toEqual, exhaustive) assertion strength.
-  test("seven sections in the locked order (Basics, Itinerary, Inclusions, Pricing, Cover, Intake form, Settings)", () => {
-    const sectionsMatch = SRC.match(/const SECTIONS:\s*readonly\s+SectionConfig\[\][\s\S]*?\];/);
+  test("four builder sections in the same locked order as create", () => {
+    const sectionsMatch = SRC.match(/const BUILDER_SECTIONS:\s*readonly\s+SectionConfig\[\][\s\S]*?\];/);
     expect(sectionsMatch).not.toBeNull();
     const sections = sectionsMatch![0];
     const keyOrder = Array.from(sections.matchAll(/key:\s*"([^"]+)"/g)).map(
       (m) => m[1],
     );
     expect(keyOrder).toEqual([
-      "basics",
+      "trip",
       "itinerary",
-      "inclusions",
       "pricing",
-      "cover",
-      "intake",
-      "settings",
+      "travelers",
     ]);
+    expect(SRC).toContain('layout="list"');
+    expect(SRC).not.toContain("openSection");
   });
 
   test("seeds local edit state from server Trip on mount AND re-seeds on prop change", () => {

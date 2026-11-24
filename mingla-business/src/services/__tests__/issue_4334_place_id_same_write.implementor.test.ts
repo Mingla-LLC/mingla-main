@@ -180,14 +180,20 @@ describe("events", () => {
 
 describe("trips and experience stops", () => {
   test("T-1 trip create and live edit: a typed address keeps its place id", () => {
-    for (const file of [
-      "src/components/trip/TripCreatorStep1Basics.tsx",
-      "src/components/trip/EditPublishedTripScreen.tsx",
-    ]) {
-      const s = src(file);
-      expect(s).toContain("departurePlaceId: approx.placeId,");
-      expect(s).toContain("destinationPlaceId: approx.placeId,");
-    }
+    const s = src("src/components/trip/TripCreatorStep1Basics.tsx");
+    expect(s).toContain("departurePlaceId: approx.placeId,");
+    expect(s).toContain("destinationPlaceId: approx.placeId,");
+  });
+
+  // #4522 slice 12 — the published trip edit renders the create builder's
+  // TripCreatorStep1Basics for its address fields and mounts no AddressInput
+  // of its own, so the TripCreatorStep1Basics rows cover it.
+  // EditPublishedTripScreen.render.test.tsx case (d) proves the tapped label
+  // and place id reach the live update.
+  test("the published trip edit reuses the create basics for its address fields", () => {
+    const editScreen = src("src/components/trip/EditPublishedTripScreen.tsx");
+    expect(editScreen).toContain("<TripCreatorStep1Basics");
+    expect(editScreen).not.toMatch(/<AddressInput\b/);
   });
 
   test("X-1 an experience stop's typed address keeps its place id (sent as stop place_id)", () => {

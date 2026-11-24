@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3281_add_on_plan_contract.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3281-add-on-plan-contract-implementor",
+  "profile": "deno-1.46-stripe"
+}

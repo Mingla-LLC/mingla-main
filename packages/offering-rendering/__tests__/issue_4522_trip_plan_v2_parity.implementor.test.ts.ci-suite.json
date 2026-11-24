@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_4522_trip_plan_v2_parity.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4522-02-trip-plan-v2-parity",
+  "profile": "deno-2-unit"
+}

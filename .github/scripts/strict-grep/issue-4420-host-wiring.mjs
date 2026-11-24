@@ -295,12 +295,18 @@ export const RULES = [
   },
   ...[
     ["src/components/event/EditPublishedScreen.tsx", "liveEvent.id"],
-    ["src/components/trip/EditPublishedTripScreen.tsx", "trip.id"],
   ].map(([file, id]) => ({
     file,
     why: "the published editors render Eligible buyers as the same collapsible section card as their other sections",
     has: ['testID="eligible-buyers-section-header"', "<Text style={styles.sectionLabel}>Eligible buyers</Text>", `<EventTicketCheckoutAccessCard eventId={${id}} embedded />`],
   })),
+  // #4522: the published trip editor now uses the trip builder's section titles
+  // for every section, so Eligible buyers keeps matching its sibling sections.
+  {
+    file: "src/components/trip/EditPublishedTripScreen.tsx",
+    why: "the published trip editor renders Eligible buyers with the same section title as its other sections",
+    has: ['<TripBuilderSectionTitle title="Eligible buyers" />', '<TripBuilderSectionTitle title="Traveler questions" />', "<EventTicketCheckoutAccessCard eventId={trip.id} embedded />"],
+  },
   {
     file: "src/components/event/EventTicketCheckoutAccessCard.tsx",
     why: "embedded, the shared card drops its own frame and heading, and uses the Input and Button primitives",

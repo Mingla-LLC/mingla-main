@@ -141,6 +141,7 @@ import type {
   RsvpFormHandoffSlot,
 } from "./RsvpSuccessPopup";
 import type { ChipInPanelState } from "./RsvpChipInPanel";
+import type { OfferingAddOnsSlot } from "./OfferingAddOnsBlock";
 import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 import { StaticMapImage } from "./StaticMapFrame";
 // issue #4518 — the brand photo takes the picture road (one fallback).
@@ -212,9 +213,10 @@ const loadGuestBlock = (retry: () => void) =>
     })),
   );
 // Only a refused submit needs the guest error lines, so they load on demand.
+// issue #3281 S6 — the same on-demand module answers RSVP add-on refusals.
 const guestErrorLine = (code: string): Promise<string | null> =>
-  import("./rsvpGuestErrors").then(
-    (m) => m.rsvpGuestErrorMessage(code),
+  import("./rsvpAddOnErrors").then(
+    (m) => m.rsvpRefusalLine(code),
     () => null,
   );
 
@@ -325,6 +327,8 @@ export interface RsvpSubmitResult {
   claim?: { shortUrl: string | null; code?: string | null } | null;
   /** issue #4508 — each guest with its invite link (public-submit-rsvp `guests[]`). */
   guests?: RsvpSubmittedGuest[];
+  /** issue #3281 S6 — the add-ons stored with this RSVP (public-submit-rsvp `rsvpAddOns`). */
+  rsvpAddOns?: ReadonlyArray<{ name: string; quantity: number }>;
 }
 
 export interface RsvpOfferingBodyProps {
@@ -382,6 +386,18 @@ export interface RsvpOfferingBodyProps {
   questionsRequired?: boolean;
   /** True once every currently visible required question has an answer. */
   questionsReady?: boolean;
+  /**
+   * issue #3281 S6 — the host-rendered RSVP add-on picker, given the party size
+   * (the guest plus their plus-ones). Drawn after the questions, above the
+   * decision, and in the details sheet. Absent: no picker.
+   */
+  addOnsNode?: (partySize: number) => React.ReactNode;
+  /** issue #3281 S6 — false while the guest's add-on picks don't fit their party. */
+  addOnsReady?: boolean;
+  /** issue #3281 S2 — "Add at checkout:" on the RSVP card; null or absent shows none. */
+  addOns?: OfferingAddOnsSlot | null;
+  /** issue #3281 S2 — the RSVP reader's `rsvpAddOns` for that list. */
+  rsvpAddOns?: unknown;
   /**
    * issue #4508 1.2a — the live match under the guest number field (the
    * surface calls public-submit-rsvp `guest_lookup`). Throws Error(code) on
@@ -578,6 +594,8 @@ export interface RsvpOfferingState extends RsvpDecisionState {
   contactForm: React.ReactNode;
   guestForms: React.ReactNode;
   questionsNode: React.ReactNode;
+  /** issue #3281 S6 — the RSVP add-on picker (null when the surface has none). */
+  addOnsNode: React.ReactNode;
   confirmDialog: React.ReactNode;
   successPopup: React.ReactNode;
   // ORCH-1163-R3 — the floating-bar details modal (portal <Modal>, gorhom-safe).
@@ -962,7 +980,9 @@ export const useRsvpOfferingState = (
   const contactReady = primaryValid && guestsValid;
   const questionsRequired = props.questionsRequired === true;
   const questionsReady = !questionsRequired || props.questionsReady === true;
-  const decisionReady = contactReady && questionsReady;
+  // issue #3281 S6 — the add-on picks are their own readiness term, last.
+  const addOnsReady = props.addOnsReady !== false;
+  const decisionReady = contactReady && questionsReady && addOnsReady;
 
   const mapErrorCode = useCallback(rsvpErrorMessageForCode, []);
 
@@ -1132,7 +1152,9 @@ export const useRsvpOfferingState = (
     ? buildRsvpValidationHint(contactIssues)
     : showValidationErrors && !questionsReady
       ? "Answer the required questions to continue."
-      : (props.recoveryNotice ?? null);
+      : showValidationErrors && !addOnsReady
+        ? "Pick fewer add-ons to continue."
+        : (props.recoveryNotice ?? null);
   const recoveryHint =
     validationHint !== null && validationHint === props.recoveryNotice;
   useEffect(() => {
@@ -1260,7 +1282,8 @@ export const useRsvpOfferingState = (
       // #3380 — a signed-in guest who only lacks a phone is asked for it inside
       // the confirm step (the dialog shows the phone field).
       const phoneAskedInConfirm =
-        !contactReady && signedInPhoneNeeded && guestsValid && questionsReady;
+        !contactReady && signedInPhoneNeeded && guestsValid && questionsReady &&
+        addOnsReady;
       if (!phoneAskedInConfirm) {
         setShowValidationErrors(true);
         setErrorMsg(null);
@@ -1276,6 +1299,7 @@ export const useRsvpOfferingState = (
     contactReady,
     decisionReady,
     questionsReady,
+    addOnsReady,
     signedInPhoneNeeded,
     guestsValid,
     revealFirstIssue,
@@ -1295,7 +1319,7 @@ export const useRsvpOfferingState = (
       onGoingTap();
       return;
     }
-    if (contactReady && !questionsReady) {
+    if (contactReady && (!questionsReady || !addOnsReady)) {
       setShowValidationErrors(true);
       setErrorMsg(null);
       setPendingDecision("going");
@@ -1322,6 +1346,7 @@ export const useRsvpOfferingState = (
     contactReady,
     decisionReady,
     questionsReady,
+    addOnsReady,
     signedInPhoneNeeded,
     guestsValid,
     canRevealFields,
@@ -1335,7 +1360,7 @@ export const useRsvpOfferingState = (
       void submitDirect("maybe");
       return;
     }
-    if (contactReady && !questionsReady) {
+    if (contactReady && (!questionsReady || !addOnsReady)) {
       setShowValidationErrors(true);
       setErrorMsg(null);
       setPendingDecision("maybe");
@@ -1354,6 +1379,7 @@ export const useRsvpOfferingState = (
     contactReady,
     decisionReady,
     questionsReady,
+    addOnsReady,
     canRevealFields,
     submitDirect,
     isCurrent,
@@ -1443,6 +1469,7 @@ export const useRsvpOfferingState = (
               ? "pending"
               : "going",
         plusGuests: guests.map((g) => ({ name: g.label })),
+        addOns: result.rsvpAddOns,
         confirmationToken: result.confirmationToken,
         credentials: result.credentials ?? [],
         anonymousRecovery: result.anonymousRecovery ?? [],
@@ -2022,6 +2049,9 @@ export const useRsvpOfferingState = (
   // scroll root — shell-agnostic invariant §A.2). Re-hosts the SAME contactForm /
   // guestForms nodes (shared state → values sync with the inline §5 box). The +1
   // forms are omitted for Can't-go. Continue is disabled until contactReady. ──
+  // issue #3281 S6 — the add-on picker for this party (the guest + plus-ones).
+  const addOnsNode =
+    props.addOnsNode === undefined ? null : props.addOnsNode(1 + plusCount);
   const detailsContinueLabel =
     pendingDecision === "maybe"
       ? "Save as Maybe"
@@ -2039,6 +2069,7 @@ export const useRsvpOfferingState = (
         questionsNode={
           pendingDecision !== "not_going" ? props.questionsNode ?? null : null
         }
+        addOnsNode={pendingDecision !== "not_going" ? addOnsNode : null}
         errorNode={errorNode}
         continueLabel={detailsContinueLabel}
         continueEnabled={
@@ -2114,6 +2145,7 @@ export const useRsvpOfferingState = (
     contactForm,
     guestForms,
     questionsNode: props.questionsNode ?? null,
+    addOnsNode,
     confirmDialog,
     successPopup,
     detailsModal,
@@ -2249,6 +2281,7 @@ export const RsvpDecisionBox: React.FC<RsvpDecisionBoxProps> = ({
     {state.contactForm}
     {state.guestForms}
     {state.questionsNode}
+    {state.addOnsNode}
     <DecisionUnit
       palette={palette}
       theme={theme}
@@ -2523,6 +2556,10 @@ export const RsvpOfferingBody: React.FC<
         ]}
       />
       {doorsLine !== null ? <View testID="orch-1157-rsvp-doors" /> : null}
+      {/* issue #3281 S2 — "Add at checkout:" for the RSVP (the page shell's slot). */}
+      {props.addOns && props.rsvpAddOns !== undefined
+        ? props.addOns("rsvp", props.rsvpAddOns, event.currency ?? null, palette)
+        : null}
 
       {/* (5) DECISION BOX — INLINE single-owner <RsvpDecisionBox> (parallel to
           EventTicketBox): contact form (anon) + per-guest mini-forms + the shared

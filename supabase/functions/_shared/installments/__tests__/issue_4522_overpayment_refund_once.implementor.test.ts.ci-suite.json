@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/installments/__tests__/issue_4522_overpayment_refund_once.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4522-overpayment-refund-once",
+  "profile": "deno-1.46-stripe"
+}

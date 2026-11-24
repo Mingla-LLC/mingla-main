@@ -1,23 +1,19 @@
 /**
  * ORCH-0880 [Tr5 Traveler Intake Forms] — <EditPublishedTripIntakeAccordion />.
  *
- * Per DESIGN_ORCH-0880 §6. Accordion body for the new "Intake form" section
- * in EditPublishedTripScreen. Reuses Phase 3 IntakeSchemaBuilder +
+ * Per DESIGN_ORCH-0880 §6. Traveler-question body in the published trip
+ * editor's Travelers section. Reuses Phase 3 IntakeSchemaBuilder +
  * IntakeQuestionPreview primitives for the per-tier edit UI; adds a re-answer
  * warning banner counting how many travelers will be asked to re-answer if
- * the planner edits an existing schema, plus a "Save changes" CTA that opens
- * the existing ChangeSummaryModal with an intake-specific FieldDiff stub
- * (parent owns the modal + RPC plumbing per the existing
- * EditPublishedTripScreen save flow).
+ * the planner edits an existing schema, plus a direct Save changes CTA.
  *
  * Tier-picker tab row matches Phase 3 wizard pattern. Single-tier trips
  * collapse to "For all travelers" label. Multi-tier shows pill chips with
  * active orange-glow shadow + Add-CTA for unstaged tiers.
  *
- * Per Phase 1 service contract: `upsertTripIntakeSchema` routes published-
- * trip writes through `biz_update_live_trip` RPC with reason text (10-200
- * chars). Caller in EditPublishedTripScreen synthesizes the FieldDiff +
- * passes reason on save.
+ * Per Phase 1 service contract, `upsertTripIntakeSchema` still routes through
+ * `biz_update_live_trip`; #4522 uses a neutral reason so the audit log remains
+ * complete without asking the host for prose on safe question edits.
  *
  * Composes GlassCard + Icon + Button + IntakeSchemaBuilder +
  * IntakeQuestionPreview + RN useWindowDimensions. No new primitives.
@@ -28,7 +24,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
@@ -54,6 +49,8 @@ import {
 } from "../../hooks/useIntakeSchema";
 import type { TripPricingTier } from "../../services/tripsService";
 import { IntakeQuestionPreview } from "./IntakeQuestionPreview";
+import { TripQuestionLibrary } from "./TripQuestionLibrary";
+import { NON_BUYER_EDIT_AUDIT_REASON } from "../../utils/publishedTripEditGuards";
 import type { IntakeSchemaBuilderProps } from "./IntakeSchemaBuilder";
 
 // #4514 — the question builder (with its editor and type picker) loads on
@@ -82,9 +79,6 @@ export interface EditPublishedTripIntakeAccordionProps {
   affectedTravelerCount?: number;
   testID?: string;
 }
-
-const REASON_MIN = 10;
-const REASON_MAX = 200;
 
 export const EditPublishedTripIntakeAccordion: React.FC<
   EditPublishedTripIntakeAccordionProps
@@ -130,33 +124,15 @@ export const EditPublishedTripIntakeAccordion: React.FC<
 
   const hasDirtyTiers = dirtyTierIdsRef.current.size > 0;
 
-  // Reason ConfirmDialog state.
-  const [reasonDialogVisible, setReasonDialogVisible] = useState<boolean>(false);
-  const [reason, setReason] = useState<string>("");
-  const [reasonError, setReasonError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
   });
 
-  const onSavePressed = useCallback((): void => {
+  const onSavePressed = useCallback(async (): Promise<void> => {
     if (!hasDirtyTiers) return;
-    setReason("");
-    setReasonError(null);
-    setReasonDialogVisible(true);
-  }, [hasDirtyTiers]);
-
-  const onConfirmSave = useCallback(async (): Promise<void> => {
-    const trimmed = reason.trim();
-    if (trimmed.length < REASON_MIN || trimmed.length > REASON_MAX) {
-      setReasonError(
-        `Reason must be between ${REASON_MIN} and ${REASON_MAX} characters.`,
-      );
-      return;
-    }
     setSubmitting(true);
-    setReasonError(null);
     try {
       const dirty = Array.from(dirtyTierIdsRef.current);
       // Fire upserts sequentially to avoid hammering the RPC concurrently.
@@ -167,12 +143,13 @@ export const EditPublishedTripIntakeAccordion: React.FC<
           eventId,
           ticketTypeId,
           schema,
-          reason: trimmed,
+          // #4522 §9.10: questions are logged, but never ask the host for a
+          // traveler-facing reason.
+          reason: NON_BUYER_EDIT_AUDIT_REASON,
         });
         okCount += 1;
       }
       dirtyTierIdsRef.current = new Set();
-      setReasonDialogVisible(false);
       const travelerLabel =
         affectedTravelerCount > 0
           ? ` · ${affectedTravelerCount} traveler${affectedTravelerCount === 1 ? "" : "s"} notified`
@@ -182,26 +159,23 @@ export const EditPublishedTripIntakeAccordion: React.FC<
         message: `Intake form saved (${okCount} ${okCount === 1 ? "tier" : "tiers"})${travelerLabel}.`,
       });
     } catch (e) {
-      setReasonError(
-        e instanceof Error
-          ? e.message
-          : "Couldn't save intake form. Try again.",
-      );
+      setToast({
+        visible: true,
+        message:
+          e instanceof Error
+            ? e.message
+            : "Couldn't save intake form. Try again.",
+      });
     } finally {
       setSubmitting(false);
     }
   }, [
-    reason,
+    hasDirtyTiers,
     schemasByTier,
     upsertMutation,
     eventId,
     affectedTravelerCount,
   ]);
-
-  const onCloseReasonDialog = useCallback((): void => {
-    if (submitting) return;
-    setReasonDialogVisible(false);
-  }, [submitting]);
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_BREAKPOINT_PT;
   const isSingleTier = ticketTypes.length === 1;
@@ -257,6 +231,15 @@ export const EditPublishedTripIntakeAccordion: React.FC<
 
   return (
     <View style={styles.container} testID={testID ?? "intake-accordion-body"}>
+      <TripQuestionLibrary
+        tiers={ticketTypes}
+        unsavedPackageCount={0}
+        schemasByTier={schemasByTier}
+        onSchemaChange={onSchemaChange}
+        onNotice={(message) => setToast({ visible: true, message })}
+        disabled={submitting}
+      />
+
       {/* Tier-picker tab row */}
       {isSingleTier ? (
         <View style={styles.singleTierLabelWrap}>
@@ -389,89 +372,22 @@ export const EditPublishedTripIntakeAccordion: React.FC<
         </GlassCard>
       ) : null}
 
-      {/* Inline reason-and-save row. When Save tapped, reason banner appears
-          below with TextInput + Save+Cancel. Skips ChangeSummaryModal because
-          intake schemas don't synthesize cleanly into the modal's FieldDiff[]
-          shape — documented as Phase 4 deviation; polish follow-up could
-          extend ChangeSummaryModal for intake-specific diffs. */}
-      {reasonDialogVisible ? (
-        <GlassCard
-          variant="base"
-          padding={space[4]}
-          radius="lg"
-          style={styles.reasonBanner}
-        >
-          <Text style={styles.reasonTitle}>Save intake form changes?</Text>
-          <Text style={styles.reasonDescription}>
-            {affectedTravelerCount > 0
-              ? `${affectedTravelerCount} traveler${affectedTravelerCount === 1 ? "" : "s"} will be asked to re-answer the affected questions and notified by email.`
-              : "No travelers are currently affected."}
-          </Text>
-          <Text style={styles.reasonLabel}>Reason for change *</Text>
-          <TextInput
-            value={reason}
-            onChangeText={(t) => setReason(t.slice(0, REASON_MAX))}
-            placeholder="e.g., Added passport scan requirement for new visa policy."
-            placeholderTextColor={color.text4}
-            maxLength={REASON_MAX}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-            style={styles.reasonInput}
-            accessibilityLabel="Reason for change"
-            autoCapitalize="sentences"
-          />
-          <Text style={styles.reasonCounter}>
-            {reason.trim().length} / {REASON_MAX}
-          </Text>
-          {reasonError !== null ? (
-            <Text style={styles.reasonError} accessibilityLiveRegion="polite">
-              {reasonError}
-            </Text>
-          ) : null}
-          <View style={styles.reasonButtons}>
-            <View style={styles.reasonCancelCell}>
-              <Button
-                label="Keep editing"
-                variant="ghost"
-                size="md"
-                onPress={onCloseReasonDialog}
-                disabled={submitting}
-                fullWidth
-              />
-            </View>
-            <View style={styles.reasonConfirmCell}>
-              <Button
-                label="Save + notify travelers"
-                variant="primary"
-                size="md"
-                onPress={() => {
-                  void onConfirmSave();
-                }}
-                loading={submitting}
-                disabled={
-                  submitting || reason.trim().length < REASON_MIN
-                }
-                fullWidth
-                testID="intake-accordion-reason-confirm"
-              />
-            </View>
-          </View>
-        </GlassCard>
-      ) : (
-        <View style={styles.saveWrap}>
-          <Button
-            label="Save changes"
-            variant="primary"
-            size="md"
-            onPress={onSavePressed}
-            disabled={!hasDirtyTiers || submitting}
-            loading={submitting}
-            fullWidth
-            testID="intake-accordion-save"
-          />
-        </View>
-      )}
+      {/* #4522 §9.10: question edits are audit-logged buyer-safe changes, so
+          Save never opens a reason prompt. */}
+      <View style={styles.saveWrap}>
+        <Button
+          label="Save changes"
+          variant="primary"
+          size="md"
+          onPress={() => {
+            void onSavePressed();
+          }}
+          disabled={!hasDirtyTiers || submitting}
+          loading={submitting}
+          fullWidth
+          testID="intake-accordion-save"
+        />
+      </View>
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
@@ -601,68 +517,6 @@ const styles = StyleSheet.create({
   },
   saveWrap: {
     marginTop: space[2],
-  },
-  reasonBanner: {
-    marginTop: space[2],
-    borderColor: color.accentLine,
-    borderWidth: 1,
-  },
-  reasonTitle: {
-    fontSize: type.h1.fontSize,
-    lineHeight: type.h1.lineHeight,
-    fontWeight: type.h1.fontWeight,
-    color: color.text1,
-    marginBottom: space[1],
-  },
-  reasonDescription: {
-    fontSize: type.small.fontSize,
-    lineHeight: type.small.lineHeight,
-    color: color.text2,
-    marginBottom: space[4],
-  },
-  reasonLabel: {
-    fontSize: type.caption.fontSize,
-    lineHeight: type.caption.lineHeight,
-    fontWeight: "600",
-    color: color.text2,
-    marginBottom: space[1],
-  },
-  reasonInput: {
-    minHeight: 80,
-    paddingHorizontal: space[4],
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.fill.inset,
-    color: color.text1,
-    fontSize: type.body.fontSize,
-    lineHeight: type.body.lineHeight,
-  },
-  reasonCounter: {
-    fontSize: type.caption.fontSize,
-    lineHeight: type.caption.lineHeight,
-    color: color.text3,
-    textAlign: "right",
-    marginTop: 2,
-  },
-  reasonError: {
-    fontSize: type.caption.fontSize,
-    lineHeight: type.caption.lineHeight,
-    color: color.danger,
-    marginTop: space[1],
-  },
-  reasonButtons: {
-    flexDirection: "row",
-    gap: space[2],
-    marginTop: space[4],
-  },
-  reasonCancelCell: {
-    flex: 1,
-  },
-  reasonConfirmCell: {
-    flex: 2,
   },
   toastWrap: {
     position: "absolute",

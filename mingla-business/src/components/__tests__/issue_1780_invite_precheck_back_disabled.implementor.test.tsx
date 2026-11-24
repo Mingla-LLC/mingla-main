@@ -370,6 +370,13 @@ const stripeStatusQuery = { data: { status: "active" } };
 
 /** Wizard import specifier (by its last path segment) -> module the test supplies. */
 const BOUNDARY: Record<string, () => unknown> = {
+  // #4522 — the 4-step builder is dark: its flag reads false here, its rules are pure.
+  TripBuilderV2Parts: () => ({ TRIP_BUILDER_V2: false }),
+  TripEarningsCard: () => ({ TripEarningsCard: () => null }),
+  TripInclusionChips: () => ({ TripInclusionChips: () => null }),
+  TripQuestionLibrary: () => ({ TripQuestionLibrary: () => null }),
+  TripBuilderPreview: () => ({ TripPreviewPane: () => null, TripPreviewPeek: () => null }),
+  tripBuilderV2Model: () => jest.requireActual("../trip/tripBuilderV2Model"),
   // [TEST-MOD-APPROVED #3859] This harness publishes a free trip, so the
   // truthful provider-capability boundary is deterministically unsupported.
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({

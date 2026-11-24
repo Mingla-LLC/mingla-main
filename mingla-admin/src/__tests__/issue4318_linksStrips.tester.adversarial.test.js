@@ -37,6 +37,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+// [TEST-MOD-APPROVED #4522] #4523 puts the shared calendar (@mingla/calendar-web) in Admin components; this bundle now needs the same workspace alias Vite has, so the old plain esbuild call could no longer resolve them.
+import { workspacePackagesPlugin } from "./_workspacePackagesPlugin.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { validateStripDraft } from "../lib/linksStrips.js";
 
@@ -169,6 +171,8 @@ class FakeElement extends FakeNode {
   focus() { this.ownerDocument.activeElement = this; }
   blur() { if (this.ownerDocument.activeElement === this) this.ownerDocument.activeElement = this.ownerDocument.body; }
   click() { return this.dispatchEvent(makeEvent("click")); }
+  // [TEST-MOD-APPROVED #4522] #4523: the shared calendar measures its trigger before it opens; the fake DOM has no layout, so it answers with an empty box.
+  getBoundingClientRect() { return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; }
   descendants() {
     const out = [];
     const walk = (node) => { for (const child of node.childNodes) if (child.nodeType === 1) { out.push(child); walk(child); } };
@@ -301,7 +305,7 @@ before(async () => {
     format: "esm",
     jsx: "automatic",
     loader: { ".js": "jsx" },
-    plugins: [stubs],
+    plugins: [stubs, workspacePackagesPlugin],
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
     logLevel: "silent",
     define: { "process.env.NODE_ENV": '"development"' },
@@ -395,6 +399,18 @@ async function typeInto(input, value) {
     setNativeValue.call(input, value);
     input.dispatchEvent(makeEvent("input"));
   });
+}
+// [TEST-MOD-APPROVED #4522] #4523: "Show until" is a calendar button now, not a typed date input. A date is picked the way a person does: open the calendar, click the day.
+async function pickDate(container, id, iso) {
+  await settle(() => { container.querySelector(`[id="${id}"]`).click(); });
+  const dayId = `[data-testid="${id}-day-${iso}"]`;
+  for (let i = 0; i < 3 && !container.querySelector(dayId); i += 1) {
+    await settle(() => { container.querySelector(`[data-testid="${id}-next"]`).click(); });
+  }
+  const day = container.querySelector(dayId);
+  assert.ok(day, `the calendar offers ${iso}`);
+  assert.ok(!day.disabled, `${iso} can be picked`);
+  await settle(() => { day.click(); });
 }
 async function choose(select, value) {
   assert.ok(select.options.some((o) => o.value === value), `option ${value} is offered`);
@@ -688,10 +704,11 @@ describe("A-7 Show until and the /links refresh", () => {
     const container = await mountPanel();
     await fillValid(container);
     const start = container.querySelector('[id="links-strip-day"]').value;
-    const [y, m, d] = start.split("-").map(Number);
-    const before = new Date(y, m - 1, d - 1);
-    const iso = `${before.getFullYear()}-${String(before.getMonth() + 1).padStart(2, "0")}-${String(before.getDate()).padStart(2, "0")}`;
-    await typeInto(container.querySelector('[id="links-strip-until"]'), iso);
+    // [TEST-MOD-APPROVED #4522] #4523: the calendar greys out every day before the start, so an earlier end can no longer be typed. It can still happen by moving the start past an end already picked; that is what this case now does.
+    const earlier = container.querySelector('[id="links-strip-day"]');
+    assert.ok(earlier.options.length > 1, "the start offers more than one day");
+    await pickDate(container, "links-strip-until", start);
+    await choose(container.querySelector('[id="links-strip-day"]'), earlier.options[earlier.options.length - 1].value);
     await submit(container);
     assert.equal(calls("admin_links_strip_save").length, 0, "an end before the start reached the server");
     assert.match(errorText(container), /can't be before/);
@@ -707,7 +724,7 @@ describe("A-7 Show until and the /links refresh", () => {
     assert.equal(calls("admin_links_strip_save")[0].args.p_shows_until, null);
     const start = container.querySelector('[id="links-strip-day"]').value;
     await fillValid(container);
-    await typeInto(container.querySelector('[id="links-strip-until"]'), start);
+    await pickDate(container, "links-strip-until", start);
     await submit(container);
     assert.equal(calls("admin_links_strip_save")[1].args.p_shows_until, start, "the same day is a valid end");
   });

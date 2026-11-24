@@ -118,13 +118,13 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
   if (unavailable) {
     return (
       <View>
-        <Text style={styles.sectionHeader}>Extras</Text>
+        <Text style={styles.sectionHeader}>Add-ons</Text>
         <Text style={styles.helperHint}>
           {loading
-            ? "Loading this ticket's extras…"
-            : "This ticket's extras didn't load, so they can't be changed right now. " +
+            ? "Loading this ticket's add-ons…"
+            : "This ticket's add-ons didn't load, so they can't be changed right now. " +
               "Close this sheet and open it again to retry. Everything else " +
-              "here still saves, and the extras stay as they are."}
+              "here still saves, and the add-ons stay as they are."}
         </Text>
       </View>
     );
@@ -132,7 +132,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
 
   return (
     <View>
-      <Text style={styles.sectionHeader}>Extras</Text>
+      <Text style={styles.sectionHeader}>Add-ons</Text>
       {extras.length === 0 ? (
         <Text style={styles.helperHint}>
           Sell something with this ticket, like a dinner seat or a shuttle.
@@ -150,11 +150,11 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
               key={extra.id}
               onPress={() => open(extra)}
               accessibilityRole="button"
-              accessibilityLabel={`Edit extra ${extra.name || "without a name"}`}
+              accessibilityLabel={`Edit add-on ${extra.name || "without a name"}`}
               style={[styles.row, problem !== null && styles.rowError]}
             >
               <Text style={styles.rowTitle} numberOfLines={1}>
-                {extra.name.trim() || "New extra"}
+                {extra.name.trim() || "New add-on"}
               </Text>
               <Text style={styles.rowMeta} numberOfLines={1}>
                 {extraSummaryLine(extra, formatPrice, tierDayEntries)}
@@ -177,7 +177,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                 placeholderTextColor={color.text4}
                 maxLength={120}
                 style={styles.textInput}
-                accessibilityLabel="Extra name"
+                accessibilityLabel="Add-on name"
               />
             </View>
 
@@ -194,7 +194,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                 placeholderTextColor={color.text4}
                 maxLength={280}
                 style={styles.textInput}
-                accessibilityLabel="Extra description"
+                accessibilityLabel="Add-on description"
               />
             </View>
 
@@ -221,15 +221,15 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                 keyboardType="decimal-pad"
                 selectTextOnFocus
                 style={styles.textInput}
-                accessibilityLabel={`Extra price in ${currencyCode}`}
+                accessibilityLabel={`Add-on price in ${currencyCode}`}
               />
             </View>
             <Text style={styles.helperHint}>
               {sold > 0
-                ? "Extras people already bought keep their price."
+                ? "Add-ons people already bought keep their price."
                 : tierIsFree
-                  ? "A free ticket can only have free extras."
-                  : "Leave it at 0 for a free extra. You still cap how many go out."}
+                  ? "A free ticket can only have free add-ons."
+                  : "Leave it at 0 for a free add-on. You still cap how many go out."}
             </Text>
 
             <Pressable
@@ -242,7 +242,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
               }}
               accessibilityRole="switch"
               accessibilityState={{ checked: extra.isUnlimited }}
-              accessibilityLabel="Unlimited capacity for this extra"
+              accessibilityLabel="Unlimited capacity for this add-on"
               style={styles.toggleRow}
             >
               <View style={styles.toggleLabelCol}>
@@ -286,7 +286,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                     keyboardType="number-pad"
                     selectTextOnFocus
                     style={styles.textInput}
-                    accessibilityLabel="Extra capacity"
+                    accessibilityLabel="Add-on capacity"
                   />
                 </View>
                 {extra.validDayIds !== null ? (
@@ -313,7 +313,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                 keyboardType="number-pad"
                 selectTextOnFocus
                 style={styles.textInput}
-                accessibilityLabel="Most of this extra per ticket"
+                accessibilityLabel="Most of this add-on per ticket"
               />
             </View>
 
@@ -326,7 +326,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
             {choosableDaysFor(extra) !== null ? (
               <View
                 accessibilityRole="radiogroup"
-                accessibilityLabel="Dates for this extra"
+                accessibilityLabel="Dates for this add-on"
               >
                 <Text style={styles.fieldLabel}>Dates</Text>
                 <DayOption
@@ -364,14 +364,14 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
             <View style={styles.editorActions}>
               {/* A sold extra can still stop selling; what was bought is kept. */}
               <Button
-                label={sold > 0 ? "Stop selling" : "Remove extra"}
+                label={sold > 0 ? "Stop selling" : "Remove add-on"}
                 variant="ghost"
                 size="sm"
                 onPress={() => remove(extra.id)}
                 accessibilityLabel={
                   sold > 0
-                    ? `Stop selling extra ${extra.name}; existing orders keep it`
-                    : `Remove extra ${extra.name}`
+                    ? `Stop selling add-on ${extra.name}; existing orders keep it`
+                    : `Remove add-on ${extra.name}`
                 }
               />
               <Button
@@ -379,7 +379,7 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
                 variant="secondary"
                 size="sm"
                 onPress={() => setOpenId(null)}
-                accessibilityLabel="Finish editing this extra"
+                accessibilityLabel="Finish editing this add-on"
               />
             </View>
           </View>
@@ -388,12 +388,12 @@ export const TicketExtrasSection: React.FC<TicketExtrasSectionProps> = ({
 
       {extras.length < MAX_EXTRAS_PER_TIER ? (
         <Button
-          label="Add an extra"
+          label="Add an add-on"
           variant="secondary"
           size="sm"
           leadingIcon="plus"
           onPress={add}
-          accessibilityLabel="Add an extra to this ticket"
+          accessibilityLabel="Add an add-on to this ticket"
         />
       ) : null}
     </View>

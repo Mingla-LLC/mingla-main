@@ -36,19 +36,19 @@ export const validateTicketExtra = (
   options: { tierIsFree: boolean },
 ): string | null => {
   const name = extra.name.trim();
-  if (name.length === 0) return "Give this extra a name.";
+  if (name.length === 0) return "Give this add-on a name.";
   if (name.length > 120) return "Keep the name to 120 characters.";
   if ((extra.description ?? "").trim().length > 280) {
     return "Keep the description to 280 characters.";
   }
   if (!Number.isFinite(extra.priceGbp) || extra.priceGbp < 0) {
-    return "An extra can't cost less than nothing. If you want a cheaper option, add a second ticket type.";
+    return "An add-on can't cost less than nothing. If you want a cheaper option, add a second ticket type.";
   }
   if (Number(extra.priceGbp.toFixed(2)) !== extra.priceGbp) {
     return "Use at most two decimal places for the price.";
   }
   if (extra.priceGbp > 0 && options.tierIsFree) {
-    return "A free ticket can only have free extras.";
+    return "A free ticket can only have free add-ons.";
   }
   if (!extra.isUnlimited) {
     if (
@@ -73,7 +73,7 @@ export const validateTicketExtra = (
     return `Allow between 1 and ${MAX_PER_TICKET_LIMIT} per ticket.`;
   }
   if (extra.validDayIds !== null && extra.validDayIds.length === 0) {
-    return "Choose at least one date for this extra.";
+    return "Choose at least one date for this add-on.";
   }
   return null;
 };

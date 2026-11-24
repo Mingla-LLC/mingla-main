@@ -57,6 +57,12 @@ import {
 import { ExtraGuestsField } from "../ui/ExtraGuestsField";
 import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 
+import { isFeatureEnabled } from "../../config/featureFlags";
+
+// issue #3281 S3 — the Add-ons card loads only when EXPO_PUBLIC_FF_EXTRAS_ENABLED
+// is on, so flag-off editors and the Host web boot carry none of it.
+const LazyAddOnsEntry = React.lazy(() => import("../addOns/AddOnsEntry"));
+
 const MAX_PRICE_OPTIONS = 8;
 
 export interface ExperiencePricingStepProps {
@@ -107,6 +113,11 @@ export interface ExperiencePricingStepProps {
   refundPolicy: RefundPolicy | null;
   setRefundPolicy: (policy: RefundPolicy | null) => void;
   liveSoldCount?: number;
+  /**
+   * issue #3281 S3 — the saved experience's id: shows the Add-ons card when
+   * EXPO_PUBLIC_FF_EXTRAS_ENABLED is on. Omitted: nothing changes.
+   */
+  addOnsEventId?: string | null;
 }
 
 const REFUND_HELPER_PAID =
@@ -159,6 +170,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   refundPolicy,
   setRefundPolicy,
   liveSoldCount = 0,
+  addOnsEventId = null,
 }) => {
   const n = stops.length;
   // Q1 (#3827) — locked on while private (an older private experience saved
@@ -506,6 +518,12 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         onSetupVat={onSetupVat}
       />
 
+      {/* issue #3281 S3 — dark unless EXPO_PUBLIC_FF_EXTRAS_ENABLED is on. */}
+      {isFeatureEnabled("extras") ? (
+        <React.Suspense fallback={null}>
+          <LazyAddOnsEntry eventId={addOnsEventId} offering="experience" currency={currency} />
+        </React.Suspense>
+      ) : null}
       <GlassCard
         variant="base"
         radius="lg"

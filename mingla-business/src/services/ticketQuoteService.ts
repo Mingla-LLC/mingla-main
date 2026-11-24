@@ -65,6 +65,8 @@ export const quoteTicketCheckout = async (
       byDate: line.byDate,
       // issue #3281 — extras ride their ticket's line; absent keeps the body.
       addOns: line.addOns,
+      // issue #4522 — one cart choice copied onto its add-on lines.
+      addonPaymentMode: line.addonPaymentMode,
     })),
     surface: input.surface,
     ...(input.ticketLinkToken !== undefined && input.ticketLinkToken.length > 0
@@ -96,6 +98,29 @@ export const quoteTicketCheckout = async (
   const schedule = decodeInstallmentChargeSchedule(
     quote.installmentChargeSchedule,
   );
+  const paymentPlanV2 =
+    quote.paymentPlanV2 === undefined
+      ? undefined
+      : await import(
+          "@mingla/offering-rendering/ticketQuotePlanV2Contract"
+        ).then(({ decodeTicketQuotePlanV2 }) =>
+          decodeTicketQuotePlanV2(quote.paymentPlanV2),
+        );
+  // issue #4522 S-1 — the wire carries JSON null when the cart has no add-on
+  // choice; only a non-null value outside today | spread is refused.
+  const rawAddonPaymentMode: unknown = quote.addonPaymentMode;
+  const addonPaymentModeField =
+    rawAddonPaymentMode === undefined
+      ? ({ ok: true, mode: undefined } as const)
+      : await import(
+          "@mingla/offering-rendering/ticketQuotePlanV2Contract"
+        ).then(({ readTicketQuoteAddOnPaymentModeField }) =>
+          readTicketQuoteAddOnPaymentModeField(rawAddonPaymentMode),
+        );
+  if (!addonPaymentModeField.ok) {
+    throw new Error("addon_payment_mode_invalid");
+  }
+  const addonPaymentMode = addonPaymentModeField.mode;
   const planTotalBuyerCents = installmentPlanBuyerTotal(
     quote.buyerTotalCents,
     schedule,
@@ -105,6 +130,12 @@ export const quoteTicketCheckout = async (
     ...(schedule === undefined
       ? { installmentChargeSchedule: undefined }
       : { installmentChargeSchedule: schedule }),
+    ...(paymentPlanV2 === undefined
+      ? { paymentPlanV2: undefined }
+      : { paymentPlanV2 }),
+    ...(addonPaymentMode === undefined
+      ? { addonPaymentMode: undefined }
+      : { addonPaymentMode }),
     planTotalBuyerCents,
   };
 };

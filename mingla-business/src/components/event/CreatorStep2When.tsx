@@ -107,7 +107,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
-import { DayDateField } from "../ui/DayDateField";
+import { DateField } from "../ui/DateField";
 import { TimeField } from "../ui/TimeField";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
@@ -993,48 +993,19 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               issue #1027 Thread B — web renders a visible native <input> the
               user clicks directly; native keeps the Pressable → Sheet flow. */}
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>{dateRowLabel}</Text>
-            {Platform.OS === "web" ? (
-              // N136 (#4490): the design-system day-first date field, never a
-              // native browser date input ("mm/dd/yyyy" that typing can't drive).
-              <DayDateField
-                label=""
-                value={draft.date ?? ""}
-                min={isoFromDate(new Date())}
-                today={isoFromDate(new Date())}
-                accessibilityLabel={`Pick ${dateRowLabel.toLowerCase()}`}
-                // The step shows its own error line below (no second copy).
-                error={null}
-                testID="creator-when-date-web"
-                onChangeValue={(v) => {
-                  if (v.length === 0) return;
-                  const [y, m, d] = v.split("-").map(Number);
-                  commitPickerValue("date", new Date(y, m - 1, d, 0, 0, 0, 0));
-                }}
-              />
-            ) : (
-              <Pressable
-                onPress={() => handleOpenPicker("date")}
-                accessibilityRole="button"
-                accessibilityLabel={`Pick ${dateRowLabel.toLowerCase()}`}
-                style={[
-                  styles.pickerRow,
-                  (dateError !== undefined || dayMismatchError !== undefined) &&
-                    styles.inputError,
-                ]}
-              >
-                <Text
-                  style={
-                    draft.date !== null
-                      ? styles.pickerValue
-                      : styles.pickerPlaceholder
-                  }
-                >
-                  {formatDateRowLabel(draft.date)}
-                </Text>
-                <Icon name="calendar" size={16} color={color.text3} />
-              </Pressable>
-            )}
+            <DateField
+              label={dateRowLabel}
+              accessibilityLabel={`Pick ${dateRowLabel.toLowerCase()}`}
+              value={draft.date ?? ""}
+              min={isoFromDate(new Date())}
+              timeZone={draft.timezone}
+              hasError={dateError !== undefined || dayMismatchError !== undefined}
+              testID="creator-when-date"
+              onChangeValue={(v) => {
+                if (v.length === 0) return;
+                commitPickerValue("date", dateFromIso(v));
+              }}
+            />
             {dateError !== undefined ? (
               <Text style={styles.helperError}>{dateError}</Text>
             ) : null}
@@ -1443,11 +1414,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               <View style={styles.iosPickerWrap}>
                 <DateTimePicker
                   value={tempPickerValue}
-                  mode={
-                    pickerMode === "date" || pickerMode === "untilDate"
-                      ? "date"
-                      : "time"
-                  }
+                  mode="time"
                   display="spinner"
                   onChange={handlePickerChange}
                   minimumDate={pickerMinimumDate}
@@ -1463,21 +1430,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       ) : Platform.OS === "android" && pickerMode !== null ? (
         <DateTimePicker
           value={
-            pickerMode === "date"
-              ? dateFromIso(draft.date)
-              : pickerMode === "untilDate"
-                ? draft.recurrenceRule?.termination.kind === "until"
-                  ? dateFromIso(draft.recurrenceRule.termination.until)
-                  : new Date()
-                : pickerMode === "doorsOpen"
-                  ? dateFromHhmm(draft.doorsOpen, "21:00")
-                  : dateFromHhmm(draft.endsAt, "03:00")
+            pickerMode === "doorsOpen"
+              ? dateFromHhmm(draft.doorsOpen, "21:00")
+              : dateFromHhmm(draft.endsAt, "03:00")
           }
-          mode={
-            pickerMode === "date" || pickerMode === "untilDate"
-              ? "date"
-              : "time"
-          }
+          mode="time"
           display="default"
           onChange={handlePickerChange}
           minimumDate={pickerMinimumDate}
@@ -1623,48 +1580,26 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
           {draft.recurrenceRule?.termination.kind === "until" ? (
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>End on</Text>
-              {Platform.OS === "web" ? (
-                <WebDateTimeInput
-                  type="date"
-                  value={draft.recurrenceRule.termination.until}
-                  min={
-                    draft.date !== null
-                      ? (() => {
-                          const firstDay = dateFromIso(draft.date);
-                          firstDay.setDate(firstDay.getDate() + 1);
-                          return isoFromDate(firstDay);
-                        })()
-                      : isoFromDate(new Date())
-                  }
-                  ariaLabel="Pick recurrence end date"
-                  testID="creator-when-until-web"
-                  onChangeValue={(v) => {
-                    if (v.length === 0) return;
-                    const [y, m, d] = v.split("-").map(Number);
-                    commitPickerValue(
-                      "untilDate",
-                      new Date(y, m - 1, d, 0, 0, 0, 0),
-                    );
-                  }}
-                />
-              ) : (
-                <Pressable
-                  onPress={() => {
-                    setTerminationSheetVisible(false);
-                    // Slight delay to let sheet close before opening picker
-                    setTimeout(() => handleOpenPicker("untilDate"), 200);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Pick end date"
-                  style={styles.pickerRow}
-                >
-                  <Text style={styles.pickerValue}>
-                    {formatDateRowLabel(draft.recurrenceRule.termination.until)}
-                  </Text>
-                  <Icon name="calendar" size={16} color={color.text3} />
-                </Pressable>
-              )}
+              <DateField
+                label="End on"
+                accessibilityLabel="Pick recurrence end date"
+                value={draft.recurrenceRule.termination.until}
+                min={
+                  draft.date !== null
+                    ? (() => {
+                        const firstDay = dateFromIso(draft.date);
+                        firstDay.setDate(firstDay.getDate() + 1);
+                        return isoFromDate(firstDay);
+                      })()
+                    : isoFromDate(new Date())
+                }
+                timeZone={draft.timezone}
+                testID="creator-when-until"
+                onChangeValue={(v) => {
+                  if (v.length === 0) return;
+                  commitPickerValue("untilDate", dateFromIso(v));
+                }}
+              />
               <Text style={styles.helperHint}>Up to 1 year out.</Text>
             </View>
           ) : null}
@@ -1695,38 +1630,18 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           {/* issue #1027 Thread B — AddDateSheet web rows are visible native
               <input> controls; native keeps the Pressable → inline picker. */}
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Date</Text>
-            {Platform.OS === "web" ? (
-              <WebDateTimeInput
-                type="date"
-                value={addDateValue ?? ""}
-                min={isoFromDate(new Date())}
-                ariaLabel="Pick date for new entry"
-                testID="creator-adddate-date-web"
-                onChangeValue={(v) => {
-                  if (v.length === 0) return;
-                  setAddDateValue(v);
-                }}
-              />
-            ) : (
-              <Pressable
-                onPress={() => handleAddDateOpenPicker("date")}
-                accessibilityRole="button"
-                accessibilityLabel="Pick date"
-                style={styles.pickerRow}
-              >
-                <Text
-                  style={
-                    addDateValue !== null
-                      ? styles.pickerValue
-                      : styles.pickerPlaceholder
-                  }
-                >
-                  {formatDateRowLabel(addDateValue)}
-                </Text>
-                <Icon name="calendar" size={16} color={color.text3} />
-              </Pressable>
-            )}
+            <DateField
+              label="Date"
+              accessibilityLabel="Pick date for new entry"
+              value={addDateValue ?? ""}
+              min={isoFromDate(new Date())}
+              timeZone={draft.timezone}
+              testID="creator-adddate-date"
+              onChangeValue={(v) => {
+                if (v.length === 0) return;
+                setAddDateValue(v);
+              }}
+            />
           </View>
 
           <View style={styles.timeRow}>
@@ -1822,12 +1737,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             {addDateTempValue !== null ? (
               <DateTimePicker
                 value={addDateTempValue}
-                mode={addDatePickerMode === "date" ? "date" : "time"}
+                mode="time"
                 display="spinner"
                 onChange={handleAddDatePickerChange}
-                minimumDate={
-                  addDatePickerMode === "date" ? new Date() : undefined
-                }
                 is24Hour
                 textColor={color.textStrong}
                 themeVariant="dark"
@@ -1838,10 +1750,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         ) : Platform.OS === "android" && addDatePickerMode !== null ? (
           <DateTimePicker
             value={addDateTempValue ?? new Date()}
-            mode={addDatePickerMode === "date" ? "date" : "time"}
+            mode="time"
             display="default"
             onChange={handleAddDatePickerChange}
-            minimumDate={addDatePickerMode === "date" ? new Date() : undefined}
             is24Hour
           />
         ) : null}

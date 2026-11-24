@@ -502,6 +502,7 @@ export interface DefaultTimezoneForBrandInput {
   /**
    * #4572 7e (D9) — `brands.default_timezone` (Brand Edit, or filled by the
    * database from a single-zone country). When valid it wins over every guess.
+   * issue #4522 G-5 — read first.
    */
   brandZone?: string | null;
   payoutCountry?: string | null;

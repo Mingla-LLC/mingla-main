@@ -3,25 +3,38 @@
  * Deliberately has no auth hook: the high-entropy URL token is the credential.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
 import { GuestPayWordmark } from "../../src/components/brand/GuestPayWordmark";
 import { Button } from "../../src/components/ui/Button";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import {
-  radius as radiusTokens,
   color,
+  radius as radiusTokens,
   space,
   type,
 } from "../../src/constants/designSystem";
 import {
   InstallmentPayLinkError,
+  type InstallmentPayLinkView,
   startInstallmentPayLink,
   statusInstallmentPayLink,
   viewInstallmentPayLink,
-  type InstallmentPayLinkView,
 } from "../../src/services/installmentPayLinkService";
 import { formatCurrency as formatCurrencyAmount } from "../../src/utils/currency";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
@@ -38,7 +51,9 @@ const POLL_INTERVAL_MS = 2_000;
 const POLL_BUDGET_MS = 30_000;
 
 function formatAmount(link: InstallmentPayLinkView | null): string {
-  if (link?.amountCents === undefined || link.currency === undefined) return "your";
+  if (link?.amountCents === undefined || link.currency === undefined) {
+    return "your";
+  }
   return withCurrencyGlyph(
     formatCurrencyAmount(link.amountCents, link.currency, true),
     link.currency,
@@ -48,7 +63,11 @@ function formatAmount(link: InstallmentPayLinkView | null): string {
 function amountA11y(link: InstallmentPayLinkView): string {
   if (link.amountCents === undefined) return "Payment amount";
   if (link.currency === "NGN") {
-    return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(link.amountCents / 100)} naira`;
+    return `${
+      new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(
+        link.amountCents / 100,
+      )
+    } naira`;
   }
   return formatAmount(link);
 }
@@ -58,7 +77,11 @@ function formatDueDate(value: string | undefined): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(date);
+    : new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).format(date);
 }
 
 function safeToken(value: string | string[] | undefined): string {
@@ -66,7 +89,9 @@ function safeToken(value: string | string[] | undefined): string {
 }
 
 export default function InstallmentPayPage(): React.ReactElement {
-  const params = useLocalSearchParams<{ token?: string | string[]; return?: string | string[] }>();
+  const params = useLocalSearchParams<
+    { token?: string | string[]; return?: string | string[] }
+  >();
   const token = safeToken(params.token);
   const isReturning = safeToken(params.return) === "1";
   const [page, setPage] = useState<PageState>({ kind: "loading" });
@@ -109,7 +134,9 @@ export default function InstallmentPayPage(): React.ReactElement {
         } catch {
           // A transient poll failure does not replace the confirmation state.
         }
-        await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, POLL_INTERVAL_MS)
+        );
       }
       if (!cancelled) setPage({ kind: "pending", link: lastLink.current });
     };
@@ -123,7 +150,9 @@ export default function InstallmentPayPage(): React.ReactElement {
     try {
       const { url } = await startInstallmentPayLink(token);
       if (Platform.OS === "web") {
-        (globalThis as { window?: { location?: { assign?: (next: string) => void } } })
+        (globalThis as {
+          window?: { location?: { assign?: (next: string) => void } };
+        })
           .window?.location?.assign?.(url);
         return;
       }
@@ -151,7 +180,13 @@ export default function InstallmentPayPage(): React.ReactElement {
       );
     }
     if (page.kind === "returning") {
-      return <StateCard title="Checking your payment…" body="Please keep this page open while we confirm it." busy />;
+      return (
+        <StateCard
+          title="Checking your payment…"
+          body="Please keep this page open while we confirm it."
+          busy
+        />
+      );
     }
     if (page.kind === "pending") {
       return (
@@ -163,7 +198,11 @@ export default function InstallmentPayPage(): React.ReactElement {
             setPage({ kind: "returning", link: page.link });
             void statusInstallmentPayLink(token).then((link) => {
               lastLink.current = link;
-              setPage(link.state === "payable" ? { kind: "pending", link } : { kind: "link", link });
+              setPage(
+                link.state === "payable"
+                  ? { kind: "pending", link }
+                  : { kind: "link", link },
+              );
             }).catch(() => setPage({ kind: "error", link: page.link }));
           }}
         />
@@ -192,19 +231,42 @@ export default function InstallmentPayPage(): React.ReactElement {
 
     const link = page.link;
     if (link.state === "invalid") {
-      return <StateCard title="This link isn't valid" body="It may have expired or been replaced by a newer link. Check your latest email from Mingla." />;
+      return (
+        <StateCard
+          title="This link isn't valid"
+          body="It may have expired or been replaced by a newer link. Check your latest email from Mingla."
+        />
+      );
     }
     if (link.state === "no_longer_due") {
-      return <StateCard title="Nothing to pay" body={`This payment is no longer due. If you think this is wrong, contact ${link.brandName ?? "the trip organiser"}.`} />;
+      return (
+        <StateCard
+          title="Nothing to pay"
+          body={`This payment is no longer due. If you think this is wrong, contact ${
+            link.brandName ?? "the trip organiser"
+          }.`}
+        />
+      );
     }
     if (link.state === "paid") {
-      return <StateCard title="Payment received" body={`Thanks — your ${formatAmount(link)} payment for ${link.tripTitle ?? "your trip"} is in.`} />;
+      return (
+        <StateCard
+          title="Payment received"
+          body={`Thanks — your ${formatAmount(link)} payment for ${
+            link.tripTitle ?? "your trip"
+          } is in.`}
+        />
+      );
     }
     if (link.purpose === "approve") {
       return (
         <StateCard
           title="Approve your payment"
-          body={`Your bank asked you to approve the ${formatAmount(link)} payment for ${link.tripTitle ?? "your trip"}${link.cardLast4 ? ` (card ending ${link.cardLast4})` : ""}.`}
+          body={`Your bank asked you to approve the ${
+            formatAmount(link)
+          } payment for ${link.tripTitle ?? "your trip"}${
+            link.cardLast4 ? ` (card ending ${link.cardLast4})` : ""
+          }.`}
           amount={formatAmount(link)}
           amountLabel={amountA11y(link)}
           action="Approve payment"
@@ -215,12 +277,29 @@ export default function InstallmentPayPage(): React.ReactElement {
     return (
       <StateCard
         title="Pay your trip instalment"
-        body={`${link.tripTitle ?? "Your trip"} with ${link.brandName ?? "your organiser"}. Payment ${link.ordinal ?? ""} of ${link.totalPayments ?? ""}, due ${formatDueDate(link.dueAt)}.`}
+        body={`${link.tripTitle ?? "Your trip"} with ${
+          link.brandName ?? "your organiser"
+        }. Payment ${link.ordinal ?? ""} of ${link.totalPayments ?? ""}, due ${
+          formatDueDate(link.dueAt)
+        }.`}
         amount={formatAmount(link)}
         amountLabel={amountA11y(link)}
         note="Includes fees and tax."
         action={`Pay ${formatAmount(link)}`}
         onAction={() => void start()}
+        secondaryAction={link.balance?.flexEnabled
+          ? "Pay a different amount"
+          : undefined}
+        onSecondaryAction={link.balance?.flexEnabled
+          ? () => {
+            const next = `/pay/balance/${
+              encodeURIComponent(link.balance?.token ?? "")
+            }`;
+            (globalThis as {
+              window?: { location?: { assign?: (value: string) => void } };
+            }).window?.location?.assign?.(next);
+          }
+          : undefined}
       />
     );
   }, [load, page, start, token]);
@@ -243,26 +322,62 @@ interface StateCardProps {
   note?: string;
   action?: string;
   onAction?: () => void;
+  secondaryAction?: string;
+  onSecondaryAction?: () => void;
   busy?: boolean;
 }
 
-const StateCard: React.FC<StateCardProps> = ({ title, body, amount, amountLabel, note, action, onAction, busy }) => (
+const StateCard: React.FC<StateCardProps> = (
+  {
+    title,
+    body,
+    amount,
+    amountLabel,
+    note,
+    action,
+    onAction,
+    secondaryAction,
+    onSecondaryAction,
+    busy,
+  },
+) => (
   <View style={styles.card} accessibilityRole="summary">
     {busy ? <ActivityIndicator color={color.accent} /> : null}
     <Text style={styles.title}>{title}</Text>
     <Text style={styles.body}>{body}</Text>
-    {amount ? <Text style={styles.amount} accessibilityLabel={amountLabel}>{amount}</Text> : null}
+    {amount
+      ? (
+        <Text style={styles.amount} accessibilityLabel={amountLabel}>
+          {amount}
+        </Text>
+      )
+      : null}
     {note ? <Text style={styles.note}>{note}</Text> : null}
-    {action && onAction ? (
-      <Button
-        label={action}
-        accessibilityRole="button"
-        accessibilityLabel={action}
-        onPress={onAction}
-        fullWidth
-        size="md"
-      />
-    ) : null}
+    {action && onAction
+      ? (
+        <Button
+          label={action}
+          accessibilityRole="button"
+          accessibilityLabel={action}
+          onPress={onAction}
+          fullWidth
+          size="md"
+        />
+      )
+      : null}
+    {secondaryAction && onSecondaryAction
+      ? (
+        <Button
+          label={secondaryAction}
+          accessibilityRole="button"
+          accessibilityLabel={secondaryAction}
+          onPress={onSecondaryAction}
+          fullWidth
+          size="md"
+          variant="secondary"
+        />
+      )
+      : null}
   </View>
 );
 
@@ -301,6 +416,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[6],
   },
-  skeletonLineWide: { height: 18, width: "72%", borderRadius: radiusTokens.full, backgroundColor: color.lineStrong },
-  skeletonLine: { height: 14, width: "48%", borderRadius: radiusTokens.full, backgroundColor: color.lineStrong },
+  skeletonLineWide: {
+    height: 18,
+    width: "72%",
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.lineStrong,
+  },
+  skeletonLine: {
+    height: 14,
+    width: "48%",
+    borderRadius: radiusTokens.full,
+    backgroundColor: color.lineStrong,
+  },
 });

@@ -48,6 +48,29 @@ import {
 } from "../_shared/installments/installmentPayLinks.ts";
 import { handleInstallmentPaystackCharge } from "../_shared/installments/paystackInstallmentWebhook.ts";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
+import {
+  FLEX_IN_FLIGHT_CEILING_MS,
+  FLEX_RECLAIM_WINDOW_MS,
+  type FlexStripe,
+  loadFlexPaymentsToVerify,
+  type MarkedStripeCharge,
+  reconcileMarkedStripeCharges,
+  verifyOpenFlexPayments,
+} from "../_shared/installments/flexReclaim.ts";
+import {
+  type OverpaymentRefundDeps,
+  returnDueOverpayments,
+} from "../_shared/installments/overpaymentRefunds.ts";
+import { defaultOverpaymentDeps } from "../_shared/installments/overpaymentLane.ts";
+import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
+import {
+  handleInstallmentPaymentFailed,
+  handleInstallmentPaymentSucceeded,
+} from "../_shared/installmentWebhookHandlers.ts";
+import { stripeTicketCheckout, stripeTicketRefund } from "../_shared/stripe.ts";
+import { finishUnrecordedPlanRefunds, resumeTripCancels } from "../_shared/installments/unrecordedRefunds.ts";
+import { sendUnsentPaidInFullNotices } from "../_shared/installments/paidInFullNotice.ts";
 
 const DEFAULT_BATCH_LIMIT = 500 as const;
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
@@ -63,6 +86,20 @@ type SchedulerResult = {
   notices_sent: number;
   reconciled: number;
   unknown: number;
+  /** issue #4522 (rework 9) — marked planned Stripe charges read back from Stripe. */
+  marked_charges?: { settled: number; failed: number; released: number; in_flight: number; error: number };
+  /** issue #4522 (N3) — open flexible payments checked with their provider. */
+  flex_verified?: { settled: number; released: number; in_flight: number; flagged: number; error: number };
+  /** issue #4522 (N2) — overpayments returned to travelers (by outcome). */
+  overpayments?: Record<string, number>;
+  /** issue #4522 pass 6 (S9-1) — card refunds made but not yet recorded, finished by read-back. */
+  unrecorded_refunds?: { finished: number; waiting: number; error: number };
+  /** issue #4522 G-3 / G-4 — trip cancels in progress, resumed. */
+  trip_cancels?: { completed: number; in_progress: number; error: number };
+  /** issue #4522 pass 6 (S9-2) — paid-in-full emails sent by this run after an unanswered claim. */
+  paid_in_full_retried?: number;
+  /** issue #4522 (N10) — the v2 steps this run skipped because the schema probe failed. */
+  v2_steps_skipped?: string[];
   errors: Array<{ installment_id: string; reason: string }>;
 };
 
@@ -74,6 +111,22 @@ export interface SchedulerDeps {
   sendPayLink: typeof sendInstallmentPayLink;
   dispatchBuyerEmail: typeof defaultDispatchBuyerEmail;
   sendBuyerPush: typeof defaultSendBuyerPush;
+  /** issue #4522 (N3) — the Stripe surface that verifies open flexible payments. */
+  flexStripe: () => FlexStripe;
+  /** issue #4522 (N3) — the webhook's success path for a verified PaymentIntent. */
+  settleStripe: (supabase: SupabaseClient, paymentIntent: Record<string, unknown>) => Promise<void>;
+  /** issue #4522 (rework 9) — the webhook's failure path for a refused PaymentIntent read back. */
+  failStripe: (supabase: SupabaseClient, paymentIntent: Record<string, unknown>) => Promise<void>;
+  /** issue #4522 (N2) — the overpayment refund lane. */
+  overpaymentDeps: (supabase: SupabaseClient) => OverpaymentRefundDeps;
+  /** issue #4522 pass 6 (S9-1) — the Stripe surface that reads refunds back (never creates one). */
+  refundStripe: () => unknown;
+  alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
+  /** issue #4522 G-3 / G-4 — trip cancels in progress (default: the cancel function's resume mode). */
+  resumeTripCancels?: (
+    supabase: SupabaseClient,
+    limit: number,
+  ) => Promise<{ completed: number; in_progress: number; error: number }>;
 }
 
 function rowObject(value: unknown): Record<string, unknown> {
@@ -133,6 +186,7 @@ async function passAReconcile(
   result: SchedulerResult,
   limit: number,
   deps: SchedulerDeps,
+  planV2 = false,
 ): Promise<void> {
   const now = deps.now();
   const { data, error } = await supabase
@@ -198,6 +252,16 @@ async function passAReconcile(
           txn,
         );
         result.reconciled += 1;
+      } else if (
+        providerState === "abandoned" && planV2 &&
+        now.getTime() - createdAt < FLEX_IN_FLIGHT_CEILING_MS &&
+        await isFlexInstallment(supabase, installmentId)
+      ) {
+        // issue #4522 (T3-5) — "abandoned" is an unfinished Paystack checkout
+        // the traveler's old tab can still complete: a flexible payment's
+        // attempt stays in flight (like processing) until the provider
+        // reports it failed, or 24 hours pass (flexReclaim then releases it).
+        result.unknown += 1;
       } else if (providerState === "failed" || providerState === "abandoned") {
         if (
           state === "created" &&
@@ -258,6 +322,17 @@ async function passAReconcile(
   }
 }
 
+/** issue #4522 (T3-5) — is this instalment a flexible ("pay any amount") payment? */
+async function isFlexInstallment(
+  supabase: SupabaseClient,
+  installmentId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.from("order_installments").select("kind")
+    .eq("id", installmentId).maybeSingle();
+  if (error !== null) throw new Error(`installment_kind_lookup_failed:${error.message}`);
+  return (data as { kind?: string } | null)?.kind === "flex";
+}
+
 async function resetNoticeClaim(
   supabase: SupabaseClient,
   installmentId: string,
@@ -272,16 +347,21 @@ async function passBNotices(
   result: SchedulerResult,
   limit: number,
   deps: SchedulerDeps,
+  planV2: boolean,
 ): Promise<void> {
   const now = deps.now();
   const leadEnd = new Date(now.getTime() + NOTICE_LEAD_MS).toISOString();
-  const { data, error } = await supabase
+  let noticeQuery = supabase
     .from("order_installments")
     .select(
       `id,order_id,ordinal,buyer_total_cents,amount_cents,currency,due_at,collection_method,
       orders!inner(cancelled_at,buyer_user_id,payment_card_last4,events!inner(status,brand_id,title))`,
     )
-    .eq("status", "scheduled")
+    .eq("status", "scheduled");
+  // issue #4522 — a flexible payment is never noticed, charged or retried
+  // here. Before #4522 is applied there is no `kind` (and no flexible row).
+  if (planV2) noticeQuery = noticeQuery.eq("kind", "scheduled");
+  const { data, error } = await noticeQuery
     .is("cancelled_at", null)
     .is("pre_charge_notice_sent_at", null)
     .is("orders.cancelled_at", null)
@@ -372,14 +452,21 @@ async function passCDueAndRetry(
   limit: number,
   dryRun: boolean,
   deps: SchedulerDeps,
+  planV2: boolean,
 ): Promise<void> {
   const nowIso = deps.now().toISOString();
   const select =
     `id,order_id,status,provider,collection_method,buyer_action,due_at,next_retry_at,
     orders!inner(cancelled_at,events!inner(status))`;
-  const { data: dueRows, error: dueError } = await supabase
-    .from("order_installments").select(select)
-    .eq("status", "scheduled").is("cancelled_at", null).is(
+  // issue #4522 — planned rows only (no `kind` before #4522 is applied).
+  let dueQuery = supabase.from("order_installments").select(select)
+    .eq("status", "scheduled");
+  if (planV2) dueQuery = dueQuery.eq("kind", "scheduled");
+  let retryQuery = supabase.from("order_installments").select(select)
+    .eq("status", "failed");
+  if (planV2) retryQuery = retryQuery.eq("kind", "scheduled");
+  const { data: dueRows, error: dueError } = await dueQuery
+    .is("cancelled_at", null).is(
       "in_flight_attempt_id",
       null,
     )
@@ -388,9 +475,8 @@ async function passCDueAndRetry(
   if (dueError !== null) {
     throw new Error(`due_query_failed:${dueError.message}`);
   }
-  const { data: retryRows, error: retryError } = await supabase
-    .from("order_installments").select(select)
-    .eq("status", "failed").is("cancelled_at", null).is(
+  const { data: retryRows, error: retryError } = await retryQuery
+    .is("cancelled_at", null).is(
       "in_flight_attempt_id",
       null,
     )
@@ -459,6 +545,22 @@ export async function processScheduledInstallments(
     sendPayLink: sendInstallmentPayLink,
     dispatchBuyerEmail: defaultDispatchBuyerEmail,
     sendBuyerPush: defaultSendBuyerPush,
+    flexStripe: () => stripeTicketCheckout() as unknown as FlexStripe,
+    settleStripe: async (client, paymentIntent) => {
+      await handleInstallmentPaymentSucceeded(client, {
+        type: "payment_intent.succeeded",
+        data: { object: paymentIntent },
+      });
+    },
+    failStripe: async (client, paymentIntent) => {
+      await handleInstallmentPaymentFailed(client, {
+        type: "payment_intent.payment_failed",
+        data: { object: paymentIntent },
+      });
+    },
+    overpaymentDeps: defaultOverpaymentDeps,
+    refundStripe: () => stripeTicketRefund(),
+    alertOps: installmentOpsAlert,
     ...(input.deps ?? {}),
   };
   const limit =
@@ -477,8 +579,29 @@ export async function processScheduledInstallments(
     unknown: 0,
     errors: [],
   };
+  // issue #4522 (F6, N10) — one question per run: is the #4522 schema
+  // applied? An unknown probe error is never read as "present": this run
+  // skips only the v2 steps (notices, which would need the kind filter, the
+  // flexible-payment check and the overpayment lane), loudly, and the
+  // pre-#4522 reconcile and charging still run (the SQL claim refuses any
+  // flexible row by itself).
+  let planV2: boolean;
+  let probeFailed = false;
   try {
-    await passAReconcile(supabase, result, limit, deps);
+    planV2 = await planV2SchemaAvailable(supabase);
+  } catch (error) {
+    planV2 = false;
+    probeFailed = true;
+    result.errors.push({ installment_id: "scheduler", reason: "schema_probe_failed" });
+    result.v2_steps_skipped = ["notices", "flex_verify", "overpayment_refunds"];
+    console.error(JSON.stringify({
+      event: "issue_4522_schema_probe_failed",
+      reason: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+      skipped: result.v2_steps_skipped,
+    }));
+  }
+  try {
+    await passAReconcile(supabase, result, limit, deps, planV2);
   } catch {
     result.errors.push({
       installment_id: "scheduler",
@@ -486,12 +609,25 @@ export async function processScheduledInstallments(
     });
   }
   try {
-    await passBNotices(supabase, result, limit, deps);
+    if (!probeFailed) await passBNotices(supabase, result, limit, deps, planV2);
   } catch {
     result.errors.push({
       installment_id: "scheduler",
       reason: "notice_pass_failed",
     });
+  }
+  // issue #4522 (rework 9, T8-2 / T8-3) — before anything is charged, every
+  // marked planned Stripe charge whose outcome was never learned is read
+  // back, for every order (at risk or not).
+  if (planV2 && input.dryRun !== true) {
+    try {
+      result.marked_charges = await passMarkedStripeCharges(supabase, limit, deps);
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "marked_charge_pass_failed",
+      });
+    }
   }
   try {
     await passCDueAndRetry(
@@ -500,6 +636,7 @@ export async function processScheduledInstallments(
       limit,
       input.dryRun === true,
       deps,
+      planV2,
     );
   } catch {
     result.errors.push({
@@ -507,7 +644,142 @@ export async function processScheduledInstallments(
       reason: "charge_pass_failed",
     });
   }
+  if (planV2 && input.dryRun !== true) {
+    try {
+      result.flex_verified = await passDVerifyOpenFlex(supabase, limit, deps);
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "flex_sweep_failed",
+      });
+    }
+    try {
+      result.overpayments = await returnDueOverpayments(
+        deps.overpaymentDeps(supabase),
+        null,
+        Math.min(limit, 100),
+      );
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "overpayment_sweep_failed",
+      });
+    }
+    try {
+      result.trip_cancels = await (deps.resumeTripCancels ?? resumeTripCancels)(supabase, limit);
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "trip_cancel_resume_failed",
+      });
+    }
+    try {
+      result.unrecorded_refunds = await finishUnrecordedPlanRefunds(
+        supabase,
+        deps.refundStripe,
+        limit,
+        deps.now(),
+      );
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "unrecorded_refund_sweep_failed",
+      });
+    }
+    try {
+      result.paid_in_full_retried = await sendUnsentPaidInFullNotices(
+        supabase,
+        (orderId) => deps.dispatchBuyerEmail("installment_plan_paid_in_full", { orderId }),
+      );
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "paid_in_full_retry_failed",
+      });
+    }
+  }
   return result;
+}
+
+/**
+ * issue #4522 (N3) — every open flexible payment past the reclaim window is
+ * checked with its provider: settled when it succeeded, released only when
+ * the provider confirms it was cancelled or failed, kept (and flagged once
+ * past the 24-hour ceiling) otherwise. Never released on time alone.
+ */
+async function passDVerifyOpenFlex(
+  supabase: SupabaseClient,
+  limit: number,
+  deps: SchedulerDeps,
+): Promise<{ settled: number; released: number; in_flight: number; flagged: number; error: number }> {
+  const open = await loadFlexPaymentsToVerify(supabase, null, Math.min(limit, 100));
+  return await verifyOpenFlexPayments({
+    supabase,
+    stripe: deps.flexStripe,
+    stripeAccountFor: (payment) => stripeAccountForOrder(supabase, payment.orderId),
+    settleStripe: (pi) => deps.settleStripe(supabase, pi),
+    paystackVerify: (reference) => deps.verifyPaystack(reference),
+    settlePaystack: async (reference, txn) => {
+      await deps.handlePaystackCharge(supabase, reference, txn);
+    },
+    alertOps: deps.alertOps,
+  }, open);
+}
+
+/**
+ * issue #4522 (rework 9) — planned Stripe rows still carrying a PaymentIntent
+ * while scheduled, untouched for the reclaim window: marked charges whose
+ * worker died or whose confirm answer was lost (see flexReclaim.ts).
+ */
+async function passMarkedStripeCharges(
+  supabase: SupabaseClient,
+  limit: number,
+  deps: SchedulerDeps,
+): Promise<{ settled: number; failed: number; released: number; in_flight: number; error: number }> {
+  const now = deps.now().getTime();
+  const { data, error } = await supabase.from("order_installments")
+    .select("id, order_id, stripe_payment_intent_id, failed_at, updated_at")
+    .eq("kind", "scheduled").eq("provider", "stripe").eq("status", "scheduled")
+    .not("stripe_payment_intent_id", "is", null).is("cancelled_at", null)
+    .lte("updated_at", new Date(now - FLEX_RECLAIM_WINDOW_MS).toISOString())
+    .order("updated_at", { ascending: true }).limit(Math.min(limit, 100));
+  if (error !== null) throw new Error(`marked_charge_query_failed:${error.message}`);
+  const charges: MarkedStripeCharge[] = [];
+  for (const raw of data ?? []) {
+    const row = raw as Record<string, unknown>;
+    if (typeof row.stripe_payment_intent_id !== "string") continue;
+    const touched = Date.parse(String(row.updated_at ?? ""));
+    charges.push({
+      installmentId: String(row.id),
+      orderId: String(row.order_id),
+      paymentIntentId: row.stripe_payment_intent_id,
+      marked: row.failed_at == null,
+      pastCeiling: Number.isFinite(touched) && now - touched >= FLEX_IN_FLIGHT_CEILING_MS,
+    });
+  }
+  return await reconcileMarkedStripeCharges({
+    supabase,
+    stripe: deps.flexStripe,
+    stripeAccountFor: (charge) => stripeAccountForOrder(supabase, charge.orderId),
+    settleStripe: (pi) => deps.settleStripe(supabase, pi),
+    failStripe: (pi) => deps.failStripe(supabase, pi),
+  }, charges);
+}
+
+async function stripeAccountForOrder(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<string | null> {
+  const { data: order } = await supabase.from("orders")
+    .select("events!inner(brand_id)").eq("id", orderId).maybeSingle();
+  const event = rowObject((order as Record<string, unknown> | null)?.events);
+  const brandId = typeof event?.brand_id === "string" ? event.brand_id : null;
+  if (brandId === null) return null;
+  const { data: account } = await supabase.from("stripe_connect_accounts")
+    .select("stripe_account_id").eq("brand_id", brandId).is("detached_at", null)
+    .maybeSingle();
+  const id = (account as { stripe_account_id?: unknown } | null)?.stripe_account_id;
+  return typeof id === "string" ? id : null;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

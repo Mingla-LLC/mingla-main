@@ -38,6 +38,20 @@ describe("featureFlags", () => {
     expect(flags.isFeatureEnabled("extras")).toBe(true);
   });
 
+  test("#4522 Host trip v2 defaults on and both env flags remain kill switches", async () => {
+    delete process.env.EXPO_PUBLIC_FF_TRIP_PLAN_V2;
+    delete process.env.EXPO_PUBLIC_FF_TRIP_BUILDER_V2;
+    let flags = await import("../featureFlags");
+    expect(flags.isFeatureEnabled("tripPlanV2")).toBe(true);
+    expect(flags.isFeatureEnabled("tripBuilderV2")).toBe(true);
+    jest.resetModules();
+    process.env.EXPO_PUBLIC_FF_TRIP_PLAN_V2 = "false";
+    process.env.EXPO_PUBLIC_FF_TRIP_BUILDER_V2 = "false";
+    flags = await import("../featureFlags");
+    expect(flags.isFeatureEnabled("tripPlanV2")).toBe(false);
+    expect(flags.isFeatureEnabled("tripBuilderV2")).toBe(false);
+  });
+
   test("EXPO_PUBLIC_FF_*=false disables feature", async () => {
     process.env.EXPO_PUBLIC_FF_ARI_ENABLED = "false";
     process.env.EXPO_PUBLIC_FF_MARKETING_SEND_ENABLED = "0";

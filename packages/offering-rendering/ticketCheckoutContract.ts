@@ -10,6 +10,8 @@
 export const TICKET_CHECKOUT_CONTRACT_VERSION = 2 as const;
 
 export type CheckoutLinePlanChoice = "full" | "installments";
+/** issue #4522 / #3281 — one cart choice, copied onto every add-on line. */
+export type CheckoutAddOnPaymentMode = "today" | "spread";
 
 export interface CheckoutV2Line {
   ticketTypeId: string;
@@ -19,6 +21,8 @@ export interface CheckoutV2Line {
   byDate?: Record<string, number>;
   /** issue #3281 — extras on this ticket; the server prices them. Omit keeps fingerprints identical. */
   addOns?: CheckoutAddOnRequest[];
+  /** issue #4522 — absent keeps old carts byte-identical; server defaults to today. */
+  addonPaymentMode?: CheckoutAddOnPaymentMode;
 }
 
 /** issue #3281 — one extra the buyer asked for; the server owns its price. */
@@ -54,9 +58,23 @@ export interface CheckoutClientAttemptInput {
   intakeFormData: unknown;
 }
 
+/** issue #4522 E-3 — the attempt a cart already sent, kept across a reload. */
+export interface HeldCheckoutAttempt {
+  fingerprint: string;
+  id: string;
+}
+
 export interface CheckoutAttemptTracker {
   idFor(input: CheckoutClientAttemptInput): string;
   reset(): void;
+  /** issue #4522 E-3 — the attempt last used, so a web reload can keep it. */
+  held(): HeldCheckoutAttempt | null;
+  /**
+   * issue #4522 E-3 — take back an attempt saved before a provider redirect.
+   * It is reused only while the cart's fingerprint is unchanged, so the
+   * server answers with that checkout instead of opening a second one.
+   */
+  restore(attempt: HeldCheckoutAttempt): void;
 }
 
 export interface CanonicalCheckoutLine extends CheckoutV2Line {
@@ -123,11 +141,15 @@ export function normalizeCheckoutV2Lines(
     const paymentPlanChoice = row.paymentPlanChoice;
     const byDate = row.byDate as Record<string, number> | undefined;
     const addOns = row.addOns as CheckoutAddOnRequest[] | undefined;
+    const addonPaymentMode = row.addonPaymentMode;
     if (
       typeof ticketTypeId !== "string" || !UUID_PATTERN.test(ticketTypeId) ||
       !Number.isInteger(quantity) || Number(quantity) < 1 ||
       Number(quantity) > 100_000 ||
       (paymentPlanChoice !== "full" && paymentPlanChoice !== "installments") ||
+      (addonPaymentMode !== undefined &&
+        addonPaymentMode !== "today" &&
+        addonPaymentMode !== "spread") ||
       seen.has(ticketTypeId)
     ) {
       return { ok: false, error: "checkout_lines_invalid" };
@@ -141,6 +163,7 @@ export function normalizeCheckoutV2Lines(
       ...(byDate && { byDate }),
       // issue #3281 — extras too; callers keep them sorted (withExtraQuantity).
       ...(addOns?.length && { addOns }),
+      ...(addonPaymentMode !== undefined ? { addonPaymentMode } : {}),
     });
   }
 
@@ -253,6 +276,15 @@ export function createCheckoutAttemptTracker(
     },
     reset() {
       held = null;
+    },
+    held() {
+      return held === null ? null : { ...held };
+    },
+    restore(attempt) {
+      if (typeof attempt.fingerprint !== "string" || !isCheckoutAttemptId(attempt.id)) {
+        return;
+      }
+      held = { fingerprint: attempt.fingerprint, id: attempt.id };
     },
   };
 }

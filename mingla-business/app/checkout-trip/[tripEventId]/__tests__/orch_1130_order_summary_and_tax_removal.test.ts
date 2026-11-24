@@ -53,7 +53,8 @@ describe("ORCH-1130 Fix #1 — Total + Total due today under installments", () =
     const code = stripComments(read(TRIP_PAYMENT));
     expect(code).toMatch(/>Total</);
     expect(code).toMatch(/Total due today/);
-    expect(code).toMatch(/isUsingInstallments\s*\?/);
+    // [TEST-MOD-APPROVED #4522 W-4] shown once the matching quote is ready.
+    expect(code).toMatch(/isUsingInstallments\s*&&\s*quoteStatus === "ready"\s*\?/);
     expect(code).toMatch(/quote\?\.dueTodayNetCents/);
     expect(code).toMatch(/formatQuoteMoney\(\s*dueTodayCents/);
   });

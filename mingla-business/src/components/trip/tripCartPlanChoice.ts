@@ -41,6 +41,25 @@ export const collapseTripPlanChoice = (
     ? "installments"
     : "full";
 
+/**
+ * issue #4522 — the cart-level choice the page's Reserve hands to checkout. With
+ * packages selected it is the collapse of their lines; with NO quantity picked yet
+ * there are no lines to collapse, so the choice the buyer made on the page (the
+ * cart-level control or any package's own control) is kept instead of being reset
+ * to "full".
+ */
+export const resolveTripReserveChoice = (
+  selectedLines: ReadonlyArray<TripCartLineChoice>,
+  cartChoice: TripPaymentPlanChoice,
+  choiceByTier: Readonly<Record<string, TripPaymentPlanChoice>>,
+): TripPaymentPlanChoice => {
+  if (selectedLines.length > 0) return collapseTripPlanChoice(selectedLines);
+  return cartChoice === "installments" ||
+    Object.values(choiceByTier).includes("installments")
+    ? "installments"
+    : "full";
+};
+
 /** A seeded checkout line parsed from the `lines` route param JSON. */
 export interface SeededTripLine {
   ticketTypeId: string;
@@ -107,3 +126,26 @@ export const resolveSeededCartPlanChoice = (
   seededLines.some((l) => l.paymentPlanChoice === "installments")
     ? "installments"
     : scalarPlanParam;
+
+/**
+ * issue #4522 S-1 — a package that offers paying over time: the old percent
+ * plan (`installmentSchedule`) or a v2 plan (`paymentPlan` with `v: 2`). A
+ * seeded "installments" choice survives only on these (on any other package it
+ * becomes "full"), so the cart line the checkout create sends is the choice the
+ * buyer made. Before this a v2 package always seeded "full".
+ */
+export const tierOffersPlan = (
+  tier:
+    | {
+        installmentSchedule?: unknown;
+        paymentPlan?: unknown;
+      }
+    | undefined,
+): boolean => {
+  if (tier === undefined) return false;
+  if (tier.installmentSchedule !== null && tier.installmentSchedule !== undefined) {
+    return true;
+  }
+  const plan = tier.paymentPlan as { v?: unknown } | null | undefined;
+  return plan !== null && plan !== undefined && plan.v === 2;
+};

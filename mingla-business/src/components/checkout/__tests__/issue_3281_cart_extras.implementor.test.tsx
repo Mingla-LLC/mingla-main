@@ -100,6 +100,32 @@ describe("#3281 cart extras", () => {
 
     await act(async () => tree.unmount());
   });
+
+  test("the add-on plan choice changes quote and attempt identity on every selected add-on line", async () => {
+    let tree!: RenderTree;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <CartProvider>
+          <Probe />
+        </CartProvider>,
+      );
+    });
+    await act(async () =>
+      addTicket(2, [{ addOnId: DINNER, quantity: 2 }]),
+    );
+    await act(async () => latestCart!.setBuyer({ termsAccepted: true }));
+    const todayAttempt = attemptId();
+
+    await act(async () => latestCart!.setAddonPaymentMode("spread"));
+    expect(latestCart!.lines[0].addonPaymentMode).toBe("spread");
+    expect(latestCart!.quote).toBeNull();
+    expect(latestCart!.quoteStatus).toBe("loading");
+    expect(attemptId()).not.toBe(todayAttempt);
+
+    await act(async () => addTicket(2, []));
+    expect(latestCart!.lines[0].addonPaymentMode).toBeUndefined();
+    await act(async () => tree.unmount());
+  });
 });
 
 const quoteInput = (addOns?: Array<{ addOnId: string; quantity: number }>) =>
@@ -120,6 +146,12 @@ const quoteInput = (addOns?: Array<{ addOnId: string; quantity: number }>) =>
     ],
   }) as unknown as TicketQuoteInput;
 
+const spreadQuoteInput = () => {
+  const value = quoteInput([{ addOnId: DINNER, quantity: 2 }]);
+  value.lines[0].addonPaymentMode = "spread";
+  return value;
+};
+
 describe("#3281 quote extras", () => {
   beforeEach(() => {
     request.mockReset();
@@ -130,7 +162,7 @@ describe("#3281 quote extras", () => {
     await quoteTicketCheckout(quoteInput([{ addOnId: DINNER, quantity: 2 }])).catch(
       () => undefined,
     );
-    const lines = request.mock.calls[0][0].lines as Array<Record<string, unknown>>;
+    const lines = request.mock.calls[0][0].lines as Record<string, unknown>[];
     expect(lines[0].addOns).toEqual([{ addOnId: DINNER, quantity: 2 }]);
   });
 
@@ -142,6 +174,17 @@ describe("#3281 quote extras", () => {
   test("other extras are another quote", () => {
     expect(ticketQuoteKeys.detail(quoteInput([{ addOnId: DINNER, quantity: 1 }]))).not.toEqual(
       ticketQuoteKeys.detail(quoteInput([{ addOnId: DINNER, quantity: 2 }])),
+    );
+  });
+
+  test("the add-on payment choice rides the line and changes the quote key", async () => {
+    await quoteTicketCheckout(spreadQuoteInput()).catch(() => undefined);
+    const lines = request.mock.calls[0][0].lines as Record<string, unknown>[];
+    expect(lines[0].addonPaymentMode).toBe("spread");
+    expect(ticketQuoteKeys.detail(spreadQuoteInput())).not.toEqual(
+      ticketQuoteKeys.detail(
+        quoteInput([{ addOnId: DINNER, quantity: 2 }]),
+      ),
     );
   });
 });
@@ -262,5 +305,51 @@ describe("#3281 Host native checkout", () => {
     await act(async () => addTicket(1, []));
     expect(latestCart!.checkoutAttemptIdFor({ eventId: EVENT, surface: "native" })).not.toBe(withDinner);
     await act(async () => tree.unmount());
+  });
+});
+
+// #3281 first screen test S-21 — the order summary lists the add-ons the
+// server priced, as the details step does. FAILS ON REVERT: the summary shows
+// the ticket line only ("1 × Paid drink $8.00" missing).
+describe("#3281 S-21 the order summary lists priced add-ons", () => {
+  test("a ticket line, then each add-on with its server total", () => {
+    const quote = {
+      currency: "USD",
+      lines: [{ ticketTypeId: "tt-free", ticketName: "Free entry", quantity: 1, lineListCents: 0, lineNetCents: 0 }],
+      discountCents: 0,
+      listSubtotalCents: 0,
+      netSubtotalCents: 800,
+      extras: [
+        { addOnId: "a-1", ticketTypeId: "tt-free", addOnName: "Paid drink", ticketName: "Free entry", dayScope: null, quantity: 1, unitPriceCents: 800, totalCents: 800 },
+      ],
+    };
+    let texts: string[] = [];
+    jest.isolateModules(() => {
+      jest.doMock("../CartContext", () => ({ useCart: () => ({ lines: [], quote }) }));
+      jest.doMock("../../../hooks/useResponsiveLayout", () => ({
+        useResponsiveLayout: () => ({ isWideDesktop: true, isWeb: true, width: 1440 }),
+      }));
+      jest.doMock("expo-linear-gradient", () => ({ LinearGradient: () => null }));
+      /* eslint-disable @typescript-eslint/no-require-imports */
+      const R = require("react") as typeof import("react");
+      const RN = require("react-native") as typeof import("react-native");
+      const renderer = require("react-test-renderer") as {
+        create: (el: React.ReactElement) => { root: { findAll: (p: (n: { type: unknown; props: Record<string, unknown> }) => boolean) => Array<{ props: Record<string, unknown> }> } };
+        act: (fn: () => void) => void;
+      };
+      const { CheckoutOrderSummary } = require("../CheckoutOrderSummary") as typeof import("../CheckoutOrderSummary");
+      /* eslint-enable @typescript-eslint/no-require-imports */
+      let tree!: ReturnType<typeof renderer.create>;
+      renderer.act(() => {
+        tree = renderer.create(R.createElement(CheckoutOrderSummary, { wide: true, bottomInset: 0, children: R.createElement(RN.Text, null, "Continue") }));
+      });
+      const lines = tree.root.findAll((n) => n.props.testID === "checkout-summary-add-on-line");
+      expect(lines.length).toBeGreaterThan(0);
+      texts = tree.root
+        .findAll((n) => n.type === RN.Text)
+        .map((n) => [n.props.children].flat().join(""));
+    });
+    expect(texts).toContain("Paid drink × 1");
+    expect(texts).toContain("$8.00");
   });
 });
