@@ -18,6 +18,11 @@
 //        card's revision; closed cards, a 21st link and a brand-only link are
 //        refused in words; a server error reaches the caller (and the panel
 //        shows it as a toast); the picker joins search results to open cards
+//   R-1  the card's status line: a reply waiting beats demo and next-event
+//        facts, which beat "Stuck in <stage>", which beats the round (rendered)
+//   J-1  the panel's section jump links: only the record's own sections, in
+//        body order; each scrolls to its data-jump target; the active one
+//        follows the scroll; they are keyboard buttons
 //   S-1  a Work card opens OVER the record panel (panel one hidden, kept
 //        mounted) with "Back to <record>" closing panel two; a host or creator
 //        linked on the Work card opens here, or switches to its tab
@@ -37,6 +42,7 @@ import { boardColumns, filterByDueChip, isStale, pastDueWords, staleIds } from "
 import { cardProblems, cardStatus } from "../lib/recordCardModel.js";
 import { WORK_LINK_MAX, linkWorkToRecord, openWorkCount, recordLinkKind, unlinkWorkFromRecord, workPickerRows } from "../lib/recordWorkLinks.js";
 import { recordSideRoute } from "../lib/panelStack.js";
+import { activeJump, jumpSections } from "../lib/recordPanelModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (rel) => fs.readFileSync(path.join(HERE, "..", rel), "utf8");
@@ -182,7 +188,7 @@ describe("C-1 card order, weight and the moves", () => {
     assert.match(h.card({ record: host(), def: HOSTS }), /data-weight="quiet"/);
     assert.match(h.card({ record: host({ due_on: TODAY }), def: HOSTS }), /data-weight="urgent"/);
   });
-  it("a stale card's status line says where it is stuck (the stage tag)", () => {
+  it("a stale card with no more urgent fact says where it is stuck (the stage tag)", () => {
     const html = h.card({ record: host({ due_on: "2026-11-01" }), def: HOSTS, stageTag: "Contacted" });
     assert.match(html, /data-stage-tag="contacted"[^>]*>[\s\S]*?Stuck in <b>Contacted<\/b>/);
   });
@@ -306,5 +312,53 @@ describe("S-1 the Work card opens over the record and goes back", () => {
     assert.deepEqual(recordSideRoute({ kind: "card", id: W }, "hosts"), { kind: "side" });
     assert.deepEqual(recordSideRoute({ kind: "host", id: "not-an-id" }, "hosts"), { kind: "side" }, "a malformed id is never routed");
     assert.match(read("pages/PipelinePage.jsx"), /<PanelLinksContext\.Provider value=\{recordLinks\}>/);
+  });
+});
+
+describe("R-1 the most urgent status wins", () => {
+  it("reply waiting > demo lock > next demo > next event > stuck > round", () => {
+    const all = { suggest_replied: { at: "x" }, demo_gate: { locked: true }, next_demo: { call_at: "2026-11-25T10:00:00Z" }, cadence: { round: 2, of: 6, steps: [] } };
+    const opts = { stageTag: "Contacted", hostRow: { needs_next: true } };
+    assert.equal(cardStatus(HOSTS, host(all), opts).kind, "reply");
+    assert.equal(cardStatus(HOSTS, host({ ...all, suggest_replied: null }), opts).kind, "lock");
+    assert.equal(cardStatus(HOSTS, host({ ...all, suggest_replied: null, demo_gate: null }), opts).kind, "demo");
+    assert.equal(cardStatus(HOSTS, host({ cadence: all.cadence }), opts).kind, "event");
+    assert.equal(cardStatus(HOSTS, host({ cadence: all.cadence }), { stageTag: "Contacted" }).kind, "stale");
+    assert.equal(cardStatus(HOSTS, host({ cadence: all.cadence })).kind, "round");
+  });
+  it("a stale card with a reply waiting shows the reply, not Stuck in", () => {
+    const html = h.card({ record: host({ due_on: "2026-11-01", suggest_replied: { at: "x" } }), def: HOSTS, stageTag: "Contacted" });
+    assert.match(html, /data-tile-replied=""[^>]*>[\s\S]*?Replied by email\? Open to move it\./);
+    assert.doesNotMatch(html, /Stuck in/);
+  });
+});
+
+describe("J-1 the panel's section jump links", () => {
+  it("hosts get their sections in body order; Needs attention only when it shows", () => {
+    assert.deepEqual(jumpSections({ isHosts: true, hasAttention: true }).map((j) => j.label),
+      ["Needs attention", "Follow-up", "Contacts", "Work", "Demos", "Calls", "Plan", "On Mingla", "Team", "Details", "Activity"]);
+    assert.equal(jumpSections({ isHosts: true, hasAttention: false })[0].key, "followup");
+  });
+  it("creators get Deal and Handle and reach, and no host-only sections", () => {
+    assert.deepEqual(jumpSections({ isHosts: false, hasAttention: false }).map((j) => j.label),
+      ["Follow-up", "Deal", "Handle and reach", "Work", "Calls", "Details", "Activity"]);
+  });
+  it("the active link is the last section that reached the top; the last one at the bottom", () => {
+    const offsets = [{ key: "followup", top: -300 }, { key: "contacts", top: -20 }, { key: "work", top: 140 }];
+    assert.equal(activeJump(offsets), "contacts");
+    assert.equal(activeJump([{ key: "followup", top: 10 }, { key: "work", top: 400 }]), "followup");
+    assert.equal(activeJump(offsets, { atBottom: true }), "work");
+    assert.equal(activeJump([]), "");
+  });
+  it("every link has a target in the panel body, and they are keyboard buttons that scroll and focus", () => {
+    const panel = read("components/crm/RecordPanel.jsx");
+    for (const j of jumpSections({ isHosts: true, hasAttention: true }).concat(jumpSections({ isHosts: false, hasAttention: false }))) {
+      assert.match(panel, new RegExp(`data-jump="${j.key}"`), j.key);
+    }
+    assert.match(panel, /<nav aria-label="Sections" data-jump-links=""/);
+    assert.match(panel, /<button key=\{j\.key\} type="button" data-jump-link=\{j\.key\} aria-current=\{activeSection === j\.key \? "true" : undefined\} onClick=\{\(\) => jumpTo\(j\.key\)\}/);
+    assert.match(panel, /el\.scrollIntoView\?\.\(\{ block: "start", behavior: "smooth" \}\);/);
+    assert.match(panel, /el\.focus\?\.\(\{ preventScroll: true \}\);/);
+    assert.match(panel, /box\.addEventListener\("scroll", onScroll, \{ passive: true \}\);/);
   });
 });

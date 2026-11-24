@@ -15,16 +15,19 @@ export function cardProblems(def, record) {
 
 /**
  * #4571 design v5: the card's one status line, the single most useful fact,
- * in this order: where a stale card is stuck, a reply waiting, the Demo booked
- * lock, the next demo, the host's next event (or No next event), the follow-up
- * round. Nothing is invented: no fact, no line.
+ * in this order: a reply waiting, the Demo booked lock, the next demo, the
+ * host's next event (or No next event), where a stale card is stuck, the
+ * follow-up round. Nothing is invented: no fact, no line.
  */
 export function cardStatus(def, record, { stageTag = "", hostRow = null } = {}) {
-  if (stageTag) return { k: "warn", kind: "stale", words: stageTag };
+  // #4571 review: the most urgent fact wins. A reply waiting first (the next
+  // move is ours), then demo and next-event facts, then where a stale card is
+  // stuck, then the round.
   if (record.suggest_replied) return { k: "info", kind: "reply", words: "Replied by email? Open to move it." };
   if (record.demo_gate?.locked) return { k: "err", kind: "lock", words: "Demo booked locked" };
   if (record.next_demo?.call_at) return { k: "ok", kind: "demo", words: `Demo ${localWhen(record.next_demo.call_at)}` };
   if (hostRow?.next || hostRow?.needs_next) return { k: "event", kind: "event", words: "" };
+  if (stageTag) return { k: "warn", kind: "stale", words: stageTag };
   const round = cadenceWords(record);
   if (round) return { k: "none", kind: "round", words: round };
   return null;
