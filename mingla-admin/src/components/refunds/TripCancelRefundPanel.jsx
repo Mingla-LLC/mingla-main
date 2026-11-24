@@ -66,19 +66,19 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-[var(--color-text-tertiary)]">
-              <th className="py-1">Charge</th>
-              <th className="py-1 text-right">Amount</th>
-              <th className="py-1">State</th>
+              <th className="py-1 pr-6">Charge</th>
+              <th className="py-1 pr-8 text-right">Amount</th>
+              <th className="py-1 pl-8">State</th>
             </tr>
           </thead>
           <tbody>
             {charges.map((charge) => (
               <tr key={charge.key} className="border-t border-[var(--gray-200)]">
-                <td className="py-1">{charge.label}</td>
-                <td className="py-1 text-right tabular-nums">
+                <td className="py-1 pr-6">{charge.label}</td>
+                <td className="py-1 pr-8 text-right tabular-nums whitespace-nowrap">
                   {charge.currency ? money(charge.amountCents, charge.currency.toUpperCase()) : "—"}
                 </td>
-                <td className="py-1">
+                <td className="py-1 pl-8">
                   {charge.stateLabel}
                   {charge.escalated && (
                     <span className="ml-2"><Badge variant="warning">Escalated</Badge></span>

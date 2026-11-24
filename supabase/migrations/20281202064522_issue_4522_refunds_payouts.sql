@@ -2587,10 +2587,13 @@ BEGIN
     'currency', v_att.currency, 'reason', left(v_reason, 500), 'by', v_actor, 'at', now());
 
   IF p_outcome = 'refunded_at_provider' THEN
+    -- Pass 8 (P8-5): a reference is the same whatever its case or spacing
+    -- (v_ref is stored trimmed).
     IF EXISTS (SELECT 1 FROM public.paystack_refund_attempts
-                WHERE provider_refund_id = v_ref AND id <> v_att.id)
-       OR EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts WHERE provider_refund_id = v_ref)
-       OR EXISTS (SELECT 1 FROM public.refunds WHERE stripe_refund_id = v_ref) THEN
+                WHERE lower(btrim(provider_refund_id)) = lower(v_ref) AND id <> v_att.id)
+       OR EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
+                   WHERE lower(btrim(provider_refund_id)) = lower(v_ref))
+       OR EXISTS (SELECT 1 FROM public.refunds WHERE lower(btrim(stripe_refund_id)) = lower(v_ref)) THEN
       RAISE EXCEPTION 'provider_refund_reference_already_used' USING ERRCODE = 'PT409';
     END IF;
     -- The one recording path of a confirmed second-provider refund (the
@@ -2627,8 +2630,10 @@ BEGIN
          CASE WHEN p_outcome = 'refunded_at_provider' THEN 'trip_cancel_refund.recorded_by_ops'
               ELSE 'trip_cancel_refund.escalated_by_ops' END,
          'order', o.id,
+         -- Pass 8 (P8-4): the audit row itself carries why and the reference.
          jsonb_build_object('refund_id', v_refund.id, 'attempt_id', v_att.id, 'part', v_part,
-           'amount_cents', v_att.amount_cents, 'currency', v_att.currency)
+           'amount_cents', v_att.amount_cents, 'currency', v_att.currency,
+           'reason', left(v_reason, 500), 'provider_refund_reference', v_ref)
     FROM public.orders o JOIN public.events e ON e.id = o.event_id
    WHERE o.id = v_refund.order_id;
 

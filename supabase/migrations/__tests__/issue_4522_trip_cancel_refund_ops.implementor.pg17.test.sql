@@ -4,9 +4,11 @@
 -- Issue #4522 seventh pass, H-2 ops tool (20281202064522 section 9). Rolled back.
 --   O-1  no session / a non-admin session is refused; only authenticated may execute.
 --   O-2  a refund sent in the last 15 minutes is not actionable yet.
---   O-3  record needs a reference; a reused reference, a different amount or
---        currency, and an already-confirmed refund are refused.
---   O-4  escalate records the reason and changes no money.
+--   O-3  record needs a reference; a reused reference (in any case or
+--        spacing, pass 8 P8-5), a different amount or currency, and an
+--        already-confirmed refund are refused.
+--   O-4  escalate records the reason and changes no money; its audit row
+--        carries the reason (pass 8 P8-4).
 --   O-5  record with a reference writes the charge and order refunded figures
 --        once, exactly as the provider-confirmed path on a twin order does
 --        (instalment row, order figure, payment status, payout item value).
@@ -170,6 +172,12 @@ BEGIN
   v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L)',
     v_att, 'refunded_at_provider', 'h2dep-00a1', 'Paystack shows it refunded'));
   IF v_err NOT LIKE '%provider_refund_reference_already_used%' THEN RAISE EXCEPTION 'O-3e reused reference: %', v_err; END IF;
+  -- Pass 8 (P8-5): the same reference in another case, with spaces, is the same reference.
+  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L)',
+    v_att, 'refunded_at_provider', '  H2DEP-00A1 ', 'Paystack shows it refunded'));
+  IF v_err IS NULL OR v_err NOT LIKE '%provider_refund_reference_already_used%' THEN
+    RAISE EXCEPTION 'O-3e2 a reused reference in another case is refused: %', v_err;
+  END IF;
   v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L, %s, %L)',
     v_att, 'refunded_at_provider', 'h2-ref-a', 'Paystack shows it refunded', 30000000, 'ngn'));
   IF v_err NOT LIKE '%amount_or_currency_mismatch%' THEN RAISE EXCEPTION 'O-3f different amount: %', v_err; END IF;
@@ -209,6 +217,12 @@ BEGIN
   IF (SELECT count(*) FROM public.audit_log WHERE action = 'trip_cancel_refund.escalated_by_ops'
         AND user_id = '45220009-0000-4000-8000-000000000002') <> 1 THEN
     RAISE EXCEPTION 'O-4d one escalation audit row, naming who';
+  END IF;
+  -- Pass 8 (P8-4): the audit row itself says why (no reference on an escalation).
+  IF (SELECT count(*) FROM public.audit_log WHERE action = 'trip_cancel_refund.escalated_by_ops'
+        AND after->>'reason' = 'Paystack shows no refund for it'
+        AND after ? 'provider_refund_reference' AND after->'provider_refund_reference' = 'null'::jsonb) <> 1 THEN
+    RAISE EXCEPTION 'O-4e the escalation audit row carries the reason';
   END IF;
 END $$;
 
@@ -255,6 +269,14 @@ BEGIN
   IF (SELECT provider_refund_id FROM public.paystack_refund_attempts WHERE id = v_att) <> 'h2-ref-a'
      OR (SELECT status FROM public.paystack_refund_attempts WHERE id = v_att) <> 'processed' THEN
     RAISE EXCEPTION 'O-5d the attempt carries the staff reference, processed';
+  END IF;
+  -- Pass 8 (P8-4): the audit row carries who, when, why and the (trimmed) reference.
+  IF (SELECT count(*) FROM public.audit_log WHERE action = 'trip_cancel_refund.recorded_by_ops'
+        AND user_id = '45220009-0000-4000-8000-000000000002' AND created_at IS NOT NULL
+        AND after->>'reason' = 'Paystack dashboard shows refund h2-ref-a'
+        AND after->>'provider_refund_reference' = 'h2-ref-a') <> 1 THEN
+    RAISE EXCEPTION 'O-5f the record audit row carries who, when, why and the reference: %',
+      (SELECT jsonb_agg(after) FROM public.audit_log WHERE action = 'trip_cancel_refund.recorded_by_ops');
   END IF;
   IF public.issue_4522_get_unanswered_trip_cancel_refund((SELECT refund_a FROM h2)) IS NOT NULL
      OR jsonb_array_length(public.issue_4522_list_unanswered_trip_cancel_refunds()) <> 0 THEN

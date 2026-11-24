@@ -235,6 +235,40 @@ Deno.test("G-3/G-4: the one alert says per charge what is true now and what happ
   const text2 = sent[1].paragraphs.join("\n");
   assertStringIncludes(text2, "sent to the provider, no answer yet (never re-sent automatically)");
   assertStringIncludes(text2, "never sends it again automatically");
+  assertStringIncludes(text2, "Admin > Money > Refund operations");
+  // a failure alert with nothing unanswered does not send staff there
+  assertEquals(text.includes("Refund operations"), false);
+});
+
+// Pass 8 (P8-6): the H-2 alert states each part's real state. A deposit the
+// second provider accepted (and the cancel recorded or will record on its
+// confirmation) is never called "not yet recorded".
+// FAILS ON REVERT: without awaitingConfirmation the deposit line read
+// "refunded at the provider, not yet recorded".
+Deno.test("P8-6: an accepted deposit is not called unrecorded; a confirmed one is recorded", async () => {
+  const sent: string[] = [];
+  const alert = async (_s: string, paragraphs: string[]) => {
+    sent.push(paragraphs.join("\n"));
+  };
+  const intended = [
+    { installment_id: "row1", source_pi: "ref_row1", refund_cents: 30000000 },
+    { installment_id: null, source_pi: "ref_dep", refund_cents: 30000000 },
+  ];
+  await alertTripCancelNotFinished(alert, {
+    orderId: "o_3", refundId: "rf_3", currency: "ngn", detail: "no answer",
+    made: [{ provider: "paystack", charge: "ref_dep", providerRefundId: "4522500013", amountMinor: 30000000, recorded: false, awaitingConfirmation: true }],
+    intended, unconfirmed: ["mingla_trip_refund:rf_3:row1"], cause: "unconfirmed",
+  });
+  assertEquals(sent[0].includes("not yet recorded"), false);
+  assertStringIncludes(sent[0], "ref_dep (deposit): 30000000 NGN (minor units): accepted by the provider, waiting for its confirmation");
+  assertStringIncludes(sent[0], "ref_row1 (instalment row1): 30000000 NGN (minor units): sent to the provider, no answer yet");
+  assertStringIncludes(sent[0], "Admin > Money > Refund operations");
+  await alertTripCancelNotFinished(alert, {
+    orderId: "o_3", refundId: "rf_3", currency: "ngn", detail: "no answer",
+    made: [{ provider: "paystack", charge: "ref_dep", providerRefundId: "4522500013", amountMinor: 30000000, recorded: true, awaitingConfirmation: false }],
+    intended, unconfirmed: ["mingla_trip_refund:rf_3:row1"], cause: "unconfirmed",
+  });
+  assertStringIncludes(sent[1], "ref_dep (deposit): 30000000 NGN (minor units): refunded and recorded (provider refund 4522500013)");
 });
 
 

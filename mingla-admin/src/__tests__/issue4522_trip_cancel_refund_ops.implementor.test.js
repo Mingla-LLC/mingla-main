@@ -146,3 +146,13 @@ test("the panel carries the approved choices, buttons and note, and validates be
   assert.match(pageSource, /listUnansweredTripCancelRefunds\(\)/);
   assert.match(pageSource, /<TripCancelRefundPanel/);
 });
+
+// Pass 8 (P8-6): the Amount and State columns never run together
+// ("NGN 300,000.00Refunded, recorded"): each side of the gap is padded in the
+// header and in every row. FAILS ON REVERT: the bare "py-1" cells had no gap.
+test("the charge table keeps a gap between Amount and State", () => {
+  assert.match(panelSource, /<th className="py-1 pr-8 text-right">Amount<\/th>/);
+  assert.match(panelSource, /<th className="py-1 pl-8">State<\/th>/);
+  assert.match(panelSource, /<td className="py-1 pr-8 text-right tabular-nums whitespace-nowrap">/);
+  assert.match(panelSource, /<td className="py-1 pl-8">\s*\{charge\.stateLabel\}/);
+});

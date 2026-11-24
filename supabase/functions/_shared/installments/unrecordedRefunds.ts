@@ -23,6 +23,12 @@ export interface ProviderRefundMade {
   providerRefundId: string;
   amountMinor: number;
   recorded: boolean;
+  /**
+   * Pass 8 (P8-6): a second-provider refund the provider accepted and has
+   * not confirmed yet ('accepted'). It is recorded automatically the moment
+   * the provider confirms it, so the alert never calls it "not recorded".
+   */
+  awaitingConfirmation?: boolean;
 }
 
 /** Provider refunds already made for this local refund (empty when none). */
@@ -65,6 +71,7 @@ export async function providerRefundsMade(
       // written (issue_4522_record_confirmed_cancel_refund), even while
       // other refunds of the same cancel are still unknown.
       recorded: a.status === "processed",
+      awaitingConfirmation: a.status === "accepted",
     });
   }
   return made;
@@ -129,8 +136,11 @@ export async function alertTripCancelNotFinished(
     const which = e.installment_id === null ? "deposit" : `instalment ${e.installment_id}`;
     const made = input.made.find((m) => m.charge === e.source_pi);
     const sentNoAnswer = input.unconfirmed.some((n) => n.endsWith(`:${e.installment_id ?? "deposit"}`));
+    // Pass 8 (P8-6): each part's real state when the alert is sent.
     const state = made && made.recorded
       ? `refunded and recorded (provider refund ${made.providerRefundId})`
+      : made && made.awaitingConfirmation === true
+      ? `accepted by the provider, waiting for its confirmation; recorded automatically when it confirms (provider refund ${made.providerRefundId})`
       : made
       ? `refunded at the provider, not yet recorded (provider refund ${made.providerRefundId})`
       : sentNoAnswer
@@ -150,6 +160,10 @@ export async function alertTripCancelNotFinished(
     input.cause === "unconfirmed" || input.cause === "stuck"
       ? "Next: check this refund with the provider. When the provider shows it, the next instalment run or the host pressing Cancel & refund again records it."
       : "Next: fix the cause, then the host can press Cancel & refund again on this booking to finish it; refunds already made are never sent again.",
+    // Pass 8 (P8-6): a refund sent with no answer is finished by staff.
+    ...(input.unconfirmed.length > 0
+      ? ["To finish a refund marked \"no answer\": once it has waited 15 minutes, open Admin > Money > Refund operations, check it with the provider, then record the provider's refund reference or escalate it. Nothing is sent again."]
+      : []),
   ]);
 }
 

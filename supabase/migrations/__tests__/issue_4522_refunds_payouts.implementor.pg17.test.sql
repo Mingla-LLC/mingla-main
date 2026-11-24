@@ -1353,8 +1353,12 @@ VALUES ('45220008-0000-4000-8000-0000000004fb', '45220008-0000-4000-8000-0000000
 DO $$
 DECLARE v jsonb;
 BEGIN
+  -- Pass 8 (P8-3): set both claim forms, as the sibling suites do; on the
+  -- CI image auth.uid() reads request.jwt.claim.sub.
+  PERFORM set_config('request.jwt.claim.sub', '45220008-0000-4000-8000-000000000001', true);
   PERFORM set_config('request.jwt.claims', '{"sub":"45220008-0000-4000-8000-000000000001","role":"authenticated"}', true);
   v := public.biz_refund_order_commit('45220008-0000-4000-8000-0000000004fb', '4522j81', 0, 'succeeded');
+  PERFORM set_config('request.jwt.claim.sub', '', true);
   PERFORM set_config('request.jwt.claims', '', true);
   IF (SELECT status || '/' || application_fee_refund_status FROM public.refunds WHERE id = '45220008-0000-4000-8000-0000000004fb')
        <> 'succeeded/not_applicable'
