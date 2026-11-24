@@ -308,7 +308,13 @@ function helperHours(name) {
 
 test("#4574 the watchdog budget equals the gate's completion-stamped (manifest) budget in SQL", () => {
   assert.equal(RECOVERY_BUDGET_HOURS, helperHours("brand_site_object_manifest_budget"));
-  const gate = newestSqlDefinition("brand_site_authorize_operation");
+  // #4572 (20281129104572) moved the first-publish freshness gate out of
+  // brand_site_authorize_operation into brand_site_first_publish_ready, which
+  // authorize_operation now calls. Assert the call, then the budgets where they live.
+  const authorize = newestSqlDefinition("brand_site_authorize_operation");
+  assert.match(authorize.body, /public\.brand_site_first_publish_ready\(/,
+    "authorize_operation must still run the first-publish freshness gate");
+  const gate = newestSqlDefinition("brand_site_first_publish_ready");
   assert.match(gate.body, /object_manifest_verified_at > clock_timestamp\(\) - public\.brand_site_object_manifest_budget\(\)/);
   assert.match(gate.body, /database_backup_verified_at > clock_timestamp\(\) - public\.brand_site_database_backup_budget\(\)/);
   assert.doesNotMatch(gate.body, /(database_backup|object_manifest)_verified_at[^\n]*interval '/,
