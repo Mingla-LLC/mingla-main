@@ -526,7 +526,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 after #4579: migration 20281203774490 (Till staff names follow #4579's public-name rule; Mingla admins may hold a Till PIN) + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 08-O5 fix 5: migration 20281203784490 (a cheaper sold-out swap follows the refund rule) + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 merge of origin/main 97a75873e2 (#4594, #4595): kept both sides' rows (main's fourteen 20281202033281..20281202163281 migrations and their pg17 suites before the #4490 block, filename order) and both sides' exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-export const BOOTSTRAP_SHA256 = "a84edee41b2c0234092847a014613ae642e3a3b7b14fe6008b9ac6c4347f69ce";
+// #4571 Hosts board speed (merge of main after #4594, #4595 and #4597): listed migration 20281202174571 after main's 20281202163281 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and added an EXACT filtered-replay skip beside the other #4571 skips; re-sealed.
+// issue #4490 merge of origin/main 60e3e235d2 (#4598 Hosts board speed): kept both sides' rows (main's 20281202174571 after 20281202163281 and before the #4490 block, filename order; its pg17 suite and sidecar in the #1931 and #2117 inventories; its EXACT filtered-replay skip beside the #4490 skips); re-sealed.
+export const BOOTSTRAP_SHA256 = "abc6e8d9a5d0f0ebe4bf9d7d138f0c1190cc337d066f171315e21ec908b5b346";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
