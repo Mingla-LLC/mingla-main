@@ -219,6 +219,8 @@ jest.mock("../../../../hooks/useVenueTill", () => {
       startSession: mutation(() => mockState.sale),
       extendSession: mutation(() => mockState.sale),
       refreshSale: jest.fn(),
+      // TEST-MOD-APPROVED #4490: useTillActions gained refreshStock (08-O5 fix 2, O5-B2).
+      refreshStock: jest.fn(),
     }),
   };
 });
