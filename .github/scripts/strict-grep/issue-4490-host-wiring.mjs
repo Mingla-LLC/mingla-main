@@ -539,7 +539,7 @@ const PINS = [
   {
     id: "till-step-up-inside-its-sheet",
     file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
-    contains: ['import { TillStepUpHost } from "./TillStepUp";'],
+    contains: ['import { TillStepUpHost, useStepUpSheetSnap } from "./TillStepUp";'],
     matches: [
       /testID="till-void">[\s\S]{0,400}<TillStepUpHost venueId=\{stepUp\.venueId\} approvers=\{stepUp\.approvers\}>\s*<SheetScrollLayout/,
       /testID="till-line-refund">[\s\S]{0,400}<TillStepUpHost venueId=\{stepUp\.venueId\} approvers=\{stepUp\.approvers\}>\s*<SheetScrollLayout/,
@@ -550,9 +550,14 @@ const PINS = [
   {
     id: "till-step-up-host-has-no-sheet",
     file: `${BIZ}/src/components/venue/till/TillStepUp.tsx`,
-    contains: ["if (request === null || session === null) return <>{children}</>;"],
+    contains: [
+      // 08-O5 fix 5: the sheet's body stays mounted (hidden) under the pad, so a
+      // refusal after the PIN is shown; the host leaving mid-PIN cancels it.
+      '<View style={showing ? styles.hidden : styles.fill} testID="till-step-up-content">{children}</View>',
+      "if (showingRef.current) answerStepUp(null);",
+    ],
     absent: ["<Sheet", "<Modal", "ConfirmDialog"],
-    why: "the step-up host replaces the sheet's body; it never opens a sheet or modal of its own",
+    why: "the step-up pad shows inside the sheet's own body (kept mounted, hidden, so what asked can still answer in words); it never opens a sheet or modal of its own, and never leaves a step-up hanging when its sheet closes",
   },
   {
     id: "till-route-opens-through-the-pin-gate",
