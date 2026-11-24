@@ -21,6 +21,7 @@
 // module (Stage 1b first import). No behavioural change — the Stage 1
 // webhook handler only passes the result through and never inspected `from`.
 
+import { balanceLinkHtml, balanceLinkText } from "./installmentReminderEmail.ts";
 import type { SenderIdentity } from "./senders.ts";
 
 export interface InstallmentDunningInput {
@@ -53,6 +54,11 @@ export interface InstallmentDunningInput {
    * email is unchanged.
    */
   action?: { url: string; label: string } | null;
+  /**
+   * issue #4522 — "Pay toward your balance" link (a balance-link page) for a
+   * trip whose plan lets the traveler pay any amount. Absent → unchanged.
+   */
+  balanceUrl?: string | null;
 }
 
 interface InstallmentDunningResult {
@@ -161,6 +167,7 @@ export function renderInstallmentDunningEmail(
       ? `<a href="${escapeHtml(action.url)}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:8px;font-weight:500;">${escapeHtml(action.label)}</a>
     <p style="font-size:14px;line-height:1.5;margin:16px 0 0;color:#444;">Questions? <a href="mailto:${escapeHtml(contactEmail)}?subject=${mailtoSubject}" style="color:#444;">Contact ${safeBrandName}</a>.</p>`
       : `<a href="mailto:${escapeHtml(contactEmail)}?subject=${mailtoSubject}" style="display:inline-block;background:#1a1a1a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:8px;font-weight:500;">Contact ${safeBrandName}</a>`}
+    ${balanceLinkHtml(input.balanceUrl)}
     <p style="font-size:13px;color:#888;line-height:1.5;margin:32px 0 0;">You received this because you booked ${safeTripTitle} on Mingla. Questions about Mingla? Email <a href="mailto:${DEFAULT_SUPPORT_EMAIL}" style="color:#888;">${DEFAULT_SUPPORT_EMAIL}</a>.</p>
   </div>
 </body>
@@ -179,6 +186,7 @@ export function renderInstallmentDunningEmail(
     "",
     `Installment ${input.installment.ordinal} · Order ${input.order.shortId}`,
     `Amount: ${amount}`,
+    ...balanceLinkText(input.balanceUrl),
     "",
     `Contact ${input.brand.name}: ${contactEmail}`,
     "",

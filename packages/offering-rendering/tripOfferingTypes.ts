@@ -13,6 +13,7 @@
  */
 
 import type { CtaState } from "./offeringCta";
+import type { TripPaymentPlanV2 } from "./tripPlanV2Math";
 
 /** A refund-ladder tier (days-before-departure → refund percentage). */
 export interface TripRefundTier {
@@ -24,6 +25,8 @@ export interface TripRefundTier {
 export interface TripRefundPolicyShape {
   kind: "flexible" | "standard" | "strict" | "custom";
   tiers: TripRefundTier[];
+  /** issue #4522 — shown beside a package's v2 plan when the host chose it. */
+  deposit_non_refundable?: boolean;
 }
 
 /** One day of the itinerary spine. */
@@ -63,6 +66,8 @@ export interface TripInstallmentTemplate {
 export interface TripOfferingTier {
   id: string;
   ticketTypeId: string;
+  /** issue #3281 S2 — the reader's raw `extras` for this package, unparsed. */
+  buyerExtras?: unknown;
   tierName: string;
   priceCents: number;
   /**
@@ -87,6 +92,8 @@ export interface TripOfferingTier {
   ticketsRemaining: number | null;
   /** Installment template (tier_metadata.installments); null → no plan. */
   installmentSchedule: TripInstallmentTemplate | null;
+  /** issue #4522 — authored N-payment plan; absent/null leaves legacy UI unchanged. */
+  paymentPlanV2?: TripPaymentPlanV2 | null;
 }
 
 /** The brand card ("Presented by"). */

@@ -941,8 +941,15 @@ BEGIN
   -- measured on a PG17 full replay of dc553ef4d4 (matches main's CI batch);
   -- dropping exactly those two indexes measures 88 / 3158b5e3ff37207ce334bd6bb4caa0d7
   -- again. The seven fingerprinted functions are unchanged by #4473.
-  IF v_index_count <> 90
-    OR v_index_fingerprint <> '0c4a5b0bc6ad79ab0337f55fcf540fe8'
+  -- [TEST-MOD-APPROVED #4579] 20281202024579_issue_4579_mingla_admin_brand_access
+  -- adds idx_brand_team_members_issue_4579_auto_active (partial, on
+  -- granted_admin_user_id for active Mingla-admin memberships). Count 90 -> 91,
+  -- hash 0c4a5b0bc6ad79ab0337f55fcf540fe8 -> 08b137db6aca8637cbaba2d5aa286e72,
+  -- measured on a PG17 full replay of d3527e3b93 (matches main's CI batch);
+  -- dropping exactly that index measures 90 / 0c4a5b0bc6ad79ab0337f55fcf540fe8
+  -- again. The seven fingerprinted functions are unchanged by #4579.
+  IF v_index_count <> 91
+    OR v_index_fingerprint <> '08b137db6aca8637cbaba2d5aa286e72'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

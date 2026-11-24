@@ -35,6 +35,7 @@ import {
 } from "@mingla/offering-rendering";
 
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
+import { TripBalanceCard } from "../../../src/components/purchases/TripBalanceCard";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
 import { GuestPackCard } from "../../../src/components/purchases/GuestPackCard";
@@ -90,6 +91,7 @@ import type {
 import { formatTicketTimeLine } from "../../../src/utils/zoneLabel";
 import { parseMapPoint } from "../../../src/utils/mapsUrl";
 import { openMapsTarget } from "../../../src/utils/openMapsTarget";
+import { FEATURE_FLAG_TRIP_BALANCE } from "../../../src/config/featureFlags";
 
 const KINDS = new Set<PurchaseKind>([
   "order",
@@ -842,6 +844,10 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                 })}
                 startsAtIso={item.startsAt}
               />
+            ) : null}
+
+            {FEATURE_FLAG_TRIP_BALANCE && order?.eventType === "trip" ? (
+              <TripBalanceCard orderId={order.id} />
             ) : null}
 
             {allTickets.length > 0 ? (

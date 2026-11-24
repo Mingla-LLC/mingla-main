@@ -1,0 +1,14 @@
+{
+  "name": "@mingla/calendar",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "react-native": "index.ts",
+  "license": "UNLICENSED",
+  "description": "The one Mingla calendar (#4523): pure-TS date core plus React Native / RN-web components for single dates, ranges, date + time and date of birth. Props-only: the host app injects tokens, the sheet and popover primitives, and i18n labels. Shared by mingla-business (Host + buyer web) and app-mobile (Explorer).",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}

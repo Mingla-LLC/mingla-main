@@ -10,6 +10,7 @@ import {
   formatSenderHeader,
 } from "../_shared/email/index.ts";
 import { renderInstallmentReminderEmail } from "../_shared/email/installmentReminderEmail.ts";
+import { balanceLinkUrlForOrder } from "../_shared/installments/balanceLinks.ts";
 import { sendInstallmentPayLink } from "../_shared/installments/installmentPayLinks.ts";
 
 interface SendReminderBody {
@@ -282,6 +283,9 @@ serve(async (req: Request) => {
     ? formatDueDate(inst.due_at, typedEvent?.timezone ?? null)
     : "soon";
   const buyerEmail = orderRow.buyer_email?.trim() ?? "";
+  // issue #4522 — a v2 plan that lets travelers pay any amount adds a
+  // "Pay toward your balance" link; every other order's email is unchanged.
+  const balanceUrl = await balanceLinkUrlForOrder(admin, body.orderId);
   const template = renderInstallmentReminderEmail({
     buyerName: orderRow.buyer_name,
     buyerEmail,
@@ -293,6 +297,7 @@ serve(async (req: Request) => {
     unsubscribeUrl: `${
       Deno.env.get("MINGLA_CONSUMER_WEB_URL") ?? "https://usemingla.com"
     }/unsubscribe`,
+    balanceUrl,
   });
 
   const email: DeliveryState = buyerEmail.length > 0

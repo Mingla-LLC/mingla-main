@@ -43,8 +43,12 @@ import type {
   TripInstallmentScheduleData,
   TripPricingTier,
 } from "../services/tripsService";
-import { coerceTripDayMedia } from "../services/tripsService";
+import {
+  coerceTripDayMedia,
+  loadPublicTripPlanV2Decoder,
+} from "../services/tripsService";
 import { sumTripPackageSpots } from "../services/tripPackages";
+import { featureFlags } from "../config/featureFlags";
 
 // ORCH-1138 B1 — map raw brand/trip theme columns into a guarded ThemeInput.
 // Mirrors publicEventsService.asThemeInput EXACTLY (reuses the package guards;
@@ -163,6 +167,8 @@ interface RpcTripInclusion {
 interface RpcTripTier {
   id: string;
   ticketTypeId: string;
+  /** #3281 S2 — present only when the package has an add-on on sale. */
+  extras?: unknown;
   tierName: string;
   tierMetadata: Record<string, unknown> | null;
   priceCents: number;
@@ -328,6 +334,11 @@ export const usePublicTripBySlug = (
       }
       if (data === null || data === undefined) return null;
       const p = data as RpcTripPayload;
+      // #4522 S-1 — the same decoder the by-id (checkout) loader uses.
+      const decodePaymentPlanV2 = await loadPublicTripPlanV2Decoder(
+        (p.tiers ?? []).map((tier) => tier.tierMetadata),
+        featureFlags.tripPlanV2,
+      );
 
       // #4518 — the same-origin bundle carries the buy-gate answers. Only
       // trusted from the bundle (the RPC fallback never has them).
@@ -356,6 +367,8 @@ export const usePublicTripBySlug = (
           id: t.id,
           eventId: p.id,
           ticketTypeId: t.ticketTypeId,
+          // #3281 S2 — the package's add-ons, as the reader sent them.
+          ...(t.extras !== undefined ? { buyerExtras: t.extras } : {}),
           tierName: t.tierName,
           tierMetadata: t.tierMetadata ?? {},
           priceCents: t.priceCents ?? 0,
@@ -367,6 +380,8 @@ export const usePublicTripBySlug = (
           ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
           isUnlimited: t.isUnlimited === true,
           installmentSchedule: asInstallmentSchedule(t.installments),
+          paymentPlan:
+            decodePaymentPlanV2?.(t.tierMetadata?.payment_plan) ?? null,
           // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
           description:
             typeof (t.tierMetadata as Record<string, unknown> | null)?.description ===
@@ -383,6 +398,10 @@ export const usePublicTripBySlug = (
         installmentSchedule: publicTripInstallmentSchedule(
           p.installmentCapabilityAvailable,
           tier.installmentSchedule,
+        ),
+        paymentPlan: publicTripInstallmentSchedule(
+          p.installmentCapabilityAvailable,
+          tier.paymentPlan,
         ),
       }));
 

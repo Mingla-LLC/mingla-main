@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/purchases/__tests__/issue_4522_trip_balance.test.tsx",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4522-09-explorer-trip-balance",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

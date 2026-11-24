@@ -1,13 +1,11 @@
 /**
- * Issue #3801 — TESTER adversarial: on a published trip with several packages
- * the trip total is shown, never edited, and can never be sent to the server
- * as one package's spots.
+ * Issues #3801/#4522 — TESTER adversarial: the published editor renders every
+ * package's stored capacity read-only and never sends a capacity change.
  *
  * WHY THIS MATTERS. A trip's capacity is now the SUM of its packages' spots.
- * The published-trip editor still has one "Capacity" slot, and
- * `biz_update_live_trip` writes whatever it is sent into a single package.
- * If the summed total (11) could be edited or submitted there, saving would
- * write 11 into one package of a Shared 8 / Private 2 / Couple 1 trip.
+ * `biz_update_live_trip` cannot safely change per-package capacities. If the
+ * summed total (11) were submitted, saving could overwrite one package in a
+ * Shared 8 / Private 2 / Couple 1 trip.
  *
  * A DIFFERENT ANGLE from the implementor suites, none of which exercise the
  * published-trip editor. The REAL `EditPublishedTripScreen` source is compiled
@@ -16,22 +14,18 @@
  * (what Save sends).
  *
  *   1. Opening and saving a multi-package trip untouched sends no capacity.
- *   2. The package the editor edits opens with ITS OWN spots (8), not the trip
- *      total (11), whatever order the total was computed in.
+ *   2. Every package opens with its own spots (8 / 2 / 1), not the trip total.
  *   3. Editing other basics on a multi-package trip still sends no capacity.
- *   4. A single-package trip is unchanged: its capacity field edits and saves.
- *   5. In the source, the editable capacity input exists only on the
- *      single-package branch, and nothing else writes `capacity` into the
- *      edit state.
+ *   4. Single-package capacity is read-only after publish too.
+ *   5. The screen explicitly disables capacity and package-count changes in
+ *      the shared pricing component.
  *   6. THE WIRE. The patch the editor builds is handed to the REAL
  *      `updateLiveTripFields` service and the request that reaches the server
  *      (the `biz_update_trip_live_command` arguments) is inspected: no capacity
- *      anywhere in it for a multi-package trip, exactly the typed number for a
- *      single-package one.
+ *      anywhere in it for multi- or single-package trips.
  *
- * Fails on revert (verified, see the tester report on the issue): seed the
- * edited package from `trip.businessTrip.capacity` again and test 2 goes red;
- * render the capacity input for every trip again and test 5 goes red.
+ * Fails on revert: collapse the editor back to one package, enable capacity
+ * changes, or serialize capacity into the patch and this suite goes red.
  */
 
 import * as fs from "node:fs";
@@ -66,12 +60,22 @@ jest.mock("../../../services/supabase", () => ({
 
 const TRIP_DIR = path.resolve(__dirname, "..");
 const SOURCE = fs.readFileSync(path.join(TRIP_DIR, "EditPublishedTripScreen.tsx"), "utf8");
+const PRICING_SOURCE = fs.readFileSync(
+  path.join(TRIP_DIR, "TripCreatorStep4Pricing.tsx"),
+  "utf8",
+);
 
 interface EditState {
   title: string;
-  capacity: number | null;
   startAt: string | null;
-  pricing: { packages: { capacity: number | null; ticketTypeId: string | null }[] };
+  pricing: {
+    packages: {
+      capacity: number | null;
+      ticketTypeId: string | null;
+      priceMajor?: string;
+      paymentPlan?: unknown;
+    }[];
+  };
   [key: string]: unknown;
 }
 interface PatchResult {
@@ -111,6 +115,8 @@ function loadPrivates(): Privates {
     react: () => React,
     "react-native": () => jest.requireActual("react-native"),
     designSystem: () => designSystem,
+    tripPlanV2EditorModel: () =>
+      jest.requireActual("../tripPlanV2EditorModel"),
   };
   const output =
     ts.transpileModule(SOURCE, {
@@ -224,19 +230,27 @@ describe("#3801 tester — a multi-package published trip never submits a capaci
     expect(result.patch.pricing_tiers).toBeUndefined();
   });
 
-  test("the package being edited opens with its OWN spots (8), not the trip total (11)", () => {
+  test("every package opens with its own spots, never the trip total", () => {
     const state = tripToLocalEditState(tripWith(THREE, 11));
-    expect(state.capacity).toBe(11);
-    expect(state.pricing.packages).toHaveLength(1);
-    expect(state.pricing.packages[0].ticketTypeId).toBe("tt-shared");
-    expect(state.pricing.packages[0].capacity).toBe(8);
+    expect(state.pricing.packages).toHaveLength(3);
+    expect(
+      state.pricing.packages.map(({ ticketTypeId, capacity }) => ({
+        ticketTypeId,
+        capacity,
+      })),
+    ).toEqual([
+      { ticketTypeId: "tt-shared", capacity: 8 },
+      { ticketTypeId: "tt-private", capacity: 2 },
+      { ticketTypeId: "tt-couple", capacity: 1 },
+    ]);
   });
 
   test("an unlimited first package opens as unlimited, never as the other packages' total", () => {
     const tiers = [pricingTier("tier-1", "tt-open", "Open", null), THREE[1], THREE[2]];
     const state = tripToLocalEditState(tripWith(tiers, null));
-    expect(state.capacity).toBeNull();
     expect(state.pricing.packages[0].capacity).toBeNull();
+    expect(state.pricing.packages[1].capacity).toBe(2);
+    expect(state.pricing.packages[2].capacity).toBe(1);
   });
 
   test("changing the title on a multi-package trip sends the title and still no capacity", () => {
@@ -253,101 +267,123 @@ describe("#3801 tester — a multi-package published trip never submits a capaci
     const result = buildLiveTripPatch(trip, state);
     expect(result.patch.theme?.business_trip).toEqual({ startAt: "2026-11-13T00:00:00.000Z" });
   });
+
+  test("a missing local row cannot become a live-tier deletion", () => {
+    const trip = tripWith(THREE, 11);
+    const state = tripToLocalEditState(trip);
+    state.pricing.packages = state.pricing.packages.filter(
+      (pkg) => pkg.ticketTypeId !== "tt-private",
+    );
+    state.pricing.packages[0].priceMajor = "1300.00";
+
+    const result = buildLiveTripPatch(trip, state);
+    expect(result.patch.pricing_tiers).toEqual([
+      { ticket_type_id: "tt-shared", price_cents: 130000 },
+      { ticket_type_id: "tt-private" },
+      { ticket_type_id: "tt-couple" },
+    ]);
+  });
+
+  test("v2 plan replacement preserves unrelated metadata and removes v1", () => {
+    const legacyPlan = {
+      deposit_pct: 25,
+      installments: [{ pct: 75, due_days_before_start: 30 }],
+    };
+    const v2Plan = {
+      v: 2 as const,
+      deposit: { mode: "percent" as const, pct: 20 },
+      count: 4,
+      final_due_days_before_start: 21,
+      auto_adjust: true,
+      flex: { enabled: false as const },
+      custom_amounts_minor: null,
+    };
+    const tier = pricingTier("tier-1", "tt-shared", "Shared", 8);
+    tier.tierMetadata = {
+      campaign: "fall",
+      installments: legacyPlan,
+      description: "legacy duplicate",
+    };
+    tier.installmentSchedule = legacyPlan;
+    const trip = tripWith([tier], 8);
+    const state = tripToLocalEditState(trip);
+    state.pricing.packages[0].paymentPlan = v2Plan;
+
+    const result = buildLiveTripPatch(trip, state);
+    expect(result.patch.pricing_tiers).toEqual([
+      {
+        ticket_type_id: "tt-shared",
+        tier_metadata: {
+          campaign: "fall",
+          payment_plan: v2Plan,
+        },
+      },
+    ]);
+  });
+
+  test("removing a plan leaves neither metadata plan key", () => {
+    const legacyPlan = {
+      deposit_pct: 25,
+      installments: [{ pct: 75, due_days_before_start: 30 }],
+    };
+    const tier = pricingTier("tier-1", "tt-shared", "Shared", 8);
+    tier.tierMetadata = { campaign: "fall", installments: legacyPlan };
+    tier.installmentSchedule = legacyPlan;
+    const trip = tripWith([tier], 8);
+    const state = tripToLocalEditState(trip);
+    state.pricing.packages[0].paymentPlan = null;
+
+    const result = buildLiveTripPatch(trip, state);
+    expect(result.patch.pricing_tiers).toEqual([
+      {
+        ticket_type_id: "tt-shared",
+        tier_metadata: { campaign: "fall" },
+      },
+    ]);
+  });
 });
 
-describe("#3801 tester — a single-package published trip is unchanged", () => {
+describe("#4522 tester — a single-package published trip is capacity-read-only", () => {
   const { tripToLocalEditState, buildLiveTripPatch } = loadPrivates();
   const ONE = [pricingTier("tier-1", "tt-shared", "Shared", 8)];
 
-  test("it opens with the package's spots in both places", () => {
+  test("it opens with the package's spots", () => {
     const state = tripToLocalEditState(tripWith(ONE, 8));
-    expect(state.capacity).toBe(8);
     expect(state.pricing.packages[0].capacity).toBe(8);
   });
 
-  test("untouched, it sends no capacity; edited to 10, it sends exactly 10", () => {
+  test("even a forged local capacity change is not serialized", () => {
     const trip = tripWith(ONE, 8);
     const state = tripToLocalEditState(trip);
     expect(sentCapacity(buildLiveTripPatch(trip, state))).toBe("NOT SENT");
-    expect(sentCapacity(buildLiveTripPatch(trip, { ...state, capacity: 10 }))).toBe(10);
+    state.pricing.packages[0].capacity = 10;
+    const forged = buildLiveTripPatch(trip, state);
+    expect(sentCapacity(forged)).toBe("NOT SENT");
+    expect(forged.patch.pricing_tiers).toBeUndefined();
   });
 });
 
-describe("#3801 tester — the screen itself offers no way to edit the total", () => {
-  const source = ts.createSourceFile(
-    "EditPublishedTripScreen.tsx",
-    SOURCE,
-    ts.ScriptTarget.ES2020,
-    true,
-    ts.ScriptKind.TSX,
-  );
-
-  /** The `trip.pricingTiers.length > 1 ? (A) : (B)` that guards the capacity field. */
-  function capacityBranch(): { multi: string; single: string } {
-    let found: { multi: string; single: string } | null = null;
-    const visit = (node: ts.Node): void => {
-      if (
-        found === null &&
-        ts.isConditionalExpression(node) &&
-        node.condition.getText(source).replace(/\s+/g, " ") === "trip.pricingTiers.length > 1" &&
-        node.getText(source).includes("edit-trip-capacity")
-      ) {
-        found = {
-          multi: node.whenTrue.getText(source),
-          single: node.whenFalse.getText(source),
-        };
-        return;
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-    expect(found).not.toBeNull();
-    return found as unknown as { multi: string; single: string };
-  }
-
-  test("several packages: a line of text with the total, no input and no way to change state", () => {
-    const { multi } = capacityBranch();
-    expect(multi).toContain('testID="edit-trip-capacity-total"');
-    expect(multi).not.toContain("TextInput");
-    expect(multi).not.toContain("onChangeText");
-    expect(multi).not.toContain("updateBasics");
-    expect(multi).not.toContain("onPress");
-    // It says the spots are per package, and what "no limit" looks like.
-    expect(multi).toContain("Spots are set per package.");
-    expect(multi).toContain("No overall limit across");
+describe("#4522 tester — the screen offers no published capacity edit", () => {
+  test("published pricing disables capacity and package structure changes", () => {
+    expect(SOURCE).toContain("allowPackageStructureChanges={false}");
+    expect(SOURCE).toContain("allowCapacityChange={false}");
+    expect(SOURCE).toContain("showSharePaymentPlanControl={false}");
   });
 
-  test("one package: the editable field is still there", () => {
-    const { single } = capacityBranch();
-    expect(single).toContain("TextInput");
-    expect(single).toContain('testID="edit-trip-capacity"');
-    expect(single).toContain("updateBasics");
+  test("the shared pricing body has an explicit read-only capacity branch", () => {
+    expect(PRICING_SOURCE).toContain("allowCapacityChange ? (");
+    expect(PRICING_SOURCE).toContain(
+      'testID={`trip-step4-capacity-readonly-${index}`}',
+    );
+    expect(PRICING_SOURCE).toContain(
+      "Package capacity and package count stay fixed after publishing.",
+    );
   });
 
-  test("the single-package field is the ONLY place the screen writes capacity into its state", () => {
-    // Property assignments named `capacity` inside an `updateBasics({...})` call.
-    const writers: string[] = [];
-    const visit = (node: ts.Node): void => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === "updateBasics" &&
-        node.arguments.length === 1 &&
-        ts.isObjectLiteralExpression(node.arguments[0])
-      ) {
-        for (const prop of (node.arguments[0] as ts.ObjectLiteralExpression).properties) {
-          if (prop.name !== undefined && prop.name.getText(source) === "capacity") {
-            writers.push(node.getText(source).replace(/\s+/g, " "));
-          }
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-    expect(writers).toHaveLength(1);
-    const { single, multi } = capacityBranch();
-    expect(single.replace(/\s+/g, " ")).toContain(writers[0]);
-    expect(multi.replace(/\s+/g, " ")).not.toContain(writers[0]);
+  test("the published screen has no trip-level capacity setter", () => {
+    expect(SOURCE).not.toContain("state.capacity");
+    expect(SOURCE).not.toContain("bt.capacity");
+    expect(SOURCE).not.toContain('testID="edit-trip-capacity"');
   });
 });
 
@@ -405,14 +441,12 @@ describe("#3801 tester — the request that reaches the server carries no summed
     expect(capacityPaths(sent)).toEqual([]);
   });
 
-  test("single package edited to 10: the request carries exactly 10, once", async () => {
-    const sent = await save(tripWith([pricingTier("tier-1", "tt-shared", "Shared", 8)], 8), {
-      capacity: 10,
-    });
-    // The path is assembled from the key name: the trip canonical-column gate
-    // forbids spelling the retired path in source (see RETIRED_THEME_CAPACITY_KEY).
-    expect(capacityPaths(sent)).toEqual([
-      `p_patch.theme.business_trip.${RETIRED_THEME_CAPACITY_KEY}=10`,
-    ]);
+  test("single package, title edited: the request still carries no capacity", async () => {
+    const sent = await save(
+      tripWith([pricingTier("tier-1", "tt-shared", "Shared", 8)], 8),
+      { title: "Lagos long weekend, extended" },
+    );
+    expect(sent.title).toBe("Lagos long weekend, extended");
+    expect(capacityPaths(sent)).toEqual([]);
   });
 });

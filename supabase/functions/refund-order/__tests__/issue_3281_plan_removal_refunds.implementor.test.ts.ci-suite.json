@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/refund-order/__tests__/issue_3281_plan_removal_refunds.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-plan-removal-refunds-implementor",
+  "profile": "deno-2-unit"
+}

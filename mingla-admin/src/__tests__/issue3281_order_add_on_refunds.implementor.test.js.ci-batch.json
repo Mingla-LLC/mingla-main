@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#3281",
+  "suite": {
+    "id": "issue-3281-admin-order-add-on-refunds",
+    "class": "admin-node20-install",
+    "originPaths": [
+      "mingla-admin/src/**"
+    ],
+    "steps": [
+      {
+        "name": "Admin order view: add-on lines and add-on-only refunds",
+        "cwd": "mingla-admin",
+        "run": "node --test src/__tests__/issue3281_order_add_on_refunds.implementor.test.js",
+        "commandId": "assert:issue-3281-admin-order-add-on-refunds:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test src/__tests__/issue3281_order_add_on_refunds.implementor.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#3281",
+    "runtime": {
+      "name": "node",
+      "version": "20"
+    },
+    "setupProfile": "admin-node20-install",
+    "cwd": "mingla-admin",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-admin/src/__tests__/issue3281_order_add_on_refunds.implementor.test.js"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: admin-node20-install",
+    "timingSeconds": {
+      "p50": 2,
+      "p95": 4,
+      "evidence": "Local targeted run 2026-11-21"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 60
+  }
+}

@@ -52,9 +52,11 @@ import {
   isPaystackRefundBelowMinimumError,
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
+  paystackExpectedTransactionId,
   paystackRefundTransaction,
   persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import {
   runSourceRefundOperation,
   type SourceRefundOperation,
@@ -352,7 +354,9 @@ async function refundOneOrder(
   let providerRefund: StripeRefundResult;
   let stripeFeeTruth: ExecuteTicketRefundResult | null = null;
   if (paymentProvider === "paystack") {
-    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
+    // Seventh pass (H-7): by reference only with the #4522 schema (its commit records the refund).
+    const byReference = await planV2SchemaAvailable(supabase);
+    const transaction = paystackRefundTransaction(paymentIntentId, chargeId, byReference);
     if (!transaction) {
       await supabase.rpc("admin_refund_order_commit", {
         p_refund_id: refundId,
@@ -369,6 +373,7 @@ async function refundOneOrder(
     try {
       const paystackRefund = await createPaystackRefund({
         transaction,
+        ...paystackExpectedTransactionId(paymentIntentId, chargeId, byReference),
         merchantNote: `mingla_cancel_refund:${refundId}`,
         amountSubunits: isFullRefund ? undefined : amountCents,
         currency: "NGN",
@@ -685,9 +690,12 @@ export async function refundOneInstallment(
   let providerRefundId: string | null = null;
   let applicationFeeRefunded = 0;
   if (provider === "paystack") {
+    // Seventh pass (H-7): by reference only with the #4522 schema.
+    const byReference = await planV2SchemaAvailable(supabase);
     const transaction = paystackRefundTransaction(
       sourceReference,
       providerTransactionId,
+      byReference,
     );
     if (transaction === null) {
       return {
@@ -699,6 +707,7 @@ export async function refundOneInstallment(
     try {
       const refund = await deps.createPaystackRefund({
         transaction,
+        ...paystackExpectedTransactionId(sourceReference, providerTransactionId, byReference),
         merchantNote: `mingla_cancel_refund:${refundId}`,
         amountSubunits: isFull ? undefined : amountCents,
         currency: "NGN",

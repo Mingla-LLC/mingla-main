@@ -17,7 +17,12 @@ const translate = (key, options) => {
     typeof options?.count === "number"
       ? `${leaf}_${options.count === 0 ? "zero" : options.count === 1 ? "one" : "other"}`
       : leaf;
-  return interpolate(followers[pluralLeaf] ?? followers[leaf] ?? key, options);
+  const found = followers[pluralLeaf] ?? followers[leaf];
+  // #4523: a key with a defaultValue (the calendar labels) reads as its English default.
+  if (found === undefined && typeof options?.defaultValue === "string") {
+    return interpolate(options.defaultValue, options);
+  }
+  return interpolate(found ?? key, options);
 };
 
 module.exports = {

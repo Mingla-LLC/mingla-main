@@ -64,7 +64,7 @@
  *   - drop the horizon clamp (ignore maxAdvanceDays)     -> A2 RED
  *   - shift maxCheckIn by one day (addStayDays(today, h+1)) -> A1/A2/E1 RED
  *   - seed venueToday() from the DEVICE zone instead of the venue's -> B1 RED
- *   - remove min/max from the web check-in input          -> E1 RED
+ *   - drop min/maxStart from the stay calendar args (#4523) -> E1 RED
  *   - make the blackout `To` floor `dateStart + 1`        -> F1 RED
  *
  * Run: cd mingla-business && npx jest --config jest.issue1503.cfg.cjs --runInBand
@@ -74,7 +74,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 import type { PublicStayDetail } from "../stayGuest";
-import { StayDateRangeField } from "../StayDateRangeField";
+import { StayDateRangeField, type StayRangeCalendarArgs } from "../StayDateRangeField";
 import {
   addStayDays,
   compareStayDates,
@@ -748,13 +748,49 @@ const PALETTE = {
   accentWash: "rgba(235,120,37,0.16)",
 };
 
-function attrOf(tag: string, name: string): string | null {
-  const match = new RegExp(`(?:^|\\s)${name}="([^"]*)"`).exec(tag);
-  return match === null ? null : match[1];
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TestRenderer = require("react-test-renderer") as {
+  create: (element: unknown) => {
+    root: { findAll: (predicate: (node: { props: Record<string, unknown> }) => boolean) => Array<{ props: Record<string, unknown> }> };
+    unmount: () => void;
+  };
+  act: (callback: () => Promise<void> | void) => Promise<void>;
+};
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+/** Mounts the field, opens it from the check-in row and returns the calendar's args. */
+async function calendarArgsFor(value: StayDateRange, bounds: ReturnType<typeof boundsFor>): Promise<StayRangeCalendarArgs> {
+  let captured: StayRangeCalendarArgs | null = null;
+  let tree: ReturnType<typeof TestRenderer.create> | undefined;
+  await TestRenderer.act(() => {
+    tree = TestRenderer.create(
+      React.createElement(StayDateRangeField as unknown as React.FC<Record<string, unknown>>, {
+        value,
+        bounds,
+        palette: PALETTE,
+        onChange: () => undefined,
+        timeZone: "America/Los_Angeles",
+        renderCalendar: (args: StayRangeCalendarArgs) => {
+          captured = args;
+          return null;
+        },
+      }),
+    );
+  });
+  const row = tree!.root.findAll((node) => node.props.testID === "stay-date-check-in" && typeof node.props.onPress === "function")[0];
+  expect(row).toBeDefined(); // vacuity guard
+  await TestRenderer.act(() => {
+    (row.props.onPress as () => void)();
+  });
+  await TestRenderer.act(() => {
+    tree!.unmount();
+  });
+  expect(captured).not.toBeNull();
+  return captured as unknown as StayRangeCalendarArgs;
 }
 
-describe("#1503 E · the emitted <input> bounds match the ORACLE, not just 'are present'", () => {
-  test("E1 · min/max on the rendered check-in input equal the server's accept edges", () => {
+describe("#1503 E · #4523: the stay calendar's bounds match the ORACLE, not just 'are present'", () => {
+  test("E1 · the calendar's first day and last check-in day equal the server's accept edges", async () => {
     const detail = stayDetail({ timezone: "America/Los_Angeles" });
     const cfg: VenueConfig = {
       timezone: detail.timezone,
@@ -765,42 +801,22 @@ describe("#1503 E · the emitted <input> bounds match the ORACLE, not just 'are 
     };
     const now = new Date(Date.UTC(2026, 7, 4, 1, 0, 0));
     const bounds = boundsFor(cfg, "2026-08-05", now);
-    const html = ReactDOMServer.renderToStaticMarkup(
-      React.createElement(
-        StayDateRangeField as unknown as React.FC<Record<string, unknown>>,
-        {
-          value: { checkIn: "2026-08-05", checkOut: "2026-08-07" },
-          bounds,
-          palette: PALETTE,
-          onChange: () => undefined,
-        },
-      ),
-    );
-    const tags = html.match(/<input\b[^>]*>/g) ?? [];
-    expect(tags).toHaveLength(2);
-    const [checkInTag, checkOutTag] = tags;
-    expect(attrOf(checkInTag, "type")).toBe("date");
-    expect(attrOf(checkOutTag, "type")).toBe("date");
-
-    const min = attrOf(checkInTag, "min");
-    const max = attrOf(checkInTag, "max");
-    expect(min).not.toBeNull();
-    expect(max).not.toBeNull();
-
-    // The attribute is the ORACLE's edge — not merely non-empty.
-    expect(serverAcceptsCheckIn(cfg, min as string, now)).toBe(true);
-    expect(serverAcceptsCheckIn(cfg, addStayDays(min as string, -1), now)).toBe(false);
-    expect(serverAcceptsCheckIn(cfg, max as string, now)).toBe(true);
-    expect(serverAcceptsCheckIn(cfg, addStayDays(max as string, 1), now)).toBe(false);
+    const args = await calendarArgsFor({ checkIn: "2026-08-05", checkOut: "2026-08-07" }, bounds);
+    const min = args.min;
+    const max = args.maxStart;
+    // The bound is the ORACLE's edge — not merely non-empty.
+    expect(serverAcceptsCheckIn(cfg, min, now)).toBe(true);
+    expect(serverAcceptsCheckIn(cfg, addStayDays(min, -1), now)).toBe(false);
+    expect(serverAcceptsCheckIn(cfg, max, now)).toBe(true);
+    expect(serverAcceptsCheckIn(cfg, addStayDays(max, 1), now)).toBe(false);
     expect(min).toBe("2026-08-03");
     expect(max).toBe("2026-08-24");
-
-    // Check-out is anchored strictly after check-in — one night minimum.
-    expect(attrOf(checkOutTag, "min")).toBe("2026-08-06");
-    expect(attrOf(checkOutTag, "max")).toBe(addStayDays("2026-08-05", 365));
+    // A stay is at most 365 nights, and can end up to 365 nights after the last check-in.
+    expect(args.maxLength).toBe(365);
+    expect(args.max).toBe(addStayDays("2026-08-24", 365));
   });
 
-  test("E2 · the control is the affordance — no hidden-input mechanism sneaks back in", () => {
+  test("E2 · the rows are the affordance — no date box or hidden-input mechanism sneaks back in", () => {
     const bounds = boundsFor(
       {
         timezone: "America/New_York",
@@ -820,38 +836,34 @@ describe("#1503 E · the emitted <input> bounds match the ORACLE, not just 'are 
           bounds,
           palette: PALETTE,
           onChange: () => undefined,
+          timeZone: "America/New_York",
+          renderCalendar: () => null,
         },
       ),
     );
-    expect(html).toContain('type="date"');
+    expect(html).toContain("Check-in"); // vacuity guard
+    expect(html).not.toContain("<input");
     expect(html).not.toMatch(/opacity:\s*0[;"']/);
-    expect(html).not.toMatch(/pointer-events:\s*none/);
     expect(html).not.toContain("showPicker");
-    // aria-label is required on BOTH inputs, not just the first.
+    // An accessibility label is required on BOTH rows, not just the first.
     expect((html.match(/aria-label="Check-/g) ?? []).length).toBe(2);
   });
 
-  test("E3 · the web twin carries NO native picker import (the .native split holds at source)", () => {
-    const webSrc = readFileSync(
-      join(REPO_ROOT, "packages/brand-rendering/StayDateRangeField.tsx"),
-      "utf8",
-    );
-    const nativeSrc = readFileSync(
-      join(REPO_ROOT, "packages/brand-rendering/StayDateRangeField.native.tsx"),
-      "utf8",
-    );
-    expect(webSrc).not.toContain("@react-native-community/datetimepicker");
-    expect(nativeSrc).toContain("@react-native-community/datetimepicker");
-    // Both halves must export the same name, or Metro would resolve to a
-    // module with no component on one platform.
-    expect(webSrc).toContain("export function StayDateRangeField");
+  test("E3 · neither half of the .native split carries a picker; both render the bounded calendar rows", () => {
+    const webSrc = readFileSync(join(REPO_ROOT, "packages/brand-rendering/StayDateRangeField.tsx"), "utf8");
+    const nativeSrc = readFileSync(join(REPO_ROOT, "packages/brand-rendering/StayDateRangeField.native.tsx"), "utf8");
+    const rowsSrc = readFileSync(join(REPO_ROOT, "packages/brand-rendering/StayDateRangeRows.tsx"), "utf8");
+    for (const src of [webSrc, nativeSrc, rowsSrc]) {
+      expect(src).not.toContain("@react-native-community/datetimepicker");
+      expect(src).not.toMatch(/type=["']date["']/);
+    }
+    // Both halves export the same name, or Metro would resolve to a module
+    // with no component on one platform.
+    expect(webSrc).toContain("StayDateRangeRows as StayDateRangeField");
     expect(nativeSrc).toContain("export function StayDateRangeField");
-    // The native half must render the picker bounded — an unbounded picker
-    // would make out-of-range days selectable on iOS/Android only.
-    expect(nativeSrc).toContain("minimumDate=");
-    expect(nativeSrc).toContain("maximumDate=");
-    expect(nativeSrc).toContain("bounds.maxCheckIn");
-    expect(nativeSrc).toContain("bounds.minCheckIn");
+    // The calendar is bounded by the venue rules on every platform.
+    expect(rowsSrc).toContain("min: bounds.minCheckIn");
+    expect(rowsSrc).toContain("maxStart: bounds.maxCheckIn");
   });
 });
 

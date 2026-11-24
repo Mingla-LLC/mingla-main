@@ -17,7 +17,8 @@
  *                 check. Nothing renders. Telling a guest "no refund policy set"
  *                 about an offering that HAS one would invent data (rule 9).
  *
- * The shape check mirrors `validate_refund_policy` (migration 20260612000000):
+ * The shape check mirrors `validate_refund_policy` (migration 20260612000000,
+ * extended by 20281202044522 for issue #4522's two optional keys):
  * kind is one of four, 1–8 tiers, each tier an integer `days_before_start >= 0`
  * and an integer `refund_pct` 0–100, days strictly descending and percentages
  * non-increasing. A value the database could never have stored is treated as
@@ -36,11 +37,24 @@ export interface OfferingRefundTier {
   refund_pct: number;
 }
 
-/** A published refund policy. Structurally identical to the trip policy shape. */
+/**
+ * A published refund policy. Structurally identical to the trip policy shape.
+ *
+ * issue #4522 — two optional keys, copied only when the payload carries them
+ * (so every existing policy parses to exactly the object it did before):
+ *   - `no_refunds` — "No refunds"; when true the ladder is empty (the only case
+ *     in which `validate_refund_policy` accepts an empty ladder). A true value
+ *     reads as unknown until the slice that renders it (see the parser).
+ *   - `deposit_non_refundable` — "Deposit is non-refundable" on a trip plan.
+ */
 export interface OfferingRefundPolicy {
   kind: "flexible" | "standard" | "strict" | "custom";
   tiers: OfferingRefundTier[];
+  no_refunds?: boolean;
+  deposit_non_refundable?: boolean;
 }
+
+const OPTIONAL_POLICY_KEYS = ["no_refunds", "deposit_non_refundable"] as const;
 
 export type RefundPolicyReadState =
   | { status: "set"; policy: OfferingRefundPolicy }
@@ -80,6 +94,23 @@ export function parseOfferingRefundPolicy(
   if (typeof kind !== "string" || !POLICY_KINDS.has(kind)) return null;
   const rawTiers = value.tiers;
   if (!Array.isArray(rawTiers)) return null;
+  // Each optional key is copied only when the payload carries it (own key),
+  // and must be a boolean when it does. (#3281 checkpoint 15: one loop instead
+  // of two spelled-out checks keeps this boot-payload module small.)
+  const optional: Pick<
+    OfferingRefundPolicy,
+    "no_refunds" | "deposit_non_refundable"
+  > = {};
+  for (const key of OPTIONAL_POLICY_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const flag = value[key];
+    if (typeof flag !== "boolean") return null;
+    optional[key] = flag;
+  }
+  // issue #4522 — a "No refunds" policy (`no_refunds: true`, empty ladder) is
+  // valid in the database but reads as unknown here until the slice that
+  // renders it ships, so no surface shows a ladder or a tick for it.
+  if (value.no_refunds === true) return null;
   if (rawTiers.length === 0 || rawTiers.length > MAX_TIERS) return null;
 
   const tiers: OfferingRefundTier[] = [];
@@ -97,7 +128,7 @@ export function parseOfferingRefundPolicy(
     previousDays = days;
     previousPct = pct;
   }
-  return { kind: kind as OfferingRefundPolicy["kind"], tiers };
+  return { kind: kind as OfferingRefundPolicy["kind"], tiers, ...optional };
 }
 
 /**

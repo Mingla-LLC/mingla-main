@@ -11,6 +11,8 @@ import {
   rsvpDoorAnswersForScanResult,
   rsvpDoorSubjectFromScanResult,
 } from "./doorAnswers.ts";
+// #3281 S6 — the add-ons an admitted RSVP owes (own top-level field).
+import { withDoorAddOns } from "./doorAddOns.ts";
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -172,6 +174,8 @@ serve(async (req) => {
       clearTimeout(timer);
     }
   }
+  // #3281 S6 — the door line came back with the admission; no extra read.
+  result = withDoorAddOns(result, subject?.kind === "rsvp");
   console.info(JSON.stringify({
     event: "rsvp_scan_result",
     eventId,

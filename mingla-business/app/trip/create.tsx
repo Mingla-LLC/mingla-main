@@ -9,16 +9,10 @@
  * Universal trip-create route per I-BRAND-UNIVERSAL-AUTHORING
  * (META-ORCH-0972).
  *
- * Narrowed-scope note (per ORCH-0893 implementation report): on the trip
- * side, the lazy server-insert is still triggered eagerly by
- * `/trip/[id]/edit.tsx` on `d_*` mount, NOT on first user-meaningful
- * edit. Wiring first-edit-triggered behaviour for trips requires
- * modifying the trip wizard's six per-step autosave hooks
- * (useUpdateTripBasics, useUpdateTripPricing, useUpsertTripDays,
- * useUpsertTripInclusions, useUpdateRefundPolicy, useUpdateBookingDeadline,
- * useUpsertIntakeSchema) — out of scope per SPEC §15
- * "DO NOT touch TripCreatorWizard.tsx step internals". Follow-up:
- * DISC-0893-TRIP-FIRST-EDIT (see implementation report).
+ * DISC-0893: with the 4-step builder (`tripBuilderV2`) `/trip/[id]/edit` does not
+ * create the server draft on mount either: it asks the host to name the trip
+ * first (TripStartGate) and creates the draft from that title. The 8-step wizard
+ * (flag off) still creates it on mount.
  *
  * Supersedes the Tr2 (ORCH-0859) eager `useCreateTripDraft.mutateAsync`
  * call on this route. The mutation hook still exists and is now called

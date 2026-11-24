@@ -32,16 +32,14 @@ describe("ORCH-1092 business web restoration wave", () => {
     expect(stripCommentLines(brandPayments)).not.toContain("Connect Stripe");
   });
 
-  test("Composer schedule picker uses browser-native controls on web and preserves native picker split", () => {
-    const webPicker = repoFile("src/components/marketing/ComposerV2/SchedulePickerSheet.tsx");
-    const nativePicker = repoFile("src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx");
+  test("Composer schedule picker is the Mingla calendar on every platform and keeps the OS picker out of the web route (#4523)", () => {
+    const picker = repoFile("src/components/marketing/ComposerV2/SchedulePickerSheet.tsx");
     const composeRoute = repoFile("app/(tabs)/marketing/campaigns/compose.tsx");
 
-    expect(webPicker).toContain('type="date"');
-    expect(webPicker).toContain('type="time"');
-    expect(webPicker).toContain("showPicker");
-    expect(stripCommentLines(webPicker)).not.toContain("@react-native-community/datetimepicker");
-    expect(nativePicker).toContain("@react-native-community/datetimepicker");
+    expect(picker).toContain("HostDateTimeField");
+    expect(picker).not.toContain("showPicker");
+    expect(picker).not.toContain('type="date"');
+    expect(stripCommentLines(picker)).not.toContain("@react-native-community/datetimepicker");
     expect(composeRoute).toContain("SchedulePickerSheet");
   });
 

@@ -104,7 +104,6 @@ import {
   extraDatesOnLine,
   extrasLineDates,
   extrasParentCount,
-  extrasRefusalCopy,
   extraSoldOutOnLine,
   extrasCartDates,
   fitExtrasToLine,
@@ -112,6 +111,7 @@ import {
   withExtraQuantity,
   type PublicTicketExtra,
 } from "@mingla/offering-rendering/ticketExtrasCart";
+import { extrasRefusalCopy } from "@mingla/offering-rendering/ticketExtrasRefusal";
 import type { CheckoutAddOnRequest } from "@mingla/offering-rendering/ticketCheckoutContract";
 import { EventDayChooser, type EventDayChooserStatus } from "./EventDayChooser";
 import {

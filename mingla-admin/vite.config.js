@@ -11,7 +11,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@mingla/blog-document": path.resolve(__dirname, "../packages/blog-document/src/index.ts"),
+      // #4523 — the Mingla calendar for plain React DOM. The more specific key first.
+      "@mingla/calendar-web/calendar.css": path.resolve(__dirname, "../packages/calendar-web/src/calendar.css"),
+      "@mingla/calendar-web": path.resolve(__dirname, "../packages/calendar-web/src/index.ts"),
     },
+    // The package sits outside this app's node_modules, so its `react` must resolve to the app's one copy.
+    dedupe: ["react", "react-dom"],
   },
   build: {
     outDir: "dist",

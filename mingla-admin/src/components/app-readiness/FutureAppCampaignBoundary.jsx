@@ -1,3 +1,4 @@
+import { CalendarInput } from "@mingla/calendar-web";
 import { useEffect, useMemo, useState } from "react";
 import { AlertCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -323,8 +324,8 @@ export function FutureAppCampaignBoundary({ appKey, os, latest }) {
               </label>
               <label className="grid gap-1 text-xs font-medium">
                 Install timestamp
-                <input
-                  type="datetime-local"
+                <CalendarInput
+                  mode="datetime"
                   value={installTimestamp}
                   onChange={(event) => setInstallTimestamp(event.target.value)}
                   className="min-h-11 rounded-lg border border-[var(--gray-300)] bg-white px-3 text-sm"

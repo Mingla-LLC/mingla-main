@@ -65,7 +65,17 @@ export interface RsvpConfirmationDetails {
   invites?: RsvpSubmittedGuest[];
   /** issue #4508 1.15 — the message parts; each guest's link completes it. */
   inviteMessage?: Omit<GuestInviteMessageInput, "link">;
+  /** issue #3281 S6 — the add-ons the guest picked with this RSVP. */
+  addOns?: ReadonlyArray<{ name: string; quantity: number }>;
 }
+
+/** issue #3281 S6 — "Reserved seat × 1 · Tote bag × 2", or null for none. */
+export const rsvpAddOnsLine = (
+  addOns: RsvpConfirmationDetails["addOns"],
+): string | null =>
+  addOns === undefined || addOns.length === 0
+    ? null
+    : addOns.map((item) => `${item.name} × ${item.quantity}`).join(" · ");
 
 export interface RsvpSuccessPopupProps {
   visible: boolean;
@@ -210,6 +220,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
     .map((g) => g.name)
     .filter((n) => n.trim().length > 0)
     .join(", ");
+  const addOnsLine = rsvpAddOnsLine(details.addOns);
 
   const claimSignIn = (() => {
     const email = claim?.email?.trim() || null;
@@ -365,6 +376,11 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                       {claimStatusLine}
                     </Text>
                   ) : null}
+                  {addOnsLine !== null ? (
+                    <View style={styles.detailBlock} testID="issue-3281-rsvp-success-add-ons">
+                      <Row label="Add-ons" value={addOnsLine} palette={palette} bold={boldFamily} />
+                    </View>
+                  ) : null}
                   {invitesCard}
                 </View>
               )
@@ -402,6 +418,9 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                       palette={palette}
                       bold={boldFamily}
                     />
+                  ) : null}
+                  {addOnsLine !== null ? (
+                    <Row label="Add-ons" value={addOnsLine} palette={palette} bold={boldFamily} />
                   ) : null}
                   <Row
                     label="Status"

@@ -9,6 +9,7 @@
 // (D12). "+ Add to plan" adds a Post (a Calendar Idea for this brand) or a
 // Task (a Work card the host can see), with owners, watchers, a date, an
 // optional link and a note.
+import { CalendarInput } from "@mingla/calendar-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../ui/Button";
@@ -323,7 +324,7 @@ export function HostPlanSection({ record, online, onChanged, prefill = null }) {
                 {nextEvent && <button type="button" disabled={busy} onClick={() => set({ on: dayBefore })} className={`min-h-9 rounded-full border border-[var(--gray-300)] px-3 text-[12px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}>Day before the event</button>}
               </span>
               {nextEvent && <span data-plan-next-event="" className={`text-[11.5px] text-[var(--color-text-tertiary)] ${WORDS}`}>Next event: {nextEvent.title}, {planDay(nextEvent.on)}</span>}
-              <input id={fid("on")} type="date" min={today} value={form.on} disabled={busy}
+              <CalendarInput id={fid("on")} mode="date" min={today} value={form.on} disabled={busy}
                 aria-invalid={!!problemFor("on") || undefined} aria-describedby={problemFor("on") ? fid("on-err") : undefined}
                 onChange={(e) => set({ on: e.target.value })} className={INPUT} />
               {problemFor("on") && <span id={fid("on-err")} className="text-[12px] text-[var(--color-error-700)]">{problemFor("on")}</span>}

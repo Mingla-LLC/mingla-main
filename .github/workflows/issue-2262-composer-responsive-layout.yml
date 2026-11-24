@@ -217,8 +217,22 @@ jobs:
       # pull request that touches only shared primitives or CI gate files
       # still runs every other #2262 step in full, and this step says out
       # loud that it did not apply.
+      #
+      # [WORKFLOW-MOD-APPROVED #4522] ONE-TIME EXCEPTION (Seth, 2026-11-24,
+      # #4522): pull request #4594 from branch 4522-young-polish moves the
+      # composer's date picker onto the shared calendar and adds
+      # `@mingla/calendar` (file:../packages/calendar) in the same change. For that run only, and only until 2026-12-08, SC-13
+      # accepts exactly that dependency: the one new key in
+      # mingla-business/package.json `dependencies` plus its three lockfile
+      # entries, with every other dependency field, lockfile entry and the
+      # mingla-admin manifest and lockfile unchanged. It prints a notice naming
+      # the exception and approver. Any other dependency movement, any other
+      # pull request or branch, or any run after the end date fails as before.
       - name: "SC-13 — zero dependency changes in a composer change"
         shell: bash
+        env:
+          SC13_PR_NUMBER: ${{ github.event.pull_request.number }}
+          SC13_HEAD_REF: ${{ github.head_ref }}
         run: |
           set -euo pipefail
           owned_re='^mingla-business/(app/\(tabs\)/marketing/(campaigns/compose\.tsx|_layout\.tsx)|src/components/marketing/(ComposerCommitBar|ComposerHeader|ComposerStepWho|SmsComposeCard)\.tsx|src/components/marketing/ComposerV2/|src/components/marketing/__tests__/orch1100ComposerInteraction\.test\.ts|jest\.issue2262\.|playwright\.issue2262\.|playwright/issue2262/)'
@@ -245,6 +259,94 @@ jobs:
           done
           if [ -z "$deps" ]; then
             echo "OK — no dependency added, removed or bumped."
+            exit 0
+          fi
+          # One-time exception for #4594 (see the comment above this step).
+          sc13_one_time_exception() {
+            [ "${SC13_PR_NUMBER:-}" = "4594" ] || return 1
+            [ "${SC13_HEAD_REF:-}" = "4522-young-polish" ] || return 1
+            [[ "$(date -u +%Y-%m-%d)" < "2026-12-09" ]] || return 1
+            node - <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const fs = require("node:fs");
+          const NAME = "@mingla/calendar";
+          const SPEC = "file:../packages/calendar";
+          const base = (path) => {
+            try {
+              return JSON.parse(execFileSync("git", ["show", `origin/main:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+            } catch {
+              return null;
+            }
+          };
+          const head = (path) => (fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, "utf8")) : null);
+          const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+          const fields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "overrides"];
+          const pick = (value) => Object.fromEntries(fields.map((field) => [field, value?.[field] ?? null]));
+          const sorted = (value) => JSON.stringify(Object.fromEntries(
+            fields.map((field) => [field, value[field] && Object.fromEntries(Object.entries(value[field]).sort())]),
+          ));
+          const problems = [];
+          // mingla-admin: no dependency field and no lockfile entry may move.
+          if (!same(pick(base("mingla-admin/package.json")), pick(head("mingla-admin/package.json")))) {
+            problems.push("mingla-admin/package.json dependency fields moved");
+          }
+          if (!same(base("mingla-admin/package-lock.json"), head("mingla-admin/package-lock.json"))) {
+            problems.push("mingla-admin/package-lock.json moved");
+          }
+          // mingla-business/package.json: exactly the one new dependency, nothing else.
+          const bm = base("mingla-business/package.json");
+          const hm = head("mingla-business/package.json");
+          if (!bm || !hm) {
+            problems.push("mingla-business/package.json is unreadable");
+          } else if (bm.dependencies?.[NAME] !== undefined || hm.dependencies?.[NAME] !== SPEC) {
+            problems.push(`mingla-business/package.json does not add exactly "${NAME}": "${SPEC}"`);
+          } else {
+            const expected = pick(bm);
+            expected.dependencies = { ...(bm.dependencies ?? {}), [NAME]: SPEC };
+            if (sorted(expected) !== sorted(pick(hm))) {
+              problems.push("mingla-business/package.json moves a dependency other than the calendar package");
+            }
+          }
+          // mingla-business/package-lock.json: only the calendar package's own entries may differ.
+          const bl = base("mingla-business/package-lock.json");
+          const hl = head("mingla-business/package-lock.json");
+          if (!bl || !hl) {
+            problems.push("mingla-business/package-lock.json is unreadable");
+          } else {
+            const link = hl.packages?.["node_modules/@mingla/calendar"];
+            if (
+              hl.packages?.[""]?.dependencies?.[NAME] !== SPEC ||
+              link?.resolved !== "../packages/calendar" || link?.link !== true ||
+              hl.packages?.["../packages/calendar"]?.name !== NAME
+            ) {
+              problems.push("mingla-business/package-lock.json does not carry the calendar link entries");
+            }
+            if (
+              bl.packages?.["node_modules/@mingla/calendar"] || bl.packages?.["../packages/calendar"] ||
+              bl.packages?.[""]?.dependencies?.[NAME]
+            ) {
+              problems.push("origin/main already carries the calendar package, so this is not that addition");
+            }
+            const strip = (lock) => {
+              const copy = JSON.parse(JSON.stringify(lock));
+              if (copy.packages?.[""]?.dependencies) delete copy.packages[""].dependencies[NAME];
+              if (copy.packages) {
+                delete copy.packages["node_modules/@mingla/calendar"];
+                delete copy.packages["../packages/calendar"];
+              }
+              return copy;
+            };
+            if (!same(strip(bl), strip(hl))) {
+              problems.push("mingla-business/package-lock.json moves an entry other than the calendar package");
+            }
+          }
+          for (const problem of problems) console.log(`  SC-13 one-time exception refused: ${problem}`);
+          process.exit(problems.length === 0 ? 0 : 1);
+          NODE
+          }
+          if [ -n "$owned" ] && sc13_one_time_exception; then
+            echo "::notice::SC-13 ONE-TIME EXCEPTION applied (Seth, 2026-11-24, #4522): PR #4594 from branch 4522-young-polish changes the composer's date picker and adds @mingla/calendar (file:../packages/calendar) together. Only that dependency moved; every other dependency field and lockfile entry is unchanged. Expires after 2026-12-08."
+            printf '  dependency file moved: %s\n' $deps
             exit 0
           fi
           if [ -n "$owned" ]; then

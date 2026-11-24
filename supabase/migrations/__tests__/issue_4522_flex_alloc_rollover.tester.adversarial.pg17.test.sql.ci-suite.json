@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4522_flex_alloc_rollover.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4522-flex-alloc-rollover-tester-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

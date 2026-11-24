@@ -34,6 +34,11 @@ import {
   installmentFeeCents,
   resolveInstallmentFeeRate,
 } from "./installments/installmentFeeRate.ts";
+import { orderHasPlanV2Terms, rollOverMissedPayment } from "./installments/missedRollover.ts";
+import { planV2SchemaAvailable } from "./installments/planV2Schema.ts";
+import { claimPaidInFullNotice } from "./installments/paidInFullNotice.ts";
+import { returnOrderOverpaymentsBestEffort } from "./installments/overpaymentLane.ts";
+import { installmentOpsAlert } from "./installments/installmentOpsAlert.ts";
 // The one reader of a PaymentIntent's charge id. The router imports this
 // module too; the cycle is safe because both sides only export function
 // declarations and neither calls the other while the module loads.
@@ -106,25 +111,31 @@ export async function handleInstallmentPaymentSucceeded(
   // collected installment. The shared helper reads `latest_charge` first.
   const chargeId = paymentIntentChargeId(pi);
 
-  // Predicate-bound UPDATE: only mark collected if row is still scheduled.
+  // issue #4522 (F6) — before the #4522 migrations are applied the row has
+  // no `kind`; every read below then takes exactly the pre-#4522 shape.
+  const planV2 = await planV2SchemaAvailable(supabase);
+
+  // Predicate-bound UPDATE: only mark collected if row is still scheduled
+  // (or failed: cron may have written failed before the webhook arrived).
   // Idempotent — concurrent cron + webhook arrivals serialize safely.
-  const { data: updated, error } = await supabase
-    .from("order_installments")
-    .update({
-      status: "collected",
-      stripe_payment_intent_id: piId,
-      stripe_charge_id: chargeId,
-      collected_at: new Date().toISOString(),
-      // Clear any prior failure state
-      failed_at: null,
-      failure_reason: null,
-      next_retry_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", installmentId)
-    .in("status", ["scheduled", "failed"]) // tolerate the case where cron already wrote failed before webhook arrived
-    .select("id, order_id, ordinal, amount_cents")
-    .maybeSingle();
+  const collectedUpdate = {
+    status: "collected",
+    stripe_payment_intent_id: piId,
+    stripe_charge_id: chargeId,
+    collected_at: new Date().toISOString(),
+    // Clear any prior failure state
+    failed_at: null,
+    failure_reason: null,
+    next_retry_at: null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data: updated, error } = planV2
+    ? await supabase.from("order_installments").update(collectedUpdate)
+      .eq("id", installmentId).in("status", ["scheduled", "failed"])
+      .select("id, order_id, ordinal, amount_cents, kind").maybeSingle()
+    : await supabase.from("order_installments").update(collectedUpdate)
+      .eq("id", installmentId).in("status", ["scheduled", "failed"])
+      .select("id, order_id, ordinal, amount_cents").maybeSingle();
 
   if (error) {
     throw new Error(`installment collected update failed: ${error.message}`);
@@ -181,15 +192,72 @@ export async function handleInstallmentPaymentSucceeded(
   if (updated === null) {
     // Already collected (replay) or row missing/cancelled. Missing or
     // cancelled must fail closed — never mark the money event processed.
-    const { data: existing, error: existingError } = await supabase
-      .from("order_installments")
-      .select(
-        "id, amount_cents, status, payout_accounting_state, application_fee_amount_cents",
-      )
-      .eq("id", installmentId)
-      .maybeSingle();
+    const loadReplayRow = async () =>
+      planV2
+        ? await supabase.from("order_installments")
+          .select("id, amount_cents, status, payout_accounting_state, application_fee_amount_cents, kind")
+          .eq("id", installmentId).maybeSingle()
+        : await supabase.from("order_installments")
+          .select("id, amount_cents, status, payout_accounting_state, application_fee_amount_cents")
+          .eq("id", installmentId).maybeSingle();
+    let { data: existing, error: existingError } = await loadReplayRow();
     if (existingError !== null) {
       throw new Error(`installment replay load failed: ${existingError.message}`);
+    }
+    // issue #4522 (F1/F2) — the charge landed on a row that is no longer
+    // open: a released flexible payment confirmed late is collected and
+    // settled once; a planned row superseded while its charge was landing is
+    // held as an overpayment. Either way the money is recorded, never looped.
+    if (
+      planV2 && existing !== null &&
+      String((existing as Record<string, unknown>).status ?? "") === "superseded"
+    ) {
+      const received = Number(pi["amount_received"] ?? pi["amount"]);
+      const { data: late, error: lateError } = await supabase.rpc(
+        "issue_4522_record_late_collection",
+        {
+          p_installment_id: installmentId,
+          p_amount_minor: Number.isSafeInteger(received) && received > 0 ? received : null,
+          p_provider_ref: piId,
+          p_charge_ref: chargeId,
+        },
+      );
+      const lateResult = (late ?? null) as { ok?: boolean; outcome?: string; reason?: string } | null;
+      if (lateError !== null || lateResult?.ok !== true) {
+        throw new Error(
+          `issue_4522_record_late_collection failed: ${
+            lateError?.message ?? lateResult?.reason ?? "unknown"
+          }`,
+        );
+      }
+      if (lateResult.outcome === "held") {
+        console.warn(
+          `[installment-webhook] payment_intent.succeeded for superseded ${installmentId} — held as an overpayment`,
+        );
+        const lateOrder = await orderIdOf(supabase, installmentId);
+        if ((lateResult as { alertOps?: boolean }).alertOps === true) {
+          await installmentOpsAlert("Late trip payment for an unexpected amount", [
+            "A traveler's released flexible trip payment was confirmed late for an amount Mingla never asked for.",
+            `Instalment: ${installmentId}`,
+            `PaymentIntent: ${piId}; received: ${String(pi["amount_received"] ?? pi["amount"] ?? "?")}`,
+            "It was recorded and is being refunded in full automatically. The plan was not changed.",
+          ]);
+        }
+        // issue #4522 (N2) — the money goes straight back to the traveler.
+        if (lateOrder !== null) await returnOrderOverpaymentsBestEffort(supabase, lateOrder);
+        return brandId;
+      }
+      // A released flexible payment confirmed late was collected and settled
+      // just now: its email and any money it held follow the same rules.
+      await afterFlexSettle(
+        supabase,
+        ((lateResult as { settle?: FlexSettleResult }).settle ?? null),
+        "stripe_late_success",
+      );
+      ({ data: existing, error: existingError } = await loadReplayRow());
+      if (existingError !== null) {
+        throw new Error(`installment replay load failed: ${existingError.message}`);
+      }
     }
     if (existing === null) {
       throw new Error(
@@ -203,15 +271,47 @@ export async function handleInstallmentPaymentSucceeded(
         `installment_pi_succeeded on cancelled installment ${installmentId}: durable refund/recovery required`,
       );
     }
-    const accountingState = String(existingRow.payout_accounting_state ?? "");
-    const feesMissing = existingRow.application_fee_amount_cents == null;
+    // issue #4522 (T3-3) — a replay finishes a short-collection record a
+    // crash interrupted (idempotent once the row holds what was received).
+    if (planV2 && existingStatus === "collected" && existingRow.kind === "scheduled") {
+      const short = await recordShortCollection(supabase, installmentId, pi, piId);
+      if (short > 0) {
+        ({ data: existing, error: existingError } = await loadReplayRow());
+        if (existingError !== null || existing === null) {
+          throw new Error(`installment replay load failed: ${existingError?.message ?? "missing"}`);
+        }
+      }
+    }
+    const replayRow = existing as Record<string, unknown>;
+    const accountingState = String(replayRow.payout_accounting_state ?? "");
+    const feesMissing = replayRow.application_fee_amount_cents == null;
     if (accountingState !== "ready" || feesMissing) {
-      await recordProviderSaleOrThrow(Number(existingRow.amount_cents ?? 0));
+      await recordProviderSaleOrThrow(Number(replayRow.amount_cents ?? 0));
+    }
+    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent);
+    // a late or retried settlement that completes the balance sends the
+    // paid-in-full email (claimed once per order) and any money held goes back.
+    if (existingStatus === "collected") {
+      const settled = await settleFlexPaymentIfFlex(supabase, installmentId, existingRow.kind);
+      await afterFlexSettle(supabase, settled, "stripe_webhook_replay");
     }
     console.log(
       `[installment-webhook] payment_intent.succeeded for ${installmentId} — replay accounting ok`,
     );
     return brandId;
+  }
+
+  // issue #4522 (T3-3 / T3-9, I-4522-COLLECTED-IS-WHAT-WAS-CHARGED) — a
+  // planned row that grew by a rollover while its charge was in flight is
+  // recorded for what the provider collected; the rest stays owed on a
+  // re-opened row. Paid never counts money that was not collected.
+  if (planV2 && (updated as Record<string, unknown>).kind === "scheduled") {
+    await recordShortCollection(supabase, installmentId, pi, piId);
+    const { data: reread } = await supabase.from("order_installments").select("amount_cents")
+      .eq("id", installmentId).maybeSingle();
+    if (reread !== null) {
+      (updated as Record<string, unknown>).amount_cents = (reread as Record<string, unknown>).amount_cents;
+    }
   }
 
   await writeAudit(supabase, {
@@ -236,6 +336,36 @@ export async function handleInstallmentPaymentSucceeded(
   await recordProviderSaleOrThrow(
     Number((updated as Record<string, unknown>).amount_cents ?? 0),
   );
+  // issue #4522 — a flexible payment re-spreads the open balance, once.
+  const settled = await settleFlexPaymentIfFlex(
+    supabase,
+    installmentId,
+    (updated as Record<string, unknown>).kind,
+  );
+  // issue #4522 (edge case) — a planned charge that landed for more than its
+  // row now owes (re-spread between the cron's claim and the PaymentIntent id
+  // being saved): the row keeps its amount and the excess goes back.
+  if (planV2 && (updated as Record<string, unknown>).kind === "scheduled") {
+    const received = Number(pi["amount_received"] ?? pi["amount"]);
+    const rowAmount = Number((updated as Record<string, unknown>).amount_cents ?? 0);
+    if (Number.isSafeInteger(received) && received > rowAmount) {
+      const { error: excessError } = await supabase.rpc("issue_4522_hold_collected_excess", {
+        p_installment_id: installmentId,
+        p_received_minor: received,
+        p_provider_ref: piId,
+      });
+      if (excessError !== null) {
+        throw new Error(`issue_4522_hold_collected_excess failed: ${excessError.message}`);
+      }
+      await returnOrderOverpaymentsBestEffort(
+        supabase,
+        String((updated as Record<string, unknown>).order_id),
+      );
+    }
+  }
+  if (settled !== null && Number(settled.heldMinor ?? 0) > 0) {
+    await returnOrderOverpaymentsBestEffort(supabase, String(settled.orderId ?? ""));
+  }
 
   // Check if this was the LAST installment for the order → fire "fully paid" confirmation.
   // Simple check: count remaining scheduled/failed installments for the order.
@@ -256,7 +386,11 @@ export async function handleInstallmentPaymentSucceeded(
     .eq("order_id", orderId)
     .in("status", ["scheduled", "failed"]);
 
-  if (countError === null && remainingCount === 0) {
+  if (
+    countError === null && remainingCount === 0 &&
+    // issue #4522 (N7) — once per order with the #4522 schema; unchanged before it.
+    await claimPaidInFullNotice(supabase, orderId, "stripe_webhook")
+  ) {
     // Fire fully-paid notification via existing dispatcher.
     try {
       const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -285,6 +419,176 @@ export async function handleInstallmentPaymentSucceeded(
   return brandId;
 }
 
+/**
+ * issue #4522 (T3-3) — record a planned Stripe charge for what it collected
+ * when that is less than its row now owes (issue_4522_record_short_collection).
+ * Returns the amount re-opened (0 when nothing was short). Throws so the
+ * webhook inbox retries on failure.
+ */
+async function recordShortCollection(
+  supabase: SupabaseClient,
+  installmentId: string,
+  pi: Record<string, unknown>,
+  piId: string,
+): Promise<number> {
+  const received = Number(pi["amount_received"] ?? pi["amount"]);
+  if (!Number.isSafeInteger(received) || received <= 0) return 0;
+  const { data, error } = await supabase.rpc("issue_4522_record_short_collection", {
+    p_installment_id: installmentId,
+    p_received_minor: received,
+    p_provider_ref: piId,
+  });
+  const result = (data ?? null) as {
+    ok?: boolean;
+    shortMinor?: number;
+    reason?: string;
+    alertOps?: boolean;
+    orderId?: string;
+    currency?: string;
+    rowAmountMinor?: number;
+  } | null;
+  if (error !== null || result?.ok !== true) {
+    throw new Error(
+      `issue_4522_record_short_collection failed: ${error?.message ?? result?.reason ?? "unknown"}`,
+    );
+  }
+  const short = Number(result.shortMinor ?? 0);
+  if (short > 0) {
+    console.warn(
+      `[installment-webhook] ${installmentId} collected ${received}, ${short} re-opened as a planned row`,
+    );
+    // The safety net fired (it never should): never silent. The shortfall
+    // stays owed on its re-opened row; nothing was written off.
+    if (result.alertOps === true) {
+      await installmentOpsAlert("A trip payment landed for less than was owed", [
+        "A planned trip payment was collected for less than its payment owed. The rest stays owed and is charged as a payment of its own; nothing was written off.",
+        `Order: ${result.orderId ?? "?"}; instalment: ${installmentId}; PaymentIntent: ${piId}`,
+        `Owed: ${String(result.rowAmountMinor ?? "?")}; collected: ${received}; still owed: ${short} (${result.currency ?? "?"}, minor units)`,
+      ]);
+    }
+  }
+  return short;
+}
+
+/**
+ * issue #4522 — after a flexible ("pay any amount") payment is collected, the
+ * open planned rows are re-spread once (`issue_4522_settle_flex_payment` is
+ * idempotent on replay). Throws so the webhook inbox retries on failure. A
+ * planned row (kind `scheduled`) is untouched, byte for byte.
+ */
+export interface FlexSettleResult {
+  ok?: boolean;
+  reason?: string;
+  replayed?: boolean;
+  paidInFull?: boolean;
+  completedBalance?: boolean;
+  heldMinor?: number;
+  orderId?: string;
+}
+
+export async function settleFlexPaymentIfFlex(
+  supabase: SupabaseClient,
+  installmentId: string,
+  kind: unknown,
+): Promise<FlexSettleResult | null> {
+  if (kind !== "flex") return null;
+  const { data, error } = await supabase.rpc("issue_4522_settle_flex_payment", {
+    p_installment_id: installmentId,
+  });
+  const result = (data ?? null) as FlexSettleResult | null;
+  if (error !== null || result === null || result.ok !== true) {
+    throw new Error(
+      `issue_4522_settle_flex_payment failed: ${
+        error?.message ?? result?.reason ?? "unknown"
+      }`,
+    );
+  }
+  return result;
+}
+
+/** POST the existing paid-in-full email (same template and dispatcher as the normal path). */
+async function dispatchPaidInFullEmail(orderId: string): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl !== undefined && serviceKey !== undefined) {
+      await fetch(`${supabaseUrl}/functions/v1/ticket-confirmation-dispatch`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${serviceKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ kind: "installment_plan_paid_in_full", orderId }),
+      });
+    }
+  } catch (err) {
+    console.error(
+      "[installment-webhook] fully-paid notification dispatch failed (non-fatal)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * issue #4522 (N7 / N2) — after a late, retried or replayed flexible
+ * settlement: the paid-in-full email when the balance is complete (claimed
+ * once per order, never twice), and any money held goes back.
+ */
+export async function afterFlexSettle(
+  supabase: SupabaseClient,
+  settled: FlexSettleResult | null,
+  source: string,
+  sendEmail: (orderId: string) => Promise<void> = dispatchPaidInFullEmail,
+): Promise<void> {
+  if (settled === null) return;
+  const orderId = String(settled.orderId ?? "");
+  if (orderId === "") return;
+  if (Number(settled.heldMinor ?? 0) > 0) {
+    await returnOrderOverpaymentsBestEffort(supabase, orderId);
+  }
+  if (settled.paidInFull === true && await claimPaidInFullNotice(supabase, orderId, source)) {
+    await sendEmail(orderId);
+  }
+}
+
+async function orderIdOf(supabase: SupabaseClient, installmentId: string): Promise<string | null> {
+  const { data } = await supabase.from("order_installments").select("order_id")
+    .eq("id", installmentId).maybeSingle();
+  const id = (data as { order_id?: unknown } | null)?.order_id;
+  return typeof id === "string" ? id : null;
+}
+
+/** issue #4522 — record a flexible payment's failure, then close the row. */
+export async function closeFailedFlexPayment(
+  supabase: SupabaseClient,
+  installmentId: string,
+  piId: string | null,
+  failureReason: string,
+): Promise<void> {
+  const { error: failError } = await supabase
+    .from("order_installments")
+    .update({
+      status: "failed",
+      stripe_payment_intent_id: piId,
+      failed_at: new Date().toISOString(),
+      failure_reason: failureReason,
+      next_retry_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", installmentId)
+    .eq("kind", "flex")
+    .eq("status", "scheduled");
+  if (failError !== null) {
+    throw new Error(`flex failure update failed: ${failError.message}`);
+  }
+  const { error } = await supabase.rpc("issue_4522_close_failed_flex", {
+    p_installment_id: installmentId,
+  });
+  if (error !== null) {
+    throw new Error(`issue_4522_close_failed_flex failed: ${error.message}`);
+  }
+}
+
 export async function handleInstallmentPaymentFailed(
   supabase: SupabaseClient,
   event: StripeWebhookEvent,
@@ -309,11 +613,14 @@ export async function handleInstallmentPaymentFailed(
   // Fetch current row to compute retry transitions correctly. The cron may
   // already have written a failed row + retry_count for this attempt — in
   // that case the webhook's job is to confirm + ensure dunning fires.
-  const { data: existing, error: fetchError } = await supabase
-    .from("order_installments")
-    .select("id, order_id, ordinal, retry_count, status, due_at")
-    .eq("id", installmentId)
-    .maybeSingle();
+  const planV2 = await planV2SchemaAvailable(supabase);
+  const { data: existing, error: fetchError } = planV2
+    ? await supabase.from("order_installments")
+      .select("id, order_id, ordinal, retry_count, status, due_at, kind")
+      .eq("id", installmentId).maybeSingle()
+    : await supabase.from("order_installments")
+      .select("id, order_id, ordinal, retry_count, status, due_at")
+      .eq("id", installmentId).maybeSingle();
   if (fetchError !== null) {
     throw new Error(`installment fetch failed: ${fetchError.message}`);
   }
@@ -321,35 +628,104 @@ export async function handleInstallmentPaymentFailed(
     console.log(`[installment-webhook] payment_intent.payment_failed for unknown installment ${installmentId}`);
     return brandId;
   }
+  // issue #4522 — a failed flexible payment is closed, never retried, and
+  // sends no dunning: the planned rows it would have paid are unchanged.
+  if (String((existing as Record<string, unknown>).kind ?? "") === "flex") {
+    await closeFailedFlexPayment(supabase, installmentId, piId, failureReason);
+    return brandId;
+  }
 
   const existingRow = existing as Record<string, unknown>;
   const currentRetryCount = Number(existingRow.retry_count ?? 0);
   const currentStatus = String(existingRow.status ?? "");
+  // issue #4522 (E-1, SC-8) — on a v2 order a failure for a row that is no
+  // longer open (its missed amount already rolled onto later rows, or it was
+  // collected or cancelled) is a late or duplicate signal for an attempt the
+  // cron already handled: nothing is owed on this row, so it never flags the
+  // booking at risk and sends no second dunning email. Legacy orders keep
+  // their behaviour exactly.
+  if (planV2 && currentStatus !== "scheduled" && currentStatus !== "failed") {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: brandId,
+      event_id: null,
+      action: "tr3.installment_failed_webhook",
+      target_type: "order_installment",
+      target_id: installmentId,
+      after: {
+        ordinal: existingRow.ordinal,
+        retry_count: currentRetryCount,
+        failure_reason: failureReason,
+        late_for_status: currentStatus,
+        at_risk_flipped: false,
+      },
+    });
+    return brandId;
+  }
   // If the cron already wrote 'failed' for this attempt, retry_count is
   // already incremented. We only increment here if the webhook fires
   // independently (cron synced confirm threw but webhook is the only
   // failure-event source for off_session PIs needing 3DS challenge).
   const shouldIncrement = currentStatus === "scheduled";
   const nextRetryCount = shouldIncrement ? currentRetryCount + 1 : currentRetryCount;
-  const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-  const nextRetryAt = willBeAtRisk
+  const lastRetry = nextRetryCount >= MAX_RETRY_ATTEMPTS;
+  const nextRetryAt = lastRetry
     ? null
     : nextRetryAtAfterFailure(String(existingRow.due_at), nextRetryCount);
 
-  await supabase
-    .from("order_installments")
-    .update({
-      status: "failed",
-      stripe_payment_intent_id: piId,
-      failed_at: new Date().toISOString(),
-      failure_reason: failureReason,
-      retry_count: nextRetryCount,
-      next_retry_at: nextRetryAt,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", installmentId)
-    .in("status", ["scheduled", "failed"]);
+  // issue #4522 (D-7) — on a v2 order the cron (whose confirm threw) sees this
+  // same decline. Only the path whose "scheduled → failed" write lands counts
+  // it, moves it on or flags it, and emails the buyer: a row the cron already
+  // marked failed, or a write the cron won, ends here with an audit only.
+  // Legacy orders keep their behaviour exactly.
+  const planV2Order = planV2 &&
+    await orderHasPlanV2Terms(supabase, String(existingRow.order_id));
+  const failedPatch = {
+    status: "failed",
+    stripe_payment_intent_id: piId,
+    failed_at: new Date().toISOString(),
+    failure_reason: failureReason,
+    retry_count: nextRetryCount,
+    next_retry_at: nextRetryAt,
+    updated_at: new Date().toISOString(),
+  };
+  const counted = planV2Order && shouldIncrement
+    ? await supabase.from("order_installments").update(failedPatch)
+      .eq("id", installmentId).eq("status", "scheduled").select("id")
+    : null;
+  if (
+    planV2Order &&
+    (!shouldIncrement || !Array.isArray(counted?.data) || counted.data.length === 0)
+  ) {
+    await writeAudit(supabase, {
+      user_id: null,
+      brand_id: brandId,
+      event_id: null,
+      action: "tr3.installment_failed_webhook",
+      target_type: "order_installment",
+      target_id: installmentId,
+      after: {
+        ordinal: existingRow.ordinal,
+        retry_count: currentRetryCount,
+        failure_reason: failureReason,
+        already_counted: true,
+        at_risk_flipped: false,
+      },
+    });
+    return brandId;
+  }
+  if (!planV2Order) {
+    await supabase
+      .from("order_installments")
+      .update(failedPatch)
+      .eq("id", installmentId)
+      .in("status", ["scheduled", "failed"]);
+  }
 
+  // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
+  // its later rows; otherwise the booking is flagged at risk as before.
+  const willBeAtRisk = lastRetry &&
+    !(planV2 && await rollOverMissedPayment(supabase, installmentId));
   if (willBeAtRisk) {
     await supabase
       .from("orders")

@@ -15,7 +15,9 @@ import React from "react";
 import type { WhoCoversCostsSectionProps } from "./WhoCoversCostsSection";
 
 const WhoCoversCostsSectionImpl = React.lazy(async () => {
-  const module = await import("./WhoCoversCostsSection");
+  // #4522 — through the shared chunk module so the trip builder's earnings card
+  // rides the same chunk (see WhoCoversCostsChunk).
+  const module = await import("./WhoCoversCostsChunk");
   return { default: module.WhoCoversCostsSection };
 });
 

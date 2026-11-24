@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { RsvpRpcError } from "./rsvpRpcFailure";
+import { doorExtrasLine, readDoorExtras } from "../components/scanner/doorExtras";
 
 export type RsvpScanResult = "success" | "duplicate" | "not_found" |
   "wrong_event" | "not_eligible" | "revoked" | "not_yet_open" | "event_ended";
@@ -26,6 +27,8 @@ export interface RsvpScanResponse {
   checkedInAt: string | null;
   /** #4541 — optional, server-built and never changes the admission result. */
   doorAnswers?: RsvpDoorAnswers | null;
+  /** #3281 S6 — "Add-ons: Snack box × 2", from the reply's own `addOns` field; absent when none. */
+  addOnsLine?: string | null;
 }
 /** #4541 — a malformed door-answers payload becomes `null`; it never breaks an admitted result. */
 export function parseDoorAnswers(value: unknown): RsvpDoorAnswers | null {
@@ -45,9 +48,17 @@ export function parseDoorAnswers(value: unknown): RsvpDoorAnswers | null {
 }
 
 function withSafeDoorAnswers(data: unknown): RsvpScanResponse {
-  const body = (data ?? {}) as RsvpScanResponse;
+  const body = withDoorAddOns(data);
   if (body.doorAnswers === undefined) return body;
   return { ...body, doorAnswers: parseDoorAnswers(body.doorAnswers) };
+}
+
+/** #3281 S6 — the admitted RSVP's add-ons as the door line; a reply without them is unchanged. */
+export function withDoorAddOns(data: unknown): RsvpScanResponse {
+  const body = (data ?? {}) as RsvpScanResponse & { addOns?: unknown };
+  if (body.addOns === undefined) return body;
+  const { addOns, ...rest } = body;
+  return { ...rest, addOnsLine: doorExtrasLine(readDoorExtras(addOns)) };
 }
 
 export class ScanRsvpError extends Error {

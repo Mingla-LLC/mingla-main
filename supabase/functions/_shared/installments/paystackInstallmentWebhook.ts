@@ -20,9 +20,11 @@ import {
   paystackRefundOutcomeStatus,
   paystackRefundTransaction,
 } from "../paystackRefunds.ts";
-import { sendOpsAlertEmail } from "../stripeOpsAlertEmail.ts";
-import { resolveAlertRecipientValue } from "../secretBundle.ts";
+import { installmentOpsAlert } from "./installmentOpsAlert.ts";
+import { claimPaidInFullNotice } from "./paidInFullNotice.ts";
+import { returnOrderOverpaymentsBestEffort } from "./overpaymentLane.ts";
 import { defaultDispatchBuyerEmail, type DispatchBuyerEmail } from "./installmentPayLinks.ts";
+import { planV2SchemaAvailable } from "./planV2Schema.ts";
 
 export const INSTALLMENT_REFERENCE_PATTERN = /^mingla-inst-[0-9a-f-]{36}-[alp]\d+$/;
 
@@ -72,30 +74,11 @@ export interface InstallmentWebhookDeps {
   alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
 }
 
-async function defaultAlertOps(subject: string, paragraphs: string[]): Promise<void> {
-  const value = resolveAlertRecipientValue("stripe_disputes", "STRIPE_DISPUTE_ALERT_EMAILS");
-  const recipients = Array.isArray(value)
-    ? value.map((v) => String(v).trim()).filter(Boolean)
-    : String(value ?? "").split(",").map((v) => v.trim()).filter(Boolean);
-  if (recipients.length === 0) {
-    console.warn("[installment-paystack] ops alert recipients missing", { subject });
-    return;
-  }
-  try {
-    await sendOpsAlertEmail({ subject, paragraphs, recipients });
-  } catch (err) {
-    console.error("[installment-paystack] ops alert failed", {
-      subject,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
 export function defaultInstallmentWebhookDeps(): InstallmentWebhookDeps {
   return {
     createPaystackRefund,
     dispatchBuyerEmail: defaultDispatchBuyerEmail,
-    alertOps: defaultAlertOps,
+    alertOps: installmentOpsAlert,
   };
 }
 
@@ -120,6 +103,61 @@ async function loadAttempt(
   const { data, error } = await q.maybeSingle();
   if (error !== null) throw new Error(`instalment attempt load failed: ${error.message}`);
   return (data ?? null) as AttemptRow | null;
+}
+
+/**
+ * issue #4522 — settle a collected flexible payment (re-spread the balance
+ * once). NULL for a planned row, which is untouched. Throws so the webhook
+ * inbox retries.
+ */
+async function settleFlexIfFlex(
+  supabase: SupabaseClient,
+  installmentId: string,
+): Promise<{ paidInFull: boolean; heldMinor: number; orderId: string } | null> {
+  // issue #4522 (F6) — before #4522 is applied there are no flexible rows.
+  if (!(await planV2SchemaAvailable(supabase))) return null;
+  const { data: row, error: rowError } = await supabase
+    .from("order_installments").select("kind").eq("id", installmentId)
+    .maybeSingle();
+  if (rowError !== null) {
+    throw new Error(`instalment kind load failed: ${rowError.message}`);
+  }
+  if ((row as { kind?: string } | null)?.kind !== "flex") return null;
+  const { data, error } = await supabase.rpc("issue_4522_settle_flex_payment", {
+    p_installment_id: installmentId,
+  });
+  const result = (data ?? null) as
+    | { ok?: boolean; reason?: string; paidInFull?: boolean; heldMinor?: number; orderId?: string }
+    | null;
+  if (error !== null || result === null || result.ok !== true) {
+    throw new Error(
+      `issue_4522_settle_flex_payment failed: ${
+        error?.message ?? result?.reason ?? "unknown"
+      }`,
+    );
+  }
+  return {
+    paidInFull: result.paidInFull === true,
+    heldMinor: Number(result.heldMinor ?? 0),
+    orderId: String(result.orderId ?? ""),
+  };
+}
+
+/**
+ * issue #4522 (N2 / N7) — after a flexible settlement: money held goes back
+ * to the traveler, and the paid-in-full email is sent once per order.
+ */
+async function afterPaystackFlexSettle(
+  supabase: SupabaseClient,
+  settled: { paidInFull: boolean; heldMinor: number; orderId: string } | null,
+  source: string,
+  deps: InstallmentWebhookDeps,
+): Promise<void> {
+  if (settled === null || settled.orderId === "") return;
+  if (settled.heldMinor > 0) await returnOrderOverpaymentsBestEffort(supabase, settled.orderId);
+  if (settled.paidInFull && await claimPaidInFullNotice(supabase, settled.orderId, source)) {
+    await deps.dispatchBuyerEmail("installment_plan_paid_in_full", { orderId: settled.orderId });
+  }
 }
 
 /**
@@ -196,11 +234,27 @@ export async function handleInstallmentPaystackCharge(
     await refundInstallmentAttempt(supabase, attempt.id, deps);
     return { status: "installment_refund_due", installmentId: attempt.installment_id };
   }
-  if (outcome === "replayed") return { status: "installment_replayed", installmentId: attempt.installment_id };
+  if (outcome === "replayed") {
+    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent);
+    // a retried settlement that completes the balance sends the email once.
+    const replaySettle = await settleFlexIfFlex(supabase, attempt.installment_id);
+    await afterPaystackFlexSettle(supabase, replaySettle, "paystack_replay", deps);
+    return { status: "installment_replayed", installmentId: attempt.installment_id };
+  }
   if (outcome !== "collected") throw new Error(`unexpected instalment outcome ${outcome}`);
 
   const orderId = String(result.order_id ?? "");
-  if (Number(result.remaining ?? 1) === 0 && orderId !== "") {
+  // issue #4522 — a flexible payment re-spreads the open balance first, so
+  // "paid in full" is judged on the rows that are left.
+  const flexSettle = await settleFlexIfFlex(supabase, attempt.installment_id);
+  if (flexSettle !== null && flexSettle.heldMinor > 0) {
+    await returnOrderOverpaymentsBestEffort(supabase, flexSettle.orderId);
+  }
+  const paidInFull = flexSettle !== null
+    ? flexSettle.paidInFull
+    : Number(result.remaining ?? 1) === 0;
+  // issue #4522 (N7) — once per order with the #4522 schema; unchanged before it.
+  if (paidInFull && orderId !== "" && await claimPaidInFullNotice(supabase, orderId, "paystack_webhook")) {
     await deps.dispatchBuyerEmail("installment_plan_paid_in_full", { orderId });
   }
 
@@ -282,11 +336,26 @@ export async function refundInstallmentAttempt(
     refundId = String((inserted as { id: string }).id);
   }
 
-  const transaction = paystackRefundTransaction(attempt.reference, attempt.provider_transaction_id);
+  // Pass 5 (F-3) — the refund helper verifies the transaction first, and
+  // Paystack's verify takes the transaction REFERENCE (GET
+  // /transaction/verify/:reference); the numeric transaction id only proves it
+  // is the same transaction (expectedTransactionId), as the source-refund
+  // lane does. Sending the id as the reference failed every duplicate refund.
+  const transaction = attempt.reference.length > 0
+    ? attempt.reference
+    : paystackRefundTransaction(null, attempt.provider_transaction_id);
   if (transaction === null) throw new Error("duplicate refund has no transaction reference");
+  const expectedTransactionId = Number(attempt.provider_transaction_id ?? NaN);
   let refund;
   try {
-    refund = await deps.createPaystackRefund({ transaction, merchantNote, currency: "NGN" });
+    refund = await deps.createPaystackRefund({
+      transaction,
+      ...(Number.isSafeInteger(expectedTransactionId) && expectedTransactionId > 0
+        ? { expectedTransactionId }
+        : {}),
+      merchantNote,
+      currency: "NGN",
+    });
   } catch (err) {
     if (isRetryablePaystackRefundError(err)) throw err;
     await deps.alertOps("Paystack duplicate instalment refund failed", [

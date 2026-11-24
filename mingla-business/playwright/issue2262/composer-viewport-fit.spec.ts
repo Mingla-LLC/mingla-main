@@ -486,12 +486,21 @@ test.describe("#2262 — the mobile-web keyboard", () => {
  */
 test.describe("#2262 — scheduling is reachable from the chip", () => {
   const CONTINUE = '[aria-label="Continue to review"]';
-  const TIME_PILL = '[aria-label^="Send time"]';
+  /**
+   * #4523 replaced the two native `<input type=date|time>` pills with the
+   * shared Host calendar field: one trigger, labelled from the sheet's
+   * "Send date and time", that opens the Mingla calendar with its time list.
+   * The trigger loads lazily, so the helpers wait for the loaded trigger (not
+   * its `-loading` placeholder) before measuring anything.
+   */
+  const DATETIME_TRIGGER = '[data-testid="composer-schedule-datetime"][aria-label^="Send date and time"]';
+  const TIME_SLOT = '[data-testid^="composer-schedule-datetime-calendar-time-"]:not([data-testid$="-list"])';
 
   async function openPicker(page: Page): Promise<void> {
     await open(page);
     await page.click('[data-testid="composer-commit-bar-mode-chip"]');
     await page.waitForTimeout(450); // the Sheet's open transition
+    await page.waitForSelector(DATETIME_TRIGGER, { timeout: 5000 });
   }
 
   /** Rect + real hit-test for an arbitrary selector. */
@@ -530,7 +539,7 @@ test.describe("#2262 — scheduling is reachable from the chip", () => {
     expect(cont.inViewport).toBe(true);
     expect(cont.hitTestable).toBe(true);
 
-    const pill = await rectAndHit(page, TIME_PILL);
+    const pill = await rectAndHit(page, DATETIME_TRIGGER);
     expect(pill.w).toBeGreaterThan(40);
     expect(pill.inViewport).toBe(true);
     expect(pill.hitTestable).toBe(true);
@@ -558,54 +567,39 @@ test.describe("#2262 — scheduling is reachable from the chip", () => {
     expect(clipped).toBe("");
   });
 
-  test("S-2: the hidden native date/time inputs are present and reachable by showPicker()", async ({
+  test("S-2: tapping the date and time field opens the calendar with a time the user can actually pick", async ({
     page,
   }) => {
-    // The picker's web variant drives BROWSER-NATIVE `<input type=date|time>`
-    // behind visible pills. If those inputs are missing, or `showPicker()`
-    // throws, the pills do nothing and the operator sees "no time picker" even
-    // though the sheet itself rendered.
-    await open(page);
-    await page.evaluate(() => {
-      (window as unknown as { __pick: unknown[] }).__pick = [];
-      const proto = HTMLInputElement.prototype as unknown as {
-        showPicker?: () => void;
-      };
-      const orig = proto.showPicker;
-      if (typeof orig !== "function") return;
-      proto.showPicker = function patched(this: HTMLInputElement): void {
-        const log = (window as unknown as { __pick: unknown[] }).__pick;
-        try {
-          orig.call(this);
-          log.push({ type: this.type, ok: true });
-        } catch (e) {
-          log.push({ type: this.type, ok: false, err: String(e) });
-          throw e;
+    // The picker's web variant is the shared Host calendar (#4523), not
+    // browser-native inputs. If the trigger does nothing, or the calendar
+    // opens with its time list clipped or covered, the operator sees "no time
+    // picker" even though the sheet itself rendered — so the slot is held to
+    // the same visible-AND-clickable bar as Continue.
+    await openPicker(page);
+    expect(
+      await page.evaluate(() => document.querySelectorAll('input[type="date"], input[type="time"]').length),
+      "the native date/time inputs came back beside the Host calendar field",
+    ).toBe(0);
+
+    await page.click(DATETIME_TRIGGER);
+    await page.waitForSelector(TIME_SLOT, { timeout: 5000 });
+    await page.waitForTimeout(300); // the calendar's open transition
+
+    const firstSlot = (await page.evaluate((sel) => {
+      for (const el of Array.from(document.querySelectorAll(sel))) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight) {
+          return el.getAttribute("data-testid");
         }
-      };
-    });
-    await page.click('[data-testid="composer-commit-bar-mode-chip"]');
-    await page.waitForTimeout(450);
-
-    const inputs = await page.evaluate(() =>
-      Array.from(
-        document.querySelectorAll('input[type="date"], input[type="time"]'),
-      ).map((i) => {
-        const cs = getComputedStyle(i);
-        return { type: (i as HTMLInputElement).type, display: cs.display };
-      }),
-    );
-    expect(inputs.map((i) => i.type).sort()).toEqual(["date", "time"]);
-    // `display:none` would make showPicker() throw InvalidStateError outright.
-    expect(inputs.every((i) => i.display !== "none")).toBe(true);
-
-    await page.click(TIME_PILL);
-    await page.waitForTimeout(250);
-    const calls = (await page.evaluate(
-      () => (window as unknown as { __pick: { ok: boolean }[] }).__pick,
-    )) as { ok: boolean; type: string }[];
-    expect(calls.length, "tapping the Time pill called no picker at all").toBeGreaterThan(0);
-    expect(calls.every((c) => c.ok), `showPicker() threw: ${JSON.stringify(calls)}`).toBe(true);
+      }
+      return null;
+    }, TIME_SLOT)) as string | null;
+    expect(firstSlot, "the calendar opened with no time slot inside the viewport").not.toBeNull();
+    const slot = await rectAndHit(page, `[data-testid="${firstSlot}"]`);
+    expect(slot.w).toBeGreaterThan(20);
+    expect(slot.h).toBeGreaterThan(12);
+    expect(slot.inViewport).toBe(true);
+    expect(slot.hitTestable).toBe(true);
   });
 
   test("S-3: choosing a time sets the chip and flips the primary to Schedule", async ({

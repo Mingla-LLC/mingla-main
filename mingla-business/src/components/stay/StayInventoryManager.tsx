@@ -77,6 +77,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { ChipInput } from "../ui/ChipInput";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { DateField } from "../ui/DateField";
 import type { IconName } from "../ui/Icon";
 import { GlassCard } from "../ui/GlassCard";
 import { NameBuilder } from "../ui/NameBuilder";
@@ -2174,22 +2175,27 @@ function AvailabilityManager({
         ))}
       </View>
       <View style={styles.row}>
-        <LabeledInput
-          span="pair"
-          label={selected.kind === "room" ? "First night" : "Start date"}
-          value={fromDate}
-          onChangeText={setFromDate}
-          placeholder="YYYY-MM-DD"
-          testID="stay-availability-from"
-        />
-        <LabeledInput
-          span="pair"
-          label={selected.kind === "room" ? "Last night" : "End date"}
-          value={toDate}
-          onChangeText={setToDate}
-          placeholder="YYYY-MM-DD"
-          testID="stay-availability-to"
-        />
+        <View style={styles.fieldPair}>
+          <DateField
+            label={selected.kind === "room" ? "First night" : "Start date"}
+            accessibilityLabel={selected.kind === "room" ? "First night" : "Start date"}
+            value={fromDate}
+            onChangeValue={setFromDate}
+            timeZone={timezone}
+            testID="stay-availability-from"
+          />
+        </View>
+        <View style={styles.fieldPair}>
+          <DateField
+            label={selected.kind === "room" ? "Last night" : "End date"}
+            accessibilityLabel={selected.kind === "room" ? "Last night" : "End date"}
+            value={toDate}
+            onChangeValue={setToDate}
+            min={fromDate === "" ? undefined : fromDate}
+            timeZone={timezone}
+            testID="stay-availability-to"
+          />
+        </View>
       </View>
       {selected.kind === "room" ? (
         <View style={styles.row}>

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "kind": "exclude",
+  "path": "packages/calendar/__tests__/core.calendar.test.ts",
+  "reason": "Runs in the issue-4523-one-calendar self-registering Jest suite; it uses Jest globals and is not a standalone Deno test."
+}

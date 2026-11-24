@@ -18,11 +18,24 @@ const generationGuardHosts = [
   "mingla-business/src/components/event/CreatorStep3Where.tsx",
   "mingla-business/src/components/experience/ExperienceStopCard.tsx",
   "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx",
-  "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
   "mingla-business/src/components/brand/PartnerClientBrandCreationFlow.tsx",
 ];
 
 describe("Issue #1363 pinless selected address", () => {
+  // #4522 slice 12 — the published trip edit renders the create builder's
+  // TripCreatorStep1Basics for its address fields and mounts no AddressInput
+  // of its own, so the TripCreatorStep1Basics rows cover it.
+  // EditPublishedTripScreen.render.test.tsx case (d) proves the tapped label
+  // and place id reach the live update.
+  test("the published trip edit reuses the create basics for its address fields", () => {
+    const editScreen = fs.readFileSync(
+      path.resolve(ROOT, "mingla-business/src/components/trip/EditPublishedTripScreen.tsx"),
+      "utf8",
+    );
+    expect(editScreen).toContain("<TripCreatorStep1Basics");
+    expect(editScreen).not.toMatch(/<AddressInput\b/);
+  });
+
   test("free text uses the exact locked copy and preserves the raw controlled label", () => {
     expect(sharedSource).toContain(
       "Can't find it in the list? Use what you typed.",

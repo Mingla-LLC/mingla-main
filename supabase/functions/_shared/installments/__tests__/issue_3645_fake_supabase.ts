@@ -10,6 +10,8 @@ export interface TableOp {
   values: Record<string, unknown> | null;
   filters: Array<[string, string, unknown]>;
   head: boolean;
+  /** Columns asked back from an update / insert (`.update().select(cols)`). */
+  returning?: string;
 }
 
 export type Result = { data: unknown; error: { message: string } | null; count?: number | null };
@@ -43,6 +45,7 @@ export function fakeSupabase(handlers: FakeHandlers): FakeSupabase {
     Object.assign(chain, {
       select(columns?: string, opts?: { head?: boolean }) {
         if (op.kind === "select") op.columns = columns ?? "*";
+        else op.returning = columns ?? "*";
         if (opts?.head) op.head = true;
         return chain;
       },
@@ -58,6 +61,10 @@ export function fakeSupabase(handlers: FakeHandlers): FakeSupabase {
       },
       eq: filter("eq"),
       neq: filter("neq"),
+      not: (col: string, operator: string, val: unknown) => {
+        op.filters.push([`not.${operator}`, col, val]);
+        return chain;
+      },
       in: filter("in"),
       is: filter("is"),
       gt: filter("gt"),

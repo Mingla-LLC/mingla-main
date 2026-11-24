@@ -240,7 +240,8 @@ describe("W2A-6 Orders", () => {
   });
   it("no D38, shared money formatter, Free orders read Free and have no refund", () => {
     assert.doesNotMatch(page, /D38/);
-    assert.match(page, /formatMoneyMinor\(cents, currency\)/);
+    // [TEST-MOD-APPROVED #4522] #4522 S-16: the orders page shows whole amounts without decimals, through formatMoneyMinorWhole (built on the same shared formatter, lib/moneyFormat.js), so the call it makes is no longer the plain formatMoneyMinor.
+    assert.match(page, /formatMoneyMinorWhole\(cents, currency\)/);
     assert.doesNotMatch(page, /Intl\.NumberFormat\("en-US"/);
     assert.match(page, /REFUNDABLE_STATUSES\.includes\(order\.payment_status\) && !isFreeOrder\(order\)/);
   });

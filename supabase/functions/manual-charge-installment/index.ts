@@ -64,6 +64,11 @@ serve(async (req: Request) => {
     trigger: "manual",
     atRiskOverride,
   });
+  // issue #4522 — a traveler's own payment is processing: the planned row
+  // was not charged. The host sees "A traveler payment is processing."
+  if (result.reason === "flex_payment_in_flight") {
+    return jsonResponse({ ok: false, error: "flex_payment_in_flight" }, 409);
+  }
   return jsonResponse({
     ok: true,
     outcome: result.outcome,

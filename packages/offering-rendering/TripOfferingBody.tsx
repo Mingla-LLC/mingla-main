@@ -87,6 +87,7 @@ import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
 import { buildStaticMapUrl } from "./staticMapImage";
 import { StaticMapImage } from "./StaticMapFrame";
+import type { OfferingAddOnsSlot } from "./OfferingAddOnsBlock";
 import type {
   TripOfferingBrand,
   TripOfferingCallbacks,
@@ -108,6 +109,12 @@ import {
 import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
+
+// #4522 — one lazy owner for the public v2-plan disclosure. The feature stays
+// out of eager Host web and the chunk is requested only for a tier with a plan.
+const LazyTripPlanV2PublicSummary = React.lazy(
+  () => import("./TripPlanV2PublicSummary"),
+);
 
 if (
   Platform.OS === "android" &&
@@ -187,6 +194,8 @@ export interface TripOfferingBodyProps {
    * cover (the premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
    */
   identityOnCover?: boolean;
+  /** issue #3281 S2 — "Add at checkout:" under each package; omitted shows none. */
+  addOns?: OfferingAddOnsSlot | null;
   testID?: string;
 }
 
@@ -213,6 +222,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   socialProof = null,
   onSeeWhosGoing,
   identityOnCover = false,
+  addOns = null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -798,8 +808,8 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               <>
                 {/* META-ORCH-1174 Leg B3 — N package rows. */}
                 {sortedTiers.map((tier) => (
+                  <React.Fragment key={tier.ticketTypeId}>
                   <TripPackageRow
-                    key={tier.ticketTypeId}
                     tier={tier}
                     palette={palette}
                     surface={surface}
@@ -820,7 +830,12 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                         : undefined
                     }
                     currency={data.currency}
+                    depositNonRefundable={
+                      data.refundPolicy?.deposit_non_refundable === true
+                    }
                   />
+                  {addOns && addOns(tier.ticketTypeId, tier.buyerExtras, data.currency, palette)}
+                  </React.Fragment>
                 ))}
 
                 {/* Σ all-in / Σ due-today summary row (WYSIWYP). */}
@@ -886,6 +901,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     {summaryPriceLabel ?? "—"}
                   </Text>
                 </View>
+                {addOns && addOns(state.selectedTier.ticketTypeId, state.selectedTier.buyerExtras, data.currency, palette)}
               </>
             )}
 
@@ -995,6 +1011,7 @@ const TripPackageRow: React.FC<{
   planChoice: TripPaymentPlanChoice;
   onChangePlanChoice?: (value: TripPaymentPlanChoice) => void;
   currency: string;
+  depositNonRefundable: boolean;
 }> = ({
   tier,
   palette,
@@ -1006,6 +1023,7 @@ const TripPackageRow: React.FC<{
   planChoice,
   onChangePlanChoice,
   currency,
+  depositNonRefundable,
 }) => {
   const isSoldOut =
     tier.isUnlimited === false &&
@@ -1076,6 +1094,16 @@ const TripPackageRow: React.FC<{
           <Text style={[styles.pkgCap, surface.tertiaryText]}>
             {remainingLabel}
           </Text>
+          {tier.paymentPlanV2 !== null &&
+          tier.paymentPlanV2 !== undefined ? (
+            <React.Suspense fallback={null}>
+              <LazyTripPlanV2PublicSummary
+                tier={tier}
+                palette={palette}
+                depositNonRefundable={depositNonRefundable}
+              />
+            </React.Suspense>
+          ) : null}
           <LazySaleAvailabilityText
             active={listPriceLabel !== null}
             remaining={tier.saleRemaining}

@@ -4,6 +4,7 @@
 // again.
 import { useId, useMemo } from "react";
 import { timeZoneOptions } from "../../lib/scheduleTime";
+import { CalendarInput } from "@mingla/calendar-web";
 
 export const SELECT_CLASS = "h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] disabled:opacity-60";
 
@@ -41,7 +42,7 @@ export function LaterInputs({ value, onChange, error = null, disabled = false, h
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.4fr)]">
         <label className="block text-xs font-medium text-[var(--color-text-secondary)]" htmlFor={`${id}-date`}>
           Date
-          <input id={`${id}-date`} type="date" className={`${SELECT_CLASS} mt-1`} value={value?.date || ""} onChange={set("date")} disabled={disabled} />
+          <CalendarInput id={`${id}-date`} mode="date" className={`${SELECT_CLASS} mt-1`} value={value?.date || ""} onChange={set("date")} disabled={disabled} />
         </label>
         <label className="block text-xs font-medium text-[var(--color-text-secondary)]" htmlFor={`${id}-time`}>
           Time

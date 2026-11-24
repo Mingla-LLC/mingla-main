@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
 import { Card, CardTitle, Field, Hint, SectionHead, Skeleton, Toggle, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
@@ -18,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 
 import { color } from "../../../../constants/designSystem";
+import { DateField } from "../../../ui/DateField";
 type Form = {
   quote: string;
   reviewer: string;
@@ -146,16 +147,14 @@ export function ReviewEditor({ entryId }: { entryId: string | "new" }): React.Re
             <Field label="Reviewer" max={80} value={f.reviewer} error={errors.reviewer} help="Exactly as shown where they left it." editable={!readOnly} onChangeText={(reviewer) => set({ reviewer })} testID="review-reviewer" />
           </View>
           <View style={phone ? null : styles.cell}>
-            {Platform.OS === "web" ? (
-              <View>
-                <Text style={styles.label}>Date written</Text>
-                {React.createElement("input", {
-                  type: "date", value: f.date, disabled: readOnly, "aria-label": "Date written", "data-testid": "review-date",
-                  onChange: (event: { target: { value: string } }) => set({ date: event.target.value }),
-                  style: { minHeight: 44, borderRadius: 12, border: `1px solid ${color.lineStrong}`, background: color.fill.tableHead, color: color.text1, padding: "0 12px", fontSize: 14, colorScheme: "dark" },
-                })}
-              </View>
-            ) : <Field label="Date written" value={f.date} placeholder="YYYY-MM-DD" editable={!readOnly} onChangeText={(date) => set({ date })} />}
+            <DateField
+              label="Date written"
+              accessibilityLabel="Date written"
+              value={f.date}
+              onChangeValue={(date) => set({ date })}
+              disabled={readOnly}
+              testID="review-date"
+            />
           </View>
         </View>
         <Text style={styles.label}>Trip</Text>

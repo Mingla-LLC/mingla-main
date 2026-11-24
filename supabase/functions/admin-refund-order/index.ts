@@ -27,7 +27,14 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
-import { isRefundLineRequest, serverRefundLines } from "../_shared/refundServerLines.ts";
+import {
+  addOnRefundRpcError,
+  isRefundLineRequest,
+  parseAddOnRefundLines,
+  planRemovalOnlyResponse,
+  refundRpcLines,
+  serverRefundLines,
+} from "../_shared/refundServerLines.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -47,9 +54,11 @@ import {
   isPaystackRefundBelowMinimumError,
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
+  paystackExpectedTransactionId,
   paystackRefundTransaction,
   persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -78,6 +87,8 @@ const isRefundLine = isRefundLineRequest;
 function mapRpcErrorToHttp(
   errorMessage: string,
 ): { code: string; status: number; detail: string } {
+  const addOnError = addOnRefundRpcError(errorMessage);
+  if (addOnError !== null) return addOnError;
   const msg = errorMessage.toLowerCase();
   if (msg.includes("not_authorized")) {
     return { code: "not_authorized", status: 403, detail: errorMessage };
@@ -160,8 +171,14 @@ serve(async (req: Request): Promise<Response> => {
     ? body.lines.filter(isRefundLine)
     : [];
 
+  // Issue #3281 S4 — optional add-on lines refunded on their own.
+  const addOnLines = parseAddOnRefundLines(body.addOnLines);
+
   if (!orderId) return json({ error: "order_id_required" }, 400);
-  if (lines.length === 0) return json({ error: "refund_lines_required" }, 400);
+  if (addOnLines === null) return json({ error: "refund_lines_invalid" }, 400);
+  if (lines.length === 0 && addOnLines.length === 0) {
+    return json({ error: "refund_lines_required" }, 400);
+  }
   if (reason.trim().length < 10 || reason.trim().length > 200) {
     return json({ error: "reason_invalid_length" }, 400);
   }
@@ -188,7 +205,7 @@ serve(async (req: Request): Promise<Response> => {
   // ── Step 1: validate + insert the pending refund row (service_role twin). ────
   const pendingArgs = {
     p_order_id: orderId,
-    p_lines: lines,
+    p_lines: refundRpcLines(lines, addOnLines),
     p_reason: reason,
     p_idempotency_key: idempotencyKey,
   };
@@ -202,6 +219,10 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const pending = pendingResult as Record<string, unknown>;
+  // Issue #3281 S5 — a spread add-on taken off the trip plan before any of it
+  // was collected: nothing to refund, so no provider call and no commit.
+  const planRemoval = planRemovalOnlyResponse(pending);
+  if (planRemoval !== null) return json(planRemoval);
   const refundId = String(pending.refund_id ?? "");
   const amountCents = Number(pending.amount_cents ?? 0);
   const currency = String(pending.currency ?? "USD");
@@ -322,7 +343,9 @@ serve(async (req: Request): Promise<Response> => {
   // Issue #4271: did this request reach refunds.create?
   const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
-    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
+    // Seventh pass (H-7): by reference only with the #4522 schema (its commit records the refund).
+    const byReference = await planV2SchemaAvailable(supabase);
+    const transaction = paystackRefundTransaction(paymentIntentId, chargeId, byReference);
     if (!transaction) {
       return json({
         error: "missing_payment_intent",
@@ -332,6 +355,7 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const paystackRefund = await createPaystackRefund({
         transaction,
+        ...paystackExpectedTransactionId(paymentIntentId, chargeId, byReference),
         merchantNote: `mingla_admin_refund:${refundId}`,
         amountSubunits: pending.is_full_refund === true
           ? undefined

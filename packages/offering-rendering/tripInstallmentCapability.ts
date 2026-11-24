@@ -50,15 +50,18 @@ export function publicTripInstallmentSchedule<T>(
     : null;
 }
 
-/** True only for a structurally present installment template. */
+const isPlainObject = (value: unknown): boolean =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * True only for a structurally present installment template: the legacy
+ * percent plan (`installments`) or, issue #4522, the v2 plan
+ * (`payment_plan`). Both need the same trip-plan capability.
+ */
 export function hasTripInstallmentTemplate(metadata: unknown): boolean {
   if (metadata === null || typeof metadata !== "object") return false;
-  const installments = (metadata as { installments?: unknown }).installments;
-  return (
-    installments !== null &&
-    typeof installments === "object" &&
-    !Array.isArray(installments)
-  );
+  const row = metadata as { installments?: unknown; payment_plan?: unknown };
+  return isPlainObject(row.installments) || isPlainObject(row.payment_plan);
 }
 
 /**

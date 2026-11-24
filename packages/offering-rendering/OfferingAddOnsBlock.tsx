@@ -1,0 +1,139 @@
+/**
+ * issue #3281 S2 — "Add at checkout:" under a ticket, package, option or RSVP
+ * on the public page (buyer web, Explorer, the Host web preview).
+ *
+ * Props only. It reads the reader's raw add-on list (a ticket's `extras`, or
+ * the RSVP payload's `rsvpAddOns`) and lists what the host chose to show:
+ * "{thumb} {name} · {price}", "Free" for 0, a greyed "Sold out" when none are
+ * left. Nothing is chosen here (checkout does that), so the chips are not
+ * buttons. A ticket with nothing to show renders nothing; the caller decides
+ * whether add-ons are on at all (`enabled`, from its own feature flag).
+ *
+ * Every price is the server's all-in; photos are the stored thumbnail object
+ * (the caller builds its public URL, never an image transformation URL).
+ *
+ * Imported by its deep path (`@mingla/offering-rendering/OfferingAddOnsBlock`),
+ * never through the package barrel. The shared offering bodies never import
+ * it: they take an `addOns` slot (OfferingAddOnsSlot, a type only) and each
+ * page shell fills it. Host web loads this block on use, so the bodies in the
+ * boot payload carry only the slot call.
+ */
+
+import React from "react";
+import { Image, StyleSheet, Text, View } from "react-native";
+
+import { formatAddOnMoney, publicAddOnChips, type OfferingAddOnChip } from "./offeringAddOnChips";
+import type { ThemePalette } from "./themePalette";
+
+/**
+ * issue #3281 S2 — what a shared offering body calls under each ticket,
+ * package, option or RSVP card. Null or omitted (the default) renders
+ * nothing; the page shell passes one only while its add-ons switch is on.
+ */
+export type OfferingAddOnsSlot = (
+  /** The ticket type id (or "rsvp"). */
+  id: string,
+  /** The reader's raw list for that card. */
+  addOns: unknown,
+  currency: string | null,
+  palette: ThemePalette,
+) => React.ReactNode;
+
+export interface OfferingAddOnsBlockProps {
+  /** The caller's add-ons switch; false renders nothing. */
+  enabled: boolean;
+  /** The reader's raw list (`ticket.extras` or `rsvpAddOns`). */
+  addOns: unknown;
+  palette: ThemePalette;
+  /** The offering's currency (ISO 4217); prices are minor units. */
+  currency: string | null;
+  /** The stored thumbnail's public URL, or null to show no image. */
+  photoUrl?: (path: string) => string | null;
+  /** The ticket, package or option id; the block's testID is derived from it. */
+  id?: string;
+  /**
+   * issue #3281 S6 — list free add-ons only. The RSVP card passes it: a guest
+   * can pick free RSVP add-ons; paid ones wait on a product decision.
+   */
+  freeOnly?: boolean;
+}
+
+export const OfferingAddOnsBlock: React.FC<OfferingAddOnsBlockProps> = ({
+  enabled,
+  addOns,
+  palette,
+  currency,
+  photoUrl,
+  id,
+  freeOnly = false,
+}) => {
+  const testID = id === undefined ? "issue-3281-offering-add-ons" : `issue-3281-offering-add-ons-${id}`;
+  if (!enabled) return null;
+  const formatMoney = (minor: number): string => formatAddOnMoney(minor, currency);
+  const chips = publicAddOnChips(addOns).filter((chip) => !freeOnly || chip.priceAllInCents === 0);
+  if (chips.length === 0) return null;
+  // issue #3281 S-21 — an RSVP has no checkout: its guests pick add-ons on
+  // the RSVP itself, so the RSVP card reads "Add-ons:".
+  const lead = id === "rsvp" ? "Add-ons:" : "Add at checkout:";
+  const label = (chip: OfferingAddOnChip): string =>
+    chip.soldOut
+      ? `${chip.name}, sold out`
+      : `${chip.name}, ${chip.priceAllInCents > 0 ? formatMoney(chip.priceAllInCents) : "free"}`;
+  return (
+    <View
+      style={styles.wrap}
+      accessible
+      accessibilityLabel={`${lead} ${chips.map(label).join("; ")}`}
+      testID={testID}
+    >
+      <Text style={[styles.lead, { color: palette.secondaryText }]}>{lead}</Text>
+      <View style={styles.chips}>
+        {chips.map((chip) => {
+          const uri =
+            chip.photoThumbPath !== null && photoUrl !== undefined ? photoUrl(chip.photoThumbPath) : null;
+          return (
+            <View
+              key={chip.id}
+              style={[
+                styles.chip,
+                { borderColor: palette.panelBorder, backgroundColor: palette.card },
+                chip.soldOut ? styles.chipSoldOut : null,
+              ]}
+              testID={`${testID}-${chip.id}`}
+            >
+              {uri !== null ? (
+                <Image source={{ uri }} style={styles.thumb} accessibilityIgnoresInvertColors />
+              ) : null}
+              <Text style={[styles.chipText, { color: palette.primaryText }]} numberOfLines={1}>
+                {chip.name}
+                <Text style={{ color: palette.secondaryText }}>
+                  {` · ${chip.soldOut ? "Sold out" : chip.priceAllInCents > 0 ? formatMoney(chip.priceAllInCents) : "Free"}`}
+                </Text>
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  wrap: { marginTop: 8, gap: 6 },
+  lead: { fontSize: 12, lineHeight: 16, fontWeight: "600" },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 28,
+    maxWidth: "100%",
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipSoldOut: { opacity: 0.5 },
+  thumb: { width: 20, height: 20, borderRadius: 6 },
+  chipText: { fontSize: 12, lineHeight: 16, flexShrink: 1 },
+});

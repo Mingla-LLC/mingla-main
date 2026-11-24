@@ -21,6 +21,7 @@ import { NoteBox } from "../ops/NoteBox";
 import { LinkSearchField } from "./LinkSearchField";
 import { hostSeesWords, planLinkProblem } from "../../lib/brandPlan";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
+import { CalendarInput } from "@mingla/calendar-web";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
@@ -151,7 +152,7 @@ export function ContentDrawer({ activeId, detail, config, online, loading, focus
         <Field label="Title" htmlFor="content-title"><input id="content-title" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={item.title} onChange={(event) => setItem({ ...item, title: event.target.value })} onBlur={() => save({ title: item.title })} /></Field>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Stage" htmlFor="content-stage"><Select id="content-stage" className="min-h-11" disabled={disabled} value={item.stage} options={CONTENT_STAGES.map((stage) => ({ ...stage, disabled: stage.value !== item.stage && !canMoveTo(item, stage.value) }))} onChange={(event) => onMove(item, event.target.value)} /></Field>
-          <Field label="Publish date and time" htmlFor="content-publish"><input id="content-publish" type="datetime-local" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={dateTimeLocal(item.publish_at)} onChange={(event) => setItem({ ...item, publish_at: localToIso(event.target.value) })} onBlur={() => save({ publish_at: item.publish_at })} /></Field>
+          <Field label="Publish date and time" htmlFor="content-publish"><CalendarInput id="content-publish" mode="datetime" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={dateTimeLocal(item.publish_at)} onChange={(event) => setItem({ ...item, publish_at: localToIso(event.target.value) })} onBlur={() => save({ publish_at: item.publish_at })} /></Field>
         </div>
         {/* #4270 W3: the brand, who it is made with, and what the brand's hosts see. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -53,7 +53,8 @@ export function violations(files) {
     paystack,
     [
       "async function resolveTransactionIdentity",
-      "/transaction/verify/",
+      // the real verify call, not the #4522 H-7 doc comment that names the route
+      "`${PAYSTACK_BASE_URL}/transaction/verify/",
       "async function findExistingRefund",
       "transaction: String(params.transactionId)",
       "async function resolveAndFindExistingRefund",
@@ -61,11 +62,20 @@ export function violations(files) {
       "const { existing, rows } = await findExistingRefund(",
       "export async function reconcilePaystackRefund",
       "export async function createPaystackRefund",
+      // #4522 P9-5: createPaystackRefund runs every pre-send check in
+      // paystackRefundPreSend (verify, approved-state list, adopt an existing
+      // refund) and returns the existing refund BEFORE sendPaystackRefund POSTs.
+      "const before = await paystackRefundPreSend(params);",
+      'if ("existing" in before) return before.existing;',
+      "return await sendPaystackRefund(params, secret);",
+      "async function paystackRefundPreSend(",
       "const reconciliation = await resolveAndFindExistingRefund(\n    params,",
-      "if (reconciliation.existing) return reconciliation.existing",
+      "if (reconciliation.existing) return { existing: reconciliation.existing };",
       // #4430 P-3: a non-success state POSTs only for a partial refund the
       // listed refunds explain and the transaction amount still covers.
       'reconciliation.identity.state !== "success" &&\n    !partialRefundFitsReversedTransaction(',
+      "return { sendable: true };",
+      "async function sendPaystackRefund(",
       "fetch(`${PAYSTACK_BASE_URL}/refund`",
     ],
     "paystack verify -> approved-state list -> success-only POST",
@@ -378,6 +388,22 @@ function selfTest() {
         "return true;",
       ),
       expected: "return refunded + amountSubunits <= identity.amount;",
+    },
+    {
+      key: "paystack",
+      value: valid.paystack.replace(
+        'if ("existing" in before) return before.existing;',
+        "",
+      ),
+      expected: 'if ("existing" in before) return before.existing;',
+    },
+    {
+      key: "paystack",
+      value: valid.paystack.replace(
+        "if (reconciliation.existing) return { existing: reconciliation.existing };",
+        "",
+      ),
+      expected: "if (reconciliation.existing) return { existing: reconciliation.existing };",
     },
     {
       key: "paystack",

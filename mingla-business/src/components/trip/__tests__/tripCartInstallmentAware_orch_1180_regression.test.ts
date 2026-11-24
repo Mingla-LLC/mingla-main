@@ -46,7 +46,11 @@ describe("ORCH-1180 FIX A — public page Reserve collapses the plan choice", ()
 
   test("the public page Reserve calls collapseTripPlanChoice (not undefined)", () => {
     const src = slugSrc();
-    expect(src).toContain("collapseTripPlanChoice(offeringState.selectedLines)");
+    // [TEST-MOD-APPROVED #4522] Reserve now goes through resolveTripReserveChoice, which still
+    // collapses the selected lines (resolveTripReserveChoice -> collapseTripPlanChoice) and also
+    // keeps the pay-over-time choice when no quantity is picked yet, so the page no longer
+    // calls collapseTripPlanChoice(offeringState.selectedLines) itself.
+    expect(src).toMatch(/resolveTripReserveChoice\(\s*offeringState\.selectedLines,/);
     // and forwards the SAME selected lines as the JSON `lines` param.
     expect(src).toContain("offeringState.selectedLines,");
   });

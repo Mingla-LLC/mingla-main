@@ -20,6 +20,7 @@ import {
   DEBT_RETURN_REEMITS,
   TARGET,
 } from "./issue_3645_debt_return_reemit_hunks.ts";
+import { PAYOUT_REFUND_REEMITS } from "./issue_4522_payout_refund_reemit_hunks.ts";
 
 const DIR = "supabase/migrations";
 const TARGET_FILE = TARGET.slice(DIR.length + 1);
@@ -74,7 +75,7 @@ Deno.test("#3645 2d the target is still the latest definition of what it defines
     for (const name of mine) {
       // A later bundle may supersede a 2d body only through its own guard,
       // which declares its hunks against this target.
-      const superseded = LEDGER_FOLLOWUP_REEMITS.some((r) =>
+      const superseded = [...LEDGER_FOLLOWUP_REEMITS, ...PAYOUT_REFUND_REEMITS].some((r) =>
         r.target === `${DIR}/${file}` && r.fn === name && r.source === TARGET
       );
       assert(
@@ -109,3 +110,24 @@ Deno.test("#3645 2d every caller that writes a release's net settles first", () 
     }
   }
 });
+
+// issue #4522 section 8 — the payout functions 20281202084522 re-emits (this
+// target's projection among them) differ from their latest earlier
+// definitions by the declared hunks only.
+for (const reemit of PAYOUT_REFUND_REEMITS) {
+  const targetFile = reemit.target.slice(DIR.length + 1);
+  Deno.test(`#4522 ${reemit.fn}: source is the latest definition before ${targetFile}`, () => {
+    let latest: string | null = null;
+    for (const file of files().filter((f) => f < targetFile)) {
+      if (definitions(Deno.readTextFileSync(`${DIR}/${file}`)).has(reemit.fn)) latest = `${DIR}/${file}`;
+    }
+    assertEquals(latest, reemit.source);
+  });
+  Deno.test(`#4522 ${reemit.fn}: re-emit differs from its source by the authorised hunks only`, () => {
+    const source = definitions(Deno.readTextFileSync(reemit.source)).get(reemit.fn);
+    const target = definitions(Deno.readTextFileSync(reemit.target)).get(reemit.fn);
+    assert(source !== undefined, `${reemit.fn} missing from ${reemit.source}`);
+    assert(target !== undefined, `${reemit.fn} missing from ${reemit.target}`);
+    assertEquals(target, applyHunks(source, reemit.hunks));
+  });
+}

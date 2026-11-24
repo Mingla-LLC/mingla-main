@@ -21,6 +21,7 @@ import {
   notifyPaystackInstallmentFailure,
 } from "./chargePaystackInstallment.ts";
 import { sendInstallmentPayLink } from "./installmentPayLinks.ts";
+import { alertUnchargeableRemainder } from "./installmentOpsAlert.ts";
 
 export type ChargeInstallmentOutcome =
   | "collected"
@@ -51,7 +52,7 @@ export async function chargeInstallment(input: {
 
   const { data, error } = await supabase
     .from("order_installments")
-    .select("id, provider, collection_method, status, due_at, next_retry_at, orders!inner(event_id, events!inner(brand_id))")
+    .select("id, order_id, provider, collection_method, status, due_at, next_retry_at, orders!inner(event_id, events!inner(brand_id))")
     .eq("id", input.installmentId)
     .maybeSingle();
   if (error !== null) throw new Error(`instalment load failed: ${error.message}`);
@@ -99,6 +100,12 @@ export async function chargeInstallment(input: {
     return { outcome: checkpoint.outcome === "at_risk" ? "at_risk_flagged" : "pay_link_sent", reason: "pay_link_unpaid" };
   }
   const reason = String(checkpoint.reason ?? "");
+  // issue #4522 — a balance too small to charge: no link, no failure; it
+  // stays owed and ops are alerted once.
+  if (reason === "below_provider_minimum") {
+    await alertUnchargeableRemainder(checkpoint, deps.alertOps);
+    return { outcome: "skipped", reason };
+  }
   if (reason === "attempt_in_flight" || reason === "installment_not_open" || reason === "not_pay_link") {
     return { outcome: "skipped", reason };
   }

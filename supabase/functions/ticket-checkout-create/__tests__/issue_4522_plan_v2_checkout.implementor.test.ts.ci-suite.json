@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_4522_plan_v2_checkout.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4522-02-plan-v2-checkout",
+  "profile": "deno-1.46-stripe"
+}

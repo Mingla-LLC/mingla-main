@@ -132,6 +132,8 @@ interface ResultOverlayState {
   message: string;
   detail?: string;
   doorAnswers?: RsvpDoorAnswers | null;
+  /** #3281 S6 — "Add-ons: …" the admitted guest is owed. */
+  addOnsLine?: string | null;
   scanId?: string | null;
   guestName?: string;
 }
@@ -319,7 +321,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
       overlayVisibleRef.current = true;
       setOverlay(next);
       AccessibilityInfo.announceForAccessibility(
-        [next.message, next.detail, ...(next.doorAnswers?.lines ?? [])].filter(Boolean).join(". "),
+        [next.message, next.detail, next.addOnsLine, ...(next.doorAnswers?.lines ?? [])].filter(Boolean).join(". "),
       );
       if (reduceMotionRef.current) {
         // Cycle 17c §F.2 — instant set when reduce-motion ON.
@@ -388,6 +390,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
               message: `${scanAttendeeName(result)} checked in`,
               detail: scanDetailLine(result.entityType, result.invitedByName),
               doorAnswers: result.doorAnswers,
+              addOnsLine: result.addOnsLine,
               scanId: result.scanId,
               guestName: scanAttendeeName(result),
             });
@@ -432,6 +435,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             message,
             detail,
             doorAnswers: result.doorAnswers,
+            addOnsLine: result.addOnsLine,
             scanId: result.scanId,
             guestName: scanAttendeeName(result),
           });
@@ -704,6 +708,11 @@ export default function ScannerCameraRoute(): React.ReactElement {
                 </Text>
               ) : null}
             </Pressable>
+            {overlay.addOnsLine ? (
+              <Text style={styles.overlayDetail} numberOfLines={3} testID="rsvp-scan-add-ons">
+                {overlay.addOnsLine}
+              </Text>
+            ) : null}
             {overlay.doorAnswers ? (
               <View style={styles.overlayAnswers}>
                 {overlay.doorAnswers?.header ? (

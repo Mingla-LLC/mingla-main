@@ -176,7 +176,7 @@ describe("issue #3827 — door Find by name", () => {
     });
     const r = await mount();
     await typeAndWait(r, "lol");
-    expect(text(r.root)).toContain("Extras: Friday dinner × 2 (some days only) · Tote bag × 1");
+    expect(text(r.root)).toContain("Add-ons: Friday dinner × 2 (some days only) · Tote bag × 1");
     // A guest without extras gets no line.
     expect(r.root.findAll((n) => n.props.testID === "door-extras-o-lolu")).toHaveLength(0);
   });
@@ -203,7 +203,7 @@ describe("issue #3827 — door Find by name", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
     expect(line).toBeDefined();
-    expect(text(line)).toBe("Extras: Friday dinner × 2 (another day) · Tote bag × 1");
+    expect(text(line)).toBe("Add-ons: Friday dinner × 2 (another day) · Tote bag × 1");
   });
 
   test("issue #3281 — a refund between search and admission leaves the banner without that extra", async () => {
@@ -234,7 +234,7 @@ describe("issue #3827 — door Find by name", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
     expect(line).toBeDefined();
-    expect(text(line)).toBe("Extras: Tote bag × 1");
+    expect(text(line)).toBe("Add-ons: Tote bag × 1");
     expect(text(r.root)).not.toContain("Friday dinner");
   });
 
@@ -284,7 +284,7 @@ describe("issue #3827 — door Find by name", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
     expect(line).toBeDefined();
-    expect(text(line)).toBe("Extras: Friday dinner × 1");
+    expect(text(line)).toBe("Add-ons: Friday dinner × 1");
   });
 
   test("issue #3281 — an Admit all across two dates matches extras to either day", async () => {
@@ -316,7 +316,7 @@ describe("issue #3827 — door Find by name", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     const [line] = r.root.findAll((n) => n.props.testID === "door-admit-extras" && typeof n.type === "string");
     expect(text(line)).toBe(
-      "Extras: Friday dinner × 1 · Saturday brunch × 1 · Sunday lunch × 1 (another day)",
+      "Add-ons: Friday dinner × 1 · Saturday brunch × 1 · Sunday lunch × 1 (another day)",
     );
   });
 

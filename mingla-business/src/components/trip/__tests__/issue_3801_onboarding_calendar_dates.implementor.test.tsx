@@ -24,8 +24,13 @@
  * and once as iOS, and the real `PaymentPlanEditor` / `InstallmentScheduleDisplay`
  * sources are checked through the helper they now call.
  *
- * Fails on revert: restore the local-clock body of `isoToHtml5Date` (or seed
- * the picker with `new Date(iso)`) -> red under America/New_York.
+ * #4523 moved Step 1 onto the shared range calendar (`HostDateRangeField`): one
+ * field on web and native, fed `YYYY-MM-DD` days and handing them back. The
+ * Step 1 blocks below drive that field's real props.
+ *
+ * Fails on revert: seed the range with the local-clock day (`new Date(iso)`
+ * read locally) instead of `calendarDateToInputValue`, or write a picked day
+ * back without `inputValueToCalendarIso` -> red under America/New_York.
  */
 
 import * as fs from "node:fs";
@@ -128,6 +133,10 @@ function boundaryFor(os: "web" | "ios"): Record<string, () => unknown> {
     CoverPickerSheet: () => ({ CoverPickerSheet: nothing }),
     LazyCoverPickerSheet: () => ({ CoverPickerSheet: nothing }),
     EventCoverMedia: () => ({ EventCoverMedia: nothing }),
+    // #4523 — the shared range calendar; a probe keeps its real props visible.
+    HostDateRangeField: () => ({ HostDateRangeField: leaf("HostDateRangeFieldProbe") }),
+    // REAL: trip length and the zone's "today" floor.
+    tripBuilderV2Model: () => jest.requireActual("../tripBuilderV2Model"),
   };
 }
 
@@ -217,12 +226,16 @@ async function mountStep1(os: "web" | "ios"): Promise<Harness> {
   return { tree, draft: () => draft, patches };
 }
 
-const webInput = (tree: Renderer, testId: string): TestInstance => {
-  const found = tree.root.findAll(
-    (node) => node.type === "input" && node.props["data-testid"] === testId,
-  );
+interface RangeProbeProps {
+  value: { start: string; end: string };
+  onChangeValue: (range: { start: string; end: string }) => void;
+  min: string;
+  timeZone: string;
+}
+const rangeField = (tree: Renderer): RangeProbeProps => {
+  const found = tree.root.findAll((node) => node.type === "HostDateRangeFieldProbe");
   expect(found).toHaveLength(1);
-  return found[0];
+  return found[0].props as unknown as RangeProbeProps;
 };
 
 const localDay = (d: Date): string =>
@@ -280,113 +293,58 @@ describe("#3801 — the helper reads the stored calendar day in every timezone",
   });
 });
 
-describe("#3801 — Step 1 on web", () => {
-  test("under America/New_York the start field reads 2026-11-12 and the end field 2026-11-16", async () => {
-    setZone("America/New_York");
-    const { tree } = await mountStep1("web");
-    expect(webInput(tree, "trip-step1-start-web").props.value).toBe("2026-11-12");
-    expect(webInput(tree, "trip-step1-end-web").props.value).toBe("2026-11-16");
-    // The end date cannot be set before the start: its floor is the start day.
-    expect(webInput(tree, "trip-step1-end-web").props.min).toBe("2026-11-12");
-  });
-
-  test.each(ZONES)("%s: the fields read the stored days", async (zone) => {
+describe.each(["web", "ios"] as const)("#3801 — Step 1 on %s (shared range calendar, #4523)", (os) => {
+  test.each(ZONES)("%s: the calendar opens on the stored start and end days", async (zone) => {
     setZone(zone);
-    const { tree } = await mountStep1("web");
-    expect(webInput(tree, "trip-step1-start-web").props.value).toBe("2026-11-12");
-    expect(webInput(tree, "trip-step1-end-web").props.value).toBe("2026-11-16");
+    const { tree } = await mountStep1(os);
+    expect(rangeField(tree).value).toEqual({ start: "2026-11-12", end: "2026-11-16" });
   });
 
-  test("typing a start after the end moves the end to that same day, not the day before", async () => {
+  test("under America/New_York a picked range is written as those calendar days at UTC", async () => {
     setZone("America/New_York");
-    const harness = await mountStep1("web");
+    const harness = await mountStep1(os);
     await act(async () => {
-      (
-        webInput(harness.tree, "trip-step1-start-web").props.onChange as (e: {
-          target: { value: string };
-        }) => void
-      )({ target: { value: "2026-11-20" } });
+      rangeField(harness.tree).onChangeValue({ start: "2026-11-20", end: "2026-11-22" });
     });
     expect(harness.draft().startAt).toBe("2026-11-20T00:00:00.000Z");
+    expect(harness.draft().endAt).toBe("2026-11-22T23:59:59.000Z");
+    // The field now reads back the same days, not the day before.
+    expect(rangeField(harness.tree).value).toEqual({ start: "2026-11-20", end: "2026-11-22" });
+  });
+
+  test("confirming the stored range unchanged writes back exactly what was stored", async () => {
+    setZone("Pacific/Kiritimati");
+    const harness = await mountStep1(os);
+    const field = rangeField(harness.tree);
+    await act(async () => {
+      field.onChangeValue(field.value);
+    });
+    expect(harness.draft().startAt).toBe(START);
+    expect(harness.draft().endAt).toBe(END);
+  });
+
+  test("a day trip: the field allows a one-day range and stores what main stored (#4523 rework F5)", async () => {
+    setZone("America/New_York");
+    const harness = await mountStep1(os);
+    expect((rangeField(harness.tree) as unknown as { allowSameDay?: boolean }).allowSameDay).toBe(true);
+    await act(async () => {
+      rangeField(harness.tree).onChangeValue({ start: "2026-11-20", end: "2026-11-20" });
+    });
+    // main's two date inputs wrote htmlDateToIso(day, false) / (day, true):
+    expect(harness.draft().startAt).toBe(calendarDate.inputValueToCalendarIso("2026-11-20", false));
+    expect(harness.draft().endAt).toBe(calendarDate.inputValueToCalendarIso("2026-11-20", true));
+    expect(harness.draft().startAt).toBe("2026-11-20T00:00:00.000Z");
     expect(harness.draft().endAt).toBe("2026-11-20T23:59:59.000Z");
-    expect(webInput(harness.tree, "trip-step1-start-web").props.value).toBe("2026-11-20");
-    expect(webInput(harness.tree, "trip-step1-end-web").props.value).toBe("2026-11-20");
-  });
-});
-
-describe("#3801 — Step 1 on native (iOS picker)", () => {
-  const openPicker = async (tree: Renderer, testID: string): Promise<TestInstance> => {
-    const button = tree.root.findAll(
-      (node) => typeof node.type !== "string" && node.props.testID === testID,
-    );
-    expect(button).toHaveLength(1);
-    await act(async () => {
-      (button[0].props.onPress as () => void)();
-    });
-    const picker = tree.root.findAll((node) => node.type === "DateTimePickerProbe");
-    expect(picker).toHaveLength(1);
-    return picker[0];
-  };
-  const tapDone = async (tree: Renderer): Promise<void> => {
-    const done = tree.root.findAll(
-      (node) => node.type === "ButtonProbe" && node.props.label === "Done",
-    );
-    expect(done).toHaveLength(1);
-    await act(async () => {
-      (done[0].props.onPress as () => void)();
-    });
-  };
-  const buttonText = (tree: Renderer, testID: string): string => {
-    const button = tree.root.findAll(
-      (node) => typeof node.type !== "string" && node.props.testID === testID,
-    )[0];
-    return button
-      .findAll((node) => node.type === "Text")
-      .map((node) => String(node.props.children))
-      .join("");
-  };
-
-  test.each(ZONES)("%s: the picker opens on the stored day, and Done without a change keeps it", async (zone) => {
-    setZone(zone);
-    const harness = await mountStep1("ios");
-
-    const startPicker = await openPicker(harness.tree, "trip-step1-start");
-    expect(localDay(startPicker.props.value as Date)).toBe("2026-11-12");
-    await tapDone(harness.tree);
-    expect(harness.draft().startAt).toBe(START);
-    expect(harness.draft().endAt).toBe(END);
-
-    const endPicker = await openPicker(harness.tree, "trip-step1-end");
-    expect(localDay(endPicker.props.value as Date)).toBe("2026-11-16");
-    // The end picker cannot go before the start day.
-    expect(localDay(endPicker.props.minimumDate as Date)).toBe("2026-11-12");
-    await tapDone(harness.tree);
-    expect(harness.draft().endAt).toBe(END);
-    expect(harness.draft().startAt).toBe(START);
   });
 
-  test("a picked day is written as that calendar day at UTC", async () => {
+  test("a half-picked or malformed range writes nothing", async () => {
     setZone("America/New_York");
-    const harness = await mountStep1("ios");
-    const picker = await openPicker(harness.tree, "trip-step1-start");
+    const harness = await mountStep1(os);
     await act(async () => {
-      (picker.props.onChange as (event: { type: string }, selected: Date) => void)(
-        { type: "set" },
-        // What the wheel hands back: a LOCAL day, at whatever local time.
-        new Date(2026, 10, 14, 21, 30, 0, 0),
-      );
+      rangeField(harness.tree).onChangeValue({ start: "2026-11-20", end: "" });
     });
-    await tapDone(harness.tree);
-    expect(harness.draft().startAt).toBe("2026-11-14T00:00:00.000Z");
-    expect(harness.draft().endAt).toBe(END);
-  });
-
-  test("the date buttons show the stored days", async () => {
-    setZone("America/New_York");
-    const { tree } = await mountStep1("ios");
-    expect(buttonText(tree, "trip-step1-start")).toContain("12");
-    expect(buttonText(tree, "trip-step1-start")).not.toContain("11,");
-    expect(buttonText(tree, "trip-step1-end")).toContain("16");
+    expect(harness.patches).toHaveLength(0);
+    expect(harness.draft().startAt).toBe(START);
   });
 });
 
@@ -436,9 +394,10 @@ describe("#3801 — the balance date (payment plan fixed_date)", () => {
     );
     expect(body).toContain("formatCalendarDate(iso)");
     expect(body).not.toContain("new Date(");
-    // The native picker is seeded with, and writes back, a local day.
-    expect(editor).toContain("calendarDateToPickerDate(inst.fixed_date ?? null)");
-    expect(editor).toContain("pickerDateToInputValue(selected)");
+    // #4523 — the shared calendar field is fed, and hands back, the stored
+    // YYYY-MM-DD day itself: no Date round-trip that could shift it.
+    expect(editor).toContain('value={inst.fixed_date ?? ""}');
+    expect(editor).toContain("updateInstallmentDate(inst.ordinal, v)");
     expect(editor).not.toContain("selected.toISOString().slice(0, 10)");
 
     const display = fs.readFileSync(

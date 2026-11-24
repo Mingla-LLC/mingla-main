@@ -183,6 +183,19 @@ export const RefundPreviewBody: React.FC<RefundPreviewBodyProps> = ({
             );
           })
         )}
+        {(preview.depositKeptCents ?? 0) > 0 && (
+          <View style={styles.breakdownRow}>
+            <View style={styles.breakdownRowLeft}>
+              <Text style={styles.breakdownLabel}>Deposit is non-refundable</Text>
+              <Text style={styles.breakdownSub}>
+                {formatMoney(preview.depositKeptCents ?? 0, preview.currency)} kept
+              </Text>
+            </View>
+            <Text style={[styles.breakdownAmount, styles.breakdownAmountMuted]}>
+              {formatMoney(0, preview.currency)}
+            </Text>
+          </View>
+        )}
         {hasInstallments && preview.installmentsToCancel > 0 && (
           <View style={styles.breakdownRow}>
             <View style={styles.breakdownRowLeft}>

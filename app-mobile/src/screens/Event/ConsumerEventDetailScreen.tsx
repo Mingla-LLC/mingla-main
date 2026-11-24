@@ -151,6 +151,7 @@ import {
   fetchRsvpPassPdf,
   lookupRsvpGuest,
   submitDeckRsvp,
+  fetchRsvpAddOnsBySlug,
 } from "../../services/rsvpDeckService";
 // #4541 R1.14 — the RSVP page's form is read through the edge, never the
 // server-only database function.
@@ -233,6 +234,13 @@ import {
   ticketOffChosenDays,
 } from "../../components/expandedCard/ticketDayScope";
 import { ticketsWithNoDateOnSale } from "@mingla/offering-rendering/noDateOnSale";
+// issue #3281 S2 — each ticket/package/option's add-ons (flag-gated, off by default).
+import { publicAddOnsSlot } from "../../components/addOns/publicAddOnsSlot";
+// issue #3281 S6 — the RSVP form's free add-on picker (deep paths, no barrel).
+import { RsvpAddOnsPicker } from "@mingla/offering-rendering/RsvpAddOnsPicker";
+import { rsvpAddOnLines, type RsvpAddOnPick } from "@mingla/offering-rendering/rsvpAddOnPicks";
+import { FEATURE_FLAG_ADD_ONS } from "../../config/featureFlags";
+import { rsvpAddOnsKeys } from "../../hooks/queryKeys";
 
 // #4541 A3 — "After they RSVP": the hand-off block inside the shared RSVP
 // success popup (the same block as the cart's success panel).
@@ -1072,6 +1080,46 @@ export default function ConsumerEventDetailScreen({
     });
   }, [isRsvp, ticketBoxY]);
 
+  // issue #3281 S6 — the RSVP's add-ons (the RSVP reader's `rsvpAddOns`, sent
+  // only while add_on_rollout.rsvp_enabled is on), read only while
+  // FEATURE_FLAG_ADD_ONS is on. Free picks go with a Going reply; the card lists
+  // them ("Add at checkout:"). Off, or none: the screen is unchanged.
+  const rsvpAddOnSlugs = {
+    brand: seed?.brandSlug ?? brandSlug ?? null,
+    event: seed?.eventSlug ?? eventSlug ?? null,
+  };
+  const rsvpAddOnsQuery = useQuery({
+    queryKey: rsvpAddOnsKeys.forPage(rsvpAddOnSlugs.brand, rsvpAddOnSlugs.event),
+    enabled:
+      FEATURE_FLAG_ADD_ONS && isRsvp && rsvpAddOnSlugs.brand !== null && rsvpAddOnSlugs.event !== null,
+    staleTime: 30_000,
+    queryFn: () =>
+      fetchRsvpAddOnsBySlug(rsvpAddOnSlugs.brand as string, rsvpAddOnSlugs.event as string),
+  });
+  const rsvpAddOns = FEATURE_FLAG_ADD_ONS ? (rsvpAddOnsQuery.data ?? undefined) : undefined;
+  const [rsvpAddOnPicks, setRsvpAddOnPicks] = useState<RsvpAddOnPick[]>([]);
+  const [rsvpAddOnsReady, setRsvpAddOnsReady] = useState(true);
+  // Read by the submit wrapper (its dependency list stays as it was).
+  const rsvpAddOnsRef = useRef<{ list: unknown; picks: RsvpAddOnPick[] }>({
+    list: undefined,
+    picks: [],
+  });
+  rsvpAddOnsRef.current = { list: rsvpAddOns, picks: rsvpAddOnPicks };
+  const rsvpAddOnsNode = useCallback(
+    (partySize: number): React.ReactNode =>
+      rsvpAddOns === undefined ? null : (
+        <RsvpAddOnsPicker
+          addOns={rsvpAddOns}
+          partySize={partySize}
+          picks={rsvpAddOnPicks}
+          onPicksChange={setRsvpAddOnPicks}
+          onReadyChange={setRsvpAddOnsReady}
+          palette={palette}
+        />
+      ),
+    [rsvpAddOns, rsvpAddOnPicks, palette],
+  );
+
   // #4541 — form read and answer state stay on the RSVP surface so an edge
   // refusal (changed/invalid form) never clears what the guest typed.
   const { t: tForms } = useTranslation("forms");
@@ -1156,6 +1204,7 @@ export default function ConsumerEventDetailScreen({
             phoneCountryIso: input.guestPhoneCountryIso,
           },
           rsvpBrandFormPayload,
+          input.rsvpStatus === "going" ? rsvpAddOnsRef.current.picks : undefined,
         );
       } catch (error) {
         // The host changed the form (or the answers were refused): refetch it so
@@ -1209,6 +1258,10 @@ export default function ConsumerEventDetailScreen({
         credentials: result.credentials,
         anonymousRecovery: result.anonymousRecovery,
         guests: result.guests,
+        // issue #3281 S6 — the confirmation lists the add-ons that went with it.
+        ...(input.rsvpStatus === "going" && rsvpAddOnsRef.current.picks.length > 0
+          ? { rsvpAddOns: rsvpAddOnLines(rsvpAddOnsRef.current.list, rsvpAddOnsRef.current.picks) }
+          : {}),
       };
     },
     [seed, queryClient, rsvpBrandFormPayload, rsvpAfterRsvpForm, user],
@@ -1746,6 +1799,8 @@ export default function ConsumerEventDetailScreen({
     onOpenMaps: openMapsForTarget,
     onCopyAddress: copyAddressForTarget,
     staticMapUrl: rsvpBodyStaticMapUrl,
+    addOnsNode: rsvpAddOns === undefined ? undefined : rsvpAddOnsNode,
+    addOnsReady: rsvpAddOnsReady,
   });
 
   const chrome = (
@@ -2225,6 +2280,7 @@ export default function ConsumerEventDetailScreen({
                  only once the box is actually on-screen (was: hid right after the
                  cover because it measured the body top). */}
               <EventOfferingBody
+                addOns={publicAddOnsSlot()}
                 event={publicEventForBody}
                 brand={{
                   id: seed.brandId,
@@ -2331,6 +2387,8 @@ export default function ConsumerEventDetailScreen({
                 // #4508 round 9: and the address the pass shows, never
                 // "Address shared after you RSVP".
                 passHolderAddress={claimedGuestPass?.venue.locationText ?? null}
+                addOns={publicAddOnsSlot()}
+                rsvpAddOns={rsvpAddOns}
                 testID="orch-1163-consumer-rsvp-body"
               />
               </RsvpSheetFieldContext.Provider>

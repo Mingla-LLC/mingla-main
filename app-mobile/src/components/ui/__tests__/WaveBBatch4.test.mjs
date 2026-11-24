@@ -164,7 +164,7 @@ function run() {
   assert.match(code(pairRequest), /snapPoints=\{PAIR_REQUEST_SNAP_POINTS\}/, "T-4 PairRequest passes its snap");
   assert.match(code(customHoliday), /CUSTOM_HOLIDAY_SNAP_POINTS\s*=\s*\[\s*['"]88%['"]\s*\]/, "T-4 CustomHoliday snap ['88%'] (== prior SCREEN_HEIGHT*0.88)");
   assert.match(code(propose), /PROPOSE_DATE_TIME_SNAP_POINTS\s*=\s*\[\s*['"]85%['"]\s*\]/, "T-4 Propose snap ['85%'] (== prior SCREEN_HEIGHT*0.85)");
-  assert.match(code(actionButtons), /DATE_TIME_PICKER_SNAP_POINTS\s*=\s*\[\s*['"]45%['"]\s*\]/, "T-4 ActionButtons picker snap ['45%']");
+  assert.match(code(actionButtons), /DATE_TIME_PICKER_SNAP_POINTS\s*=\s*\[\s*['"]85%['"]\s*\]/, "T-4 ActionButtons picker snap ['85%'] (#4523: the calendar sheet needs the room)");
   // Fixed snaps only — no content-dynamic sizing (Batch-3 off-screen lesson).
   for (const [name, src] of SHEETS) {
     assert.doesNotMatch(code(src), /enableDynamicSizing/, `T-4 ${name} must use a fixed snap, NOT enableDynamicSizing (off-screen risk)`);
@@ -208,15 +208,14 @@ function run() {
   // ── T-8: PairRequest keeps the excluded CountryPickerModal sub-modal ───────
   assert.match(code(pairRequest), /<CountryPickerModal\b/, "T-8 PairRequest keeps the CountryPickerModal sub-modal (excluded surface)");
 
-  // ── T-9: ActionButtons — ONLY the iOS picker modal converted ───────────────
-  // The Android native picker branch (display="default", no Modal) stays; the
-  // iOS branch is now a BaseBottomSheet. Exactly ONE <BaseBottomSheet> usage.
+  // ── T-9: ActionButtons — one BaseBottomSheet holding the Mingla calendar (#4523) ──
+  // The OS date/time pickers (iOS sheet + Android dialogs) are gone: date and time are
+  // chosen together on the shared calendar, on both platforms. Exactly ONE <BaseBottomSheet>.
   const abSheetCount = (code(actionButtons).match(/<BaseBottomSheet\b/g) || []).length;
-  assert.equal(abSheetCount, 1, "T-9 ActionButtons converts ONLY the iOS date/time picker (exactly 1 <BaseBottomSheet>)");
-  assert.match(code(actionButtons), /display="default"/, "T-9 ActionButtons keeps the Android native DateTimePicker branch");
-  // The rest of ActionButtons is untouched — its primary save/schedule flow stays.
-  assert.match(code(actionButtons), /handleDateTimePickerChange/, "T-9 ActionButtons keeps its picker change handler (rest of file intact)");
-  assert.match(code(actionButtons), /pickerMode === "date" \? handleDatePickerConfirm : handleTimePickerConfirm/, "T-9 ActionButtons preserves the Next/Done confirm wiring");
+  assert.equal(abSheetCount, 1, "T-9 ActionButtons has exactly 1 <BaseBottomSheet> (the calendar sheet)");
+  assert.match(code(actionButtons), /<CalendarEmbed\b[\s\S]*mode="datetime"/, "T-9 ActionButtons schedules through the Mingla datetime calendar");
+  assert.doesNotMatch(code(actionButtons), /<DateTimePicker\b/, "T-9 ActionButtons renders no OS date/time picker any more");
+  assert.match(code(actionButtons), /handleCalendarChosen/, "T-9 ActionButtons commits once through handleCalendarChosen");
 
   // ── T-A1 (adversarial): old RN scrim/overlay/hand-rolled shells are GONE ───
   assert.doesNotMatch(code(pairRequest), /overlay:\s*\{/, "T-A1 PairRequest old `overlay` scrim style removed");

@@ -6,7 +6,10 @@
   "gateway_reason": "#3645 anonymous buyer payment and approval links authenticate with a one-time high-entropy token whose hash is resolved by service-role RPC; raw tokens and saved card authorization values are never persisted, logged, or returned.",
   "env": {
     "migration_fallback_top_level": [],
-    "optional_top_level": [],
+    "optional_top_level": [
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "STRIPE_PUBLISHABLE_KEY"
+    ],
     "required_bundle_fields": {},
     "required_top_level": [
       "RESEND_API_KEY",

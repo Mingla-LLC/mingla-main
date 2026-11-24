@@ -22,7 +22,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — main render delegates to TripCreatorWizard or EditPublishedTripScreen which apply `paddingTop: insets.top` themselves (proven safe on sim screenshots). Inline loading / error / not-found early-return states render bare `<View>` for brief moments during the trip query resolve — transient flash is acceptable; not worth wrapping each early-return state. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
 
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -44,6 +44,9 @@ import {
   useCreateTripDraft,
 } from "../../../src/hooks/useTrips";
 import { TripCreatorWizard } from "../../../src/components/trip/TripCreatorWizard";
+import { TripStartGate } from "../../../src/components/trip/TripStartGate";
+import { isFeatureEnabled } from "../../../src/config/featureFlags";
+import { defaultTimezoneForBrand, detectDeviceTimezone } from "../../../src/utils/timezones";
 import { EditPublishedTripScreen } from "../../../src/components/trip/EditPublishedTripScreen";
 import { Button } from "../../../src/components/ui/Button";
 import { TRIP_DRAFT_PLACEHOLDER_TITLE } from "../../../src/services/tripsService";
@@ -96,41 +99,54 @@ export default function TripEditRoute(): React.ReactElement {
   const createTripDraftMutation = useCreateTripDraft();
   const tripMigratingIdRef = useRef<string | null>(null);
 
+  // #4522 / DISC-0893 — with the 4-step builder the server draft is created when
+  // the host names the trip (TripStartGate below), not when this route mounts.
+  const builderV2 = isFeatureEnabled("tripBuilderV2");
+  const startDraft = useCallback(
+    async (clientId: string, initialTitle?: string): Promise<void> => {
+      if (currentBrand === null) return;
+      const trip = await createTripDraftMutation.mutateAsync({
+        brandId: currentBrand.id,
+        ...(initialTitle !== undefined ? { initialTitle } : {}),
+        // #4523 S-9 — a new trip lives in the brand's zone (#4522 G-5: the
+        // brand's own zone first, then its payout country or currency), else
+        // the host's device zone; never UTC by default, so the calendar's
+        // "today" is the host's today.
+        timezone: defaultTimezoneForBrand({
+          brandZone: currentBrand.defaultTimezone ?? null,
+          payoutCountry: currentBrand.payoutCountry ?? currentBrand.paymentCountry ?? null,
+          currency: currentBrand.defaultCurrency ?? null,
+          deviceZone: detectDeviceTimezone(),
+        }),
+      });
+      if (user !== null) {
+        promoteBusinessRecentDraft({
+          userId: user.id,
+          brandId: currentBrand.id,
+          entityType: "trip",
+          localId: clientId,
+          serverId: trip.id,
+        });
+      }
+      if (setupReturn) {
+        router.replace(withReturnTo(`/trip/${trip.id}/edit`, setupReturn) as never);
+        return;
+      }
+      router.replace(`/trip/${trip.id}/edit` as never);
+    },
+    [currentBrand, createTripDraftMutation, router, setupReturn, user],
+  );
+
   useEffect(() => {
+    if (builderV2) return;
     if (!isClientOnlyId || typeof eventId !== "string") return;
     if (currentBrand === null) return;
     if (tripMigratingIdRef.current === eventId) return;
     tripMigratingIdRef.current = eventId;
-    void createTripDraftMutation
-      .mutateAsync({ brandId: currentBrand.id })
-      .then((trip) => {
-        if (user !== null) {
-          promoteBusinessRecentDraft({
-            userId: user.id,
-            brandId: currentBrand.id,
-            entityType: "trip",
-            localId: eventId,
-            serverId: trip.id,
-          });
-        }
-        if (setupReturn) {
-          router.replace(withReturnTo(`/trip/${trip.id}/edit`, setupReturn) as never);
-          return;
-        }
-        router.replace(`/trip/${trip.id}/edit` as never);
-      })
-      .catch(() => {
-        tripMigratingIdRef.current = null;
-      });
-  }, [
-    currentBrand,
-    createTripDraftMutation,
-    eventId,
-    isClientOnlyId,
-    router,
-    setupReturn,
-    user,
-  ]);
+    void startDraft(eventId).catch(() => {
+      tripMigratingIdRef.current = null;
+    });
+  }, [builderV2, currentBrand, eventId, isClientOnlyId, startDraft]);
 
   // Issue #3801 — the editor sends the trip's revision with every save, and
   // seeds it from the trip it is mounted with. A cached copy can be behind the
@@ -166,6 +182,16 @@ export default function TripEditRoute(): React.ReactElement {
   // ORCH-0874 [Trip surfaces visual parity with Events]: wire useSoftDeleteTrip
   // for the wizard's create-mode-dirty discard ConfirmDialog (chrome X handler).
   const softDeleteMutation = useSoftDeleteTrip();
+
+  if (isClientOnlyId && builderV2 && currentBrand !== null && typeof eventId === "string") {
+    return (
+      <TripStartGate
+        brandName={currentBrand.displayName}
+        onStart={(title) => startDraft(eventId, title)}
+        onCancel={() => router.back()}
+      />
+    );
+  }
 
   if (isClientOnlyId) {
     // ORCH-0893: migration in flight — placeholder until `router.replace`

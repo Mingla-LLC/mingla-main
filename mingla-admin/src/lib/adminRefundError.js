@@ -15,6 +15,14 @@ export function adminRefundErrorCopy(code, refundOutcome = null) {
     case "line_overrefund": return "One or more items are already fully refunded.";
     // #3281: the last tickets' refund also returns extras, so it waits for any other refund to settle.
     case "refund_pending_on_order": return "Another refund on this order is still going through. Try again once it finishes.";
+    // #3281 S4: refunding an add-on on its own.
+    case "add_on_line_overrefund": return "That's more of this add-on than is left to refund.";
+    case "add_on_line_not_found": return "That add-on isn't on this order any more. Reload the order and try again.";
+    case "add_on_refunds_off": return "Refunding an add-on on its own isn't available yet.";
+    // #3281 S5: an add-on spread over a trip plan.
+    case "add_on_plan_open_use_cancel": return "This trip is still being paid in instalments. Cancel the booking to give everything back.";
+    case "add_on_plan_changed":
+    case "balance_payment_in_flight": return "A payment on this plan is going through right now. Try again in a few minutes.";
     case "refund_failed": return "The refund didn't go through, so nothing was refunded. Try again.";
     case "stripe_declined":
       return refundOutcome === "unknown"

@@ -102,6 +102,9 @@ module.exports = {
     "issue_3460_ari_composer_narrow_web_clearance\\.happy\\.test\\.ts$",
     // #4304 — First Home with Ari render proof; runs under jest.issue1890.render.cjs.
     "issue_4304_first_run_ari\\.implementor\\.test\\.ts$",
+    "issue_4523_host_datetime_field\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs
+    "issue_4523_datefield_month_nav\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs (RN preset, react-test-renderer); never the default node config
+    "issue_4523_form_date_question\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs (RN preset, react-test-renderer); its birth-date web cases fail on the default node config
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under
@@ -492,6 +495,8 @@ module.exports = {
     // the subpath form only: the bare barrel and its jest.mock() users are
     // untouched.
     "^@mingla/phone-input/(.+)$": "<rootDir>/../packages/phone-input/$1",
+    // #4523 — deep `@mingla/calendar/<sub>` resolves to this checkout's package.
+    "^@mingla/calendar/(.+)$": "<rootDir>/../packages/calendar/$1",
     // #1773 — resolution repair, NOT a mock. The phone owner is deliberately a
     // real `.mjs` ESM module for Supabase's hosted ESZip bundler. Metro resolves
     // the workspace symlink, while this node/ts-jest runner must stay on this

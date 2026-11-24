@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4522",
+  "target": {
+    "kind": "function",
+    "name": "ticket-checkout-status"
+  },
+  "basePolicySha256": "3f17a18205faa0f055637da4311070188a21834afaa01ce4437692852a9047fd",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "STRIPE_PUBLISHABLE_KEY",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "afde6ef8c877c73e9a20ae79413a8065a6a2af292f44b35ba48021bd6846bbf6",
+  "reason": "Issue #4522 trip payment plans: checkout status now reaches the shared Stripe mode helper (_shared/stripeMode.ts), which reads the optional publishable key names."
+}

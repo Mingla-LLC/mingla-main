@@ -1,6 +1,6 @@
 /**
  * issue #3281 — Extras at the door. An extra is a count on the order, never a
- * seat (#3283 §2.5), so the door is told the count still owed: "Extras:
+ * seat (#3283 §2.5), so the door is told the count still owed: "Add-ons:
  * Friday dinner × 2 · Tote bag × 1". When the day admitted is known, an extra
  * for other days says "(another day)", so nobody is handed Friday's dinner on
  * Saturday; before that, a date-limited extra says "(some days only)".
@@ -39,7 +39,7 @@ export const readDoorExtras = (value: unknown): DoorExtra[] =>
       })
     : [];
 
-/** "Extras: Friday dinner × 2 · Tote bag × 1", or null when there are none. */
+/** "Add-ons: Friday dinner × 2 · Tote bag × 1", or null when there are none. */
 export const doorExtrasLine = (
   extras: readonly DoorExtra[],
   /** The day (or, after "Admit all", the days) admitted; null before admission. */
@@ -60,5 +60,5 @@ export const doorExtrasLine = (
             : " (another day)";
     return `${extra.name} × ${extra.quantity}${note}`;
   });
-  return `Extras: ${parts.join(" · ")}`;
+  return `Add-ons: ${parts.join(" · ")}`;
 };

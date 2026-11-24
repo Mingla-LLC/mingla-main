@@ -48,6 +48,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { space } from "../../../src/constants/designSystem";
 import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
@@ -58,13 +59,14 @@ import { tripPublicPath } from "../../../src/constants/publicUrls";
 import {
   confirmTicketCheckout,
   createTicketCheckout,
+  getTicketCheckoutStatus,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
-import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
 import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
 // fired before purchase_completed. No-op on web / when key absent / opted out.
@@ -76,6 +78,7 @@ import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TripPaymentChoice } from "../../../src/components/trip/TripPaymentChoice";
 import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
+import { TripPlanV2CheckoutChoice } from "../../../src/components/trip/TripPlanV2CheckoutChoice";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 
 import {
@@ -86,12 +89,25 @@ import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
+import {
+  checkoutToSupersede,
+  heldCheckoutConfirmPath,
+  sameBuyerAs,
+  restoreTripCheckout,
+  tripResumeDecision,
+  type ResumedTripCheckout,
+} from "../../../src/components/checkout/tripCheckoutResume";
 import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
 import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
 import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
 import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 import { BUYER_CONNECTION_COPY } from "../../../src/components/buyer/buyerConnectionCopy";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
+import { featureFlags } from "../../../src/config/featureFlags";
 import { tripFunnelTotalSteps, tripPaymentStepIndex } from "./tripFunnelSteps";
 // issue #3351 [free trip intake loop] — the flattener and the presence probe
 // both live in the step-order owner now, so the trip route holds exactly one
@@ -102,20 +118,6 @@ import {
   tripIntakeState,
   type TripIntakeState,
 } from "./tripCheckoutStepOrder";
-
-const formatQuoteMoney = (minor: number, currency: string): string => {
-  try {
-    return withCurrencyGlyph(
-      new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency || "USD",
-      }).format(minor / 100),
-      currency,
-    );
-  } catch {
-    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
-  }
-};
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
@@ -152,6 +154,7 @@ function CheckoutTripPaymentScreenContent({
 }: CheckoutTripPaymentScreenContentProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ tripEventId: string }>();
   const tripEventId =
     typeof params.tripEventId === "string" ? params.tripEventId : null;
@@ -171,6 +174,7 @@ function CheckoutTripPaymentScreenContent({
     discountCode,
     quote,
     quoteStatus,
+    quoteErrorCode,
     checkoutReview,
     setQuoteState,
     setCheckoutReview,
@@ -184,8 +188,11 @@ function CheckoutTripPaymentScreenContent({
     paymentPlanChoice,
     setPaymentPlanChoice,
     setLinePaymentPlanChoice,
+    setAddonPaymentMode,
     checkoutAttemptIdFor,
     resetCheckoutAttempt,
+    heldCheckoutAttempt,
+    restoreCheckoutAttempt,
   } = useCart();
   const totals = useCartQuoteTotals();
 
@@ -207,10 +214,48 @@ function CheckoutTripPaymentScreenContent({
       return schedule === null ? [] : [{ line, tier, schedule }];
     });
   }, [lines, trip]);
+  // issue #4522 — v2 is a server-quoted cart plan. It is buyer-web only in
+  // this slice and remains completely inert while the bundled flag is dark.
+  const v2PlanLines = React.useMemo(() => {
+    if (!featureFlags.tripPlanV2 || Platform.OS !== "web" || trip === null) {
+      return [];
+    }
+    return lines.flatMap((line) => {
+      const tier = trip.pricingTiers.find(
+        (candidate) => candidate.ticketTypeId === line.ticketTypeId,
+      );
+      const plan = tier?.paymentPlan;
+      return tier !== undefined &&
+        plan !== null &&
+        plan !== undefined &&
+        "v" in plan &&
+        plan.v === 2 &&
+        line.quantity > 0
+        ? [{ line, tier, plan }]
+        : [];
+    });
+  }, [lines, trip]);
+  const v2CheckoutActive = v2PlanLines.length > 0;
+  const hasSelectedAddOns = lines.some(
+    (line) => (line.addOns?.length ?? 0) > 0,
+  );
+  const addonPaymentMode =
+    lines.find(
+      (line) =>
+        (line.addOns?.length ?? 0) > 0 &&
+        line.addonPaymentMode !== undefined,
+    )?.addonPaymentMode ??
+    quote?.addonPaymentMode ??
+    "today";
+  const quotedAddOnTotalCents =
+    Number.isInteger(quote?.extrasTotalCents) &&
+    Number(quote?.extrasTotalCents) > 0
+      ? Number(quote?.extrasTotalCents)
+      : null;
   // Legacy Business-native still renders one scalar plan editor. Web never
   // uses this as money authority; each line below owns its own schedule.
   const projectedSchedule = planLines[0]?.schedule ?? null;
-  const isPlanActive = planLines.length > 0;
+  const isPlanActive = planLines.length > 0 || v2CheckoutActive;
   const planChoiceByTier = React.useMemo<
     Record<string, "full" | "installments">
   >(
@@ -228,16 +273,59 @@ function CheckoutTripPaymentScreenContent({
   const installmentPlanLines = planLines.filter(
     ({ line }) => planChoiceByTier[line.ticketTypeId] === "installments",
   );
-  const isUsingInstallments = installmentPlanLines.length > 0;
+  const isUsingInstallments =
+    installmentPlanLines.length > 0 ||
+    (v2CheckoutActive && paymentPlanChoice === "installments");
+  const legacyInstallmentCta =
+    isUsingInstallments && projectedSchedule !== null;
+  const installmentCtaActive =
+    legacyInstallmentCta || (isUsingInstallments && v2CheckoutActive);
   const payLinkPlan = quote?.installmentChargeSchedule;
   const dueTodayCents = payLinkPlan !== undefined
     ? (quote?.buyerTotalCents ?? 0)
     : (quote?.dueTodayNetCents ?? 0);
-  const futureInstallmentCount = payLinkPlan?.payments.length ??
-    installmentPlanLines.reduce(
-      (count, entry) => count + entry.schedule.installments.length,
-      0,
-    );
+  const futureInstallmentCount = v2CheckoutActive
+    ? (quote?.paymentPlanV2?.countGiven ?? 0)
+    : (payLinkPlan?.payments.length ??
+      installmentPlanLines.reduce(
+        (count, entry) => count + entry.schedule.installments.length,
+        0,
+      ));
+  // issue #4522 S-1 — while the plan is chosen, "Pay in full" shows what the
+  // whole booking costs: today's charge plus every scheduled row, read from the
+  // same quote. The schedule's own fullPriceCents leaves out add-ons paid today.
+  const v2PlanSchedule = quote?.paymentPlanV2?.installmentSchedule ?? null;
+  const v2PlanQuotedTotalCents =
+    v2PlanSchedule !== null && quote !== null
+      ? quote.buyerTotalCents +
+        v2PlanSchedule.installments.reduce(
+          (sum, row) => sum + row.amountCents,
+          0,
+        )
+      : undefined;
+  // issue #4522 X-11 — the whole booking on the plan (today + every row).
+  const planTotalCents: number | undefined =
+    quote?.planTotalBuyerCents ?? v2PlanQuotedTotalCents;
+  const v2FlexEnabled = v2PlanLines.some(
+    ({ plan }) => plan.flex?.enabled === true,
+  );
+  const daysUntilDeparture = React.useMemo(() => {
+    const starts = Date.parse(trip?.businessTrip.startAt ?? "");
+    return Number.isFinite(starts)
+      ? Math.max(0, Math.ceil((starts - Date.now()) / 86_400_000))
+      : 0;
+  }, [trip?.businessTrip.startAt]);
+  const setV2PaymentChoice = useCallback(
+    (choice: "full" | "installments"): void => {
+      // The scalar drives the side-effect-free quote preview. The line values
+      // are the #3859 checkout-v2 create contract. Both change in one gesture.
+      setPaymentPlanChoice(choice);
+      for (const { line } of v2PlanLines) {
+        setLinePaymentPlanChoice(line.ticketTypeId, choice);
+      }
+    },
+    [setLinePaymentPlanChoice, setPaymentPlanChoice, v2PlanLines],
+  );
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
   // (keyed by ticket_type_id in CartContext) into the array shape expected
@@ -259,11 +347,16 @@ function CheckoutTripPaymentScreenContent({
   );
 
   const [processing, setProcessing] = useState<boolean>(false);
+  // issue #4522 X-11 — the sticky bar's real height (its plan banner wraps),
+  // so the last schedule rows can always scroll clear of it.
+  const [bottomBarHeight, setBottomBarHeight] = useState<number>(0);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(
     null,
   );
   const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // ----- issue #2190 [paid-checkout-redirect]: one create per checkout -----
   // Mirrors #2188 on the event payment screen. Held in a ref (not state)
@@ -274,6 +367,9 @@ function CheckoutTripPaymentScreenContent({
     fingerprint: string;
     handoff: TicketCheckoutProviderHandoff;
   } | null>(null);
+  // issue #4522 E-3 — the checkout this cart was handed before a reload (the
+  // provider's Back button, a refresh, the checkout link reopened).
+  const resumedCheckoutRef = useRef<ResumedTripCheckout | null>(null);
   const cartFingerprint = JSON.stringify({
     eventId: tripEventId,
     email: buyer.email.trim().toLowerCase(),
@@ -282,6 +378,8 @@ function CheckoutTripPaymentScreenContent({
       l.ticketTypeId,
       l.quantity,
       l.paymentPlanChoice ?? "full",
+      l.addOns ?? null,
+      l.addonPaymentMode ?? null,
     ]),
     intakeFormData: intakeFormDataArray,
   });
@@ -308,21 +406,13 @@ function CheckoutTripPaymentScreenContent({
     const storage = (globalThis as unknown as { sessionStorage?: Storage })
       .sessionStorage;
     const payload = readCheckoutResumePayload(storage, tripEventId);
-    if (payload !== null && lines.length === 0) {
-      for (const l of payload.lines) {
-        setLineQuantity({
-          ticketTypeId: l.ticketTypeId,
-          ticketName: l.ticketName,
-          unitPrice: l.unitPrice,
-          unitPriceGbp: l.unitPriceGbp,
-          currency: l.currency,
-          isFree: l.isFree,
-          quantity: l.quantity,
-          paymentPlanChoice: l.paymentPlanChoice ?? "full",
-        });
-      }
-      setBuyer(payload.buyer);
-    }
+    // issue #4522 E-2 / E-3 — the lines with their plan choices (the quoted
+    // choice follows them), plus the attempt and page this cart was handed.
+    resumedCheckoutRef.current = restoreTripCheckout(
+      payload,
+      { setLineQuantity, setLinePaymentPlanChoice, setBuyer, restoreCheckoutAttempt },
+      lines.length === 0,
+    );
     setRestoreChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripEventId]);
@@ -369,6 +459,23 @@ function CheckoutTripPaymentScreenContent({
   // src/wrappers/SmartScrollView instead of reinstating a listener.
   const scrollViewRef = useRef<ScrollView | null>(null);
 
+  // issue #4522 E-3 — a page restored from the browser's back-forward cache
+  // keeps its memory (cart, quote, held provider page) but was left mid-Pay;
+  // un-stick the button so the next Pay re-follows the held page.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const host = globalThis as unknown as {
+      addEventListener?: (type: string, cb: (event: { persisted?: boolean }) => void) => void;
+      removeEventListener?: (type: string, cb: (event: { persisted?: boolean }) => void) => void;
+    };
+    if (typeof host.addEventListener !== "function") return;
+    const onPageShow = (event: { persisted?: boolean }): void => {
+      if (event.persisted === true) setProcessing(false);
+    };
+    host.addEventListener("pageshow", onPageShow);
+    return () => host.removeEventListener?.("pageshow", onPageShow);
+  }, []);
+
   // ----- Handlers -----
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -408,6 +515,9 @@ function CheckoutTripPaymentScreenContent({
       if (Platform.OS === "web") {
         // ---------- WEB PATH ----------
         const surface: "web" = "web";
+        // issue #4522 E-3 — the checkout this cart was handed, when the cart
+        // changed since: the server closes it before opening the new one.
+        let supersedesCheckout: { checkoutSessionId: string; buyerStatusToken: string } | null = null;
         try {
           setProcessing(true);
           setPaymentError(null);
@@ -423,12 +533,63 @@ function CheckoutTripPaymentScreenContent({
           // refuses a duplicate create with 409 and it is right to: a second
           // create for a cart with a live provider attempt is never what the
           // guest wants. Re-following the URL we were already given is.
+          // Pass 5 (F-2) — a checkout this tab holds for ANOTHER buyer (the
+          // last person to pay here never came back) is simply forgotten: it
+          // is theirs, it is never closed, followed or confirmed for this one.
+          if (
+            providerHandoffRef.current !== null &&
+            !sameBuyerAs(providerHandoffRef.current.fingerprint, cartFingerprint)
+          ) {
+            providerHandoffRef.current = null;
+          }
+          if (
+            resumedCheckoutRef.current !== null &&
+            !sameBuyerAs(resumedCheckoutRef.current.fingerprint, cartFingerprint)
+          ) {
+            resumedCheckoutRef.current = null;
+          }
           const held = providerHandoffRef.current;
+          supersedesCheckout = checkoutToSupersede(
+            held,
+            resumedCheckoutRef.current,
+            cartFingerprint,
+          );
           if (held !== null && held.fingerprint === cartFingerprint) {
             if (assignLocation(globalThis, held.handoff.redirectUrl)) return;
             setProcessing(false);
             setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
             return;
+          }
+          // issue #4522 E-3 — after a reload the held checkout comes from the
+          // resume payload: a paid one goes to confirmation, a still-open one
+          // is re-followed (or its attempt sent again, so the server answers
+          // with it), an expired or failed one is forgotten first. One cart
+          // never has two payable sessions.
+          const resumed = resumedCheckoutRef.current;
+          if (resumed !== null) {
+            const decision = await tripResumeDecision(
+              resumed,
+              cartFingerprint,
+              getTicketCheckoutStatus,
+            );
+            if (decision.kind === "confirm") {
+              router.replace(heldCheckoutConfirmPath(tripEventId, resumed) as never);
+              return;
+            }
+            if (decision.kind === "follow") {
+              if (assignLocation(globalThis, decision.url)) return;
+              setProcessing(false);
+              setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+              return;
+            }
+            // Pass 5 (F-1) — an over (expired / failed) checkout is dropped
+            // now; otherwise it stays held until a new checkout replaces it,
+            // so a create answered "in progress" never loses it and the next
+            // changed cart still names it.
+            if (decision.forget) {
+              resetCheckoutAttempt();
+              resumedCheckoutRef.current = null;
+            }
           }
           // createTicketCheckout is event_type-agnostic — the RPC
           // biz_ticket_checkout_create_session branches on v_event.event_type='trip'.
@@ -446,6 +607,7 @@ function CheckoutTripPaymentScreenContent({
               eventId: tripEventId,
               surface,
             }),
+            ...(supersedesCheckout !== null ? { supersedesCheckout } : {}),
             // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers
             // gathered by /checkout-trip/[tripEventId]/intake.tsx and stored
             // in CartContext. Edge fn gates HTTP 400 intake_form_required +
@@ -469,6 +631,8 @@ function CheckoutTripPaymentScreenContent({
             throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
           }
           setCheckoutSessionId(handoff.checkoutSessionId);
+          // The new checkout replaces the one restored from before the reload.
+          resumedCheckoutRef.current = null;
           // Remember it BEFORE navigating: if the redirect cannot run, the next
           // Pay tap re-follows this URL rather than creating a second checkout.
           providerHandoffRef.current = {
@@ -482,11 +646,21 @@ function CheckoutTripPaymentScreenContent({
           const storage = (
             globalThis as unknown as { sessionStorage?: Storage }
           ).sessionStorage;
+          const sentAttempt = heldCheckoutAttempt();
           writeCheckoutResumePayload(storage, tripEventId, {
             checkoutSessionId: handoff.checkoutSessionId,
             buyerStatusToken: handoff.buyerStatusToken,
             lines,
             buyer,
+            // issue #4522 E-3 — after the reload Back causes, an unchanged
+            // cart re-follows this page and resends this attempt.
+            providerHandoff: {
+              fingerprint: cartFingerprint,
+              redirectUrl: handoff.redirectUrl,
+              totalCents: activeQuote.buyerTotalCents,
+              currency: activeQuote.currency,
+            },
+            ...(sentAttempt !== null ? { checkoutAttempt: sentAttempt } : {}),
           });
           // ORCH-0915 T-A02 pins `const w = globalThis` as the end of the
           // persist window: the resume payload is written, THEN the host is read.
@@ -496,6 +670,10 @@ function CheckoutTripPaymentScreenContent({
           setProcessing(false);
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
         } catch (error) {
+          // Pass 5 (F-2) — a held checkout found paid is never a reason to show
+          // its confirmation for a different cart: the server opens the new
+          // purchase as its own checkout (only an unchanged cart of the same
+          // buyer goes to its confirmation, through tripResumeDecision above).
           setProcessing(false);
           const review =
             await import("../../../src/services/ticketCheckoutReview").then(
@@ -685,6 +863,8 @@ function CheckoutTripPaymentScreenContent({
       buyer,
       discountCode,
       checkoutAttemptIdFor,
+      heldCheckoutAttempt,
+      resetCheckoutAttempt,
       trip,
       tripEventId,
       lines,
@@ -757,6 +937,32 @@ function CheckoutTripPaymentScreenContent({
     );
   }
 
+  if (v2CheckoutActive && quoteStatus === "error") {
+    const connection = isConnectionFailure(
+      new Error(quoteErrorCode ?? "Failed to fetch"),
+    );
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={paymentStepIndex}
+          totalSteps={totalSteps}
+          title="Review & pay"
+          onBack={handleBack}
+        />
+        <BuyerConnectionNotice
+          variant={connection ? "connection" : "server"}
+          onRetry={() =>
+            queryClient.invalidateQueries({
+              queryKey: ["ticket-checkout-quote"],
+            })
+          }
+          onBack={handleBack}
+          testID="checkout-trip-payment-connection-notice"
+        />
+      </View>
+    );
+  }
+
   if (checkoutReview !== null) {
     return (
       <View style={styles.host}>
@@ -808,7 +1014,12 @@ function CheckoutTripPaymentScreenContent({
           // ScrollView's bottom padding so the PAYMENT redirect card
           // at the bottom of scroll content isn't occluded behind the
           // taller bottom bar.
-          { paddingBottom: insets.bottom + (isPlanActive ? 260 : 140) },
+          {
+            paddingBottom: Math.max(
+              insets.bottom + (isPlanActive ? 260 : 140),
+              bottomBarHeight + space[6],
+            ),
+          },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -890,12 +1101,58 @@ function CheckoutTripPaymentScreenContent({
             </View>
           ))}
           <View style={styles.summaryDivider} />
-          {quote !== null ? <TicketQuoteSummary quote={quote} compact /> : null}
+          {quote !== null ? (
+            <TicketQuoteSummary
+              quote={quote}
+              compact
+              // issue #4522 X-11 — on a plan the quote's total is today's charge.
+              totalLabel={isUsingInstallments ? "Total due today" : "Total"}
+            />
+          ) : null}
         </GlassCard>
 
         {/* #3859 — web edits each eligible package independently. Native keeps
             its existing single v1 choice until preview + create migrate together. */}
-        {Platform.OS === "web" ? (
+        {v2CheckoutActive ? (
+          <TripPlanV2CheckoutChoice
+            plan={quote?.paymentPlanV2}
+            value={paymentPlanChoice}
+            onChange={setV2PaymentChoice}
+            currency={quote?.currency ?? totals.currency}
+            dueTodayCents={quote?.buyerTotalCents}
+            fullPriceCents={
+              paymentPlanChoice === "full"
+                ? quote?.buyerTotalCents
+                : (quote?.planTotalBuyerCents ?? v2PlanQuotedTotalCents)
+            }
+            lockedChargeSchedule={quote?.installmentChargeSchedule}
+            // issue #4522 X-12 — the plan option names what is due today if
+            // chosen: add-ons paid today join the deposit.
+            todayAddOnCents={
+              hasSelectedAddOns && addonPaymentMode === "today"
+                ? (quotedAddOnTotalCents ?? 0)
+                : 0
+            }
+            addOnPlan={
+              paymentPlanChoice === "installments" && hasSelectedAddOns
+                ? {
+                    totalCents: quotedAddOnTotalCents,
+                    currency: quote?.currency ?? totals.currency,
+                    value: addonPaymentMode,
+                    onChange: setAddonPaymentMode,
+                    loading:
+                      quoteStatus === "loading" || quoteStatus === "idle",
+                    disabled: processing,
+                  }
+                : undefined
+            }
+            flexEnabled={v2FlexEnabled}
+            daysUntilDeparture={daysUntilDeparture}
+            timeZone={trip.timezone}
+            loading={quoteStatus === "loading" || quoteStatus === "idle"}
+            disabled={processing}
+          />
+        ) : Platform.OS === "web" ? (
           planLines.map(({ line, tier, schedule }) => (
             <View key={line.ticketTypeId}>
               <Text style={styles.summaryLabel}>{line.ticketName}</Text>
@@ -969,14 +1226,21 @@ function CheckoutTripPaymentScreenContent({
           styles.bottomBar,
           { paddingBottom: insets.bottom + space[4] },
         ]}
+        onLayout={(event) => {
+          const next = Math.ceil(event.nativeEvent.layout.height);
+          setBottomBarHeight((prev) => (prev === next ? prev : next));
+        }}
       >
+        <View style={styles.bottomBarTint} pointerEvents="none" />
         {/* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
             above the Pay button when cart has plan-active lines. Stripe's
             hosted checkout only displays the deposit amount, so this is
             the last in-product surface to set buyer expectations about
             the deposit + future-installment auto-charge schedule.
             Constitution #3 — no silent failures. */}
-        {isPlanActive && isUsingInstallments ? (
+        {isPlanActive &&
+        isUsingInstallments &&
+        quoteStatus === "ready" ? (
           <View
             style={styles.planBanner}
             accessibilityRole="alert"
@@ -1008,7 +1272,9 @@ function CheckoutTripPaymentScreenContent({
             </Text>
           </View>
         ) : null}
-        {isPlanActive && !isUsingInstallments ? (
+        {isPlanActive &&
+        !isUsingInstallments &&
+        quoteStatus === "ready" ? (
           <View
             style={[styles.planBanner, styles.fullPayBanner]}
             accessibilityRole="alert"
@@ -1022,13 +1288,24 @@ function CheckoutTripPaymentScreenContent({
             </Text>
           </View>
         ) : null}
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>{displayAllIn}</Text>
-        </View>
+        {/* issue #4522 X-11 (spec §10.2) — on a plan, "Total" is the whole
+            booking and today's charge is its own "Total due today" line. */}
+        {!(isUsingInstallments && quoteStatus === "ready") ? (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>{displayAllIn}</Text>
+          </View>
+        ) : planTotalCents !== undefined && quote !== null ? (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>
+              {formatQuoteMoney(planTotalCents, quote.currency)}
+            </Text>
+          </View>
+        ) : null}
         {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under
             pay-over-time; mirrors the order-summary box + buyer step. */}
-        {isUsingInstallments ? (
+        {isUsingInstallments && quoteStatus === "ready" ? (
           <View style={styles.dueTodayRow}>
             <Text style={styles.dueTodayLabel}>Total due today</Text>
             <Text style={styles.dueTodayValue}>
@@ -1055,7 +1332,9 @@ function CheckoutTripPaymentScreenContent({
           // cart CTA deliberately says "today" because mixed carts also include
           // full-pay lines in the aggregate amount.
           label={
-            isUsingInstallments && projectedSchedule !== null
+            isPlanActive && quoteStatus !== "ready"
+              ? "Working out your payments…"
+              : installmentCtaActive
               ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today`
               : `Pay ${displayAllIn}`
           }
@@ -1063,12 +1342,16 @@ function CheckoutTripPaymentScreenContent({
           variant="primary"
           size="lg"
           fullWidth
-          loading={processing}
+          loading={
+            processing || (isPlanActive && quoteStatus === "loading")
+          }
           // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
           // immediately (only blocked while a charge is in flight).
           disabled={processing || quoteStatus !== "ready" || quote === null}
           accessibilityLabel={
-            isUsingInstallments && projectedSchedule !== null
+            isPlanActive && quoteStatus !== "ready"
+              ? "Working out your payments"
+              : installmentCtaActive
               ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today with card`
               : `Pay ${displayAllIn} with card`
           }
@@ -1187,10 +1470,10 @@ const styles = checkoutStyles(() => StyleSheet.create({
     alignItems: "baseline",
     marginBottom: space[2],
   },
-  dueTodayLabel: { fontSize: 13, color: color.accent, fontWeight: "600" },
+  dueTodayLabel: { fontSize: 13, color: color.accentText, fontWeight: "600" },
   dueTodayValue: {
     fontSize: 16,
-    color: color.accent,
+    color: color.accentText,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
@@ -1274,9 +1557,16 @@ const styles = checkoutStyles(() => StyleSheet.create({
     bottom: 0,
     paddingTop: space[4],
     paddingHorizontal: space[6],
-    backgroundColor: materials.pane.solidFill,
+    // issue #4522 X-11 — the pane fill is a translucent tint on host themes,
+    // so the schedule rows showed through the sticky bar. The bar sits on the
+    // page colour (opaque) with the pane tint drawn over it.
+    backgroundColor: color.canvas,
     borderTopWidth: 1,
     borderTopColor: color.line,
+  },
+  bottomBarTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: materials.pane.solidFill,
   },
   // #1841 — `bottomBarHidden` deleted with the keyboard plumbing that was its
   // only consumer. A style whose sole purpose was hiding the bar behind a

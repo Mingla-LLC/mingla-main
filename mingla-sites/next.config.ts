@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 import { API_CSP } from "./src/lib/csp";
 import { assertNoLocalModeOnVercelBuild } from "./src/lib/localMode";
@@ -14,6 +15,10 @@ assertNoLocalModeOnVercelBuild(process.env);
  * inline scripts the nonce exists to allow.
  */
 const config: NextConfig = {
+  // #4523 — the Mingla calendar ships as TypeScript source from packages/calendar-web.
+  transpilePackages: ["@mingla/calendar-web"],
+  // The linked package lives one level up, so Turbopack's root is the repo root (#4523).
+  turbopack: { root: path.join(__dirname, "..") },
   poweredByHeader: false,
   reactStrictMode: true,
   typedRoutes: false,

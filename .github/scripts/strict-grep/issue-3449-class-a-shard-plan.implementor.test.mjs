@@ -138,6 +138,12 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD #4518] Re-derived after #4518 added the locally declared
   // checkout one-colour-owner gate (issue-4518-checkout-one-colour-owner,
   // +2 batch:A executions: self-test and plain). Read off the plan command as above.
+  // [TEST-MOD #4523] Re-derived after #4523 added the locally declared
+  // dates-are-picked gate (issue-4523-dates-are-picked, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
+  // [TEST-MOD-APPROVED #4522] Re-derived after #4522 added the locally declared
+  // flex-claim guard (issue-4522-flex-claim-guard, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
   // [TEST-MOD #4514] Re-derived after #4514 added the locally declared
   // brand forms one-question-model gate (i-4514-one-question-model, +2 batch:A
   // executions: self-test and plain). Read off the plan command as above.
@@ -145,9 +151,12 @@ const EXPECTED_PLAN = Object.freeze({
   // no-client-service-role-rpc gate (issue-4541-no-client-service-role-rpc,
   // +2 batch:A executions: self-test and plain), then the forms-owner-no-nested-lazy
   // gate (issue-4541-forms-owner-no-nested-lazy, +2 more). Read off the plan command as above.
-  executions: 1073,
-  loadsSeconds: [386.1, 386.1, 386.1],
-  counts: [357, 358, 358],
+  // [TEST-MOD #4522] Re-derived after merging main's two #4541 gates (+4
+  // batch:A executions) beside the #4522 flex-claim guard and #4523 dates gate.
+  // Read off the plan command as above.
+  executions: 1077,
+  loadsSeconds: [386.2, 386.2, 386.3],
+  counts: [358, 359, 360],
 });
 
 const tempDir = (label) =>

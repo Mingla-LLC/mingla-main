@@ -13,6 +13,11 @@
  * Spec: Mingla_Artifacts/specs/SPEC_META-ORCH-1174_LEGB_MULTITIER.md §C/§D.
  */
 
+import {
+  type TripPaymentPlanV2,
+  validateTripPaymentPlanV2,
+} from "./tripPlanV2EditorModel";
+
 /**
  * META-ORCH-1174 Leg B2 — soft cap on packages per trip (DEC-E). The data
  * layer + checkout engine support N; this is a UX/density guard only.
@@ -40,7 +45,7 @@ export interface ValidatedPackage {
   paymentPlan: {
     deposit_pct: number;
     installments: ValidatedInstallment[];
-  } | null;
+  } | TripPaymentPlanV2 | null;
 }
 
 export interface TripPackagesValidationResult {
@@ -96,6 +101,25 @@ export function validateTripPackages(
     }
     if (p.paymentPlan !== null) {
       const plan = p.paymentPlan;
+      // The legacy shape has no version key; its presence therefore narrows
+      // this union to the server-owned v2 plan shape.
+      if ("v" in plan) {
+        const priceMinor = Math.round(
+          (p.priceMajor.trim().length > 0 ? price : 0) * 100,
+        );
+        const validation = validateTripPaymentPlanV2(
+          plan,
+          priceMinor,
+          `${label}'s package price`,
+        );
+        if (!validation.ok) {
+          return {
+            ok: false,
+            reason: `${label}'s payment plan: ${validation.message}`,
+          };
+        }
+        continue;
+      }
       const sum =
         plan.deposit_pct +
         plan.installments.reduce((acc, inst) => acc + inst.pct, 0);

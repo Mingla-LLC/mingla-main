@@ -20,8 +20,11 @@ import { SubscriberContextCard } from "../components/entity/SubscriberContextCar
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { listOrders, getOrder, getOrdersOverview } from "../services/adminMoneyService";
-import { formatMoneyMinor } from "../lib/moneyFormat";
+import { listOrders, getOrder, getOrdersOverview, getOrderAddOnLines, getTripOrderBalance } from "../services/adminMoneyService";
+import { overpaymentRows } from "../lib/orderOverpayments";
+import { tripOrderBalanceView } from "../lib/tripOrderBalance";
+import { addOnRows, addOnLinesBody, addOnSummary, planRemovalNotice, SPREAD_ADD_ON_NOTE } from "../lib/orderAddOnRefunds";
+import { formatMoneyMinorWhole } from "../lib/moneyFormat";
 import { describeAdminRefundError } from "../lib/adminRefundError";
 import { LoadError } from "../components/ui/LoadError";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -35,10 +38,10 @@ import { PageHeader } from "../components/ui/PageHeader";
 // Order payment_status values (DB enum) an admin may refund.
 const REFUNDABLE_STATUSES = ["paid", "partial_refund"];
 
-// ── Money formatter: the shared one (#4130; never falls back to USD) ─────────
+// ── Money formatter: the shared one (#4130; never falls back to USD), whole amounts without decimals (#4522 S-16) ─
 
 function formatMoney(cents, currency) {
-  return formatMoneyMinor(cents, currency);
+  return formatMoneyMinorWhole(cents, currency);
 }
 
 /** #4130: a free order reads "Free", never "$0.00". */
@@ -295,7 +298,63 @@ function jsonBlock(obj) {
   );
 }
 
-function buildOrderSections(bundle, onViewSubscriber, money) {
+// #4522 S-13 (spec §12) — the plan terms and balance of a v2 trip order.
+function planTermsSection(plan) {
+  const t = plan.terms;
+  const cur = plan.currency;
+  return {
+    label: "Plan terms",
+    fields: [
+      field("Plan version", t.version == null ? "—" : `v${t.version}`),
+      field("Deposit", null, () => (t.depositMinor == null ? "—" : formatMoney(t.depositMinor, cur))),
+      field("Payments after the deposit", t.countGiven == null ? "—"
+        : `${t.countGiven}${t.countOffered != null && t.countOffered !== t.countGiven ? ` of ${t.countOffered}` : ""}`),
+      field("Final payment due", t.finalDueAt ? formatDateTime(t.finalDueAt) : "—"),
+      field("Late bookings adjust", t.autoAdjust ? "Yes" : "No"),
+      field("Any amount allowed", null, () => (t.flexEnabled
+        ? `Yes${t.minPaymentMinor != null ? ` · smallest ${formatMoney(t.minPaymentMinor, cur)}` : ""}`
+        : "No")),
+      field("Deposit non-refundable", t.depositNonRefundable ? "Yes" : "No"),
+      field("Add-ons", t.addonPaymentMode === "spread" ? "Spread over the plan" : t.addonPaymentMode === "today" ? "Paid today" : "—"),
+      field("Paid", null, () => (plan.paidMinor == null ? "—" : formatMoney(plan.paidMinor, cur))),
+      field("Balance remaining", null, () => (plan.remainingMinor == null ? "—" : <span className="font-medium">{formatMoney(plan.remainingMinor, cur)}</span>)),
+      field("Total", null, () => (plan.totalMinor == null ? "—" : formatMoney(plan.totalMinor, cur))),
+      ...(plan.belowProviderMinimum ? [field("Can't be charged", "Below the payment provider's minimum. Still owed; follow up with the traveler.")] : []),
+      ...(plan.paymentInFlight ? [field("Payment in progress", "Yes")] : []),
+    ],
+  };
+}
+
+function planRowsSection(plan, money) {
+  return {
+    label: `Installments (${plan.rows.length})`,
+    fields:
+      plan.rows.length === 0
+        ? [noneField("No installment plan")]
+        : plan.rows.map((row) =>
+            field(row.ordinal == null ? row.kind : `#${row.ordinal}`, row, (r) => (
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{formatMoney(r.buyerTotalMinor ?? r.amountMinor, plan.currency)}</span>
+                <Badge variant={r.status === "collected" ? "success" : r.status === "failed" ? "error" : "warning"}>{r.statusLabel}</Badge>
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  {r.kind}
+                  {r.scheduleVersion != null ? ` · schedule v${r.scheduleVersion}` : ""}
+                  {r.addonPortionMinor > 0 ? ` · add-ons ${formatMoney(r.addonPortionMinor, plan.currency)}` : ""}
+                  {r.refundedMinor > 0 ? ` · refunded ${formatMoney(r.refundedMinor, plan.currency)}` : ""}
+                </span>
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  {PROVIDER_NAME[r.provider ?? money?.provider] || "—"}
+                  {" · "}
+                  {INSTALLMENT_METHOD_NAME[r.collectionMethod] || "—"}
+                </span>
+                {r.dueAt && <span className="text-xs text-[var(--color-text-tertiary)]">due {formatDateTime(r.dueAt)}</span>}
+              </span>
+            )),
+          ),
+  };
+}
+
+function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance = null, tripBalanceError = null) {
   const order = bundle.order || {};
   const event = bundle.event || null;
   const brand = bundle.brand || null;
@@ -304,6 +363,8 @@ function buildOrderSections(bundle, onViewSubscriber, money) {
   const refunds = Array.isArray(bundle.refunds) ? bundle.refunds : [];
   const discountLines = Array.isArray(bundle.discount_lines) ? bundle.discount_lines : [];
   const split = bundle.partner_split || null;
+  // #4522 S-13 (spec §12): a v2 trip order reads its rows from the balance.
+  const plan = tripOrderBalanceView(tripBalance);
 
   const sections = [
     // #4130: what the buyer paid, what Mingla kept, and whether the host was paid.
@@ -392,6 +453,22 @@ function buildOrderSections(bundle, onViewSubscriber, money) {
               )),
             ),
     },
+    // #3281 S4: add-on lines (name, qty, paid, refunded). Hidden when the order has none.
+    ...(addOns?.error
+      ? [{ label: "Add-ons", fields: [noneField(addOns.error)] }]
+      : addOnRows(addOns?.lines).length > 0
+        ? [{
+            label: `Add-ons (${addOnRows(addOns.lines).length})`,
+            fields: addOnRows(addOns.lines).map((row) =>
+              field(row.name, row, (r) => (
+                <span className="flex flex-wrap items-center gap-2">
+                  <span>{addOnSummary(r, formatMoney, order.currency)}</span>
+                  {r.remaining === 0 && <Badge variant="default">Refunded</Badge>}
+                </span>
+              )),
+            ),
+          }]
+        : []),
     {
       label: `Discounts (${discountLines.length})`,
       fields:
@@ -403,7 +480,7 @@ function buildOrderSections(bundle, onViewSubscriber, money) {
               )),
             ),
     },
-    {
+    plan ? planRowsSection(plan, money) : {
       label: `Installments (${installments.length})`,
       fields:
         installments.length === 0
@@ -457,6 +534,40 @@ function buildOrderSections(bundle, onViewSubscriber, money) {
     },
   ];
 
+  // #4522: a real failure reading the plan balance says so; the order keeps
+  // main's view (a missing function before the migrations is not an error).
+  if (tripBalanceError) {
+    sections.splice(2, 0, { label: "Plan terms", fields: [noneField(tripBalanceError)] });
+  }
+  if (plan) {
+    sections.splice(2, 0, planTermsSection(plan));
+    sections.push({
+      label: `Balance history (${plan.history.length})`,
+      fields:
+        plan.history.length === 0
+          ? [noneField("No balance changes yet")]
+          : plan.history.map((event) =>
+              field(event.createdAt ? formatDateTime(event.createdAt) : "—", event.label),
+            ),
+    });
+  }
+
+  // #4522 N5: money the traveler paid beyond what the trip cost, and where
+  // its automatic refund stands.
+  const overpaid = overpaymentRows(tripBalance);
+  if (overpaid.length > 0) {
+    sections.push({
+      label: "Overpayments",
+      fields: overpaid.map((op) =>
+        field(op.reasonLabel, null, () => (
+          <span className={op.needsAttention ? "text-[var(--color-error-700)]" : undefined}>
+            {formatMoney(op.amountMinor, op.currency)} · {op.stateLabel}
+            {op.resolvedAt ? ` · ${formatDateTime(op.resolvedAt)}` : ""}
+          </span>
+        )),
+      ),
+    });
+  }
   return sections;
 }
 
@@ -468,8 +579,9 @@ function buildOrderSections(bundle, onViewSubscriber, money) {
 
 // Mounted only while open (parent gates with `refundOpen &&`), so picks reset on
 // each open without a setState-in-effect.
-function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
+function RefundModal({ onClose, order, lineItems, addOnLines, onRefunded, onNotice, provider }) {
   const [qtys, setQtys] = useState({});
+  const [addOnQtys, setAddOnQtys] = useState({});
   const [idempotencyKey, setIdempotencyKey] = useState(createAdminRefundIdempotencyKey);
 
   const rows = (lineItems || []).map((li) => {
@@ -484,7 +596,9 @@ function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
       amount: (li.unit_price_cents ?? 0) * qty,
     };
   });
-  const totalCents = rows.reduce((s, r) => s + r.amount, 0);
+  // #3281 S4: an add-on can be refunded on its own; the buyer keeps the ticket.
+  const addOns = addOnRows(addOnLines, addOnQtys);
+  const totalCents = rows.reduce((s, r) => s + r.amount, 0) + addOns.reduce((s, r) => s + r.amount, 0);
   const confirmPhrase = (totalCents / 100).toFixed(2);
 
   const setQty = (id, val, max) => {
@@ -493,22 +607,32 @@ function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
     setQtys((prev) => ({ ...prev, [id]: n }));
   };
 
+  const setAddOnQty = (id, val, max) => {
+    const parsed = Math.floor(Number(val));
+    const n = Number.isFinite(parsed) ? Math.max(0, Math.min(max, parsed)) : 0;
+    setAddOnQtys((prev) => ({ ...prev, [id]: n }));
+  };
+
   const selectFull = () => {
     const next = {};
     rows.forEach((r) => {
       if (r.remaining > 0) next[r.id] = r.remaining;
     });
     setQtys(next);
+    // Returning every ticket returns the add-ons too; the server adds them.
+    setAddOnQtys({});
   };
 
   const handleConfirm = async ({ reason }) => {
     const lines = rows
       .filter((r) => r.qty > 0)
       .map((r) => ({ order_line_item_id: r.id, quantity: r.qty, amount_cents: r.amount }));
-    if (lines.length === 0) throw new Error("Pick at least one item to refund.");
-    const { error } = await refundOrder({
+    const addOnBody = addOnLinesBody(addOns);
+    if (lines.length === 0 && !addOnBody.addOnLines) throw new Error("Pick at least one item to refund.");
+    const { data, error } = await refundOrder({
       order_id: order.id,
       lines,
+      ...addOnBody,
       reason,
       idempotencyKey,
     });
@@ -524,6 +648,8 @@ function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
       if (described.keySpent) setIdempotencyKey(createAdminRefundIdempotencyKey());
       throw new Error(described.message || body?.detail || error.message || "Refund failed.");
     }
+    // #3281 S5: a spread add-on with nothing paid yet comes off the plan only.
+    onNotice?.(planRemovalNotice(data, formatMoney, order.currency));
     onRefunded?.();
   };
 
@@ -558,7 +684,7 @@ function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
             Full refund
           </button>
         </div>
-        {rows.length === 0 ? (
+        {rows.length === 0 && addOns.length === 0 ? (
           <p className="text-sm text-[var(--color-text-muted)]">No refundable line items on this order.</p>
         ) : (
           rows.map((r) => (
@@ -590,6 +716,38 @@ function RefundModal({ onClose, order, lineItems, onRefunded, provider }) {
             </div>
           ))
         )}
+        {addOns.length > 0 && (
+          <span className="pt-1 text-xs font-medium text-[var(--color-text-secondary)]">Add-ons (refund on their own; the ticket stays valid)</span>
+        )}
+        {addOns.map((r) => (
+          <div
+            key={r.id}
+            className="flex items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2"
+          >
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-medium text-[var(--color-text-primary)]">{r.name}</span>
+              <span className="block text-xs text-[var(--color-text-tertiary)]">
+                {formatMoney(r.unit, order.currency)} ea · {r.remaining} refundable
+              </span>
+              {r.spread && (
+                <span className="block text-xs text-[var(--color-text-tertiary)]">{SPREAD_ADD_ON_NOTE}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <input
+                type="number"
+                min={0}
+                max={r.remaining}
+                value={r.qty}
+                onChange={(e) => setAddOnQty(r.id, e.target.value, r.remaining)}
+                disabled={r.remaining === 0}
+                className={inputClass}
+                aria-label={`Refund quantity for add-on ${r.name}`}
+              />
+              <span className="w-20 text-right text-sm font-medium">{formatMoney(r.amount, order.currency)}</span>
+            </div>
+          </div>
+        ))}
         <div className="flex items-center justify-between border-t border-[var(--gray-200)] pt-2">
           <span className="text-sm font-semibold text-[var(--color-text-primary)]">Refund total</span>
           <span className="text-sm font-bold text-[var(--color-text-primary)]">{formatMoney(totalCents, order.currency)}</span>
@@ -609,6 +767,10 @@ export function BusinessOrdersPage() {
   const [subUserId, setSubUserId] = useState(null);
   const [refundOpen, setRefundOpen] = useState(false);
   const [money, setMoney] = useState(null);
+  const [addOns, setAddOns] = useState(null);
+  const [tripBalance, setTripBalance] = useState(null);
+  // #3281 S5: what the last refund did when it only took an add-on off the plan.
+  const [refundNotice, setRefundNotice] = useState(null);
   const [initialStatus] = useState(() => statusFromHash());
 
   useEffect(() => {
@@ -623,7 +785,18 @@ export function BusinessOrdersPage() {
     setError(null);
     setBundle(null);
     setMoney(null);
+    setAddOns(null);
+    setTripBalance(null);
     try {
+      // #4522 N5: a v2 trip order's balance and overpayments (none for any
+      // other order, or before the #4522 migrations are applied).
+      setTripBalance(await getTripOrderBalance(orderId));
+      // #3281 S4: add-on lines; a failed read says so and the order still shows.
+      try {
+        setAddOns({ lines: await getOrderAddOnLines(orderId), error: null });
+      } catch {
+        setAddOns({ lines: [], error: "Couldn't load this order's add-ons. Reload to try again." });
+      }
       // #4130: the order's money row (provider, fee, host paid) from the list RPC.
       try {
         const found = await listOrders({ search: orderId, page: 0, pageSize: 5 });
@@ -692,11 +865,14 @@ export function BusinessOrdersPage() {
             backLabel: "Orders",
             onBack: backToList,
           }}
-          sections={bundle ? buildOrderSections(bundle, setSubUserId, money) : []}
+          sections={bundle ? buildOrderSections(bundle, setSubUserId, money, addOns, tripBalance?.balance ?? null, tripBalance?.error ?? null) : []}
         />
         {bundle && REFUNDABLE_STATUSES.includes(order.payment_status) && !isFreeOrder(order) && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
-            <Button variant="danger" size="md" onClick={() => setRefundOpen(true)}>
+            {refundNotice && (
+              <span role="status" className="mr-auto text-sm text-[var(--color-text-secondary)]">{refundNotice}</span>
+            )}
+            <Button variant="danger" size="md" onClick={() => { setRefundNotice(null); setRefundOpen(true); }}>
               Issue refund
             </Button>
           </div>
@@ -706,7 +882,9 @@ export function BusinessOrdersPage() {
             onClose={() => setRefundOpen(false)}
             order={order}
             lineItems={bundle?.line_items || []}
+            addOnLines={addOns?.lines || []}
             onRefunded={() => loadOrder(selectedOrderId)}
+            onNotice={setRefundNotice}
             provider={money?.provider}
           />
         )}

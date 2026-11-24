@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/process-scheduled-installments/__tests__/issue_4522_cron_excludes_flex.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4522-05-cron-excludes-flex",
+  "profile": "deno-1.46-stripe"
+}

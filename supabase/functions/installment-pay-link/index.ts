@@ -9,9 +9,11 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import { handleInstallmentPaystackCharge } from "../_shared/installments/paystackInstallmentWebhook.ts";
 import {
+  mintPayLinkToken,
   PAY_LINK_TOKEN_PATTERN,
   payLinkTokenHashHex,
 } from "../_shared/installments/installmentPayLinks.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { paystackTicketSplitFields } from "../_shared/ngPaystackSplit.ts";
 import {
   PAYOUT_HOLD_UNREADABLE_ERROR,
@@ -50,6 +52,7 @@ export interface PayLinkDeps {
   initialize: typeof paystackInitializeTransaction;
   verify: typeof paystackVerifyTransaction;
   handleCharge: typeof handleInstallmentPaystackCharge;
+  mintToken: () => string;
 }
 
 const windows = new Map<string, { startedAt: number; count: number }>();
@@ -111,6 +114,58 @@ async function markUnknown(
   });
 }
 
+async function balanceLinkFor(
+  supabase: SupabaseClient,
+  link: SafeLink,
+  mintToken: () => string,
+): Promise<Record<string, unknown> | null> {
+  if (link.state !== "payable" || typeof link.installment_id !== "string") {
+    return null;
+  }
+  try {
+    // issue #4522 (F6) — no balance affordance before the #4522 migrations.
+    if (!(await planV2SchemaAvailable(supabase))) return null;
+    const { data: installment } = await supabase.from("order_installments")
+      .select("order_id")
+      .eq("id", link.installment_id)
+      .maybeSingle();
+    const orderId = (installment as { order_id?: unknown } | null)?.order_id;
+    if (typeof orderId !== "string") return null;
+    const { data: balance, error: balanceError } = await supabase.rpc(
+      "issue_4522_balance",
+      { p_order_id: orderId },
+    );
+    const safe = (balance ?? {}) as Record<string, unknown>;
+    if (
+      balanceError !== null || safe.canPayAnyAmount !== true ||
+      typeof safe.remainingMinor !== "number" ||
+      !Number.isSafeInteger(safe.remainingMinor) || safe.remainingMinor <= 0
+    ) return null;
+    const rawToken = mintToken();
+    const { data: issued, error: issueError } = await supabase.rpc(
+      "issue_4522_issue_balance_link",
+      {
+        p_order_id: orderId,
+        p_token_hash: await payLinkTokenHashHex(rawToken),
+      },
+    );
+    if (
+      issueError !== null || (issued as { ok?: boolean } | null)?.ok !== true
+    ) {
+      return null;
+    }
+    return {
+      flexEnabled: true,
+      remainingMinor: safe.remainingMinor,
+      token: rawToken,
+    };
+  } catch {
+    // The existing installment page stays usable if the optional balance
+    // affordance cannot be minted. Never leak or partially return a raw token.
+    return null;
+  }
+}
+
 export async function handleInstallmentPayLink(
   req: Request,
   depsIn: Partial<PayLinkDeps> = {},
@@ -138,6 +193,7 @@ export async function handleInstallmentPayLink(
   const initialize = depsIn.initialize ?? paystackInitializeTransaction;
   const verify = depsIn.verify ?? paystackVerifyTransaction;
   const handleCharge = depsIn.handleCharge ?? handleInstallmentPaystackCharge;
+  const mintToken = depsIn.mintToken ?? (() => mintPayLinkToken());
   const tokenHash = await payLinkTokenHashHex(token);
   if (rateLimited(tokenHash, now.getTime())) {
     return jsonResponse({ error: "rate_limited" }, 429);
@@ -145,7 +201,13 @@ export async function handleInstallmentPayLink(
 
   let link = await resolveLink(supabase, tokenHash);
   if (link.state === "invalid") return jsonResponse({ state: "invalid" }, 404);
-  if (action === "view") return jsonResponse(publicLink(link));
+  if (action === "view") {
+    const balance = await balanceLinkFor(supabase, link, mintToken);
+    return jsonResponse({
+      ...publicLink(link),
+      ...(balance === null ? {} : { balance }),
+    });
+  }
   if (action === "status") {
     if (typeof link.installment_id === "string" && link.state === "payable") {
       const { data: attempt } = await supabase
@@ -223,7 +285,10 @@ export async function handleInstallmentPayLink(
   const brandRead = await supabase.from("brands")
     .select("paystack_subaccount_code,payout_hold_cutover_at")
     .eq("id", brandId).maybeSingle();
-  const cutoverStamp = payoutHoldStampFromRead(brandRead, "installment-pay-link");
+  const cutoverStamp = payoutHoldStampFromRead(
+    brandRead,
+    "installment-pay-link",
+  );
   if (!cutoverStamp.ok) {
     return jsonResponse(
       { error: PAYOUT_HOLD_UNREADABLE_ERROR },

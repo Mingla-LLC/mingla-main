@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { showAlert } from "../ui/showAlert";
-import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
@@ -24,11 +23,10 @@ import { IconChrome } from "../ui/IconChrome";
 import { Input } from "../ui/Input";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
-import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+import { HostDateTimeField } from "../ui/HostCalendarFields";
 import { TicketLinkRequestsSheet } from "./TicketLinkRequestsSheet";
 
 const loadLinks = () => import("../../services/ticketLinksService");
-type ExpiryPicker = "date" | "time" | null;
 
 const defaultExpiry = (): Date => {
   const value = new Date(Date.now() + 24 * 60 * 60 * 1_000);
@@ -95,7 +93,6 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
   const [partyMax, setPartyMax] = useState(1);
   const [approvalMode, setApprovalMode] = useState<"auto" | "host">("auto");
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
-  const [expiryPicker, setExpiryPicker] = useState<ExpiryPicker>(null);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<TicketLinkRecord | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -140,7 +137,6 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
     setPartyMax(1);
     setApprovalMode("auto");
     setExpiresAt(null);
-    setExpiryPicker(null);
   }, []);
 
   const beginEdit = useCallback((link: TicketLinkRecord) => {
@@ -153,7 +149,6 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
     setPartyMax(link.partyMax);
     setApprovalMode(link.approvalMode);
     setExpiresAt(link.expiresAt);
-    setExpiryPicker(null);
     setCreating(true);
   }, []);
 
@@ -207,19 +202,6 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
       setSubmitting(false);
     }
   }, [approvalMode, editing, eventId, expiresAt, isFree, label, limited, maxUses, onChanged, partyMax, refresh, resetForm, selectedTierId]);
-
-  const changeExpiry = useCallback((kind: Exclude<ExpiryPicker, null>) =>
-    (event: DateTimePickerEvent, selected?: Date): void => {
-      if (Platform.OS === "android") setExpiryPicker(null);
-      if (event.type === "dismissed" || selected === undefined) return;
-      const next = expiresAt === null ? defaultExpiry() : new Date(expiresAt);
-      if (kind === "date") {
-        next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-      } else {
-        next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-      }
-      setExpiresAt(next.toISOString());
-    }, [expiresAt]);
 
   const copy = useCallback(async (url: string) => {
     try {
@@ -459,7 +441,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                 <View style={styles.choicesRow} accessibilityRole="radiogroup">
                   <Pressable
                     style={[styles.choice, styles.expiryChoice, expiresAt === null && styles.choiceActive]}
-                    onPress={() => { setExpiresAt(null); setExpiryPicker(null); }}
+                    onPress={() => setExpiresAt(null)}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: expiresAt === null }}
                   >
@@ -474,39 +456,18 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                     <Text style={styles.choiceText}>At a set time</Text>
                   </Pressable>
                 </View>
-                {expiresAt !== null ? Platform.OS === "web" ? (
-                  <WebDateTimeInput
-                    type="datetime-local"
-                    value={localDateTimeValue(new Date(expiresAt))}
-                    min={localDateTimeValue(new Date())}
-                    ariaLabel="Link expiry date and time"
-                    testID="ticket-link-expiry-web"
-                    onChangeValue={(value) => {
-                      if (value.length === 0) return;
-                      const next = new Date(value);
-                      if (Number.isFinite(next.getTime())) setExpiresAt(next.toISOString());
+                {expiresAt !== null ? (
+                  <HostDateTimeField
+                    label="Link stops working at"
+                    accessibilityLabel="Link expiry date and time"
+                    value={{ date: localDateTimeValue(new Date(expiresAt)).slice(0, 10), time: localDateTimeValue(new Date(expiresAt)).slice(11, 16) }}
+                    min={localDateTimeValue(new Date()).slice(0, 10)}
+                    testID="ticket-link-expiry"
+                    onChangeValue={(next) => {
+                      const picked = new Date(`${next.date}T${next.time}`);
+                      if (Number.isFinite(picked.getTime())) setExpiresAt(picked.toISOString());
                     }}
                   />
-                ) : (
-                  <View style={styles.expiryNative}>
-                    <View style={styles.choicesRow}>
-                      <Button label={new Date(expiresAt).toLocaleDateString()} variant="secondary" onPress={() => setExpiryPicker("date")} />
-                      <Button label={new Date(expiresAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} variant="secondary" onPress={() => setExpiryPicker("time")} />
-                    </View>
-                    {expiryPicker !== null ? (
-                      <>
-                        <DateTimePicker
-                          value={new Date(expiresAt)}
-                          mode={expiryPicker}
-                          display={Platform.OS === "ios" ? "spinner" : "default"}
-                          minimumDate={expiryPicker === "date" ? new Date() : undefined}
-                          onChange={changeExpiry(expiryPicker)}
-                          themeVariant="dark"
-                        />
-                        {Platform.OS === "ios" ? <Button label="Done" variant="ghost" onPress={() => setExpiryPicker(null)} /> : null}
-                      </>
-                    ) : null}
-                  </View>
                 ) : null}
 
                 {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -567,7 +528,6 @@ const styles = StyleSheet.create({
   choicesRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   choice: { padding: space[4], borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.inset },
   expiryChoice: { flex: 1 },
-  expiryNative: { gap: space[2] },
   choiceActive: { borderColor: color.accent, backgroundColor: color.accentTint },
   choiceText: { color: color.text1, fontSize: 14, fontWeight: "600" },
   chip: { paddingHorizontal: space[4], paddingVertical: space[2], borderRadius: 999, borderWidth: 1, borderColor: color.line },

@@ -14,6 +14,7 @@ import { build } from "esbuild";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN = path.resolve(HERE, "..");
 const MARKETING = path.resolve(ADMIN, "..", "mingla-marketing");
+const PACKAGES = path.resolve(ADMIN, "..", "packages");
 const OUT = path.join(ADMIN, "public", "forms-kit");
 const NM = path.join(ADMIN, "node_modules");
 
@@ -56,7 +57,16 @@ await build({
   inject: [],
   plugins: [stubPlugin],
   // React and react-dom always come from mingla-admin, one copy each.
-  alias: { react: path.join(NM, "react"), "react-dom": path.join(NM, "react-dom") },
+  // #4523: the kit's date field uses the shared Mingla calendar, a workspace
+  // package outside both apps (the same two entries as the Vite alias in
+  // vite.config.js; the more specific key first). Its own `react` import is
+  // covered by the alias above.
+  alias: {
+    "@mingla/calendar-web/calendar.css": path.join(PACKAGES, "calendar-web", "src", "calendar.css"),
+    "@mingla/calendar-web": path.join(PACKAGES, "calendar-web", "src", "index.ts"),
+    react: path.join(NM, "react"),
+    "react-dom": path.join(NM, "react-dom"),
+  },
   nodePaths: [NM],
   // The sandboxed preview has no `process`. Every `process.env.*` the kit reads
   // is an empty string (the preview never connects: connect-src 'none'), and a

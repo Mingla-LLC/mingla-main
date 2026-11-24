@@ -16,6 +16,8 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import { formatMoneyFromCents } from "../email/currency.ts";
 import { paystackTicketSplitFields } from "../ngPaystackSplit.ts";
+import { claimPaidInFullNotice } from "./paidInFullNotice.ts";
+import { alertUnchargeableRemainder } from "./installmentOpsAlert.ts";
 import {
   classifyPaystackChargeResponse,
   paystackChargeAuthorization,
@@ -198,6 +200,26 @@ async function notifyFailure(
   const nextRetryAt = typeof resolved.next_retry_at === "string"
     ? resolved.next_retry_at
     : null;
+  // issue #4522 (D-7) — the missed payment was moved onto the later payments:
+  // nothing is owed on this row and the booking is not at risk. The buyer
+  // gets exactly one notice, the email the dispatcher renders for a
+  // rolled-over row ("Missed payment moved to later payments"): no pay link
+  // for a closed row and no "didn't go through" push.
+  if (resolved.rolled_over === true) {
+    await deps.dispatchBuyerEmail("installment_dunning", {
+      orderId: ctx.orderId,
+      installmentId: ctx.installmentId,
+      installmentOrdinal: ctx.ordinal,
+      failureReason: String(resolved.failure_reason ?? "card_declined"),
+      retryCount,
+      nextRetryAt,
+      provider: "paystack",
+      actionUrl: null,
+      actionLabel: null,
+    });
+    await notifyHostFailure(ctx, resolved, deps);
+    return;
+  }
   // Fresh pay link for the dunning email's button (the buyer can pay any way).
   const link = await sendInstallmentPayLink(supabase, {
     installmentId: ctx.installmentId,
@@ -249,14 +271,23 @@ async function notifyHostFailure(
   const amount = formatMoneyFromCents(ctx.amountCents, ctx.currency);
   const buyer = ctx.buyerFirstName ?? "A buyer";
   const idem = `${ctx.installmentId}:${retryCount}`;
+  // Pass 5 — a missed payment moved onto the later payments is never "we'll
+  // try again": nothing more is tried on this one (the rollover wording).
+  const rolledOver = !atRisk && resolved.rolled_over === true;
   await deps.notifyHost({
     brandId: ctx.brandId,
     type: atRisk
       ? "business.installment_at_risk"
       : "business.installment_failed",
-    title: atRisk ? "Booking at risk" : "Instalment didn't go through",
+    title: atRisk
+      ? "Booking at risk"
+      : rolledOver
+      ? "Missed payment moved to later payments"
+      : "Instalment didn't go through",
     body: atRisk
       ? `${buyer}'s booking for ${ctx.tripTitle} is at risk after 3 missed payments. Review it in Trip Money.`
+      : rolledOver
+      ? `A ${amount} instalment for ${ctx.tripTitle} didn't go through, so it was moved to the traveler's later payments.`
       : `A ${amount} instalment for ${ctx.tripTitle} didn't go through. We'll try again${
         nextRetryAt ? ` on ${nextRetryAt.slice(0, 10)}` : ""
       }.`,
@@ -313,6 +344,8 @@ export async function chargePaystackInstallment(input: {
   }
   const attempt = (begun ?? {}) as Record<string, unknown>;
   if (attempt.ok !== true) {
+    // issue #4522 — a balance too small to charge stays owed; ops once.
+    await alertUnchargeableRemainder(attempt, deps.alertOps);
     return {
       outcome: "skipped",
       reason: String(attempt.reason ?? "not_chargeable"),
@@ -400,7 +433,9 @@ export async function chargePaystackInstallment(input: {
       };
     }
     if (
-      resolved.outcome === "collected" && Number(resolved.remaining ?? 1) === 0
+      resolved.outcome === "collected" && Number(resolved.remaining ?? 1) === 0 &&
+      // issue #4522 (N7) — once per order with the #4522 schema; unchanged before it.
+      await claimPaidInFullNotice(supabase, ctx.orderId, "paystack_saved_card")
     ) {
       await deps.dispatchBuyerEmail("installment_plan_paid_in_full", {
         orderId: ctx.orderId,

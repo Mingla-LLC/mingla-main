@@ -54,6 +54,7 @@ export interface CartTicketExtrasProps {
   currency: string;
 }
 
+
 // In the date's own timezone, so the day named is the day being bought.
 const shortDay = (iso: string, timeZone: string): string => {
   const options: Intl.DateTimeFormatOptions = {

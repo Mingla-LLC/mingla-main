@@ -47,6 +47,8 @@ export interface RsvpDetailsModalProps {
   guestForms: React.ReactNode;
   /** #4541 — questions for Going/Maybe; omitted for Can't-go. */
   questionsNode: React.ReactNode;
+  /** issue #3281 S6 — the RSVP add-on picker for Going/Maybe; absent for Can't-go. */
+  addOnsNode?: React.ReactNode;
   /** The validation/submit error node (shared). */
   errorNode: React.ReactNode;
   /** Primary-button label, decision-aware. */
@@ -65,6 +67,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
   contactForm,
   guestForms,
   questionsNode,
+  addOnsNode = null,
   errorNode,
   continueLabel,
   continueEnabled,
@@ -117,6 +120,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
             {contactForm}
             {guestForms}
             {questionsNode}
+            {addOnsNode}
             {errorNode}
           </ScrollView>
           <Pressable

@@ -222,6 +222,9 @@ export const submitDeckRsvp = async (
   guests?: RsvpGuestPayload[],
   primary?: { name: string; email: string; phone: string; phoneCountryIso?: string | null },
   brandForm?: import("@mingla/offering-rendering").RsvpBrandFormPayload | null,
+  // issue #3281 S6 — free add-ons picked with a Going reply; empty or absent
+  // sends none, so the body is exactly the one sent before.
+  rsvpAddOns?: ReadonlyArray<{ addOnId: string; quantity: number }>,
 ): Promise<SubmitDeckRsvpResult> => {
   const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
     body: {
@@ -237,6 +240,7 @@ export const submitDeckRsvp = async (
       // `undefined` = the form read did not succeed: no marker, so the server
       // completes the RSVP as "to answer". `null` = read ok, no form.
       ...(brandForm === undefined ? {} : { brandFormStep: 1, brandForm }),
+      ...(rsvpAddOns !== undefined && rsvpAddOns.length > 0 ? { rsvpAddOns } : {}),
     },
   });
   if (error !== null) {
@@ -443,4 +447,60 @@ export const fetchRsvpPassPdf = async (
       contentBase64: arrayBufferToBase64(await response.arrayBuffer()),
     },
   };
+};
+
+/**
+ * issue #3281 S6 — an RSVP's add-ons as the RSVP reader lists them
+ * (`rsvpAddOns`, present only while add_on_rollout.rsvp_enabled is on); null
+ * when it offers none.
+ */
+export const fetchRsvpAddOnsBySlug = async (
+  brandSlug: string,
+  eventSlug: string,
+): Promise<unknown> => {
+  const { data, error } = await supabase.rpc("pg_public_rsvp_by_slug", {
+    p_brand_slug: brandSlug,
+    p_event_slug: eventSlug,
+  });
+  if (error !== null) throw new Error(error.message || "rsvp_add_ons_load_failed");
+  const payload = data as { rsvpAddOns?: unknown } | null;
+  return payload !== null && typeof payload === "object" && Array.isArray(payload.rsvpAddOns)
+    ? payload.rsvpAddOns
+    : null;
+};
+
+export interface RsvpPassAddOn {
+  id: string;
+  name: string;
+  quantity: number;
+}
+
+/** issue #3281 S6 — what the guest's own RSVP holds (issue_3281_my_rsvp_add_ons). */
+export const parseRsvpPassAddOns = (data: unknown): RsvpPassAddOn[] => {
+  if (!Array.isArray(data)) return [];
+  const out: RsvpPassAddOn[] = [];
+  for (const item of data) {
+    if (item === null || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (
+      typeof row.id === "string" &&
+      typeof row.name === "string" &&
+      row.name.trim().length > 0 &&
+      typeof row.quantity === "number" &&
+      Number.isInteger(row.quantity) &&
+      row.quantity > 0
+    ) {
+      out.push({ id: row.id, name: row.name, quantity: row.quantity });
+    }
+  }
+  return out;
+};
+
+/** issue #3281 S6 — the add-ons on the signed-in guest's own RSVP (pass sheet). */
+export const fetchMyRsvpAddOns = async (rsvpId: string): Promise<RsvpPassAddOn[]> => {
+  const { data, error } = await supabase.rpc("issue_3281_my_rsvp_add_ons", {
+    p_rsvp_id: rsvpId,
+  });
+  if (error !== null) throw new Error(error.message || "rsvp_add_ons_load_failed");
+  return parseRsvpPassAddOns(data);
 };

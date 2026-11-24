@@ -42,6 +42,12 @@ import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
+import { isFeatureEnabled } from "../../config/featureFlags";
+
+// issue #3281 S3 — the Add-ons card loads only when EXPO_PUBLIC_FF_EXTRAS_ENABLED
+// is on, so flag-off editors and the Host web boot carry none of it.
+const LazyAddOnsEntry = React.lazy(() => import("../addOns/AddOnsEntry"));
+
 /** A server-backed draft id is a UUID; a local draft id is `d_…`. */
 const SERVER_EVENT_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -235,6 +241,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
   chipInPayoutReady,
   payoutCountryBrand,
   onConnectChipInBank,
+  coverMediaEventId,
 }) => {
   const intelCapacityHighlight = useTurnoutFocusTarget("capacity");
   const capacityOn = draft.rsvpCapacity !== null;
@@ -624,6 +631,13 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           </Text>
         )}
       </View>
+      {/* issue #3281 S3 — the new Add-ons card; dark unless
+          EXPO_PUBLIC_FF_EXTRAS_ENABLED is on and the RSVP is saved. */}
+      {isFeatureEnabled("extras") ? (
+        <React.Suspense fallback={null}>
+          <LazyAddOnsEntry eventId={coverMediaEventId} offering="rsvp" currency={chipCurrency} />
+        </React.Suspense>
+      ) : null}
       <TurnoutForecastCard surface="rsvp_setup" />
     </View>
   );
