@@ -17,7 +17,7 @@
  * Run: cd mingla-business && npx jest --config jest.issue1484.render.cjs --maxWorkers=2 tillSoldOut.issue4490.o5fix2
  */
 import React from "react";
-import { Modal, Text } from "react-native";
+import { Modal, StyleSheet, Text } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 interface RenderTreeNode {
@@ -238,6 +238,10 @@ describe("carried 1: on a Till device", () => {
     });
     await flush();
     expect(has(t, "till-step-up")).toBe(true);
+    // TEST-MOD-APPROVED #4490: 08-O5 fix 5 keeps the card mounted (hidden) under
+    // the PIN pad, so its closed refund confirm finishes its close animation
+    // before it leaves; once it has, the sheet is the only modal.
+    await TestRenderer.act(async () => { await new Promise((r) => setTimeout(r, 400)); });
     expect(modals(t)).toHaveLength(1);
     // The manager's fresh PIN goes back with the refund.
     for (const d of ["4", "8", "2", "6"]) await press(t, `till-step-up-pad-key-${d}`);
@@ -267,5 +271,47 @@ describe("carried 1: on a Till device", () => {
     expect(has(t, "till-step-up")).toBe(false);
     expect(has(t, "order-sold-out-refund-i1")).toBe(true);
     expect(text(t)).not.toContain("Refunded");
+  });
+});
+
+// #4490 08-O5 fix 5 (items 6 and 11). Fails on revert: with swapPickable back
+// to "same price is always pickable" (no canSwapEven) a finance manager can
+// pick the same-price swap the server refuses; with the action buttons back on
+// flexBasis 140 the refund label is cut ("Refund ₦8,000.…").
+describe("08-O5 fix 5: a finance manager's swap list, and a whole refund label", () => {
+  const financeView = () => parseOrderSoldOut({
+    orderId: "o1", currency: "NGN", canRefund: true, canSwap: true, canSwapEven: false, refundUsed: false,
+    lines: [{ orderItemId: "i1", menuItemId: "suya", name: "Suya", quantity: 1, lineTotalMinor: 400000, refundPreviewMinor: 440000,
+      station: "kitchen", resolution: null, swappedToName: null, refundedMinor: null }],
+    swapOptions: [
+      { menuItemId: "pp", name: "Puff puff", priceMinor: 150000, station: "kitchen" },
+      { menuItemId: "jr", name: "Jollof rice", priceMinor: 400000, station: "kitchen" },
+    ],
+  });
+
+  test("the cheaper swap can be picked; the same-price swap cannot, and says who can", async () => {
+    mockDetail.mockResolvedValue(financeView());
+    const t = await mount();
+    await press(t, "till-sold-out-open");
+    await press(t, "till-sold-out-row-o1");
+    await press(t, "order-sold-out-swap-i1");
+    const option = (id: string) => t.root.findAll((n) => n.props.testID === `order-sold-out-swap-option-${id}` && typeof n.props.onPress === "function")[0];
+    expect(option("pp").props.disabled).toBe(false);
+    expect(option("jr").props.disabled).toBe(true);
+    expect(text(t)).toContain("same price, ask someone who sells or runs the kitchen");
+  });
+
+  test("an older server (no canSwapEven) keeps same-price swaps for whoever may swap", () => {
+    const old = parseOrderSoldOut({ orderId: "o1", currency: "NGN", canRefund: false, canSwap: true, lines: [], swapOptions: [] });
+    expect(old.canSwapEven).toBe(true);
+  });
+
+  test("Swap item and Refund are wide enough that the refund amount is never cut on a phone", async () => {
+    const t = await mount();
+    await press(t, "till-sold-out-open");
+    await press(t, "till-sold-out-row-o1");
+    const refund = t.root.findAll((n) => n.props.testID === "order-sold-out-refund-i1" && n.props.style !== undefined)[0];
+    const style = StyleSheet.flatten(refund.props.style as never) as Record<string, unknown>;
+    expect(Number(style.flexBasis)).toBeGreaterThanOrEqual(200);
   });
 });

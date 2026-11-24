@@ -166,7 +166,13 @@ export interface OrderSoldOut {
   orderId: string;
   currency: string;
   canRefund: boolean;
+  /**
+   * Any swap Host may offer: the kitchen, the sellers, and (#4490 08-O5 fix 5)
+   * whoever may refund, since a cheaper swap gives money back.
+   */
   canSwap: boolean;
+  /** #4490 08-O5 fix 5: a same-price swap (no money back): the kitchen and the sellers only. */
+  canSwapEven: boolean;
   refundUsed: boolean;
   lines: SoldOutLine[];
   swapOptions: SwapOption[];
@@ -181,6 +187,8 @@ export function parseOrderSoldOut(raw: unknown): OrderSoldOut {
     currency: String(r.currency ?? ""),
     canRefund: r.canRefund === true,
     canSwap: r.canSwap === true,
+    // A server before 20281203784490 sends no canSwapEven: its canSwap was the kitchen or seller rule.
+    canSwapEven: typeof r.canSwapEven === "boolean" ? r.canSwapEven : r.canSwap === true,
     refundUsed: r.refundUsed === true,
     lines: (Array.isArray(r.lines) ? r.lines : []).map((row) => {
       const l = obj(row);

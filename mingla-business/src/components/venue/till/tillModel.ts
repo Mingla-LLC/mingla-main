@@ -82,6 +82,7 @@ export function tillDestination(sale: TillSale | null, fallback: string): string
 
 // Spec 08 §2: phone < 600, tablet 600–1023, desk ≥ 1024, on every platform.
 // One owner since O3: src/utils/floorLayout.ts (also used by useFloorLayout).
+import type { FloorLayout } from "../../../utils/floorLayout";
 export { floorLayoutFor, type FloorLayout } from "../../../utils/floorLayout";
 
 /** A line not yet on the check: chosen on this device, priced by the server on add. */
@@ -548,4 +549,24 @@ export function voidAsksRestock(row: BasketRow | null, catalog: TillCatalog | nu
     }
   }
   return false;
+}
+
+/**
+ * #4490 08-O5 fix 5: a paid (or voided, refunded) check takes no more items.
+ * After its pay sheet is closed with Close the paid check stays on screen to
+ * read; the next item picked starts a new sale instead of landing on it (the
+ * server would refuse it: "This check is closed").
+ */
+export function saleTakesItems(sale: TillSale | null): boolean {
+  return !checkSettled(sale);
+}
+
+/**
+ * #4490 08-O5 fix 5: on a phone (< 600 wide) the Till header stacks: Close
+ * and the venue on top, then all its actions in a row that wraps, so Close
+ * the day and Checks are always reachable (a Till device has no other way to
+ * close the day) and the page never scrolls sideways.
+ */
+export function tillHeaderStacked(layout: FloorLayout): boolean {
+  return layout === "phone";
 }

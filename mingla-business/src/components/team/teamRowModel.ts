@@ -51,3 +51,15 @@ export function teamEmptyCopy(canInvite: boolean): { title: string; description:
     ? { title: TEAM_EMPTY_COPY.soloTitle, description: TEAM_EMPTY_COPY.soloBody }
     : { title: TEAM_EMPTY_COPY.staffTitle, description: TEAM_EMPTY_COPY.staffBody };
 }
+
+/**
+ * #4490 08-O5 fix 5: what the Team page shows. While the invitations or the
+ * members are still loading it shows a loading list, never "You're working
+ * solo" (that flashed before the members arrived). Loaded: the empty state
+ * when nobody but you is listed, else the list.
+ */
+export type TeamListState = "loading" | "empty" | "list";
+export function teamListState(input: { loading: boolean; pendingCount: number; acceptedCount: number }): TeamListState {
+  if (input.loading) return "loading";
+  return input.pendingCount === 0 && input.acceptedCount <= 1 ? "empty" : "list";
+}

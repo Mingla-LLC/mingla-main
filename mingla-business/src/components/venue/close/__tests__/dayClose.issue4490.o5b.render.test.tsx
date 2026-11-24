@@ -21,7 +21,7 @@
  */
 
 import React from "react";
-import { Modal, Text } from "react-native";
+import { Modal, StyleSheet, Text } from "react-native";
 
 interface RenderTreeNode {
   type: unknown;
@@ -253,7 +253,12 @@ describe("O5B-R Close the day", () => {
     const modals = visibleModals(t);
     expect(modals).toHaveLength(1);
     expect(modals[0].findAll((n) => n.props.testID === "till-step-up-pad").length).toBeGreaterThan(0);
-    expect(has(t, "day-close-reopen-reason")).toBe(false);
+    // TEST-MOD-APPROVED #4490: 08-O5 fix 5 keeps the sheet's own body mounted
+    // but hidden (display none) under the PIN pad, so a refusal after the PIN
+    // can still be shown; the reason field is no longer unmounted.
+    const hidden = t.root.findAll((n) => n.props.testID === "till-step-up-content" && n.props.style !== undefined)[0];
+    expect((StyleSheet.flatten(hidden.props.style as never) as Record<string, unknown>).display).toBe("none");
+    expect(hidden.findAll((n) => n.props.testID === "day-close-reopen-reason").length).toBeGreaterThan(0);
     t.unmount();
   });
 });

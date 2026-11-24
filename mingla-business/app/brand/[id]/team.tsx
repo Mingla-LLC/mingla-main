@@ -50,7 +50,8 @@ import { Table } from "../../../src/components/ui/Table";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTillReleased } from "../../../src/hooks/useTillReleased";
-import { rowTappable, showSelfRowAboveEmpty, teamEmptyCopy } from "../../../src/components/team/teamRowModel";
+import { rowTappable, showSelfRowAboveEmpty, teamEmptyCopy, teamListState } from "../../../src/components/team/teamRowModel";
+import { Skeleton } from "../../../src/components/ui/Skeleton";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
@@ -173,8 +174,13 @@ export default function BrandTeamRoute(): React.ReactElement {
     return () => clearTimeout(timer);
   }, [isBrandResolving]);
 
-  const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
-  const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
+  const invitationsQuery = useBrandInvitations(brandIdResolved);
+  const membersQuery = useBrandTeamMembers(brandIdResolved);
+  const { data: invitationRows = [] } = invitationsQuery;
+  const { data: memberRows = [] } = membersQuery;
+  // #4490 08-O5 fix 5: still loading the people (a failed read is not
+  // pending): no empty state until both have answered.
+  const peopleLoading = invitationsQuery.isPending === true || membersQuery.isPending === true;
   // issue #4271 — names and emails for accepted members (never a raw user id).
   const directoryQuery = useBrandTeamMemberDirectory(brandIdResolved);
   const directoryRows = useMemo(() => directoryQuery.data ?? [], [directoryQuery.data]);
@@ -474,9 +480,13 @@ export default function BrandTeamRoute(): React.ReactElement {
     );
   }
 
-  const showEmpty =
-    pendingEntries.length === 0 && acceptedEntries.length <= 1;
   // <=1 because self-row is always present when role is known
+  const listState = teamListState({
+    loading: peopleLoading,
+    pendingCount: pendingEntries.length,
+    acceptedCount: acceptedEntries.length,
+  });
+  const showEmpty = listState === "empty";
 
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -518,7 +528,13 @@ export default function BrandTeamRoute(): React.ReactElement {
             onRowTap={handleRowTap}
           />
         ) : null}
-        {showEmpty ? (
+        {listState === "loading" ? (
+          <View style={styles.loadingHost} testID="team-loading" accessibilityLabel="Loading the team">
+            <Skeleton height={56} radius="lg" />
+            <Skeleton height={56} radius="lg" />
+            <Skeleton height={56} radius="lg" />
+          </View>
+        ) : showEmpty ? (
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="users"
@@ -883,6 +899,10 @@ const styles = StyleSheet.create({
   emptyHost: {
     paddingTop: space[7],
     alignItems: "center",
+  },
+  loadingHost: {
+    marginTop: space[5],
+    gap: space[2],
   },
   // ORCH-1309 — cold-load resolving spinner host.
   resolvingHost: {

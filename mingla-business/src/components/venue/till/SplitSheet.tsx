@@ -17,7 +17,6 @@ import type { TillSale, TillShare, TillSplitInput } from "../../../services/venu
 import { formatCurrency } from "../../../utils/currency";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
-import { ListRow } from "../../ui/ListRow";
 import { NumberStepper } from "../../ui/NumberStepper";
 import { Chip, Pill, Segmented } from "../../ui/Pill";
 import { TILL_COPY } from "./tillCopy";
@@ -99,28 +98,31 @@ export function SplitSheet({
         {(sale.shares ?? []).map((share) => {
           const paid = share.state === "paid";
           return (
-            <ListRow
-              key={share.id}
-              title={paid ? TILL_COPY.sharePaid(share.shareNo) : TILL_COPY.shareN(share.shareNo)}
-              subtitle={share.state === "paying" ? TILL_COPY.sharePaying : paid ? undefined : TILL_COPY.shareUnpaid}
-              value={money(share.amountMinor)}
-              trailing={
-                paid ? (
-                  <Pill variant="ok">{TILL_COPY.sharePaid(share.shareNo)}</Pill>
-                ) : (
+            // #4490 08-O5 fix 5: stacked, so the share's name, amount and
+            // status read in full on a phone and Pay sits under them at full
+            // width (side by side they squashed to "Sh a… To pay").
+            <View key={share.id} style={styles.share} testID={`till-share-${share.shareNo}`}>
+              <View style={styles.shareHead}>
+                <Text style={styles.shareTitle}>{paid ? TILL_COPY.sharePaid(share.shareNo) : TILL_COPY.shareN(share.shareNo)}</Text>
+                <Text style={styles.shareAmount}>{money(share.amountMinor)}</Text>
+              </View>
+              {paid ? (
+                <Pill variant="ok">{TILL_COPY.sharePaid(share.shareNo)}</Pill>
+              ) : (
+                <>
+                  <Text style={styles.muted}>{share.state === "paying" ? TILL_COPY.sharePaying : TILL_COPY.shareUnpaid}</Text>
                   <Button
                     label={TILL_COPY.payShare(share.shareNo, money(share.amountMinor))}
                     variant={share.state === "paying" ? "secondary" : "primary"}
-                    size="sm"
+                    size="md"
+                    fullWidth
                     disabled={busy}
                     onPress={() => onPayShare(share)}
                     testID={`till-share-pay-${share.shareNo}`}
                   />
-                )
-              }
-              chevron={false}
-              testID={`till-share-${share.shareNo}`}
-            />
+                </>
+              )}
+            </View>
           );
         })}
         {error !== null ? <Banner tone="danger" title={error} /> : null}
@@ -257,6 +259,10 @@ export function SplitSheet({
 
 const styles = StyleSheet.create({
   body: { gap: space[3] },
+  share: { gap: space[2], padding: space[3], borderRadius: radius.lg, backgroundColor: color.card2 },
+  shareHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between", columnGap: space[3], rowGap: space[1] },
+  shareTitle: { ...type.row, color: color.text1 },
+  shareAmount: { ...type.row, color: color.text1 },
   row: { flexDirection: "row", gap: space[2] },
   grow: { flex: 1 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },

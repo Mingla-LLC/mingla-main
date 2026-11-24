@@ -102,10 +102,11 @@ jest.mock("../../../context/AuthContext", () => ({
 jest.mock("../../../hooks/useSwitchAccount", () => ({ useSwitchAccount: () => ({ signedInEmail: "owner@harmattan.test", onSwitchAccount: jest.fn() }) }));
 const mockRole = { role: "brand_owner" as string, rank: 60 };
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({ useCurrentBrandRole: () => mockRole }));
-const mockMembers: { rows: unknown[] } = { rows: [] };
+// TEST-MOD-APPROVED #4490: 08-O5 fix 5 adds `pending` (the members query still loading).
+const mockMembers: { rows: unknown[]; pending?: boolean } = { rows: [] };
 jest.mock("../../../hooks/useBrandInvitations", () => ({
   useBrandInvitations: () => ({ data: [] }),
-  useBrandTeamMembers: () => ({ data: mockMembers.rows }),
+  useBrandTeamMembers: () => (mockMembers.pending === true ? { data: undefined, isPending: true } : { data: mockMembers.rows }),
   useRemoveBrandTeamMember: () => ({ mutateAsync: jest.fn(), isPending: false }),
   useRevokeBrandInvitation: () => ({ mutateAsync: jest.fn() }),
 }));
@@ -364,5 +365,29 @@ describe("08-O5 fix 4: the Set your PIN sheet and a staff member's Team page", (
     expect(text).not.toContain("You're working solo");
     expect(text).toContain(TEAM_EMPTY_COPY.staffTitle);
     expect(teamEmptyCopy(true).title).toBe("You're working solo");
+  });
+});
+
+// #4490 08-O5 fix 5 (item 9). Fails on revert: without teamListState's
+// loading branch in the Team route the page shows "You're working solo" while
+// the members are still loading.
+describe("08-O5 fix 5: the Team page waits for its members", () => {
+  afterEach(() => {
+    mockMembers.pending = false;
+    mockRole.role = "brand_owner";
+    mockRole.rank = 60;
+  });
+
+  test("while the members load: a loading list, never 'You're working solo'; loaded with nobody else: the empty state", async () => {
+    mockRole.role = "brand_owner";
+    mockRole.rank = 60;
+    mockMembers.pending = true;
+    const loading = await mount(<BrandTeamRoute />);
+    expect(loading.root.findAll((n) => n.props.testID === "team-loading").length).toBeGreaterThan(0);
+    expect(allText(loading)).not.toContain("You're working solo");
+    mockMembers.pending = false;
+    const loaded = await mount(<BrandTeamRoute />);
+    expect(loaded.root.findAll((n) => n.props.testID === "team-loading")).toHaveLength(0);
+    expect(allText(loaded)).toContain("You're working solo");
   });
 });

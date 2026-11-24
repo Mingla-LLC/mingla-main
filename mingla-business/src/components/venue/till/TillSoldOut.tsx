@@ -33,6 +33,7 @@ import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { OrderSoldOutSection, orderSoldOutKey } from "../stock/OrderSoldOutSection";
 import { STOCK_COPY } from "../stock/stockCopy";
 import { TILL_COPY } from "./tillCopy";
+import { useStepUpSheetSnap } from "./TillStepUp";
 import { flaggedOrders, listedOrders, waitingOrders, type TillSoldOutWaiting } from "./tillSoldOutModel";
 
 /** The orders waiting for a swap or a refund at this venue (empty while loading). */
@@ -95,6 +96,8 @@ export function TillSoldOutSheet({ visible, venueId, waiting, onClose }: TillSol
   // "Swapped for ..." / "Refunded ..." can be read before it leaves the list.
   const [lastOpen, setLastOpen] = useState<TillSoldOutWaiting | null>(null);
   const rows = useMemo(() => listedOrders(waiting, openId, lastOpen), [waiting, openId, lastOpen]);
+  // #4490 08-O5 fix 5: the tallest sheet while a refund's PIN pad shows.
+  const stepUpSnap = useStepUpSheetSnap(venueId, 0.85);
   const close = (): void => {
     setOpenId(null);
     setLastOpen(null);
@@ -106,7 +109,7 @@ export function TillSoldOutSheet({ visible, venueId, waiting, onClose }: TillSol
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, rows.length]);
   return (
-    <Sheet visible={visible} onClose={close} snapPoint={0.85} testID="till-sold-out-sheet">
+    <Sheet visible={visible} onClose={close} snapPoint={stepUpSnap} testID="till-sold-out-sheet">
       <View style={styles.grow}>
         <View style={styles.head}>
           <Text style={styles.h2} accessibilityRole="header" numberOfLines={2}>{STOCK_COPY.afterPayment}</Text>

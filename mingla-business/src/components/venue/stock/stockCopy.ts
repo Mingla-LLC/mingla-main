@@ -56,6 +56,7 @@ export const STOCK_COPY = {
   swapSame: (price: string): string => `${price} · same price`,
   swapDearer: (price: string): string => `${price} · costs more, can't swap`,
   swapCheaperNeedsRefund: (price: string): string => `${price} · gives money back, ask someone who can refund`,
+  swapSameNeedsSeller: (price: string): string => `${price} · same price, ask someone who sells or runs the kitchen`,
   swapOtherStation: (price: string): string => `${price} · made at another station`,
   swapRule: "Only items that cost the same or less are offered, so the guest never pays more.",
   swapTo: (item: string): string => `Swap to ${item}`,

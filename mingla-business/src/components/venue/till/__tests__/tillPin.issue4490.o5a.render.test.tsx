@@ -16,7 +16,7 @@
  */
 
 import React from "react";
-import { Modal, Text } from "react-native";
+import { Modal, StyleSheet, Text } from "react-native";
 
 interface RenderTreeNode {
   type: unknown;
@@ -151,7 +151,11 @@ describe("O5A-R the step-up PIN pad lives inside the sheet that asked", () => {
       void requestStepUp(VENUE, "refund").then((a) => { answer = a; });
     });
     expect(has(t, "till-step-up")).toBe(true);
-    expect(has(t, "sheet-own-body")).toBe(false);
+    // TEST-MOD-APPROVED #4490: 08-O5 fix 5 (item 10) keeps the sheet's own body
+    // mounted but hidden under the pad (display none), so the action that asked
+    // can still show a refusal after the PIN; it is no longer unmounted.
+    const content = t.root.findAll((n) => n.props.testID === "till-step-up-content" && n.props.style !== undefined)[0];
+    expect(StyleSheet.flatten(content.props.style as never)).toMatchObject({ display: "none" });
     const modals = visibleModals(t);
     expect(modals).toHaveLength(1);
     expect(modals[0].findAll((n) => n.props.testID === "till-step-up-pad").length).toBeGreaterThan(0);

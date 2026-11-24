@@ -156,7 +156,9 @@ const styles = StyleSheet.create({
     paddingLeft: space[3],
     borderRadius: radius.full,
     backgroundColor: color.card2,
-    maxWidth: "50%",
+    // #4490 08-O5 fix 5: in the wrapping header row the chip may use the whole width.
+    maxWidth: "100%",
+    flexShrink: 1,
   },
   chipText: { ...type.caption, color: color.text1, flexShrink: 1 },
 });

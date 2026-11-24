@@ -76,11 +76,13 @@ export function swapChoice(
 /**
  * #4490 08-O5 fix 3: a swap to something cheaper gives money back, so it is a
  * refund: only someone who may refund can pick it (the server refuses it
- * otherwise, and on a Till device asks for a fresh PIN). A same-price swap
- * stays open to anyone who may swap.
+ * otherwise, and on a Till device asks for a fresh PIN).
+ * #4490 08-O5 fix 5: a same-price swap moves no money, so it keeps the kitchen
+ * or seller rule (canSwapEven): money rights alone (a finance manager) swap
+ * only to something cheaper.
  */
-export function swapPickable(choice: SwapChoice, canRefund: boolean): boolean {
-  return choice.kind === "same" || (choice.kind === "cheaper" && canRefund);
+export function swapPickable(choice: SwapChoice, canRefund: boolean, canSwapEven = true): boolean {
+  return (choice.kind === "same" && canSwapEven) || (choice.kind === "cheaper" && canRefund);
 }
 
 /** The Till's words for item_sold_out: before paying, before sending, or too many. */

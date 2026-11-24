@@ -53,13 +53,18 @@ export function PinPad({ title, subtitle = null, error = false, busy = false, di
       if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable === true) return;
       const action = pinKeyAction(e.key, e.ctrlKey || e.metaKey || e.altKey);
       if (action === null) return;
+      // #4490 08-O5 fix 5 (item 10): the pad's keys are the pad's only. It
+      // listens in the capture phase and stops the key there, so Enter never
+      // also presses the button that still has focus (the sheet's Close, the
+      // refund confirm), which closed the sheet before the PIN was sent.
       e.preventDefault();
+      e.stopPropagation();
       if (action.kind === "digit") press(action.digit);
       else if (action.kind === "back") back();
       else submitRef.current();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [back, off, press]);
 
   const key = (label: string, onPress: () => void, a11y: string, id: string): React.ReactElement => (

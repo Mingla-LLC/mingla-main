@@ -84,9 +84,10 @@ import { openFloorPdf } from "../../../utils/floorPdf";
 import { STATION_COPY, stationErrorCopy } from "../station/stationCopy";
 import { runStationAction, StationError } from "../../../services/venueStationService";
 import { ReceiptStep } from "./ReceiptStep";
-import { TillStepUpHost } from "./TillStepUp";
+import { TillStepUpHost, useStepUpSheetSnap } from "./TillStepUp";
 import type { TillPinPerson } from "../../../services/venueTillService";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
+import { checkTitle } from "./checkLabel";
 import { stockPill, tillSoldOutSentence } from "../stock/stockModel";
 import {
   basketLaunchedAfterClose,
@@ -120,6 +121,8 @@ import {
   coveredByCredit,
   payActionShown,
   saveCheckEnabled,
+  saleTakesItems,
+  tillHeaderStacked,
   depositExcessMinor,
   totalsReady,
   voidAsksRestock,
@@ -272,7 +275,8 @@ export function TillScreen({
 
   /** The check this sale lives on: opened on the first add. */
   const ensureSale = useCallback(async (): Promise<TillSale> => {
-    if (sale !== null) return sale;
+    // #4490 08-O5 fix 5: never add to a paid check; a new one opens instead.
+    if (sale !== null && saleTakesItems(sale)) return sale;
     const opened = await actions.open.mutateAsync({ label: null, spotId: null, idempotencyKey: `open:${randomId()}` });
     setSaleId(opened.id);
     return opened;
@@ -314,13 +318,25 @@ export function TillScreen({
     }
   };
 
+  // #4490 08-O5 fix 5: an item picked while a paid check is on screen starts
+  // a new sale (the paid check leaves the screen) instead of joining it.
+  const addLine = (line: Omit<DraftLine, "key">): void => {
+    if (!saleTakesItems(sale)) {
+      setPayOpen(false);
+      setSaleId(null);
+      setDraft(addToDraft([], line));
+      return;
+    }
+    setDraft((d) => addToDraft(d, line));
+  };
+
   const onTile = (item: TillMenuItem): void => {
     if (!itemSellable(item)) return;
     if (itemNeedsChoices(item)) {
       setChoicesFor(item);
       return;
     }
-    setDraft((d) => addToDraft(d, { menuItemId: item.id, name: item.name, quantity: 1, modifierIds: [], modifierNames: [], notes: null, station: item.station }));
+    addLine({ menuItemId: item.id, name: item.name, quantity: 1, modifierIds: [], modifierNames: [], notes: null, station: item.station });
   };
 
   // Leaving the Till: back to the workspace, or to the venue when the Till was
@@ -476,7 +492,8 @@ export function TillScreen({
       setKitchenBusy(null);
     }
   };
-  const checkName = sale?.checkLabel ?? sale?.spotLabel ?? TILL_COPY.newCheck;
+  // #4490 08-O5 fix 5: one name per check on every list ("Check #<ref>" when unnamed).
+  const checkName = sale === null ? TILL_COPY.newCheck : checkTitle({ id: sale.id, label: sale.checkLabel, spotLabel: sale.spotLabel });
   const servers = serversQuery.data ?? [];
   const currentServer = serverName(servers, sale?.serverUserId ?? null, TILL_COPY.teamMember);
   const canMoveCheck = sale !== null && sale.state === "open" && !sale.pendingPayment;
@@ -806,6 +823,11 @@ export function TillScreen({
           testID="till-save"
         />
       </View>
+      {/* #4490 08-O5 fix 5: a paid check is read-only; New sale starts the next one. */}
+      {sale !== null && !saleTakesItems(sale) && draft.length === 0 ? (
+        <Button label={TILL_COPY.newSale} variant="primary" size="lg" fullWidth onPress={() => { setBasketSheet(false); newSale(); }}
+          testID="till-basket-new-sale" />
+      ) : null}
       {/* #4490 08-O5 fix 4: nothing due on a paid check, so no "Pay 0.00". */}
       {payActionShown(sale, draft) ? <Button
         label={payLabel}
@@ -1098,38 +1120,53 @@ export function TillScreen({
     />
   );
 
-  return (
-    <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="till-screen">
-      <View style={styles.header}>
-        <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={requestClose} testID="till-back" />
-        <Text style={styles.title} numberOfLines={1}>{catalog?.venueName ?? TILL_COPY.title}</Text>
-        {sellerSlot}
-        {stationsEntry ? (
-          <Button
-            label={STATION_COPY.openStations}
-            variant="secondary"
-            size="sm"
-            onPress={() => router.push(stationHref(venueId) as never)}
-            testID="till-open-stations"
-          />
-        ) : null}
-        {/* #4490 spec 08 O5 part B — Close the day (money rights; the floor design's Till rail). */}
-        {catalog?.canManageMoney === true ? (
-          <Button
-            label={CLOSE_COPY.title}
-            variant="secondary"
-            size="sm"
-            onPress={() => router.push(closeHref(venueId) as never)}
-            testID="till-open-close"
-          />
-        ) : null}
+  const phoneHeader = tillHeaderStacked(layout);
+  const headerActions = (
+    <View style={[styles.headerActions, !phoneHeader && styles.headerActionsWide]} testID="till-header-actions">
+      {sellerSlot}
+      {stationsEntry ? (
         <Button
-          label={`${TILL_COPY.checks} · ${checksQuery.data?.open.length ?? 0}`}
+          label={STATION_COPY.openStations}
           variant="secondary"
           size="sm"
-          onPress={() => setChecksOpen(true)}
-          testID="till-checks-open"
+          onPress={() => router.push(stationHref(venueId) as never)}
+          testID="till-open-stations"
         />
+      ) : null}
+      {/* #4490 spec 08 O5 part B — Close the day (money rights; the floor design's Till rail). */}
+      {catalog?.canManageMoney === true ? (
+        <Button
+          label={CLOSE_COPY.title}
+          variant="secondary"
+          size="sm"
+          onPress={() => router.push(closeHref(venueId) as never)}
+          testID="till-open-close"
+        />
+      ) : null}
+      <Button
+        label={`${TILL_COPY.checks} · ${checksQuery.data?.open.length ?? 0}`}
+        variant="secondary"
+        size="sm"
+        onPress={() => setChecksOpen(true)}
+        testID="till-checks-open"
+      />
+    </View>
+  );
+
+  return (
+    <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="till-screen">
+      {/* #4490 08-O5 fix 5: on a phone the header is two rows: Close and the
+          venue, then every action in a row that wraps (the seller, Kitchen
+          and bar, Close the day, Checks), so none is ever pushed off screen
+          and the page never scrolls sideways. Wider screens keep one row,
+          the actions still wrapping if they run out of room. */}
+      <View style={[styles.header, phoneHeader && styles.headerPhone]} testID="till-header">
+        <View style={styles.headerTop}>
+          <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={requestClose} testID="till-back" />
+          <Text style={styles.title} numberOfLines={1}>{catalog?.venueName ?? TILL_COPY.title}</Text>
+          {phoneHeader ? null : headerActions}
+        </View>
+        {phoneHeader ? headerActions : null}
       </View>
       {soldOutSlot}
       {tabs.length > 1 ? (
@@ -1188,7 +1225,7 @@ export function TillScreen({
 
       <ChoicesSheet item={choicesFor} currency={currency} onClose={() => setChoicesFor(null)}
         onAdd={(line) => {
-          setDraft((d) => addToDraft(d, line));
+          addLine(line);
           setChoicesFor(null);
         }} />
 
@@ -1696,7 +1733,7 @@ function ChecksSheet({
           {list.map((c) => (
             <ListRow
               key={c.id}
-              title={c.checkLabel ?? c.spotLabel ?? TILL_COPY.newCheck}
+              title={checkTitle({ id: c.id, label: c.checkLabel, spotLabel: c.spotLabel })}
               value={formatCurrency(c.totalDueMinor, currency, true)}
               trailing={"waitingForPayment" in c && c.waitingForPayment ? <Pill variant="warn">{TILL_COPY.waitingForPayment}</Pill> : undefined}
               onPress={() => onPick(c.id)}
@@ -1748,12 +1785,14 @@ function VoidSheet({ row, currency, busy, asksRestock, onClose, onVoid, stepUp }
   const [reason, setReason] = useState<string>(TILL_COPY.voidReasons[0].label);
   // #4490 08-O5 fix 1 (O5-T4): "Put it back in stock" starts on for every void.
   const [putBack, setPutBack] = useState<boolean>(true);
+  // #4490 08-O5 fix 5: the tallest sheet while the PIN pad shows, so OK fits.
+  const stepUpSnap = useStepUpSheetSnap(stepUp.venueId, 0.6);
   useEffect(() => {
     setReason(TILL_COPY.voidReasons[0].label);
     setPutBack(true);
   }, [row?.key]);
   return (
-    <Sheet visible={row !== null} onClose={onClose} snapPoint={0.6} dismissDisabled={busy} testID="till-void">
+    <Sheet visible={row !== null} onClose={onClose} snapPoint={stepUpSnap} dismissDisabled={busy} testID="till-void">
       <View style={styles.grow}>
         <SheetHead title={row !== null ? TILL_COPY.voidItem(row.label) : TILL_COPY.void} onClose={onClose} disabled={busy} />
         <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
@@ -1972,8 +2011,10 @@ function LineRefundSheet({
   useEffect(() => {
     setReason(TILL_COPY.refundReasons[0].label);
   }, [row?.key]);
+  // #4490 08-O5 fix 5: the tallest sheet while the PIN pad shows, so OK fits.
+  const stepUpSnap = useStepUpSheetSnap(stepUp.venueId, 0.6);
   return (
-    <Sheet visible={row !== null} onClose={onClose} snapPoint={0.6} dismissDisabled={busy} testID="till-line-refund">
+    <Sheet visible={row !== null} onClose={onClose} snapPoint={stepUpSnap} dismissDisabled={busy} testID="till-line-refund">
       <View style={styles.grow}>
         <SheetHead title={row !== null ? TILL_COPY.refundLineTitle(row.label) : TILL_COPY.refund} onClose={onClose} disabled={busy} />
         <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
@@ -2017,8 +2058,10 @@ function RefundSheet({
     setReason(TILL_COPY.refundReasons[0].label);
   }, [payment?.id]);
   const value = amount ?? max;
+  // #4490 08-O5 fix 5: the tallest sheet while the PIN pad shows, so OK fits.
+  const stepUpSnap = useStepUpSheetSnap(stepUp.venueId, 0.7);
   return (
-    <Sheet visible={payment !== null} onClose={onClose} snapPoint={0.7} dismissDisabled={busy} testID="till-refund">
+    <Sheet visible={payment !== null} onClose={onClose} snapPoint={stepUpSnap} dismissDisabled={busy} testID="till-refund">
       <View style={styles.grow}>
         <SheetHead title={TILL_COPY.refund} onClose={onClose} disabled={busy} />
         <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
@@ -2054,8 +2097,13 @@ const styles = StyleSheet.create({
   lateRow: { gap: space[2] },
   lateActions: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
   screen: { flex: 1, backgroundColor: color.canvas },
-  header: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingVertical: space[2] },
-  title: { ...type.h2, color: color.text1, flex: 1, textAlign: "center" },
+  header: { gap: space[2], paddingHorizontal: space[4], paddingVertical: space[2] },
+  headerPhone: { paddingBottom: space[3] },
+  headerTop: { flexDirection: "row", alignItems: "center", gap: space[2], minWidth: 0 },
+  // #4490 08-O5 fix 5: the actions wrap; nothing in the header is wider than the screen.
+  headerActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], maxWidth: "100%" },
+  headerActionsWide: { flexShrink: 1, justifyContent: "flex-end" },
+  title: { ...type.h2, color: color.text1, flex: 1, minWidth: 0, textAlign: "center" },
   tabs: { marginHorizontal: space[4], marginBottom: space[2] },
   main: { flex: 1 },
   mainWide: { flexDirection: "row" },

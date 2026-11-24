@@ -488,7 +488,9 @@ describe("08-O5 fix 4 item 7: a web PIN pad takes the keyboard", () => {
   });
   const key = async (k: string, extra: Record<string, unknown> = {}): Promise<void> => {
     await TestRenderer.act(async () => {
-      for (const fn of [...listeners]) fn({ key: k, target: { tagName: "BODY" }, preventDefault: () => undefined, ...extra });
+      // TEST-MOD-APPROVED #4490: 08-O5 fix 5 stops the pad's keys in the capture
+      // phase (stopPropagation), so the fake event carries it like a real one.
+      for (const fn of [...listeners]) fn({ key: k, target: { tagName: "BODY" }, preventDefault: () => undefined, stopPropagation: () => undefined, ...extra });
     });
   };
   const dotsLabel = (t: RenderTree): unknown => ids(t, "pin-pad-dots")[0]?.props.accessibilityLabel;

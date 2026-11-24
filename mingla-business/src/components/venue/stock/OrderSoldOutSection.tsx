@@ -179,11 +179,11 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
                   ) : data.swapOptions.filter((o) => o.menuItemId !== line.menuItemId).map((option) => {
                     const choice = swapChoice(line, option);
                     const price = money(option.priceMinor * line.quantity);
-                    const pickable = swapPickable(choice, data.canRefund);
+                    const pickable = swapPickable(choice, data.canRefund, data.canSwapEven);
                     const sub = choice.kind === "cheaper"
                       ? (data.canRefund ? STOCK_COPY.swapCheaper(price, money(choice.backMinor)) : STOCK_COPY.swapCheaperNeedsRefund(price))
                       : choice.kind === "same"
-                      ? STOCK_COPY.swapSame(price)
+                      ? (data.canSwapEven ? STOCK_COPY.swapSame(price) : STOCK_COPY.swapSameNeedsSeller(price))
                       : choice.kind === "dearer"
                       ? STOCK_COPY.swapDearer(price)
                       : STOCK_COPY.swapOtherStation(price);
@@ -243,7 +243,9 @@ const styles = StyleSheet.create({
   done: { ...type.small, color: color.successText },
   error: { ...type.small, color: color.errorText },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
-  flex: { flexGrow: 1, flexBasis: 140 },
+  // #4490 08-O5 fix 5: wide enough that "Refund ₦8,000.00" never truncates:
+  // side by side on a wide sheet, one under the other on a phone.
+  flex: { flexGrow: 1, flexBasis: 220 },
   panel: {
     gap: space[2],
     padding: space[3],

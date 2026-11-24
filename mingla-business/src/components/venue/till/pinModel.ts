@@ -209,3 +209,19 @@ export function personRole(p: TillPinPerson): string {
       return "Team";
   }
 }
+
+/**
+ * #4490 08-O5 fix 5: a Mingla admin's name reads "<public name> from Mingla"
+ * (the server's issue_4490_staff_name). On a narrow face the words "from
+ * Mingla" are the Mingla mark and must stay visible, so the name is split:
+ * the person's part may be shortened, the mark never is. "Mingla Team" and
+ * every other name are left whole.
+ */
+export const MINGLA_MARK = "from Mingla";
+export function splitMinglaMark(person: { name: string; isMinglaTeam?: boolean }): { name: string; mark: string | null } {
+  const suffix = ` ${MINGLA_MARK}`;
+  if (person.isMinglaTeam === true && person.name.endsWith(suffix) && person.name.length > suffix.length) {
+    return { name: person.name.slice(0, -suffix.length), mark: MINGLA_MARK };
+  }
+  return { name: person.name, mark: null };
+}

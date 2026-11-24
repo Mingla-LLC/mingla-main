@@ -19,6 +19,8 @@ import { GlassCard } from "../../ui/GlassCard";
 import { Pill } from "../../ui/Pill";
 import { CLOSE_COPY } from "./dayCloseCopy";
 import { ageLabel, personName } from "./dayCloseModel";
+// #4490 08-O5 fix 5: an unnamed check reads "Check #<ref>" here and in the Till.
+import { checkTitle } from "../till/checkLabel";
 
 export interface DayCloseChecksProps {
   checks: readonly DayOpenCheck[];
@@ -44,7 +46,7 @@ export function DayCloseChecks({ checks, currency, busySaleId, onOpenInTill, onM
             <View key={c.saleId} style={[styles.row, i > 0 && styles.divider]} testID={`day-close-check-${c.saleId}`}>
               <View style={styles.rowText}>
                 <Text style={styles.rowTitle} numberOfLines={1}>
-                  {`${c.label ?? CLOSE_COPY.person.teamMember} · ${formatCurrency(c.dueMinor, currency, true)}`}
+                  {`${checkTitle({ id: c.saleId, label: c.label })} · ${formatCurrency(c.dueMinor, currency, true)}`}
                 </Text>
                 <Text style={styles.rowSub} numberOfLines={1}>{`${personName(c.server)} · ${ageLabel(c.ageMinutes)}`}</Text>
               </View>
@@ -66,7 +68,7 @@ export function DayCloseChecks({ checks, currency, busySaleId, onOpenInTill, onM
             <View key={c.saleId} style={[styles.row, i > 0 && styles.divider]}>
               <View style={styles.rowText}>
                 <Text style={styles.rowTitle} numberOfLines={1}>
-                  {`${c.label ?? CLOSE_COPY.person.teamMember} · ${formatCurrency(c.dueMinor, currency, true)}`}
+                  {`${checkTitle({ id: c.saleId, label: c.label })} · ${formatCurrency(c.dueMinor, currency, true)}`}
                 </Text>
                 <Text style={styles.rowSub}>{CLOSE_COPY.waitingForScanBody}</Text>
               </View>

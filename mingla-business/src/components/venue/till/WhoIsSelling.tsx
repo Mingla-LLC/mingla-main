@@ -38,6 +38,7 @@ import {
   pinRetryMessage,
   sellerFaces,
   signOutManagers,
+  splitMinglaMark,
   whoStateAfter,
   type WhoState,
 } from "./pinModel";
@@ -245,6 +246,7 @@ export function WhoIsSelling({ venueId, staff, ended, onClose, startSigningOut =
 }
 
 function Face({ person, onPress }: { person: TillPinPerson; onPress: () => void }): React.ReactElement {
+  const shown = splitMinglaMark(person);
   return (
     <Pressable
       onPress={onPress}
@@ -254,7 +256,11 @@ function Face({ person, onPress }: { person: TillPinPerson; onPress: () => void 
       testID={`who-face-${person.memberId}`}
     >
       <Avatar name={person.name} size="md" />
-      <Text style={styles.faceName} numberOfLines={1}>{person.name}</Text>
+      {/* #4490 08-O5 fix 5: the name may be shortened, the Mingla mark never is. */}
+      <Text style={styles.faceName} numberOfLines={1} testID={`who-face-name-${person.memberId}`}>{shown.name}</Text>
+      {shown.mark !== null ? (
+        <Text style={styles.faceMark} numberOfLines={1} testID={`who-face-mark-${person.memberId}`}>{shown.mark}</Text>
+      ) : null}
       <Text style={styles.faceRole} numberOfLines={1}>{personRole(person)}</Text>
     </Pressable>
   );
@@ -286,7 +292,8 @@ const styles = StyleSheet.create({
     padding: space[3],
   },
   facePressed: { backgroundColor: color.card2 },
-  faceName: { ...type.row, color: color.text1 },
+  faceName: { ...type.row, color: color.text1, maxWidth: "100%" },
+  faceMark: { ...type.caption, color: color.text2 },
   faceRole: { ...type.caption, color: color.text3 },
   foot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] },
   footText: { ...type.caption, color: color.text3, flex: 1 },

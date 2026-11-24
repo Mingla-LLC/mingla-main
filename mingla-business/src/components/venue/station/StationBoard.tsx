@@ -114,7 +114,7 @@ export function StationBoard(props: StationBoardProps): React.ReactElement {
     <View style={styles.root} testID="station-board">
       <View style={styles.header}>
         <View style={styles.headText}>
-          <Text style={styles.title} accessibilityRole="header">{title}</Text>
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={1} testID="station-title">{title}</Text>
           <View style={styles.subRow}>
             <Text style={styles.caption} numberOfLines={1}>{board.venueName}</Text>
             <Pill variant={props.connection === "reconnecting" ? "warn" : "ok"} testID="station-connection">
@@ -122,13 +122,18 @@ export function StationBoard(props: StationBoardProps): React.ReactElement {
             </Pill>
           </View>
         </View>
-        {props.onSoldOut !== undefined ? (
-          <Button label={STOCK_COPY.boardButton} variant="secondary" size="md" leadingIcon="flag" onPress={props.onSoldOut}
-            testID="station-sold-out" />
-        ) : null}
-        <Button label={props.muteLabel} variant="secondary" size="md" leadingIcon="bell" onPress={props.onMute}
-          testID="station-mute" />
-        <Button label={STATION_COPY.close} variant="ghost" size="md" onPress={props.onClose} testID="station-close" />
+        {/* #4490 08-O5 fix 5: the buttons are their own group and the header
+            wraps, so on a phone they move under the title and "Kitchen"
+            keeps its width (it broke as "Kitch / en"). */}
+        <View style={styles.headActions} testID="station-head-actions">
+          {props.onSoldOut !== undefined ? (
+            <Button label={STOCK_COPY.boardButton} variant="secondary" size="md" leadingIcon="flag" onPress={props.onSoldOut}
+              testID="station-sold-out" />
+          ) : null}
+          <Button label={props.muteLabel} variant="secondary" size="md" leadingIcon="bell" onPress={props.onMute}
+            testID="station-mute" />
+          <Button label={STATION_COPY.close} variant="ghost" size="md" onPress={props.onClose} testID="station-close" />
+        </View>
       </View>
       <View style={styles.chips}>
         {CHOICES.map((c) => (
@@ -170,8 +175,10 @@ export function StationBoard(props: StationBoardProps): React.ReactElement {
 
 const styles = StyleSheet.create({
   root: { flex: 1, gap: space[3], paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[3] },
-  header: { flexDirection: "row", alignItems: "center", gap: space[2] },
-  headText: { flex: 1, gap: space[1] },
+  header: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: space[2], rowGap: space[3] },
+  // At least room for "Everything" in h1 before the buttons wrap below it.
+  headText: { flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0, gap: space[1] },
+  headActions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
   title: { ...type.h1, color: color.text1 },
   subRow: { flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" },
   caption: { ...type.small, color: color.text3, flexShrink: 1 },
