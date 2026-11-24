@@ -123,8 +123,10 @@ const mockMine = jest.fn();
 const mockSetPin = jest.fn();
 const mockTeamPins = jest.fn();
 const mockReset = jest.fn();
-jest.mock("../../../services/venueTillService", () => {
-  const actual = jest.requireActual("../../../services/venueTillService");
+// #4490 venue owners: the PIN calls live in tillPinService (venueTillService
+// re-exports them for the Till), so the Team sheet's calls are mocked there.
+jest.mock("../../../services/tillPinService", () => {
+  const actual = jest.requireActual("../../../services/tillPinService");
   return {
     ...actual,
     fetchMyTillPin: (...a: unknown[]) => mockMine(...a),

@@ -50,7 +50,6 @@ import { Table } from "../../../src/components/ui/Table";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTillReleased } from "../../../src/hooks/useTillReleased";
-import { PIN_COPY } from "../../../src/components/venue/till/pinModel";
 import { rowTappable, showSelfRowAboveEmpty } from "../../../src/components/team/teamRowModel";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
@@ -578,10 +577,10 @@ export default function BrandTeamRoute(): React.ReactElement {
         visible={detailEntry !== null}
         entry={detailEntry?.storeEntry ?? null}
         isSelf={detailEntry?.status === "self"}
-        onOwnPinSaved={() => {
+        onOwnPinSaved={(message) => {
           // The sheet closes first; the toast follows once it has gone (iOS).
           setDetailEntry(null);
-          deferAfterDismiss(() => setToast(PIN_COPY.saved));
+          deferAfterDismiss(() => setToast(message));
         }}
         currentRank={currentRank}
         onClose={() => {

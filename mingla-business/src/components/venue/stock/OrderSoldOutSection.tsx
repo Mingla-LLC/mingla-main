@@ -35,7 +35,9 @@ import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Pill } from "../../ui/Pill";
 import { Spinner } from "../../ui/Spinner";
 import { useTillStaffSession } from "../../../services/tillStaffSession";
-import type { TillPinStaff } from "../../../services/venueTillService";
+// Static: this section lives in the Host venue owner beside the Till, so the
+// Till service is already in its chunk (a separate import() would split it).
+import { fetchTillPinStaff, type TillPinStaff } from "../../../services/venueTillService";
 import { TillStepUpHost } from "../till/TillStepUp";
 import { approvers } from "../till/pinModel";
 import { STOCK_COPY, stockErrorCopy } from "./stockCopy";
@@ -60,7 +62,7 @@ export function OrderSoldOutSection(props: OrderSoldOutSectionProps): React.Reac
     enabled: session !== null,
     staleTime: 60_000,
     // Loaded on use: a signed-in account (no PIN session) never pulls the Till transport.
-    queryFn: async () => (await import("../../../services/tillPinService")).fetchTillPinStaff(props.venueId),
+    queryFn: () => fetchTillPinStaff(props.venueId),
   });
   const body = <OrderSoldOutBody {...props} />;
   if (session === null) return body;

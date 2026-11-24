@@ -268,7 +268,8 @@ describe("D-10 Account › Sign out on a Till device goes through the Till's own
     expect(tillSignOutHref("v1")).toBe("/venue/v1/till?signout=1");
   });
   test("the Till route opens WhoIsSelling on the sign-out step (one flow, both entry points)", () => {
-    const route = read("mingla-business/app/venue/[venueId]/till.tsx");
+    // #4490 venue owners: the Till route's screen moved into the Host venue owner.
+    const route = read("mingla-business/src/components/venue/host/venueHostRoutes.tsx");
     expect(route).toMatch(/startSigningOut=\{signout === "1"\}/);
     const who = read("mingla-business/src/components/venue/till/WhoIsSelling.tsx");
     expect(who).toMatch(/!startSigningOut \? \{ kind: "none" \} : staff\.managerHasPin \? \{ kind: "pick" \}/);

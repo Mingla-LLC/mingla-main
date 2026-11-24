@@ -48,5 +48,7 @@ export {
   VenueTillRouteScreen,
   VenueTillSettingsRouteScreen,
 } from "./venueHostRoutes";
+// The Team sheet's Till PIN section (team/LazyTillPinSection.tsx).
+export { TillPinSection } from "../../team/TillPinSection";
 // The Stay venue header reads the same inventory the Stay suite shows.
 export { getStayInventory } from "../../../services/stayInventoryService";

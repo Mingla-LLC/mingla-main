@@ -63,8 +63,10 @@ describe("#4490 venue screens load their heavy dependencies on use", () => {
     expect(menuImports).not.toMatch(/import \{ MenuItemStockSection \}/);
     expect(menuImports).not.toMatch(/import \{ MenuStockLoader/);
     const menu = read("src/components/venue/VenueMenuModule.tsx");
-    expect(menu).toContain('await import("./OrderingModeCard")');
-    expect(menu).toContain('await import("./stock/MenuStockLoader")');
-    expect(menu).toContain('await import("./stock/MenuItemStockSection")');
+    // #4490 venue owners: still loaded on use, now through the one Host venue
+    // owner (a separate import() of each put them in __common).
+    expect(menu).toContain("(await loadVenueHostScreens()).OrderingModeCard");
+    expect(menu).toContain("(await loadVenueHostScreens()).MenuStockLoader");
+    expect(menu).toContain("(await loadVenueHostScreens()).MenuItemStockSection");
   });
 });

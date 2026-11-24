@@ -256,6 +256,13 @@ jest.mock("../../stay/StaySuiteShell", () => ({
   __esModule: true,
   StaySuiteShell: (): null => null,
 }));
+// #4490 venue owners: the route mounts both shells through LazyVenueSuites
+// (the Host venue owner); hand it the mocked shells below, synchronously.
+jest.mock("../host/LazyVenueSuites", () => ({
+  __esModule: true,
+  StaySuiteShell: (): null => null,
+  VenueSuiteShell: (): null => null,
+}));
 jest.mock("../VenueSuiteShell", () => ({
   __esModule: true,
   VenueSuiteShell: (): null => null,

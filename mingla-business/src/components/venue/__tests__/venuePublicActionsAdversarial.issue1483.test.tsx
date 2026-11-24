@@ -246,6 +246,13 @@ jest.mock("../../ui/EventCoverMedia", () => ({
 }));
 
 jest.mock("../../ui/Toast", () => ({ __esModule: true, Toast: (): null => null }));
+// #4490 venue owners: the route mounts both shells through LazyVenueSuites
+// (the Host venue owner); stand them in synchronously, like the shells below.
+jest.mock("../host/LazyVenueSuites", () => ({
+  __esModule: true,
+  StaySuiteShell: (): null => null,
+  VenueSuiteShell: (): null => null,
+}));
 jest.mock("../../stay/StaySuiteShell", () => ({
   __esModule: true,
   StaySuiteShell: (): null => null,

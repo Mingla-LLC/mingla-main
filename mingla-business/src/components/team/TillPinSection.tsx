@@ -49,7 +49,7 @@ export interface TillPinSectionProps {
    */
   own?: boolean;
   /** Your own PIN was saved: the screen closes the sheet and shows a toast. */
-  onOwnPinSaved?: () => void;
+  onOwnPinSaved?: (message: string) => void;
 }
 
 type Step = { kind: "idle" } | { kind: "choose"; error: string | null } | { kind: "confirm"; first: string };
@@ -90,7 +90,7 @@ function TillPinSectionBody({ brandId, memberId, memberName, own: ownRow = false
       setStep({ kind: "idle" });
       setMessage({ tone: "ok", text: PIN_COPY.saved });
       void queryClient.invalidateQueries({ queryKey: tillPinTeamKeys.mine(brandId) });
-      onOwnPinSaved?.();
+      onOwnPinSaved?.(PIN_COPY.saved);
     },
     onError: (err: unknown) => {
       const code = err instanceof TillError ? err.code : "till_failed";

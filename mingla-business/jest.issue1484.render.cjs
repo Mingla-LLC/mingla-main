@@ -78,6 +78,10 @@ module.exports = {
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",
   ],
   moduleNameMapper: {
+    // #4490 venue owners — jest-only lazy stand-ins for the two owner barrels:
+    // a suite loads only the screens it opens (see the stub's header).
+    "^\\./venueHostScreens$": path.join(businessRoot, "jest.issue4490.venue-host-owner-stub.cjs"),
+    "^\\./venueGuestScreens$": path.join(businessRoot, "jest.issue4490.venue-guest-owner-stub.cjs"),
     // #1532 — `Sheet`'s drag band mounts a real `<GestureDetector>`, which
     // wants a native binary AND reanimated 4's removed `useEvent`. Boundary
     // stub; an inline `jest.mock` in a suite still wins over this.

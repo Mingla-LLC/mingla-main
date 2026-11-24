@@ -180,12 +180,19 @@ const payload = (features: string[], extra: Record<string, unknown> = {}): Recor
   ...extra,
 });
 
+// #4490 venue owners: the preview takes the shared screen from the public venue
+// route's module; hand it the real shared screen without loading that route.
+jest.mock("../../b/[brandSlug]/v/[venueSlug]", () => ({
+  __esModule: true,
+  PublicVenueScreen: (jest.requireActual("@mingla/brand-rendering/PublicVenueScreen") as { PublicVenueScreen: unknown }).PublicVenueScreen,
+}));
+
 const TestRenderer = require("react-test-renderer") as {
   create: (el: React.ReactElement) => { toJSON: () => unknown; unmount: () => void; root: { findAll: (p: (n: { type: unknown; props: Record<string, unknown> }) => boolean) => { type: unknown; props: Record<string, unknown> }[] } };
-  act: (cb: () => void) => void;
+  act: (cb: () => void | Promise<void>) => void | Promise<void>;
 };
 
-const mountPreview = (preview: PreviewState) => {
+const mountPreview = async (preview: PreviewState) => {
   state.preview = preview;
   analytics.length = 0;
   nav.pushed.length = 0;
@@ -205,17 +212,21 @@ const mountPreview = (preview: PreviewState) => {
   const routeModule = require("../[venueId]/preview");
   const Route = (routeModule.default ?? routeModule) as React.ComponentType;
   let renderer!: ReturnType<typeof TestRenderer.create>;
-  TestRenderer.act(() => {
+  await TestRenderer.act(async () => {
     renderer = TestRenderer.create(React.createElement(Route));
   });
-  TestRenderer.act(() => undefined);
+  // #4490 venue owners: the shared screen loads from the public venue route's
+  // chunk (a lazy import); let it resolve before reading the tree.
+  await TestRenderer.act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
   return renderer;
 };
 const json = (r: { toJSON: () => unknown }): string => JSON.stringify(r.toJSON());
 
 describe("#4490 Host venue preview", () => {
-  test("P-1 / P-2 / P-3 a table venue: banner, its tables row and a DISABLED bar", () => {
-    const r = mountPreview({
+  test("P-1 / P-2 / P-3 a table venue: banner, its tables row and a DISABLED bar", async () => {
+    const r = await mountPreview({
       isLoading: false,
       isError: false,
       data: payload(["table_reservations", "menu", "events_here"]),
@@ -234,8 +245,8 @@ describe("#4490 Host venue preview", () => {
     r.unmount();
   });
 
-  test("P-2 / P-3 a venue with no table feature shows no table anything; events show a greyed Tickets and are not pressable", () => {
-    const r = mountPreview({ isLoading: false, isError: false, data: payload(["events_here"]) });
+  test("P-2 / P-3 a venue with no table feature shows no table anything; events show a greyed Tickets and are not pressable", async () => {
+    const r = await mountPreview({ isLoading: false, isError: false, data: payload(["events_here"]) });
     const tree = json(r);
     for (const forbidden of ["Tables through Mingla", "Reserve", "Find a table"]) {
       expect(tree.includes(forbidden) ? forbidden : "absent").toBe("absent");
@@ -250,16 +261,16 @@ describe("#4490 Host venue preview", () => {
     r.unmount();
   });
 
-  test("P-1 Back returns to the venue's own page", () => {
-    const r = mountPreview({ isLoading: false, isError: false, data: payload(["events_here"]) });
+  test("P-1 Back returns to the venue's own page", async () => {
+    const r = await mountPreview({ isLoading: false, isError: false, data: payload(["events_here"]) });
     const back = r.root.findAll((n) => n.props.testID === "venue-preview-back")[0];
     TestRenderer.act(() => (back.props.onPress as () => void)());
     expect(nav.replaced).toEqual(["/venue/44900000-0000-4000-8000-0000000000d1"]);
     r.unmount();
   });
 
-  test("P-5 loading, error with a working retry, and nothing to preview with a way back", () => {
-    const loading = mountPreview({ isLoading: true, isError: false, data: null });
+  test("P-5 loading, error with a working retry, and nothing to preview with a way back", async () => {
+    const loading = await mountPreview({ isLoading: true, isError: false, data: null });
     expect(json(loading)).toContain("Building your preview");
     expect(json(loading)).toContain("Preview: guests can't book yet");
     loading.unmount();
@@ -268,14 +279,14 @@ describe("#4490 Host venue preview", () => {
     state.refetch = () => {
       refetched += 1;
     };
-    const failed = mountPreview({ isLoading: false, isError: true, data: null });
+    const failed = await mountPreview({ isLoading: false, isError: true, data: null });
     expect(json(failed)).toContain("The preview could not load");
     const retry = failed.root.findAll((n) => n.props.testID === "venue-preview-retry")[0];
     TestRenderer.act(() => (retry.props.onPress as () => void)());
     expect(refetched).toBe(1);
     failed.unmount();
 
-    const empty = mountPreview({ isLoading: false, isError: false, data: null });
+    const empty = await mountPreview({ isLoading: false, isError: false, data: null });
     expect(json(empty)).toContain("There is nothing to preview yet");
     const back = empty.root.findAll((n) => n.props.testID === "venue-preview-empty-back")[0];
     TestRenderer.act(() => (back.props.onPress as () => void)());
@@ -283,14 +294,14 @@ describe("#4490 Host venue preview", () => {
     empty.unmount();
   });
 
-  test("P-4 no guest analytics: the route hands the page a no-op", () => {
+  test("P-4 no guest analytics: the route hands the page a no-op", async () => {
     const source = readFileSync(join(__dirname, "../[venueId]/preview.tsx"), "utf8");
     expect(source).toMatch(/onAnalytics=\{\(\) => undefined\}/);
     expect(source).not.toMatch(/captureWeb|captureOffering|postHog/);
     expect(analytics).toHaveLength(0);
   });
 
-  test("P-6 a non-public venue's page has a Preview control and a public one does not hide View", () => {
+  test("P-6 a non-public venue's page has a Preview control and a public one does not hide View", async () => {
     const page = readFileSync(join(__dirname, "../[venueId]/index.tsx"), "utf8");
     expect(page).toMatch(/testID="venue-page-preview"/);
     expect(page).toMatch(/router\.push\(`\/venue\/\$\{venueId\}\/preview`/);
