@@ -256,7 +256,9 @@ DECLARE
     'brand_form_auto_reminders_due',
     -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
     -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
-    'brand_form_blast_hold_if_closed'
+    'brand_form_blast_hold_if_closed',
+    -- #4571 W3 host/creator watcher notice: Admin in-app plus a Host team-screen push, no SMS; writes an explicit NULL country_code. issue_4571_w3_crm_card_watchers_contacts.implementor.pg17 asserts the notice.
+    'crm_notify_watchers'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -405,7 +407,9 @@ DECLARE
     'brand_form_auto_reminders_due',
     -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
     -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
-    'brand_form_blast_hold_if_closed'
+    'brand_form_blast_hold_if_closed',
+    -- #4571 W3 host/creator watcher notice: Admin in-app plus a Host team-screen push, no SMS; writes an explicit NULL country_code. issue_4571_w3_crm_card_watchers_contacts.implementor.pg17 asserts the notice.
+    'crm_notify_watchers'
   ];
   v_missing text;
 BEGIN
