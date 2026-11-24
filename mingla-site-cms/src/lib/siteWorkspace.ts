@@ -35,8 +35,8 @@ import { parseChangeGroup, undoRedo, type HistoryContext } from "./draftHistory"
 import { isClaimDuplicate } from "./designPass";
 import { createHash } from "node:crypto";
 import {
-  addSection, describeSections, editSection, moveSection, removeSection, sectionCatalog, setLook, setMenuItems,
-  setPageEnabled, setSectionMedia, workspacePages, type SectionContext,
+  addSection, describeSections, editSection, headerButtonView, moveSection, removeSection, sectionCatalog, setHeaderButton, setLook, setMenuItems,
+  setPageEnabled, setSectionMedia, setSiteLogo, workspacePages, type SectionContext,
 } from "./sectionActions";
 
 type AnyDoc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -77,6 +77,14 @@ function cut(value: string, max: number): { value: string; truncated?: true } {
 }
 
 /** The snapshot at one level of detail (0 is the fullest); each level drops what planning needs least. */
+/** #4572 item 9 — Home's cover as the workspace knows it: none (a colour panel), a photo, a photo and a video. */
+export function homeCoverFacts(pages: readonly AnyDoc[]): { available: boolean; has_photo: boolean; has_video: boolean } {
+  const home = pages.find((page) => !page.parent && (page.slug ?? "") === "");
+  const hero = (Array.isArray(home?.blocks) ? (home!.blocks as AnyDoc[]) : []).find((block) => block.blockType === "hero");
+  if (!hero) return { available: false, has_photo: false, has_video: false };
+  return { available: true, has_photo: Boolean(relationId(hero.media)), has_video: Boolean(relationId(hero.video)) };
+}
+
 function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loadDraftState>>; navigation: AnyDoc | null; ctx: AriActionContext }): AnyDoc {
   const { draft, navigation, ctx } = input;
   const settings = draft.settings ?? {};
@@ -126,6 +134,12 @@ function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loa
       readability_warnings: look.readability_warnings.map((warning) => ({ sentence: warning.sentence, nearest_readable: warning.suggestion })),
     },
     menu,
+    // #4572 item 17 — the red button in the header is NOT a menu item: set_header_button changes it.
+    header_button: headerButtonView(navigation),
+    logo: { media_id: relationId(settings.logo) },
+    // #4572 item 9 — whether Home has a cover Ari may talk about (Design → Cover).
+    home_cover: homeCoverFacts(draft.pages),
+    // #4575: Ari never adds the cover (sectionCatalog leaves it out for Ari).
     addable_sections: sectionCatalog(design, "ari").map((entry) => ({ type: entry.type, label: entry.label, needs_photo: entry.needs_photo })),
     media: draft.media.slice(0, mediaMax).map((item) => ({
       id: String(item.id),
@@ -170,7 +184,7 @@ export async function getSiteWorkspace(ctx: AriActionContext): Promise<AnyDoc> {
 // apply_site_change
 // ---------------------------------------------------------------------------
 
-const STEP_OPS = ["edit_section", "move_section", "remove_section", "add_section", "set_section_media", "set_look", "set_menu", "set_page_enabled"] as const;
+const STEP_OPS = ["edit_section", "move_section", "remove_section", "add_section", "set_section_media", "set_look", "set_menu", "set_page_enabled", "set_header_button", "set_logo"] as const;
 type StepOp = (typeof STEP_OPS)[number];
 
 const STEP_KEYS: Readonly<Record<StepOp, readonly string[]>> = {
@@ -182,16 +196,20 @@ const STEP_KEYS: Readonly<Record<StepOp, readonly string[]>> = {
   set_look: ["design", "tokens", "fonts", "radius", "button_shape", "motion"],
   set_menu: ["items"],
   set_page_enabled: ["page_id", "enabled"],
+  // #4572 item 17 — the header button's words (and page), and the logo: never a menu item.
+  set_header_button: ["button_label", "page_id"],
+  set_logo: ["media_id"],
 };
 
 const WORK_LOG_PART: Readonly<Record<StepOp, string>> = {
   edit_section: "copy", move_section: "composition", remove_section: "composition", add_section: "composition",
   set_section_media: "imagery", set_look: "tokens", set_menu: "composition", set_page_enabled: "composition",
+  set_header_button: "copy", set_logo: "imagery",
 };
 
 /** Does this step write words a visitor reads? Those must cite their source. */
 function writesCopy(op: StepOp, step: AnyDoc): boolean {
-  if (op === "set_menu") return true;
+  if (op === "set_menu" || op === "set_header_button") return true;
   if (op === "edit_section" && Array.isArray(step.list_ops) && step.list_ops.some((row: AnyDoc) => row?.op === "add")) return true;
   return (op === "edit_section" || op === "add_section") && Array.isArray(step.edits) && step.edits.length > 0;
 }
@@ -252,6 +270,15 @@ async function runStep(op: StepOp, step: AnyDoc, sections: SectionContext, ctx: 
     case "set_page_enabled": {
       const done = await setPageEnabled(sections, step);
       return { page_revision: done.pageRevision, touched: { page_id: String(done.page.id) } };
+    }
+    case "set_header_button": {
+      assertBacked(ctx, [String(step.button_label ?? "")], owner);
+      const done = await setHeaderButton(sections, { label: step.button_label, page_id: step.page_id });
+      return { menu_revision: done.menu_revision, touched: {} };
+    }
+    case "set_logo": {
+      const done = await setSiteLogo(sections, step);
+      return { look_revision: done.look_revision, touched: {} };
     }
   }
 }
@@ -375,7 +402,7 @@ async function applyOnce(input: { op: StepOp; step: AnyDoc; sections: SectionCon
       decision,
       cites,
       tool: "apply_site_change",
-      target: touched.page_id ? `page:${touched.page_id}${touched.section_id ? `#${touched.section_id}` : ""}` : op === "set_look" ? "design" : "menu",
+      target: touched.page_id ? `page:${touched.page_id}${touched.section_id ? `#${touched.section_id}` : ""}` : op === "set_look" || op === "set_logo" ? "design" : op === "set_header_button" ? "header_button" : "menu",
       revision: String(result.page_revision ?? result.look_revision ?? result.menu_revision ?? ""),
     });
   }

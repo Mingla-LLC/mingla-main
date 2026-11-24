@@ -3,6 +3,7 @@ import { galleryImages } from "../../shared/data";
 import { HeadlineLines, Photo, SecHead, sectionId, text, type SharedBlockProps } from "../../shared/parts";
 import { HeroButtons, TripSearch, heroParts } from "../../shared/blocks/Hero";
 import { Book, Cover, GridShell, Price, State, CardTitle } from "../../shared/blocks/Offerings";
+import { Lines } from "../../shared/Lines";
 
 /*
  * #4453 6a — Maison's three signature layouts (spec §3.2), drawn from the
@@ -54,11 +55,11 @@ export function OfferingGridMaisonRows(props: SharedBlockProps) {
         <div className="ms-rows">
           {items.map((item, itemIndex) => (
             <article key={item.card.id} className="ms-row" data-offering-kind={item.card.kind}>
-              <div className="mg-ph ms-row__img" data-mg-rise=""><Cover item={item} sizes="(min-width: 900px) 58vw, 100vw" /></div>
+              <div className="mg-ph ms-row__img" data-mg-rise=""><Cover item={item} face sizes="(min-width: 900px) 58vw, 100vw" /></div>
               <div className="ms-row__txt" data-mg-rise="">
                 <p className="mg-label">{[two(itemIndex), item.card.destination].filter(Boolean).join(" · ")}</p>
                 <h3><CardTitle card={item.card} /></h3>
-                {item.card.summary ? <p className="ms-row__blurb">{item.card.summary}</p> : null}
+                {item.card.summary ? <p className="ms-row__blurb"><Lines text={item.card.summary} /></p> : null}
                 <p className="ms-row__meta">{item.card.dates ? <span>{item.card.dates}</span> : null}<State item={item} /></p>
                 <div className="ms-row__buy">
                   <Price item={item} className="mg-price" />

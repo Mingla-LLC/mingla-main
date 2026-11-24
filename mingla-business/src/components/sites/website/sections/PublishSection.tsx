@@ -10,7 +10,8 @@ import { ConfirmDialog } from "../../../ui/ConfirmDialog";
 import { useDesignChecks, useDraftChanges, useReviewStatus, useSitePages, useWorkLog, type DesignCheck, type WorkLogEntry } from "../../../../sites/contentApi";
 import { unreviewedSectionCount } from "../../../../sites/setupStatus";
 import { publishFindings, publishFindingsCount, type PublishFinding } from "../../../../../../packages/site-contracts/src/publishChecks.ts";
-import { BrandSitesError, SITES_ERROR_MESSAGES } from "../../../../services/brandSitesService";
+import { BrandSitesError, PUBLISHING_PAUSED_MESSAGE, PUBLISHING_PAUSED_TITLE, SITES_ERROR_MESSAGES } from "../../../../services/brandSitesService";
+import { usePublishingPaused } from "../../../../sites/usePublishingPaused";
 import { formatWebsiteDateTime } from "../../../../sites/websiteCopy";
 import { publicationReceiptLine } from "../../../../sites/publicationFlow";
 import type { BrandSiteVersion } from "../../../../sites/contracts";
@@ -105,7 +106,9 @@ export function PublishSection({ variant, onFix }: {
   // (right after "Mark all as reviewed" saves a new revision) the old one is
   // still on screen, so Publish waits for the fresh one (Young and Stamped's
   // first publish was refused this way).
-  const readyToPublish = validation.data !== undefined && !validation.isFetching && blocker === null && (!firstPublish || checksRan) && unreviewed === 0;
+  // #4572 item 15 — Core's own first-publish readiness: while it is paused, Publish waits and says why.
+  const publishing = usePublishingPaused(site.id, firstPublish, variant !== "history");
+  const readyToPublish = validation.data !== undefined && !validation.isFetching && blocker === null && (!firstPublish || checksRan) && !publishing.paused && unreviewed === 0;
   // #2830 — a finding names a page; Fix opens that page in the editor.
   const setupPages = useSitePages(site.id, variant === "setup");
 
@@ -137,6 +140,11 @@ export function PublishSection({ variant, onFix }: {
         {failed ? (
           <Banner tone="err" icon="alert" alert title="That publish didn't go live" body={`Nothing went live: your website isn't public yet. ${failureReason(receipt)}`} testID="publish-failed">
             <WButton label="Try again" size="sm" onPress={controller.actions.onResetFailedPublication} testID="publish-reset" />
+          </Banner>
+        ) : null}
+        {publishing.paused && !tracking ? (
+          <Banner tone="warn" icon="clock" title={PUBLISHING_PAUSED_TITLE} body={PUBLISHING_PAUSED_MESSAGE} testID="setup-publishing-paused">
+            <WButton label="Check again" size="sm" onPress={() => { void publishing.refetch(); }} testID="setup-publishing-paused-retry" />
           </Banner>
         ) : null}
         {/* #4453 — Draft sections block publishing until reviewed (UNREVIEWED_SECTIONS). */}

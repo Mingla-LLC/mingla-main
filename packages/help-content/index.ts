@@ -269,7 +269,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Step 1 — the basics',
         body:
-          'Give it a name and choose the format: in person, online, or both. Pick a party type, the vibe tags and every genre you will play — they all show up as tags on your event page — then write a short description of the night.',
+          'Give it a name and choose the format: in person, online, or both. Pick an event type, the vibe tags and every genre you will play — they all show up as tags on your event page — then write a short description of the night.',
       },
       {
         title: 'Step 2 — when',
@@ -328,7 +328,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'The basics don’t change',
         body:
-          'Name it, set the format and the party type, then the vibe tags and every genre you will play — afrobeats, afro house, amapiano. They all show up as tags on your event page. Add a line or two about the night.',
+          'Name it, set the format and the event type, then the vibe tags and every genre you will play — afrobeats, afro house, amapiano. They all show up as tags on your event page. Add a line or two about the night.',
       },
       {
         title: 'Date, doors and a Lagos timezone',
@@ -430,7 +430,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Start from your Nigerian brand',
         body:
-          'From its Home, tap +, choose Create event, then Ticketed event. The basics don’t change: name, format, party type, vibe tags and genres. Use the description to say how the nights differ.',
+          'From its Home, tap +, choose Create event, then Ticketed event. The basics don’t change: name, format, event type, vibe tags and genres. Use the description to say how the nights differ.',
         links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
       },
       {
@@ -533,7 +533,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Set the format to Online',
         body:
-          'From your brand’s Home, tap +, Create event, then Ticketed event. Name it and set the format to Online. Pick a party type, vibe tags and genres, then say what the stream is and what guests get from it.',
+          'From your brand’s Home, tap +, Create event, then Ticketed event. Name it and set the format to Online. Pick an event type, vibe tags and genres, then say what the stream is and what guests get from it.',
         links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
       },
       {
@@ -582,7 +582,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Switch to your Nigerian brand',
         body:
-          'Switch to it from Home first, then tap +, Create event and Ticketed event. Name it and set the format to Online, then pick the party type, vibe tags and genres.',
+          'Switch to it from Home first, then tap +, Create event and Ticketed event. Name it and set the format to Online, then pick the event type, vibe tags and genres.',
         links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
       },
       {
@@ -631,7 +631,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Switch to your Nigerian brand, then pick Hybrid',
         body:
-          'On Home, switch to your Nigerian brand, then tap +, Create event and Ticketed event. Name it and set the format to Hybrid — that one choice is what lets the event carry an address and a stream link at once, and a capped ticket next to an uncapped one. Then the party type, the vibe tags and the genres.',
+          'On Home, switch to your Nigerian brand, then tap +, Create event and Ticketed event. Name it and set the format to Hybrid — that one choice is what lets the event carry an address and a stream link at once, and a capped ticket next to an uncapped one. Then the event type, the vibe tags and the genres.',
         links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
       },
       {
@@ -690,7 +690,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Create a ticketed event, and pick Hybrid',
         body:
-          'On Home, tap +, Create event and Ticketed event. Name it and set the format to Hybrid — that one choice is what lets the event carry an address and a stream link at once, and a capped ticket next to an uncapped one. Then the party type, the vibe tags and the genres.',
+          'On Home, tap +, Create event and Ticketed event. Name it and set the format to Hybrid — that one choice is what lets the event carry an address and a stream link at once, and a capped ticket next to an uncapped one. Then the event type, the vibe tags and the genres.',
         links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
       },
       {
@@ -755,7 +755,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Name it, and tag the night',
         body:
-          'The format stays In person. Pick a party type, then the vibe tags and the genres — those become the tags guests see on the page. Then a line about the night.',
+          'The format stays In person. Pick an event type, then the vibe tags and the genres — those become the tags guests see on the page. Then a line about the night.',
       },
       {
         title: 'One date, and your timezone',

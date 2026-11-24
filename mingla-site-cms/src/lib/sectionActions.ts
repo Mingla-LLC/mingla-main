@@ -789,10 +789,16 @@ async function savePage(ctx: SectionContext, page: AnyDoc, data: AnyDoc): Promis
     })) as AnyDoc;
   } catch (error) {
     if (error instanceof Error && error.message === "MEDIA_REJECTED") refuse("MEDIA_PROCESSING");
-    if (error instanceof Error && error.message === "BOOKING_BLOCKS_OFF") refuse("SECTION_TYPE_NOT_AVAILABLE");
+    // #4572 item 10 — say what really happened (never "Your design doesn't have that kind of section").
+    if (error instanceof Error && error.message === "BOOKING_BLOCKS_OFF") {
+      refuse("VALIDATION_FAILED", { problems: [BOOKING_OFF_PROBLEM] });
+    }
     throw error;
   }
 }
+
+/** #4572 item 10 — the one sentence an owner sees when a change really adds a booking feature. */
+export const BOOKING_OFF_PROBLEM = "Booking features aren't switched on for this website yet, so that change wasn't saved.";
 
 const historyActor = (ctx: SectionContext): HistoryActor => (ctx.actor === "ari" ? "ari" : "user");
 
@@ -879,6 +885,32 @@ export async function removeSection(ctx: SectionContext, args: AnyDoc): Promise<
   return done(updated, null);
 }
 
+/**
+ * #4572 item 8, following #4575: a page can take a cover (the "Big picture")
+ * when it has none yet. One rule behind both addSection's refusal and the
+ * page's Add section list, so the list never offers one the server would refuse.
+ */
+export const PAGE_HAS_COVER = "This page already has a big picture.";
+
+export function coverUnavailableReason(blocks: readonly AnyDoc[]): string | null {
+  return blocks.some((block) => block.blockType === "hero") ? PAGE_HAS_COVER : null;
+}
+
+/** The Add section list for one page: the cover only when that page can take one, plus the one-line reason when it can't. */
+export function pageSectionCatalog(catalog: readonly AddableSection[], page: AnyDoc): { types: AddableSection[]; cover_note: string | null } {
+  const blocks = Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : [];
+  const reason = catalog.some((entry) => entry.type === "hero") ? coverUnavailableReason(blocks) : null;
+  const types = reason ? catalog.filter((entry) => entry.type !== "hero") : [...catalog];
+  return { types, cover_note: reason };
+}
+
+export async function readPageSectionCatalog(ctx: SectionContext, design: DesignKey, pageId: unknown): Promise<{ types: AddableSection[]; cover_note: string | null }> {
+  const catalog = sectionCatalog(design, ctx.actor);
+  if (pageId === undefined || pageId === null) return { types: catalog, cover_note: null };
+  const { page } = await loadPage(ctx, pageId);
+  return pageSectionCatalog(catalog, page);
+}
+
 export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (block: AnyDoc, texts: string[]) => void): Promise<SectionWrite> {
   const { page } = await loadPage(ctx, args.page_id);
   checkPageRevision(page, args.expected_revision);
@@ -890,7 +922,8 @@ export async function addSection(ctx: SectionContext, args: AnyDoc, check?: (blo
   }
   const isCover = type === "hero";
   // #4575: the cover is the top of the page, once.
-  if (isCover && blocks.some((existing) => existing.blockType === "hero")) refuse("VALIDATION_FAILED", { problems: ["This page already has a big picture."] });
+  const coverReason = isCover ? coverUnavailableReason(blocks) : null;
+  if (coverReason) refuse("VALIDATION_FAILED", { problems: [coverReason] });
   // Replacing a page title does not add a section, so it needs no room.
   const replacesTitle = isCover && blocks[0]?.blockType === "page_header";
   if (blocks.length >= MAX_BLOCKS_PER_PAGE && !replacesTitle) refuse("SECTION_LIMIT_REACHED", { max: MAX_BLOCKS_PER_PAGE });
@@ -1014,6 +1047,74 @@ export async function setMenuItems(ctx: SectionContext, args: AnyDoc): Promise<{
   const saved = await saveMenu(ctx, navigation, next);
   await recordChanges(ctx, historyActor(ctx), [menuRow(navigation, saved, "Change the menu")], ctx.group, null, ctx.operationId ?? null);
   return { menu_revision: String(saved.updatedAt ?? ""), texts: wanted.map((item) => item.label) };
+}
+
+// ---------------------------------------------------------------------------
+// #4572 item 17 — the header button and the logo, each its own undoable thing.
+// The menu (`set_menu`) never touches the header button, and the header
+// button never touches a menu item.
+// ---------------------------------------------------------------------------
+
+/** History keys: the header button is a "menu" row of its own; the logo a "look" row of its own. */
+export const HEADER_BUTTON_KEYS = ["header_cta"] as const;
+export const LOGO_KEYS = ["logo"] as const;
+
+/** The header button as the workspace shows it: its words and the page it opens (null for an outside link or none). */
+export function headerButtonView(navigation: AnyDoc | null): { label: string | null; page_id: string | null; links_outside: boolean } {
+  const cta = (navigation?.header_cta ?? null) as AnyDoc | null;
+  const label = typeof cta?.label === "string" && cta.label.trim() ? cta.label : null;
+  return { label, page_id: cta?.target_type === "url" ? null : relationId(cta?.page), links_outside: cta?.target_type === "url" && Boolean(cta?.url) };
+}
+
+/** The header button's words and, optionally, the page it opens. An outside link keeps its address when only the words change. */
+export async function setHeaderButton(ctx: SectionContext, args: AnyDoc): Promise<{ menu_revision: string; texts: string[] }> {
+  const navigation = await navigationOf(ctx);
+  if (!navigation) refuse("NOT_FOUND");
+  const label = typeof args.label === "string" ? args.label.trim() : "";
+  if (!label || label.length > MAX_NAV_LABEL_LENGTH || MARKUP.test(label)) {
+    refuse("VALIDATION_FAILED", { problems: [`label must be plain text up to ${MAX_NAV_LABEL_LENGTH} characters`] });
+  }
+  const current = (navigation.header_cta ?? {}) as AnyDoc;
+  let target: AnyDoc;
+  if (args.page_id !== undefined && args.page_id !== null) {
+    const pages = (await findAllTenantPages(ctx.scoped, ctx.tenantId)) as AnyDoc[];
+    const page = pages.find((candidate) => String(candidate.id) === String(args.page_id));
+    if (!page) refuse("PAGE_NOT_FOUND", { problems: ["page_id is not a page of this website"] });
+    if (page.enabled === false) refuse("VALIDATION_FAILED", { problems: ["that page is turned off"] });
+    target = { target_type: "page", page: String(page.id), url: null };
+  } else if (current.target_type === "url" ? current.url : relationId(current.page)) {
+    target = { target_type: current.target_type ?? "page", page: relationId(current.page), url: current.url ?? null };
+  } else {
+    refuse("VALIDATION_FAILED", { problems: ["page_id is required: the header button has no page yet"] });
+  }
+  const saved = (await ctx.req.payload.update({
+    collection: "navigation", id: navigation.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0,
+    data: { header_cta: { ...target, label } } as never,
+  })) as AnyDoc;
+  await recordChanges(ctx, historyActor(ctx), [{
+    target: "menu", targetId: "header_button", label: "Change the header button",
+    before: pickSnapshot(navigation, HEADER_BUTTON_KEYS), after: pickSnapshot(saved, HEADER_BUTTON_KEYS),
+  }], ctx.group, null, ctx.operationId ?? null);
+  return { menu_revision: String(saved.updatedAt ?? ""), texts: [label] };
+}
+
+/** The site's logo: one of the site's READY photos, or null to show the name instead. */
+export async function setSiteLogo(ctx: SectionContext, args: AnyDoc): Promise<{ look_revision: string }> {
+  const settings = await currentSettings(ctx);
+  let logo: string | null = null;
+  if (args.media_id !== null) {
+    if (typeof args.media_id !== "string" || !args.media_id) refuse("VALIDATION_FAILED", { problems: ["media_id must be a photo id or null"] });
+    await readyMedia(ctx, [args.media_id], "image");
+    logo = args.media_id;
+  }
+  const updated = (await ctx.req.payload.update({
+    collection: "site-settings", id: settings.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0, data: { logo } as never,
+  })) as AnyDoc;
+  await recordChanges(ctx, historyActor(ctx), [{
+    target: "look", targetId: "logo", label: logo ? "Change the logo" : "Remove the logo",
+    before: pickSnapshot(settings, LOGO_KEYS), after: pickSnapshot(updated, LOGO_KEYS),
+  }], ctx.group, null, ctx.operationId ?? null);
+  return { look_revision: String(updated.updatedAt ?? "") };
 }
 
 // ---------------------------------------------------------------------------

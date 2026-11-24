@@ -55,7 +55,7 @@ import { WebsiteProvider, useWebsite, type StickyBar, type TopbarSave, type Webs
 import { WebsiteIcon } from "./WebsiteIcon";
 import { Banner, Chip, LoadingPane, WButton, Card, CardTitle, Body, ui } from "./ui";
 import { SiteStatusChip } from "./StatusChip";
-import { SitePreviewPanel, type PreviewGrantState } from "./preview/SitePreviewPanel";
+import { previewGrantState, SitePreviewPanel, type PreviewGrantState } from "./preview/SitePreviewPanel";
 import { FullScreenPreviewBar } from "./preview/FullScreenPreviewBar";
 import { NoticeBanner } from "./NoticeBanner";
 import { LockBanner } from "./LockBanner";
@@ -309,13 +309,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
     setPreviewSheet(true);
   }, [brandId, preference]);
 
-  const grantState: PreviewGrantState = !hasSite
-    ? { kind: "nodraft" }
-    : controller.previewGrant.data
-      ? { kind: "ready", previewUrl: controller.previewGrant.data.preview_url, siteId: siteId!, pages: controller.previewGrant.data.pages ?? [] }
-      : controller.previewGrant.isError
-        ? { kind: "error", onRetry: () => { void controller.previewGrant.refetch(); } }
-        : { kind: "loading" };
+  const grantState: PreviewGrantState = previewGrantState(hasSite, siteId, controller.previewGrant, controller.previewRefresh);
 
   const value: WebsiteContextValue = {
     brandId,

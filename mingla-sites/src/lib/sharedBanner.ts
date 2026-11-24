@@ -10,7 +10,7 @@ export function sharedBannerText(brand: string, expiresAt: string | null): strin
 }
 
 /** Every design draws the strip the same way: the designs' own styles for it differ, and a client must always see it. */
-export const SHARED_BANNER_STYLE: CSSProperties = {
+export const PREVIEW_BANNER_STYLE: CSSProperties = {
   position: "sticky",
   top: 0,
   zIndex: 100,
@@ -28,6 +28,12 @@ export const SHARED_BANNER_STYLE: CSSProperties = {
   textOverflow: "ellipsis",
 };
 
+/** The share page's name for the same strip style. */
+export const SHARED_BANNER_STYLE: CSSProperties = PREVIEW_BANNER_STYLE;
+
+/** #4572 item 13 — the owner's own preview strip (short, so it fits one line at 375 px). */
+export const PREVIEW_BANNER_TEXT = "Private preview · not live";
+
 /**
  * The strip sits above every layer a design or the booking chrome fixes to the
  * screen (headers 60, consent and the phone sticky bar 80, menus and the
@@ -36,3 +42,13 @@ export const SHARED_BANNER_STYLE: CSSProperties = {
 export const SHARED_STRIP_CSS =
   '[data-shared-preview="1"] :is(.mg-hd,.site-header,.v-header){top:32px !important}' +
   '[data-shared-preview="1"] .mg-pmenu{padding-top:116px}';
+
+/**
+ * #4572 item 13 — the same rule for every preview page (`/preview`,
+ * `/plan-preview`): a design's fixed header (Maison's `.mg-hd`, Atelier's
+ * `.site-header`, Voyage's `.v-header`) starts below the strip, so it never
+ * slides over it. No design stylesheet changes (they are immutable).
+ */
+export const PREVIEW_STRIP_CSS =
+  '[data-preview] :is(.mg-hd,.site-header,.v-header){top:32px !important}' +
+  '[data-preview] .mg-pmenu{padding-top:116px}';

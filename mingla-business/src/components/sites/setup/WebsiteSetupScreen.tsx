@@ -13,7 +13,7 @@ import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
 import { useComposeBrandSiteFromPlan, useSaveBrandSitePlan } from "../../../sites/planApi";
 import { BrandSitesError } from "../../../services/brandSitesService";
-import { planBuildDone, SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
+import { planBuildDone, SetupFlowError, useMarkNotApplicable, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
 import { ariStepToFollow, canRebuildPages, firstMissingStep, nameInSentence, nextOpenStep, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { partLabel } from "../../../sites/sitePlanState";
@@ -117,6 +117,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   const published = plan?.site?.published === true;
   const paused = plan?.site?.paused === true;
   const fields = useMemo(() => plan?.completeness?.fields ?? [], [plan?.completeness]);
+  // #4572 item 4 — "Doesn't apply to my brand" on the Build step.
+  const markNotApplicable = useMarkNotApplicable(brandId);
 
   // ── Ari ────────────────────────────────────────────────────────────────
   const [ariOpen, setAriOpen] = useState(search.ari === "1");
@@ -348,6 +350,9 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
             onRetry={draft.retry}
             onTellMingla={() => router.push("/support/inbox" as never)}
             onDone={(next) => goStep(next)}
+            onNotApplicable={readOnly || !plan?.completeness?.contextRevision
+              ? undefined
+              : (fieldKey) => markNotApplicable.mutateAsync({ fieldKey, contextRevision: String(plan.completeness!.contextRevision) })}
           />
         );
       case "first_offering":

@@ -193,6 +193,8 @@ describe("#2893 deterministic media recovery", () => {
       context: {},
       user: { id: "user-1", tenantId: TENANT_ID, siteId: SITE_ID },
       payload: {
+        // #4572 item 12 — no READY copy of this file yet (the repeat-upload check).
+        find: async () => ({ docs: [] }),
         findByID: async () => media,
         update: async (input: Record<string, unknown>) => {
           const data = input.data as Record<string, unknown>;

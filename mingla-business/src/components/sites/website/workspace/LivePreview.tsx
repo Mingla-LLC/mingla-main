@@ -1,4 +1,5 @@
 import React, { useCallback, useImperativeHandle, useRef, useState } from "react";
+import { previewHttpRefusal } from "../../../../sites/previewRefresh";
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { WebView } from "react-native-webview";
 import { color } from "../../../../constants/designSystem";
@@ -62,6 +63,12 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
                 style={styles.web}
                 onMessage={(event) => preview.onMessage(slot.key, event.nativeEvent.data)}
                 onLoadEnd={() => preview.onLoaded(slot.key)}
+                onHttpError={(event) => {
+                  // #4572 item 1 — the refused preview page (409: an older draft) has no parent to tell.
+                  const kind = previewHttpRefusal(event.nativeEvent.statusCode);
+                  if (kind === "stale") props.onStale?.();
+                  else if (kind === "failed") props.onFailed?.();
+                }}
                 sharedCookiesEnabled={false}
                 setSupportMultipleWindows={false}
                 accessibilityLabel={visible ? `Your draft website at ${PREVIEW_DEVICE_LABELS[preference.device].toLowerCase()} size. Tap a section to change it.` : undefined}

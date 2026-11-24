@@ -35,6 +35,7 @@ import { EmailsListView } from "../components/email/campaigns/EmailsListView";
 import { EmailDetailPage } from "../components/email/campaigns/EmailDetailPage";
 // #4383: the admin-send-email client lives in one place (the Overview uses it too).
 import { callEdgeFunction } from "../services/adminSendEmailService";
+import { fetchAdminProfileContactsById } from "../services/adminProfileContactsService";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -803,18 +804,33 @@ function PreferencesSubView() {
     try {
       let query = supabase
         .from("notification_preferences")
-        .select("*, user:profiles!notification_preferences_user_id_fkey(display_name, email)", { count: "exact" })
+        .select("*, user:profiles!notification_preferences_user_id_fkey(display_name)", { count: "exact" })
         .order("updated_at", { ascending: false })
         .range(page * PREFS_PAGE_SIZE, (page + 1) * PREFS_PAGE_SIZE - 1);
 
       if (filterOptedOut) query = query.eq("email_enabled", false);
 
-      const { data, count } = await query;
+      const { data, count, error } = await query;
+      if (error) throw error;
+      // #3969 — emails come from the admin contacts read, not the profile row.
+      let rows = data || [];
+      if (rows.length > 0) {
+        try {
+          const contacts = await fetchAdminProfileContactsById(rows.map((row) => row.user_id));
+          rows = rows.map((row) => ({
+            ...row,
+            user: { ...(row.user || {}), email: contacts[row.user_id]?.email || null },
+          }));
+        } catch (contactError) {
+          console.warn("[EmailPage] contact read failed:", contactError?.message || contactError);
+        }
+      }
       if (mountedRef.current) {
-        setAllPrefs(data || []);
+        setAllPrefs(rows);
         setPrefsCount(count || 0);
       }
-    } catch {
+    } catch (loadError) {
+      console.warn("[EmailPage] preferences read failed:", loadError?.message || loadError);
       if (mountedRef.current) { setAllPrefs([]); setPrefsCount(0); }
     } finally {
       if (mountedRef.current) setLoading(false);

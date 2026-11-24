@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-site-control/__tests__/issue_4572_library_sources.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4572-library-sources",
+  "profile": "deno-2-unit"
+}

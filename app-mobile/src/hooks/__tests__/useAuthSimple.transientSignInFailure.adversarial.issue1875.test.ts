@@ -1485,7 +1485,54 @@ test('AX-F1 — signInWithGoogle minus the #1875 regions is BYTE-IDENTICAL to or
   const base = baselineSource()
   const liveFn = fnFrom(HOOK_SOURCE, '  const signInWithGoogle = async () => {', '  const signInWithApple = async () => {')
   const baseFn = fnFrom(base, '  const signInWithGoogle = async () => {', '  const signInWithApple = async () => {')
-  const residue = excise1875(liveFn, 'google')
+  let residue = excise1875(liveFn, 'google')
+  // [TEST-MOD-APPROVED #3969] #3969 deleted the direct `profiles` email pre-check (the googleEmail
+  // extraction and the existingUser ilike read) because own-profile access moved behind
+  // get_my_profile; restored here to its pre-#3969 bytes so this guard keeps proving #1875 alone.
+  const preCheck3969 =
+    '      // Get user email from Google user data\n' +
+    '      // The structure might be googleUser.data.user.email or googleUser.user.email\n' +
+    '      let googleEmail: string | undefined;\n' +
+    '      try {\n' +
+    '        if (googleUser?.data?.user?.email) {\n' +
+    '          googleEmail = googleUser.data.user.email.toLowerCase().trim();\n' +
+    '        } else if ((googleUser as unknown as { user?: { email?: string } })?.user?.email) {\n' +
+    '          googleEmail = (googleUser as unknown as { user: { email: string } }).user.email.toLowerCase().trim();\n' +
+    '        }\n' +
+    '      } catch (e) {\n' +
+    '        console.warn(\n' +
+    '          "Could not extract email from Google sign-in response:",\n' +
+    '          e\n' +
+    '        );\n' +
+    '      }\n' +
+    '\n' +
+    "      // If we couldn't get email from the response, we'll check after Supabase sign-in\n" +
+    '\n' +
+    '      // Check if user with this email already exists in profiles\n' +
+    '      let existingUser = null;\n' +
+    '      if (googleEmail) {\n' +
+    '        const { data: existingProfile } = await supabase\n' +
+    '          .from("profiles")\n' +
+    '          .select("id, email")\n' +
+    '          .ilike("email", googleEmail)\n' +
+    '          .maybeSingle();\n' +
+    '\n' +
+    '        if (existingProfile) {\n' +
+    '          existingUser = existingProfile;\n' +
+    '        }\n' +
+    '      }\n' +
+    '\n'
+  const signInAnchor3969 = '      // Sign in to Supabase with the ID token\n'
+  assert.equal(residue.split(signInAnchor3969).length, 2, 'AX-F #3969 google pre-check anchor must match exactly once')
+  residue = residue.replace(signInAnchor3969, () => preCheck3969 + signInAnchor3969)
+  // [TEST-MOD-APPROVED #3969] #3969 dropped the `existingUser` clause from the existing-user error test
+  // together with the pre-check above; restored to the pre-#3969 bytes.
+  const existingTail3969Live = '          error.message?.includes("violates");\n'
+  assert.equal(residue.split(existingTail3969Live).length, 2, 'AX-F #3969 google existing-user tail must match exactly once')
+  residue = residue.replace(
+    existingTail3969Live,
+    () => '          error.message?.includes("violates") ||\n          !!(existingUser && error.message?.includes("user"));\n',
+  )
   if (residue !== baseFn) {
     const r = residue.split('\n')
     const b = baseFn.split('\n')
@@ -1653,6 +1700,69 @@ test('AX-F3 — everything ELSE in useAuthSimple.ts is byte-identical to origin/
       '                  }\n' +
       residue.slice(endAt + end4456.length)
   }
+  // [TEST-MOD-APPROVED #3969] #3969 moved the own-profile reads/writes behind readMyProfile()
+  // (get_my_profile RPC): the import, the sign-in profile load, the missing-profile insert and the
+  // updateProfile write+reload. Each is restored to its exact pre-#3969 bytes, and each must match once.
+  const restore3969 = (source: string, live: string, pre: string, label: string): string => {
+    assert.equal(source.split(live).length, 2, `AX-F #3969 region must match exactly once: ${label}`)
+    return source.replace(live, () => pre)
+  }
+  residue = restore3969(
+    residue,
+    'import { readMyProfile } from "../services/profileAccessService";\n',
+    '',
+    'readMyProfile import',
+  )
+  residue = restore3969(
+    residue,
+    '            const { data: profile, error: profileError } = await readMyProfile()\n' +
+      '              .eq("id", session.user.id)\n' +
+      '              .single<User & { explorer_deleted_at?: string | null }>();\n',
+    '            const { data: profile, error: profileError } = await supabase\n' +
+      '              .from("profiles")\n' +
+      '              .select("*")\n' +
+      '              .eq("id", session.user.id)\n' +
+      '              .single();\n',
+    'sign-in profile load',
+  )
+  residue = restore3969(
+    residue,
+    '      const { error: updateError } = await supabase\n' +
+      '        .from("profiles")\n' +
+      '        .update(updates)\n' +
+      '        .eq("id", user.id);\n' +
+      '\n' +
+      '      if (updateError) {\n' +
+      '        Alert.alert(\n' +
+      '          "Update Failed",\n' +
+      '          updateError.message || "Failed to update profile. Please try again."\n' +
+      '        );\n' +
+      '        throw updateError;\n' +
+      '      }\n' +
+      '\n' +
+      '      // Issue #3969: the saved row comes back through the own-profile read.\n' +
+      '      const { data, error } = await readMyProfile()\n' +
+      '        .eq("id", user.id)\n' +
+      '        .single<User>();\n' +
+      '      if (error) {\n' +
+      '        Alert.alert(\n' +
+      '          "Update Failed",\n' +
+      '          error.message || "Your changes were saved but could not be reloaded. Please try again."\n' +
+      '        );\n',
+    '      const { data, error } = await supabase\n' +
+      '        .from("profiles")\n' +
+      '        .update(updates)\n' +
+      '        .eq("id", user.id)\n' +
+      '        .select()\n' +
+      '        .single();\n' +
+      '\n' +
+      '      if (error) {\n' +
+      '        Alert.alert(\n' +
+      '          "Update Failed",\n' +
+      '          error.message || "Failed to update profile. Please try again."\n' +
+      '        );\n',
+    'updateProfile write+reload',
+  )
   const issue4202Start = '            // #4202 [explorer-account-deletion] — begin explicit reactivation gate.\n'
   const issue4202End = '            // #4202 [explorer-account-deletion] — end explicit reactivation gate.\n'
   const issue4202At = residue.indexOf(issue4202Start)

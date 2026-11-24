@@ -58,6 +58,8 @@ export interface ExperiencePayloadWhen {
 
 /** Brand hints used only when seeding a NEW experience's timezone. */
 export interface ExperienceBrandTimezoneHints {
+  /** #4572 7e — the brand's saved zone wins (D9). */
+  brandZone?: string | null;
   payoutCountry?: string | null;
   currency?: string | null;
 }
@@ -175,6 +177,7 @@ export function useExperienceDraftAdapter(
   const seededTimezone =
     initialWhen?.timezone ??
     defaultTimezoneForBrand({
+      brandZone: brandTzHints?.brandZone,
       payoutCountry: brandTzHints?.payoutCountry,
       currency: brandTzHints?.currency,
       deviceZone: detectDeviceTimezone(),
@@ -196,12 +199,14 @@ export function useExperienceDraftAdapter(
     if (timezoneTouchedRef.current) return;
     if (initialWhen?.timezone !== undefined) return;
     const next = defaultTimezoneForBrand({
+      brandZone: brandTzHints?.brandZone,
       payoutCountry: brandTzHints?.payoutCountry,
       currency: brandTzHints?.currency,
       deviceZone: detectDeviceTimezone(),
     });
     setWhenState((prev) => (prev.timezone === next ? prev : { ...prev, timezone: next }));
   }, [
+    brandTzHints?.brandZone,
     brandTzHints?.payoutCountry,
     brandTzHints?.currency,
     initialWhen?.timezone,

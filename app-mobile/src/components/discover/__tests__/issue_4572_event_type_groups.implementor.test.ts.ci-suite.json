@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/discover/__tests__/issue_4572_event_type_groups.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4572-event-type-groups",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -72,6 +72,7 @@ import {
 } from "../../utils/draftRsvpValidation";
 import type { ValidationError } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
+import { brandZoneForNewDraft } from "../../utils/timezones";
 import {
   detectPaidPublishGuardReason,
   resolvePaidPublishGuardCopy,
@@ -128,7 +129,7 @@ import type { TurnoutInputSource } from "../../utils/turnoutInput";
  * The mobile Stepper/chromeRow path must remain mobile/narrow-web only.
  */
 
-import { CreatorStep1Basics } from "../event/CreatorStep1Basics";
+import { CreatorStep1Basics } from "../event/LazyCreatorStep1Basics";
 import { CreatorStep2When } from "../event/LazyCreatorStep2When";
 import { CreatorStep3Where } from "../event/CreatorStep3Where";
 import {
@@ -713,6 +714,24 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       updateDraft(liveDraft.id, { timezone: detected });
     }
   }, [liveDraft.id, liveDraft.timezone, updateDraft]);
+
+  // #4572 7e (D9) — a NEW draft starts in the brand's saved time zone (then
+  // the payout / payment country, then the currency), not whatever zone the
+  // device happens to be in. Once per draft, only while nothing is dated yet
+  // and the zone is still the device default; the host can still change it.
+  // One rule for every wizard: brandZoneForNewDraft (utils/timezones).
+  const brandZoneAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (brandZoneAppliedRef.current === liveDraft.id) return;
+    if (brand === null) return;
+    brandZoneAppliedRef.current = liveDraft.id;
+    const zone = brandZoneForNewDraft({
+      brand,
+      draftDate: liveDraft.date,
+      draftTimezone: liveDraft.timezone,
+    });
+    if (zone !== null) updateDraft(liveDraft.id, { timezone: zone });
+  }, [brand, liveDraft.date, liveDraft.id, liveDraft.timezone, updateDraft]);
 
   // ORCH-1355 F-1/F-3 — handleUpdate MUST be STABLE and build the autosave
   // payload from the store's FRESH post-write state, never from a captured
