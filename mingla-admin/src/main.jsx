@@ -5,6 +5,8 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initSentry } from "./diagnostics/sentry";
+import { captureMessage } from "./diagnostics/sentry";
+import { installStaleChunkReload, isChunkLoadError, UPDATED_MESSAGE } from "./lib/staleChunk";
 import App from "./App";
 import "./globals.css";
 import "@mingla/calendar-web/calendar.css";
@@ -19,7 +21,18 @@ initSentry({
   environment: import.meta.env.PROD ? "admin-production" : `admin-${import.meta.env.MODE}`,
 });
 
+// #4571: after a deploy an open tab asks for code chunks that no longer exist.
+// Reload once; the guard in staleChunk.js stops a second reload within 30 s.
+installStaleChunkReload({
+  log: (outcome, payload) => {
+    const msg = `Admin stale chunk: ${outcome}`;
+    console.info(msg, payload?.message ?? "");
+    captureMessage(msg, { level: "info", extra: { reason: payload?.message ?? "" } });
+  },
+});
+
 function AppCrashFallback({ error, reset }) {
+  const stale = isChunkLoadError(error);
   return (
     <div
       style={{
@@ -49,13 +62,13 @@ function AppCrashFallback({ error, reset }) {
           <span style={{ fontSize: 28 }}>!</span>
         </div>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: "#111827", margin: "0 0 8px" }}>
-          Dashboard Crashed
+          {stale ? "Update available" : "Dashboard Crashed"}
         </h1>
         <p style={{ fontSize: 14, color: "#6b7280", margin: "0 0 24px" }}>
-          {error?.message || "An unexpected error crashed the application."}
+          {stale ? UPDATED_MESSAGE : error?.message || "An unexpected error crashed the application."}
         </p>
         <button
-          onClick={reset}
+          onClick={stale ? () => window.location.reload() : reset}
           style={{
             height: 44,
             padding: "0 24px",
@@ -68,7 +81,7 @@ function AppCrashFallback({ error, reset }) {
             cursor: "pointer",
           }}
         >
-          Reload Dashboard
+          {stale ? "Reload" : "Reload Dashboard"}
         </button>
       </div>
     </div>
