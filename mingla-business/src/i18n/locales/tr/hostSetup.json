@@ -25,7 +25,7 @@
       "noMatch": "'{{query}}' ile eşleşen banka ülkesi yok.",
       "cantPayOut": "Mingla henüz oraya ödeme yapamıyor",
       "locked": "Ödemeler zaten {{country}} ülkesindeki bir banka için ayarlı. Başka bir ülke kullanmak için önce ödemelerin bağlantısını kes.",
-      "forbidden": "Banka ülkesini yalnızca marka sahibi veya bir yönetici değiştirebilir.",
+      "forbidden": "Ödeme ayarlarını yalnızca marka sahibi değiştirebilir.",
       "conflict": "Bu, başka bir cihazda {{country}} olarak değiştirildi.",
       "keep": "Koru",
       "change": "Değiştir",
@@ -278,11 +278,9 @@
       "payments": "Ödeme bilgileri"
     },
     "a1": {
-      "headlineNamed": "Merhaba {{first}}. Hesabını rezervasyon almaya hazırlayalım.",
-      "headline": "Merhaba. Hesabını rezervasyon almaya hazırlayalım.",
-      "body": "Yaklaşık 3 dakika sürer: marka adın, banka ülken, sonra ödemeler. Sana rehberlik edeceğim.",
       "cardTitle": "Markanı ayarla",
       "minutes": "Yaklaşık 3 dakika",
+      "eyebrowStep": "Adım {{current}} / {{total}}",
       "setUp": "Markamı ayarla",
       "withAri": "Ari ile yap",
       "withAriMessage": "Markamı ayarlamama yardım et",

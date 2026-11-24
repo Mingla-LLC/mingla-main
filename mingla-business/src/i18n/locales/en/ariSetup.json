@@ -7,11 +7,9 @@
       "payments": "Payment details"
     },
     "a1": {
-      "headlineNamed": "Hi {{first}}. Let's get your account ready to take bookings.",
-      "headline": "Hi. Let's get your account ready to take bookings.",
-      "body": "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
       "cardTitle": "Set up your brand",
       "minutes": "About 3 minutes",
+      "eyebrowStep": "Step {{current}} of {{total}}",
       "setUp": "Set up my brand",
       "withAri": "Do it with Ari",
       "withAriMessage": "Help me set up my brand",

@@ -138,6 +138,9 @@ jest.mock("../../../wrappers/useKeyboardHeight", () => ({
 // Same boundary set as the #1890 suite this shares a config with. Each one is a
 // module AriChatScreen's graph reaches that needs a native bridge or a network.
 jest.mock("react-native-keyboard-controller", () => ({
+  // [TEST-MOD-APPROVED #4572] mock-surface widening only: the native composer
+  // now sits in the library's KeyboardAvoidingView.
+  KeyboardAvoidingView: "KeyboardAvoidingView@library",
   KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
   KeyboardToolbar: "KeyboardToolbar@library",
   KeyboardProvider: ({ children }: { children?: React.ReactNode }) => children,
@@ -384,6 +387,13 @@ const findComposerWrapper = (root: HostNode): HostNode => {
 
 interface Mount {
   readonly id: string;
+  /**
+   * Where the composer's pill rests above the screen's bottom edge, keyboard
+   * closed. Web: the wrapper's paddingBottom, as before. Native (#4572): the
+   * wrapper's own space[2] plus the resting spacer below the
+   * KeyboardAvoidingView (the tab bar's room), which sums to the same value
+   * the old single paddingBottom was.
+   */
   readonly paddingBottom: number;
 }
 
@@ -428,7 +438,16 @@ function measure(
           "cannot read its quantity is a FAILURE, never a skip.",
       );
     }
-    result = { id, paddingBottom: pb };
+    // [TEST-MOD-APPROVED #4572] native: the old single paddingBottom is now the
+    // wrapper's space[2] + the resting spacer; the SUM is what these tests pin.
+    let spacerHeight = 0;
+    try {
+      const spacer = findByTestId((tree as { root: HostNode }).root, "ari-composer-rest-spacer");
+      spacerHeight = Number(flatten(spacer.props.style).height);
+    } catch {
+      spacerHeight = 0; // web renders no spacer: its paddingBottom is the whole clearance
+    }
+    result = { id, paddingBottom: pb + spacerHeight };
     (tree as { unmount: () => void }).unmount();
   });
 

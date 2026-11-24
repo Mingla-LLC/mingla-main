@@ -53,6 +53,28 @@ export function unifiedMessageTitle(input: UnifiedMessageTitleInput): string {
   return input.senderName;
 }
 
+/** #4579: looks up the name a brand chat shows for a sender (issue_4579_brand_member_name). */
+export interface BrandSenderNameLookup {
+  (brandId: string, senderId: string, fallback: string): Promise<{ name: string | null; error: boolean }>;
+}
+
+/**
+ * #4579: the sender name for a push from a brand-linked chat. A Mingla admin
+ * added to the brand automatically is named by issue_4579_admin_public_name
+ * (their real first name, or "Mingla Team"), never an email or handle; anyone
+ * else keeps their profile name. Other chats are unchanged. A failed lookup
+ * never falls back to a name that could be a handle: it says "Someone".
+ */
+export async function brandChatSenderName(
+  input: { linkedEntityType?: string | null; brandId?: string | null; senderId: string; fallback: string },
+  lookup: BrandSenderNameLookup,
+): Promise<string> {
+  if (input.linkedEntityType !== "brand" || !input.brandId) return input.fallback;
+  const result = await lookup(input.brandId, input.senderId, input.fallback);
+  const name = result.error ? "" : (result.name ?? "").trim();
+  return name.length > 0 ? name : "Someone";
+}
+
 /** #4456: a message id the push may carry, normalized, or null. */
 export function pushMessageId(messageId: unknown): string | null {
   const id = typeof messageId === "string" ? messageId.trim().toLowerCase() : "";

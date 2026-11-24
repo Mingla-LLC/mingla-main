@@ -413,7 +413,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4580 tester adversarial suite: registered issue_4580_release_sync.tester.adversarial.pg17.test.sql and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
 // #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
+// #4579 Mingla admin brand access: listed migration 20281202024579 after 20281201003969 in the #1857, #1931 and #2117 lanes, registered its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it re-emits readers from skipped migrations behind a drift guard); re-sealed.
+// #4579 merge of main after #4571, #4572 and #3969 step 2: took main's manifest and re-applied only the #4579 rows and skips (both duplicate #1931 templateReplay run keys carry the skip); re-sealed.
+// #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580) in the #1857, #1931 and #2117 lanes and the filtered-replay skips, same lane position; re-sealed.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed.
+// #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed.
 // #4522 slice 13 switch on: registered 20281121014522_issue_4522_switch_on.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281120104522 and 20281121014522 on the filtered #1931 replay and for all #4522 migrations on the filtered #2117 replay (their md5 drift guards need bodies those lanes skip); re-sealed.
@@ -441,7 +445,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4522 pass 10 rework (P10-1..P10-3): registered the #4522 implementor pg17 suite p10_late_sign_below_min (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
 // #4522 pass 11 rework (P11-1..P11-4): registered the #4522 implementor pg17 suite p11_outside_refund_books (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
 // #4522 pass 12 rework (P12-1, P12-2): registered the #4522 implementor pg17 suite p12_outside_refund_once (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
-export const BOOTSTRAP_SHA256 = "f84fe19768b59b05bd25932520ba9766941b3225ab38134e393584ee15e21abb";
+// #4522 merge of main after #4579 (#4593, d3527e3b93): kept main's 20281202024579 rows, its two pg17 suites and its filtered-replay skips before the branch's 14 migrations (20281202033281..20281202163281 stay above it) and the #3281/#4522 rows and skips; re-sealed.
+export const BOOTSTRAP_SHA256 = "271a310a3ee60860334d3edca5208c3cbcd2f751d05cf8b829a62437cdf5c1f4";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

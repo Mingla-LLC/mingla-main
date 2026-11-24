@@ -6229,6 +6229,31 @@
         "supabase/functions/_shared/guestPackPointer.ts",
         "supabase/migrations/20281122024548_issue_4548_event_guest_packs.sql"
       ]
+    },
+    {
+      "capability_key": "brand-team-roles",
+      "paths": [
+        "mingla-business/src/components/team/MinglaTeamMark.tsx",
+        "mingla-business/src/components/team/MinglaTeamSection.tsx",
+        "mingla-business/src/components/team/minglaTeamSheetSnap.ts",
+        "mingla-business/src/hooks/useMinglaTeam.ts",
+        "mingla-business/src/services/minglaTeamService.ts",
+        "supabase/migrations/20281202024579_issue_4579_mingla_admin_brand_access.sql"
+      ]
+    },
+    {
+      "capability_key": "official-brand-groups",
+      "paths": [
+        "mingla-business/src/components/messages/BrandGroupMinglaMark.tsx"
+      ]
+    },
+    {
+      "capability_key": "ari-host-assistant",
+      "paths": [
+        "mingla-business/src/context/TabBarVisibilityContext.ts",
+        "mingla-business/src/screens/ari/ariComposerKeyboardFrame.ts",
+        "mingla-business/src/wrappers/doneBarSuppression.ts"
+      ]
     }
   ]
 }

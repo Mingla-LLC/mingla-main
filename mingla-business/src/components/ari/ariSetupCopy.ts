@@ -24,8 +24,7 @@ export const ariSetupItems = (): readonly [string, string, string, string] => [
 
 export const ARI_SETUP_COPY = {
   a1: {
-    headline: (first: string | null): string => (first ? t("a1.headlineNamed", { first }) : t("a1.headline")),
-    get body(): string { return t("a1.body"); },
+    eyebrowStep: (current: number, total: number): string => t("a1.eyebrowStep", { current, total }),
     get cardTitle(): string { return t("a1.cardTitle"); },
     get minutes(): string { return t("a1.minutes"); },
     get setUp(): string { return t("a1.setUp"); },

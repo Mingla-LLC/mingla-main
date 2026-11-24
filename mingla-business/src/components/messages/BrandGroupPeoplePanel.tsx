@@ -13,6 +13,7 @@ import {
 import { color, scrim, space } from "../../constants/designSystem";
 import type { BrandGroupMember } from "../../services/brandGroupRosterService";
 import { Icon } from "../ui/Icon";
+import { BRAND_GROUP_MINGLA_TEAM_NAME, BrandGroupMinglaMark, WithBrandGroupMinglaBadge } from "./BrandGroupMinglaMark";
 import { useBusinessMediaTranslation } from "../../i18n";
 
 function initials(name: string): string {
@@ -27,6 +28,29 @@ export function memberRoleLabel(role: string): string {
   if (role === "marketing_manager") return "Marketing";
   if (role === "scanner") return "Door team";
   return "Member";
+}
+
+/**
+ * #4579 — copy for Mingla admins added to the brand automatically. English for
+ * now (the rest of the panel is translated; these two words follow later).
+ */
+export const BRAND_GROUP_MINGLA_COPY = {
+  fromMingla: "From Mingla",
+  supportPill: "Support",
+} as const;
+
+/** #4579 — a roster row's second line: never an email for a Mingla admin. */
+export function memberSecondLine(member: BrandGroupMember): string {
+  if (member.is_mingla_team === true) return BRAND_GROUP_MINGLA_COPY.fromMingla;
+  return member.email ?? "";
+}
+
+/**
+ * #4579 — the Mingla entry's pill: the shipped label while any Mingla admin is
+ * on the brand (Mingla Team on), "Support" once the brand has removed them.
+ */
+export function minglaEntryPill(members: BrandGroupMember[], onLabel: string): string {
+  return members.some((member) => member.is_mingla_team === true) ? onLabel : BRAND_GROUP_MINGLA_COPY.supportPill;
 }
 
 export type BrandGroupPeoplePanelProps = {
@@ -51,7 +75,8 @@ export function BrandGroupPeoplePanel({
   onClose,
 }: BrandGroupPeoplePanelProps): React.ReactElement {
   // #4420 design: People per side. The Team side lists your team, then
-  // Mingla as one entry (hosts see Mingla staff as "Mingla").
+  // Mingla as one entry. #4579: Mingla admins added to the brand are listed
+  // under "Your team" by their own name with the Mingla mark (never an email).
   const { t } = useBusinessMediaTranslation();
   return (
     <View style={styles.panel} testID="brand-group-people-panel">
@@ -75,18 +100,34 @@ export function BrandGroupPeoplePanel({
           <Text style={styles.stateText}>{error}</Text>
         ) : members.length === 0 ? (
           <Text style={styles.stateText}>No current teammates were found.</Text>
-        ) : members.map((member) => (
-          <View key={member.user_id} style={styles.memberRow}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{initials(member.display_name)}</Text></View>
-            <View style={styles.memberCopy}>
-              <Text style={styles.memberName} numberOfLines={1}>{member.display_name}</Text>
-              {typeof member.email === "string" && member.email.trim().length > 0 ? (
-                <Text style={styles.memberEmail} numberOfLines={2}>{member.email}</Text>
-              ) : null}
+        ) : members.map((member) => {
+          const mingla = member.is_mingla_team === true;
+          const avatar = <View style={styles.avatar}><Text style={styles.avatarText}>{initials(member.display_name)}</Text></View>;
+          return (
+            <View
+              key={member.user_id}
+              style={styles.memberRow}
+              accessible={mingla}
+              accessibilityLabel={mingla ? `${member.display_name}, from Mingla, ${memberRoleLabel(member.role)}` : undefined}
+              testID={mingla ? "brand-group-people-mingla-admin" : undefined}
+            >
+              {mingla ? (
+                member.display_name === BRAND_GROUP_MINGLA_TEAM_NAME
+                  ? <BrandGroupMinglaMark size={40} />
+                  : <WithBrandGroupMinglaBadge avatarSize={40}>{avatar}</WithBrandGroupMinglaBadge>
+              ) : avatar}
+              <View style={styles.memberCopy}>
+                <Text style={styles.memberName} numberOfLines={1}>{member.display_name}</Text>
+                {mingla ? (
+                  <Text style={styles.memberEmail} numberOfLines={2}>{memberSecondLine(member)}</Text>
+                ) : typeof member.email === "string" && member.email.trim().length > 0 ? (
+                  <Text style={styles.memberEmail} numberOfLines={2}>{member.email}</Text>
+                ) : null}
+              </View>
+              <Text style={styles.role}>{memberRoleLabel(member.role)}</Text>
             </View>
-            <Text style={styles.role}>{memberRoleLabel(member.role)}</Text>
-          </View>
-        ))}
+          );
+        })}
         <Text style={styles.section}>{t("messages.people_mingla")}</Text>
         <View style={styles.memberRow} testID="brand-group-people-mingla">
           <View style={[styles.avatar, styles.avatarMingla]}><Text style={styles.avatarTextMingla}>M</Text></View>
@@ -94,7 +135,7 @@ export function BrandGroupPeoplePanel({
             <Text style={styles.memberName} numberOfLines={1}>{t("messages.people_mingla")}</Text>
             <Text style={styles.memberEmail} numberOfLines={2}>{t("messages.people_mingla_sub", { brand: groupName })}</Text>
           </View>
-          <Text style={styles.role}>{t("messages.people_mingla")}</Text>
+          <Text style={styles.role}>{minglaEntryPill(members, t("messages.people_mingla"))}</Text>
         </View>
       </ScrollView>
       <View style={styles.notificationRow}>

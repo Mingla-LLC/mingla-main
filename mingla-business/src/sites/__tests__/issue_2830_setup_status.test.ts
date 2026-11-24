@@ -213,9 +213,10 @@ describe("#2830 setup has no tab bar to clear", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require("path") as typeof import("path");
     const screen = fs.readFileSync(path.resolve(__dirname, "../../screens/ari/AriChatScreen.tsx"), "utf8");
-    // [TEST-MOD #4420] one value, fed by both no-tab-bar cases: Website setup
-    // and Ari embedded in Help & Support (withoutTabBar).
-    expect(screen).toContain("const noTabBar = websiteSetup || withoutTabBar;");
+    // [TEST-MOD #4420] one value, fed by every no-tab-bar case: Website setup,
+    // Ari embedded in Help & Support (withoutTabBar) and, #4579/#4572, the
+    // (tabs) shell not drawing a tab bar (a first-run host).
+    expect(screen).toContain("const noTabBar = websiteSetup || withoutTabBar || !shellShowsTabBar;");
     expect(screen).toContain("const BOTTOM_NAV_CLEARANCE_PX = noTabBar ? 0 : TAB_BAR_CLEARANCE_PX;");
     expect(screen.match(/const BOTTOM_NAV_CLEARANCE_PX = /g)).toHaveLength(1);
     // No second, module-level 80 that a use could silently fall back to.

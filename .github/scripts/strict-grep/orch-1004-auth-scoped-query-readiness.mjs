@@ -108,6 +108,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #4271 — biz_brand_team_members, split out of useBrandInvitations.ts.
   // Folds isAuthReady into enabled.
   "useBrandTeamMemberDirectory.ts",
+  // #4579 — the brand's Mingla Team state (issue_4579_mingla_team_state, a brand member RPC).
+  "useMinglaTeam.ts",
   // #4453 — one item's brand (events / venue_listings, readable to the brand's
   // team only). Folds isAuthReady into enabled.
   "useItemRouteBrand.ts",

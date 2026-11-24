@@ -670,7 +670,11 @@ export function phase3dContractDigest(manifest) {
 // #4580 release sync timeouts: registered migrations 20281202004580 and 20281202014580 in the #1857, #1931 and #2117 inventories after 20281201003969 and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 tester adversarial suite: registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
+// #4579 Mingla admin brand access: registered 20281202024579 after 20281201003969 in the #1857, #1931 and #2117 inventories and its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 merge of main after #4571, #4572 and #3969 step 2: re-applied only the #4579 rows and skips onto main's manifest; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed;
 // MANIFEST.json phase3eContractSha256 matches.
@@ -697,7 +701,8 @@ export function phase3dContractDigest(manifest) {
 // toward #4522: migrations renumbered 2028120203…16 above #4579
 // #4522 merge of main after #4591 release sync and #4592 venue order (68a54f2f30): kept main's 20281202004580 and 20281202014580 rows before the branch's 14 migrations (20281202033281..20281202163281 stay above them); re-sealed.
 // #4522 pass 10 rework (P10-1..P10-3): registered the #4522 implementor pg17 suite p10_late_sign_below_min (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f5ee3dd2d4b4a8672cbc7c728d9065eda4df7cf5ae416e468a692fdd473e51d8";
+// #4522 merge of main after #4579 (#4593, d3527e3b93): kept main's 20281202024579 rows, its two pg17 suites and its filtered-replay skips beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "42adc73f087f931eec25ee46b1108f2ac122c9441942ae40350dd4799fc7d5b4";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

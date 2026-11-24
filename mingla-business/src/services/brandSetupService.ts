@@ -83,6 +83,8 @@ const KNOWN_CODES: readonly BrandSetupErrorCode[] = [
 
 export function classifySetupError(error: { message?: string; code?: string } | null | undefined): BrandSetupError {
   const message = error?.message ?? "";
+  // #4579 — the database refuses a payout-settings change by anyone but the owner.
+  if (message.includes("payout_settings_owner_only")) return new BrandSetupError("forbidden", message);
   const code = KNOWN_CODES.find((c) => message.includes(c));
   if (code) return new BrandSetupError(code, message);
   if (/network|fetch|Failed to fetch|timeout/i.test(message)) {

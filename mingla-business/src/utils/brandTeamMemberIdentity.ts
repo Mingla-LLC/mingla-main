@@ -50,6 +50,9 @@ export const parseBrandTeamDirectory = (data: unknown): BrandTeamDirectoryEntry[
   return data.flatMap((row: unknown) => {
     if (typeof row !== "object" || row === null) return [];
     const r = row as Record<string, unknown>;
+    // #4579: the one entry_kind 'mingla_team' row (no id, email or avatar) is
+    // never a person; the Mingla section draws it (minglaTeamService).
+    if (r.entry_kind === "mingla_team") return [];
     if (typeof r.user_id !== "string" || r.user_id.length === 0) return [];
     const s = (v: unknown): string | null => (typeof v === "string" ? v : null);
     return [{
