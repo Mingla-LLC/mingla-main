@@ -455,4 +455,6 @@ export interface AudienceListEntry {
   display_name: string;
   /** Most recent marketing_campaigns.created_at using this audience_id; null when never used or virtual. */
   last_used_at: string | null;
+  /** #4596 — an event row's de-duplicated people (buyers plus going RSVP guests), from the server. */
+  people_count?: number;
 }

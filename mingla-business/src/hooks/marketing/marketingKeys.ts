@@ -22,6 +22,9 @@ export const marketingKeys = {
     // Under campaigns.all, so every invalidation of campaigns.all refreshes it.
     group: (campaignId: string): readonly unknown[] =>
       ["marketing", "campaigns", "group", campaignId] as const,
+    // #4596 — why a failed method did not go out (every channel, push too).
+    failureReason: (campaignId: string): readonly unknown[] =>
+      ["marketing", "campaigns", "failure-reason", campaignId] as const,
   },
   overview: {
     all: ["marketing", "overview"] as const,

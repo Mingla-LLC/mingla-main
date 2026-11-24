@@ -18,7 +18,7 @@ import { useAuth } from "../../context/AuthContext";
 import {
   listAudiencesForBrand,
   resolveBrandBuyers,
-  resolveEventBuyers,
+  resolveEventAudienceReach,
 } from "../../services/marketing/marketingAudienceService";
 import type {
   AudienceListEntry,
@@ -103,9 +103,16 @@ export function useAudienceList(
           if (e.event_id === null) {
             throw new Error(`event_buyers entry missing event_id: ${e.client_key}`);
           }
-          return resolveEventBuyers(e.event_id).then((r) => ({
+          // #4596 — the server's event count (buyers plus going RSVP
+          // guests), the same one the Blasts screen and composer show.
+          return resolveEventAudienceReach({
+            actor_id: accountId as string,
+            brand_id: e.brand_id,
+            event_id: e.event_id,
+            people_count: e.people_count ?? 0,
+          }).then((summary) => ({
             key: e.client_key,
-            summary: r.reach,
+            summary,
           }));
         }),
       );
@@ -128,7 +135,7 @@ export function useAudienceList(
     return () => {
       cancelled = true;
     };
-  }, [entriesSig, query.data]);
+  }, [entriesSig, query.data, accountId]);
 
   return useMemo(
     () => ({

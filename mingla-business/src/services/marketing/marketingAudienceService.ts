@@ -539,6 +539,36 @@ export async function listEventAudiences(input: {
   }));
 }
 
+/**
+ * #4596 — an event audience's reach, from the same server owner the Blasts
+ * screen and the composer read: people from discovery, email and SMS reach
+ * from biz_marketing_combined_audience_reach_v1 for `event:<id>`. Never the
+ * orders-only roster (it counts no RSVP guest).
+ */
+export async function resolveEventAudienceReach(input: {
+  actor_id: string;
+  brand_id: string;
+  event_id: string;
+  people_count: number;
+}): Promise<AudienceReachSummary> {
+  assertUuid(input.actor_id, "resolveEventAudienceReach.actor_id");
+  assertUuid(input.brand_id, "resolveEventAudienceReach.brand_id");
+  assertUuid(input.event_id, "resolveEventAudienceReach.event_id");
+  const reach = async (channel: "email" | "sms"): Promise<number> => {
+    const { data, error } = await supabase.rpc("biz_marketing_combined_audience_reach_v1", {
+      p_actor_id: input.actor_id,
+      p_brand_id: input.brand_id,
+      p_sources: [`event:${input.event_id}`],
+      p_channel: channel,
+    });
+    if (error) throw error;
+    if (typeof data !== "number") throw new Error("EVENT_AUDIENCE_REACH_INVALID_RESPONSE");
+    return data;
+  };
+  const [email, sms] = await Promise.all([reach("email"), reach("sms")]);
+  return { total: input.people_count, reachable_email: email, reachable_sms: sms };
+}
+
 // ---------------------------------------------------------------------------
 // Phase B — Audiences tab unified list (ORCH-0863)
 // ---------------------------------------------------------------------------
@@ -690,6 +720,7 @@ export async function listAudiencesForBrand(
       brand_name: brandName,
       event_id: eventId,
       display_name: eventRowName(eventAudienceShape(event), event.title),
+      people_count: event.peopleCount,
       last_used_at: existing !== undefined ? (lastUsedByAudienceId.get(existing.id) ?? null) : null,
     });
   }

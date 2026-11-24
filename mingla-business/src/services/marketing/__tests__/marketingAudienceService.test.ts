@@ -567,6 +567,8 @@ describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
     expect(eventB?.audience_id).toBeNull();
     expect(eventB?.last_used_at).toBeNull();
     expect(eventB?.display_name).toBe("Guests of Event Beta");
+    // Fix pass 1: the Audiences tab reach starts from the server's people count.
+    expect(eventB?.people_count).toBe(5);
     expect(eventA?.display_name).toBe("Buyers of Event Alpha");
     expect(supabase.rpc).toHaveBeenCalledWith("biz_marketing_event_audiences_v1", {
       p_actor_id: ACCOUNT_UUID,

@@ -43,6 +43,7 @@ import type { MarketingChannelKind } from "../../../../src/components/marketing/
 import { color, materials, radius, space, type } from "../../../../src/constants/designSystem";
 import { useCampaignReport } from "../../../../src/hooks/marketing/useCampaignReport";
 import { useCampaignGroupView } from "../../../../src/hooks/marketing/useCampaignGroupView";
+import { useCampaignFailureReason } from "../../../../src/hooks/marketing/useCampaignFailureReason";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import {
   METHOD_LABEL,
@@ -184,6 +185,11 @@ export default function CampaignReportRoute(): React.ReactElement {
       : null,
   );
 
+  // #4596 — why a failed method (push included) did not go out.
+  const failureReason = useCampaignFailureReason(
+    active !== null && active.status === "failed" ? active.campaignId : null,
+  );
+
   const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace("/(tabs)/marketing/campaigns" as never);
@@ -239,12 +245,7 @@ export default function CampaignReportRoute(): React.ReactElement {
   const primary = view.members.find((member) => member.isHead) ?? view.members[0] ?? active;
   const resolution = previewSourceFor(active, view.brand);
   const started = sendStarted(active);
-  const status = statusCopy(
-    active,
-    reportQuery.data?.campaign.id === active.campaignId
-      ? reportQuery.data.campaign.failure_reason ?? null
-      : null,
-  );
+  const status = statusCopy(active, failureReason);
   const methodWord = METHOD_LABEL[active.channel].toLowerCase();
   const labelFor = (kind: MarketingChannelKind): string => {
     const member = tabs.find((row) => row.channel === kind);

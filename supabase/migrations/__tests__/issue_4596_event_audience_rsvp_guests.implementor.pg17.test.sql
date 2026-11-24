@@ -47,7 +47,7 @@ SET LOCAL session_replication_role = replica;
 
 -- 01 owner of b1 and b2. 09 a stranger. 31 a guest with an account.
 INSERT INTO auth.users(id, email)
-SELECT pg_temp.u(x), 't4596-' || x || '@example.test' FROM unnest(ARRAY['01', '09', '31']) x;
+SELECT pg_temp.u(x), 't4596-' || x || '@example.test' FROM unnest(ARRAY['01', '07', '08', '09', '31']) x;
 INSERT INTO public.creator_accounts(id, email) VALUES (pg_temp.u('01'), 't4596-01@example.test');
 INSERT INTO public.brands(id, account_id, name, slug, default_currency, created_at, updated_at) VALUES
   (pg_temp.u('b1'), pg_temp.u('01'), 'Guests One', 'issue-4596-one', 'USD', now(), now()),
@@ -132,6 +132,12 @@ INSERT INTO public.marketing_unsubscribes(contact_email, channel, scope, brand_i
   ('g41@example.test', 'all', 'global', NULL, 't');
 INSERT INTO public.channel_suppressions(user_id, contact, channel, scope, reason)
 VALUES (NULL, '+2348031259603', 'sms', 'all', 'stop_keyword');
+
+-- Fix pass 1: 07 an event_manager of b1 (reads the event Blasts roster
+-- under event_rsvps_host_read); 08 a scanner of b1 (does not).
+INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at) VALUES
+  (pg_temp.u('b1'), pg_temp.u('07'), 'event_manager', now()),
+  (pg_temp.u('b1'), pg_temp.u('08'), 'scanner', now());
 
 SET LOCAL session_replication_role = origin;
 
@@ -322,6 +328,46 @@ BEGIN
   PERFORM pg_temp.chk('discovery is for signed-in hosts only',
     has_function_privilege('authenticated', 'public.biz_marketing_event_audiences_v1(uuid, uuid)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.biz_marketing_event_audiences_v1(uuid, uuid)', 'EXECUTE'), '');
+END $t$;
+
+-- ── Fix pass 1: an event manager sees the server count, a scanner does not ──
+DO $t$
+DECLARE b uuid := pg_temp.u('b1'); m uuid := pg_temp.u('07'); d jsonb; r jsonb; v integer;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', m::text, true);
+  d := public.biz_marketing_event_audiences_v1(m, b);
+  SELECT x INTO r FROM jsonb_array_elements(d) x WHERE x ->> 'eventId' = pg_temp.u('e1')::text;
+  PERFORM pg_temp.chk('FP1 an event_manager gets the RSVP event''s guest count',
+    (r ->> 'guestCount')::integer = 3 AND (r ->> 'peopleCount')::integer = 3, COALESCE(r::text, d::text));
+  v := public.biz_marketing_combined_audience_reach_v1(m, b, pg_temp.ev('e1'), 'email');
+  PERFORM pg_temp.chk('FP1 an event_manager gets the event''s email reach', v = 2, v::text);
+  PERFORM set_config('request.jwt.claim.sub', pg_temp.u('08')::text, true);
+  BEGIN
+    PERFORM public.biz_marketing_event_audiences_v1(pg_temp.u('08'), b);
+    PERFORM pg_temp.chk('FP1 a scanner is refused', false, 'no error');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM pg_temp.chk('FP1 a scanner is refused', SQLSTATE = '42501', SQLERRM);
+  END;
+  PERFORM set_config('request.jwt.claim.sub', pg_temp.u('01')::text, true);
+END $t$;
+
+-- ── Fix pass 1: an event source is named for who it holds ──────────────────
+DO $t$
+DECLARE b uuid := pg_temp.u('b1');
+BEGIN
+  PERFORM pg_temp.chk('FP4 an RSVP-only event is "Guests of"',
+    public.issue_4273_source_name(b, 'event:' || pg_temp.u('e1')::text) = 'Guests of Rooftop RSVP',
+    public.issue_4273_source_name(b, 'event:' || pg_temp.u('e1')::text));
+  PERFORM pg_temp.chk('FP4 a paid event stays "Buyers of"',
+    public.issue_4273_source_name(b, 'event:' || pg_temp.u('e2')::text) = 'Buyers of Paid Night',
+    public.issue_4273_source_name(b, 'event:' || pg_temp.u('e2')::text));
+  PERFORM pg_temp.chk('FP4 a mixed event is "People at"',
+    public.issue_4273_source_name(b, 'event:' || pg_temp.u('e3')::text) = 'People at Mixed Party',
+    public.issue_4273_source_name(b, 'event:' || pg_temp.u('e3')::text));
+  PERFORM pg_temp.chk('FP4 the combined audience for an RSVP event is created as "Guests of"',
+    (SELECT a.name FROM public.marketing_audiences a
+      WHERE a.brand_id = b AND a.query_definition ->> 'kind' = 'combined_sources'
+        AND a.query_definition -> 'sources' = pg_temp.ev('e1')) = 'Guests of Rooftop RSVP', '');
 END $t$;
 
 -- ── A1 repair: no failed campaign that reached nobody keeps a null reason ───

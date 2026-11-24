@@ -55,7 +55,7 @@ export interface UseEventAudienceCountState {
   error: unknown;
 }
 
-async function loadEventAudienceCount(
+export async function loadEventAudienceCount(
   actorId: string,
   eventId: string,
 ): Promise<EventAudienceCount> {

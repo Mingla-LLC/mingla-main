@@ -8,7 +8,11 @@
 --                (biz_brand_person_authorized_contact_v2), never from
 --                event_rsvps. Summary, reach, quote, confirm and the sealed
 --                send all read identities, so they inherit it unchanged.
---   discovery    biz_marketing_event_audiences_v1: every event of the brand
+--   names        issue_4273_source_name names an event source for who it holds:
+--                "Guests of" (RSVP guests only), "People at" (both), else
+--                "Buyers of" (paid events, unchanged).
+--   discovery    biz_marketing_event_audiences_v1 (marketing_manager and up,
+--                so every event_manager who reads the roster): every event of the brand
 --                with a paid buyer or a going RSVP guest, with its people,
 --                buyer, guest and pending-duplicate-check counts.
 --   event lane   biz_marketing_event_send_audience_v1: the legacy
@@ -177,6 +181,43 @@ SELECT c.person_key, r.node, r.source_key, r.subject, r.brand_person_id, r.user_
   r.buyer_key, r.buyer_email, r.buyer_phone, r.display_name
 FROM raw r JOIN components c ON c.node = r.node$fn$;
 
+-- ── Names: an event source is named for who it holds ────────────────────────
+-- Same body as #4273 except the event branch: "Guests of {title}" for an event
+-- whose audience is RSVP guests only, "People at {title}" for buyers and
+-- guests, "Buyers of {title}" otherwise (unchanged for paid events).
+CREATE OR REPLACE FUNCTION public.issue_4273_source_name(p_brand_id uuid, p_key text)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  SELECT CASE
+    WHEN p_key = 'book' THEN 'Your Book'
+    WHEN p_key = 'followers' THEN 'Followers'
+    WHEN p_key = 'extended' THEN 'Friends of followers'
+    WHEN p_key = 'brand_buyers' THEN
+      'All buyers of ' || COALESCE((SELECT b.name FROM public.brands b WHERE b.id = p_brand_id), 'this brand')
+    WHEN p_key LIKE 'group:%' THEN
+      COALESCE((SELECT a.name FROM public.marketing_audiences a
+                 WHERE a.id = substr(p_key, 7)::uuid AND a.brand_id = p_brand_id), 'Saved group')
+    ELSE
+      COALESCE((
+        SELECT CASE
+                 WHEN x.has_buyers AND x.has_guests THEN 'People at '
+                 WHEN x.has_guests OR x.event_type = 'rsvp' THEN 'Guests of '
+                 ELSE 'Buyers of '
+               END || COALESCE(x.title, 'Untitled event')
+          FROM (
+            SELECT e.title, e.event_type,
+              EXISTS (SELECT 1 FROM public.orders o
+                       WHERE o.event_id = e.id AND o.payment_status IN ('paid', 'partial_refund')) AS has_buyers,
+              EXISTS (SELECT 1 FROM public.event_rsvps r
+                       WHERE r.event_id = e.id AND r.rsvp_status = 'going'
+                         AND r.approval_status = 'approved') AS has_guests
+              FROM public.events e
+             WHERE e.id = substr(p_key, 7)::uuid AND e.brand_id = p_brand_id
+          ) x), 'Buyers of Untitled event')
+  END
+$fn$;
+
 -- ── Discovery: every event a host can blast, with honest counts ─────────────
 CREATE OR REPLACE FUNCTION public.biz_marketing_event_audiences_v1(p_actor_id uuid, p_brand_id uuid)
 RETURNS jsonb
@@ -186,6 +227,8 @@ DECLARE
   v_event record; v_sources jsonb; v_people integer; v_buyers integer; v_guests integer;
   v_pending integer; v_out jsonb := '[]'::jsonb;
 BEGIN
+  -- marketing_manager (20) and up: an event_manager (40), who reads the event
+  -- Blasts roster, passes; a scanner (10) does not.
   IF auth.uid() IS DISTINCT FROM p_actor_id
      OR COALESCE(public.biz_brand_effective_rank(p_brand_id, p_actor_id), -1) < public.biz_role_rank('marketing_manager') THEN
     RAISE EXCEPTION 'book_blast_forbidden' USING ERRCODE = '42501';
