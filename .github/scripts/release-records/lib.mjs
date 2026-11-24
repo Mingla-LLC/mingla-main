@@ -443,6 +443,25 @@ export function webSupersessionVerdict({
   return { ok: true, expected };
 }
 
+/**
+ * #4602: the PR links check reads each changed migration's SQL at the head
+ * commit (one contents call per file) to learn the capability keys it adds.
+ * This bounds those reads per run. It is a read budget, not a product rule:
+ * one initiative can legitimately land more than 50 migrations, so the bound is
+ * 150 (well inside the job token's hourly budget). Above it the check still
+ * fails closed rather than verifying a partial catalog.
+ */
+export const MAX_CHANGED_MIGRATION_READS = 150;
+
+/** Changed (not removed) migration files whose SQL the check must read; throws above the bound. */
+export function changedMigrationReads(files, max = MAX_CHANGED_MIGRATION_READS) {
+  const migrations = (files ?? []).filter(
+    (file) => file?.status !== "removed" && /^supabase\/migrations\/[^/]+[.]sql$/.test(String(file?.filename ?? "")),
+  );
+  if (migrations.length > max) throw new Error("too_many_changed_migrations");
+  return migrations;
+}
+
 /** Migration versions added by a pull request ([{filename, status}]). */
 export function migrationsAdded(files) {
   const out = new Set();
