@@ -309,6 +309,43 @@ export function venueOrderProviderFloorRefusal(
   };
 }
 
+/**
+ * Issue #3645 (review of #4565) — what a guest order does after its discount
+ * reservation priced it again. The reservation checks the guest's own quote
+ * digest, so it can return a different discount than the quote every gate
+ * above was run on. Charge readiness, the money path and the row's payment
+ * state were all decided on "does money move" BEFORE it; when that answer
+ * flips, those decisions are stale:
+ *   - free → paid would land as a paid, zero-total order with no charge;
+ *   - paid → free would send a zero total down the paid path.
+ * So a flip sends the guest back to review the new price ("review"), and a
+ * paid total is held to the provider minimum on the FINAL amount ("refuse").
+ * The caller gives the reserved discount uses back before answering either.
+ */
+export type VenueOrderRepricedVerdict =
+  | { kind: "proceed" }
+  | { kind: "review" }
+  | {
+    kind: "refuse";
+    refusal: NonNullable<ReturnType<typeof venueOrderProviderFloorRefusal>>;
+  };
+
+export function venueOrderRepricedVerdict(
+  movesMoneyBefore: boolean,
+  totalCentsAfter: number,
+  chargeCurrency: string,
+): VenueOrderRepricedVerdict {
+  const movesMoneyAfter = totalCentsAfter > 0;
+  if (movesMoneyAfter !== movesMoneyBefore) return { kind: "review" };
+  if (!movesMoneyAfter) return { kind: "proceed" };
+  const refusal = venueOrderProviderFloorRefusal(
+    totalCentsAfter,
+    chargeCurrency,
+    "guest",
+  );
+  return refusal ? { kind: "refuse", refusal } : { kind: "proceed" };
+}
+
 // ---------------------------------------------------------------------------
 // Cart validation + line pricing (P-22 gates 4-6, P-4a, P-4b).
 // ---------------------------------------------------------------------------
