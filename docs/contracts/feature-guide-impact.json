@@ -2555,7 +2555,8 @@
         "supabase/migrations/20281130094571_issue_4571_w6d_rework.sql",
         "supabase/migrations/20281130104571_issue_4571_w7_brand_counts.sql",
         "supabase/migrations/20281130114571_issue_4571_final_gate_fixes.sql",
-        "supabase/migrations/20281130124571_issue_4571_leftovers.sql"
+        "supabase/migrations/20281130124571_issue_4571_leftovers.sql",
+        "supabase/migrations/20281202174571_issue_4571_hosts_board_list_speed.sql"
       ]
     },
     {
