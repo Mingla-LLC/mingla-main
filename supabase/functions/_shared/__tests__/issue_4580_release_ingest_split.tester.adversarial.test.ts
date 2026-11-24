@@ -163,3 +163,120 @@ Deno.test("#4580 tester (N-1, closed by A3): a systemic ingest failure skips not
   assertEquals(d.calls.filter((c) => c.name === "ops_release_records_ingest").length, 11);
   assert(res.failed >= 1);
 });
+
+// ───────────── A3 retest (circuit breaker), tester angles ─────────────
+
+/** A database whose cursor persists across runs, so a halt and its retry can be followed end to end. */
+function liveDb(opts: { ingestOk: (prs: number[]) => boolean; halt?: "ok" | "fails"; cursor?: string }) {
+  let cursor = opts.cursor ?? "2026-11-23T09:55:00.000Z";
+  const calls: { name: string; args: Json }[] = [];
+  const ingested = new Set<number>();
+  const admin: BridgeAdmin = {
+    rpc(name: string, args: Record<string, unknown> = {}) {
+      calls.push({ name, args });
+      if (name === "ops_bridge_cursor") return Promise.resolve({ data: cursor, error: null });
+      if (name === "ops_bridge_cursor_set") {
+        if (args.p_name === "issue_comments") cursor = String(args.p_at);
+        return Promise.resolve({ data: null, error: null });
+      }
+      if (name === "ops_release_records_ingest") {
+        const prs = (args.p_records as Json[]).map((r) => Number((r.data as Json).pr));
+        if (!opts.ingestOk(prs)) {
+          return Promise.resolve({
+            data: null,
+            error: { code: "42501", message: "permission denied for function\n ops_release_records_ingest" },
+          });
+        }
+        for (const p of prs) ingested.add(p);
+        return Promise.resolve({ data: { ingested: prs.length, invalid: 0, completed: [] }, error: null });
+      }
+      if (name === "ops_release_batch_halted") {
+        return Promise.resolve(
+          opts.halt === "fails" ? { data: null, error: { code: "PGRST202", message: "missing" } } : { data: null, error: null },
+        );
+      }
+      if (name === "ops_release_status_due") return Promise.resolve({ data: [], error: null });
+      return Promise.resolve({ data: {}, error: null });
+    },
+  };
+  const named = (n: string) => calls.filter((c) => c.name === n);
+  return { admin, calls, ingested, named, cursor: () => cursor };
+}
+
+Deno.test("#4580 A3 retest (1): every record fails, the cursor stays, nothing is poisoned, one halt; the next healthy run loses nothing", async () => {
+  const comments = range(25).map((pr, i) => comment(pr, i + 1, 2000 + i));
+  let healthy = false;
+  const d = liveDb({ ingestOk: () => healthy });
+  const before = d.cursor();
+  const lines: Json[] = [];
+  const r1 = await runReleaseBridges(d.admin, gh(comments), { log: (l) => lines.push(l) });
+  assertEquals(d.cursor(), before, "cursor unchanged");
+  assertEquals(d.named("ops_release_record_poisoned").length, 0);
+  assertEquals(d.named("ops_release_batch_halted").length, 1);
+  const h = d.named("ops_release_batch_halted")[0].args;
+  assertEquals([h.p_from_pr, h.p_to_pr, h.p_count, h.p_code], [7000, 7009, 10, "INGEST_FAILED"]);
+  assert(!String(h.p_first_error).includes("\n") && String(h.p_first_error).length <= 160, "first error is one short line");
+  assertEquals(r1.release_records.halted?.from_pr, 7000);
+  assert(r1.deferred.includes("release_records"));
+  assert(lines.some((l) => l.event === "release_batch_halted"));
+  // No later batch was tried in the halted run.
+  assertEquals(d.named("ops_release_records_ingest").length, 11);
+  healthy = true;
+  const r2 = await runReleaseBridges(d.admin, gh(comments));
+  assertEquals([...d.ingested].sort(), range(25), "nothing lost");
+  assertEquals(r2.release_records.poisoned, []);
+  assertEquals(r2.release_records.halted, null);
+  assertEquals(d.cursor(), at(25));
+});
+
+Deno.test("#4580 A3 retest (2): a mixed batch and a lone failing record still follow D3", async () => {
+  // 9 of 10 fail alone, 1 succeeds: no halt, 9 poisoned.
+  let d = liveDb({ ingestOk: (prs) => prs.length === 1 && prs[0] === 7004 });
+  let res = await runReleaseBridges(d.admin, gh(range(10).map((pr, i) => comment(pr, i + 1, 2100 + i))));
+  assertEquals(d.named("ops_release_batch_halted").length, 0);
+  assertEquals(res.release_records.poisoned, range(10).filter((p) => p !== 7004));
+  assertEquals(d.cursor(), at(10));
+  // A lone failing record in a full batch: poisoned, the rest flow.
+  d = liveDb({ ingestOk: (prs) => !prs.includes(7013) });
+  res = await runReleaseBridges(d.admin, gh(range(15).map((pr, i) => comment(pr, i + 1, 2200 + i))));
+  assertEquals(res.release_records.poisoned, [7013]);
+  assertEquals(d.named("ops_release_batch_halted").length, 0);
+  assertEquals(d.cursor(), at(15));
+  // A one-record batch that fails is a lone record: D3, not a halt (residual risk noted on #4580).
+  d = liveDb({ ingestOk: () => false });
+  res = await runReleaseBridges(d.admin, gh([comment(7020, 1, 2300)]));
+  assertEquals(res.release_records.poisoned, [7020]);
+  assertEquals(d.named("ops_release_batch_halted").length, 0);
+});
+
+Deno.test("#4580 A3 retest (3): a halt call that itself fails leaves the cursor where the last good batch put it", async () => {
+  // Batch 1 healthy, batch 2 all fail, the halt RPC fails.
+  const d = liveDb({ ingestOk: (prs) => prs.every((p) => p < 7010), halt: "fails" });
+  const lines: Json[] = [];
+  const res = await runReleaseBridges(d.admin, gh(range(25).map((pr, i) => comment(pr, i + 1, 2400 + i))), { log: (l) => lines.push(l) });
+  assertEquals(d.cursor(), at(10));
+  assertEquals(d.named("ops_release_record_poisoned").length, 0);
+  assertEquals(res.release_records.halted, null);
+  assert(lines.some((l) => l.event === "release_records_failed" && l.code === "RECORD_HALT_FAILED"));
+});
+
+Deno.test("#4580 A3 retest (4): a batch that fails whole but has some records succeed alone does not halt", async () => {
+  const d = liveDb({ ingestOk: (prs) => prs.length === 1 && prs[0] % 2 === 0 });
+  const res = await runReleaseBridges(d.admin, gh(range(10).map((pr, i) => comment(pr, i + 1, 2500 + i))));
+  assertEquals(d.named("ops_release_batch_halted").length, 0);
+  assertEquals(res.release_records.halted, null);
+  assertEquals([...d.ingested].sort(), [7000, 7002, 7004, 7006, 7008]);
+  assertEquals(res.release_records.poisoned, [7001, 7003, 7005, 7007, 7009]);
+  assertEquals(d.cursor(), at(10));
+});
+
+Deno.test("#4580 A3 retest (5): repeated all-fail runs send the same halt arguments, so the database can dedupe the notice", async () => {
+  const comments = range(12).map((pr, i) => comment(pr, i + 1, 2600 + i));
+  const d = liveDb({ ingestOk: () => false });
+  for (let i = 0; i < 3; i++) await runReleaseBridges(d.admin, gh(comments));
+  const halts = d.named("ops_release_batch_halted").map((c) => JSON.stringify(c.args));
+  assertEquals(halts.length, 3, "one halt call per run");
+  assertEquals(new Set(halts).size, 1, "identical arguments every run");
+  assertEquals(d.named("ops_release_record_poisoned").length, 0);
+  assertEquals(d.cursor(), "2026-11-23T09:55:00.000Z");
+});

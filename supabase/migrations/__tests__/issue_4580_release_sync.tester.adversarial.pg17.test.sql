@@ -27,6 +27,8 @@
 --   D4       ops_timezone_valid against pg_timezone_names for every name,
 --            every abbreviation, upper/lower case variants of every name and
 --            hostile strings; speed; cache miss; a stale cache row.
+--   A3       the batch halt: one stopped row per run, one owner notice per
+--            batch range, one-line first error, every refusal, grants.
 --   A1       every literal the action rule allowed before (39) is still
 --            accepted by an insert, plus the two new ones; unknown actions
 --            and outcome 'error' are refused.
@@ -470,6 +472,61 @@ select pg_temp.chk('A1', 'outcome error is still refused, for an old and a new a
   pg_temp.state($q$insert into public.ops_agent_log (actor_email, via, action, outcome, summary, detail) values ('s', 'system', 'guide_live', 'error', 'x', '{}')$q$)
   || ',' || pg_temp.state($q$insert into public.ops_agent_log (actor_email, via, action, outcome, summary, detail) values ('s', 'system', 'release_record_poisoned', 'error', 'x', '{}')$q$),
   '23514,23514');
+
+-- ─────────────────────────── A3: the batch halt (retest) ───────────────────────────
+select pg_temp.chk('A3', 'a halted batch is recorded', pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, 10, 'INGEST_FAILED', E'permission denied\n  for function ops_release_records_ingest')$q$), 'ok');
+select pg_temp.chk('A3', 'the same batch on the next two runs', pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, 10, 'INGEST_FAILED', 'permission denied for function ops_release_records_ingest')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, 10, 'INGEST_FAILED', 'permission denied for function ops_release_records_ingest')$q$), 'ok,ok');
+select pg_temp.chk('A3', 'three runs: one stopped release_record row per run, one owner notice for the batch',
+  (select count(*)::text || ':' || min(action) || ':' || min(outcome) from public.ops_agent_log where detail->>'batch_halted' = 'true' and detail->>'from_pr' = '984700')
+  || '/' || (select count(*)::text || ':' || min(u.email) from public.team_mentions m join auth.users u on u.id = m.target_user_id
+              where m.source_kind = 'ops_activity' and m.event_kind = 'alert' and m.body_excerpt like '%PRs #984700 to #984709%'),
+  '3:release_record:stopped/1:own.t4580@test.local');
+-- (each call first, read back after: a subquery in the same expression would run before the call)
+select pg_temp.state($q$select public.ops_release_batch_halted(984710, 984719, 10, 'INGEST_TIMEOUT', 'x')$q$) as a3_s1 \gset
+select pg_temp.state(format($q$select public.ops_release_batch_halted(984720, 984721, 2, 'INGEST_FAILED', %L)$q$, E'line one\nline two ' || repeat('z', 500))) as a3_s2 \gset
+select pg_temp.state($q$select public.ops_release_batch_halted(984722, 984723, 2, 'INGEST_FAILED', null)$q$) as a3_s3 \gset
+select pg_temp.chk('A3', 'a different batch range is told again',
+  :'a3_s1' || '/' || (select count(*)::text from public.team_mentions m where m.source_kind = 'ops_activity' and m.body_excerpt like '%PRs #984710 to #984719%'), 'ok/1');
+select pg_temp.chk('A3', 'the first error is stored as one line of at most 160 characters',
+  :'a3_s2' || '/' || (select (max(length(detail->>'first_error')) <= 160 and bool_and(position(E'\n' in detail->>'first_error') = 0))::text
+               from public.ops_agent_log where detail->>'from_pr' = '984720'), 'ok/true');
+select pg_temp.chk('A3', 'NULL first error is accepted as no message',
+  :'a3_s3' || '/' || (select min(detail->>'first_error') from public.ops_agent_log where detail->>'from_pr' = '984722'), 'ok/no message');
+select pg_temp.chk('A3', 'halt rows never read as refused status posts',
+  (select count(*)::text from public.ops_agent_log where detail->>'batch_halted' = 'true' and detail ? 'status_refused'), '0');
+select pg_temp.chk('A3', 'bad input is refused 22023 (count 1, 101, NULL; to < from; PR 0, 10000000, NULL; bad or NULL code)',
+  pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, 1, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, 101, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, null, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(984709, 984700, 10, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(0, 984700, 10, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(984700, 10000000, 10, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(null, 984700, 10, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, 10, 'ingest_failed', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(984700, 984709, 10, null, 'x')$q$),
+  '22023,22023,22023,22023,22023,22023,22023,22023,22023');
+select set_config('request.jwt.claim.role', 'anon', true);
+select pg_temp.state($q$select public.ops_release_batch_halted(984730, 984739, 10, 'INGEST_FAILED', 'x')$q$) as a3_anon \gset
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select pg_temp.state($q$select public.ops_release_batch_halted(984730, 984739, 10, 'INGEST_FAILED', 'x')$q$) as a3_auth \gset
+select set_config('request.jwt.claim.role', '', true);
+select pg_temp.state($q$select public.ops_release_batch_halted(984730, 984739, 10, 'INGEST_FAILED', 'x')$q$) as a3_none \gset
+select set_config('request.jwt.claim.role', 'service_role', true);
+select pg_temp.chk('A3', 'anon, authenticated and a caller with no role are refused 42501, and nothing was written',
+  :'a3_anon' || ',' || :'a3_auth' || ',' || :'a3_none' || '/' || (select count(*)::text from public.ops_agent_log where detail->>'from_pr' = '984730'), '42501,42501,42501/0');
+select pg_temp.chk('A3', 'ops_release_batch_halted is closed to anon and authenticated and pins its search_path',
+  has_function_privilege('anon', 'public.ops_release_batch_halted(integer, integer, integer, text, text)', 'EXECUTE')::text || '/'
+  || has_function_privilege('authenticated', 'public.ops_release_batch_halted(integer, integer, integer, text, text)', 'EXECUTE')::text || '/'
+  || (select prosecdef::text || ':' || array_to_string(proconfig, ';') from pg_proc where oid = 'public.ops_release_batch_halted(integer, integer, integer, text, text)'::regprocedure),
+  'false/false/true:search_path=pg_catalog, pg_temp');
+savepoint a3owner;
+alter table public.admin_users disable trigger user;
+update public.admin_users set status = 'revoked' where role = 'owner';
+select pg_temp.state($q$select public.ops_release_batch_halted(984740, 984749, 10, 'INGEST_FAILED', 'x')$q$) as a3_noowner_state \gset
+select :'a3_noowner_state' || '/' || (select count(*)::text from public.ops_agent_log where detail->>'from_pr' = '984740') as a3_noowner \gset
+rollback to savepoint a3owner;
+select pg_temp.chk('A3', 'with no owner the halt is still logged and does not fail', :'a3_noowner', 'ok/1');
 
 -- Evidence numbers for the verdict.
 do $ev$
