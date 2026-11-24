@@ -24,7 +24,10 @@ $$;
 
 INSERT INTO auth.users(id, email) VALUES
   ('45220006-0000-4000-8000-000000000001', 'roll-host@example.test'),
-  ('45220006-0000-4000-8000-000000000003', 'roll-admin@example.test');
+  ('45220006-0000-4000-8000-000000000003', 'roll-admin@example.test'),
+  -- E-4: since #4579 an active Mingla admin is on every brand's team, so the
+  -- non-member is a third person, neither the host nor staff.
+  ('45220006-0000-4000-8000-000000000004', 'roll-stranger@example.test');
 INSERT INTO public.creator_accounts(id, email) VALUES
   ('45220006-0000-4000-8000-000000000001', 'roll-host@example.test');
 INSERT INTO public.admin_users(email, role, status) VALUES ('roll-admin@example.test', 'admin', 'active');
@@ -198,6 +201,7 @@ BEGIN
                  OR NOT (r ? 'buyerTotalMinor')) THEN
     RAISE EXCEPTION 'E-3b Admin rows carry provider, collection method and buyer total';
   END IF;
+  PERFORM set_config('request.jwt.claim.sub', '45220006-0000-4000-8000-000000000004', true);
   IF pg_temp.raised($q$SELECT public.biz_trip_event_balances('45220006-0000-4000-8000-000000000020')$q$)
        IS DISTINCT FROM 'P0001:balance_not_found' THEN
     RAISE EXCEPTION 'E-4 a non-member must get balance_not_found';
