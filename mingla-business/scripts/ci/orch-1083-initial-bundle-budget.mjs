@@ -103,9 +103,9 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // Seeded 2026-08-11 from a measured main (see bundle-baseline.json), with
 // deliberate runway above it so the DELTA gate — not this one — is what a
 // normal PR ever meets:
-//   __common  brotli 439,775 → ceiling 585,000   (raised 2026-09-20, 2026-10-27, 2026-11-24)
-//   __common  raw    2,341,978 → ceiling 2,929,000 (raised 2026-09-20, 2026-11-24)
-//   eager     brotli 660,678 → ceiling 813,000   (raised 2026-10-17, 2026-11-24)
+//   __common  brotli 439,775 → ceiling 597,000   (raised 2026-09-20, 2026-10-27, 2026-11-24)
+//   __common  raw    2,341,978 → ceiling 2,940,000 (raised 2026-09-20, 2026-11-24)
+//   eager     brotli 660,678 → ceiling 838,000   (raised 2026-10-17, 2026-11-24)
 //   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
 //
 // RAISED 2026-09-20 — __common ONLY, from raw 2,600,000 / brotli 500,000 to raw
@@ -135,29 +135,33 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // touches a workflow (first seen on #4139). Seth approved the product-limit
 // move; the per-PR allowance and the machine-maintained baseline are unchanged.
 //
-// RAISED 2026-11-24 — __common raw 2,800,000 → 2,929,000, __common brotli
-// 560,000 → 585,000 and eager brotli 800,000 → 813,000, for issue #4490 (venue
+// RAISED 2026-11-24 — __common raw 2,800,000 → 2,940,000, __common brotli
+// 560,000 → 597,000 and eager brotli 800,000 → 838,000, for issue #4490 (venue
 // features: the Till, Close the day, offers and the guest venue pages, whose
-// Host and guest routes genuinely share code). Measured on the merged #4490
-// head (CI's own exports, linux-equivalent build): __common 2,927,623 B raw /
-// 584,172 B brotli and eager 3,969,383 B raw / 812,308 B brotli (web:export);
-// the `dist` export measured __common 2,927,484 B raw / 584,090 B brotli and
-// eager 812,300 B brotli. Seth approved the product-limit move (#4490, comment
-// 7140373865); eager raw stays 4,000,000. The per-PR allowance and the
-// machine-maintained baseline are unchanged.
+// Host and guest routes genuinely share code). Measured on the #4490 head
+// (commit 5c991e98fe, web:export): __common 2,927,623 B raw / 584,172 B brotli
+// and eager 3,969,383 B raw / 812,308 B brotli. The ceilings are set so that,
+// once that measurement is recorded as the baseline, the baseline auto-merge
+// still finds one full per-PR allowance beneath every ceiling (its refusal
+// runway: __common 12,000 B, eager 25,000 B): 2,927,623 + 12,000 <= 2,940,000;
+// 584,172 + 12,000 <= 597,000; 812,308 + 25,000 <= 838,000; eager raw
+// 3,969,383 + 25,000 <= 4,000,000, so eager raw stays 4,000,000. Seth approved
+// 2026-11-24 (issue #4490, comment 7140373865; raised in chat the same day to
+// these figures). The per-PR allowance and the machine-maintained baseline are
+// unchanged.
 //
 // The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
 // unfailable since route splitting landed. This is a tightening, not a
 // relaxation: 4,000,000 is 57% below the number it replaces.
 // ═══════════════════════════════════════════════════════════════════════════
 const HARD_CEILING = {
-  // 2026-11-24 — __common raw 2_800_000 → 2_929_000 and brotli 560_000 →
-  // 585_000, eager brotli 800_000 → 813_000 (issue #4490; Seth approved).
-  common: { raw: 2_929_000, brotli: 585_000 },
+  // 2026-11-24 — __common raw 2_800_000 → 2_940_000 and brotli 560_000 →
+  // 597_000, eager brotli 800_000 → 838_000 (issue #4490; Seth approved).
+  common: { raw: 2_940_000, brotli: 597_000 },
   // 2026-10-17 — eager brotli 775_000 → 800_000 after #3937 recorded
   // eager.brotli at 750,291 B, which left only 24,709 B beneath the old
   // ceiling. Human limit move only; automation still cannot raise this.
-  eager: { raw: 4_000_000, brotli: 813_000 },
+  eager: { raw: 4_000_000, brotli: 838_000 },
 };
 
 // How much ONE pull request may add on top of main's measured baseline.

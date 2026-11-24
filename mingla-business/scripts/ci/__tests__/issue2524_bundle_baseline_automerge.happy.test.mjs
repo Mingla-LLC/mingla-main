@@ -431,10 +431,10 @@ describe("#2524 guard 4 — ceiling-locked", () => {
         // [TEST-MOD-APPROVED #3872] after Seth moved the __common brotli
         // ceiling 550,000 -> 560,000 following #4133 (threshold 548,000).
         // REPOINTED by issue #4490 [TEST-MOD-APPROVED #4490] after Seth moved
-        // __common to raw 2,929,000 / brotli 585,000 and eager brotli to
-        // 813,000 (thresholds 2,917,000 / 573,000 and 788,000).
-        common: { raw: 2_917_000, brotli: 573_000 },
-        eager: { raw: 3_975_000, brotli: 788_000 },
+        // __common to raw 2,940,000 / brotli 597,000 and eager brotli to
+        // 838,000 (thresholds 2,928,000 / 585,000 and 813,000).
+        common: { raw: 2_928_000, brotli: 585_000 },
+        eager: { raw: 3_975_000, brotli: 813_000 },
       },
     );
   });
@@ -495,7 +495,7 @@ describe("#2524 guard 4 — ceiling-locked", () => {
     assert.deepEqual(derived.runway, JSON.parse(JSON.stringify(REFUSAL_RUNWAY)));
 
     const drifted = readFileSync(join(ROOT, "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"), "utf8")
-      .replace("raw: 2_929_000", "raw: 3_000_000");
+      .replace("raw: 2_940_000", "raw: 3_000_000");
     assert.throws(() => assertCeilingMirrorMatchesBudgetSource(drifted), (error) =>
       error instanceof AutomergeError && error.code === "MIRROR_DRIFTED");
   });
@@ -515,14 +515,14 @@ describe("#2524 guard 4 — ceiling-locked", () => {
     // 24,709 B of the protected 25,000 B runway. On 2026-10-27 Seth moved the
     // __common brotli ceiling 550,000 -> 560,000 after #4133 recorded
     // 538,311 B, inside one 12,000 B allowance of the old limit. On 2026-11-24
-    // Seth moved __common to raw 2,929,000 / brotli 585,000 and eager brotli to
-    // 813,000 for #4490 (measured 2,927,623 / 584,172 and 812,308 B).
+    // Seth moved __common to raw 2,940,000 / brotli 597,000 and eager brotli to
+    // 838,000 for #4490 (measured 2,927,623 / 584,172 and 812,308 B).
     // PR_DELTA_ALLOWANCE is unchanged. [TEST-MOD-APPROVED #3493]
     // [TEST-MOD-APPROVED #3872] [TEST-MOD-APPROVED #4490]
     const source = readFileSync(join(ROOT, "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"), "utf8");
     assert.match(source, /const PR_DELTA_ALLOWANCE = \{ common: 12_000, eager: 25_000 \};/);
-    assert.match(source, /common: \{ raw: 2_929_000, brotli: 585_000 \}/);
-    assert.match(source, /eager: \{ raw: 4_000_000, brotli: 813_000 \}/);
+    assert.match(source, /common: \{ raw: 2_940_000, brotli: 597_000 \}/);
+    assert.match(source, /eager: \{ raw: 4_000_000, brotli: 838_000 \}/);
   });
 });
 
