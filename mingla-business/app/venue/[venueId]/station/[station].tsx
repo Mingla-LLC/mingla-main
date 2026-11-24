@@ -11,17 +11,9 @@
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 
-import { StationScreen } from "../../../../src/components/venue/station/StationScreen";
-import { parseStationChoice } from "../../../../src/components/venue/station/stationModel";
-import { tillUuid } from "../../../../src/components/venue/till/tillModel";
+import { LazyVenueStationRoute } from "../../../../src/components/venue/host/LazyVenueHostRoutes";
 
-const first = (value: string | string[] | undefined): string | undefined =>
-  Array.isArray(value) ? value[0] : value;
-
-export default function VenueStationRoute(): React.ReactElement | null {
+export default function VenueStationRoute(): React.ReactElement {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
-  const venueId = tillUuid(params.venueId);
-  if (venueId === null) return null;
-  const station = parseStationChoice(first(params.station)) ?? "kitchen";
-  return <StationScreen venueId={venueId} initialStation={station} startedOnLoad={first(params.started) === "1"} />;
+  return <LazyVenueStationRoute params={params} />;
 }

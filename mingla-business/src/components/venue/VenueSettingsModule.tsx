@@ -27,6 +27,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "./host/venueHostOwner";
 import {
   ActivityIndicator,
   Pressable,
@@ -98,12 +99,10 @@ import { VenueDetailsEditor } from "./VenueDetailsEditor";
  * dependency confirms, the type picker): Settings itself is eager in the shell.
  */
 const LazyVenueTypeAndFeaturesPanel = React.lazy(async () => {
-  const mod = await import("./features/VenueTypeAndFeaturesPanel");
-  return { default: mod.VenueTypeAndFeaturesPanel };
+  return { default: (await loadVenueHostScreens()).VenueTypeAndFeaturesPanel };
 });
 const LazyBookingTermsSection = React.lazy(async () => {
-  const mod = await import("./features/offers/BookingTermsSection");
-  return { default: mod.BookingTermsSection };
+  return { default: (await loadVenueHostScreens()).BookingTermsSection };
 });
 
 /** #4490 — Settings tabs (spec 02 §3 `set`). */

@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "./host/venueHostOwner";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -143,8 +144,7 @@ const MAX_AGENDA_SCROLL_RETRIES = 2;
 
 // #4490 P5 — the live floor loads only when the Floor view is opened.
 const LazyVenueFloorLive = React.lazy(async () => {
-  const mod = await import("./features/floor/VenueFloorLive");
-  return { default: mod.VenueFloorLive };
+  return { default: (await loadVenueHostScreens()).VenueFloorLive };
 });
 
 export interface VenueReservationsModuleProps {

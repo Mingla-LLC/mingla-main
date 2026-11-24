@@ -41,6 +41,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "./host/venueHostOwner";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -95,10 +96,7 @@ const LazyToast = React.lazy(async () => {
   const mod = await import("../ui/Toast");
   return { default: mod.Toast };
 });
-import {
-  VenueAvailabilityModule,
-  type VenueAvailabilityLeaveHandle,
-} from "./VenueAvailabilityModule";
+import type { VenueAvailabilityLeaveHandle } from "./VenueAvailabilityModule";
 import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
 import { VenueMenuModule } from "./VenueMenuModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
@@ -157,63 +155,60 @@ const LazyVenueInsightsModule = React.lazy(async () => {
  * (The #1550 rule: hosts own code-splitting.)
  */
 const LazyVenueOrdersModule = React.lazy(async () => {
-  const mod = await import("./VenueOrdersModule");
-  return { default: mod.VenueOrdersModule };
+  return { default: (await loadVenueHostScreens()).VenueOrdersModule };
 });
 
 /**
- * #4490 — every feature module is its own host-owned lazy boundary (the
- * Insights/Orders pattern above): Spaces and Availability & pricing pull Sheet,
- * pickers and the site plan, none of which the eager shell needs.
+ * #4490 — the classic Availability module shares its Table times with
+ * "Availability & pricing", so it loads from the same Host venue owner.
+ */
+const LazyVenueAvailabilityModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueAvailabilityModule };
+});
+
+/**
+ * #4490 — every feature module loads through the ONE Host venue owner
+ * (host/venueHostOwner.ts): Spaces and Availability & pricing pull Sheet,
+ * pickers and the site plan, none of which the eager shell needs, and one
+ * owner keeps what the modules share out of the eager web __common chunk.
  */
 const LazyVenueSpacesModule = React.lazy(async () => {
-  const mod = await import("./features/VenueSpacesModule");
-  return { default: mod.VenueSpacesModule };
+  return { default: (await loadVenueHostScreens()).VenueSpacesModule };
 });
 const LazyVenueAvailabilityPricingModule = React.lazy(async () => {
-  const mod = await import("./features/VenueAvailabilityPricingModule");
-  return { default: mod.VenueAvailabilityPricingModule };
+  return { default: (await loadVenueHostScreens()).VenueAvailabilityPricingModule };
 });
 // #4490 P2 — Offers (with the Entry editor), Today, Check-in and the Overview
 // day header, each its own host-owned lazy boundary (Sheet, Modal, pickers,
 // the QR encoder and the web camera never reach the eager shell).
 const LazyVenueOffersModule = React.lazy(async () => {
-  const mod = await import("./features/offers/VenueOffersModule");
-  return { default: mod.VenueOffersModule };
+  return { default: (await loadVenueHostScreens()).VenueOffersModule };
 });
 const LazyVenueTodayModule = React.lazy(async () => {
-  const mod = await import("./features/today/VenueTodayModule");
-  return { default: mod.VenueTodayModule };
+  return { default: (await loadVenueHostScreens()).VenueTodayModule };
 });
 const LazyVenueCheckInModule = React.lazy(async () => {
-  const mod = await import("./features/checkin/VenueCheckInModule");
-  return { default: mod.VenueCheckInModule };
+  return { default: (await loadVenueHostScreens()).VenueCheckInModule };
 });
 const LazyVenueGuestListModule = React.lazy(async () => {
-  const mod = await import("./features/guestlist/VenueGuestListModule");
-  return { default: mod.VenueGuestListModule };
+  return { default: (await loadVenueHostScreens()).VenueGuestListModule };
 });
 // #4490 P4 — Requests and Calendar (private hire), own lazy boundaries.
 const LazyVenueRequestsModule = React.lazy(async () => {
-  const mod = await import("./features/requests/VenueRequestsModule");
-  return { default: mod.VenueRequestsModule };
+  return { default: (await loadVenueHostScreens()).VenueRequestsModule };
 });
 const LazyVenueCalendarModule = React.lazy(async () => {
-  const mod = await import("./features/calendar/VenueCalendarModule");
-  return { default: mod.VenueCalendarModule };
+  return { default: (await loadVenueHostScreens()).VenueCalendarModule };
 });
 // #4490 P6 — Members (plans and the plan editor inside), own lazy boundary.
 const LazyVenueMembersModule = React.lazy(async () => {
-  const mod = await import("./features/members/VenueMembersModule");
-  return { default: mod.VenueMembersModule };
+  return { default: (await loadVenueHostScreens()).VenueMembersModule };
 });
 const LazyEventsHereCard = React.lazy(async () => {
-  const mod = await import("./features/today/EventsHereCard");
-  return { default: mod.EventsHereCard };
+  return { default: (await loadVenueHostScreens()).EventsHereCard };
 });
 const LazyVenueTodayOverview = React.lazy(async () => {
-  const mod = await import("./features/today/VenueTodayOverview");
-  return { default: mod.VenueTodayOverview };
+  return { default: (await loadVenueHostScreens()).VenueTodayOverview };
 });
 
 /** All built features on: scoped staff's loading frame never shows "no pages". */
@@ -1191,11 +1186,19 @@ export function VenueSuiteShell({
         );
       }
       return (
-        <VenueAvailabilityModule
-          ref={availabilityRef}
-          brandId={brandId}
-          venueId={venueId}
-        />
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueAvailabilityModule
+            ref={availabilityRef}
+            brandId={brandId}
+            venueId={venueId}
+          />
+        </React.Suspense>
       );
     }
     if (activeModule === "reservations") {

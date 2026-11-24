@@ -30,6 +30,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "../venue/host/venueHostOwner";
 import {
   ActivityIndicator,
   Pressable,
@@ -177,52 +178,41 @@ export type StayFeatureModule =
 export type StayModule = StayCoreModule | StayFeatureModule;
 
 const LazyVenueSpacesModule = React.lazy(async () => {
-  const mod = await import("../venue/features/VenueSpacesModule");
-  return { default: mod.VenueSpacesModule };
+  return { default: (await loadVenueHostScreens()).VenueSpacesModule };
 });
 const LazyVenueOffersModule = React.lazy(async () => {
-  const mod = await import("../venue/features/offers/VenueOffersModule");
-  return { default: mod.VenueOffersModule };
+  return { default: (await loadVenueHostScreens()).VenueOffersModule };
 });
 const LazyVenueTodayModule = React.lazy(async () => {
-  const mod = await import("../venue/features/today/VenueTodayModule");
-  return { default: mod.VenueTodayModule };
+  return { default: (await loadVenueHostScreens()).VenueTodayModule };
 });
 const LazyVenueCalendarModule = React.lazy(async () => {
-  const mod = await import("../venue/features/calendar/VenueCalendarModule");
-  return { default: mod.VenueCalendarModule };
+  return { default: (await loadVenueHostScreens()).VenueCalendarModule };
 });
 const LazyVenueRequestsModule = React.lazy(async () => {
-  const mod = await import("../venue/features/requests/VenueRequestsModule");
-  return { default: mod.VenueRequestsModule };
+  return { default: (await loadVenueHostScreens()).VenueRequestsModule };
 });
 const LazyVenueMembersModule = React.lazy(async () => {
-  const mod = await import("../venue/features/members/VenueMembersModule");
-  return { default: mod.VenueMembersModule };
+  return { default: (await loadVenueHostScreens()).VenueMembersModule };
 });
 const LazyVenueCheckInModule = React.lazy(async () => {
-  const mod = await import("../venue/features/checkin/VenueCheckInModule");
-  return { default: mod.VenueCheckInModule };
+  return { default: (await loadVenueHostScreens()).VenueCheckInModule };
 });
 const LazyVenueOrdersModule = React.lazy(async () => {
-  const mod = await import("../venue/VenueOrdersModule");
-  return { default: mod.VenueOrdersModule };
+  return { default: (await loadVenueHostScreens()).VenueOrdersModule };
 });
 // Table times and booking rules: the ordinary shell's "Availability &
 // pricing" screen (opening hours that feed the table service periods, plus
 // Table times). Same path as VenueSuiteShell's lazy import, so it reuses that
 // existing chunk and adds nothing to the boot payload.
 const LazyVenueAvailabilityPricingModule = React.lazy(async () => {
-  const mod = await import("../venue/features/VenueAvailabilityPricingModule");
-  return { default: mod.VenueAvailabilityPricingModule };
+  return { default: (await loadVenueHostScreens()).VenueAvailabilityPricingModule };
 });
 const LazyVenueGuestListModule = React.lazy(async () => {
-  const mod = await import("../venue/features/guestlist/VenueGuestListModule");
-  return { default: mod.VenueGuestListModule };
+  return { default: (await loadVenueHostScreens()).VenueGuestListModule };
 });
 const LazyVenueTypeAndFeaturesPanel = React.lazy(async () => {
-  const mod = await import("../venue/features/VenueTypeAndFeaturesPanel");
-  return { default: mod.VenueTypeAndFeaturesPanel };
+  return { default: (await loadVenueHostScreens()).VenueTypeAndFeaturesPanel };
 });
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../ui/ConfirmDialog");

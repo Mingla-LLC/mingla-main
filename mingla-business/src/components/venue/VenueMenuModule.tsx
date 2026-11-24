@@ -32,6 +32,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "./host/venueHostOwner";
 import {
   AccessibilityInfo,
   AppState,
@@ -153,16 +154,13 @@ const LazyVenueSpotsSheet = React.lazy(async () => {
 // each renders only for a real venue (and stock only while the Till is
 // released), so a menu with no venue never loads them.
 const LazyOrderingModeCard = React.lazy(async () => {
-  const mod = await import("./OrderingModeCard");
-  return { default: mod.OrderingModeCard };
+  return { default: (await loadVenueHostScreens()).OrderingModeCard };
 });
 const LazyMenuStockLoader = React.lazy(async () => {
-  const mod = await import("./stock/MenuStockLoader");
-  return { default: mod.MenuStockLoader };
+  return { default: (await loadVenueHostScreens()).MenuStockLoader };
 });
 const LazyMenuItemStockSection = React.lazy(async () => {
-  const mod = await import("./stock/MenuItemStockSection");
-  return { default: mod.MenuItemStockSection };
+  return { default: (await loadVenueHostScreens()).MenuItemStockSection };
 });
 
 export interface VenueMenuModuleProps {

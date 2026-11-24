@@ -8,12 +8,9 @@
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 
-import { TillSettingsScreen } from "../../../src/components/venue/till/TillSettingsScreen";
-import { tillUuid } from "../../../src/components/venue/till/tillModel";
+import { LazyVenueTillSettingsRoute } from "../../../src/components/venue/host/LazyVenueHostRoutes";
 
-export default function VenueTillSettingsRoute(): React.ReactElement | null {
+export default function VenueTillSettingsRoute(): React.ReactElement {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
-  const venueId = tillUuid(params.venueId);
-  if (venueId === null) return null;
-  return <TillSettingsScreen venueId={venueId} />;
+  return <LazyVenueTillSettingsRoute params={params} />;
 }

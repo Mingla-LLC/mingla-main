@@ -14,19 +14,9 @@
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 
-import { TillGate } from "../../../src/components/venue/till/TillGate";
-import { tillPrefillFrom, tillUuid } from "../../../src/components/venue/till/tillModel";
+import { LazyVenueTillRoute } from "../../../src/components/venue/host/LazyVenueHostRoutes";
 
-export default function VenueTillRoute(): React.ReactElement | null {
+export default function VenueTillRoute(): React.ReactElement {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
-  const venueId = tillUuid(params.venueId);
-  if (venueId === null) return null;
-  const checks = Array.isArray(params.checks) ? params.checks[0] : params.checks;
-  const signout = Array.isArray(params.signout) ? params.signout[0] : params.signout;
-  // #4490 O5: a Till device login opens on "Who's selling?" (TillGate);
-  // every other account gets the Till exactly as before.
-  // #4490 O5 part B: `signout=1` (Account › Sign out on a Till device) opens on
-  // the device sign-out step: a manager's PIN, or the device's email code.
-  return <TillGate venueId={venueId} prefill={tillPrefillFrom(params)} openChecksOnStart={checks === "1"}
-    startSigningOut={signout === "1"} />;
+  return <LazyVenueTillRoute params={params} />;
 }

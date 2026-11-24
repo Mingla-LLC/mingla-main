@@ -9,13 +9,9 @@
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 
-import { DayCloseGate } from "../../../src/components/venue/close/DayCloseGate";
-import { tillUuid } from "../../../src/components/venue/till/tillModel";
+import { LazyVenueDayCloseRoute } from "../../../src/components/venue/host/LazyVenueHostRoutes";
 
-export default function VenueDayCloseRoute(): React.ReactElement | null {
+export default function VenueDayCloseRoute(): React.ReactElement {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
-  const venueId = tillUuid(params.venueId);
-  if (venueId === null) return null;
-  // #4490 O5: a Till device login switches someone in first (DayCloseGate).
-  return <DayCloseGate venueId={venueId} />;
+  return <LazyVenueDayCloseRoute params={params} />;
 }
