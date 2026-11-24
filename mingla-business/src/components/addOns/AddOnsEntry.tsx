@@ -3,8 +3,9 @@
  *
  * Renders nothing while EXPO_PUBLIC_FF_EXTRAS_ENABLED is off (the default) or
  * before the offering has a saved row, so every editor looks and saves
- * exactly as before. The editor itself loads on the first tap and stays
- * mounted after it (one lazy owner for the feature; Host web boot stays flat).
+ * exactly as before. The creator steps load this card lazily, and only while
+ * the switch is on; the editor ships in the same chunk and mounts on the
+ * first tap, then stays mounted.
  */
 
 import React, { useState } from "react";
@@ -12,21 +13,16 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import { isFeatureEnabled } from "../../config/featureFlags";
-import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
-import type { AddOnsEditorSheetProps } from "./AddOnsEditorSheet";
+import { AddOnsEditorSheet } from "./AddOnsEditorSheet";
 import type { AddOnOfferingKind } from "./addOnsEditorModel";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
 import { draftAddOnsFromSave, draftAddOnsPayload } from "./draftAddOnsSource";
 import { useOfferingAddOns } from "../../hooks/useOfferingAddOns";
 
-// The editor's chunk loads on the first tap; a failed load (offline) shows
-// the house retry instead of breaking the offering editor. Nothing here
-// imports the Sheet (its module-scope reanimated import would load with
-// every offering editor).
-const LazyAddOnsEditorSheet = createRetryableLazyErrorBoundary<AddOnsEditorSheetProps>(
-  () => import("./AddOnsEditorSheet"),
-  { loadingLabel: "Loading add-ons…" },
-);
+// #4522 boot size (Seth approved) — the editor is imported here, not behind a
+// second React.lazy: this card is itself loaded on use by the creator steps,
+// and a lazy chunk nested inside it put everything the two share (the add-ons
+// read, service and model) into the Host web boot chunk.
 
 const SAVED_OFFERING = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -88,7 +84,7 @@ export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, cur
         )}
       </Pressable>
       {opened ? (
-        <LazyAddOnsEditorSheet
+        <AddOnsEditorSheet
           visible={open}
           onClose={() => setOpen(false)}
           eventId={offeringId}

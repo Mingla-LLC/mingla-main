@@ -1,13 +1,11 @@
-// MINGLA-INVARIANT: I-ADDON-EDITOR-FLAG-DARK | issue #3281 | With EXPO_PUBLIC_FF_EXTRAS_ENABLED off (its default), no offering editor renders the Add-ons card or loads the editor; with it on, only a saved offering shows the card, and the editor loads on the first tap.
+// MINGLA-INVARIANT: I-ADDON-EDITOR-FLAG-DARK | issue #3281 | With EXPO_PUBLIC_FF_EXTRAS_ENABLED off (its default), no offering editor renders the Add-ons card or loads the editor; with it on, only a saved offering shows the card, and the editor opens on the first tap.
 /**
  * issue #3281 S3 — the Add-ons card on every offering editor.
  *
  * Fails on revert: drop the flag check, show the card for a local draft id,
- * or import the editor eagerly -> red.
+ * or open the editor before the tap -> red.
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
 
@@ -28,9 +26,7 @@ const savedAddOns: { data: { addOns: Array<{ name: string }> } | undefined } = {
 jest.mock("../../../hooks/useOfferingAddOns", () => ({
   useOfferingAddOns: () => savedAddOns,
 }));
-const loads: string[] = [];
 jest.mock("../AddOnsEditorSheet", () => {
-  loads.push("editor");
   const MockEditorSheet = (props: Record<string, unknown>) => React.createElement("MockEditorSheet", props);
   return { __esModule: true, default: MockEditorSheet, AddOnsEditorSheet: MockEditorSheet };
 });
@@ -75,20 +71,20 @@ describe("the Add-ons card", () => {
     expect(render("draft_123").toJSON()).toBeNull();
   });
 
-  test("flag on, saved offering: the card shows and the editor loads and opens on tap", async () => {
+  // [TEST-MOD-APPROVED #4522] was "the editor loads (a second lazy chunk) on the
+  // first tap". Seth approved loading the editor with its card, to keep the
+  // add-ons read, service and model out of the Host web boot chunk; the card
+  // itself is still loaded on use by the creator steps, only while extras is on.
+  test("flag on, saved offering: the card shows and the editor opens on tap", () => {
     flags.extras = true;
     const tree = render(SAVED);
     const card = tree.root.findAll((n) => n.props.testID === "add-ons-entry" && typeof n.props.onPress === "function")[0];
     expect(card.props.accessibilityLabel).toBe("Manage add-ons");
-    expect(loads).toEqual([]);
-    await TestRenderer.act(async () => {
+    expect(tree.root.findAll((n) => n.type === "MockEditorSheet").length).toBe(0);
+    TestRenderer.act(() => {
       (card.props.onPress as () => void)();
-      await new Promise((resolve) => setImmediate(resolve));
     });
-    await TestRenderer.act(async () => {
-      await new Promise((resolve) => setImmediate(resolve));
-    });
-    expect(loads).toEqual(["editor"]);
+    // No second chunk to wait for: the sheet is there in the same tap.
     const sheet = tree.root.findAll((n) => n.type === "MockEditorSheet")[0];
     expect(sheet.props).toMatchObject({ eventId: SAVED, offering: "trip", currency: "USD", visible: true });
   });
@@ -106,11 +102,25 @@ describe("the Add-ons card", () => {
     savedAddOns.data = undefined;
   });
 
-  test("the editor is never imported eagerly by the card", () => {
-    const source = fs.readFileSync(path.join(__dirname, "..", "AddOnsEntry.tsx"), "utf8");
-    expect(source).not.toMatch(/^import\s+\{[^}]*AddOnsEditorSheet[^}]*\}\s+from/m);
-    expect(source).toContain('() => import("./AddOnsEditorSheet")');
-    // The Sheet primitive (reanimated at module scope) never rides the card.
-    expect(source).not.toMatch(/from "\.\.\/ui\/(Sheet|OnIntentLazySheet)"/);
+  // [TEST-MOD-APPROVED #4522] was a source-text check that the card never
+  // imports the editor (it lazy-loaded it on tap). Seth approved loading the
+  // editor with its card to keep it out of the Host web boot chunk; what a
+  // host sees is unchanged: no editor until the tap, and it stays mounted
+  // (closed, its state kept) after Close.
+  test("the editor is not mounted before the tap and stays mounted after Close", () => {
+    flags.extras = true;
+    const tree = render(SAVED);
+    expect(tree.root.findAll((n) => n.type === "MockEditorSheet").length).toBe(0);
+    const card = tree.root.findAll((n) => n.props.testID === "add-ons-entry" && typeof n.props.onPress === "function")[0];
+    TestRenderer.act(() => {
+      (card.props.onPress as () => void)();
+    });
+    const opened = tree.root.findAll((n) => n.type === "MockEditorSheet")[0];
+    TestRenderer.act(() => {
+      (opened.props.onClose as () => void)();
+    });
+    const closed = tree.root.findAll((n) => n.type === "MockEditorSheet");
+    expect(closed.length).toBe(1);
+    expect(closed[0].props.visible).toBe(false);
   });
 });
