@@ -668,9 +668,10 @@ export function phase3dContractDigest(manifest) {
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
-// #4579 Mingla admin brand access: registered 20281201014579 after 20281201003969 in the #1857, #1931 and #2117 inventories and its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 Mingla admin brand access: registered 20281202024579 after 20281201003969 in the #1857, #1931 and #2117 inventories and its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4579 merge of main after #4571, #4572 and #3969 step 2: re-applied only the #4579 rows and skips onto main's manifest; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "9a3b0add86a3f3724e6656ca8b0917c09abb39bfa338b09c284db76ef82c8a9e";
+// #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c4fff400a635fe1780a82b98d4f222f94291a4c53aead0a27ecb29876b09db9a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

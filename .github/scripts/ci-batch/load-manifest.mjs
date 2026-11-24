@@ -411,9 +411,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows and suites after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
 // #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
-// #4579 Mingla admin brand access: listed migration 20281201014579 after 20281201003969 in the #1857, #1931 and #2117 lanes, registered its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it re-emits readers from skipped migrations behind a drift guard); re-sealed.
+// #4579 Mingla admin brand access: listed migration 20281202024579 after 20281201003969 in the #1857, #1931 and #2117 lanes, registered its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it re-emits readers from skipped migrations behind a drift guard); re-sealed.
 // #4579 merge of main after #4571, #4572 and #3969 step 2: took main's manifest and re-applied only the #4579 rows and skips (both duplicate #1931 templateReplay run keys carry the skip); re-sealed.
-export const BOOTSTRAP_SHA256 = "71b893eb5df10ed943b61a4821810547a85ecf41ea9dc4dd00c7f10bf02cd5bf";
+// #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580) in the #1857, #1931 and #2117 lanes and the filtered-replay skips, same lane position; re-sealed.
+export const BOOTSTRAP_SHA256 = "32399705c05eea8da794e19d1ecd42bffba88df8461fbdf314172b4666c6a24c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
