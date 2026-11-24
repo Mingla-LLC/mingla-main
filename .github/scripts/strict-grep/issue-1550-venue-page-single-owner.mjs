@@ -85,6 +85,9 @@ const PATHS = {
   // pure page logic: no colour, never the venue type, never auth.
   featurePage: "packages/brand-rendering/venueFeaturePage.ts",
   featureSections: "packages/brand-rendering/VenueFeatureSections.tsx",
+  // #4490 venue owners: the read model (parsing what the page reads) moved out
+  // of venueFeaturePage.ts into its own leaf; the same R-5 rules follow it.
+  featureRead: "packages/brand-rendering/venueFeatureRead.ts",
 };
 const EXPECTED_FILES = Object.keys(PATHS).length;
 
@@ -259,7 +262,19 @@ export function runGate(raw, swept, sweptTotal) {
         "mount is a second implementation waiting to diverge; that is the whole reason #1560 exists.",
     );
   }
-  for (const missing of expected.filter((r) => !importers.includes(r))) {
+  // #4490 venue owners: the Host preview mounts the SAME screen but takes it
+  // from the buyer route's own chunk (a lazy import of that module, which
+  // re-exports it) instead of bundling a second copy, which web export would
+  // hoist into the eager __common chunk. That still counts as mounting the
+  // shared screen: the buyer route re-exports exactly the deep-imported
+  // module, and the preview renders it.
+  const previewBorrows =
+    codes.hostPreviewRoute.includes('import("../../b/[brandSlug]/v/[venueSlug]")') &&
+    codes.hostPreviewRoute.includes("<PublicVenueScreen") &&
+    codes.buyerRoute.includes("export{PublicVenueScreen};");
+  for (const missing of expected.filter(
+    (r) => !importers.includes(r) && !(r === PATHS.hostPreviewRoute && previewBorrows),
+  )) {
     failures.push(
       `${missing}: no longer imports PublicVenueScreen. A route that stops mounting the ` +
         "shared screen has grown its own venue page again.",
@@ -311,7 +326,7 @@ export function runGate(raw, swept, sweptTotal) {
   }
 
   // ---- R-5 (#4490): the page is decided by FEATURES, not the venue type. ---
-  for (const key of ["featurePage", "featureSections"]) {
+  for (const key of ["featurePage", "featureSections", "featureRead"]) {
     const code = rawCodes[key];
     if (/#[0-9a-fA-F]{3,8}\b/.test(code)) {
       failures.push(
@@ -418,6 +433,7 @@ if (process.argv.includes("--self-test")) {
       "return <PublicVenueScreen venue={vm} preview={note} />;\n",
     featurePage: filler + "export const deriveVenuePage = () => null;\n",
     featureSections: filler + "export const VenueWaysToCome = () => null;\n",
+    featureRead: filler + "export const parsePublicVenueFeatures = () => null;\n",
   });
   /** A plausible swept tree: the two routes plus 700 innocent files. */
   const cleanSweep = () => {
@@ -543,6 +559,26 @@ if (process.argv.includes("--self-test")) {
     if (!result.messages.join("\n").includes("no longer imports")) {
       problems.push("dropped-importer failure did not name the rule");
     }
+  }
+
+  // 11 — #4490: the preview may borrow the screen from the buyer route's
+  // chunk, but only while the buyer route re-exports it and the preview mounts it.
+  {
+    const borrowing = () => {
+      const f = clean();
+      f.hostPreviewRoute =
+        filler +
+        'import type { PublicVenueScreenProps } from "@mingla/brand-rendering/PublicVenueScreen";\n' +
+        'const PublicVenueScreen = React.lazy(async () => ({ default: (await import("../../b/[brandSlug]/v/[venueSlug]")).PublicVenueScreen }));\n' +
+        "return <PublicVenueScreen venue={vm} preview={note} />;\n";
+      f.buyerRoute += "export { PublicVenueScreen };\n";
+      return f;
+    };
+    const sweep = cleanSweep().filter((f) => f.rel !== PATHS.hostPreviewRoute);
+    expect("preview borrows the buyer route's screen", run(borrowing(), sweep).code, 0);
+    const noReexport = borrowing();
+    noReexport.buyerRoute = noReexport.buyerRoute.replace("export { PublicVenueScreen };\n", "");
+    expect("preview borrows but the buyer route no longer re-exports", run(noReexport, sweep).code, 1);
   }
 
   if (problems.length > 0) {

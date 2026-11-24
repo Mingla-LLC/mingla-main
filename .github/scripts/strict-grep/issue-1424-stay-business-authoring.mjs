@@ -74,6 +74,7 @@ const STAY_VENUE_SCREENS = [
   { name: "VenueWaitlistModule", destination: "waitlist" },
 ];
 const TABLE_TIMES_PATH = "../venue/features/VenueAvailabilityPricingModule";
+const TABLE_TIMES_LAZY = "(await loadVenueHostScreens()).VenueAvailabilityPricingModule";
 
 function listBody(source, name) {
   const start = source.indexOf(`const ${name}`);
@@ -123,8 +124,11 @@ function checkFeatureVenueScreens(shell, failures) {
     }
   }
   if (shell.includes("VenueAvailabilityPricingModule")) {
-    if (shell.split(`await import("${TABLE_TIMES_PATH}")`).length - 1 !== 1) {
-      failures.push(`${label}: table times load through exactly one lazy import of ${TABLE_TIMES_PATH}`);
+    // #4490 venue owners: the module moved inside the one Host venue owner
+    // chunk, so the shell's single lazy load is now through that owner's loader
+    // (a separate import() of the module would hoist it into __common).
+    if (shell.split(TABLE_TIMES_LAZY).length - 1 !== 1) {
+      failures.push(`${label}: table times load through exactly one lazy load (${TABLE_TIMES_LAZY})`);
     }
     if (new RegExp(`from ["']${escapeRe(TABLE_TIMES_PATH)}["']`).test(shell)) {
       failures.push(`${label}: table times must not be a static import (it is its own lazy chunk)`);

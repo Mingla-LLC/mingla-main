@@ -555,7 +555,9 @@ const PINS = [
   },
   {
     id: "till-route-opens-through-the-pin-gate",
-    file: `${BIZ}/app/venue/[venueId]/till.tsx`,
+    // The route's screen moved into the Host venue owner (the route file is a
+    // thin shell rendering LazyVenueTillRoute): the pin follows it.
+    file: `${BIZ}/src/components/venue/host/venueHostRoutes.tsx`,
     contains: ["<TillGate venueId={venueId}"],
     absent: ["<TillScreen "],
     why: "a Till device login must open on Who's selling (spec 08 §3 O5), every other account on the Till as before",
@@ -641,7 +643,8 @@ const PINS = [
   })),
   {
     id: "close-route-opens-through-the-pin-gate",
-    file: `${BIZ}/app/venue/[venueId]/close.tsx`,
+    // Moved with the Till route into the Host venue owner (see above).
+    file: `${BIZ}/src/components/venue/host/venueHostRoutes.tsx`,
     contains: ["<DayCloseGate venueId={venueId} />"],
     absent: ["<DayCloseScreen "],
     why: "on a Till device login Close the day acts only as the person switched in with a PIN (spec 08 §3 O5)",

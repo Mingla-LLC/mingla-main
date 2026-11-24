@@ -1,3 +1,4 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders VenueOfferEditorRouteScreen (Host venue owner), which pads its root with useSafeAreaInsets (top)
 /**
  * /venue/[venueId]/offer/[offerId] (#4490 P2-4) — the offer editor as a
  * pushed screen on the native apps (`new` = a new Entry offer). On web the

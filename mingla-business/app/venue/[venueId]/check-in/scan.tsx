@@ -1,3 +1,4 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders VenueCheckInScanScreen (native), which pads its root with useSafeAreaInsets (top and bottom)
 /**
  * /venue/[venueId]/check-in/scan (#4490 P2-5) — the venue door camera on the
  * native apps (`ph-scan`, `ph-scan-ok`, `ph-scan-id`, `ph-scan-wrong`,
