@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4580_release_ingest_split.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4580-release-ingest-split",
+  "profile": "deno-1.46-stripe"
+}

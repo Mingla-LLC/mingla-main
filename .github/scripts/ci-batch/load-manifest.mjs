@@ -409,8 +409,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3969 step 2 profile access: listed migration 20281201003969 after 20281128004574 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows and suites after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed.
+// #4580 release sync timeouts: listed migrations 20281202004580 and 20281202014580 after 20281201003969 in the #1857, #1931 and #2117 lanes and registered their two pg17 suites and sidecars in the #1931 and #2117 inventories; neither needs a filtered-replay skip (nothing they read is skipped); re-sealed.
+// #4580 tester adversarial suite: registered issue_4580_release_sync.tester.adversarial.pg17.test.sql and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
 // #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
+// #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed.
 // #4522 slice 13 switch on: registered 20281121014522_issue_4522_switch_on.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281120104522 and 20281121014522 on the filtered #1931 replay and for all #4522 migrations on the filtered #2117 replay (their md5 drift guards need bodies those lanes skip); re-sealed.
@@ -434,7 +437,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4522 merge of main after #4571 Work cards, #3969 account access and #4575 Grid cover: kept main's twelve #4571 migrations (20281130014571 to 20281130124571), 20281201003969, their pg17 suites and the pre-#1931 #4571 skips beside the #3281/#4522 rows and skips; moved the branch's 14 migrations (20281129013281..20281129143281) to 20281202013281..20281202143281 above main's 20281201003969, same relative order and slugs; expectedFiles re-sorted; re-sealed.
 // #4522 merge of main after #4572 Sites feed poster and event types (6093e949c4): kept main's five #4572 migrations (20281129004572..20281129704572), their pg17 suites and filtered-replay skips beside the #3281/#4522 rows and skips; the branch's 14 migrations stay at 20281202013281..20281202143281 above them; re-sealed.
 // toward #4522: migrations renumbered 2028120203…16 above #4579
-export const BOOTSTRAP_SHA256 = "867c09ddd4e689add6e9c0595217c2128fe47efb6ed51dddd41a254458c6bf14";
+// #4522 merge of main after #4591 release sync and #4592 venue order (68a54f2f30): kept main's 20281202004580 and 20281202014580 rows before the branch's 14 migrations (20281202033281..20281202163281 stay above them); re-sealed.
+export const BOOTSTRAP_SHA256 = "9e6d39a7afe2678adaa4b7285d0e33eee1c963e56412eaa1d2de2c37e289f6ee";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
