@@ -5,7 +5,8 @@
  * StationError carrying the server's code; screens turn codes into words.
  */
 import { supabase } from "./supabase";
-import { getTillStaffSession } from "./tillStaffSession";
+import { clearTillStaffSession, getTillStaffSession, requestStepUp } from "./tillStaffSession";
+import { pinRetryMessage } from "../components/venue/till/pinModel";
 import {
   parseStationBoard,
   parseStationTicket,
@@ -17,10 +18,15 @@ import {
 
 export class StationError extends Error {
   readonly code: string;
-  constructor(code: string) {
+  /** #4490 08-O5 fix 3: a refused step-up PIN says how many tries are left / until when. */
+  readonly triesLeft: number | null;
+  readonly lockedUntil: string | null;
+  constructor(code: string, triesLeft: number | null = null, lockedUntil: string | null = null) {
     super(code);
     this.name = "StationError";
     this.code = code;
+    this.triesLeft = triesLeft;
+    this.lockedUntil = lockedUntil;
   }
 }
 
@@ -34,7 +40,10 @@ export async function stationErrorFrom(error: { message?: string; context?: unkn
     try {
       const body = obj(await (context as Response).clone().json());
       const code = typeof body.code === "string" ? body.code : typeof body.error === "string" ? body.error : "";
-      if (code.length > 0) return new StationError(code);
+      if (code.length > 0) {
+        return new StationError(code, typeof body.triesLeft === "number" ? body.triesLeft : null,
+          typeof body.lockedUntil === "string" ? body.lockedUntil : null);
+      }
     } catch {
       // An unreadable body falls through to the network mapping below.
     }
@@ -100,14 +109,58 @@ export interface FloorPdfLink {
   filename: string;
 }
 
+async function floorPdfOnce(requestBody: Json): Promise<Json> {
+  const { data, error } = await supabase.functions.invoke("venue-floor-pdf", { body: requestBody });
+  if (error) throw await stationErrorFrom(error as { message?: string; context?: unknown });
+  return obj(data);
+}
+
+const SESSION_LOST = ["pin_session_required", "pin_session_invalid"];
+
+/**
+ * #4490 08-O5 fix 3: the day-close PDF is an export of the day, so on a Till
+ * device it asks for the same fresh PIN as the CSV (the open Day close screen
+ * shows the PIN pad, TillStepUpHost) and is sent again with it. A wrong PIN
+ * asks again with the reason; Cancel ends it with pin_step_up_cancelled.
+ */
+async function floorPdfWithStepUp(venueId: string, send: Json): Promise<Json> {
+  try {
+    return await floorPdfOnce(send);
+  } catch (err) {
+    if (!(err instanceof StationError)) throw err;
+    if (SESSION_LOST.includes(err.code)) {
+      clearTillStaffSession(venueId, "server");
+      throw err;
+    }
+    if (err.code !== "pin_step_up_required") throw err;
+    let message: string | null = null;
+    for (;;) {
+      const answer = await requestStepUp(venueId, "export", message);
+      if (answer === null) throw new StationError("pin_step_up_cancelled");
+      try {
+        return await floorPdfOnce({ ...send, stepUp: { pin: answer.pin, ...(answer.memberId ? { memberId: answer.memberId } : {}) } });
+      } catch (retryErr) {
+        if (!(retryErr instanceof StationError)) throw retryErr;
+        if (SESSION_LOST.includes(retryErr.code)) {
+          clearTillStaffSession(venueId, "server");
+          throw retryErr;
+        }
+        const retry = pinRetryMessage({ code: retryErr.code, triesLeft: retryErr.triesLeft, lockedUntil: retryErr.lockedUntil });
+        if (retry === null) throw retryErr;
+        message = retry;
+      }
+    }
+  }
+}
+
 export async function requestFloorPdf(request: FloorPdfRequest): Promise<FloorPdfLink> {
   // #4490 O5: a receipt is a Till action; on a Till device it carries the PIN
   // session (memory only). Kitchen and test tickets run as the device.
   const session = request.kind === "receipt" || request.kind === "day_close" ? getTillStaffSession(request.venueId) : null;
-  const requestBody = session !== null ? { ...request, staffSession: session.token } : request;
-  const { data, error } = await supabase.functions.invoke("venue-floor-pdf", { body: requestBody });
-  if (error) throw await stationErrorFrom(error as { message?: string; context?: unknown });
-  const body = obj(data);
+  const requestBody: Json = session !== null ? { ...request, staffSession: session.token } : { ...request };
+  const body = request.kind === "day_close" && session !== null
+    ? await floorPdfWithStepUp(request.venueId, requestBody)
+    : await floorPdfOnce(requestBody);
   if (typeof body.signedUrl !== "string" || body.signedUrl.length === 0) throw new StationError("floor_pdf_failed");
   return {
     signedUrl: body.signedUrl,

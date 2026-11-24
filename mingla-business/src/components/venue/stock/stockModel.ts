@@ -73,6 +73,16 @@ export function swapChoice(
   return { kind: "cheaper", backMinor: line.lineTotalMinor - swapTotal };
 }
 
+/**
+ * #4490 08-O5 fix 3: a swap to something cheaper gives money back, so it is a
+ * refund: only someone who may refund can pick it (the server refuses it
+ * otherwise, and on a Till device asks for a fresh PIN). A same-price swap
+ * stays open to anyone who may swap.
+ */
+export function swapPickable(choice: SwapChoice, canRefund: boolean): boolean {
+  return choice.kind === "same" || (choice.kind === "cheaper" && canRefund);
+}
+
 /** The Till's words for item_sold_out: before paying, before sending, or too many. */
 export function tillSoldOutSentence(
   context: "pay" | "send",

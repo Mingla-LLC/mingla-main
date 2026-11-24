@@ -171,6 +171,9 @@ export const CLOSE_ERROR_COPY: Record<string, string> = {
   pin_session_required: "Pick who's selling and enter your PIN.",
   pin_session_invalid: "This PIN session ended. Pick who's selling to carry on.",
   pin_step_up_cancelled: "Nothing was changed.",
+  // #4490 08-O5 fix 3.
+  pin_step_up_required: "Enter your PIN again to confirm.",
+  day_close_request_stale: "This day was reopened since. Count the cash again and close it.",
   network: "No connection. Check it and try again.",
 };
 

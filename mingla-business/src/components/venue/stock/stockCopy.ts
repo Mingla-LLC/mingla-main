@@ -53,6 +53,7 @@ export const STOCK_COPY = {
   swapCheaper: (price: string, back: string): string => `${price} · ${back} goes back to the guest`,
   swapSame: (price: string): string => `${price} · same price`,
   swapDearer: (price: string): string => `${price} · costs more, can't swap`,
+  swapCheaperNeedsRefund: (price: string): string => `${price} · gives money back, ask someone who can refund`,
   swapOtherStation: (price: string): string => `${price} · made at another station`,
   swapRule: "Only items that cost the same or less are offered, so the guest never pays more.",
   swapTo: (item: string): string => `Swap to ${item}`,
@@ -99,6 +100,9 @@ export const STOCK_ERROR_COPY: Record<string, string> = {
   pin_session_required: "Pick who's selling on the Till first.",
   pin_session_invalid: "Pick who's selling on the Till first.",
   pin_step_up_required: "A refund needs a PIN from someone who can refund. Try again and enter it.",
+  // #4490 08-O5 fix 3: a swap to something cheaper gives money back, so it is a refund.
+  sold_out_key_reused: "That was already sorted with different lines. Refresh and try again.",
+  pin_step_up_cancelled: "Nothing was changed.",
   network: "No connection. Check the network and try again.",
   stock_failed: "That didn't save. Try again.",
 };

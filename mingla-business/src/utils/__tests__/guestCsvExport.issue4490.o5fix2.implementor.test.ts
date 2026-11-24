@@ -34,7 +34,10 @@ describe("O5 fix 2: guest list CSV text columns are formula-safe", () => {
     const text = serializeGuestsToCsv([orderRow()]);
     expect(text).toContain("\"'=HYPERLINK(\"\"http://x.y\"\",\"\"z\"\")\"");
     expect(text).toContain("\"'-a@b.co\"");
-    expect(text).toContain("\"'+2348012345678\"");
+    // [TEST-MOD-APPROVED #4490] 08-O5 fix 3: a phone in international form (+ and digits only) can
+    // only be read as that number, so it stays quoted text with no visible apostrophe.
+    expect(text).toContain("\"+2348012345678\"");
+    expect(text).not.toContain("\"'+2348012345678\"");
     expect(text).toContain("\"'@Early bird\"");
     expect(text).toContain("\"'=1+1\"");
   });

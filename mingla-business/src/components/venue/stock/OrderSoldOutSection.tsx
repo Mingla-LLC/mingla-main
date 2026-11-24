@@ -39,7 +39,7 @@ import type { TillPinStaff } from "../../../services/venueTillService";
 import { TillStepUpHost } from "../till/TillStepUp";
 import { approvers } from "../till/pinModel";
 import { STOCK_COPY, stockErrorCopy } from "./stockCopy";
-import { canRefundSoldOutLine, swapChoice } from "./stockModel";
+import { canRefundSoldOutLine, swapChoice, swapPickable } from "./stockModel";
 
 export const orderSoldOutKey = (venueId: string, orderId: string) =>
   ["venueOrders", "soldOut", venueId, orderId] as const;
@@ -177,9 +177,9 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
                   ) : data.swapOptions.filter((o) => o.menuItemId !== line.menuItemId).map((option) => {
                     const choice = swapChoice(line, option);
                     const price = money(option.priceMinor * line.quantity);
-                    const pickable = choice.kind === "cheaper" || choice.kind === "same";
+                    const pickable = swapPickable(choice, data.canRefund);
                     const sub = choice.kind === "cheaper"
-                      ? STOCK_COPY.swapCheaper(price, money(choice.backMinor))
+                      ? (data.canRefund ? STOCK_COPY.swapCheaper(price, money(choice.backMinor)) : STOCK_COPY.swapCheaperNeedsRefund(price))
                       : choice.kind === "same"
                       ? STOCK_COPY.swapSame(price)
                       : choice.kind === "dearer"
