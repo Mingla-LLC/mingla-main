@@ -2028,10 +2028,12 @@
         "mingla-business/src/components/marketing/marketingTabActions.ts",
         "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx",
         "mingla-business/src/features/marketing/campaignFailureCopy.ts",
+        "mingla-business/src/features/marketing/eventAudienceCopy.ts",
         "mingla-business/src/hooks/marketing/useAudienceList.ts",
         "mingla-business/src/hooks/marketing/useCampaignFailureReason.ts",
         "mingla-business/src/hooks/marketing/useEventAudienceCount.ts",
         "mingla-business/src/hooks/marketing/useEventBuyers.ts",
+        "mingla-business/src/services/marketing/eventRosterService.ts",
         "mingla-business/src/services/marketing/marketingAudienceService.ts",
         "supabase/migrations/20281205004596_issue_4596_event_audience_rsvp_guests.sql"
       ]
