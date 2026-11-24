@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4522",
+  "target": {
+    "kind": "function",
+    "name": "process-scheduled-installments"
+  },
+  "basePolicySha256": "0c349a9f24af355fc392b4dc4110b3cda36b29bb8394484fc5abaef8eceaaa60",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "APPSFLYER_BUSINESS_ANDROID_APP_ID",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "APPSFLYER_BUSINESS_IOS_APP_ID",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "APPSFLYER_S2S_TOKEN",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "app.qr_token_pepper",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "42c86024fe315c6f0fe292bd5eff7c74e30482cce4ccd724ce9a2c81f69f9591",
+  "reason": "Issue #4522 trip payment plans: scheduled instalment collection now settles through the shared Stripe webhook router and ticket checkout helpers (_shared/stripeWebhookRouter.ts, _shared/ticketCheckout.ts), which sign ticket QR tokens and report AppsFlyer server events (_shared/appsFlyerS2S.ts), so the existing QR token pepper and AppsFlyer S2S names are explicit deployment requirements."
+}
