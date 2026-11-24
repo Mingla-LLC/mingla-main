@@ -29,7 +29,8 @@
         "packages/offering-rendering/useOfferingImageUri.ts",
         "mingla-business/src/components/checkout/freeParentAddOnsNote.ts",
         "packages/offering-rendering/ticketExtrasRefusal.ts",
-        "app-mobile/src/test/reactI18next.render.mock.cjs"
+        "app-mobile/src/test/reactI18next.render.mock.cjs",
+        "supabase/functions/ticket-checkout-status/function-policy.issue-4522.patch.json"
       ]
     },
     {
@@ -139,7 +140,8 @@
         "mingla-business/src/components/refunds/SourceRefundStatusChip.tsx",
         "mingla-business/src/utils/orderRefundActions.ts",
         "mingla-business/src/utils/planOrderScreen.ts",
-        "supabase/functions/_shared/paystackRefundRouter.ts"
+        "supabase/functions/_shared/paystackRefundRouter.ts",
+        "supabase/functions/_shared/email/buyerLifecycleAdapters.ts"
       ]
     },
     {
@@ -2037,7 +2039,11 @@
         "mingla-admin/src/services/adminMoneyService.js",
         "mingla-admin/src/lib/orderOverpayments.js",
         "mingla-admin/src/lib/tripOrderBalance.js",
-        "mingla-admin/src/lib/moneyFormat.js"
+        "mingla-admin/src/lib/moneyFormat.js",
+        "mingla-admin/src/components/refunds/TripCancelRefundPanel.jsx",
+        "mingla-admin/src/lib/refundOperationsView.js",
+        "mingla-admin/src/pages/RefundOperationsPage.jsx",
+        "mingla-admin/src/services/refundOperationsService.js"
       ]
     },
     {
@@ -3459,7 +3465,8 @@
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
         "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
         "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
-        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql"
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql",
+        "supabase/functions/payout-release-sweep/index.ts"
       ]
     },
     {
@@ -5624,7 +5631,12 @@
         "supabase/functions/_shared/installments/planV2Schema.ts",
         "supabase/functions/_shared/installments/chargePaystackInstallment.ts",
         "supabase/functions/cancel-trip-booking/refundEntries.ts",
-        "mingla-business/src/services/cancelTripBookingService.ts"
+        "mingla-business/src/services/cancelTripBookingService.ts",
+        "supabase/functions/cancel-trip-booking/function-policy.issue-4522.patch.json",
+        "supabase/functions/cancel-trip-booking/opsRefundedElsewhere.ts",
+        "supabase/functions/installment-pay-link/function-policy.json",
+        "supabase/functions/process-scheduled-installments/function-policy.issue-4522.patch.json",
+        "supabase/functions/ticket-checkout-create/function-policy.issue-4522.patch.json"
       ]
     },
     {
@@ -6253,6 +6265,19 @@
         "mingla-business/src/context/TabBarVisibilityContext.ts",
         "mingla-business/src/screens/ari/ariComposerKeyboardFrame.ts",
         "mingla-business/src/wrappers/doneBarSuppression.ts"
+      ]
+    },
+    {
+      "capability_key": "trips-cancel-booking",
+      "paths": [
+        "mingla-admin/src/components/refunds/TripCancelRefundPanel.jsx",
+        "supabase/functions/cancel-trip-booking/opsRefundedElsewhere.ts"
+      ]
+    },
+    {
+      "capability_key": "events-cancel-refund-all",
+      "paths": [
+        "supabase/functions/event-cancel-refund-fanout/index.ts"
       ]
     }
   ]
