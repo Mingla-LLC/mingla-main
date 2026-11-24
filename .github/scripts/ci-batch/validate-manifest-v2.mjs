@@ -667,8 +667,11 @@ export function phase3dContractDigest(manifest) {
 // #3969 step 2 profile access: listed migration 20281201003969 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4580 release sync timeouts: registered migrations 20281202004580 and 20281202014580 in the #1857, #1931 and #2117 inventories after 20281201003969 and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4580 tester adversarial suite: registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "971fef14964153ecec2845a4e7c59e708ddb7436d8a1d37141e972a125121c93";
+// #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "8bcb53d5bd738a120119283133fe403d948370f4d30cf1b3294f8f11bf7eab49";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

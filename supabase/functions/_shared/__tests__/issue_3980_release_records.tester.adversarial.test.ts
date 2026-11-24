@@ -702,6 +702,8 @@ Deno.test("#3980 tester bridge: a failed ingest never moves the cursor, so no re
       calls.push(name + (args && "p_at" in args ? `@${args.p_at}` : ""));
       if (name === "ops_bridge_cursor") return Promise.resolve({ data: "2026-10-21T00:00:00+00:00", error: null });
       if (name === "ops_release_records_ingest") return Promise.resolve(ingestError ? { data: null, error: { message: "db down" } } : { data: { ingested: 1, invalid: 0, completed: [] }, error: null });
+      // [TEST-MOD-APPROVED #4580] D3: a record that fails alone is skipped only once its poison record is written.
+      if (name === "ops_release_record_poisoned") return Promise.resolve(ingestError ? { data: null, error: { message: "db down" } } : { data: null, error: null });
       if (name === "ops_release_status_due") return Promise.resolve({ data: [], error: null });
       return Promise.resolve({ data: {}, error: null });
     },
