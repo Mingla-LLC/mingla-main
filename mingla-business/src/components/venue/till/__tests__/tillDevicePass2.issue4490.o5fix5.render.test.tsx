@@ -695,8 +695,12 @@ describe("08-O5 fix 5 items 5, 7 and 8: Who's selling, the day close and the kit
     t.unmount();
   });
 
-  test("8. the kitchen header: the buttons are their own group in a header that wraps; the title is one line", async () => {
-    setWidth(390);
+  // TEST-MOD-APPROVED #4490: 08-O5 fix 6 makes the PHONE header a stack (the
+  // wrapping row cut the title on iOS); the wrapping row with a one-line title
+  // is now the tablet header (columns), pinned here. The phone stack is pinned
+  // in tillDevicePass3.issue4490.o5fix6.
+  test("8. the kitchen header (tablet): the buttons are their own group in a header that wraps; the title is one line", async () => {
+    setWidth(1024);
     const board = {
       venueId: "v1", venueName: "T4490 Kitchen House", brandId: "b1", station: "kitchen", timezone: "Africa/Lagos",
       serverNow: "2026-11-24T10:00:00Z", targetMinutes: { kitchen: 15, bar: 5 }, printPaper: "80mm", defaultStation: "kitchen",
@@ -704,7 +708,7 @@ describe("08-O5 fix 5 items 5, 7 and 8: Who's selling, the day close and the kit
     };
     let tree: RenderTree | null = null;
     await TestRenderer.act(async () => {
-      tree = TestRenderer.create(<StationBoard board={board as never} choice="kitchen" onChoose={jest.fn()} columns={false} tab="new"
+      tree = TestRenderer.create(<StationBoard board={board as never} choice="kitchen" onChoose={jest.fn()} columns tab="new"
         onTab={jest.fn()} connection="reconnecting" banner={null} muteLabel="Mute" onMute={jest.fn()} onSoldOut={jest.fn()}
         ageOf={() => 0} ringOn={false} busyKey={null} printingKey={null} onAccept={jest.fn()} onItemReady={jest.fn()}
         onReady={jest.fn()} onPickedUp={jest.fn()} onRecall={jest.fn()} onPrint={jest.fn()} onClose={jest.fn()} showKeepOpen={false} />);

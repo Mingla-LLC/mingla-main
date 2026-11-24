@@ -20,8 +20,9 @@
  *
  * Invariant I-4389-SHEET-BOUNDED-SCROLL-BODY | issue #4389 | Every bottom sheet #4389 added or changed renders its content in SheetScrollLayout (or its own ScrollView body) inside a snap point of "half" or "full", with its buttons in the pinned footer. Enforced by issue_4389_sheets_bounded.implementor.test.tsx.
  */
-import React, { useContext } from "react";
-import { StyleSheet, View } from "react-native";
+import React, { useContext, useMemo, useRef } from "react";
+import { Platform, StyleSheet, View } from "react-native";
+import type { ScrollView as RNScrollView } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import { space } from "../../constants/designSystem";
@@ -41,6 +42,26 @@ export function sheetKeyboardLift(keyboardHeight: number, bottomInset: number): 
   if (keyboardHeight <= 0) return 0;
   return Math.max(0, keyboardHeight + DONE_BAR_OCCUPIED - (space[6] + bottomInset));
 }
+
+/**
+ * #4490 08-O5 fix 6: something inside the scroll area that must be seen whole
+ * when it appears (a PIN pad's OK and Cancel) asks the scroll area to bring its
+ * BOTTOM into view. On Android the Till's sold-out sheet opened the PIN pad
+ * with OK below the fold. Null outside a SheetScrollLayout.
+ */
+export type ScrollReveal = (target: View) => void;
+export const ScrollRevealContext = React.createContext<ScrollReveal | null>(null);
+
+/**
+ * How much further to scroll so a target's bottom (window coordinates) sits
+ * just inside the scroll area's bottom; 0 when it is already in view.
+ */
+export function revealDelta(targetBottom: number, viewBottom: number, margin = 8): number {
+  const over = targetBottom + margin - viewBottom;
+  return over > 0 ? over : 0;
+}
+
+type Measurable = { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void };
 
 export interface SheetScrollLayoutProps {
   children: React.ReactNode;
@@ -76,9 +97,30 @@ const Layout: React.FC<SheetScrollLayoutProps & { lift: number }> = ({
   contentStyle,
   testID,
   lift,
-}) => (
+}) => {
+  const scrollRef = useRef<RNScrollView | null>(null);
+  const offset = useRef(0);
+  const reveal = useMemo<ScrollReveal>(() => (target) => {
+    const scroll = scrollRef.current;
+    if (scroll === null) return;
+    if (Platform.OS === "web") {
+      // react-native-web: a View ref is its DOM node.
+      (target as unknown as { scrollIntoView?: (o: { block: string }) => void }).scrollIntoView?.({ block: "end" });
+      return;
+    }
+    (target as unknown as Measurable).measureInWindow?.((_tx, ty, _tw, th) => {
+      (scroll as unknown as Measurable).measureInWindow?.((_sx, sy, _sw, sh) => {
+        const delta = revealDelta(ty + th, sy + sh);
+        if (delta > 0) scroll.scrollTo({ y: offset.current + delta, animated: true });
+      });
+    });
+  }, []);
+  return (
   <View style={[styles.root, lift > 0 ? { paddingBottom: lift } : null]} testID={testID}>
     <ScrollView
+      ref={scrollRef}
+      onScroll={(e) => { offset.current = e.nativeEvent.contentOffset.y; }}
+      scrollEventThrottle={64}
       style={styles.scroll}
       contentContainerStyle={[styles.content, contentStyle]}
       keyboardShouldPersistTaps="handled"
@@ -86,7 +128,7 @@ const Layout: React.FC<SheetScrollLayoutProps & { lift: number }> = ({
       showsVerticalScrollIndicator
       testID={testID !== undefined ? `${testID}-scroll` : undefined}
     >
-      {children}
+      <ScrollRevealContext.Provider value={reveal}>{children}</ScrollRevealContext.Provider>
     </ScrollView>
     {footer !== undefined && footer !== null ? (
       <View style={styles.footer} testID={testID !== undefined ? `${testID}-footer` : undefined}>
@@ -94,7 +136,8 @@ const Layout: React.FC<SheetScrollLayoutProps & { lift: number }> = ({
       </View>
     ) : null}
   </View>
-);
+  );
+};
 
 // #4420: the sheet body already pads 20 on each side (kit `.sheet-body`), so
 // the layout adds no horizontal padding of its own. The footer is the kit's

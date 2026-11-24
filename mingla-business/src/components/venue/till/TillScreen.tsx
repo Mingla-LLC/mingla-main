@@ -84,7 +84,7 @@ import { openFloorPdf } from "../../../utils/floorPdf";
 import { STATION_COPY, stationErrorCopy } from "../station/stationCopy";
 import { runStationAction, StationError } from "../../../services/venueStationService";
 import { ReceiptStep } from "./ReceiptStep";
-import { TillStepUpHost, useStepUpSheetSnap } from "./TillStepUp";
+import { TillStepUpHost, useStepUpSheet } from "./TillStepUp";
 import type { TillPinPerson } from "../../../services/venueTillService";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
 import { checkTitle } from "./checkLabel";
@@ -1177,12 +1177,20 @@ export function TillScreen({
           {catalogBody}
           {paidPayments.length > 0 ? (
             <View style={styles.paidList}>
-              {paidPayments.map((p) => (
-                <ListRow
-                  key={p.id}
-                  title={`${p.method === "cash" ? TILL_COPY.cash : p.method === "own_machine" ? TILL_COPY.ownMachine : paidLabel(p)} · ${money(p.amountMinor + p.tipMinor)}`}
-                  subtitle={p.reference}
-                  trailing={
+              {/* #4490 08-O5 fix 6: the amount has its own unshrinkable text
+                  beside the method, so a long method ("Card machine (yours)")
+                  is what gets shortened, never the amount ("₦4,0…"); Send
+                  receipt and Refund sit underneath. */}
+              {paidPayments.map((p) => {
+                const method = p.method === "cash" ? TILL_COPY.cash : p.method === "own_machine" ? TILL_COPY.ownMachine : paidLabel(p);
+                const amount = money(p.amountMinor + p.tipMinor);
+                return (
+                  <View key={p.id} style={styles.paidRow} testID={`till-paid-row-${p.id}`}>
+                    <View style={styles.paidLine} accessible accessibilityLabel={`${method}, ${amount}, ${p.reference}`}>
+                      <Text style={styles.paidMethod} numberOfLines={1} testID={`till-paid-method-${p.id}`}>{method}</Text>
+                      <Text style={styles.paidAmount} numberOfLines={1} testID={`till-paid-amount-${p.id}`}>{amount}</Text>
+                    </View>
+                    <Text style={styles.paidRef} numberOfLines={1}>{p.reference}</Text>
                     <View style={styles.paidActions}>
                       <Button label={TILL_COPY.sendReceipt} variant="secondary" size="sm" onPress={() => setReceiptFor(p.id)}
                         testID={`till-receipt-open-${p.id}`} />
@@ -1190,9 +1198,9 @@ export function TillScreen({
                         <Button label={TILL_COPY.refund} variant="secondary" size="sm" onPress={() => setRefundFor(p.id)} />
                       ) : null}
                     </View>
-                  }
-                />
-              ))}
+                  </View>
+                );
+              })}
             </View>
           ) : null}
         </ScrollView>
@@ -1786,15 +1794,16 @@ function VoidSheet({ row, currency, busy, asksRestock, onClose, onVoid, stepUp }
   // #4490 08-O5 fix 1 (O5-T4): "Put it back in stock" starts on for every void.
   const [putBack, setPutBack] = useState<boolean>(true);
   // #4490 08-O5 fix 5: the tallest sheet while the PIN pad shows, so OK fits.
-  const stepUpSnap = useStepUpSheetSnap(stepUp.venueId, 0.6);
+  // Fix 6: while it shows, swipe, back and Close cancel it like Cancel.
+  const stepUpSheet = useStepUpSheet(stepUp.venueId, 0.6, busy, onClose);
   useEffect(() => {
     setReason(TILL_COPY.voidReasons[0].label);
     setPutBack(true);
   }, [row?.key]);
   return (
-    <Sheet visible={row !== null} onClose={onClose} snapPoint={stepUpSnap} dismissDisabled={busy} testID="till-void">
+    <Sheet visible={row !== null} onClose={onClose} {...stepUpSheet.sheet} testID="till-void">
       <View style={styles.grow}>
-        <SheetHead title={row !== null ? TILL_COPY.voidItem(row.label) : TILL_COPY.void} onClose={onClose} disabled={busy} />
+        <SheetHead title={row !== null ? TILL_COPY.voidItem(row.label) : TILL_COPY.void} onClose={stepUpSheet.close} disabled={stepUpSheet.closeDisabled} />
         <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
           <SheetScrollLayout contentStyle={styles.sheetScroll}
           footer={<Button label={row !== null ? `${TILL_COPY.void} · ${formatCurrency(row.amountMinor, currency, true)}` : TILL_COPY.void}
@@ -2012,11 +2021,12 @@ function LineRefundSheet({
     setReason(TILL_COPY.refundReasons[0].label);
   }, [row?.key]);
   // #4490 08-O5 fix 5: the tallest sheet while the PIN pad shows, so OK fits.
-  const stepUpSnap = useStepUpSheetSnap(stepUp.venueId, 0.6);
+  // Fix 6: while it shows, swipe, back and Close cancel it like Cancel.
+  const stepUpSheet = useStepUpSheet(stepUp.venueId, 0.6, busy, onClose);
   return (
-    <Sheet visible={row !== null} onClose={onClose} snapPoint={stepUpSnap} dismissDisabled={busy} testID="till-line-refund">
+    <Sheet visible={row !== null} onClose={onClose} {...stepUpSheet.sheet} testID="till-line-refund">
       <View style={styles.grow}>
-        <SheetHead title={row !== null ? TILL_COPY.refundLineTitle(row.label) : TILL_COPY.refund} onClose={onClose} disabled={busy} />
+        <SheetHead title={row !== null ? TILL_COPY.refundLineTitle(row.label) : TILL_COPY.refund} onClose={stepUpSheet.close} disabled={stepUpSheet.closeDisabled} />
         <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
           <SheetScrollLayout contentStyle={styles.sheetScroll}
           footer={<Button label={TILL_COPY.refundAmount(formatCurrency(row?.amountMinor ?? 0, currency, true))} variant="destructive"
@@ -2059,11 +2069,12 @@ function RefundSheet({
   }, [payment?.id]);
   const value = amount ?? max;
   // #4490 08-O5 fix 5: the tallest sheet while the PIN pad shows, so OK fits.
-  const stepUpSnap = useStepUpSheetSnap(stepUp.venueId, 0.7);
+  // Fix 6: while it shows, swipe, back and Close cancel it like Cancel.
+  const stepUpSheet = useStepUpSheet(stepUp.venueId, 0.7, busy, onClose);
   return (
-    <Sheet visible={payment !== null} onClose={onClose} snapPoint={stepUpSnap} dismissDisabled={busy} testID="till-refund">
+    <Sheet visible={payment !== null} onClose={onClose} {...stepUpSheet.sheet} testID="till-refund">
       <View style={styles.grow}>
-        <SheetHead title={TILL_COPY.refund} onClose={onClose} disabled={busy} />
+        <SheetHead title={TILL_COPY.refund} onClose={stepUpSheet.close} disabled={stepUpSheet.closeDisabled} />
         <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
           <SheetScrollLayout keyboardAware contentStyle={styles.sheetScroll}
           footer={<Button label={TILL_COPY.refundAmount(formatCurrency(value, currency, true))} variant="primary" size="lg" fullWidth
@@ -2139,7 +2150,12 @@ const styles = StyleSheet.create({
   sheetScroll: { gap: space[3], paddingBottom: space[4], paddingHorizontal: space[1] },
   group: { gap: space[2] },
   paidList: { gap: space[1] },
-  paidActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: space[2] },
+  paidRow: { gap: space[1], paddingHorizontal: space[4], paddingVertical: space[2] },
+  paidLine: { flexDirection: "row", alignItems: "baseline", gap: space[2] },
+  paidMethod: { ...type.row, color: color.text1, flexShrink: 1, minWidth: 0 },
+  paidAmount: { ...type.row, fontWeight: "600", color: color.text1, flexShrink: 0 },
+  paidRef: { ...type.caption, color: color.text3 },
+  paidActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[1] },
   h2: { ...type.h2, color: color.text1, flexShrink: 1 },
   h3: { ...type.row, color: color.text1, flexShrink: 1 },
   label: { ...type.small, color: color.text2 },

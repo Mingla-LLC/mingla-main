@@ -20,7 +20,7 @@ import { methodLabel, personName } from "./dayCloseModel";
 
 export interface DayCloseTotalsProps {
   summary: DaySummary;
-  /** Phone < 600: two tiles a row, fewer columns in the person rows. */
+  /** Phone < 600: one tile a row, fewer columns in the person rows. */
   wide: boolean;
 }
 
@@ -114,7 +114,10 @@ export function DayCloseTotals({ summary, wide }: DayCloseTotalsProps): React.Re
 const styles = StyleSheet.create({
   root: { gap: space[4] },
   tiles: { flexDirection: "row", flexWrap: "wrap", gap: space[3] },
-  tile: { flexBasis: "46%", flexGrow: 1 },
+  // #4490 08-O5 fix 6: on a phone each tile takes the full width, so an amount
+  // like ₦78,000.00 has room on one line at 320 and 375 (two a row broke it
+  // inside the number as "₦78,000. / 00"). Amounts are never shrunk.
+  tile: { flexBasis: "100%", flexGrow: 1 },
   tileWide: { flexBasis: "30%" },
   cardTitle: { ...type.label, color: color.text3, paddingHorizontal: space[4], paddingTop: space[3], paddingBottom: space[1] },
 });

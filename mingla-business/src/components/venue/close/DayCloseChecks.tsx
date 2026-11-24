@@ -28,9 +28,13 @@ export interface DayCloseChecksProps {
   busySaleId: string | null;
   onOpenInTill: () => void;
   onMove: (check: DayOpenCheck) => void;
+  /** #4490 08-O5 fix 6: phone width (< 600). Each blocking check stacks its
+   *  name on top and Pay, Void and Move to tomorrow underneath, so the name is
+   *  never crushed to "Che…" beside the buttons. */
+  stacked?: boolean;
 }
 
-export function DayCloseChecks({ checks, currency, busySaleId, onOpenInTill, onMove }: DayCloseChecksProps): React.ReactElement | null {
+export function DayCloseChecks({ checks, currency, busySaleId, onOpenInTill, onMove, stacked = false }: DayCloseChecksProps): React.ReactElement | null {
   const blocking = checks.filter((c) => c.blocks);
   const waiting = checks.filter((c) => !c.blocks && c.waitingForScan);
   if (blocking.length === 0 && waiting.length === 0) return null;
@@ -43,12 +47,12 @@ export function DayCloseChecks({ checks, currency, busySaleId, onOpenInTill, onM
       {blocking.length > 0 ? (
         <GlassCard padding={0}>
           {blocking.map((c, i) => (
-            <View key={c.saleId} style={[styles.row, i > 0 && styles.divider]} testID={`day-close-check-${c.saleId}`}>
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle} numberOfLines={1}>
+            <View key={c.saleId} style={[stacked ? styles.rowStacked : styles.row, i > 0 && styles.divider]} testID={`day-close-check-${c.saleId}`}>
+              <View style={stacked ? styles.rowTextStacked : styles.rowText}>
+                <Text style={styles.rowTitle} numberOfLines={stacked ? 2 : 1}>
                   {`${checkTitle({ id: c.saleId, label: c.label })} · ${formatCurrency(c.dueMinor, currency, true)}`}
                 </Text>
-                <Text style={styles.rowSub} numberOfLines={1}>{`${personName(c.server)} · ${ageLabel(c.ageMinutes)}`}</Text>
+                <Text style={styles.rowSub} numberOfLines={stacked ? 2 : 1}>{`${personName(c.server)} · ${ageLabel(c.ageMinutes)}`}</Text>
               </View>
               <View style={styles.actions}>
                 <Button label={CLOSE_COPY.pay} variant="secondary" size="sm" onPress={onOpenInTill}
@@ -84,6 +88,8 @@ export function DayCloseChecks({ checks, currency, busySaleId, onOpenInTill, onM
 const styles = StyleSheet.create({
   root: { gap: space[3] },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[3], padding: space[4] },
+  rowStacked: { flexDirection: "column", alignItems: "stretch", gap: space[3], padding: space[4] },
+  rowTextStacked: { alignSelf: "stretch", gap: space[1] },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.line },
   rowText: { flexGrow: 1, flexShrink: 1, flexBasis: 200, gap: space[1] },
   rowTitle: { ...type.row, color: color.text1 },

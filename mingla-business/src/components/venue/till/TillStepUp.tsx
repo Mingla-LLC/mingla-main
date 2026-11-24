@@ -11,8 +11,9 @@
  * pending for this venue the sheet's own content shows.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import type { ScrollView as RNScrollView } from "react-native";
 
 import { color, space, type } from "../../../constants/designSystem";
 import { answerStepUp, useTillStaffSession, useTillStepUp } from "../../../services/tillStaffSession";
@@ -20,6 +21,7 @@ import type { TillPinPerson } from "../../../services/venueTillService";
 import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Pill";
 import { ScrollView } from "../../../wrappers/SmartScrollView";
+import { ScrollRevealContext } from "../../ui/SheetScrollLayout";
 import { PinPad } from "./PinPad";
 import { PIN_COPY } from "./pinModel";
 
@@ -44,6 +46,46 @@ export function useStepUpSheetSnap(venueId: string, base: number): number {
   const request = useTillStepUp(venueId);
   const session = useTillStaffSession(venueId);
   return stepUpSheetSnap(request !== null && session !== null, base);
+}
+
+/**
+ * #4490 08-O5 fix 6 (item 7): a sheet that hosts a step-up. While the PIN pad
+ * shows, a swipe down, the Android back button, a scrim tap and the sheet's
+ * own Close all do what Cancel does: the step-up is cancelled (the action
+ * ends in "Nothing was changed") and the sheet springs back to its form. They
+ * were dead before, because the waiting action keeps the sheet busy
+ * (dismissDisabled). Spread `sheet` on the Sheet; use `close` / `closeDisabled`
+ * for the sheet's Close button.
+ */
+export interface StepUpSheetControl {
+  pending: boolean;
+  sheet: {
+    snapPoint: number;
+    dismissDisabled: boolean;
+    dismissGuard: () => boolean;
+    onRequestClose: () => void;
+  };
+  close: () => void;
+  closeDisabled: boolean;
+}
+export function stepUpSheetControl(pending: boolean, base: number, busy: boolean, onClose: () => void): StepUpSheetControl {
+  const cancel = (): void => answerStepUp(null);
+  return {
+    pending,
+    sheet: {
+      snapPoint: stepUpSheetSnap(pending, base),
+      dismissDisabled: busy && !pending,
+      dismissGuard: () => pending,
+      onRequestClose: pending ? cancel : onClose,
+    },
+    close: pending ? cancel : onClose,
+    closeDisabled: busy && !pending,
+  };
+}
+export function useStepUpSheet(venueId: string, base: number, busy: boolean, onClose: () => void): StepUpSheetControl {
+  const request = useTillStepUp(venueId);
+  const session = useTillStaffSession(venueId);
+  return stepUpSheetControl(request !== null && session !== null, base, busy, onClose);
 }
 
 export function TillStepUpHost({ venueId, approvers, children }: TillStepUpHostProps): React.ReactElement {
@@ -88,10 +130,38 @@ function StepUpPanel({
   const others = approvers.filter((a) => a.memberId !== sessionMemberId);
   const [who, setWho] = useState<string>(sessionCanApprove || others.length === 0 ? sessionMemberId : others[0].memberId);
   const name = who === sessionMemberId ? sessionName : others.find((a) => a.memberId === who)?.name ?? "";
+  // #4490 08-O5 fix 6 (item 6): OK and Cancel are in view when the pad opens.
+  // In its own bounded scroll (a refund, void or reopen sheet) the pad scrolls
+  // to its end when it is taller than the sheet (Android, where OK sat below
+  // the fold); inside a sheet's scroll area (the sold-out list) it asks that
+  // area to bring its bottom into view. The title and dots stay above OK.
+  const scrollRef = useRef<RNScrollView | null>(null);
+  const panelRef = useRef<View | null>(null);
+  const viewport = useRef(0);
+  const content = useRef(0);
+  const revealed = useRef(false);
+  const reveal = useContext(ScrollRevealContext);
+  const fitPad = (): void => {
+    const contentHeight = content.current;
+    if (revealed.current || viewport.current <= 0 || contentHeight <= 0) return;
+    revealed.current = true;
+    if (contentHeight > viewport.current + 1) scrollRef.current?.scrollToEnd({ animated: false });
+    else if (reveal !== null && panelRef.current !== null) reveal(panelRef.current);
+  };
   return (
     // #4490 08-O5 fix 5: the pad scrolls if the sheet is shorter than it, so
     // OK can always be reached.
-    <ScrollView style={styles.fill} contentContainerStyle={styles.root} keyboardShouldPersistTaps="handled" testID="till-step-up">
+    <ScrollView ref={scrollRef} style={styles.fill} contentContainerStyle={styles.root} keyboardShouldPersistTaps="handled"
+      onLayout={(e) => {
+        viewport.current = e.nativeEvent.layout.height;
+        fitPad();
+      }}
+      onContentSizeChange={(_w, h) => {
+        content.current = h;
+        fitPad();
+      }}
+      testID="till-step-up">
+      <View ref={panelRef} collapsable={false} style={styles.panel} testID="till-step-up-panel">
       {others.length > 0 ? (
         <View style={styles.who}>
           <Text style={styles.label}>{PIN_COPY.whoApproves}</Text>
@@ -116,12 +186,14 @@ function StepUpPanel({
         testID="till-step-up-pad"
       />
       <Button label={PIN_COPY.cancel} variant="ghost" fullWidth onPress={() => answerStepUp(null)} testID="till-step-up-cancel" />
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flexGrow: 1, gap: space[3], paddingVertical: space[3], paddingHorizontal: space[1] },
+  root: { flexGrow: 1, paddingVertical: space[3], paddingHorizontal: space[1] },
+  panel: { gap: space[3] },
   // Grows and shrinks inside a sheet; sizes to its content inside a scroll.
   fill: { flexGrow: 1, flexShrink: 1, minHeight: 0 },
   hidden: { display: "none" },

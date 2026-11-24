@@ -50,7 +50,7 @@ import { Table } from "../../../src/components/ui/Table";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTillReleased } from "../../../src/hooks/useTillReleased";
-import { rowTappable, showSelfRowAboveEmpty, teamEmptyCopy, teamListState } from "../../../src/components/team/teamRowModel";
+import { rowTappable, showSelfRowAboveEmpty, teamEmptyCopy, teamGateCaptionShown, teamListState } from "../../../src/components/team/teamRowModel";
 import { Skeleton } from "../../../src/components/ui/Skeleton";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
@@ -203,9 +203,16 @@ export default function BrandTeamRoute(): React.ReactElement {
   // ORCH-1384 — accepted, non-cancelled links keyed by partner_account_id.
   const { data: partnerLinkRows = [] } = useBrandPartnerLinks(brandIdResolved);
 
-  const { role: currentRole, rank: currentRank } = useCurrentBrandRole(
-    brandIdResolved,
-  );
+  const {
+    role: currentRole,
+    rank: currentRank,
+    isLoading: roleIsLoading,
+    isAuthReady: roleAuthReady,
+  } = useCurrentBrandRole(brandIdResolved);
+  // #4490 08-O5 fix 6: until the role has answered, rank reads as "no rights",
+  // which flashed "Your role doesn't include this action" for staff and
+  // finance users. The page shows its loading list until the role is known.
+  const roleLoading = roleIsLoading || !roleAuthReady;
 
   const { isWideDesktop } = useResponsiveLayout();
   // #4490 08-O5 fix 2 (O5-B1): while the Till is released your own row opens
@@ -482,7 +489,7 @@ export default function BrandTeamRoute(): React.ReactElement {
 
   // <=1 because self-row is always present when role is known
   const listState = teamListState({
-    loading: peopleLoading,
+    loading: peopleLoading || roleLoading,
     pendingCount: pendingEntries.length,
     acceptedCount: acceptedEntries.length,
   });
@@ -594,7 +601,7 @@ export default function BrandTeamRoute(): React.ReactElement {
           defer={deferAfterDismiss}
         />
 
-        {!canInvite && !showEmpty ? (
+        {teamGateCaptionShown(listState, canInvite) ? (
           <Text style={styles.gateCaption}>
             {gateCaptionFor("INVITE_TEAM_MEMBER")}
           </Text>

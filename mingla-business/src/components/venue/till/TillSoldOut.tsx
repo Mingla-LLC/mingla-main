@@ -33,7 +33,7 @@ import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { OrderSoldOutSection, orderSoldOutKey } from "../stock/OrderSoldOutSection";
 import { STOCK_COPY } from "../stock/stockCopy";
 import { TILL_COPY } from "./tillCopy";
-import { useStepUpSheetSnap } from "./TillStepUp";
+import { useStepUpSheet } from "./TillStepUp";
 import { flaggedOrders, listedOrders, waitingOrders, type TillSoldOutWaiting } from "./tillSoldOutModel";
 
 /** The orders waiting for a swap or a refund at this venue (empty while loading). */
@@ -96,24 +96,25 @@ export function TillSoldOutSheet({ visible, venueId, waiting, onClose }: TillSol
   // "Swapped for ..." / "Refunded ..." can be read before it leaves the list.
   const [lastOpen, setLastOpen] = useState<TillSoldOutWaiting | null>(null);
   const rows = useMemo(() => listedOrders(waiting, openId, lastOpen), [waiting, openId, lastOpen]);
-  // #4490 08-O5 fix 5: the tallest sheet while a refund's PIN pad shows.
-  const stepUpSnap = useStepUpSheetSnap(venueId, 0.85);
   const close = (): void => {
     setOpenId(null);
     setLastOpen(null);
     onClose();
   };
+  // #4490 08-O5 fix 5: the tallest sheet while a refund's PIN pad shows.
+  // Fix 6: while it shows, swipe, back and Close cancel it like Cancel.
+  const stepUpSheet = useStepUpSheet(venueId, 0.85, false, close);
   // Nothing left to swap or refund and nothing open to read: the sheet has done its job.
   useEffect(() => {
     if (visible && rows.length === 0) close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, rows.length]);
   return (
-    <Sheet visible={visible} onClose={close} snapPoint={stepUpSnap} testID="till-sold-out-sheet">
+    <Sheet visible={visible} onClose={close} {...stepUpSheet.sheet} testID="till-sold-out-sheet">
       <View style={styles.grow}>
         <View style={styles.head}>
           <Text style={styles.h2} accessibilityRole="header" numberOfLines={2}>{STOCK_COPY.afterPayment}</Text>
-          <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={close} testID="till-sold-out-close" />
+          <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={stepUpSheet.close} testID="till-sold-out-close" />
         </View>
         <SheetScrollLayout contentStyle={styles.scroll}>
           {rows.map((row) => {

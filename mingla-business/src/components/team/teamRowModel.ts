@@ -63,3 +63,11 @@ export function teamListState(input: { loading: boolean; pendingCount: number; a
   if (input.loading) return "loading";
   return input.pendingCount === 0 && input.acceptedCount <= 1 ? "empty" : "list";
 }
+
+/**
+ * #4490 08-O5 fix 6: the "Your role doesn't include this action" caption shows
+ * only under a loaded list (role and people known), never while loading.
+ */
+export function teamGateCaptionShown(listState: TeamListState, canInvite: boolean): boolean {
+  return !canInvite && listState === "list";
+}

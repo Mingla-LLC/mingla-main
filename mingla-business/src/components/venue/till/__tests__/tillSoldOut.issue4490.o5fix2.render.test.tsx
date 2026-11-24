@@ -208,12 +208,19 @@ describe("carried 1: on a Till device", () => {
     expect(modals(t)).toHaveLength(1);
   });
 
+  // TEST-MOD-APPROVED #4490: 08-O5 fix 6 — Puff puff is cheaper than the line,
+  // so the swap gives money back and asks "Swap and give back ₦X?" first.
   test("a swap needs no PIN and is sent as that device's session", async () => {
     const t = await mount();
     await press(t, "till-sold-out-open");
     await press(t, "till-sold-out-row-o1");
     await press(t, "order-sold-out-swap-i1");
     await press(t, "order-sold-out-swap-option-pp");
+    await TestRenderer.act(async () => {
+      const dlg = t.root.findAll((n) => n.props.testID === "order-sold-out-swap-confirm" && typeof n.props.onConfirm === "function")[0];
+      (dlg.props.onConfirm as () => void)();
+    });
+    await flush();
     expect(mockResolve).toHaveBeenCalledWith(expect.objectContaining({
       venueId: VENUE, orderId: "o1", orderItemIds: ["i1"], resolution: "swap", swapMenuItemId: "pp",
     }));
@@ -313,5 +320,82 @@ describe("08-O5 fix 5: a finance manager's swap list, and a whole refund label",
     const refund = t.root.findAll((n) => n.props.testID === "order-sold-out-refund-i1" && n.props.style !== undefined)[0];
     const style = StyleSheet.flatten(refund.props.style as never) as Record<string, unknown>;
     expect(Number(style.flexBasis)).toBeGreaterThanOrEqual(200);
+  });
+});
+
+// #4490 08-O5 fix 6 (item 5). Fails on revert: with the swap option calling
+// run() straight away, the cheaper swap is sent on one tap with no confirm.
+describe("08-O5 fix 6: a swap that gives money back asks first, like a refund", () => {
+  const twoOptions = () => parseOrderSoldOut({
+    orderId: "o1", currency: "NGN", canRefund: true, canSwap: true, canSwapEven: true, refundUsed: false,
+    lines: [{ orderItemId: "i1", menuItemId: "suya", name: "Suya", quantity: 1, lineTotalMinor: 400000, refundPreviewMinor: 440000,
+      station: "kitchen", resolution: null, swappedToName: null, refundedMinor: null }],
+    swapOptions: [
+      { menuItemId: "pp", name: "Puff puff", priceMinor: 100000, station: "kitchen" },
+      { menuItemId: "jr", name: "Jollof rice", priceMinor: 400000, station: "kitchen" },
+    ],
+  });
+  const dialog = (t: RenderTree): RenderTreeNode | undefined =>
+    t.root.findAll((n) => n.props.testID === "order-sold-out-swap-confirm" && typeof n.props.onConfirm === "function")[0];
+
+  test("the cheaper swap opens 'Swap and give back ₦3,000.00?' and sends nothing until confirmed", async () => {
+    mockDetail.mockResolvedValue(twoOptions());
+    const t = await mount();
+    await press(t, "till-sold-out-open");
+    await press(t, "till-sold-out-row-o1");
+    await press(t, "order-sold-out-swap-i1");
+    await press(t, "order-sold-out-swap-option-pp");
+    expect(mockResolve).not.toHaveBeenCalled();
+    const dlg = dialog(t);
+    expect(dlg?.props.visible).toBe(true);
+    expect(dlg?.props.title).toBe("Swap and give back ₦3,000.00?");
+    expect(dlg?.props.confirmLabel).toBe("Swap and give back ₦3,000.00");
+    expect(String(dlg?.props.description)).toContain("Puff puff");
+    // Keep it: nothing sent, the confirm closes.
+    await TestRenderer.act(async () => { (dlg?.props.onClose as () => void)(); });
+    await flush();
+    expect(mockResolve).not.toHaveBeenCalled();
+    expect(dialog(t)?.props.visible).toBe(false);
+    // Again, and confirm: the swap goes.
+    await press(t, "order-sold-out-swap-option-pp");
+    await TestRenderer.act(async () => { (dialog(t)?.props.onConfirm as () => void)(); });
+    await flush();
+    expect(mockResolve).toHaveBeenCalledTimes(1);
+    expect(mockResolve).toHaveBeenCalledWith(expect.objectContaining({ resolution: "swap", swapMenuItemId: "pp" }));
+  });
+
+  test("a same-price swap moves no money and stays one tap", async () => {
+    mockDetail.mockResolvedValue(twoOptions());
+    const t = await mount();
+    await press(t, "till-sold-out-open");
+    await press(t, "till-sold-out-row-o1");
+    await press(t, "order-sold-out-swap-i1");
+    await press(t, "order-sold-out-swap-option-jr");
+    expect(dialog(t)?.props.visible).toBe(false);
+    expect(mockResolve).toHaveBeenCalledWith(expect.objectContaining({ resolution: "swap", swapMenuItemId: "jr" }));
+  });
+
+  test("a confirmed cheaper swap on a Till device still takes the PIN step-up, inside the same sheet", async () => {
+    mockDetail.mockResolvedValue(twoOptions());
+    mockResolve.mockImplementation(async (input: { venueId: string }) => {
+      const answer = await requestStepUp(input.venueId, "refund");
+      if (answer === null) throw new StockError("pin_step_up_cancelled");
+      return { resolution: "swap", refundMinor: 300000, swapName: "Puff puff", replayed: false };
+    });
+    const t = await mount();
+    await press(t, "till-sold-out-open");
+    await press(t, "till-sold-out-row-o1");
+    await press(t, "order-sold-out-swap-i1");
+    await press(t, "order-sold-out-swap-option-pp");
+    await TestRenderer.act(async () => { (dialog(t)?.props.onConfirm as () => void)(); });
+    await flush();
+    expect(has(t, "till-step-up")).toBe(true);
+    // Fix 6 item 7: a swipe or back on the sold-out sheet cancels the pad like Cancel.
+    const sheet = t.root.findAll((n) => n.props.testID === "till-sold-out-sheet" && typeof n.props.dismissGuard === "function")[0];
+    expect((sheet.props.dismissGuard as () => boolean)()).toBe(true);
+    await TestRenderer.act(async () => { (sheet.props.onRequestClose as () => void)(); });
+    await flush();
+    expect(has(t, "till-step-up")).toBe(false);
+    expect(has(t, "order-sold-out-swap-i1")).toBe(true);
   });
 });

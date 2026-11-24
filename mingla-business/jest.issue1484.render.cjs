@@ -77,6 +77,8 @@ module.exports = {
     "**/__tests__/tillDevicePass.issue4490.o5fix4.render.test.tsx",
     // #4490 08-O5 fix 5: the Till, Who's selling, day close and kitchen fixes from the web + iOS re-check.
     "**/__tests__/tillDevicePass2.issue4490.o5fix5.render.test.tsx",
+    // #4490 08-O5 fix 6: device pass 3 (kitchen header, day close money and checks, payment rows, PIN pad reach and dismissal, Team role wait).
+    "**/__tests__/tillDevicePass3.issue4490.o5fix6.render.test.tsx",
     // #4490: the guest pay pages show the Mingla logo image, not the word typed out.
     "**/__tests__/guestPayWordmark.issue4490.render.test.tsx",
   ],

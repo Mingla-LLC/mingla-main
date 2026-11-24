@@ -13,7 +13,8 @@
  * On a Till device a refund needs a fresh PIN with money rights (part A's
  * refund rule): the PIN pad takes this section's place inside the same sheet
  * (TillStepUpHost), so a guest who paid is never stuck waiting for a manager's
- * own phone. Swaps need no PIN.
+ * own phone. A same-price swap needs no PIN; a cheaper swap gives money back,
+ * so it asks "Swap and give back ₦X?" first and takes the refund's PIN rule.
  */
 import React, { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -82,6 +83,10 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
   });
   const [swapFor, setSwapFor] = useState<SoldOutLine | null>(null);
   const [refundFor, setRefundFor] = useState<SoldOutLine | null>(null);
+  // #4490 08-O5 fix 6: a cheaper swap gives money back, so it asks first, the
+  // same way a refund does ("Swap and give back ₦X?"). A same-price swap moves
+  // no money and stays one tap.
+  const [swapConfirm, setSwapConfirm] = useState<{ line: SoldOutLine; menuItemId: string; name: string; backMinor: number } | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   // One request id per decision: a retry of the same decision replays it.
@@ -194,7 +199,13 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
                         accessibilityState={{ disabled: !pickable || busy }}
                         accessibilityLabel={pickable ? STOCK_COPY.swapTo(option.name) : `${option.name}. ${sub}`}
                         disabled={!pickable || busy}
-                        onPress={() => void run(line, "swap", option.menuItemId)}
+                        onPress={() => {
+                          if (choice.kind === "cheaper") {
+                            setSwapConfirm({ line, menuItemId: option.menuItemId, name: option.name, backMinor: choice.backMinor });
+                          } else {
+                            void run(line, "swap", option.menuItemId);
+                          }
+                        }}
                         style={({ pressed }) => [styles.option, !pickable && styles.optionOff, pressed && styles.pressed]}
                         testID={`order-sold-out-swap-option-${option.menuItemId}`}
                       >
@@ -228,6 +239,22 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
         }}
         onClose={() => setRefundFor(null)}
         testID="order-sold-out-refund-confirm"
+      />
+      <ConfirmDialog
+        visible={swapConfirm !== null}
+        title={STOCK_COPY.swapConfirmTitle(money(swapConfirm?.backMinor ?? 0))}
+        description={STOCK_COPY.swapConfirmBody(swapConfirm?.name ?? "")}
+        confirmLabel={STOCK_COPY.swapConfirmGo(money(swapConfirm?.backMinor ?? 0))}
+        cancelLabel="Keep it"
+        destructive
+        onConfirm={() => {
+          // Close the confirm first: on a Till device the PIN pad shows next.
+          const pick = swapConfirm;
+          setSwapConfirm(null);
+          if (pick !== null) void run(pick.line, "swap", pick.menuItemId);
+        }}
+        onClose={() => setSwapConfirm(null)}
+        testID="order-sold-out-swap-confirm"
       />
     </View>
   );

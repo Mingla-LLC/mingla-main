@@ -63,6 +63,10 @@ export const STOCK_COPY = {
   swapNone: "Nothing on the menu costs the same or less right now. Refund it instead.",
   refundConfirmTitle: (amount: string): string => `Refund ${amount}?`,
   refundConfirmBody: "The money goes back to the guest's card, and they're told by text and email.",
+  swapConfirmTitle: (amount: string): string => `Swap and give back ${amount}?`,
+  swapConfirmBody: (item: string): string =>
+    `The guest gets ${item} instead. The difference goes back to their card, and they're told by text and email.`,
+  swapConfirmGo: (amount: string): string => `Swap and give back ${amount}`,
   swapped: (item: string): string => `Swapped for ${item}`,
   refunded: (amount: string): string => `Refunded ${amount}`,
   waitingCount: (n: number): string =>

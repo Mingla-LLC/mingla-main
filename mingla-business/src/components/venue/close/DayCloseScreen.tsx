@@ -32,7 +32,7 @@ import { Sheet } from "../../ui/Sheet";
 import { Skeleton } from "../../ui/Skeleton";
 import { Toast } from "../../ui/Toast";
 import { stationErrorCopy } from "../station/stationCopy";
-import { TillStepUpHost } from "../till/TillStepUp";
+import { TillStepUpHost, useStepUpSheet } from "../till/TillStepUp";
 import { newTillRequestId } from "../till/tillPayModel";
 import { tillHref } from "../till/tillRoute";
 import { CLOSE_COPY, closeErrorCopy } from "./dayCloseCopy";
@@ -225,7 +225,7 @@ export function DayCloseScreen({ venueId, approvers, sellerSlot = null }: DayClo
           onExport={() => void exportDay()} onPrint={() => void printDay()} onReopen={() => openSheet({ kind: "reopen" })} />
       ) : (
         <>
-          <DayCloseChecks checks={summary.openChecks} currency={summary.currency} busySaleId={movingSaleId}
+          <DayCloseChecks stacked={!wide} checks={summary.openChecks} currency={summary.currency} busySaleId={movingSaleId}
             onOpenInTill={() => router.push(`${tillHref(venueId)}?checks=1` as never)} onMove={(c) => void moveCheck(c)} />
           <View style={styles.actions}>
             <Button label={CLOSE_COPY.cashDrawer} variant="secondary" leadingIcon="cash" style={styles.grow}
@@ -244,6 +244,9 @@ export function DayCloseScreen({ venueId, approvers, sellerSlot = null }: DayClo
     : sheet.kind === "reopen" ? CLOSE_COPY.reopenTitle
     : sheet.step === "float" ? CLOSE_COPY.floatTitle : sheet.step === "paid_out" ? CLOSE_COPY.paidOutTitle : CLOSE_COPY.drawerTitle;
   const sheetBusy = actions.close.isPending || actions.cashMovement.isPending || actions.reopen.isPending;
+  // #4490 08-O5 fix 6: the reopen PIN pad takes the tallest sheet (OK in view
+  // on Android), and while it shows swipe, back and Close cancel it like Cancel.
+  const daySheet = useStepUpSheet(venueId, 0.88, sheetBusy, closeSheet);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="day-close-screen">
@@ -267,11 +270,11 @@ export function DayCloseScreen({ venueId, approvers, sellerSlot = null }: DayClo
         </View>
       </ScrollView>
 
-      <Sheet visible={sheet !== null} onClose={closeSheet} snapPoint={0.88} dismissDisabled={sheetBusy} testID="day-close-sheet">
+      <Sheet visible={sheet !== null} onClose={closeSheet} {...daySheet.sheet} testID="day-close-sheet">
         <View style={styles.sheetRoot}>
           <View style={styles.sheetHead}>
             <Text style={styles.h2} accessibilityRole="header" numberOfLines={2}>{sheetTitle}</Text>
-            <Button label={CLOSE_COPY.back} variant="ghost" size="sm" disabled={sheetBusy} onPress={closeSheet} testID="day-close-sheet-close" />
+            <Button label={CLOSE_COPY.back} variant="ghost" size="sm" disabled={daySheet.closeDisabled} onPress={daySheet.close} testID="day-close-sheet-close" />
           </View>
           {summary !== null && sheet?.kind === "count" ? (
             <DayCloseCount summary={summary} busy={actions.close.isPending} error={sheetError}
