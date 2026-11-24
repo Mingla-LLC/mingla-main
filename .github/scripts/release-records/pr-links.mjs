@@ -10,6 +10,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
+  changedMigrationReads,
   featureGuideCatalogFromContract,
   featureGuideCatalogFromSql,
   featureGuideImpactVerdict,
@@ -99,8 +100,7 @@ async function pullFiles(token, number, changedFiles) {
 }
 
 async function headMigrationSql(token, files, headSha) {
-  const migrations = files.filter((file) => file.status !== "removed" && /^supabase\/migrations\/[^/]+[.]sql$/.test(file.filename));
-  if (migrations.length > 50) throw new Error("too_many_changed_migrations");
+  const migrations = changedMigrationReads(files);
   const out = [];
   for (const file of migrations) {
     const encoded = file.filename.split("/").map(encodeURIComponent).join("/");
