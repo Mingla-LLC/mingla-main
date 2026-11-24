@@ -403,7 +403,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows and suites after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed.
 // #4580 release sync timeouts: listed migrations 20281202004580 and 20281202014580 after 20281201003969 in the #1857, #1931 and #2117 lanes and registered their two pg17 suites and sidecars in the #1931 and #2117 inventories; neither needs a filtered-replay skip (nothing they read is skipped); re-sealed.
-export const BOOTSTRAP_SHA256 = "599b1e08ed4064965f1abb82de55cbbd5e6ca0db5cfa35524f57544672c17d6c";
+// #4580 tester adversarial suite: registered issue_4580_release_sync.tester.adversarial.pg17.test.sql and its sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "a1be74a054cf596dbf39bb8f1427ba7132c6c36c086a3166dc33633e5bb5d093";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

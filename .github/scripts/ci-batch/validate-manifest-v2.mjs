@@ -663,7 +663,8 @@ export function phase3dContractDigest(manifest) {
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 release sync timeouts: registered migrations 20281202004580 and 20281202014580 in the #1857, #1931 and #2117 inventories after 20281201003969 and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f464288dbe121361f85de938d046d6f470eafba5409c4f9f6620acfa38371f75";
+// #4580 tester adversarial suite: registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c7242383c70bc8f58a396314ac616f5ff1ce57fe413de3f94e98a2207b92a3ed";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
