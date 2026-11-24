@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-TRIP-CANCEL-OPS-RECORD | issue #4522 | A second-provider trip cancel refund that was sent and never answered is finished only by staff (an active admin session): recording it needs the provider's refund reference and records it exactly as a provider-confirmed refund (once, never re-sent, never written off); escalating it changes no money.
 \set ON_ERROR_STOP on
 
--- Issue #4522 seventh pass, H-2 ops tool (20281202064522 section 9). Rolled back.
+-- Issue #4522 seventh pass, H-2 ops tool (20281202084522 section 9). Rolled back.
 --   O-1  no session / a non-admin session is refused; only authenticated may execute.
 --   O-2  a refund sent in the last 15 minutes is not actionable yet.
 --   O-3  record needs a reference; a reused reference (in any case or

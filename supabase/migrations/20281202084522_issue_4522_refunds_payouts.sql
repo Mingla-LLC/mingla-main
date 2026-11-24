@@ -1801,7 +1801,7 @@ GRANT EXECUTE ON FUNCTION public.issue_4522_claim_trip_cancel_shortfalls(integer
 -- ---------------------------------------------------------------------------
 -- 7. Pass 6 (S9-1): an instalment whose charge the provider has refunded is
 --    never paid out before our books show it. issue_4522_row_payout_blocked
---    (20281202044522) holds the row while a provider refund of its charge has
+--    (20281202064522) holds the row while a provider refund of its charge has
 --    no application on it; these keep its payout state in step.
 -- ---------------------------------------------------------------------------
 CREATE FUNCTION public.issue_4522_refund_payout_hold_trigger()

@@ -3,7 +3,7 @@
  *
  * `/checkout-trip` reads the trip's own tables (usePublicTripById), which carry
  * no add-ons. The public trip reader (`pg_public_trip_by_slug`, the one owner
- * of the public add-on item since 20281202123281) does: each package with an
+ * of the public add-on item since 20281202143281) does: each package with an
  * add-on on sale has `extras`. When the buyer came from the trip page, that
  * page's cached payload (tripKeys.publicBySlug) seeds this query, so no second
  * read is made; otherwise the reader is called once. Nothing is read while the
@@ -112,7 +112,7 @@ export const parseAddOnRollout = (raw: unknown): AddOnRollout => {
   };
 };
 
-/** Read from the public trip reader's `addOnRollout` (absent before 20281202123281: all off). */
+/** Read from the public trip reader's `addOnRollout` (absent before 20281202143281: all off). */
 export const useAddOnRollout = (
   brandSlug: string | null,
   tripSlug: string | null,

@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-7 | issue #4522 | A trip package never carries both plan shapes: tier_metadata holds installments (legacy) or payment_plan (v2), and a v2 plan is refused while issue_4522_plan_v2_enabled() is false.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 1 (M1, 20281202024522): the v2 plan model, the switch,
+-- Issue #4522 slice 1 (M1, 20281202044522): the v2 plan model, the switch,
 -- the validator, the publish guard, the refund-policy keys and the new
 -- order_installments / orders / session columns. Runs after the full chain.
 -- The switch is set OFF, then ON, only inside this transaction (rolled back).
@@ -273,7 +273,7 @@ BEGIN
 END $$;
 
 -- S1-12 order_installments: superseded, flex and the one-open-flex index.
--- (flex_client_key arrives with M3, 20281202044522; this suite runs after the full chain.)
+-- (flex_client_key arrives with M3, 20281202064522; this suite runs after the full chain.)
 DO $$
 DECLARE
   v_order uuid := gen_random_uuid();

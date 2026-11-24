@@ -8,7 +8,7 @@
 -- T-RSVP-GONE  deleting the RSVP still removes its picks (rsvp_id cascade), and the add-on then deletes.
 --
 -- FAILS-ON-REVERT: put ON DELETE CASCADE back on event_rsvp_add_ons_add_on_id_fkey
--- (or drop the 20281202133281 migration) -> T-KEY and T-DELETE red.
+-- (or drop the 20281202153281 migration) -> T-KEY and T-DELETE red.
 \set ON_ERROR_STOP on
 
 CREATE OR REPLACE FUNCTION pg_temp.ok(p_ok boolean, p_label text)

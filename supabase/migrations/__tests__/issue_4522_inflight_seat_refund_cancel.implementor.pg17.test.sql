@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-CANCEL-COUNTS-INFLIGHT-REFUNDS | issue #4522 | A trip cancel counts every refund of a charge still in flight as already refunded (preview = begin = what is asked), never asks the provider for more than a charge holds (a refused ask is lowered only to policy % of what is truly left, once, never raised), and a counted refund that later fails is recorded once as the exact amount owed and claimed once for the ops alert.
 \set ON_ERROR_STOP on
 
--- Issue #4522 pass 8, P8-1 / P8-2 (20281202064522). Rolled back.
+-- Issue #4522 pass 8, P8-1 / P8-2 (20281202084522). Rolled back.
 --   F-1  P8-1 card, 50% tier, $1,000 paid, a $500 seat refund still pending:
 --        preview = begin = 50% x ($1,000 - $500) = $250 (main: $500), and the
 --        cancel records the refund it counted.

@@ -691,7 +691,8 @@ export function phase3dContractDigest(manifest) {
 // #4522 merge of main after #4573 form request safeupdate and #4574 Sites backup budget: kept main's 20281127004573 and 20281128004574 rows, their pg17 suites and filtered-replay skips beside the #3281/#4522 rows and skips; moved the branch's 14 migrations (20281125013281..20281125143281) to 20281129013281..20281129143281 above main's 20281128004574, same relative order and slugs; expectedFiles re-sorted; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4571 Work cards, #3969 account access and #4575 Grid cover: kept main's twelve #4571 migrations (20281130014571 to 20281130124571), 20281201003969, their pg17 suites and the pre-#1931 #4571 skips beside the #3281/#4522 rows and skips; moved the branch's 14 migrations (20281129013281..20281129143281) to 20281202013281..20281202143281 above main's 20281201003969, same relative order and slugs; expectedFiles re-sorted; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4572 Sites feed poster and event types (6093e949c4): kept main's five #4572 migrations (20281129004572..20281129704572), their pg17 suites and filtered-replay skips beside the #3281/#4522 rows and skips; the branch's 14 migrations stay at 20281202013281..20281202143281 above them; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "0d53a5c721a93c494c0123e64cf104b4ec5f4412fe4ca9cae0db1e1ac658553c";
+// toward #4522: migrations renumbered 2028120203…16 above #4579
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "dd058eb968a76ac89a012b7248a8e5eb0b15eb60b401a0ebed324eba2dcc7e88";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -1,6 +1,6 @@
 /**
  * issue #4522 section 8 — the ONLY authorised hunks for the #3645 payout
- * functions 20281202064522 re-emits so a host is never paid money that went
+ * functions 20281202084522 re-emits so a host is never paid money that went
  * back to a traveler. The #3645 structural tests accept a later definition of
  * their bodies only when it is declared here and equals its source with
  * exactly these hunks (issue_3645_debt_return_reemit_hunks.structural.test.ts
@@ -8,7 +8,7 @@
  */
 import type { Reemit } from "./issue_3645_reemit_hunks.ts";
 
-export const TARGET = "supabase/migrations/20281202064522_issue_4522_refunds_payouts.sql";
+export const TARGET = "supabase/migrations/20281202084522_issue_4522_refunds_payouts.sql";
 
 export const PAYOUT_REFUND_REEMITS: Reemit[] = [
   {

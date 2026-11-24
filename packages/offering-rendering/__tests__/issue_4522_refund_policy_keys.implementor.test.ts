@@ -1,7 +1,7 @@
 /**
  * issue #4522 slice 1 — the refund policy's two optional keys
  * (`no_refunds`, `deposit_non_refundable`) mirror validate_refund_policy
- * (20281202024522). Every existing policy parses to exactly the object it did
+ * (20281202044522). Every existing policy parses to exactly the object it did
  * before; a key is copied only when the payload carries it.
  */
 
