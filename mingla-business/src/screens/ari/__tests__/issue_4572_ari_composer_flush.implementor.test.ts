@@ -23,6 +23,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  composerGapAboveKeyboard,
+  composerKeyboardOffsetFor,
+} from "../ariComposerKeyboardFrame";
+import {
   doneBarShown,
   getDoneBarSuppressed,
   setDoneBarSuppressed,
@@ -128,5 +132,65 @@ describe("#4572 P2-2 — Android back hides the keyboard but keeps the composer 
     setDoneBarSuppressed(false); // focusing another field blurs the composer first
     expect(doneBarShown(true, getDoneBarSuppressed())).toBe(true);
     expect(doneBarShown(false, getDoneBarSuppressed())).toBe(false);
+  });
+});
+
+/**
+ * #4572 retest P1-1 — WHY THE TESTS ABOVE PASSED WHILE THE DEVICE FAILED.
+ *
+ * They proved the composer was INSIDE a KeyboardAvoidingView and that the
+ * Done bar was off, but jest mocks the library, so nothing ever evaluated
+ * where the library puts the composer. The library reads its own onLayout
+ * frame, which is relative to its PARENT, and compares it with the keyboard
+ * top in SCREEN space. The Ari composer's view sits under the status bar and
+ * the Ari top bar, so with no offset it stopped short by that much and ended
+ * under the keyboard (iOS 26.5: keyboard top 540pt, composer 57-101pt below
+ * it). These tests evaluate the library's own formula on device-shaped
+ * numbers, so a missing or wrong offset goes red.
+ */
+describe("#4572 retest P1-1 — the composer ends FLUSH on the keyboard (library geometry)", () => {
+  // iPhone 17 Pro: 874pt screen, ~334pt keyboard (top at 540pt). The composer
+  // host starts under the status bar + Ari top bar; the view's frame is
+  // relative to that host and ends above the 106pt resting spacer.
+  const base = {
+    frameY: 560,
+    frameHeight: 70,
+    composerHeight: 62,
+    screenHeight: 874,
+    keyboardHeight: 334,
+  };
+
+  it("fails without the offset: the composer ends under the keyboard by the host's screen Y", () => {
+    const gap = composerGapAboveKeyboard({ ...base, parentWindowY: 118, keyboardVerticalOffset: 0 });
+    expect(gap).toBe(-118);
+  });
+
+  it.each([0, 47, 101, 118, 160])("with the host's measured window Y (%ipt) as the offset, the gap is 0", (y) => {
+    const offset = composerKeyboardOffsetFor(y);
+    expect(composerGapAboveKeyboard({ ...base, parentWindowY: y, keyboardVerticalOffset: offset })).toBe(0);
+  });
+
+  it("holds for Android and a small iPhone too (keyboard and screen sizes vary)", () => {
+    for (const [screenHeight, keyboardHeight, y] of [
+      [915, 320, 96],
+      [667, 260, 64],
+    ] as const) {
+      const g = { ...base, frameY: screenHeight - 300, screenHeight, keyboardHeight, parentWindowY: y };
+      expect(composerGapAboveKeyboard({ ...g, keyboardVerticalOffset: composerKeyboardOffsetFor(y) })).toBe(0);
+    }
+  });
+
+  it("the offset is a clean non-negative number for hostile measurements", () => {
+    expect(composerKeyboardOffsetFor(Number.NaN)).toBe(0);
+    expect(composerKeyboardOffsetFor(-12)).toBe(0);
+    expect(composerKeyboardOffsetFor(117.6)).toBe(118);
+  });
+
+  it("the screen measures the composer host in the window and hands it to the view", () => {
+    expect(screen).toMatch(/<View ref=\{composerHostRef\} style=\{styles\.kav\} onLayout=\{measureComposerHost\}/);
+    expect(screen).toMatch(/composerHostRef\.current\?\.measureInWindow\(/);
+    expect(screen).toMatch(
+      /<KeyboardAvoidingView behavior="padding" keyboardVerticalOffset=\{composerHostWindowY\}>/,
+    );
   });
 });

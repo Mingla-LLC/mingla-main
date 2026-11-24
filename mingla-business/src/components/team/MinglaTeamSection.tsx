@@ -15,6 +15,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { color, radius, space } from "../../constants/designSystem";
 import { useReduceMotion } from "../../hooks/useMotionPreferences";
@@ -26,6 +27,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 import { MINGLA_TEAM_NAME, MinglaTeamMark } from "./MinglaTeamMark";
+import { minglaTeamSheetSnap } from "./minglaTeamSheetSnap";
 
 export const MINGLA_TEAM_COPY = {
   section: "Mingla",
@@ -99,6 +101,8 @@ export const MinglaTeamSection: React.FC<MinglaTeamSectionProps> = ({
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [addBackConfirmVisible, setAddBackConfirmVisible] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const [sheetContentHeight, setSheetContentHeight] = useState<number | null>(null);
   const previousView = useRef<MinglaTeamView>(view);
 
   // On/Off swap: a 180 ms cross-fade; instant with reduced motion.
@@ -213,8 +217,21 @@ export const MinglaTeamSection: React.FC<MinglaTeamSectionProps> = ({
         </GlassCard>
       </Animated.View>
 
-      <Sheet visible={sheetVisible} onClose={closeSheet} snapPoint="half" dismissDisabled={removePending}>
-        <ScrollView contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false}>
+      <Sheet
+        visible={sheetVisible}
+        onClose={closeSheet}
+        snapPoint={minglaTeamSheetSnap(sheetContentHeight, insets.bottom)}
+        dismissDisabled={removePending}
+      >
+        <ScrollView
+          contentContainerStyle={styles.sheetBody}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={(_w, h) => {
+            const next = Math.ceil(h);
+            setSheetContentHeight((previous) => (previous === next ? previous : next));
+          }}
+          testID="team-mingla-team-sheet-body"
+        >
           <View style={styles.sheetTitleRow}>
             <MinglaTeamMark size={36} />
             <View style={styles.rowTextCol}>
