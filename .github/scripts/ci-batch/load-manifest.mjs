@@ -446,7 +446,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4522 pass 11 rework (P11-1..P11-4): registered the #4522 implementor pg17 suite p11_outside_refund_books (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
 // #4522 pass 12 rework (P12-1, P12-2): registered the #4522 implementor pg17 suite p12_outside_refund_once (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
 // #4522 merge of main after #4579 (#4593, d3527e3b93): kept main's 20281202024579 rows, its two pg17 suites and its filtered-replay skips before the branch's 14 migrations (20281202033281..20281202163281 stay above it) and the #3281/#4522 rows and skips; re-sealed.
-export const BOOTSTRAP_SHA256 = "271a310a3ee60860334d3edca5208c3cbcd2f751d05cf8b829a62437cdf5c1f4";
+export const BOOTSTRAP_SHA256 = "caab4e34dd39c1d44f6f923a0d973bff0f90c0aa5cf5d6c59f80730287bac3e9";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
