@@ -33,6 +33,8 @@
 --      client path; service-role and no-user server paths are unchanged.
 -- T-10 Host Community (fix pass): a Mingla admin's post shows Mingla Team and the public name.
 -- T-11 payouts history (fix pass): only the service role writes it; the team still reads it.
+-- T-12 older Community readers (retest 1, P2-2): the v1 feed and comments_v2 show an active
+--      Mingla admin by the public name, never the raw display name; hosts and staff answers keep theirs.
 -- T-8  catalog: every host-facing reader in spec v3 section 3 calls issue_4579_; the helpers that
 --      grant or revoke are not executable by authenticated.
 --
@@ -851,4 +853,45 @@ BEGIN
     'T-11 clients hold no write grant or write policy on payouts');
 END;
 $t11$;
+ROLLBACK;
+
+-- ═══ T-12 the older Community readers apply the name rule (retest 1, P2-2) ════
+-- FAILS-ON-REVERT: restoring the 20271103003720 v1 feed or the 20271108073720
+-- comments_v2 body (raw profiles.display_name) fails the admin lines.
+BEGIN;
+SELECT pg_temp.fixture();
+SELECT pg_temp.backfill();
+INSERT INTO public.community_posts(id, author_user_id, kind, title, body, review_state) VALUES
+  (pg_temp.u('p_a2'), pg_temp.u('a2'), 'question', 'From a Mingla admin', 'hello', 'published'),
+  (pg_temp.u('p_a1'), pg_temp.u('a1'), 'question', 'From Kunle', 'hi all', 'published'),
+  (pg_temp.u('p_h'), pg_temp.u('host'), 'question', 'From a host', 'hey', 'published');
+INSERT INTO public.community_post_comments(id, post_id, author_user_id, body, staff_answer, staff_display_name) VALUES
+  (pg_temp.u('c_a2'), pg_temp.u('p_h'), pg_temp.u('a2'), 'admin comment', false, NULL),
+  (pg_temp.u('c_h'), pg_temp.u('p_h'), pg_temp.u('host'), 'host comment', false, NULL),
+  (pg_temp.u('c_staff'), pg_temp.u('p_h'), pg_temp.u('a1'), 'staff answer', true, 'Mingla Support');
+DO $t12$
+DECLARE v jsonb; c jsonb;
+BEGIN
+  v := pg_temp.json_as(pg_temp.u('owner'), 'SELECT jsonb_agg(to_jsonb(r)) FROM public.issue_3720_community_feed(NULL) r');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(v) e WHERE e->>'id' = pg_temp.u('p_a2')::text) = 'Mingla Team',
+    'T-12 v1 feed: a Mingla admin with a handle-like name shows Mingla Team');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(v) e WHERE e->>'id' = pg_temp.u('p_a1')::text) = 'Kunle',
+    'T-12 v1 feed: a Mingla admin with a real first name shows it');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(v) e WHERE e->>'id' = pg_temp.u('p_h')::text) = 'Hana Host',
+    'T-12 v1 feed: a host keeps their own name');
+  PERFORM pg_temp.ok(position('i4579-a2' IN v::text) = 0 AND position('i4579_a2' IN v::text) = 0,
+    'T-12 v1 feed never carries the admin''s raw name, email or handle');
+
+  c := pg_temp.json_as(pg_temp.u('owner'), format(
+    'SELECT jsonb_agg(to_jsonb(r)) FROM public.issue_3720_community_comments_v2(%L) r', pg_temp.u('p_h')));
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(c) e WHERE e->>'id' = pg_temp.u('c_a2')::text) = 'Mingla Team',
+    'T-12 comments_v2: a Mingla admin''s comment shows the public name (Mingla Team), not the raw display name');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(c) e WHERE e->>'id' = pg_temp.u('c_h')::text) = 'Hana Host',
+    'T-12 comments_v2: a host''s comment keeps their name');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(c) e WHERE e->>'id' = pg_temp.u('c_staff')::text) = 'Mingla Support',
+    'T-12 comments_v2: a staff answer keeps its staff name');
+  PERFORM pg_temp.ok(position('i4579-a2' IN c::text) = 0 AND position('i4579_a2' IN c::text) = 0,
+    'T-12 comments_v2 never carries the admin''s raw name, email or handle');
+END;
+$t12$;
 ROLLBACK;

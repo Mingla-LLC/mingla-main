@@ -40,7 +40,9 @@ BEGIN
       ('public.issue_3720_list_team_mentions(integer,timestamp with time zone)', 'eaccb77a3a6890ae19b73a978107f8df'),
       ('public.biz_brand_form_door_reads(uuid,integer,timestamp with time zone)', 'dff56f95e5041c10280927bfc957a73b'),
       ('public.issue_3720_send_brand_group_message(uuid,text,uuid,uuid[],text,uuid[])', '713247e1b9ae56d3b95825be9cfd6318'),
-      ('public.issue_3720_community_feed_v2(text)', '01a5512fe127e59d2539ce324dc74b4d')
+      ('public.issue_3720_community_feed_v2(text)', '01a5512fe127e59d2539ce324dc74b4d'),
+      ('public.issue_3720_community_comments_v2(uuid)', 'c24f8aa78b86712b0d1e5a82e8166168'),
+      ('public.issue_3720_community_feed(text)', 'f596693dc3746f39f809359f7615089c')
     ) AS v(sig, expected_md5)
   LOOP
     SELECT p.prosrc INTO v_src FROM pg_proc p WHERE p.oid = to_regprocedure(r.sig);
@@ -1650,6 +1652,73 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION public.issue_3720_community_feed_v2(text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.issue_3720_community_feed_v2(text) TO authenticated;
+
+-- Host Community comments (latest 20271108073720) and the v1 feed (latest
+-- 20271103003720). Only change (retest 1, tester P2-2): an active Mingla admin
+-- is shown by issue_4579_admin_public_name, never their raw display name. The
+-- Host app reads neither any more, but both stay callable by a signed-in member,
+-- so the name rule holds there too. Staff answers keep their staff name.
+CREATE OR REPLACE FUNCTION public.issue_3720_community_comments_v2(p_post_id uuid)
+RETURNS TABLE(
+  id uuid,body text,author_label text,created_at timestamptz,is_mine boolean,
+  staff_answer boolean
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+  SELECT c.id,c.body,
+    CASE WHEN c.staff_answer THEN COALESCE(NULLIF(btrim(c.staff_display_name),''),'Mingla team')
+      WHEN public.issue_4579_is_active_mingla_admin_uid(c.author_user_id)
+        THEN public.issue_4579_admin_public_name(c.author_user_id)
+      ELSE COALESCE(NULLIF(btrim(pr.display_name),''),'Host') END,
+    c.created_at,c.author_user_id=auth.uid(),c.staff_answer
+  FROM public.community_post_comments c
+  JOIN public.community_posts p ON p.id=c.post_id
+  LEFT JOIN public.profiles pr ON pr.id=c.author_user_id
+  WHERE c.post_id=p_post_id AND c.review_state='published' AND p.review_state='published'
+    AND public.issue_3720_is_host_community_member(auth.uid())
+    AND NOT EXISTS(SELECT 1 FROM public.blocked_users b WHERE
+      (b.blocker_id=auth.uid() AND b.blocked_id=p.author_user_id) OR
+      (b.blocker_id=p.author_user_id AND b.blocked_id=auth.uid()))
+    AND NOT EXISTS(SELECT 1 FROM public.blocked_users b WHERE
+      (b.blocker_id=auth.uid() AND b.blocked_id=c.author_user_id) OR
+      (b.blocker_id=c.author_user_id AND b.blocked_id=auth.uid()))
+  ORDER BY c.created_at,c.id;
+$$;
+REVOKE ALL ON FUNCTION public.issue_3720_community_comments_v2(uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.issue_3720_community_comments_v2(uuid) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.issue_3720_community_feed(p_kind text DEFAULT NULL)
+RETURNS TABLE(
+  id uuid,kind text,title text,body text,author_label text,review_state text,
+  created_at timestamptz,vote_count bigint,comment_count bigint,
+  voted_by_me boolean,is_mine boolean,accepted_comment_id uuid
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+  SELECT p.id,p.kind,p.title,p.body,
+    CASE WHEN public.issue_4579_is_active_mingla_admin_uid(p.author_user_id)
+        THEN public.issue_4579_admin_public_name(p.author_user_id)
+      ELSE COALESCE(NULLIF(btrim(pr.display_name),''),'Host') END AS author_label,
+    p.review_state,p.created_at,
+    (SELECT count(*) FROM public.community_post_votes v WHERE v.post_id=p.id),
+    (SELECT count(*) FROM public.community_post_comments c
+      WHERE c.post_id=p.id AND c.review_state='published'),
+    EXISTS(SELECT 1 FROM public.community_post_votes v
+      WHERE v.post_id=p.id AND v.user_id=auth.uid()),
+    p.author_user_id=auth.uid(),p.accepted_comment_id
+  FROM public.community_posts p
+  LEFT JOIN public.profiles pr ON pr.id=p.author_user_id
+  WHERE public.issue_3720_is_host_community_member(auth.uid())
+    AND (p_kind IS NULL OR p.kind=p_kind)
+    AND (p.review_state='published' OR p.author_user_id=auth.uid())
+    AND NOT EXISTS (
+      SELECT 1 FROM public.blocked_users b
+      WHERE (b.blocker_id=auth.uid() AND b.blocked_id=p.author_user_id)
+         OR (b.blocker_id=p.author_user_id AND b.blocked_id=auth.uid())
+    )
+  ORDER BY (SELECT count(*) FROM public.community_post_votes v WHERE v.post_id=p.id) DESC,
+           p.created_at DESC,p.id;
+$$;
+REVOKE ALL ON FUNCTION public.issue_3720_community_feed(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.issue_3720_community_feed(text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 5b. Payout settings are owner-only (fix pass, Seth 2026-11-23). Any change to a

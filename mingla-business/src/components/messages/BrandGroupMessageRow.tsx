@@ -127,6 +127,23 @@ export function brandGroupSenderParts(message: BrandGroupMessage, senderLabel: s
   };
 }
 
+/**
+ * #4579 retest P3-3 — the sender line under a bubble: "{name} · {role}". A
+ * Mingla admin added automatically is not in the roster the screen maps roles
+ * from, so with no server role and no roster role their line fell back to the
+ * bare name; per the design it reads "{name} [mark] · Admin", the role every
+ * auto-added Mingla admin holds (brand_admin, `memberRoleLabel` "Admin").
+ */
+export const BRAND_GROUP_MINGLA_TEAM_ROLE_LABEL = "Admin";
+export function brandGroupSenderLabel(message: BrandGroupMessage, rosterRoleLabel: string | null): string {
+  const supportIdentity = message.sender_role === "Mingla Support";
+  const role =
+    message.sender_role ??
+    rosterRoleLabel ??
+    (message.sender_is_mingla_team === true ? BRAND_GROUP_MINGLA_TEAM_ROLE_LABEL : null);
+  return `${message.sender_display_name}${role ? ` · ${supportIdentity ? "Mingla Support" : role}` : ""}`;
+}
+
 export function BrandGroupMessageRow({
   message,
   mine,

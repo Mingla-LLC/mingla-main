@@ -146,7 +146,7 @@ describe("#4579 chats show the Mingla mark and never an email", () => {
     jest.doMock("../../messages/BrandGroupBubbleGestures", () => ({ BrandGroupBubbleGestures: "G" }));
     jest.doMock("../../messages/BrandGroupTile", () => ({ BrandGroupPersonAvatar: "A" }));
     jest.doMock("../../messages/BrandGroupMinglaMark", () => ({ BRAND_GROUP_MINGLA_TEAM_NAME: "Mingla Team", BrandGroupMinglaMark: "M", WithBrandGroupMinglaBadge: "B" }));
-    const { brandGroupSenderParts } = await import("../../messages/BrandGroupMessageRow");
+    const { brandGroupSenderParts, brandGroupSenderLabel } = await import("../../messages/BrandGroupMessageRow");
     const base = {
       id: "m1", conversation_id: "c1", sender_id: ADMIN_ID, content: "hi", created_at: "2026-11-23T10:00:00Z",
       reply_to_id: null, related_message_ids: [], sender_display_name: "Kunle", sender_role: null,
@@ -159,6 +159,18 @@ describe("#4579 chats show the Mingla mark and never an email", () => {
     expect(brandGroupSenderParts({ ...base, sender_is_mingla_team: false, sender_display_name: "Hana" }, "Hana · Owner")).toEqual({
       mingla: false, name: "Hana · Owner", rest: "", accessibilityLabel: "Hana · Owner",
     });
+    // Retest P3-3 — an auto-added Mingla admin is not in the roster the screen
+    // maps roles from; the line still reads "Kunle [mark] · Admin" (design).
+    const adminLabel = brandGroupSenderLabel({ ...base, sender_is_mingla_team: true }, null);
+    expect(adminLabel).toBe("Kunle · Admin");
+    expect(brandGroupSenderParts({ ...base, sender_is_mingla_team: true }, adminLabel).rest).toBe(" · Admin");
+    // A roster or server role still wins; a non-Mingla sender with no role stays bare.
+    expect(brandGroupSenderLabel({ ...base, sender_is_mingla_team: true }, "Owner")).toBe("Kunle · Owner");
+    expect(brandGroupSenderLabel({ ...base, sender_role: "Mingla Support" }, null)).toBe("Kunle · Mingla Support");
+    expect(brandGroupSenderLabel({ ...base, sender_is_mingla_team: false, sender_display_name: "Hana" }, null)).toBe("Hana");
+    expect(brandGroupSenderLabel({ ...base, sender_is_mingla_team: false, sender_display_name: "Hana" }, "Events")).toBe("Hana · Events");
+    // The conversation screen builds the line with this helper, not inline.
+    expect(read("mingla-business/app/messages/[conversationId].tsx")).toMatch(/senderLabel=\{brandGroupSenderLabel\(message, rosterRole\)\}/);
   });
 
   test("the door log carries the flag; absent means not Mingla", () => {
@@ -173,5 +185,16 @@ describe("#4579 chats show the Mingla mark and never an email", () => {
     const service = read("mingla-business/src/services/groupChatService.ts");
     expect(service).toContain('rpc("issue_4579_brand_guest_post_authors"');
     expect(service).not.toMatch(/from\("profiles"\)\.select\("id, display_name, first_name, username"\)/);
+  });
+});
+
+describe("#4579 retest P3-4 — the read-only bank-country list is dimmed", () => {
+  test("a disabled list dims every row but the current country; the step disables it for a non-owner", () => {
+    const strip = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const list = strip(read("mingla-business/src/components/brand/PayoutCountryList.tsx"));
+    expect(list).toMatch(/style=\{\[styles\.row, isSel && styles\.rowSelected, disabled && !isSel && styles\.rowDisabled\]\}/);
+    expect(list).toMatch(/rowDisabled:\s*\{\s*opacity:\s*0\.45\s*\}/);
+    const flow = strip(read("mingla-business/src/components/brand/BrandCreationFlow.tsx"));
+    expect(flow).toMatch(/<PayoutCountryList[^>]*disabled=\{locked \|\| forbidden \|\| save\.isPending\}/);
   });
 });
