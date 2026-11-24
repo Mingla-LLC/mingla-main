@@ -702,7 +702,8 @@ export function phase3dContractDigest(manifest) {
 // #4522 merge of main after #4591 release sync and #4592 venue order (68a54f2f30): kept main's 20281202004580 and 20281202014580 rows before the branch's 14 migrations (20281202033281..20281202163281 stay above them); re-sealed.
 // #4522 pass 10 rework (P10-1..P10-3): registered the #4522 implementor pg17 suite p10_late_sign_below_min (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4579 (#4593, d3527e3b93): kept main's 20281202024579 rows, its two pg17 suites and its filtered-replay skips beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5d92e172d0e04fe91d7e88967008f0cbe365fb4011e833a4991307142ada1b0b";
+// #4571 Hosts board speed (merge of main after #4594, #4595 and #4597): listed migration 20281202174571 after main's 20281202163281 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and added an EXACT filtered-replay skip beside the other #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "d7913d44f7261058100bd503e39ee3261bc5191507d77e512a13657f4ec62d0d";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

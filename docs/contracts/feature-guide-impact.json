@@ -2026,7 +2026,14 @@
         "mingla-business/src/components/marketing/OverviewRecentCampaignRow.tsx",
         "mingla-business/src/components/marketing/marketingSubNavTabs.ts",
         "mingla-business/src/components/marketing/marketingTabActions.ts",
-        "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx"
+        "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx",
+        "mingla-business/src/features/marketing/campaignFailureCopy.ts",
+        "mingla-business/src/hooks/marketing/useAudienceList.ts",
+        "mingla-business/src/hooks/marketing/useCampaignFailureReason.ts",
+        "mingla-business/src/hooks/marketing/useEventAudienceCount.ts",
+        "mingla-business/src/hooks/marketing/useEventBuyers.ts",
+        "mingla-business/src/services/marketing/marketingAudienceService.ts",
+        "supabase/migrations/20281205004596_issue_4596_event_audience_rsvp_guests.sql"
       ]
     },
     {
@@ -2555,7 +2562,8 @@
         "supabase/migrations/20281130094571_issue_4571_w6d_rework.sql",
         "supabase/migrations/20281130104571_issue_4571_w7_brand_counts.sql",
         "supabase/migrations/20281130114571_issue_4571_final_gate_fixes.sql",
-        "supabase/migrations/20281130124571_issue_4571_leftovers.sql"
+        "supabase/migrations/20281130124571_issue_4571_leftovers.sql",
+        "supabase/migrations/20281202174571_issue_4571_hosts_board_list_speed.sql"
       ]
     },
     {

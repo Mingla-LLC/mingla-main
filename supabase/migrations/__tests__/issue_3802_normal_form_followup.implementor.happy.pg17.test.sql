@@ -128,8 +128,8 @@ begin
   -- #4571 rework: the exact crm_ catalog, by signature, not a bare count, so
   -- a new or dropped function shows by name. It is the same inventory as
   -- issue_3802_wave1_crm_pipelines W1-12 (c_client || c_internal ||
-  -- c_later_readers): 53 before #4571, then W3 seven, W4 twenty, W6 twenty-six, W7 two.
-  perform pg_temp.t3802c_check('N-1', 'the crm_ functions are exactly the named ones (53 before #4571, W3 7, W4 20, W6 26, W7 2: 108)',
+  -- c_later_readers): 53 before #4571, then W3 seven, W4 twenty, W6 twenty-six, W7 two, the board speed fix two.
+  perform pg_temp.t3802c_check('N-1', 'the crm_ functions are exactly the named ones (53 before #4571, W3 7, W4 20, W6 26, W7 2, speed 2: 110)',
     (select string_agg(p.oid::regprocedure::text, ' ' order by p.oid::regprocedure::text)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'),
     (select string_agg(x, ' ' order by x) from unnest(array[
@@ -177,10 +177,12 @@ begin
       'crm_record_merge(uuid,uuid,text)', 'crm_record_merges_json(uuid)', 'crm_record_unarchive(uuid)',
       'crm_record_unmerge(uuid)', 'crm_records_archived_list(text)',
       -- #4571 W7
-      'crm_4571_stage_move_ok(uuid,text,text,text,timestamp with time zone,uuid)', 'crm_4571_stage_refusal(text)'
+      'crm_4571_stage_move_ok(uuid,text,text,text,timestamp with time zone,uuid)', 'crm_4571_stage_refusal(text)',
+    -- #4571 hosts board speed
+    'crm_4571_record_work_pairs(uuid[])', 'crm_4571_records_json(uuid[])'
     ]::text[]) x));
-  perform pg_temp.t3802c_check('N-1', 'and that is 108 crm_ functions',
-    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '108');
+  perform pg_temp.t3802c_check('N-1', 'and that is 110 crm_ functions',
+    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '110');
   perform pg_temp.t3802c_check('N-1', 'is_admin_user() has the source it had before Wave 4',
     (select md5(prosrc) from pg_proc where oid = 'public.is_admin_user()'::regprocedure), 'dc5465a20a4246c6921be0469e261a8b');
 end;
