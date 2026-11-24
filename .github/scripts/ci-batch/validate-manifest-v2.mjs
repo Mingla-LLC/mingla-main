@@ -675,8 +675,9 @@ export function phase3dContractDigest(manifest) {
 // #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
-// #4571 Hosts board speed: registered migration 20281202034571 in the #1857, #1931 and #2117 inventories after 20281202024579, its pg17 suite and sidecar in the #1931 and #2117 inventories, and an EXACT filtered-replay skip beside the other #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "2b089c1b03c7d8805043ca8a2bd697820c6201b76b0c6fa71d4f797a05772ecf";
+// #4571 Hosts board speed: registered migration 20281204014571 in the #1857, #1931 and #2117 inventories after 20281202024579, its pg17 suite and sidecar in the #1931 and #2117 inventories, and an EXACT filtered-replay skip beside the other #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4571 Hosts board speed renumber: the migration is now 20281204014571 (after pending #4490 work); its rows and skip renamed; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "8b1bc2f55b4395f118797ddc6e5c15d4c204e4083510512b15e2d3cc4f6ab3cb";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

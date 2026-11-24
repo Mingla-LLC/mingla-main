@@ -1,5 +1,5 @@
 -- Issue #4571: the Hosts board loads in one pass --
--- implementor suite for 20281202034571_issue_4571_hosts_board_list_speed.sql
+-- implementor suite for 20281204014571_issue_4571_hosts_board_list_speed.sql
 -- on the fully replayed PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-board-json-matches-card-json | gate crm_4571_records_json (crm_records_list, crm_records_archived_list) | test this file
@@ -21,7 +21,7 @@
 --            statement timeout is 8 s; it took about 0.2 s locally, against
 --            7.9 s for the per-card crm_record_json path it replaces).
 --
--- FAILS-ON-REVERT: without 20281202034571, SPEED fails (about 8 s locally).
+-- FAILS-ON-REVERT: without 20281204014571, SPEED fails (about 8 s locally).
 --
 -- Run from the repository root as supabase_admin.
 
