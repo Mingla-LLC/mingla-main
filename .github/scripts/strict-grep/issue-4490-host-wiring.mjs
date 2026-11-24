@@ -395,7 +395,8 @@ const PINS = [
   {
     id: "till-split-sheet-no-modal",
     file: `${BIZ}/src/components/venue/till/SplitSheet.tsx`,
-    contains: ["export function SplitSheet(", "onSetSplit({ mode: \"by_item\", shares: byItemPayload(units, assign) })"],
+    // 08-O5 fix 4: the buttons go through submit(), which calls onSetSplit and then shows the server's shares.
+    contains: ["export function SplitSheet(", "submit({ mode: \"by_item\", shares: byItemPayload(units, assign) })", "void onSetSplit(split);"],
     absentMatches: [/<Sheet\b/, /\bModal\b/, /amountMinor: (evenAmounts|itemAmounts)/],
     why: "the split step presents no native sheet of its own and sends units or a head count, never an amount (08-O4)",
   },
