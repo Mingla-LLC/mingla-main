@@ -784,7 +784,7 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 merge of origin/main 97a75873e2 (#4594 trip partial payments and add-ons, #4595): kept both sides' rows (main's fourteen 20281202033281..20281202163281 migrations before the #4490 block, filename order) and both sides' exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 Hosts board speed (merge of main after #4594, #4595 and #4597): listed migration 20281202174571 after main's 20281202163281 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and added an EXACT filtered-replay skip beside the other #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 merge of origin/main 60e3e235d2 (#4598 Hosts board speed): kept both sides' rows (main's 20281202174571 before the #4490 block, filename order) and both sides' exact-filename skips in the #2117 phase-1 lane; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "5c8088637669358b3d732f996173214137baefadf359c38126347860e81c8436";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "0a59240cccffd94778a34d236a87bea4e7d7e004df1429e0e2abdcdfb8bee1d0";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
