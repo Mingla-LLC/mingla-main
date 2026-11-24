@@ -836,6 +836,10 @@ BEGIN
   PERFORM public.t5b_ok((v#>>'{late,count}')::int = 1 AND (v#>>'{late,amountMinor}')::bigint = 550000
       AND (v#>>'{late,payments,0,method}') = 'scan_transfer' AND (v#>>'{late,payments,0,checkLabel}') = 'S20',
     'C-LATE-2 the payment that landed after the close is in D''s late list (5,500.00, scan by transfer), no reopen needed ' || (v->'late')::text);
+  -- #4490 08-O5 fix 4: each late payment names who took it (Host shows it when the check has no name).
+  PERFORM public.t5b_ok(jsonb_typeof(v#>'{late,payments,0,takenBy}') = 'object'
+      AND (v#>>'{late,payments,0,takenBy,kind}') IS NOT NULL,
+    'C-LATE-2b the late payment names who took it (takenBy) ' || (v#>'{late,payments,0}')::text);
   v := public.issue_4490_day_export('44900613-0000-4000-9000-0000000000a1', public.t5b_d(),
     '44900613-0000-4000-8000-000000000003', NULL);
   PERFORM public.t5b_ok(jsonb_array_length(v->'rows') = 19

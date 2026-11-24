@@ -746,7 +746,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 08-O5 fix 4: the fix 3 tester adversarial suite registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 retest P1/P3: the two fix 4 tester adversarial suites registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 merge of origin/main 68a54f2f30 (#4580, #4592): kept both sides' rows (filename order; main's two #4580 migrations before the #4490 block); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "83cf9b26b9e3893b9d63a6817e30b139e1db32b881274125bd845b1d52458275";
+// issue #4490 08-O5 fix 4: migration 20281203764490 (one refund rule: the sold-out refund, the money-returning swap and canRefund ask issue_4490_can_manage_money; late payments name who took them) + the fix 4 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "02780c2c2f6a8af43540a32f069ecf455d6e143f3ab413f3f8a4b55dc12bdafe";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

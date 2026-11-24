@@ -489,7 +489,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 08-O5 fix 4: registered the fix 3 tester adversarial suite (issue_4490_o5_fix3.tester.adversarial.pg17.test.sql + sidecar) beside the O5 tester suite in the #1931 and #2117 inventories; re-sealed.
 // issue #4490 retest P1/P3: registered the two fix 4 tester adversarial suites (issue_4490_o5_fix4 / issue_4490_p1_fix4 .tester.adversarial.pg17.test.sql + sidecars) in the #1931 and #2117 inventories; re-sealed.
 // issue #4490 merge of origin/main 68a54f2f30 (#4580, #4592): kept both sides' rows (filename order; main's two #4580 migrations before the #4490 block); re-sealed.
-export const BOOTSTRAP_SHA256 = "fadd963a680936cb1b423d6281c1c6a24941ebeb950f2b45b620e6e0c8971bba";
+// issue #4490 08-O5 fix 4: migration 20281203764490 + the fix 4 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "43b069df440730eef4019f3340b56fa02f875d8f2e3f0a4b48630e0bfa83e2fd";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -14,7 +14,7 @@
 -- 435a9edd8c) -> F2-7a (pin_step_up_required).
 --
 -- MINGLA-INVARIANT: I-4490-STEP-UP-BOUND-SINGLE-USE | issue #4490 | a money write recorded for a Till device (device_user_id <> actor) needs a fresh step-up approval for that purpose and that target on the device's live PIN session, taken and marked consumed in the write's own transaction (issue_4490_pin_step_up_take): every Till refund row (even by the switched-in member), a sent void, a day reopen, a day export, a sold-out refund, a money-returning sold-out swap and a guest refund approved from a Till device login; one approval authorises one request.
--- MINGLA-INVARIANT: I-4490-SWAP-MONEY-IS-A-REFUND | issue #4490 | a sold-out swap that gives any money back needs the refund rights (event_manager+) and, on a Till device, a swap_refund step-up; a swap that gives nothing back keeps the swap rules.
+-- MINGLA-INVARIANT: I-4490-SWAP-MONEY-IS-A-REFUND | issue #4490 | a sold-out swap that gives any money back needs the refund rights (issue_4490_can_manage_money, the Till refund rule, since 08-O5 fix 4) and, on a Till device, a swap_refund step-up; a swap that gives nothing back keeps the swap rules.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
