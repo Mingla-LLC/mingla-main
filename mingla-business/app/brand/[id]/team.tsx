@@ -61,6 +61,9 @@ import {
   useRevokeBrandInvitation,
 } from "../../../src/hooks/useBrandInvitations";
 import { useBrandTeamMemberDirectory } from "../../../src/hooks/useBrandTeamMemberDirectory";
+// #4579 — the one "Mingla Team" entry (Mingla admins are never listed one by one here).
+import { useMinglaTeamMutations, useMinglaTeamState } from "../../../src/hooks/useMinglaTeam";
+import { MinglaTeamSection } from "../../../src/components/team/MinglaTeamSection";
 import { useUpdateBrandTeamMemberVenueGrants } from "../../../src/hooks/useBrandVenueAccessMutation";
 import {
   BrandInvitationServiceError,
@@ -171,7 +174,11 @@ export default function BrandTeamRoute(): React.ReactElement {
   const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
   const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
   // issue #4271 — names and emails for accepted members (never a raw user id).
-  const { data: directoryRows = [] } = useBrandTeamMemberDirectory(brandIdResolved);
+  const directoryQuery = useBrandTeamMemberDirectory(brandIdResolved);
+  const directoryRows = useMemo(() => directoryQuery.data ?? [], [directoryQuery.data]);
+  const directoryLoaded = directoryQuery.isSuccess;
+  const { data: minglaTeamState } = useMinglaTeamState(brandIdResolved);
+  const minglaTeam = useMinglaTeamMutations(brandIdResolved);
   const directoryByUserId = useMemo(
     () => new Map(directoryRows.map((entry) => [entry.userId, entry])),
     [directoryRows],
@@ -197,6 +204,8 @@ export default function BrandTeamRoute(): React.ReactElement {
   const [detailEntry, setDetailEntry] = useState<DisplayEntry | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
+  // #4579 — the add-back failure (no sheet is open on that path).
+  const [screenError, setScreenError] = useState<string | null>(null);
 
   // ORCH-1384 — partner_account_id → link id for accepted, non-cancelled
   // links (the badge/disconnect matcher; SPEC §4.6).
@@ -245,7 +254,11 @@ export default function BrandTeamRoute(): React.ReactElement {
           row.removed_at === null &&
           // Hide the self-row coming from the server; it is rendered via the
           // synthesized row below to match the existing "You" affordance.
-          row.user_id !== userId,
+          row.user_id !== userId &&
+          // #4579 — a Mingla admin viewer can read every row, including the
+          // automatic ones; those belong to the one Mingla Team entry, so a
+          // member the directory does not list is never shown one by one.
+          (!directoryLoaded || directoryByUserId.has(row.user_id)),
       )
       .sort((a, b) => {
         const aT = a.accepted_at !== null
@@ -288,7 +301,7 @@ export default function BrandTeamRoute(): React.ReactElement {
           }
         : null;
     return selfRow !== null ? [selfRow, ...fromServer] : fromServer;
-  }, [memberRows, currentRole, user, userId, partnerLinkByUserId, directoryByUserId]);
+  }, [memberRows, currentRole, user, userId, partnerLinkByUserId, directoryByUserId, directoryLoaded]);
 
   const canInvite = canPerformAction(currentRank, "INVITE_TEAM_MEMBER");
 
@@ -523,6 +536,20 @@ export default function BrandTeamRoute(): React.ReactElement {
           )
         )}
 
+        {/* #4579 — "Mingla" section: one Mingla Team entry, on or off. It is
+            not a member row, so the solo empty state above ignores it. */}
+        <MinglaTeamSection
+          state={minglaTeamState}
+          isWideDesktop={isWideDesktop}
+          removePending={minglaTeam.removePending}
+          restorePending={minglaTeam.restorePending}
+          onRemove={minglaTeam.remove}
+          onRestore={minglaTeam.restore}
+          onSuccess={(message) => setToast(message)}
+          onError={(message) => setScreenError(message)}
+          defer={deferAfterDismiss}
+        />
+
         {!canInvite && !showEmpty ? (
           <Text style={styles.gateCaption}>
             {gateCaptionFor("INVITE_TEAM_MEMBER")}
@@ -581,6 +608,12 @@ export default function BrandTeamRoute(): React.ReactElement {
         kind="success"
         message={toast ?? ""}
         onDismiss={() => setToast(null)}
+      />
+      <Toast
+        visible={screenError !== null}
+        kind="error"
+        message={screenError ?? ""}
+        onDismiss={() => setScreenError(null)}
       />
     </View>
   );

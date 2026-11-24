@@ -17,6 +17,8 @@ export interface BrandGroupSummary {
   last_message_sender_id?: string | null;
   last_message_sender_name?: string | null;
   last_message_type?: string | null;
+  /** #4579 — the last sender is a Mingla admin added to the brand. */
+  last_message_sender_is_mingla_team?: boolean;
 }
 
 export interface BrandGroupMessage {
@@ -38,6 +40,9 @@ export interface BrandGroupMessage {
   file_mime: string | null;
   /** #4111 — only on brand_enquiry_card messages: the enquiry to open. Never a guest name. */
   card_payload?: { kind: "brand_enquiry_card"; enquiry_id: string | null; topic_label: string | null } | null;
+  /** #4579 — the sender is a Mingla admin added to the brand: their name carries the Mingla mark. */
+  sender_is_mingla_team?: boolean;
+  reply_sender_is_mingla_team?: boolean;
 }
 
 function errorMessage(error: { message?: string } | null, fallback: string): string | null {

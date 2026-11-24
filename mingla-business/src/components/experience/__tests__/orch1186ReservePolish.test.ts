@@ -21,6 +21,8 @@ import path from "path";
 
 import { describe, expect, test } from "@jest/globals";
 
+import { doneBarShown } from "../../../wrappers/doneBarSuppression";
+
 const read = (rel: string): string =>
   readFileSync(path.join(process.cwd(), rel), "utf8");
 
@@ -148,8 +150,13 @@ describe("ORCH-1186 — Fix 4 three-step tap-to-advance wizard", () => {
 
 describe("ORCH-1186 — Fix 5 keyboard Done bar gated on visibility", () => {
   test("business: KeyboardToolbarRoot returns null when no keyboard is visible", () => {
-    expect(kbBizSrc).toMatch(/useKeyboardIsVisible\(\)/);
-    expect(kbBizSrc).toMatch(/if \(!visible\) return null/);
+    expect(kbBizSrc).toMatch(/const visible = useKeyboardIsVisible\(\)/);
+    // #4572 item 16: the gate is one pure rule (visible and not suppressed by
+    // the focused Ari composer); with no keyboard visible it is always null.
+    expect(kbBizSrc).toMatch(/if \(!doneBarShown\(visible, suppressed\)\) return null/);
+    expect(doneBarShown(false, false)).toBe(false);
+    expect(doneBarShown(false, true)).toBe(false);
+    expect(doneBarShown(true, false)).toBe(true);
     // still Done-only when shown.
     expect(kbBizSrc).toMatch(/showArrows=\{false\}/);
   });

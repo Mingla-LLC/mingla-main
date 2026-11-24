@@ -169,13 +169,21 @@ describe("#4389 F2 conflict and forbidden", () => {
     expect(change).toHaveBeenCalledTimes(1);
     r.unmount();
   });
-  test("a member below brand admin sees the forbidden words before tapping", () => {
+  test("anyone who is not the brand owner sees the country read-only, with no Continue (#4579)", () => {
     const flow = read("src/components/brand/BrandCreationFlow.tsx");
     const country = flow.slice(flow.indexOf("const CountryStep"), flow.indexOf("const PayStep"));
-    expect(country).toContain("role.rank < BRAND_ROLE_RANK.brand_admin");
+    expect(country).toContain("role.rank < BRAND_ROLE_RANK.brand_owner");
+    expect(country).not.toContain("role.rank < BRAND_ROLE_RANK.brand_admin");
     expect(country).toContain("<ForbiddenBanner message={C.f2.forbidden} />");
-    expect(country).toContain("disabled={selected === null || offline || forbidden ||");
+    expect(country).toMatch(/disabled=\{locked \|\| forbidden \|\| save\.isPending\}/);
+    // No action that would then fail: the Continue button is not rendered.
+    expect(country).toMatch(/\{forbidden \? null : \(\s*<Button testID="brand-setup-country-continue"/);
     expect(country).not.toMatch(/<Sheet|<Modal/);
+    expect(C.f2.forbidden).toBe("Only the brand owner can change payout settings.");
+  });
+  test("the database's owner-only refusal reads as forbidden (no Try again)", async () => {
+    const { classifySetupError } = await import("../../../services/brandSetupService");
+    expect(classifySetupError({ message: "payout_settings_owner_only" }).code).toBe("forbidden");
   });
 });
 

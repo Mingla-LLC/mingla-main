@@ -28,6 +28,13 @@
 -- MINGLA-INVARIANT: I-4111-SUBSCRIBE-SMS-LINK-NO-ACCOUNT | issue #4111 | A subscribe text link never follows or records consent for a Mingla account.
 \set ON_ERROR_STOP on
 BEGIN;
+-- #4579: this fixture predates automatic Mingla admin brand access (an active Mingla
+-- admin now joins every brand as Brand admin; proven by
+-- issue_4579_mingla_admin_brand_access.implementor.pg17.test.sql). Keep the fixture's
+-- brands free of auto-added admins (also any a previous suite left behind) so the
+-- checks below keep their meaning. Rolled back with the transaction.
+ALTER TABLE public.brands DISABLE TRIGGER issue_4579_brand_auto_admins;
+ALTER TABLE public.admin_users DISABLE TRIGGER issue_4579_admin_status_sync;
 
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz;
 

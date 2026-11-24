@@ -24,8 +24,9 @@ DECLARE
   v_page jsonb;
   v_cursor jsonb;
   v_ids uuid[] := '{}'::uuid[];
+  -- #4579 adds is_mingla_team (the Mingla mark for an auto-added admin; a flag, never an id or email).
   v_expected_keys text[] := ARRAY[
-    'createdAt','durationMs','fileId','height','kind','messageId','mime','name',
+    'createdAt','durationMs','fileId','height','is_mingla_team','kind','messageId','mime','name',
     'senderDisplayName','senderRole','sizeBytes','thumbState','width'
   ];
   v_actual_keys text[];

@@ -4,9 +4,14 @@ import type { BrandGroupMentionCandidate } from "../utils/brandGroupMentions";
 export interface BrandGroupMember {
   user_id: string;
   display_name: string;
-  /** #3969 — may be empty or null for anyone but the viewer. */
+  /**
+   * #3969 — may be empty or null for anyone but the viewer.
+   * #4579 — always null for a Mingla admin added automatically (never sent).
+   */
   email: string | null;
   role: string;
+  /** #4579 — a Mingla admin added automatically: shown by name with the Mingla mark. */
+  is_mingla_team?: boolean;
 }
 
 /** Route-scoped access-checked candidates for the Brand-group composer. */

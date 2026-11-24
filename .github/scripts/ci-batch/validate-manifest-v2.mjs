@@ -670,8 +670,12 @@ export function phase3dContractDigest(manifest) {
 // #4580 release sync timeouts: registered migrations 20281202004580 and 20281202014580 in the #1857, #1931 and #2117 inventories after 20281201003969 and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 tester adversarial suite: registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
+// #4579 Mingla admin brand access: registered 20281202024579 after 20281201003969 in the #1857, #1931 and #2117 inventories and its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 merge of main after #4571, #4572 and #3969 step 2: re-applied only the #4579 rows and skips onto main's manifest; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "8bcb53d5bd738a120119283133fe403d948370f4d30cf1b3294f8f11bf7eab49";
+// #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "02f69671ef64b328f5d1c9f1b7cba08abb07d29e2f735c5c41031999aefb69cd";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

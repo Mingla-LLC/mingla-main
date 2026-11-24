@@ -58,9 +58,19 @@ export const DoorReadLog: React.FC<DoorReadLogProps> = ({ eventId }) => {
         </Text>
       ) : (
         reads.data.map((row, i) => (
-          <Text key={`${row.at}-${i}`} style={styles.line}>
-            {doorReadLine(row)}
-          </Text>
+          // #4579: a Mingla admin added to the brand carries the Mingla mark.
+          row.actorIsMinglaTeam === true ? (
+            <View key={`${row.at}-${i}`} style={styles.markedLine} testID="door-read-log-mingla">
+              <View style={styles.mark} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <Text style={styles.markLetter}>M</Text>
+              </View>
+              <Text style={[styles.line, styles.markedText]}>{doorReadLine(row)}</Text>
+            </View>
+          ) : (
+            <Text key={`${row.at}-${i}`} style={styles.line}>
+              {doorReadLine(row)}
+            </Text>
+          )
         ))
       )}
     </View>
@@ -78,6 +88,20 @@ const styles = StyleSheet.create({
   },
   title: { ...type.row, color: color.text1 },
   line: { ...type.small, color: color.text1 },
+  markedLine: { flexDirection: "row", alignItems: "center", gap: space[1] },
+  markedText: { flexShrink: 1 },
+  // #4579: the Mingla mark at 14pt, local to the forms chunk (see BrandGroupMinglaMark).
+  mark: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.ink,
+    borderWidth: 1,
+    borderColor: color.lineStrong,
+  },
+  markLetter: { color: color.accentText, fontSize: 8, fontWeight: "700" },
   muted: { ...type.small, color: color.text3 },
   warn: { ...type.small, color: color.warningText },
 });

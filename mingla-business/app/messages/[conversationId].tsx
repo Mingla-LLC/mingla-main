@@ -35,7 +35,7 @@ import { BrandGroupPeoplePanel, BrandGroupPeopleSheet, memberRoleLabel } from ".
 import { BrandEnquiryCard } from "../../src/components/messages/BrandEnquiryCard";
 import { BrandGroupInboxList } from "../../src/components/messages/BrandGroupInboxList";
 import { BrandGroupMessageMenu } from "../../src/components/messages/BrandGroupMessageMenu";
-import { BrandGroupMessageRow, BrandGroupMessageText } from "../../src/components/messages/BrandGroupMessageRow";
+import { BrandGroupMessageRow, BrandGroupMessageText, brandGroupSenderLabel } from "../../src/components/messages/BrandGroupMessageRow";
 import { BrandGroupTile } from "../../src/components/messages/BrandGroupTile";
 import { openMessageLink } from "../../src/components/messages/openMessageLink";
 // #4420: the Guests side of a brand's one thread is the Guest chat panel, on
@@ -1360,9 +1360,9 @@ function BrandGroupThreadScreen({
               );
             }
             const mine = message.sender_id === user?.id;
-            const supportIdentity = message.sender_role === "Mingla Support";
-            const role = message.sender_role
-              ?? (message.sender_id && memberRoles.has(message.sender_id) ? memberRoleLabel(memberRoles.get(message.sender_id) ?? "") : null);
+            const rosterRole = message.sender_id && memberRoles.has(message.sender_id)
+              ? memberRoleLabel(memberRoles.get(message.sender_id) ?? "")
+              : null;
             const mediaItem = message.file_id ? viewerItemMap.get(message.file_id) : undefined;
             const isMedia = mediaItem?.kind === "image" || mediaItem?.kind === "video";
             return (
@@ -1374,7 +1374,7 @@ function BrandGroupThreadScreen({
                   showSender={item.showSender}
                   showAvatar={item.showAvatar}
                   showTime={item.showTime}
-                  senderLabel={`${message.sender_display_name}${role ? ` · ${supportIdentity ? "Mingla Support" : role}` : ""}`}
+                  senderLabel={brandGroupSenderLabel(message, rosterRole)}
                   selected={selectedIds.includes(message.id)}
                   highlighted={highlightedMessageId === message.id}
                   reactions={live.reactionsByMessage.get(message.id) ?? []}

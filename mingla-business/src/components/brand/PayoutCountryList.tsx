@@ -68,7 +68,10 @@ export const PayoutCountryList: React.FC<PayoutCountryListProps> = ({
         accessibilityLabel={`${o.name}, ${o.currency}`}
         disabled={disabled}
         onPress={() => onSelect(o.country)}
-        style={[styles.row, isSel && styles.rowSelected]}
+        // #4579 retest P3-4 — read-only (not the owner, or locked): the other
+        // rows are dimmed so a tap that does nothing is expected; the current
+        // country stays at full strength.
+        style={[styles.row, isSel && styles.rowSelected, disabled && !isSel && styles.rowDisabled]}
       >
         <Text style={styles.flag}>{flagEmoji(o.country)}</Text>
         <Text style={styles.name} numberOfLines={2}>{o.name}</Text>
@@ -141,6 +144,7 @@ const styles = StyleSheet.create({
     borderBottomColor: color.line,
   },
   rowSelected: { backgroundColor: color.fill.tabOn },
+  rowDisabled: { opacity: 0.45 },
   flag: { fontSize: 20, width: 28 },
   name: { flex: 1, fontSize: type.body.fontSize, color: color.text1 },
   currency: { fontSize: type.small.fontSize, color: color.text3 },

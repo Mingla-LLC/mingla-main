@@ -237,7 +237,8 @@ test("A-5 the four migrated surfaces USE the derived constant, not merely import
     "src/components/groupChat/GroupChatPanel.tsx",
     "src/components/support/SupportThread.native.tsx",
     "src/components/brand/BrandPaystackOnboardView.tsx",
-    "src/screens/ari/AriChatScreen.tsx",
+    // [TEST-MOD-APPROVED #4572] AriChatScreen left this cohort: its composer is
+    // flush on the keyboard, with no Done-bar budget to derive (rule (E)).
   ];
   const NAME = "DONE_BAR_OCCUPIED";
   const unused = [];
@@ -288,7 +289,7 @@ test("A-6 every name the migrated surfaces import from the wrapper exists on BOT
     "src/components/groupChat/GroupChatPanel.tsx",
     "src/components/support/SupportThread.native.tsx",
     "src/components/brand/BrandPaystackOnboardView.tsx",
-    "src/screens/ari/AriChatScreen.tsx",
+    // [TEST-MOD-APPROVED #4572] AriChatScreen no longer imports from SmartScrollView.
   ];
   const wanted = new Set();
   for (const rel of CONSUMERS) {

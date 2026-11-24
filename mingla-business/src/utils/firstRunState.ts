@@ -156,15 +156,6 @@ export interface FirstRunChip {
   primary?: boolean;
 }
 
-export const NO_BRAND_CHIPS: readonly FirstRunChip[] = [
-  { id: "brand", label: "Set up my brand", primary: true },
-  { id: "events", label: "I host events" },
-  { id: "experiences", label: "I run experiences" },
-  { id: "trips", label: "I run trips" },
-  { id: "venue", label: "I run a venue" },
-  { id: "about", label: "What is Mingla?" },
-];
-
 export const EMPTY_BRAND_CHIPS: readonly FirstRunChip[] = [
   { id: "events", label: "An event with tickets", primary: true },
   { id: "rsvp", label: "A free RSVP" },
@@ -186,6 +177,13 @@ export function emptyBrandChips(
   }));
 }
 
+/**
+ * #4572 item 16 — the no-brand page is the setup card and the composer, and
+ * nothing else: no headline, no paragraph, no pills. Only the composer's
+ * placeholder is words the screen still needs.
+ */
+export const NO_BRAND_PLACEHOLDER = "Tell Ari about your business…";
+
 export interface FirstRunGreetingCopy {
   headline: string;
   body: string;
@@ -193,16 +191,8 @@ export interface FirstRunGreetingCopy {
   chips: FirstRunChip[];
 }
 
-const firstNameOf = (displayName: string | null | undefined): string | null => {
-  const first = (displayName ?? "").trim().split(/\s+/)[0] ?? "";
-  // Never greet someone by an email address.
-  if (first.length === 0 || first.includes("@")) return null;
-  return first.length > 24 ? first.slice(0, 24) : first;
-};
-
+/** State B's greeting (a brand exists, nothing made yet). State A has none. */
 export function firstRunGreeting(args: {
-  stage: "no_brand" | "empty_brand";
-  displayName: string | null | undefined;
   brandName: string | null | undefined;
   remembered: FirstRunIntent | null;
   /**
@@ -212,16 +202,6 @@ export function firstRunGreeting(args: {
    */
   setupComplete?: boolean;
 }): FirstRunGreetingCopy {
-  if (args.stage === "no_brand") {
-    const first = firstNameOf(args.displayName);
-    return {
-      // #4389 A1 — the approved first-landing words (never "business").
-      headline: `${first ? `Hi ${first}.` : "Hi."} Let's get your account ready to take bookings.`,
-      body: "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
-      placeholder: "Tell Ari about your business…",
-      chips: [...NO_BRAND_CHIPS],
-    };
-  }
   const brand = (args.brandName ?? "").trim() || "Your brand";
   const setupComplete = args.setupComplete === true;
   return {
@@ -234,4 +214,26 @@ export function firstRunGreeting(args: {
     placeholder: "e.g. Rooftop party, 15 Nov",
     chips: emptyBrandChips(args.remembered),
   };
+}
+
+/**
+ * #4572 item 16 (P2-1): the two-column card needs room beside the Conversations
+ * pane. At the 1024 px wide-desktop breakpoint the Ari pane is far narrower than
+ * the window, so the card is chosen by the measured pane width, not by the
+ * window breakpoint alone. Below the floor (or before the pane is measured) a
+ * wide desktop gets the stacked web card.
+ */
+export const WIDE_SETUP_CARD_MIN_PANE_PX = 640;
+
+export function noBrandSetupCardLayout(input: {
+  isWideDesktop: boolean;
+  isWeb: boolean;
+  paneWidth: number | null;
+}): "phone" | "web" | "wide" {
+  if (input.isWideDesktop) {
+    return input.paneWidth !== null && input.paneWidth >= WIDE_SETUP_CARD_MIN_PANE_PX
+      ? "wide"
+      : "web";
+  }
+  return input.isWeb ? "web" : "phone";
 }

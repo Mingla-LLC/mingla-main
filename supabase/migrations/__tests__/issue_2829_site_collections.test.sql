@@ -177,8 +177,15 @@ BEGIN
   -- ── "Ask an admin" ──────────────────────────────────────────────────────
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_marketing)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_marketing::text, true);
+  -- #4579: the active Mingla admin created above is added to every new brand
+  -- as a brand admin with full parity, so it is asked too (owner, admin, Mingla admin).
+  IF NOT EXISTS (SELECT 1 FROM public.brand_team_members
+    WHERE brand_id = v_brand AND user_id = v_mingla_admin AND role = 'brand_admin'
+      AND granted_via = 'mingla_admin' AND removed_at IS NULL) THEN
+    RAISE EXCEPTION 'the active Mingla admin was not added to the new brand';
+  END IF;
   v_result := public.brand_site_request_admin(v_brand, 'confirm_review');
-  IF (v_result->>'notified')::int <> 2 THEN RAISE EXCEPTION 'owner and admin were not both asked: %', v_result; END IF;
+  IF (v_result->>'notified')::int <> 3 THEN RAISE EXCEPTION 'owner, admin and Mingla admin were not all asked: %', v_result; END IF;
   SELECT payload->>'deep_link' INTO v_text FROM public.notification_outbox
   WHERE brand_id = v_brand AND category_key = 'business.site_admin_requested' AND user_id = v_owner;
   IF v_text <> 'mingla-business://brand/' || v_brand || '/website/reviews' THEN

@@ -32,6 +32,7 @@ import {
   firstRunRedirect,
   firstRunVisibleTabs,
   isFirstRunLocked,
+  NO_BRAND_PLACEHOLDER,
   stickyFirstRunStage,
   type FirstRunInput,
 } from "../firstRunState";
@@ -39,6 +40,8 @@ import { visibleTabsForRank } from "../navTabGate";
 import { BRAND_ROLE_RANK } from "../brandRole";
 import { useFirstRunStore } from "../../store/firstRunStore";
 import { useAriSeedStore } from "../../store/ariSeedStore";
+
+const firstRunStateSource = fs.readFileSync(path.resolve(__dirname, "../firstRunState.ts"), "utf8");
 
 const TABS = [
   { id: "home", icon: "home", label: "Home" },
@@ -202,40 +205,23 @@ describe("#4304 Home redirect while locked", () => {
 });
 
 describe("#4304 greeting copy and chips", () => {
-  it("A: first name, brand-first body, six chips with Set up my brand primary", () => {
-    const copy = firstRunGreeting({
-      stage: "no_brand",
-      displayName: "Tobi Adeyemi",
-      brandName: null,
-      remembered: null,
-    });
-    expect(copy.headline).toBe("Hi Tobi. Let's get your account ready to take bookings.");
-    expect(copy.body).toBe(
-      // #4389 A1 — the approved first-landing words.
-      "It takes about 3 minutes: your brand name, your bank country, then payments. I'll guide you.",
-    );
-    expect(copy.chips.map((c) => c.label)).toEqual([
-      "Set up my brand",
-      "I host events",
-      "I run experiences",
-      "I run trips",
-      "I run a venue",
-      "What is Mingla?",
-    ]);
-    expect(copy.chips.filter((c) => c.primary).map((c) => c.id)).toEqual(["brand"]);
-  });
-
-  it("A: never greets by an email address", () => {
-    expect(
-      firstRunGreeting({ stage: "no_brand", displayName: "tobi@x.com", brandName: null, remembered: null })
-        .headline,
-    ).toBe("Hi. Let's get your account ready to take bookings.");
+  // [TEST-MOD-APPROVED #4572] Replaces the two State A assertions ("A: first
+  // name, brand-first body, six chips" and "A: never greets by an email
+  // address"). #4572 item 16: the no-brand page is the setup card only, so
+  // State A has no headline, paragraph or pills to pin. What is pinned now is
+  // that none of them can come back, and that State B (below) is unchanged.
+  it("A: the no-brand state has no greeting copy and no pills", () => {
+    expect(firstRunStateSource).not.toMatch(/NO_BRAND_CHIPS/);
+    expect(firstRunStateSource).not.toMatch(/Let's get your account ready/);
+    expect(firstRunStateSource).not.toMatch(/It takes about 3 minutes/);
+    expect(firstRunStateSource).not.toMatch(/I host events|I run experiences|I run trips|I run a venue|What is Mingla\?/);
+    // The greeting builder serves State B only (its args carry no stage).
+    expect(firstRunStateSource).not.toMatch(/stage:\s*"no_brand"\s*\|\s*"empty_brand";\s*displayName/);
+    expect(NO_BRAND_PLACEHOLDER).toBe("Tell Ari about your business…");
   });
 
   it("B: names the brand, five chips, ticketed event primary by default", () => {
     const copy = firstRunGreeting({
-      stage: "empty_brand",
-      displayName: "Tobi",
       brandName: "Wythe Hospitality",
       remembered: null,
       setupComplete: true,

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   BRAND_GUESTS_PUSH_CHUNK,
+  brandChatSenderName,
   brandGuestsIdempotencyKey,
   brandGuestsPushCopy,
   brandGuestsRecipients,
@@ -99,6 +100,19 @@ function messageRowLookup(adminClient: AdminSupabaseClient) {
       .maybeSingle();
     if (error) console.warn("[notify-message] message lookup failed:", error.code ?? "error");
     return { deletedAt: (data?.deleted_at as string | null) ?? null, found: !!data, error: !!error };
+  };
+}
+
+// #4579: the brand chat name for a sender, from the database (never a handle).
+function brandSenderNameLookup(adminClient: AdminSupabaseClient) {
+  return async (brandId: string, senderId: string, fallback: string) => {
+    const { data, error } = await adminClient.rpc("issue_4579_brand_member_name", {
+      p_brand_id: brandId,
+      p_user_id: senderId,
+      p_fallback: fallback,
+    });
+    if (error) console.warn("[issue_4579] brand sender name lookup failed:", error.code ?? "error");
+    return { name: typeof data === "string" ? data : null, error: !!error };
   };
 }
 
@@ -311,13 +325,17 @@ async function handleUnifiedMessage(
 
   // Render title + deep-link based on conversation type.
   const isGroup = conv.type === "group";
+  const titleSenderName = await brandChatSenderName(
+    { linkedEntityType: conv.linked_entity_type, brandId: conv.brand_id, senderId, fallback: senderName },
+    brandSenderNameLookup(adminClient),
+  );
   const title = unifiedMessageTitle({
     conversationType: conv.type,
     conversationName: conv.name,
     programKind: conv.program_kind,
     programTargetUserId: conv.program_target_user_id,
     senderId,
-    senderName,
+    senderName: titleSenderName,
   });
 
   let deepLink = `mingla://chat/${conversationId}?type=${conv.type}`;
@@ -398,7 +416,7 @@ async function handleUnifiedMention(
   // Fetch conversation metadata for title + deep-link.
   const { data: conv } = await adminClient
     .from("conversations")
-    .select("id, type, name, linked_entity_type, session_id, event_id")
+    .select("id, type, name, linked_entity_type, session_id, event_id, brand_id")
     .eq("id", conversationId)
     .maybeSingle();
 
@@ -414,6 +432,10 @@ async function handleUnifiedMention(
       ? "your group chat"
       : "your chat";
   const isGroup = conv?.type === "group";
+  const titleSenderName = await brandChatSenderName(
+    { linkedEntityType: conv?.linked_entity_type, brandId: conv?.brand_id, senderId, fallback: senderName },
+    brandSenderNameLookup(adminClient),
+  );
 
   let deepLink = `mingla://chat/${conversationId}?type=${conv?.type ?? "direct"}&messageId=${messageId}`;
   if (isGroup && conv?.linked_entity_type === "session" && conv.session_id) {
@@ -447,7 +469,7 @@ async function handleUnifiedMention(
     callNotifyDispatch(supabaseUrl, serviceRoleKey, {
       userId: mentionedUserId,
       type: "board_message_mention",
-      title: `${senderName} mentioned you in "${titleConvName}"`,
+      title: `${titleSenderName} mentioned you in "${titleConvName}"`,
       body: truncate(messagePreview || "", 100),
       // ORCH-1030: top-level deepLink so notify-dispatch fills data.deepLink +
       // the deep_link column (same fix as board_message_received above).

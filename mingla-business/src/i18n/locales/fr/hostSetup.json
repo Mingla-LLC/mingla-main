@@ -25,7 +25,7 @@
       "noMatch": "Aucun pays bancaire ne correspond à « {{query}} ».",
       "cantPayOut": "Mingla ne peut pas encore verser de fonds dans ce pays",
       "locked": "Les versements sont déjà configurés pour une banque en {{country}}. Pour utiliser un autre pays, déconnectez d'abord les paiements.",
-      "forbidden": "Seul le propriétaire de la marque ou un admin peut changer le pays bancaire.",
+      "forbidden": "Seul le propriétaire de la marque peut modifier les paramètres de versement.",
       "conflict": "Modifié sur un autre appareil : {{country}}.",
       "keep": "Garder",
       "change": "Modifier",
@@ -278,11 +278,9 @@
       "payments": "Informations de paiement"
     },
     "a1": {
-      "headlineNamed": "Bonjour {{first}}. Préparons votre compte pour accepter des réservations.",
-      "headline": "Bonjour. Préparons votre compte pour accepter des réservations.",
-      "body": "Cela prend environ 3 minutes : le nom de votre marque, votre pays bancaire, puis les paiements. Je vous guide.",
       "cardTitle": "Configurer votre marque",
       "minutes": "Environ 3 minutes",
+      "eyebrowStep": "Étape {{current}} sur {{total}}",
       "setUp": "Configurer ma marque",
       "withAri": "Le faire avec Ari",
       "withAriMessage": "Aide-moi à configurer ma marque",

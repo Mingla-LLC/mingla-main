@@ -25,7 +25,7 @@
       "noMatch": "Tiada negara bank sepadan dengan '{{query}}'.",
       "cantPayOut": "Mingla belum boleh membuat pembayaran ke sana",
       "locked": "Pembayaran sudah ditetapkan untuk bank di {{country}}. Untuk menggunakan negara lain, putuskan sambungan pembayaran dahulu.",
-      "forbidden": "Hanya pemilik jenama atau admin boleh menukar negara bank.",
+      "forbidden": "Hanya pemilik jenama boleh menukar tetapan pembayaran.",
       "conflict": "Ini telah ditukar pada peranti lain kepada {{country}}.",
       "keep": "Kekalkan",
       "change": "Tukar",
@@ -278,11 +278,9 @@
       "payments": "Butiran bayaran"
     },
     "a1": {
-      "headlineNamed": "Hai {{first}}. Mari sediakan akaun anda untuk menerima tempahan.",
-      "headline": "Hai. Mari sediakan akaun anda untuk menerima tempahan.",
-      "body": "Ia mengambil kira-kira 3 minit: nama jenama, negara bank, kemudian bayaran. Saya akan membimbing anda.",
       "cardTitle": "Sediakan jenama anda",
       "minutes": "Kira-kira 3 minit",
+      "eyebrowStep": "Langkah {{current}} daripada {{total}}",
       "setUp": "Sediakan jenama saya",
       "withAri": "Buat dengan Ari",
       "withAriMessage": "Bantu saya sediakan jenama saya",

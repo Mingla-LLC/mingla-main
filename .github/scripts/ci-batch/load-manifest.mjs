@@ -413,8 +413,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4580 tester adversarial suite: registered issue_4580_release_sync.tester.adversarial.pg17.test.sql and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
 // #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
+// #4579 Mingla admin brand access: listed migration 20281202024579 after 20281201003969 in the #1857, #1931 and #2117 lanes, registered its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it re-emits readers from skipped migrations behind a drift guard); re-sealed.
+// #4579 merge of main after #4571, #4572 and #3969 step 2: took main's manifest and re-applied only the #4579 rows and skips (both duplicate #1931 templateReplay run keys carry the skip); re-sealed.
+// #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580) in the #1857, #1931 and #2117 lanes and the filtered-replay skips, same lane position; re-sealed.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed.
-export const BOOTSTRAP_SHA256 = "1f808832f7148a130200eb30f9507749b4fa9e70310151288310cc04486de532";
+// #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
+export const BOOTSTRAP_SHA256 = "389e06f336154146ed30dcd601f333ce5445e09eb7632a9a02a63b6bef4d3b82";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
