@@ -30,7 +30,7 @@ Deno.test("#4063 ticket refund writers carry the durable local refund reference"
     "Stripe reconciliation must enrich both notify-dispatch and email payloads",
   );
   assert(
-    /\.from\("refunds"\)[\s\S]{0,200}\.select\("id"\)[\s\S]{0,200}\.eq\("stripe_refund_id", refundId\)/.test(
+    /\.from\("refunds"\)\s*\.select\("id(?:\s*,\s*\w+)*"\)\s*\.eq\("stripe_refund_id", refundId\)/.test(
       stripeWebhook,
     ),
     "Stripe reconciliation must resolve the provider refund to public.refunds.id",

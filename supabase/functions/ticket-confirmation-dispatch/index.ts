@@ -78,6 +78,7 @@ import {
   type OrderCancelledPayloadShape,
   orderCancelledToGenericBody,
   type RefundIssuedPayloadShape,
+  refundFailedToGenericBody,
   refundIssuedToGenericBody,
 } from "../_shared/email/buyerLifecycleAdapters.ts";
 // ISSUE-1001 — canonical logo resolution. Was `?? null` → text-only PDF
@@ -2069,7 +2070,10 @@ export const handler = async (req: Request): Promise<Response> => {
           status: outcomeStatus,
           templateKey,
         });
-      } else if (templateKey === "buyer_refund_issued") {
+      } else if (
+        templateKey === "buyer_refund_issued" ||
+        templateKey === "buyer_refund_failed"
+      ) {
         // ORCH-0788 §5: refund email via generic_notification adapter.
         // Email-only per SPEC §10.1 (CF-1 SMS deferred).
         if (notification.channel !== "email") {
@@ -2088,10 +2092,16 @@ export const handler = async (req: Request): Promise<Response> => {
           });
           continue;
         }
-        const refundBody = refundIssuedToGenericBody(
-          rawPayload as unknown as RefundIssuedPayloadShape,
-          buyerContext,
-        );
+        const refundBody = templateKey === "buyer_refund_failed"
+          ? refundFailedToGenericBody({
+            amount_cents: Number(rawPayload.amount_cents),
+            currency: String(rawPayload.currency),
+            cancelled: rawPayload.cancelled === true,
+          })
+          : refundIssuedToGenericBody(
+            rawPayload as unknown as RefundIssuedPayloadShape,
+            buyerContext,
+          );
         const refundEmail = renderTransactionalEmail({
           variant: "generic_notification",
           recipient: { name: order.buyer_name, email: order.buyer_email ?? "" },

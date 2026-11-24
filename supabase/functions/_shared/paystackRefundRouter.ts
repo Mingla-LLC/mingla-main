@@ -6,6 +6,7 @@ import {
   paystackOverpaymentRefundEvent,
 } from "./installments/overpaymentRefunds.ts";
 import { installmentOpsAlert } from "./installments/installmentOpsAlert.ts";
+import type { OrderRefundWebhookOutcome } from "./orderRefundWebhookOutcome.ts";
 
 function text(value: unknown): string {
   return typeof value === "string"
@@ -33,7 +34,7 @@ export async function handlePaystackRefundEvent(
     | "refund.processed"
     | "refund.failed",
   data: Record<string, unknown>,
-): Promise<void> {
+): Promise<OrderRefundWebhookOutcome | void> {
   const providerRefundId = text(data.id);
   let merchantNote = text(data.merchant_note);
   let transaction = transactionReference(data);
@@ -74,14 +75,6 @@ export async function handlePaystackRefundEvent(
     );
     if (overpaymentHandled) return;
   }
-  if (!merchantNote || !transaction) {
-    console.warn(
-      "[paystack-refund-router] refund event lacks reconciliation identity",
-      { eventName, providerRefundId },
-    );
-    return;
-  }
-
   // toward #3697 Wave 7c — Ads-credit withdraw (merchant_note ad_credit_wd:*).
   if (
     await applyAdCreditWithdrawFromPaystackRefund(supabase, eventName, {
@@ -91,6 +84,8 @@ export async function handlePaystackRefundEvent(
   ) {
     return;
   }
+  // The gig refund workflow records its provider result on its own ledger.
+  if (merchantNote.startsWith("gig_refund:")) return;
 
   // #1221 markers are resolved before every legacy order/trip/venue marker.
   const typedMatch = merchantNote.match(
@@ -213,11 +208,39 @@ export async function handlePaystackRefundEvent(
       amountCents = Number(reservation?.fee_cents ?? 0);
     }
   } else {
-    console.warn("[paystack-refund-router] unknown Mingla refund marker", {
-      merchantNote,
-      providerRefundId,
-    });
-    return;
+    const providerTime = text(data.updatedAt ?? data.updated_at);
+    const time = Date.parse(providerTime);
+    const nestedTransaction = data.transaction &&
+        typeof data.transaction === "object"
+      ? data.transaction as Record<string, unknown>
+      : {};
+    const { data: outcome, error } = await supabase.rpc(
+      "issue_3645_reconcile_paystack_dashboard_refund",
+      {
+        p_provider_refund_id: providerRefundId,
+        p_transaction_reference: transaction,
+        p_merchant_note: merchantNote || null,
+        p_currency: text(data.currency ?? nestedTransaction.currency) || null,
+        p_amount_cents: Number.isSafeInteger(amountCents) &&
+            amountCents <= 2147483647
+          ? amountCents
+          : null,
+        p_status: eventName === "refund.processed"
+          ? "processed"
+          : eventName === "refund.failed"
+          ? "failed"
+          : "accepted",
+        p_event_at: Number.isFinite(time) ? new Date(time).toISOString() : null,
+      },
+    );
+    if (error || !outcome) {
+      throw new Error(
+        `dashboard_refund_reconciliation_failed: ${
+          error?.message ?? "empty_result"
+        }`,
+      );
+    }
+    return outcome as OrderRefundWebhookOutcome;
   }
 
   const { error } = await supabase.rpc("record_paystack_refund_outcome", {
@@ -228,7 +251,11 @@ export async function handlePaystackRefundEvent(
     p_merchant_note: merchantNote,
     p_provider_refund_id: providerRefundId || null,
     p_amount_cents: Math.max(0, Math.trunc(amountCents)),
-    p_status: eventName === "refund.processed" ? "processed" : "failed",
+    p_status: eventName === "refund.processed"
+      ? "processed"
+      : eventName === "refund.failed"
+      ? "failed"
+      : "accepted",
     p_error_message: eventName === "refund.failed"
       ? text(data.reason) || "paystack_refund_failed"
       : null,

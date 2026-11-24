@@ -58,6 +58,7 @@ import {
   stripeOverpaymentRefundEvent,
 } from "./installments/overpaymentRefunds.ts";
 import { installmentOpsAlert } from "./installments/installmentOpsAlert.ts";
+import type { OrderRefundWebhookOutcome } from "./orderRefundWebhookOutcome.ts";
 import {
   applyAdCreditTopUpFromPaymentIntent,
   applyAdCreditWithdrawFromStripeRefund,
@@ -142,6 +143,7 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   "charge.refunded",
   "refund.created",
   "refund.updated",
+  "refund.failed",
   "person.created",
   "person.updated",
   "person.deleted",
@@ -181,6 +183,7 @@ export interface StripeWebhookEvent {
   id: string;
   type: string;
   account?: string | null;
+  created?: number;
   data: { object: Record<string, unknown> };
 }
 
@@ -190,6 +193,7 @@ export interface RouteStripeEventResult {
   brandId: string | null;
   /** #4402 — set when a gig PaymentIntent did not match the ledger. */
   gigMismatchReason?: GigMismatchReason;
+  refundOutcome?: OrderRefundWebhookOutcome;
 }
 
 /** Issue #4402 — injectable seams for the gig arm. */
@@ -1069,6 +1073,7 @@ async function handleDeauthorized(
 async function handleRefundEvent(
   supabase: SupabaseClient,
   event: StripeWebhookEvent,
+  recordOutcome: (outcome: OrderRefundWebhookOutcome) => void,
 ): Promise<string | null> {
   // #3281: a charge.refunded object is the Charge, so its id and amount are the
   // charge's, not a refund's. Each Refund reconciles from its own refund.* event;
@@ -1093,7 +1098,9 @@ async function handleRefundEvent(
   }
   const paymentIntentId = objectString(refund, "payment_intent");
   const stripeAccountId = accountIdForEvent(event);
-  const refundStatus = objectString(refund, "status") ?? "succeeded";
+  const refundStatus = event.type === "refund.failed"
+    ? "failed"
+    : objectString(refund, "status") ?? "succeeded";
   const amountCents = Number(refund.amount ?? 0);
   const currency = char3(refund.currency);
   const metadata = (refund.metadata ?? {}) as Record<string, unknown>;
@@ -1229,8 +1236,45 @@ async function handleRefundEvent(
     }
   }
 
-  // Only act on settled refunds. Stripe also emits refund.created/refund.updated for
-  // pending and canceled refunds; we treat 'succeeded' as the trigger for state advance.
+  if (
+    refundStatus === "failed" || refundStatus === "canceled" ||
+    ((refundStatus === "pending" || refundStatus === "requires_action") &&
+      !ticketRefundIdHint)
+  ) {
+    const { data: outcome, error } = await supabase.rpc(
+      "issue_3645_record_stripe_refund_lifecycle",
+      {
+        p_provider_refund_id: refundId,
+        p_payment_reference: paymentIntentId,
+        p_account: stripeAccountId,
+        p_currency: currency,
+        p_status: refundStatus === "failed" || refundStatus === "canceled"
+          ? "failed"
+          : "pending",
+        p_amount_cents: Number.isSafeInteger(amountCents) &&
+            amountCents <= 2147483647
+          ? amountCents
+          : null,
+        p_event_at: Number.isFinite(event.created)
+          ? new Date(event.created! * 1000).toISOString()
+          : null,
+      },
+    );
+    if (error || !outcome) {
+      throw new Error(`stripe_refund_failure_commit_failed: ${error?.message ?? "empty_result"}`);
+    }
+    const result = outcome as OrderRefundWebhookOutcome;
+    if (result.order_id && result.buyer_correction) {
+      await fireBuyerOrderNotify(supabase as never, {
+        categoryKey: "buyer_refund_failed",
+        orderId: result.order_id,
+        idempotencyKey: `buyer_refund_failed:${refundId}`,
+        extraPayload: result.buyer_correction,
+      });
+    }
+    recordOutcome(result);
+  }
+
   if (refundStatus !== "succeeded") {
     await writeAudit(supabase, {
       user_id: null,
@@ -1368,7 +1412,7 @@ async function handleRefundEvent(
 
   const { data: refundRecord, error: refundRecordError } = await supabase
     .from("refunds")
-    .select("id")
+    .select("id,buyer_refund_status")
     .eq("stripe_refund_id", refundId)
     .maybeSingle();
   if (refundRecordError || !refundRecord?.id) {
@@ -1377,6 +1421,10 @@ async function handleRefundEvent(
         refundRecordError?.message ?? "refund_record_missing"
       }`,
     );
+  }
+  if (refundRecord.buyer_refund_status === "failed") {
+    recordOutcome({ status: "matched", reason: "provider_refund_failed" });
+    return brandId;
   }
   const refundRecordId = String(refundRecord.id);
 
@@ -2332,6 +2380,7 @@ export async function routeStripeEvent(
 ): Promise<RouteStripeEventResult> {
   let brandId: string | null = null;
   let gigMismatchReason: GigMismatchReason | undefined;
+  const refundRouting: { outcome?: OrderRefundWebhookOutcome } = {};
 
   switch (event.type) {
     case "account.updated":
@@ -2399,8 +2448,14 @@ export async function routeStripeEvent(
     case "charge.refunded":
     case "refund.created":
     case "refund.updated":
-      brandId = await handleRefundEvent(supabase, event);
-      if (event.type !== "charge.refunded") {
+    case "refund.failed":
+      brandId = await handleRefundEvent(supabase, event, (outcome) => {
+        refundRouting.outcome = outcome;
+      });
+      if (
+        event.type !== "charge.refunded" && event.type !== "refund.failed" &&
+        refundRouting.outcome?.reason !== "provider_refund_failed"
+      ) {
         try {
           await handlePayeeStripeRefund(supabase, stripe, event.data.object);
         } catch (payeeReversalErr) {
@@ -2625,5 +2680,6 @@ export async function routeStripeEvent(
     eventType: event.type,
     brandId,
     ...(gigMismatchReason ? { gigMismatchReason } : {}),
+    ...(refundRouting.outcome ? { refundOutcome: refundRouting.outcome } : {}),
   };
 }

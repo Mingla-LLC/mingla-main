@@ -62,6 +62,24 @@ Deno.test("buyer_purchase_confirmation renders push+email (NO STOP line)", () =>
   assertEquals(r.email.body.includes("STOP"), false);
 });
 
+Deno.test("#3645 buyer refund correction reflects the existing cancellation", () => {
+  const payload = { amount_cents: 1250, currency: "USD" };
+  const cancelled = renderCategoryMessage("buyer_refund_failed", {
+    ...payload,
+    cancelled: true,
+  });
+  const ordinary = renderCategoryMessage("buyer_refund_failed", payload);
+  assertEquals(cancelled?.push?.title, "Refund needs attention");
+  assertEquals(
+    cancelled?.sms,
+    "Your refund of $12.50 did not complete. We’re working to resolve it. Your cancellation remains in place.",
+  );
+  assertEquals(
+    ordinary?.sms,
+    "Your refund of $12.50 did not complete. We’re working to resolve it.",
+  );
+});
+
 Deno.test("buyer_refund_issued formats amount currency-aware", () => {
   const r = renderCategoryMessage("buyer_refund_issued", {
     brand_name: "Lantern",

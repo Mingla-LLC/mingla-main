@@ -122,6 +122,9 @@
       "capability_key": "events-orders-refunds",
       "paths": [
         "supabase/functions/_shared/stripeWebhookRouter.ts",
+        "supabase/functions/_shared/businessNotifyTriggers.ts",
+        "supabase/functions/_shared/orderRefundWebhookOutcome.ts",
+        "supabase/migrations/20281205013645_issue_3645_provider_refund_truth.sql",
         "supabase/functions/admin-refund-order/index.ts",
         "supabase/functions/admin-reconcile-ticket-refund/index.ts",
         "supabase/functions/refund-order/index.ts",
@@ -3476,6 +3479,7 @@
       "capability_key": "payouts-timing",
       "paths": [
         "supabase/functions/payout-release-sweep/partnerRelease.ts",
+        "supabase/migrations/20281205023645_issue_3645_payout_refund_debt.sql",
         "supabase/migrations/20280407003645_issue_3645_stay_net_excludes_provider_fee.sql",
         "supabase/migrations/20280422003645_issue_3645_unpaid_release_holds.sql",
         "supabase/migrations/20280503003645_issue_3645_float_forecast_alerts.sql",

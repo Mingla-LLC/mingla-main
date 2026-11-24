@@ -1135,6 +1135,19 @@ export function renderCategoryMessage(
       };
     }
 
+    case "buyer_refund_failed": {
+      const title = "Refund needs attention";
+      const cancellation = payload.cancelled === true
+        ? " Your cancellation remains in place."
+        : "";
+      const message = `Your refund of ${fmtAmount(payload)} did not complete. We’re working to resolve it.${cancellation}`;
+      return {
+        push: { title, body: message },
+        email: { subject: title, body: message },
+        sms: message,
+      };
+    }
+
     case "buyer_order_cancelled":
       // COPY §3.10.
       return {

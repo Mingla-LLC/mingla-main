@@ -3,7 +3,7 @@
 //
 // Pure: no React, no Supabase. The queue holds two kinds of item: refund
 // operations (opened live from the server) and provider event exceptions
-// (a webhook that matched no refund, shown from the captured queue row; the
+// (a webhook that needs investigation, shown from the captured queue row; the
 // server has no detail call for them, and they need no action here).
 
 /** One table row for either kind of queue item. */
@@ -67,19 +67,26 @@ const MATCH_WORDS = {
 /** The fields shown when an exception row is opened. */
 export function exceptionDetail(item) {
   const row = item?.safeSummary ?? {};
+  const failedRefund = row.matchStatus === "matched" &&
+    row.safeReasonCode === "provider_refund_failed";
   return {
-    title: "Provider event exception",
-    explanation: MATCH_WORDS[row.matchStatus] ?? "The provider sent an event Mingla could not match.",
+    title: failedRefund ? "Provider refund failed" : "Provider event exception",
+    explanation: failedRefund
+      ? "The provider reported the refund did not complete."
+      : MATCH_WORDS[row.matchStatus] ?? "The provider sent an event Mingla could not match.",
     fields: [
       ["Exception", row.exceptionId ?? item?.itemId],
       ["Provider", row.provider],
+      ...(row.providerRefundId ? [["Provider refund", row.providerRefundId]] : []),
       ["Event", row.providerEventType],
       ["Match", row.matchStatus],
       ["Reason code", row.safeReasonCode],
       ["Received", row.createdAt],
       ["Respond by", row.firstResponseDueAt],
     ],
-    nextStep: "Check this event in the provider's dashboard. There is nothing to change here: it leaves the queue once the provider event is matched.",
+    nextStep: failedRefund
+      ? "Check the refund in the provider dashboard and arrange a replacement if the buyer is still owed."
+      : "Check this event in the provider's dashboard. There is nothing to change here: it leaves the queue once the provider event is matched.",
   };
 }
 

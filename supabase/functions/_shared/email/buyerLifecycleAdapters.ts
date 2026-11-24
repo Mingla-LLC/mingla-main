@@ -189,6 +189,25 @@ export function refundIssuedToGenericBody(
   };
 }
 
+export function refundFailedToGenericBody(payload: {
+  amount_cents: number;
+  currency: string;
+  cancelled?: boolean;
+}): GenericBodyInput {
+  const amount = formatMoneyFromCents(payload.amount_cents, payload.currency);
+  return {
+    variant: "generic_notification",
+    title: "Refund needs attention",
+    paragraphs: [
+      `Your refund of ${amount} did not complete. We’re working to resolve it.`,
+      ...(payload.cancelled
+        ? ["Your cancellation remains in place."]
+        : []),
+    ],
+    cta: null,
+  };
+}
+
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] D-3 / D-4 templates per
 // DESIGN_ORCH-0875 §5.3.
 function refundIssuedToGenericBodyTr4(

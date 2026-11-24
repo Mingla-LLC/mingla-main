@@ -61,11 +61,14 @@ const FLOAT_FORECAST_MIGRATION =
 // #3645 bundle 4 adds paystack_plan_exceeds_due (a plain `<kind>:<id>` key).
 const LEDGER_FOLLOWUP_MIGRATION =
   "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql";
+const REFUND_DEBT_MIGRATION =
+  "supabase/migrations/20281205023645_issue_3645_payout_refund_debt.sql";
 
 /** The kind whose payload is a number that moves — the one honoured downstream. */
 const REVISION_BEARING_KINDS = [
   "paystack_float_shortfall",
   "stay_dispute_hold_open",
+  "payout_refund_debt",
 ];
 
 const ALL_KINDS = [
@@ -80,6 +83,7 @@ const ALL_KINDS = [
   "waiting_for_bank",
   "stay_dispute_hold_open",
   "paystack_plan_exceeds_due",
+  "payout_refund_debt",
 ];
 
 /**
@@ -103,7 +107,8 @@ function keyExpression(src: string, at: number): string {
 Deno.test("#1840 RETEST the kinds writing a revision-bearing key are EXACTLY the kinds the notifier honours", async () => {
   const migration = (await Deno.readTextFile(MIGRATION)) +
     (await Deno.readTextFile(FLOAT_FORECAST_MIGRATION)) +
-    (await Deno.readTextFile(LEDGER_FOLLOWUP_MIGRATION));
+    (await Deno.readTextFile(LEDGER_FOLLOWUP_MIGRATION)) +
+    (await Deno.readTextFile(REFUND_DEBT_MIGRATION));
   const sweep = await Deno.readTextFile(SWEEP);
 
   // Which kinds does the SQL give a key with structure beyond `<kind>:<id>`?
