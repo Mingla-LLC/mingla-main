@@ -5531,7 +5531,10 @@
         "supabase/functions/_shared/venueOrderPricing.ts",
         "supabase/functions/venue-order-create/index.ts",
         "supabase/functions/venue-order-staff/index.ts",
-        "mingla-sites/src/components/MenuCart.tsx"
+        "mingla-sites/src/components/MenuCart.tsx",
+        "packages/brand-rendering/venueOrdering/venueOrderingWire.ts",
+        "mingla-business/src/components/venueOrdering/useBuyerVenueOrdering.ts",
+        "app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts"
       ]
     },
     {
