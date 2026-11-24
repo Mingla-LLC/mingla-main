@@ -255,6 +255,12 @@ export const TILL_COPY = {
   tileLabel: (name: string, price: string | null, state: string | null): string =>
     [name, price, state].filter((part): part is string => part !== null && part.length > 0).join(", "),
   seatsLabel: (n: number): string => `${n} ${n === 1 ? "seat" : "seats"}`,
+  /** A menu tile's label state: its stock pill text when sellable, else "Sold out". */
+  itemTileState: (sellable: boolean, stockLabel: string | null): string | null =>
+    sellable ? stockLabel : TILL_COPY.soldOut,
+  /** A table tile's price slot: the minimum spend when it has one, else its capacity. */
+  tableTileDetail: (minSpend: string | null, capacity: number): string =>
+    minSpend !== null ? TILL_COPY.minSpendTable(minSpend) : TILL_COPY.seatsLabel(capacity),
   startHourLabel: (name: string): string => `Start a session: ${name}`,
   seatTableLabel: (name: string): string => `Open table ${name}`,
   sellEntryLabel: (name: string): string => `Sell ${name}`,

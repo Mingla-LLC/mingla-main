@@ -568,7 +568,7 @@ export function TillScreen({
             accessibilityRole="button"
             accessibilityLabel={TILL_COPY.tileLabel(
               TILL_COPY.seatTableLabel(table.name),
-              table.minSpendMinor !== null ? TILL_COPY.minSpendTable(money(table.minSpendMinor)) : TILL_COPY.seatsLabel(table.capacity),
+              TILL_COPY.tableTileDetail(table.minSpendMinor === null ? null : money(table.minSpendMinor), table.capacity),
               table.hasCheck ? TILL_COPY.tableBusy : table.bookings.length > 0 ? TILL_COPY.seatBooking : null,
             )}
             accessibilityState={{ disabled: table.hasCheck }}
@@ -637,7 +637,7 @@ export function TillScreen({
                 accessibilityLabel={TILL_COPY.tileLabel(
                   TILL_COPY.addItemLabel(item.name),
                   item.priceMinor === null ? null : money(item.priceMinor),
-                  sellable ? (stock === null ? null : stock.label) : TILL_COPY.soldOut,
+                  TILL_COPY.itemTileState(sellable, stock === null ? null : stock.label),
                 )}
                 accessibilityState={{ disabled: !sellable }}
                 disabled={!sellable}
