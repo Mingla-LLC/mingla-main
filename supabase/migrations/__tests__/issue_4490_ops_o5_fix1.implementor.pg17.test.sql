@@ -326,11 +326,16 @@ SELECT public.t5f_expect(format($$SELECT public.t5f_resolve(%L, ARRAY[%L]::uuid[
   public.t5f_id('guest_a'), public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('chapman')), public.t5f_id('water'), public.t5f_id('seller')),
   'PT409', 'sold_out_already_resolved', 'F3-5 a refunded line cannot be swapped afterwards');
 -- The third line is swapped for something cheaper: Zobo 2,000 -> Water 500, 1,650.00 back.
+-- [TEST-MOD-APPROVED #4490] 08-O5 fix 3 (P8): a swap that gives money back needs the refund rights,
+-- so the seller is refused and the owner makes it.
+SELECT public.t5f_expect(format($$SELECT public.t5f_resolve(%L, ARRAY[%L]::uuid[], 'swap', %L, %L, 'f5f-a-zobo-seller')$$,
+  public.t5f_id('guest_a'), public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('zobo')), public.t5f_id('water'), public.t5f_id('seller')),
+  '42501', 'not_authorized', 'F3-5b the seller cannot make a swap that gives money back');
 INSERT INTO t5f_r VALUES ('a_zobo', public.t5f_resolve(public.t5f_id('guest_a'),
-  ARRAY[public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('zobo'))], 'swap', public.t5f_id('water'), public.t5f_id('seller'), 'f5f-a-zobo'));
+  ARRAY[public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('zobo'))], 'swap', public.t5f_id('water'), public.t5f_id('owner'), 'f5f-a-zobo'));
 SELECT public.t5f_ok((public.t5f_rv('a_zobo')->>'refundMinor')::bigint = 165000 AND (public.t5f_rv('a_zobo')->>'unresolved')::int = 0
   AND (SELECT n = 3 AND requested = 1925000 FROM public.t5f_refunds(public.t5f_id('guest_a'))),
-  'F3-6 the seller swaps Zobo for Water: 1,650.00 back (line refund 3); 19,250.00 back in all = what was paid for the three lines');
+  'F3-6 the owner swaps Zobo for Water: 1,650.00 back (line refund 3); 19,250.00 back in all = what was paid for the three lines');
 SELECT public.t5f_ok((SELECT fee = floor(o.mingla_fee_cents * 1925000.0 / o.total_cents + 0.5)
     FROM public.t5f_refunds(public.t5f_id('guest_a')), public.venue_orders o WHERE o.id = public.t5f_id('guest_a')),
   'F3-7 Mingla''s fee comes back once, pro rata on the running total (never more than the three lines'' share)');

@@ -499,10 +499,15 @@ SELECT public.t5c_expect(format($$SELECT public.issue_4490_order_sold_out_resolv
   public.t5c_id('guest_g2'), public.t5c_id('g2_soup'), public.t5c_id('asun'), '44900615-0000-4000-8000-000000000005'),
   '28000', 'pin_session_required', 'K-8f a Till device acting as itself needs a PIN session');
 -- Swap Soup 5,500 for Asun 4,000: 1,500 + 10% service charge = 1,650 back.
+-- [TEST-MOD-APPROVED #4490] 08-O5 fix 3 (P8): a swap that gives money back is a refund, so the kitchen
+-- (no refund rights) is refused and the owner makes it.
+SELECT public.t5c_expect(format($$SELECT public.issue_4490_order_sold_out_resolve(%L, ARRAY[%L]::uuid[], 'swap', %L, %L, NULL, 'k5c-swap-kitchen-money')$$,
+  public.t5c_id('guest_g2'), public.t5c_id('g2_soup'), public.t5c_id('asun'), '44900615-0000-4000-8000-000000000004'),
+  '42501', 'not_authorized', 'K-8g0 the kitchen cannot make a swap that gives money back (refund rights needed)');
 SELECT public.t5c_ok((SELECT (r->>'refundMinor')::bigint = 165000 AND r->>'swapName' = 'Asun' AND (r->>'unresolved')::int = 0
   FROM public.issue_4490_order_sold_out_resolve(public.t5c_id('guest_g2'), ARRAY[public.t5c_id('g2_soup')], 'swap',
-    public.t5c_id('asun'), '44900615-0000-4000-8000-000000000004', NULL, 'k5c-swap-ok') r),
-  'K-8g the kitchen swaps Soup for Asun: 1,650.00 back (difference + its service charge share)');
+    public.t5c_id('asun'), '44900615-0000-4000-8000-000000000001', NULL, 'k5c-swap-ok') r),
+  'K-8g the owner swaps Soup for Asun: 1,650.00 back (difference + its service charge share)');
 SELECT public.t5c_ok(
   (SELECT prep_state = 'voided' AND void_reason = 'sold_out_after_payment' AND sold_out_resolution = 'swap'
      AND swapped_to_item_id IS NOT NULL FROM public.venue_order_items WHERE id = public.t5c_id('g2_soup'))
@@ -521,7 +526,7 @@ SELECT public.t5c_ok(t5c_stock(public.t5c_id('asun')) = 2
   AND t5c_stock(public.t5c_id('soup')) = 0,
   'K-8i the swap line took 1 Asun (3 -> 2); Soup stays sold out (its line took nothing)');
 SELECT public.t5c_ok((SELECT (r->>'replayed')::boolean FROM public.issue_4490_order_sold_out_resolve(public.t5c_id('guest_g2'),
-    ARRAY[public.t5c_id('g2_soup')], 'swap', public.t5c_id('asun'), '44900615-0000-4000-8000-000000000004', NULL, 'k5c-swap-ok') r)
+    ARRAY[public.t5c_id('g2_soup')], 'swap', public.t5c_id('asun'), '44900615-0000-4000-8000-000000000001', NULL, 'k5c-swap-ok') r)
   AND (SELECT count(*) FROM public.source_refunds sr WHERE sr.source_id = public.t5c_id('guest_g2')) = 1,
   'K-8k the same request again answers what it did (replayed), still one refund');
 SELECT public.t5c_expect(format($$SELECT public.issue_4490_order_sold_out_resolve(%L, ARRAY[%L]::uuid[], 'refund', NULL, %L, NULL, 'k5c-refund-again')$$,

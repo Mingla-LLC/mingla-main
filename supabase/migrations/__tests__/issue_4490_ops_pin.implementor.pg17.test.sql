@@ -591,7 +591,9 @@ $approve$;
 -- A refund needs the approver's money rights and a fresh approval.
 SELECT public.t4490p_expect($q$SELECT public.issue_4490_till_refund(public.t4490p_id('pay1')::uuid, 100000, 0,
   'wrong drink', false, '44900500-0000-4000-8000-000000000004', '44900500-0000-4000-8000-000000000005', gen_random_uuid())$q$,
-  '28000', 'pin_session_invalid',
+  -- [TEST-MOD-APPROVED #4490] 08-O5 fix 3: the refund row now asks for its step-up approval first, so the
+  -- refusal names that (it was pin_session_invalid from the session check behind it).
+  'P0001', 'pin_step_up_required',
   'PIN-7g a refund under someone with money rights but no approval on this device is refused');
 DO $refund$
 DECLARE
