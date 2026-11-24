@@ -196,8 +196,11 @@ test("the real route tree has one complete unconditional robots owner per privat
   // [TEST-MOD-APPROVED #4490] +1: /receipt/{paymentId}, the signed-out guest's
   // Till receipt (spec 08 O1, token in the fragment), is a private family with
   // its own noindex owner in mingla-business/vercel.json ("/receipt/:path*").
-  // 41 + 2 + 1 + 1 + 1 + 3 = 49.
-  assert.equal(privateFamilies.size, 49, "current private family inventory must be explicit and non-vacuous");
+  // [TEST-MOD-APPROVED #4514] +1: /form/{formId}, a brand form's personal
+  // link (token in the fragment), is a private family with its own noindex
+  // owner ("/form/:path*").
+  // 41 + 2 + 1 + 1 + 1 + 3 + 1 = 50 (#4490 merge with #4514).
+  assert.equal(privateFamilies.size, 50, "current private family inventory must be explicit and non-vacuous");
   assert.deepEqual(inspectPartition(readRealConfig(), leaves), []);
 });
 

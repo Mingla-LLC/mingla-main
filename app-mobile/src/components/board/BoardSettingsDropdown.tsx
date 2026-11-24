@@ -23,7 +23,7 @@ import type { PhoneInputTheme } from "@mingla/phone-input";
 import { chatTokens } from "../../constants/chatTokens";
 import { getCountryByCode } from "../../constants/countries";
 import { inviteByPhone } from "../../services/sessionInviteService";
-import { showInviteNotTextedAlert } from "../../utils/inviteNotTextedAlert";
+import { showInviteNotTextedAlert, showInviteTextedAlert } from "../../utils/inviteNotTextedAlert";
 import { setSessionMute } from "../../services/sessionMuteService";
 import { InlineInviteFriendsList } from "./InlineInviteFriendsList";
 // Issue #4261: the session group chat's shareable link.
@@ -443,13 +443,12 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
       } else if (outcome.kind === "cold") {
         setInvitePhoneInput("");
         // Issue #4114 QA run 2: "Text message sent" only when it was.
+        // #4508 2.2 — texted: also offer Copy message / Share with this
+        // plan's own wording and link.
         if (outcome.texted) {
-          Alert.alert(
-            t("board:boardSettingsDropdown.invited"),
-            t("board:boardSettingsDropdown.invitedTextSent", { phone: outcome.phoneE164 })
-          );
+          showInviteTextedAlert(t, outcome.phoneE164, outcome.inviteLink, sessionName);
         } else {
-          showInviteNotTextedAlert(t, outcome.phoneE164, outcome.inviteLink);
+          showInviteNotTextedAlert(t, outcome.phoneE164, outcome.inviteLink, sessionName);
         }
         onParticipantsChange?.();
       } else {

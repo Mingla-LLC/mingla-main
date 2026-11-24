@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/host-push-reconcile/__tests__/issue_4549_host_push_reconcile_rework.tester.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4549-host-push-reconcile-rework-tester",
+  "profile": "deno-1.46-stripe"
+}

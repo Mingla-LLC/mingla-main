@@ -9,8 +9,6 @@ export const BUYER_CLAIM_COPY = {
   },
   rsvpGroupPromise: "We'll email and text each of you a link to your pass.",
   allInNote: "All-in price. Taxes and fees included.",
-  approvalToast:
-    "This ticket needs the host's approval. We'll text and email you when you're in.",
   confirmTotalLabel: "Total, fees and tax included",
   youreIn: "You're in.",
   waiting: {

@@ -269,7 +269,8 @@ export function violations(files) {
     "url.length === 0 || serviceKey.length === 0", 'error: "forbidden"',
   ]) need(exportWorker, required, "export worker", failures);
   need(files.csv ?? "", "export function csvCell", "export CSV", failures);
-  need(files.csv ?? "", "/^[=+\\-@]/", "export CSV", failures);
+  // #4514: guest-written answers reach this CSV; a leading tab or carriage return is guarded too.
+  need(files.csv ?? "", "/^[=+\\-@\\t\\r]/", "export CSV", failures);
   need(files.audience ?? "", 'kind: "offering_send_group"', "marketing audience", failures);
   need(files.audience ?? "", 'rpc("biz_offering_send_group_audience"', "marketing audience", failures);
 
@@ -325,8 +326,8 @@ export function violations(files) {
   const conversion = manifest.secrets?.find((entry) => entry.name === "AD_CONVERSION_TOKENS");
   if (
     manifest.policy?.normal_ceiling !== 87 ||
-    manifest.rollout?.expected_user_managed_count !== 91 ||
-    manifest.secrets?.length !== 91 ||
+    manifest.rollout?.expected_user_managed_count !== 90 ||
+    manifest.secrets?.length !== 90 ||
     pepper?.class !== "cryptographic_secret" ||
     pepper?.issue !== 1770 ||
     JSON.stringify(pepper?.readers) !== JSON.stringify([
@@ -335,7 +336,8 @@ export function violations(files) {
       "supabase/functions/offering-invite-dispatch/index.ts",
     ]) || !conversion?.bundle_fields?.some((field) => field.name === "ONESIGNAL_EVENT_STREAM_TOKEN_CURRENT" && field.owner === "Messaging Engineering" && field.source_type === "secure_vault") ||
     !conversion?.bundle_fields?.some((field) => field.name === "ONESIGNAL_EVENT_STREAM_TOKEN_PREVIOUS" && field.owner === "Messaging Engineering" && field.source_type === "secure_vault")
-  ) failures.push("secret manifest: #1770 pepper contract missing from approved 91-name manifest");
+  ) failures.push("secret manifest: #1770 pepper contract missing from approved 90-name manifest");
+  // #4334: Seth approved unsetting the retired map-vendor token on 2026-11-20 in chat; the declared set is exactly 90 under the unchanged 87/91 ceilings.
   // #3645: the payout-release RAK is the approved 90th name.
   // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat (GOOGLE_SEEDING_API_KEY).
   return failures;

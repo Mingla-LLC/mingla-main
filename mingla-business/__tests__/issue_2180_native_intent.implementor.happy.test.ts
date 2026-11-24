@@ -261,7 +261,11 @@ describe("#2180 T-7 — SERVED_ROUTE_SEGMENTS stays in sync with the route tree"
   it("matches the real app-mobile/app tree exactly", () => {
     const onDisk = [...enumerateRouteSegments(CONSUMER_APP_DIR)].sort();
     const declared = [...consumer.SERVED_ROUTE_SEGMENTS].sort();
+    // [TEST-MOD-APPROVED #4541] /form is on disk now (app/form/[formId].tsx),
+    // so the staged exception is deleted and the sets match exactly again.
     expect(declared).toEqual(onDisk);
+    expect(declared).toContain("form");
+    expect("STAGED_NATIVE_INTENT_SEGMENTS" in consumer).toBe(false);
   });
 
   it("discovers a non-trivial number of routes (never passes vacuously)", () => {
@@ -279,6 +283,28 @@ describe("#2180 T-7 — SERVED_ROUTE_SEGMENTS stays in sync with the route tree"
       "host.usemingla.com",
       "usemingla.com",
     ]);
+  });
+});
+
+describe("#4541 — the Explorer form intent (R-5b)", () => {
+  it("moves a #t={token} fragment into the query for /form only", () => {
+    const token = "ab".repeat(32);
+    const form = "https://go.usemingla.com/form/45410000-0000-4000-8000-000000000004";
+    expect(consumerRedirect(cold(`${form}?event=e1#t=${token}`))).toBe(`${form}?event=e1&t=${token}`);
+    expect(consumerRedirect(warm(`com.mingla.app.v2://form/45410000-0000-4000-8000-000000000004#t=${token}`)))
+      .toBe(`com.mingla.app.v2://form/45410000-0000-4000-8000-000000000004?t=${token}`);
+    const event = `https://go.usemingla.com/event/45410000-0000-4000-8000-000000000004#t=${token}`;
+    expect(consumerRedirect(cold(event))).toBe(event);
+  });
+  it("preserves /form/{id} byte-for-byte on cold and warm links", () => {
+    const link = "https://go.usemingla.com/form/45410000-0000-4000-8000-000000000004?token=fixture#answers";
+    expect(consumerRedirect(cold(link))).toBe(link);
+    expect(consumerRedirect(warm(link))).toBe(link);
+  });
+
+  it("preserves the owned custom-scheme form intent", () => {
+    const link = "com.mingla.app.v2://form/45410000-0000-4000-8000-000000000004";
+    expect(consumerRedirect(cold(link))).toBe(link);
   });
 });
 

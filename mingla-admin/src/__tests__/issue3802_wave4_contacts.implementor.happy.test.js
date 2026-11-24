@@ -278,7 +278,8 @@ describe("#3802 C-2: what was typed, and adding it", () => {
     assert.equal(identLabel({ kind: "handle", platform: null }), "Handle");
     assert.equal(identLabel({ kind: "email" }), "Email");
     assert.equal(identLabel({ kind: "phone" }), "Phone");
-    assert.deepEqual(IDENT_KINDS.map((k) => k.id), ["email", "phone", "handle"]);
+    // #4571 W3: the website kind (one home for every contact route).
+    assert.deepEqual(IDENT_KINDS.map((k) => k.id), ["email", "phone", "handle", "website"]);
     assert.deepEqual(IDENT_PLATFORMS.map((p) => p.id), ["instagram", "tiktok", "x", "facebook", "youtube", "linkedin", "other"]);
   });
 });
@@ -370,9 +371,10 @@ describe("#3802 C-4: the contact rule on screen", () => {
   it("the card and the drawer draw it (#4255: the list view is gone)", () => {
     const CARD = read("components/crm/RecordCard.jsx");
     assert.ok(CARD.includes("aria-label={recordOpenLabel(record, team)}"));
-    assert.ok(/\{rule && \(\s*<p className="mt-1" title=\{rule\.reason \|\| undefined\}>\s*<Badge variant=\{rule\.variant\}>\{rule\.label\}<\/Badge>/.test(CARD));
+    // #4571 W3: the tile is a column with gaps, so the badge line has no margin of its own.
+    assert.ok(/\{rule && \(\s*<p title=\{rule\.reason \|\| undefined\}>\s*<Badge variant=\{rule\.variant\}>\{rule\.label\}<\/Badge>/.test(CARD));
     assert.ok(!fs.existsSync(path.join(SRC, "components/crm/PipelineList.jsx")), "#4255: the list view was removed (D8)");
-    const DRAWER = read("components/crm/RecordDrawer.jsx");
+    const DRAWER = read("components/crm/RecordPanel.jsx");
     assert.ok(DRAWER.includes("const rule = contactRuleView(record, config.team);"));
     assert.ok(/\{rule && \(\s*<p\s+role="status"/.test(DRAWER));
     assert.ok(DRAWER.includes("<ContactRuleField record={record} disabled={locked} onSave={saveExtra} />"));
@@ -525,7 +527,7 @@ describe("#3802 C-6: every new answer from the server becomes a sentence", () =>
     assert.equal(errorCopy("invalid_region", "That city is not in the Launch Cities list. Use an id from crm_config().regions, or leave the region out and ask an owner or admin to add the city."), "That region is no longer in the list. Pick another.");
   });
   it("a refusal that names another record lets the drawer open it, or keep the detail anyway", () => {
-    const DRAWER = read("components/crm/RecordDrawer.jsx");
+    const DRAWER = read("components/crm/RecordPanel.jsx");
     assert.ok(DRAWER.includes('return { message: errorWords(err), existingId: err?.token === "duplicate_identifier" ? err.detail || "" : "" };'));
     assert.ok(DRAWER.includes("onOpenRecord={onOpenCard}"));
     // The person's say-so travels with the same list, and only when it was given.
@@ -618,7 +620,7 @@ describe("#3802 C-7: City missing?", () => {
   it("it is the last row of the region menu in the toolbar, the Add form and the drawer, and is never taken as a region", () => {
     const FIELDS = read("components/crm/fields.jsx");
     assert.ok(FIELDS.includes('export const MISSING_CITY = "__city_missing__";') && FIELDS.includes('export const MISSING_CITY_LABEL = "City missing?";'));
-    for (const f of ["PipelineToolbar.jsx", "AddRecordForm.jsx", "RecordDrawer.jsx"]) {
+    for (const f of ["PipelineToolbar.jsx", "AddRecordForm.jsx", "RecordPanel.jsx"]) {
       const src = read(`components/crm/${f}`);
       assert.ok(src.includes("regionOptions.push({ value: MISSING_CITY, label: MISSING_CITY_LABEL });"), f);
       assert.ok(/if \(e\.target\.value === MISSING_CITY\) setCityMissing\(true\);\s*else /.test(src), `${f}: choosing it opens the panel and changes nothing`);
@@ -631,7 +633,7 @@ describe("#3802 C-7: City missing?", () => {
     const PAGE = read("pages/PipelinePage.jsx");
     assert.equal((PAGE.match(/canAddRegion=\{!!config\?\.me\?\.can_add_region\}/g) || []).length, 2);
     assert.equal((PAGE.match(/onRefreshRegions=\{cfg\.retry\}/g) || []).length, 3);
-    assert.ok(read("components/crm/RecordDrawer.jsx").includes("canAddRegion={!!config.me?.can_add_region}"));
+    assert.ok(read("components/crm/RecordPanel.jsx").includes("canAddRegion={!!config.me?.can_add_region}"));
   });
 });
 
@@ -647,7 +649,7 @@ describe("#3802 C-8: source contracts", () => {
     // Every ICP list on screen is drawn from the pipeline definition.
     assert.ok(read("components/crm/PipelineToolbar.jsx").includes("(def?.icps || []).map((i) => ({ value: i.id, label: i.label }))"));
     assert.ok(read("components/crm/AddRecordForm.jsx").includes("options={opt(def.icps)}"));
-    assert.ok(read("components/crm/RecordDrawer.jsx").includes("options={opt(def.icps)}"));
+    assert.ok(read("components/crm/RecordPanel.jsx").includes("options={opt(def.icps)}"));
   });
   it("the two services are still the only callers of the server, and nothing here reaches a table", () => {
     const crm = files.filter((f) => /rpc\(\s*["'`]crm_/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(SRC, f));
@@ -661,7 +663,7 @@ describe("#3802 C-8: source contracts", () => {
     }
   });
   it("a record's identifiers are saved the moment they change, through the same update the other fields use", () => {
-    const DRAWER = read("components/crm/RecordDrawer.jsx");
+    const DRAWER = read("components/crm/RecordPanel.jsx");
     assert.ok(/const saveExtra = useCallback\(\s*async \(changes\) => \{[\s\S]*await pipe\.update\(before\.id, changes\);/.test(DRAWER));
     assert.ok(DRAWER.includes("value={record.identifiers}"));
   });

@@ -140,7 +140,7 @@ describe("W2-N27 a claim link opened while signed out reaches the claim handler"
     // [TEST-MOD-APPROVED #4490] fix 4: handleDeepLink takes a source ("os")
     // (W2-N32) and passes the link's noun to the claim handler (W2-N33).
     const index = read("../../../app/index.tsx");
-    const body = index.slice(index.indexOf("const handleDeepLink = async (url: string, source"));
+    const body = index.slice(index.indexOf("const handleDeepLink = async (url: string, opts"));
     const claimAt = body.indexOf("const claimLinkCode = isOAuthCallback ? null : pendingClaimCodeFromUrl(url);");
     const handleAt = body.indexOf("handleIncomingClaimCode(claimLinkCode, claimLinkNounFromUrl(url));");
     const deferAt = body.indexOf("'mingla_deferred_deeplink'");
@@ -150,8 +150,8 @@ describe("W2-N27 a claim link opened while signed out reaches the claim handler"
     expect(body.slice(claimAt, deferAt)).toContain("if (claimLinkCode && !userIdRef.current) {");
     // Cold start (getInitialURL) and warm links (url listener) both use it.
     const linking = index.slice(index.indexOf("Linking.getInitialURL().then(async (url) => {"));
-    expect(linking.slice(0, 1200)).toContain('handleDeepLink(url, "os");');
-    expect(linking.slice(0, 1600)).toContain('handleDeepLink(event.url, "os");');
+    expect(linking.slice(0, 1200)).toContain('handleDeepLink(url, { routerOpened: routerServesLink(url) });');
+    expect(linking.slice(0, 1600)).toContain('handleDeepLink(event.url, { routerOpened: routerServesLink(event.url) });');
   });
 
   test("F3-L4 the handler waits for the session check, stamps a signed-in open, and never logs the code with an email", () => {

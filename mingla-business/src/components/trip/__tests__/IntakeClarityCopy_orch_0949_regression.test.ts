@@ -83,7 +83,10 @@ describe("ORCH-0949 — buyer-side one-line context", () => {
   test("context line sits IMMEDIATELY above the IntakeFormRenderer", () => {
     const src = readFileSync(BUYER_INTAKE_PATH, "utf8");
     const contextIdx = src.indexOf('testID="intake-upfront-context"');
-    const rendererIdx = src.indexOf("<IntakeFormRenderer");
+    // [TEST-MOD #4514] the screen now renders the package renderer through its
+    // lazy owner (`BusinessIntakeForm`, which mounts IntakeFormRenderer with
+    // the business primitives); the order it pins is unchanged.
+    const rendererIdx = src.search(/<(?:IntakeFormRenderer|BusinessIntakeForm)\b/);
     expect(contextIdx).toBeGreaterThan(0);
     expect(rendererIdx).toBeGreaterThan(0);
     // The context line is the last thing buyers read before the first

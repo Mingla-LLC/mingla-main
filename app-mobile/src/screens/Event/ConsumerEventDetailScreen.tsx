@@ -59,6 +59,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import {
+  carryOverRsvpAnswers,
+  rsvpFormMissingRequiredIds,
+  isRsvpFormErrorCode,
+  rsvpQuestionsPage,
+} from "@mingla/offering-rendering/rsvpBrandForm";
+import { useTranslation } from "react-i18next";
 import * as Haptics from "expo-haptics";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -91,18 +98,33 @@ import {
   RsvpOfferingFloatingBar,
   useRsvpOfferingState,
   type RsvpOfferingConfig,
-  type RsvpGuestContact,
   type RsvpPhoneFieldRenderer,
   type MapsAppId,
   type MapsOpenTarget,
   type RsvpSubmitResult,
+  type RsvpBrandFormAnswers,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
-import { copyAddressText } from "../../utils/copyAddressText";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
+// #4508 P4 — one spoken name for the phone field.
+import { phoneFieldAccessibilityLabel } from "@mingla/phone-input/accessibilityLabel";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
+// issue #4508 R5 — a guest's number: the shared phone field's own parser.
+import { resolveRsvpGuestPhone } from "../../utils/rsvpGuestPhone";
+// issue #4508 R2 — the sheet-aware input for the RSVP guest fields.
+import {
+  RsvpSheetFieldContext,
+  RsvpSheetTextInput,
+  type RsvpSheetFieldHandlers,
+} from "../../components/rsvpGuest/RsvpSheetTextInput";
+// issue #4508 P3 — a claimed guest pass shows as such on the event page.
+import { RsvpGuestPassCard } from "../../components/rsvpGuest/RsvpGuestPassCard";
+import { RsvpPassSheet } from "../../components/activity/RsvpPassSheet";
+import { useMyGoingRsvps } from "../../hooks/useCalendarEntries";
+import type { ConsumerRsvpRow } from "../../services/calendarService";
+import { claimedGuestPassFor } from "../../utils/rsvpGuestPassState";
 
 import {
   BaseBottomSheet,
@@ -127,8 +149,20 @@ import {
 import {
   fetchRsvpMomentum,
   fetchRsvpPassPdf,
+  lookupRsvpGuest,
   submitDeckRsvp,
 } from "../../services/rsvpDeckService";
+// #4541 R1.14 — the RSVP page's form is read through the edge, never the
+// server-only database function.
+import { fetchPageForm } from "../../services/brandFormService";
+
+import type {
+  RsvpFriendOption,
+  RsvpGuestLookupResult,
+  RsvpGuestPayload,
+} from "@mingla/offering-rendering/rsvpGuestParty";
+import { useUserCircle } from "../../hooks/useUserCircle";
+import { copyAddressText } from "../../utils/copyAddressText";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import {
@@ -147,7 +181,7 @@ import {
   mapConsumerEventToFoundation,
   type ConsumerEventFoundationModel,
 } from "../../hooks/useConsumerEventFoundation";
-import { circleKeys, purchaseKeys, socialProofKeys } from "../../hooks/queryKeys";
+import { brandFormKeys, circleKeys, purchaseKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
 import { fetchSocialProof } from "../../services/socialProofService";
 // ORCH-1342 (D6) — the cold-route seed-by-slug read (anon
@@ -201,11 +235,29 @@ import {
 } from "../../components/expandedCard/ticketDayScope";
 import { ticketsWithNoDateOnSale } from "@mingla/offering-rendering/noDateOnSale";
 
+// #4541 A3 — "After they RSVP": the hand-off block inside the shared RSVP
+// success popup (the same block as the cart's success panel).
+const RsvpFormHandoffBlock = React.lazy(
+  () => import("../../components/forms/FormHandoffBlock"),
+);
+const RsvpBrandFormQuestions = React.lazy(
+  () => import("../../components/forms/RsvpBrandFormQuestions"),
+);
+
+// #4541 — readiness is computed from the page and answers; the renderer's report is not used for gating.
+const noopRsvpMissing = (_ids: string[]): void => {};
+
 const ACCENT = "#FF6B35";
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
   | string
   | number
 )[];
+/** issue #4508 R2 — where a focused RSVP guest field sits, below the top of
+ * the sheet's scroll area (clears the status bar and the floating close and
+ * share buttons), and the extra content room while it has focus. */
+const RSVP_GUEST_FIELD_TOP = 104;
+const RSVP_GUEST_FIELD_ROOM = 480;
+const RSVP_GUEST_FIELD_REVEAL_DELAY_MS = 300;
 const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
 interface ConsumerEventDetailScreenProps {
@@ -354,6 +406,10 @@ const openMapsForTarget = (
 const copyAddressForTarget = (text: string): Promise<void> =>
   copyAddressText(text);
 
+// issue #4508 — public-submit-rsvp accepts a friend picked from the list as
+// { userId } (contract v2, C1), so the friends route is on.
+const RSVP_FRIEND_GUESTS_SERVER_READY = true;
+
 export default function ConsumerEventDetailScreen({
   seed: seedProp = null,
   brandSlug,
@@ -444,7 +500,7 @@ export default function ConsumerEventDetailScreen({
   const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
     useState<NativeCheckoutOutcome | null>(null);
   const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
-  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null } | null>(null);
+  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null; orderId?: string } | null>(null);
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item
   // (0 = cover, i = gallery[i-1]) shared by the cover pager + the row. Placed with
   // the other hooks (before the loading early-returns) to preserve hook order.
@@ -528,6 +584,51 @@ export default function ConsumerEventDetailScreen({
     // No-op: no visibility math (bar persistent).
   }, []);
 
+  // issue #4508 R2 — an RSVP guest field (number or friend search) gained
+  // focus: gorhom raises the sheet with the keyboard (BottomSheetTextInput),
+  // and this scrolls the field to sit RSVP_GUEST_FIELD_TOP below the top of
+  // the sheet's scroll area, so the row under it (live preview, first
+  // friends, Add) stays above the keyboard on a small phone. The field and
+  // the scroll area are measured together, so the sheet's own movement
+  // cancels out. While a guest field has focus the content gets extra room
+  // at the bottom, so a field near the end can still scroll that high.
+  const [rsvpGuestFieldFocused, setRsvpGuestFieldFocused] = useState(false);
+  // issue #4508 P3 — the viewer's claimed guest pass for this event (their own
+  // RSVP, if any, wins). Read from the same going list the Calendar shows.
+  const myGoingRsvps = useMyGoingRsvps(user?.id);
+  const claimedGuestPass = claimedGuestPassFor<ConsumerRsvpRow>(
+    myGoingRsvps.data,
+    seed?.eventId ?? null,
+  );
+  const [guestPassOpen, setGuestPassOpen] = useState(false);
+  const rsvpSheetFieldHandlers = useMemo<RsvpSheetFieldHandlers>(() => ({
+    onFocusChange: setRsvpGuestFieldFocused,
+    reveal: (field: unknown): void => {
+      type Measurable = {
+        measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+        getNativeScrollRef?: () => Measurable | null;
+      };
+      const node = field as Measurable | null;
+      const scroll = detailScrollRef.current as Measurable | null;
+      const host = typeof scroll?.measureInWindow === "function"
+        ? scroll
+        : scroll?.getNativeScrollRef?.() ?? null;
+      if (typeof node?.measureInWindow !== "function" || typeof host?.measureInWindow !== "function") {
+        return;
+      }
+      // After the keyboard and the sheet have started moving (the pattern
+      // PreferencesSheet uses for its sheet field).
+      setTimeout(() => {
+        node.measureInWindow?.((_fx: number, fieldY: number) => {
+          host.measureInWindow?.((_hx: number, hostY: number) => {
+            const target = motionScrollY.current + (fieldY - hostY) - RSVP_GUEST_FIELD_TOP;
+            detailScrollRef.current?.scrollTo({ y: Math.max(target, 0), animated: true });
+          });
+        });
+      }, RSVP_GUEST_FIELD_REVEAL_DELAY_MS);
+    },
+  }), []);
+
   const eventId = seed?.eventId ?? null;
   const ticketsQuery = usePublicEventTickets(
     coldReadPlan.allowLegacyTicketRead ? eventId : null,
@@ -547,7 +648,7 @@ export default function ConsumerEventDetailScreen({
             outcome.attachedToAccount,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: outcome.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -836,15 +937,37 @@ export default function ConsumerEventDetailScreen({
         pickerPresentation="overlay"
         value={args.rawValue}
         countryCode={args.countryCode}
+        // issue #4508 R5 — a guest's number is anyone's, anywhere: the shared
+        // field's parser. The inviter's own number keeps the #1857 authority.
         onChangePhone={(raw: string) =>
-          args.onChangeRawValue(raw, resolveUserPhoneE164(raw, args.countryCode))}
+          args.onChangeRawValue(
+            raw,
+            args.role === "plus_one"
+              ? resolveRsvpGuestPhone(raw, args.countryCode)
+              : resolveUserPhoneE164(raw, args.countryCode),
+          )}
         onChangeCountry={(iso: string) =>
-          args.onChangeCountry(iso, resolveUserPhoneE164(args.rawValue, iso))}
-        error={args.emptyRequired
-          ? "Required"
-          : args.invalid
-            ? "Select a country and enter a valid phone number."
-            : null}
+          args.onChangeCountry(
+            iso,
+            args.role === "plus_one"
+              ? resolveRsvpGuestPhone(args.rawValue, iso)
+              : resolveUserPhoneE164(args.rawValue, iso),
+          )}
+        // issue #4508 R2 — the guest number lives in the event sheet: the
+        // sheet-aware input, and only the app-wide Done bar (the field's own
+        // iOS bar stacked a second one on top of it).
+        {...(args.role === "plus_one"
+          ? { inputComponent: RsvpSheetTextInput, showDoneAccessory: false }
+          : {})}
+        error={args.errorText !== undefined
+          ? args.errorText
+          : args.emptyRequired
+            ? "Required"
+            : args.invalid
+              ? "Select a country and enter a valid phone number."
+              : null}
+        disableAutofill={args.disableAutofill === true}
+        onSubmitEditing={args.onSubmitEditing}
         disabled={args.disabled}
         theme={rsvpPhoneTheme}
         required={args.required}
@@ -853,7 +976,7 @@ export default function ConsumerEventDetailScreen({
         countryButtonAccessibilityLabel={args.countryCode === null
           ? "Select country"
           : `${args.label} country, ${getCountryByCode(args.countryCode)?.name ?? args.countryCode}, tap to change`}
-        phoneInputAccessibilityLabel={`${args.label} phone number`}
+        phoneInputAccessibilityLabel={phoneFieldAccessibilityLabel(args.label)}
         onBlur={args.onBlur}
       />
     </View>
@@ -950,6 +1073,59 @@ export default function ConsumerEventDetailScreen({
     });
   }, [isRsvp, ticketBoxY]);
 
+  // #4541 — form read and answer state stay on the RSVP surface so an edge
+  // refusal (changed/invalid form) never clears what the guest typed.
+  const { t: tForms } = useTranslation("forms");
+  const rsvpBrandFormQuery = useQuery({
+    queryKey: brandFormKeys.rsvpForm(seed?.eventId ?? null),
+    enabled: isRsvp && seed !== null,
+    staleTime: 30_000,
+    queryFn: () => fetchPageForm((seed as NonNullable<typeof seed>).eventId),
+  });
+  // Questions drawn on the page; an "After they RSVP" form draws one line.
+  const rsvpBrandFormPage = rsvpQuestionsPage(rsvpBrandFormQuery.data);
+  const rsvpAfterRsvpForm =
+    rsvpBrandFormQuery.data?.mode === "after_purchase" ? rsvpBrandFormQuery.data : null;
+  const [rsvpFormAnswers, setRsvpFormAnswers] = useState<RsvpBrandFormAnswers>({});
+  const rsvpFormSeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    // A different form resets the answers; a new version of the same form
+    // (the host edited it mid-typing) keeps the answers whose question remains.
+    const seen = rsvpFormSeenRef.current;
+    rsvpFormSeenRef.current = rsvpBrandFormPage?.formId ?? null;
+    setRsvpFormAnswers((prev) =>
+      rsvpBrandFormPage === null || seen !== rsvpBrandFormPage.formId
+        ? Object.keys(prev).length === 0
+          ? prev
+          : {}
+        : carryOverRsvpAnswers(prev, rsvpBrandFormPage),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on form and version ids on purpose
+  }, [rsvpBrandFormPage?.formId, rsvpBrandFormPage?.versionId]);
+  // Read failed with nothing cached: the RSVP goes without the capability
+  // marker (`undefined`), so the server completes it as "to answer".
+  const rsvpFormReadFailed =
+    rsvpBrandFormQuery.isError && rsvpBrandFormQuery.data === undefined;
+  const rsvpFormReadPending = isRsvp && seed !== null && rsvpBrandFormQuery.isPending;
+  const rsvpFormMissing = useMemo(
+    () => rsvpFormMissingRequiredIds(rsvpBrandFormPage, rsvpFormAnswers),
+    [rsvpBrandFormPage, rsvpFormAnswers],
+  );
+  // #4541 A3 — the RSVP the success popup is showing, for its hand-off block.
+  const [rsvpHandoffId, setRsvpHandoffId] = useState<string | null>(null);
+  const rsvpBrandFormPayload = useMemo(
+    () => rsvpFormReadFailed
+      ? undefined
+      : rsvpBrandFormPage === null
+        ? null
+        : {
+            formId: rsvpBrandFormPage.formId,
+            versionId: rsvpBrandFormPage.versionId,
+            answers: rsvpFormAnswers,
+          },
+    [rsvpFormReadFailed, rsvpBrandFormPage, rsvpFormAnswers],
+  );
+
   // ORCH-1163 [rsvp-shared-body] — the onSubmit wrapper handed to
   // useRsvpOfferingState. The shared body/dock own all the submit/dialog/contact
   // state + toasts now; this wrapper just bridges to the consumer write
@@ -964,21 +1140,35 @@ export default function ConsumerEventDetailScreen({
       guestPhone: string;
       guestPhoneCountryIso?: string | null;
       plusCount: number;
-      guests: RsvpGuestContact[];
+      guests: RsvpGuestPayload[];
     }): Promise<RsvpSubmitResult> => {
       if (seed === null) throw new Error("rsvp_not_open");
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const result = await submitDeckRsvp(
-        seed.eventId,
-        input.rsvpStatus,
-        input.guests,
-        {
-          name: input.guestName,
-          email: input.guestEmail,
-          phone: input.guestPhone,
-          phoneCountryIso: input.guestPhoneCountryIso,
-        },
-      );
+      let result: Awaited<ReturnType<typeof submitDeckRsvp>>;
+      try {
+        result = await submitDeckRsvp(
+          seed.eventId,
+          input.rsvpStatus,
+          input.guests,
+          {
+            name: input.guestName,
+            email: input.guestEmail,
+            phone: input.guestPhone,
+            phoneCountryIso: input.guestPhoneCountryIso,
+          },
+          rsvpBrandFormPayload,
+        );
+      } catch (error) {
+        // The host changed the form (or the answers were refused): refetch it so
+        // the guest sees the current questions; typed answers whose question
+        // still exists are kept by the version effect.
+        if (error instanceof Error && isRsvpFormErrorCode(error.message)) {
+          void queryClient.invalidateQueries({
+            queryKey: brandFormKeys.rsvpForm(seed.eventId),
+          });
+        }
+        throw error;
+      }
       if (result.status === "going") {
         captureExplorerSearchOutcome("rsvp_complete", {
           audience: "explorer",
@@ -986,6 +1176,19 @@ export default function ConsumerEventDetailScreen({
           action_state: "succeeded",
           content_kind: "event",
         });
+      }
+      // #4541 A3 — an "After they RSVP" form hands off from the success popup,
+      // for Going or Maybe (the web RSVP page's rule).
+      setRsvpHandoffId(
+        rsvpAfterRsvpForm !== null &&
+          (result.status === "going" || result.status === "maybe") &&
+          result.rsvpId.length > 0
+          ? result.rsvpId
+          : null,
+      );
+      // #4541 — the guest's pending-questions list now has this RSVP.
+      if (user !== null) {
+        void queryClient.invalidateQueries({ queryKey: brandFormKeys.myPending(user.id) });
       }
       // Refresh the live going-count after a successful own-submit.
       void queryClient.invalidateQueries({
@@ -1006,9 +1209,41 @@ export default function ConsumerEventDetailScreen({
         confirmationToken: result.confirmationToken,
         credentials: result.credentials,
         anonymousRecovery: result.anonymousRecovery,
+        guests: result.guests,
       };
     },
-    [seed, queryClient],
+    [seed, queryClient, rsvpBrandFormPayload, rsvpAfterRsvpForm, user],
+  );
+
+  // issue #4508 1.2a — the live match under the guest number field.
+  const rsvpGuestLookup = useCallback(
+    async (phone: string): Promise<RsvpGuestLookupResult> => {
+      if (seed === null) throw new Error("unavailable");
+      return lookupRsvpGuest(seed.eventId, phone);
+    },
+    [seed],
+  );
+  // issue #4508 1.4 — "Or from your friends" reads the already-loaded circle
+  // (no network call per keystroke). Friends and close friends only. A picked
+  // friend is sent as { userId }; the server resolves their number.
+  const rsvpFriendGuestsReady = RSVP_FRIEND_GUESTS_SERVER_READY;
+  const rsvpCircle = useUserCircle(
+    rsvpFriendGuestsReady && user !== null ? user.id : null,
+  );
+  const rsvpGuestFriends = useMemo<RsvpFriendOption[] | undefined>(
+    () =>
+      rsvpFriendGuestsReady && user !== null
+        ? rsvpCircle.people
+            .filter((p) => p.tier === "close" || p.tier === "friend")
+            .map((p) => ({
+              userId: p.userId,
+              displayName: p.displayName?.trim() || p.username || "Friend",
+              username: p.username,
+              avatarUrl: p.avatarUrl,
+              closeFriend: p.tier === "close",
+            }))
+        : undefined,
+    [rsvpFriendGuestsReady, user, rsvpCircle.people],
   );
 
   // handleBuy ported VERBATIM (behavior) from EBES handleBuy — same buyer
@@ -1074,6 +1309,9 @@ export default function ConsumerEventDetailScreen({
           ...(payload.eventDateIds !== undefined && payload.eventDateIds.length > 0
             ? { eventDateIds: payload.eventDateIds }
             : {}),
+          // #4541 R2.10 — the host's questions: marker and answers.
+          ...(payload.brandFormStep === 1 ? { brandFormStep: 1 as const } : {}),
+          ...(payload.brandForm !== undefined ? { brandForm: payload.brandForm } : {}),
           // issue #2265 — feed the cart sheet's pending copy.
           onPhase: setCheckoutPhase,
         });
@@ -1175,7 +1413,7 @@ export default function ConsumerEventDetailScreen({
             payload.buyer.name,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: result.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -1420,6 +1658,63 @@ export default function ConsumerEventDetailScreen({
   // A profile can briefly lag the auth store during an account transition.
   // Only the current account's canonical defaults may seed its new RSVP owner.
   const rsvpProfile = user !== null && profile?.id === user.id ? profile : null;
+  const rsvpQuestionsNode = rsvpFormReadFailed
+    ? (
+      <View style={{ marginTop: 16, gap: 8 }} accessibilityRole="alert">
+        <Text style={{ color: palette.tertiaryText, fontSize: 14 }}>
+          {tForms("rsvpLoadFailed")}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tForms("tryAgain")}
+          onPress={() => void rsvpBrandFormQuery.refetch()}
+          hitSlop={8}
+        >
+          <Text style={{ color: palette.primaryText, fontSize: 14, fontWeight: "600" }}>
+            {tForms("tryAgain")}
+          </Text>
+        </Pressable>
+      </View>
+    )
+    : rsvpAfterRsvpForm !== null
+    ? (
+      // #4541 R1.3 — "After they RSVP": the questions come after the reply.
+      <Text style={{ color: palette.secondaryText, fontSize: 14, marginTop: 16 }} testID="issue-4541-rsvp-after-notice">
+        {tForms("afterRsvpNotice", { brand: rsvpBrand?.displayName || tForms("theHost") })}
+      </Text>
+    )
+    : rsvpBrandFormPage === null
+    ? null
+    : (
+      <React.Suspense fallback={<View style={{ minHeight: 120 }} />}>
+        <RsvpBrandFormQuestions
+          page={rsvpBrandFormPage}
+          answers={rsvpFormAnswers}
+          onAnswersChange={setRsvpFormAnswers}
+          onMissingChange={noopRsvpMissing}
+          palette={palette}
+        />
+      </React.Suspense>
+    );
+  // #4541 A3 — the popup hands its own close in, so "Answer now" closes the
+  // popup first and then opens /form/{formId} (event, as=rsvp, sid) over the
+  // event page; "Later" closes the popup too, as on web. The block shows only for this RSVP's
+  // unanswered live "After they RSVP" form, once.
+  const rsvpFormHandoff = useCallback(
+    (close: () => void): React.ReactNode =>
+      rsvpHandoffId === null || user === null ? null : (
+        <React.Suspense fallback={null}>
+          <RsvpFormHandoffBlock
+            kind="rsvp"
+            subjectId={rsvpHandoffId}
+            from="rsvp"
+            onBeforeAnswer={close}
+            onLater={close}
+          />
+        </React.Suspense>
+      ),
+    [rsvpHandoffId, user],
+  );
   const rsvpState = useRsvpOfferingState({
     event: rsvpPublicEvent,
     brand: rsvpBrand,
@@ -1435,6 +1730,18 @@ export default function ConsumerEventDetailScreen({
     renderPhoneField: renderRsvpPhoneField,
     onDownloadPass: handleDownloadRsvpPass,
     onSubmit: rsvpOnSubmit,
+    questionsNode: rsvpQuestionsNode,
+    formHandoff: rsvpFormHandoff,
+    questionsRequired: rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step",
+    questionsReady: !rsvpFormReadPending && rsvpFormMissing.length === 0,
+    guestLookup: rsvpGuestLookup,
+    // issue #4508 R2 — the friends search field is sheet-aware too.
+    guestInputComponent: RsvpSheetTextInput,
+    guestFriends: rsvpGuestFriends,
+    guestFriendsLoading: rsvpCircle.isLoading && rsvpGuestFriends !== undefined,
+    guestFriendsError: rsvpCircle.isError ? "Couldn't load your friends." : null,
+    onRetryGuestFriends: () => void rsvpCircle.refetch(),
+    onCopyText: copyAddressText,
     onChipIn: handleChipIn,
     onOpenBrand: (slug: string) => router.push(`/b/${slug}` as never),
     onOpenMaps: openMapsForTarget,
@@ -1875,9 +2182,17 @@ export default function ConsumerEventDetailScreen({
           style={styles.nativeScroll}
           contentContainerStyle={[
             styles.nativeScrollContent,
-            { paddingBottom: scrollPaddingBottom },
+            {
+              paddingBottom: rsvpGuestFieldFocused
+                ? scrollPaddingBottom + RSVP_GUEST_FIELD_ROOM
+                : scrollPaddingBottom,
+            },
           ]}
           showsVerticalScrollIndicator={false}
+          // issue #4508 P3 / R2 — with the keyboard up, a tap on a button in
+          // the sheet (Add, a friend, a country row in the picker this sheet
+          // hosts) runs on the first tap instead of only closing the keyboard.
+          keyboardShouldPersistTaps="handled"
           onScroll={handleScroll}
           scrollEventThrottle={16}
           onLayout={handleScrollLayout}
@@ -1991,6 +2306,14 @@ export default function ConsumerEventDetailScreen({
               />
               </>
             ) : (
+              <RsvpSheetFieldContext.Provider value={rsvpSheetFieldHandlers}>
+              {claimedGuestPass !== null ? (
+                <RsvpGuestPassCard
+                  invitedBy={claimedGuestPass.invitedBy}
+                  palette={palette}
+                  onOpenPass={() => setGuestPassOpen(true)}
+                />
+              ) : null}
               <RsvpOfferingBody
                 event={rsvpPublicEvent}
                 brand={rsvpBrand}
@@ -2012,8 +2335,16 @@ export default function ConsumerEventDetailScreen({
                 onCopyAddress={copyAddressForTarget}
                 staticMapUrl={rsvpBodyStaticMapUrl}
                 state={rsvpState}
+                // #4508 round 8: a claimed guest holds a pass, so the page shows
+                // that pass (the card above) instead of the RSVP adder and the
+                // Going / Maybe / Can't go box, as for an attendee with a pass.
+                hideDecisionBox={claimedGuestPass !== null}
+                // #4508 round 9: and the address the pass shows, never
+                // "Address shared after you RSVP".
+                passHolderAddress={claimedGuestPass?.venue.locationText ?? null}
                 testID="orch-1163-consumer-rsvp-body"
               />
+              </RsvpSheetFieldContext.Provider>
             )}
           </View>
         </BottomSheetScrollView>
@@ -2065,7 +2396,7 @@ export default function ConsumerEventDetailScreen({
             the SAME bottom-overlay slot — BYTE-IDENTICAL wrapper to the event branch
             (styles.nativeFloatWrap, zIndex:60, bottom:floatBarBottom) so the z-order
             + float positioning match the standard event page on consumer too. */}
-        {isRsvp ? (
+        {isRsvp && claimedGuestPass !== null ? null : isRsvp ? (
           <View
             style={[styles.nativeFloatWrap, { bottom: floatBarBottom }]}
             pointerEvents="box-none"
@@ -2101,12 +2432,21 @@ export default function ConsumerEventDetailScreen({
         ) : null}
       </BaseBottomSheet>
 
+      {claimedGuestPass !== null ? (
+        <RsvpPassSheet
+          visible={guestPassOpen}
+          onClose={() => setGuestPassOpen(false)}
+          row={claimedGuestPass}
+        />
+      ) : null}
+
       {/* Reserve opens the cart DIRECTLY (NEVER EBES). Sibling BaseBottomSheet
           root in the same fragment. The checkout request is byte-identical to the
           prior EBES event path (handleBuy ported): same lines/buyer, NO address /
           taxCalculationId, NO paymentPlanChoice (events have no plan). */}
       <TicketCartSheet
         visible={cartVisible}
+        brandFormQuestions
         eventId={seed.eventId}
         tickets={cartTickets}
         extrasTickets={canonicalQuery.data?.event.tickets}
@@ -2141,6 +2481,7 @@ export default function ConsumerEventDetailScreen({
 
       <NativeCheckoutSentSheet
         buyerFirstName={sentTicket?.buyerFirstName ?? null}
+        orderId={sentTicket?.orderId ?? null}
         onDone={() => setSentTicket(null)}
         visible={sentTicket !== null}
       />

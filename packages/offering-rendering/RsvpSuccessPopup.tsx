@@ -25,6 +25,10 @@ import {
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { accentFill, themeFontFace } from "./themeAccentStyle";
+import type { GuestInviteMessageInput, RsvpSubmittedGuest } from "./rsvpGuestParty";
+import { rsvpPassChipLabel, rsvpPassLabel } from "./rsvpPassLabels";
+// issue #4508 1.15 — only a reply that brought someone pays for this card.
+const RsvpGuestInvitesCard = React.lazy(() => import("./RsvpGuestInvitesCard"));
 
 // Keep the sizeable SVG QR renderer out of the initial buyer-web bundle.
 // @ts-expect-error -- the host apps provide this workspace peer dependency.
@@ -57,6 +61,10 @@ export interface RsvpConfirmationDetails {
   confirmationToken: string | null;
   credentials: RsvpPassCredential[];
   anonymousRecovery: RsvpAnonymousRecovery[];
+  /** issue #4508 1.15 — each person brought, with the link their text carries. */
+  invites?: RsvpSubmittedGuest[];
+  /** issue #4508 1.15 — the message parts; each guest's link completes it. */
+  inviteMessage?: Omit<GuestInviteMessageInput, "link">;
 }
 
 export interface RsvpSuccessPopupProps {
@@ -84,10 +92,38 @@ export interface RsvpSuccessPopupProps {
    * guest on a chip-in-enabled event (SC-2); absent otherwise → no change.
    */
   chipInPanel?: React.ReactNode;
+  /**
+   * #4541 R1.3 / R2.8 — the "After they RSVP" hand-off block, rendered by the
+   * host app (web: the forms owner's PurchaseFormHandoff; app: its block) and
+   * drawn under the status. This package imports nothing from forms.
+   * A function receives this popup's own close, so "Answer now" can close the
+   * popup before it opens the form (never a form under a modal), and "Later"
+   * can close it too. A plain node still works.
+   */
+  formHandoff?: RsvpFormHandoffSlot;
   onDownloadPass?: (
     credential: RsvpPassCredential,
     recovery: RsvpAnonymousRecovery | null,
   ) => Promise<void>;
+  /** issue #4508 1.15 — host copy / share for "Send it yourself too". */
+  onCopyText?: (text: string) => void | Promise<void>;
+  onShareText?: (text: string) => void | Promise<void>;
+}
+
+/**
+ * #4541 A3 — the hand-off slot: a node, or a render function given the
+ * popup's close. Exported for the host apps' types and tests.
+ */
+export type RsvpFormHandoffSlot =
+  | React.ReactNode
+  | ((close: () => void) => React.ReactNode);
+
+/** Resolve the slot to a node; a function is called with the popup's close. */
+export function resolveFormHandoff(
+  slot: RsvpFormHandoffSlot | undefined,
+  close: () => void,
+): React.ReactNode {
+  return typeof slot === "function" ? slot(close) : slot;
 }
 
 const Row: React.FC<{
@@ -122,10 +158,13 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
     showCalendarNudge,
     onClose,
     chipInPanel,
+    formHandoff,
     onDownloadPass,
     passPresentation = "qr",
     claim,
     renderClaimBody,
+    onCopyText,
+    onShareText,
   } = props;
   const boldFamily = boldFontFamily(theme);
   const boldFace = themeFontFace(boldFamily);
@@ -134,10 +173,14 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   if (details === null) return null;
+  const handoffNode = resolveFormHandoff(formHandoff, onClose);
 
   const eligibleCredentials = details.credentials.filter(
     (item: RsvpPassCredential) => item.qrCode !== null,
   );
+  // #4508 round 9: a guest's pass reads as their row does (rsvpPassLabel).
+  const passLabel = (credential: RsvpPassCredential): string =>
+    rsvpPassLabel(credential, details.invites);
   const selected =
     eligibleCredentials.find(
       (item: RsvpPassCredential) => item.entityId === selectedEntityId,
@@ -183,6 +226,21 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
       : details.status === "waitlisted"
         ? "A spot opened? We'll text and email you automatically."
         : null;
+  const invites = details.invites ?? [];
+  const invitesCard =
+    invites.length > 0 && details.inviteMessage !== undefined ? (
+      <Suspense fallback={null}>
+        <RsvpGuestInvitesCard
+          palette={palette}
+          boldFamily={boldFamily}
+          invites={invites}
+          rsvpStatus={details.status}
+          message={details.inviteMessage}
+          onCopyText={onCopyText}
+          onShareText={onShareText}
+        />
+      </Suspense>
+    ) : null;
 
   return (
     <Modal
@@ -192,12 +250,20 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
       onRequestClose={onClose}
       accessibilityViewIsModal
     >
-      <Pressable
-        style={styles.scrim}
-        onPress={onClose}
-        accessibilityLabel="Dismiss"
-      >
+      {/* issue #4508 R4 — the backdrop is a sibling behind the card, not
+          its parent: a parent Pressable made the whole card one "Dismiss"
+          element for VoiceOver and swallowed the card's own buttons. It is
+          hidden from screen readers; the card's Done / Close end the popup. */}
+      <View style={styles.scrim}>
         <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+          testID="issue-4508-rsvp-success-backdrop"
+        />
+        <View
           style={[
             styles.card,
             {
@@ -206,7 +272,6 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
               maxHeight: Math.min(650, Math.max(320, windowHeight - 48)),
             },
           ]}
-          onPress={() => undefined}
           testID="orch-1163-rsvp-success-popup"
         >
           {passPresentation === "claim" ? (
@@ -223,10 +288,14 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
               </Text>
             </Pressable>
           ) : null}
+          {/* R4: the content scrolls inside the card's max height (flexShrink),
+              so later invite rows stay reachable on a small phone. */}
           <ScrollView
+            style={styles.cardScroll}
             contentContainerStyle={styles.cardContent}
             showsVerticalScrollIndicator
             keyboardShouldPersistTaps="handled"
+            testID="issue-4508-rsvp-success-scroll"
           >
             <Text
               style={[
@@ -236,6 +305,12 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
             >
               {title}
             </Text>
+
+            {handoffNode !== undefined && handoffNode !== null && handoffNode !== false ? (
+              <View style={styles.formHandoffWrap} testID="issue-4541-rsvp-form-handoff">
+                {handoffNode}
+              </View>
+            ) : null}
 
             {passPresentation === "claim" ? (
               renderClaimBody !== undefined ? (
@@ -290,6 +365,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                       {claimStatusLine}
                     </Text>
                   ) : null}
+                  {invitesCard}
                 </View>
               )
             ) : (
@@ -350,6 +426,13 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                                 setSelectedEntityId(credential.entityId)
                               }
                               accessibilityRole="tab"
+                              // #4508 round 10: the full label for screen
+                              // readers; the chip shows the short one.
+                              accessibilityLabel={
+                                credential.entityType === "primary"
+                                  ? "You"
+                                  : passLabel(credential)
+                              }
                               accessibilityState={{
                                 selected:
                                   credential.entityId === selected.entityId,
@@ -371,7 +454,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                               >
                                 {credential.entityType === "primary"
                                   ? "You"
-                                  : credential.displayName}
+                                  : rsvpPassChipLabel(credential, details.invites)}
                               </Text>
                             </Pressable>
                           ),
@@ -382,7 +465,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                       style={[styles.qrCard, { backgroundColor: "#FFFFFF" }]}
                       accessible
                       accessibilityRole="image"
-                      accessibilityLabel={`RSVP QR code for ${selected.displayName}`}
+                      accessibilityLabel={`RSVP QR code for ${passLabel(selected)}`}
                     >
                       <Suspense fallback={<View style={styles.qrFallback} />}>
                         <QrCode value={selected.qrCode as string} size={184} />
@@ -394,7 +477,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                         { color: palette.primaryText, ...boldFace },
                       ]}
                     >
-                      {selected.displayName}
+                      {passLabel(selected)}
                     </Text>
                     {onDownloadPass ? (
                       <Pressable
@@ -439,6 +522,8 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                   </View>
                 ) : null}
 
+                {invitesCard}
+
                 {showCalendarNudge ? (
                   <Text
                     style={[styles.nudge, { color: palette.secondaryText }]}
@@ -451,28 +536,35 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                 {chipInPanel !== undefined && chipInPanel !== null ? (
                   <View style={styles.chipInWrap}>{chipInPanel}</View>
                 ) : null}
-
-                <Pressable
-                  onPress={onClose}
-                  accessibilityRole="button"
-                  accessibilityLabel="Done"
-                  style={[styles.doneBtn, accentFill(palette)]}
-                  testID="orch-1163-rsvp-success-done"
-                >
-                  <Text
-                    style={[
-                      styles.doneBtnText,
-                      { color: palette.accentText, ...boldFace },
-                    ]}
-                  >
-                    Done
-                  </Text>
-                </Pressable>
               </>
             )}
           </ScrollView>
-        </Pressable>
-      </Pressable>
+          {passPresentation === "claim" ? null : (
+            // R4: Done is pinned under the scrolling content, always reachable.
+            <View
+              style={[styles.footer, { borderColor: palette.panelBorder }]}
+              testID="issue-4508-rsvp-success-footer"
+            >
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Done"
+                style={[styles.doneBtn, accentFill(palette)]}
+                testID="orch-1163-rsvp-success-done"
+              >
+                <Text
+                  style={[
+                    styles.doneBtnText,
+                    { color: palette.accentText, ...boldFace },
+                  ]}
+                >
+                  Done
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </View>
     </Modal>
   );
 };
@@ -491,8 +583,17 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     position: "relative",
+    overflow: "hidden",
   },
   cardContent: { padding: 22 },
+  // R4: shrink to the card's max height instead of growing past it.
+  cardScroll: { flexGrow: 0, flexShrink: 1 },
+  footer: {
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    paddingBottom: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   title: {
     fontSize: 22,
     fontWeight: "900",
@@ -532,12 +633,12 @@ const styles = StyleSheet.create({
   downloadText: { fontSize: 14, fontWeight: "800" },
   downloadError: { color: "#d14343", fontSize: 12, textAlign: "center" },
   chipInWrap: { marginTop: 16 },
+  formHandoffWrap: { marginTop: 12, marginBottom: 4 },
   doneBtn: {
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 14,
     paddingVertical: 15,
-    marginTop: 18,
   },
   doneBtnText: { fontSize: 16, fontWeight: "900" },
   closeButton: {

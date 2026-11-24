@@ -18,8 +18,16 @@
  * change + this gate together kill the false "Open Settings / notifications off"
  * popup on a device where notifications are actually ON.
  *
- * Web + missing-OneSignal: guarded no-op (requestPushPermission self-guards
- * on `_initialized`; on web the SDK never initializes).
+ * #4549 H8: the one-shot flag used to be written BEFORE checking whether the
+ * SDK could prompt. On a cold start with a saved session the brand appears
+ * before the deferred SDK start, so canRequestPushPermission() answered false,
+ * the flag was already written, and that install was never asked. Now the hook
+ * waits for the SDK (bounded) and writes the flag only after
+ * canRequestPushPermission() was evaluated on a ready SDK; if the SDK never
+ * comes up the flag stays unwritten and the next launch tries again.
+ *
+ * Web + missing-OneSignal: guarded no-op (whenOneSignalReady resolves false;
+ * on web the SDK never initializes).
  */
 
 import { useEffect, useRef } from "react";
@@ -28,9 +36,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   requestPushPermission,
   canRequestPushPermission,
+  isPushAvailableInBuild,
+  whenOneSignalReady,
 } from "../services/oneSignalService";
+import { reportNonFatal } from "../diagnostics/reportNonFatal";
 
 const PROMPTED_FLAG_KEY = "mingla-business.pushPermissionPrompted.v1";
+const SDK_READY_TIMEOUT_MS = 15_000;
 
 export function usePushPermissionMoment(
   isAuthenticated: boolean,
@@ -42,6 +54,14 @@ export function usePushPermissionMoment(
     // Gate: authenticated + a brand exists (the value moment). Not on boot,
     // not on the account screen alone — a brand must be present.
     if (!isAuthenticated || currentBrandId === null) return;
+    // #4549 P2-A: a build without push (no native module, no app id) never
+    // asks, never waits, never reports and never writes the flag.
+    if (
+      typeof isPushAvailableInBuild === "function" &&
+      !isPushAvailableInBuild()
+    ) {
+      return;
+    }
     if (firedRef.current) return;
     firedRef.current = true;
 
@@ -50,22 +70,43 @@ export function usePushPermissionMoment(
       try {
         const already = await AsyncStorage.getItem(PROMPTED_FLAG_KEY);
         if (already === "1" || cancelled) return;
+        // #4549 H8: never decide (or stamp the flag) before the SDK is up.
+        if (!(await whenOneSignalReady(SDK_READY_TIMEOUT_MS))) {
+          reportNonFatal(
+            "push.permission_moment",
+            new Error("sdk_not_ready"),
+          );
+          return;
+        }
+        if (cancelled) return;
         // ORCH-1250 (consumer ORCH-1244 parity): only surface the OS dialog on a
         // device that has NOT yet been asked. Once the user has answered (allow
         // OR deny), canRequestPushPermission() is false and we must never
-        // re-surface it — re-prompting a decliner is the 4.5.4 / false
-        // "notifications off" trigger. We still stamp the one-shot flag so we
-        // don't re-check every value moment.
-        await AsyncStorage.setItem(PROMPTED_FLAG_KEY, "1");
-        if (cancelled) return;
-        if (!(await canRequestPushPermission())) return;
-        // Mark BEFORE requesting so a mid-flight unmount can't double-prompt.
-        await requestPushPermission();
-      } catch (err) {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.warn("[usePushPermissionMoment] failed:", err);
+        // re-surface it: re-prompting a decliner is the 4.5.4 / false
+        // "notifications off" trigger.
+        if (!(await canRequestPushPermission())) {
+          // The OS already has this person's answer: record it, never ask.
+          await AsyncStorage.setItem(PROMPTED_FLAG_KEY, "1");
+          return;
         }
+        if (cancelled) return;
+        // The flag is written only once the OS question was actually shown
+        // and answered. firedRef keeps this mount from asking twice, and iOS
+        // shows its dialog once per install anyway.
+        await requestPushPermission();
+        // #4549 P3-3: requestPushPermission() swallows its own errors and
+        // returns false, so its answer cannot tell "declined" from "never
+        // shown". The OS can: once the person answered, it can no longer ask.
+        if (await canRequestPushPermission()) {
+          reportNonFatal(
+            "push.permission_moment",
+            new Error("prompt_not_answered"),
+          );
+          return;
+        }
+        await AsyncStorage.setItem(PROMPTED_FLAG_KEY, "1");
+      } catch (err) {
+        reportNonFatal("push.permission_moment", err);
       }
     })();
 

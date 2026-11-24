@@ -47,7 +47,8 @@ Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, 
   assertEquals(
     home?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
     // #4255 W4: Notifications left the menu for Messages in the top bar.
-    ["overview:Dashboard:LayoutDashboard", "work-board:Work:SquareKanban"],
+    // #4517: Messages has its own row under Dashboard.
+    ["overview:Dashboard:LayoutDashboard", "messages:Messages:MessageSquareText", "work-board:Work:SquareKanban"],
   );
   const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
   assertEquals(
@@ -189,7 +190,7 @@ Deno.test("#3980 the new screens: two columns, Undo, offline words, tokens only,
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R9): the last owner is kept by the people field, which says why.
   assertMatch(read("lib/peopleField.js"), /A card always keeps one owner\. Add someone else first, then remove this one\./);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D5): the last owner is kept on automatic cards too, once the card has an owner.
-  assertMatch(detail, /label="Owner" single[\s\S]{0,240}?min=\{1\}/  /* #4398: one owner, always kept */);
+  assertMatch(detail, /label="Owners" value=\{ownerEmails\}[\s\S]{0,240}?min=\{1\} max=\{10\}/  /* #4571 W1: 1 to 10 owners, the last one always kept */);
   assertMatch(detail, /Prompt copied\./);
   const opsFiles = [...Deno.readDirSync(new URL("components/ops/", SRC))].map((e) => read(`components/ops/${e.name}`));
   for (const source of [board, log, ...opsFiles]) {
@@ -216,5 +217,5 @@ Deno.test("#3980 host and creator card notices carry none of the banned words", 
   }
   assertMatch(notice, /Allow one more message/);
   assertMatch(notice, /Allowed for 24 hours\./);
-  assertMatch(read("components/crm/RecordDrawer.jsx"), /<RecentTouchNotice /);
+  assertMatch(read("components/crm/RecordPanel.jsx"), /<RecentTouchNotice /);
 });

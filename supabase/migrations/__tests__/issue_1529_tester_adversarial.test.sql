@@ -407,7 +407,13 @@ DECLARE
     -- [TEST-MOD-APPROVED #4490] spec 08 O2 scan to pay: "Text them the link"
     -- writes one buyer_door_pay_link SMS row with mingla_e164_country(phone);
     -- issue_4490_ops_till_pay.implementor.pg17 (O2-DB11b) asserts it.
-    'issue_4490_till_pay_code_text'
+    'issue_4490_till_pay_code_text',
+    'brand_form_auto_reminders_due',
+    -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
+    -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
+    'brand_form_blast_hold_if_closed',
+    -- #4571 W3 host/creator watcher notice: Admin in-app plus a Host team-screen push, no SMS; writes an explicit NULL country_code. issue_4571_w3_crm_card_watchers_contacts.implementor.pg17 asserts the notice.
+    'crm_notify_watchers'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of

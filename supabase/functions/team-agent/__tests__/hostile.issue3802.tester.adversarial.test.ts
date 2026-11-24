@@ -732,6 +732,8 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
         set_owners: false,
         log_activity: false,
         record_reply: false,
+        // #4571 W6b: the log_emails connector tool writes.
+        log_emails: false,
         save_drafts: false,
         update_draft: false,
         list_drafts: true,

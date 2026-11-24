@@ -49,6 +49,7 @@ import {
   mapOfferingWriteError,
 } from "../services/offeringsService";
 import { formatDate, formatDateTime } from "../lib/formatters";
+import { describePlusGuest } from "../lib/rsvpPlusGuests";
 
 // ── Local money formatter (server sends integer cents + currency, never pre-
 //    formatted — the client formats; ORCH-1271 §3 / Constitution #10). ──────────
@@ -324,8 +325,21 @@ function rsvpSection(rsvps, cb) {
               </span>
               {rowEmail && <span className="text-xs text-[var(--color-text-tertiary)]">{rowEmail}</span>}
               {Array.isArray(g.plus_guests) && g.plus_guests.length > 0 && (
-                <span className="text-xs text-[var(--color-text-tertiary)]">
-                  {g.plus_guests.map((pg) => pg.name || pg.email).filter(Boolean).join(", ")}
+                <span className="flex flex-col gap-0.5">
+                  {g.plus_guests.map((pg, i) => {
+                    const d = describePlusGuest(pg);
+                    return (
+                      <span
+                        key={`${g.rsvp_id}-pg-${i}`}
+                        className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-text-tertiary)]"
+                      >
+                        <span>{d.name}</span>
+                        {d.invitedBy && <span>{d.invitedBy}</span>}
+                        <Badge variant={d.claimed ? "success" : "outline"}>{d.claimLabel}</Badge>
+                        {d.contact && <span>{d.contact}</span>}
+                      </span>
+                    );
+                  })}
                 </span>
               )}
             </span>

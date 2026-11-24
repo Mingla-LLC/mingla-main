@@ -19,6 +19,7 @@ import { withPreviewDetailKey, withPreviewMediaKey, withPreviewOfferingKey } fro
 import { resolveOfferingDetail } from "../../lib/offeringDetail";
 import { isV2Artifact } from "../../lib/siteArtifact";
 import { businessPreviewFrameAncestor } from "../../lib/origins";
+import { PREVIEW_BANNER_STYLE, PREVIEW_BANNER_TEXT, PREVIEW_STRIP_CSS } from "../../lib/sharedBanner";
 
 /** Local mode only when the runtime config says so (any doubt: production rules). */
 function previewLocalMode(): boolean {
@@ -87,8 +88,9 @@ export default async function PreviewPage({
     const incomingDetail = await headers();
     return (
       <div data-preview="1" data-artifact-digest={parsed.digest} data-page={detailed.page.key}>
-        <p className="preview-banner" role="status">
-          Private preview — not live. Publishing is always a separate confirmation.
+        <style nonce={incomingDetail.get("x-nonce") ?? undefined}>{PREVIEW_STRIP_CSS}</style>
+        <p className="preview-banner" role="status" style={PREVIEW_BANNER_STYLE} title="Private preview — not live. Publishing is always a separate confirmation.">
+          {PREVIEW_BANNER_TEXT}
         </p>
         <PreviewLinkScope scope={{
           target: { key: parsed.key, frameAncestor: businessPreviewFrameAncestor(Array.isArray(params.fa) ? params.fa[0] : params.fa) },
@@ -139,8 +141,9 @@ export default async function PreviewPage({
   };
   return (
     <div data-preview="1" data-artifact-digest={parsed.digest} data-page={resolved.page.key}>
-      <p className="preview-banner" role="status">
-        Private preview — not live. Publishing is always a separate confirmation.
+      <style nonce={incoming.get("x-nonce") ?? undefined}>{PREVIEW_STRIP_CSS}</style>
+      <p className="preview-banner" role="status" style={PREVIEW_BANNER_STYLE} title="Private preview — not live. Publishing is always a separate confirmation.">
+        {PREVIEW_BANNER_TEXT}
       </p>
       <PreviewLinkScope scope={scope}>
         <SitePageView artifact={artifact} page={page} previewKey={parsed.key} live={withPreviewOfferingKey(live, parsed.key)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />

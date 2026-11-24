@@ -49,9 +49,13 @@
         "brand_campaign_push": "Mesaje de la locurile pe care le urmărești",
         "brand_campaign_push_hint": "Oferte și noutăți de la locurile și gazdele pe care le urmărești.",
         "brand_offering_invite": "Invitații de la locurile pe care le urmărești",
-        "brand_offering_invite_hint": "Când un loc sau o gazdă te invită la ceva."
+        "brand_offering_invite_hint": "Când un loc sau o gazdă te invită la ceva.",
+        "brand_form_request": "Întrebări de la organizatori",
+        "brand_form_request_hint": "Când un organizator îți cere să răspunzi la întrebările lui. E-mailul rămâne activ pentru acestea, pentru că are linkul tău personal. SMS-urile urmează setările tale pentru SMS."
       }
-    }
+    },
+    "friends_going": "Prieteni care ies",
+    "friends_going_hint": "Când un prieten apropiat merge la un eveniment"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

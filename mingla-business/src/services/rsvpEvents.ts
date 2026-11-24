@@ -144,13 +144,12 @@ export const updateLiveRsvp = async (
 // the edge fn resolves user_id and the logged-in path applies. See SPEC §6 / §5.3.
 // ===========================================================================
 
-/** ORCH-1163 §H — a per-plus-one contact (name+email+phone, all required). */
-export interface RsvpGuestContactInput {
-  name: string;
-  email: string;
-  phone: string;
-  phoneCountryIso?: string | null;
-}
+/**
+ * issue #4508 1.9 — a plus-one is a phone number (`{ phone, phoneCountryIso }`);
+ * name and email are optional and the form no longer asks for them.
+ */
+export type RsvpGuestContactInput =
+  import("@mingla/offering-rendering").RsvpGuestPayload;
 
 export interface SubmitPublicRsvpInput {
   eventId: string;
@@ -163,6 +162,8 @@ export interface SubmitPublicRsvpInput {
   plusCount?: number;
   /** ORCH-1163 §H — per-plus-one contacts; length must equal plusCount. */
   guests?: RsvpGuestContactInput[];
+  /** #4541 — current answers to the form attached to this RSVP page. `undefined` = form read failed (no capability marker); `null` = read ok, no form. */
+  brandForm?: import("@mingla/offering-rendering").RsvpBrandFormPayload | null;
 }
 
 export interface SubmitPublicRsvpResult {
@@ -177,6 +178,14 @@ export interface SubmitPublicRsvpResult {
   credentials: import("@mingla/offering-rendering").RsvpPassCredential[];
   anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
   claim: { shortUrl: string | null; code: string | null } | null;
+  /** issue #4508 — each person brought, with the link their text carries. */
+  guests: import("@mingla/offering-rendering").RsvpSubmittedGuest[];
+  /**
+   * #4541 R1.3 — "After they RSVP": the guest's own form link, minted by the
+   * server after a current (approved Going or Maybe) RSVP. null otherwise, and
+   * always null from a server without the hand-off.
+   */
+  brandFormHandoff: { formId: string; token: string } | null;
 }
 
 /** #4238 W2-5: stored browser ad context for the server RSVP sign-up. */
@@ -208,6 +217,13 @@ export const submitPublicRsvp = async (
         guestPhoneCountryIso: input.guestPhoneCountryIso,
         plusCount: input.plusCount ?? 0,
         guests: input.guests ?? [],
+        // #4541 — explicit capability marker. Missing answers are meaningful;
+        // the atomic SQL wrapper decides whether the current form requires them.
+        // `undefined` = the form read did not succeed: send no marker so the
+        // server completes the RSVP as "to answer" (fail-open for old clients).
+        ...(input.brandForm === undefined
+          ? {}
+          : { brandFormStep: 1, brandForm: input.brandForm }),
         // #4238 W2-5: the browser's ad match keys + click id, web only, so the
         // server's free sign-up pairs with the browser's (event_id = rsvpId).
         // Native sends none and the server reports nothing (D20).
@@ -231,7 +247,10 @@ export const submitPublicRsvp = async (
     credentials?: import("@mingla/offering-rendering").RsvpPassCredential[];
     anonymousRecovery?: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
     claim?: { shortUrl?: string | null; code?: string | null } | null;
+    guests?: unknown;
+    brandFormHandoff?: { formId?: unknown; token?: unknown } | null;
   };
+  const handoff = res.brandFormHandoff;
   return {
     status: res.status ?? input.rsvpStatus,
     approvalStatus: res.approvalStatus ?? "approved",
@@ -255,6 +274,16 @@ export const submitPublicRsvp = async (
             shortUrl: res.claim.shortUrl ?? null,
             code: res.claim.code ?? null,
           },
+    // #4541 R1.3: public-submit-rsvp's 200 body carries
+    // `brandFormHandoff: {formId, token} | null`.
+    brandFormHandoff:
+      typeof handoff?.formId === "string" && typeof handoff.token === "string" && handoff.token.length > 0
+        ? { formId: handoff.formId, token: handoff.token }
+        : null,
+    // On demand: the parser loads on demand, not with the boot payload.
+    guests: (
+      await import("@mingla/offering-rendering/rsvpGuestParse")
+    ).parseSubmittedGuests(res.guests),
   };
 };
 

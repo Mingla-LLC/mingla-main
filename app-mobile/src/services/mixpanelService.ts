@@ -819,8 +819,26 @@ class MixpanelService {
 
   // ─── Coach mark helpers ──────────────────────────────────────────────
 
-  trackCoachMarkViewed(props: { step_id: string; step_title: string; tab: string; target_id?: string }): void {
+  trackCoachMarkViewed(props: { step_id: string; step_title: string; tab: string; target_id?: string; waited_ms?: number }): void {
     this.track("Coach Mark Viewed", props);
+  }
+
+  /**
+   * #4562: a coach step was due but no bubble was drawn for 5 s. `reason` tells the
+   * triggers apart: no_target (no card on Home), rect_rejected (a measured rect the overlay
+   * refused), keyboard, overlay_hidden, unknown. Mirrored to PostHog as `coach_mark_held`.
+   */
+  trackCoachMarkHeld(props: Record<string, string | number | undefined>): void {
+    this.track("Coach Mark Held", props);
+    try {
+      // Loaded on use: postHogService pulls in the store graph, which this module must not
+      // drag into every consumer at import time.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { postHogService } = require("./postHogService");
+      postHogService.capture("coach_mark_held", props);
+    } catch (e) {
+      console.warn("[mixpanel] coach_mark_held PostHog mirror failed:", e);
+    }
   }
 
   trackCoachMarkCompleted(props: { step_id: string; step_title: string; tab: string }): void {

@@ -91,6 +91,12 @@ export const purchaseKeys = {
   // and logout clears it.
   venueLive: (userId: string, kind: PurchaseKind, id: string) =>
     [...purchaseKeys.all, "venueLive", userId, kind, id] as const,
+  // #4548 — the host's Guest pack for an event this account holds. OFFLINE
+  // CONTRACT: persisted with the rest of the cache (the user id in the key makes
+  // it auth-scoped), so the note and labels show offline; links need a
+  // connection. Logout and account change drop it with every purchases key.
+  guestPack: (userId: string, eventId: string) =>
+    [...purchaseKeys.all, "guestPack", userId, eventId] as const,
 };
 
 // #4382 Wave 5 — Help & Support (support tickets, owned by the requester).
@@ -174,6 +180,28 @@ export const brandEnquiryKeys = {
   thread: (userId: string, enquiryId: string) =>
     [...brandEnquiryKeys.all, 'thread', userId, enquiryId] as const,
   brandIdentity: (ref: string) => [...brandEnquiryKeys.all, 'brandIdentity', ref] as const,
+};
+
+// #4541 — brand forms a guest answers in the Explorer app. The ONE key factory
+// for these reads (Constitution #4); no screen writes a form key inline.
+export const brandFormKeys = {
+  all: ['brand-forms'] as const,
+  /** The questions attached to one RSVP page. */
+  rsvpForm: (eventId: string | null) =>
+    [...brandFormKeys.all, 'rsvp-form', eventId ?? 'none'] as const,
+  /** The signed-in guest's forms still waiting for an answer. */
+  myPending: (userId: string | null) =>
+    [...brandFormKeys.all, 'my-pending', userId ?? 'none'] as const,
+  /**
+   * #4541 R2.4 — the form screen's read. `scope` is `"link"` for a personal
+   * link (the token itself never appears in a key) or
+   * `${eventId|campaignId|"none"}:${as|"user"}:${sid|"self"}`.
+   */
+  screen: (formId: string, scope: string) =>
+    [...brandFormKeys.all, 'screen', formId, scope] as const,
+  /** #4541 R2.10 — the checkout block's read for one event. */
+  checkout: (eventId: string) =>
+    [...brandFormKeys.all, 'checkout', eventId] as const,
 };
 
 // Issue #4261 — plans in chats (chat plans and deck matches share one entity).

@@ -102,7 +102,8 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
     ? { url: artifact.brand.logo.url, width: artifact.brand.logo.width, height: artifact.brand.logo.height }
     : null;
   const siteName = headerWordmark(artifact) ?? artifact.brand.display_name;
-  const headerVariant = artifact.navigation.header_variant ?? compositionHeader(design) ?? "glass";
+  // #4575: the full-screen cover always draws Grid's black bar (only Grid can carry the option).
+  const headerVariant = artifact.design.options?.cover === "full" ? "grid-bar" : (artifact.navigation.header_variant ?? compositionHeader(design) ?? "glass");
   const footerVariant = artifact.footer.footer_variant ?? compositionFooter(design) ?? "giant";
   const motion = motionAttributes(design, artifact.tokens.motion, saveData === true);
   let content: React.ReactNode = null;
@@ -131,6 +132,8 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
       id="mg-scope"
       className={`mg-scope mg-page mg-page--${design.key}`}
       data-mg-look="gallery"
+      data-mg-cover={artifact.design.options?.cover}
+      data-mg-photos={artifact.design.options?.photos}
       data-motion={motion["data-motion"]}
       data-mg-profile={motion["data-mg-profile"]}
       style={motion.style}

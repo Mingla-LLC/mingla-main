@@ -45,7 +45,6 @@ import {
   type PublicEventProps,
   type ResolvedTheme,
   type RsvpOfferingConfig,
-  type RsvpGuestContact,
   type RsvpSubmitResult,
   type ChipInResult,
   type RsvpPhoneFieldRenderer,
@@ -129,8 +128,16 @@ export interface FoundationRsvpPreviewProps {
     guestPhone: string;
     guestPhoneCountryIso?: string | null;
     plusCount: number;
-    guests: RsvpGuestContact[];
+    /** issue #4508 — number-only guests. */
+    guests: import("@mingla/offering-rendering").RsvpGuestPayload[];
   }) => Promise<RsvpSubmitResult>;
+  /** issue #4508 1.2a — the live guest-number lookup (buyer web; signed out sees yes/no only). */
+  guestLookup?: import("@mingla/offering-rendering").RsvpGuestLookup;
+  /** issue #4508 T1 — "Get the app" on the signed-out "Bring someone" card. */
+  onGetApp?: () => void;
+  /** issue #4508 1.15 — copy / share for "Send it yourself too". */
+  onCopyText?: (text: string) => void | Promise<void>;
+  onShareText?: (text: string) => void | Promise<void>;
   // ORCH-1291 [rsvp-chip-in] — voluntary-gift hand-off passthrough. The buyer-web
   // caller wires submitRsvpContribution (surface 'web'/'mobile-web' → hosted
   // Checkout / Paystack redirect); the business in-app preview may pass a
@@ -144,6 +151,11 @@ export interface FoundationRsvpPreviewProps {
   onDownloadPass?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onDownloadPass"];
   onOpenClaim?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onOpenClaim"];
   renderClaimBody?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["renderClaimBody"];
+  questionsNode?: React.ReactNode;
+  questionsRequired?: boolean;
+  questionsReady?: boolean;
+  /** #4541 R1.3 — the "After they RSVP" hand-off block for the success popup (a node, or a function given the popup's close). */
+  formHandoff?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["formHandoff"];
   contentBottomInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
@@ -186,6 +198,10 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     onCopyAddress,
     staticMapUrl = null,
     onSubmit,
+    guestLookup,
+    onGetApp,
+    onCopyText,
+    onShareText,
     onChipIn,
     contributionState,
     renderPhoneField,
@@ -193,6 +209,10 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     onDownloadPass,
     onOpenClaim,
     renderClaimBody,
+    questionsNode,
+    questionsRequired,
+    questionsReady,
+    formHandoff,
     contentBottomInset = 96,
     onScroll: onScrollProp,
     onScrollViewLayout,
@@ -286,6 +306,10 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     replyIdentity,
     recoveryNotice,
     onSubmit,
+    guestLookup,
+    onGetApp,
+    onCopyText,
+    onShareText,
     onChipIn,
     contributionState,
     renderPhoneField,
@@ -294,6 +318,10 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     passPresentation: "claim",
     onOpenClaim,
     renderClaimBody,
+    questionsNode,
+    questionsRequired,
+    questionsReady,
+    formHandoff,
     onOpenBrand,
     onOpenMaps,
     onCopyAddress,

@@ -6,7 +6,7 @@
  * switch for this brand.
  */
 import React from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { color, composerSheetMinHeight, radius, space, type } from "../../constants/designSystem";
 
@@ -38,6 +38,11 @@ export interface PushComposeCardProps {
   autoFillLabel?: string | null;
   /** #4273 — the notification's title (the email subject). Absent shows the brand. */
   title?: string | null;
+  /**
+   * #4541 R4.2 — "+ Form" under the body (a static button that only calls
+   * back). Absent: no button.
+   */
+  onAddForm?: () => void;
 }
 
 export function PushPreview({ body, brandName, reason, title, rendered }: {
@@ -84,6 +89,7 @@ export const PushComposeCard: React.FC<PushComposeCardProps> = ({
   unavailableReason,
   autoFillLabel,
   title,
+  onAddForm,
 }) => {
   const remaining = PUSH_BODY_MAX - body.length;
   return (
@@ -107,6 +113,18 @@ export const PushComposeCard: React.FC<PushComposeCardProps> = ({
         accessibilityLabel="Push message"
         style={styles.input}
       />
+      {onAddForm !== undefined ? (
+        <Pressable
+          onPress={onAddForm}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel="Add a form"
+          style={({ pressed }) => [styles.addForm, pressed ? styles.addFormPressed : null]}
+          testID="push-add-form"
+        >
+          <Text style={styles.addFormLabel}>+ Form</Text>
+        </Pressable>
+      ) : null}
       <PushPreview body={body} brandName={brandName} reason={reason} title={title} />
       <Text style={styles.note}>
         {unavailableReason ??
@@ -152,4 +170,15 @@ const styles = StyleSheet.create({
   previewTitle: { color: color.text1, fontSize: 14, fontWeight: "800" },
   previewBody: { color: color.text2, fontSize: 13, lineHeight: 18 },
   note: { color: color.text3, fontSize: 12, lineHeight: 16 },
+  addForm: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: space[3],
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: color.line,
+  },
+  addFormPressed: { opacity: 0.72 },
+  addFormLabel: { ...type.btnSm, color: color.text1 },
 });

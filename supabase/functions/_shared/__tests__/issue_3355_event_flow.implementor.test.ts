@@ -532,7 +532,7 @@ Deno.test("P7 Script A: the owner's words become one create proposal with only t
   assertMatch(next.text, /unpublished draft.*Nobody can see it until you publish/);
   assertNotMatch(next.text, /private/i);
   assertEquals(next.artefact.step_key, "event_publish_ready");
-  assertMatch(next.artefact.text, /party type, a short description, tickets/);
+  assertMatch(next.artefact.text, /event type, a short description, tickets/);
   assertEquals(
     next.artefact.options.map((option) => option.id).slice(0, 2),
     ["yes", "not_now"],
@@ -672,7 +672,7 @@ Deno.test("P7 Script B: a paid ticket is saved on the draft with a heads-up; pub
     row.draft.clientRevision = 1;
   });
   assert(kind.kind === "artefact");
-  assertMatch(kind.text, /party type and description are on the draft/);
+  assertMatch(kind.text, /event type and description are on the draft/);
   assertEquals(kind.artefact.step_key, "event_ticket_kind");
 
   // "Paid" brings the money card first: it can wait (decision 3).

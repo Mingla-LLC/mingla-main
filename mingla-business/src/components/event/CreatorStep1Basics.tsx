@@ -43,6 +43,7 @@ import {
 import type { DraftEventFormat } from "../../store/draftEventStore";
 import {
   PARTY_TYPES,
+  PARTY_TYPE_GROUPS,
   VIBE_TAGS,
   MUSIC_GENRES,
 } from "../../constants/eventTaxonomy";
@@ -287,25 +288,42 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
         </View>
       </View>
 
-      {/* Party Type — required, multi-select (#4490 07-A: optional at a venue) */}
+      {/* Event type (#4572 item 6, was "Party Type") — required, multi-select,
+          26 choices in two headed groups (#4490 07-A: optional at a venue). */}
       <View style={styles.field} onLayout={rememberSectionY("partyTypes")}>
-        <Text style={styles.fieldLabel}>{atVenue ? "Party Type" : "Party Type *"}</Text>
-        {atVenue ? (
-          <Text style={styles.fieldHint}>Optional for an event at your venue.</Text>
-        ) : null}
-        <View style={styles.taxonomyGrid}>
-          {PARTY_TYPES.map((opt) => (
-            <TaxonomyPill
-              key={opt.slug}
-              slug={opt.slug}
-              label={opt.label}
-              selected={draft.partyTypes.includes(opt.slug)}
-              onToggle={handleTogglePartyType}
-            />
-          ))}
+        <View style={styles.fieldLabelRow}>
+          <Text style={styles.fieldLabel}>{atVenue ? "Event type" : "Event type *"}</Text>
+          {draft.partyTypes.length > 0 ? (
+            <Text style={styles.fieldCount}>
+              {draft.partyTypes.length} picked
+            </Text>
+          ) : null}
         </View>
-        {/* #4490 fix 2 (N81 e) — events are filed under a party type; a class,
-            workshop or tour is an experience (its own creator, no party type). */}
+        <Text style={styles.fieldHint}>
+          {atVenue ? "Optional for an event at your venue. Pick all that fit." : "Pick all that fit."}
+        </Text>
+        {PARTY_TYPE_GROUPS.map((group) => (
+          <View key={group.id} style={styles.taxonomyGroup}>
+            <Text style={styles.taxonomyGroupLabel}>{group.label}</Text>
+            <View
+              style={styles.taxonomyGrid}
+              accessibilityRole="list"
+              accessibilityLabel={group.label}
+            >
+              {PARTY_TYPES.filter((opt) => opt.group === group.id).map((opt) => (
+                <TaxonomyPill
+                  key={opt.slug}
+                  slug={opt.slug}
+                  label={opt.label}
+                  selected={draft.partyTypes.includes(opt.slug)}
+                  onToggle={handleTogglePartyType}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
+        {/* #4490 fix 2 (N81 e) — events are filed under an event type; a class,
+            workshop or tour is an experience (its own creator, no event type). */}
         <Text style={styles.fieldHint}>
           Running a class, workshop or tour? Make it an experience instead: Create › Experience, or
           &quot;Add an experience here&quot; inside your venue.
@@ -482,6 +500,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: space[1],
+  },
+  // #4572 item 6 — Event type label row, hint and group headings.
+  fieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  fieldCount: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginBottom: space[1],
+  },
+  fieldHint: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginBottom: space[2],
+  },
+  taxonomyGroup: {
+    marginBottom: space[3],
+  },
+  taxonomyGroupLabel: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: color.text3,
+    marginBottom: space[2],
   },
   taxonomyPill: {
     flexDirection: "row",

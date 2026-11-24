@@ -56,8 +56,8 @@ BEGIN
 END
 $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards DEFERRED;
 create temp table t3980w4r2_conn on commit drop as
 select format('host=127.0.0.1 port=%s dbname=%s user=%s password=%s', current_setting('port'), current_database(), current_user, :'w4r2_pw') as conn;
 

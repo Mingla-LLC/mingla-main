@@ -36,6 +36,8 @@ jest.mock("../../../hooks/useResponsiveLayout", () => ({
 jest.mock("../escapeLayerStack", () => ({ useEscapeLayer: () => undefined }));
 // TEST-MOD-APPROVED #4490 D6 — the desktop Sheet now mounts an overlay ToastHost
 // (toasts draw above the sheet); its reanimated Toast is not needed here.
+// #4508 T4: the desktop card now mounts its own ToastHost (above the card);
+// this suite isolates the card, so the toast layer (reanimated) is stubbed.
 jest.mock("../ToastHost", () => ({ ToastHost: () => null }));
 jest.mock("../SheetMobile", () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports

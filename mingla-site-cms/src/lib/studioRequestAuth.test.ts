@@ -191,8 +191,6 @@ describe("#2830 live Studio request authority", () => {
     };
 
     for (const name of [
-      "state",
-      "detected_mime",
       "bytes",
       "width",
       "height",
@@ -211,6 +209,17 @@ describe("#2830 live Studio request authority", () => {
       expect(read!({ req: ordinary }), `${name} ordinary tenant read`).toBe(false);
       expect(read!({ req: granted }), `${name} media-grant read`).toBe(true);
       expect(read!({ req: signedCore }), `${name} signed-Core read`).toBe(true);
+    }
+    // #4572 item 16 — the fields Studio's pickers filter on are readable by a
+    // site member, and still written only by Mingla's own system.
+    for (const name of ["state", "detected_mime", "kind"]) {
+      const access = fields.find((field) => field.name === name)?.access as
+        | { read?: (args: { req: unknown }) => unknown; create?: (args: { req: unknown }) => unknown; update?: (args: { req: unknown }) => unknown }
+        | undefined;
+      expect(access?.read?.({ req: ordinary }), `${name} ordinary tenant read`).toBe(true);
+      expect(access?.create?.({ req: ordinary }), `${name} ordinary tenant create`).toBe(false);
+      expect(access?.update?.({ req: ordinary }), `${name} ordinary tenant update`).toBe(false);
+      expect(access?.update?.({ req: granted }), `${name} media-grant update`).toBe(true);
     }
   });
 

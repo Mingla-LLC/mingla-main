@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/marketing-send/issue_4541_blast_form_unsubscribe.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4541-blast-form-unsubscribe",
+  "profile": "deno-2-unit"
+}

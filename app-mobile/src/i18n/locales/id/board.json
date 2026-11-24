@@ -29,7 +29,8 @@
     "deleteFailed": "Penghapusan gagal", "deleteFailedMsg": "Tidak dapat menghapus sesi ini.",
     "permissionDeleteBoard": "Hanya pembuat sesi atau admin yang dapat menghapus sesi ini.",
     "deleteSessionTitle": "Hapus Sesi", "deleteSessionMsg": "Yakin ingin menghapus \"{{name}}\"? Tindakan ini tidak dapat dibatalkan dan semua kartu, suara, dan diskusi akan dihapus secara permanen.",
-    "leaveSessionTitle": "Tinggalkan Papan", "leaveSessionMsg": "Yakin ingin meninggalkan \"{{name}}\"?", "namePlaceholder": "Masukkan nama sesi"
+    "leaveSessionTitle": "Tinggalkan Papan", "leaveSessionMsg": "Yakin ingin meninggalkan \"{{name}}\"?", "namePlaceholder": "Masukkan nama sesi",
+    "sessionShareMessage": "Aku menambahkanmu ke \"{{name}}\" di Mingla. Gabung di sini: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Diskusi", "cardDiscussion": "Diskusi Kartu", "errorLoadMsg": "Gagal memuat pesan",

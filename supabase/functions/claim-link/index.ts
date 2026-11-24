@@ -27,6 +27,7 @@ import {
   startVerification,
 } from "../_shared/twilioVerify.ts";
 import { runPurchaseClaimSweep } from "../_shared/purchaseClaimSweep.ts";
+import { buildRsvpGuestOneLink } from "../_shared/friendInviteLink.ts";
 
 export {
   contactCodeHash,
@@ -99,6 +100,15 @@ export interface ClaimLinkDeps {
     | { ok: true; approved: boolean }
     | { ok: false; error: "expired" | "unavailable" | "invalid" }
   >;
+  // #4508 1.18 — tell the inviter, in-app, that their guest said "This isn't
+  // me". Optional so older callers keep compiling; best-effort.
+  notifyGuestReleased?(input: {
+    inviterUserId: string;
+    eventId: string;
+    eventTitle: string | null;
+    phoneLast4: string | null;
+    code: string;
+  }): Promise<void>;
 }
 
 // Countries the SMS code path serves; the same list claim-contact accepts.
@@ -156,6 +166,20 @@ export function parseClaimLinkBody(
   value: unknown,
 ): Record<string, unknown> | null {
   if (!isObject(value) || typeof value.op !== "string") return null;
+  // #4508 — the RSVP guest link: resolve, "This isn't me", claim.
+  if (value.op === "rsvp_guest_resolve" || value.op === "rsvp_guest_release") {
+    return only(value, ["op", "code"]) && typeof value.code === "string"
+      ? value
+      : null;
+  }
+  if (value.op === "rsvp_guest_claim") {
+    return only(value, ["op", "code", "name"]) &&
+        typeof value.code === "string" &&
+        (value.name === undefined || value.name === null ||
+          (typeof value.name === "string" && value.name.trim().length <= 120))
+      ? value
+      : null;
+  }
   if (["resolve", "handoff", "prefill", "email_code_send"].includes(value.op)) {
     return only(value, ["op", "code"]) && typeof value.code === "string"
       ? value
@@ -448,6 +472,117 @@ async function contactProof(
   return await sweepFor(req, deps, userId);
 }
 
+// #4508 1.16-1.20 — the RSVP guest link. The code is the guest's claim link
+// (subject rsvp_guest): it identifies the guest for display, never grants the
+// pass. Claiming needs an account that has proved the invited number; a code
+// proved for another number is refused (phone_unproved).
+async function rsvpGuestLink(
+  req: Request,
+  deps: ClaimLinkDeps,
+  op: string,
+  body: Record<string, unknown>,
+  code: string,
+  ipHash: string,
+): Promise<Response> {
+  if (op === "rsvp_guest_resolve") {
+    const limitedResponse = gateResponse(
+      req,
+      await limited(deps, `cl_rsvp_guest_resolve:${ipHash}`, 30),
+    );
+    if (limitedResponse) return limitedResponse;
+    const viewer = await deps.userId(req);
+    const { data, error } = await deps.rpc("rsvp_guest_resolve", {
+      p_code: code,
+      p_viewer: viewer,
+    });
+    if (error) return json(req, { ok: false, error: "unavailable" }, 503);
+    const result = objectResult(data);
+    return json(req, {
+      ok: true,
+      ...result,
+      ...(result.status !== "not_found" && result.status !== "released"
+        ? {
+          appLink: {
+            oneLink: buildRsvpGuestOneLink({ code }),
+            appScheme: `com.mingla.app.v2://c/${code}`,
+          },
+        }
+        : {}),
+    });
+  }
+
+  if (op === "rsvp_guest_release") {
+    const limitedResponse = gateResponse(
+      req,
+      await limited(deps, `cl_rsvp_guest_release:${ipHash}`, 5),
+    );
+    if (limitedResponse) return limitedResponse;
+    const { data, error } = await deps.rpc("rsvp_guest_release", {
+      p_code: code,
+    });
+    if (error) return json(req, { ok: false, error: "unavailable" }, 503);
+    const result = objectResult(data);
+    if (
+      result.outcome === "released" &&
+      typeof result.inviterUserId === "string" &&
+      typeof result.eventId === "string" && deps.notifyGuestReleased
+    ) {
+      try {
+        await deps.notifyGuestReleased({
+          inviterUserId: result.inviterUserId,
+          eventId: result.eventId,
+          eventTitle: typeof result.eventTitle === "string"
+            ? result.eventTitle
+            : null,
+          phoneLast4: typeof result.phoneLast4 === "string"
+            ? result.phoneLast4
+            : null,
+          code,
+        });
+      } catch (err) {
+        // The release is committed; only the courtesy note failed.
+        console.error(
+          "[claim-link] rsvp guest release note failed",
+          err instanceof Error ? err.message : "unknown",
+        );
+      }
+    }
+    return json(req, {
+      ok: result.outcome === "released" || result.outcome === "already_released",
+      outcome: result.outcome ?? "not_found",
+    });
+  }
+
+  const userId = await deps.userId(req);
+  if (userId === null) {
+    return json(req, { ok: false, error: "unauthorized" }, 401);
+  }
+  const limitedResponse = gateResponse(
+    req,
+    await limited(deps, `cl_rsvp_guest_claim:${userId}`, 10),
+  );
+  if (limitedResponse) return limitedResponse;
+  const name = typeof body.name === "string" && body.name.trim().length > 0
+    ? body.name.trim()
+    : null;
+  const { data, error } = await deps.rpc("rsvp_guest_claim", {
+    p_user_id: userId,
+    p_code: code,
+    p_name: name,
+  });
+  if (error) {
+    return (error.message ?? "").includes("conflict_rsvp_guest_claim")
+      ? json(req, { ok: false, error: "conflict" }, 409)
+      : json(req, { ok: false, error: "unavailable" }, 503);
+  }
+  const result = objectResult(data);
+  return json(req, {
+    ...result,
+    ok: result.outcome === "claimed" || result.outcome === "already_claimed",
+    outcome: result.outcome ?? "not_found",
+  });
+}
+
 export function createClaimLinkHandler(
   deps: ClaimLinkDeps,
 ): (req: Request) => Promise<Response> {
@@ -479,7 +614,7 @@ export function createClaimLinkHandler(
     const verifyOp = op === "email_code_verify" ||
       op === "contact_code_verify";
     const code = verifyOp ? null : codeValue(body);
-    if (code === null && op === "resolve") {
+    if (code === null && (op === "resolve" || op === "rsvp_guest_resolve")) {
       return json(req, { ok: true, status: "not_found" });
     }
     if (code === null && !verifyOp) {
@@ -516,6 +651,13 @@ export function createClaimLinkHandler(
         return json(req, { ...response, appLink: appLink(code, result.noun) });
       }
       return json(req, response);
+    }
+
+    if (
+      op === "rsvp_guest_resolve" || op === "rsvp_guest_release" ||
+      op === "rsvp_guest_claim"
+    ) {
+      return await rsvpGuestLink(req, deps, op, body, code as string, ipHash);
     }
 
     if (op === "handoff") {
@@ -719,6 +861,26 @@ function productionDeps(): ClaimLinkDeps {
         email_confirm: true,
       });
       return error === null;
+    },
+    notifyGuestReleased: async (input) => {
+      const { error } = await admin().functions.invoke("notify-dispatch", {
+        body: {
+          userId: input.inviterUserId,
+          type: "rsvp_guest_released",
+          title: "Your guest's spot is free",
+          body: `The number ending ${
+            input.phoneLast4 ?? "...."
+          } said it isn't them${
+            input.eventTitle ? ` for ${input.eventTitle}` : ""
+          }. We won't text it again.`,
+          data: { eventId: input.eventId },
+          relatedId: input.eventId,
+          relatedType: "event",
+          skipPush: true,
+          idempotencyKey: `rsvp_guest_released:${input.code}`,
+        },
+      });
+      if (error) throw new Error(error.message);
     },
     magicLinkToken: async (email) => {
       const { data, error } = await admin().auth.admin.generateLink({

@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Ba a iya cirewa ba. Sake gwadawa.",
   "brand_guests_leave_title": "Barin Baƙin {{brand}}?",
   "brand_guests_leave_body": "Sabbin rajista ba za su sake saka ka ba. Kana iya sake shiga daga rajistarka.",
-  "brand_guests_left_toast": "Ka bar Baƙin {{brand}}. Kana iya sake shiga daga rajistarka."
+  "brand_guests_left_toast": "Ka bar Baƙin {{brand}}. Kana iya sake shiga daga rajistarka.",
+  "af_send_yourself_title": "Send it yourself too",
+  "af_send_yourself_body": "A message from you lands best. Same link as our text.",
+  "af_copy_message": "Copy message",
+  "af_message_copied": "Message copied"
 }

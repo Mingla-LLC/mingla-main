@@ -300,6 +300,7 @@ interface Reading {
   readonly offset: number;
   readonly paddingBottom: number;
   readonly composerStyle: Record<string, unknown>;
+  readonly composerTestID: unknown;
 }
 
 /**
@@ -337,6 +338,14 @@ function measure(id: string, os: string, version: number | string, keyboardHeigh
     const { GroupChatPanel } = require("../GroupChatPanel") as {
       GroupChatPanel: React.ComponentType<{ eventId: string }>;
     };
+    // [TEST-MOD-APPROVED #4420] the panel reads the Messages words and helpers
+    // loaded on intent (ensureMessagesEnglish, handed over by the lazy loader). Load them into THIS isolated registry the
+    // same way, so the composer mounts as real users see it.
+    const messagesEnglish = require("../../../i18n/brandMessagesEnglish") as {
+      addMessagesEnglish: () => void;
+    };
+    messagesEnglish.addMessagesEnglish();
+    (require("../GroupChatPanel") as { setMessagesSupport: (m: unknown) => void }).setMessagesSupport(messagesEnglish);
     /* eslint-enable @typescript-eslint/no-require-imports */
 
     let tree: { root: HostNode; unmount: () => void } | null = null;
@@ -347,7 +356,17 @@ function measure(id: string, os: string, version: number | string, keyboardHeigh
     const root = (tree as { root: HostNode }).root;
 
     const kav = findWhere(root, (n) => n.props.testID === "gc-kav", 'the composer\'s KeyboardAvoidingView (testID "gc-kav")');
-    const input = findWhere(root, (n) => n.props.placeholder === "Write a reply", 'the reply TextInput (placeholder "Write a reply")');
+    // [TEST-MOD-APPROVED #4420] the Guest composer's placeholder names the audience
+    // ("Message guests as <brand>" / "Broadcast as <brand>"); it is located by its
+    // testID, and the placeholder must be the real i18n string, never a raw key.
+    const input = findWhere(
+      root,
+      (n) => n.props.testID === "brand-guests-input" && typeof n.props.placeholder === "string",
+      'the Guest reply TextInput (testID "brand-guests-input")',
+    );
+    if (!/^(Message guests as|Broadcast as) /.test(input.props.placeholder as string)) {
+      throw new Error(`[#1890 C-5] reply field placeholder is "${String(input.props.placeholder)}", not the Guest composer's words.`);
+    }
     const row = findComposerRow(input);
     const style = flatten(row.props.style);
 
@@ -362,6 +381,7 @@ function measure(id: string, os: string, version: number | string, keyboardHeigh
       offset: kav.props.keyboardVerticalOffset as number,
       paddingBottom: style.paddingBottom as number,
       composerStyle: style,
+      composerTestID: row.props.testID,
     };
 
     TR.act(() => {
@@ -405,10 +425,14 @@ describe("#1890 C-5 — group-chat composer keyboard clearance", () => {
       }
       // The located node must be the composer ROW, not SafeScreen's host (whose
       // paddingBottom is a numeric 0 and would satisfy a naive search).
-      if (b.composerStyle.flexDirection !== "row") {
+      // [TEST-MOD-APPROVED #4420] the redesigned composer is a column (audience
+      // chip row above the field row), so "flexDirection row" no longer
+      // identifies it. Identity is proven by its own testID instead, which
+      // SafeScreen's host (numeric paddingBottom 0) does not carry.
+      if (b.composerTestID !== "brand-guests-composer") {
         throw new Error(
-          `[#1890 C-5] branch ${b.id} located a node with flexDirection=${String(b.composerStyle.flexDirection)}. ` +
-            "The composer row is the only node whose paddingBottom stands between the controls and " +
+          `[#1890 C-5] branch ${b.id} located a node with testID=${String(b.composerTestID)}. ` +
+            "The Guest composer container is the only node whose paddingBottom stands between the controls and " +
             "the container's bottom edge; reading any other node measures nothing.",
         );
       }

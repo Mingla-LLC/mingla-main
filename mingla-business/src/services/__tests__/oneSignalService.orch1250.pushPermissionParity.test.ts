@@ -1,24 +1,20 @@
-// ORCH-1250 [business push-permission parity] — IMPLEMENTOR happy-path regression.
+// ORCH-1250 [business push-permission parity] — IMPLEMENTOR happy-path
+// regression, REWRITTEN by #4549 S4.
 //
-// BUG: the business app launch In-App Message ("Open Settings / notifications
-// off") mis-fires on a device where iOS notifications are actually ON, because
-// the business oneSignalService was ~24 days behind consumer and never received
-// ORCH-1243 (syncPushPermissionTag → tag TRUE OS permission) or ORCH-1244
-// (requestPermission fallbackToSettings true→false).
+// ORCH-1250 mirrored the OS permission into the account-wide OneSignal tag
+// `push_os_permission` from every phone. #4549 proved nothing sends, segments
+// or shows an in-app message on it in the Host app, and that its value was
+// "whatever the last phone saw" for accounts with several phones. S4 stops
+// writing it and removes it once per install. The ORCH-1244 half of ORCH-1250
+// (requestPermission with fallbackToSettings = false) is unchanged and still
+// pinned here.
 //
-// This test EXECUTES the real business oneSignalService against a mocked
-// `react-native-onesignal` boundary and asserts:
-//   1. syncPushPermissionTag writes push_os_permission='granted' when the OS
-//      reports permission granted (getPermissionAsync → true).
-//   2. requestPushPermission calls the SDK with fallbackToSettings = FALSE
-//      (the ORCH-1244 parity argument the consumer uses).
-//   3. init seeds the tag; login refreshes it; the request refreshes it.
-//
-// FAILS-ON-REVERT (recorded in the PR / return):
-//   - remove `OneSignal.User.addTag('push_os_permission', ...)` → tag assertions
-//     see zero writes → FAIL.
-//   - flip requestPermission(false) back to requestPermission(true) → the
-//     fallbackToSettings assertion (arg === false) FAILS.
+// FAILS-ON-REVERT:
+//   - restore any addTag('push_os_permission', ...) → the never-written
+//     assertions FAIL.
+//   - delete the removeTag call or its once-per-install flag → the removal
+//     assertions FAIL.
+//   - flip requestPermission(false) to requestPermission(true) → FAIL.
 
 // The service reads EXPO_PUBLIC_ONESIGNAL_APP_ID at module load and only wires
 // the native module when it is present + Platform.OS !== 'web'. testEnvironment
@@ -36,8 +32,21 @@ jest.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
 // ── Controllable mock of the OneSignal boundary ──────────────────────────────
 const tagCalls: Array<[string, string]> = [];
+const removeTagCalls: string[] = [];
 const requestPermissionCalls: unknown[] = [];
 let permissionGranted = true;
+
+// In-memory AsyncStorage that survives module reloads (one install).
+const storage = new Map<string, string>();
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: {
+    getItem: async (k: string) => storage.get(k) ?? null,
+    setItem: async (k: string, v: string) => {
+      storage.set(k, v);
+    },
+  },
+}));
 
 jest.mock("react-native-onesignal", () => ({
   LogLevel: { Verbose: 0, Warn: 4 },
@@ -49,6 +58,9 @@ jest.mock("react-native-onesignal", () => ({
     User: {
       addTag: (k: string, v: string) => {
         tagCalls.push([k, v]);
+      },
+      removeTag: (k: string) => {
+        removeTagCalls.push(k);
       },
       pushSubscription: { optIn: async () => {} },
     },
@@ -72,6 +84,7 @@ const TAG_KEY = "push_os_permission";
 function loadService(): typeof import("../oneSignalService") {
   jest.resetModules();
   tagCalls.length = 0;
+  removeTagCalls.length = 0;
   requestPermissionCalls.length = 0;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   return require("../oneSignalService");
@@ -80,25 +93,44 @@ function loadService(): typeof import("../oneSignalService") {
 const flush = (): Promise<void> =>
   new Promise((r) => setImmediate(r));
 
-describe("ORCH-1250 push-permission parity (happy path)", () => {
+describe("ORCH-1250 push-permission parity, after #4549 S4 (happy path)", () => {
   beforeEach(() => {
     permissionGranted = true;
+    storage.clear();
   });
 
-  test("granted OS permission → addTag(push_os_permission, 'granted')", async () => {
-    const svc = loadService();
-    svc.initializeOneSignal();
-    await flush(); // let the init seed fire-and-forget settle
-    tagCalls.length = 0; // isolate the explicit call below
-    await svc.syncPushPermissionTag();
-    expect(tagCalls).toEqual([[TAG_KEY, "granted"]]);
-  });
-
-  test("initializeOneSignal seeds the OS-permission tag at startup", async () => {
+  test("initializeOneSignal never writes push_os_permission and removes it once", async () => {
     const svc = loadService();
     svc.initializeOneSignal();
     await flush();
-    expect(tagCalls).toEqual([[TAG_KEY, "granted"]]);
+    expect(tagCalls).toEqual([]);
+    expect(removeTagCalls).toEqual([TAG_KEY]);
+    expect(storage.get("mingla-business.pushPermissionTagRemoved.v1")).toBe("1");
+  });
+
+  test("the removal runs once per install, not once per launch", async () => {
+    const first = loadService();
+    first.initializeOneSignal();
+    await flush();
+    const second = loadService(); // next launch, same install
+    second.initializeOneSignal();
+    await flush();
+    expect(removeTagCalls).toEqual([]);
+  });
+
+  test("login and the permission request never write the tag", async () => {
+    const svc = loadService();
+    svc.initializeOneSignal();
+    await flush();
+    svc.loginToOneSignal("user-123");
+    await svc.requestPushPermission();
+    await flush();
+    expect(tagCalls).toEqual([]);
+  });
+
+  test("syncPushPermissionTag no longer exists", () => {
+    const svc = loadService();
+    expect("syncPushPermissionTag" in svc).toBe(false);
   });
 
   test("requestPushPermission passes fallbackToSettings = FALSE (ORCH-1244 parity)", async () => {
@@ -106,35 +138,12 @@ describe("ORCH-1250 push-permission parity (happy path)", () => {
     svc.initializeOneSignal();
     await flush();
     await svc.requestPushPermission();
-    // The parity contract: the native dialog is requested with fallbackToSettings
-    // === false, so a prior decliner is NEVER steered into iOS Settings — the
-    // root of the false "Open Settings / notifications off" popup.
     expect(requestPermissionCalls).toEqual([false]);
   });
 
-  test("requestPushPermission refreshes the tag after the OS dialog", async () => {
-    const svc = loadService();
-    svc.initializeOneSignal();
+  test("NOT initialized → nothing is removed (self-guard)", async () => {
+    loadService();
     await flush();
-    tagCalls.length = 0;
-    await svc.requestPushPermission();
-    expect(tagCalls).toContainEqual([TAG_KEY, "granted"]);
-  });
-
-  test("loginToOneSignal refreshes the OS-permission tag", async () => {
-    const svc = loadService();
-    svc.initializeOneSignal();
-    await flush();
-    tagCalls.length = 0;
-    svc.loginToOneSignal("user-123");
-    await flush(); // login fires syncPushPermissionTag fire-and-forget
-    expect(tagCalls).toContainEqual([TAG_KEY, "granted"]);
-  });
-
-  test("NOT initialized → syncPushPermissionTag is a no-op (self-guard)", async () => {
-    const svc = loadService();
-    // Deliberately DO NOT call initializeOneSignal(): _initialized stays false.
-    await svc.syncPushPermissionTag();
-    expect(tagCalls.length).toBe(0);
+    expect(removeTagCalls).toEqual([]);
   });
 });

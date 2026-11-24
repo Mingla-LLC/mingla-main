@@ -19,6 +19,7 @@ import QRCode from "react-native-qrcode-svg";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { DoorModeModal } from "./DoorModeModal";
+import { GuestPackCard } from "./GuestPackCard";
 import { PURCHASE_SHEET_COLORS as C } from "./purchaseSheetTheme";
 import type { PurchaseTicket } from "../../services/purchasesService";
 import {
@@ -26,6 +27,10 @@ import {
   sharedPresentableTickets,
   type SharedPurchase,
 } from "../../services/sharedPurchasesService";
+import {
+  isOrderGuestPackEligible,
+  isRsvpGuestPackEligible,
+} from "../../utils/guestPackDisplay";
 import {
   purchaseKindLabel,
   purchaseStatusLabel,
@@ -277,6 +282,28 @@ export function SharedPurchaseDetail({
           <DetailRow label={t("shared.mode")} value={purchaseStatusLabel(purchase.mode)} />
         ) : null}
       </View>
+
+      {/* #4548 — the host's Guest pack, below the venue (Where) block. */}
+      {purchase.kind === "order" || purchase.kind === "rsvp" || purchase.kind === "rsvp_guest" ? (
+        <GuestPackCard
+          audience={purchase.kind === "order" ? "ticket" : "rsvp"}
+          bookedAtIso={purchase.createdAt}
+          endsAtIso={purchase.endsAt}
+          eventId={purchase.eventId}
+          eligible={
+            purchase.kind === "order"
+              ? isOrderGuestPackEligible({
+                  paymentStatus: purchase.paymentStatus,
+                  cancelledAt: purchase.cancelledAt,
+                })
+              : isRsvpGuestPackEligible({
+                  status: purchase.rsvpStatus,
+                  approvalStatus: purchase.approvalStatus,
+                })
+          }
+          startsAtIso={purchase.startsAt}
+        />
+      ) : null}
 
       <View style={styles.actions}>
         {canOpenEvent ? (

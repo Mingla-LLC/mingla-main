@@ -76,13 +76,15 @@ import {
   type EventTerminalSource,
   type MapsAppId,
   type MapsOpenTarget,
+  type RsvpBrandFormAnswers,
   nextEventAcquisitionBoundaryDelayMs,
 } from "@mingla/offering-rendering";
+import { carryOverRsvpAnswers, isRsvpFormErrorCode, rsvpFormMissingRequiredIds } from "@mingla/offering-rendering/rsvpBrandForm";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
 // issue #4420 — Add to calendar, only from a real start and end.
-import { offeringCalendarEntry } from "@mingla/offering-rendering/offeringCalendar";
-import { addOfferingToCalendar } from "../../utils/offeringCalendarAction";
+import { offeringCalendarEntry, offeringCalendarLocation } from "@mingla/offering-rendering/offeringCalendar.cjs";
+import { useAddToCalendar } from "./useAddToCalendar";
 import { recordShareDestination } from "../../analytics/shareDestination";
 import {
   captureOfferingCta,
@@ -96,6 +98,9 @@ import {
   EventTicketBox,
   EventAcquisitionNotice,
 } from "@mingla/offering-rendering";
+
+// #4541 — readiness is computed from the page and answers; the renderer's report is not used for gating.
+const noopRsvpMissing = (_ids: string[]): void => {};
 
 const resolveEventAcquisitionState =
   OfferingRendering.resolveEventAcquisitionState ??
@@ -115,7 +120,6 @@ import {
   useBusinessRsvpPhoneField,
 } from "./useBusinessRsvpPhoneField";
 import { SHOW_PRE_PURCHASE_APP_BOX } from "./prePurchaseAppBox";
-import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3) + its entity payload type; analytics ride the buyer-web PostHog facade
 // (captureWeb — postHogService is a deliberate no-op stub on web, I-1187).
@@ -150,10 +154,24 @@ const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 // is the actual complaint in #2135. Measured: inline +1,212 B vs sheet
 // +10,238 B. See MultiDateDayChooser's header for the full rationale.
 const MultiDateDayChooser = React.lazy(() => import("./MultiDateDayChooser"));
+// The ONE import() of the guest forms owner on this page (#4514 bundle rule):
+// both the RSVP questions and the #4541 "After they RSVP" hand-off load from it.
+const loadFormRendering = () => import("../checkout/intake/formRenderingPrimitives");
+const RsvpBrandFormQuestions = React.lazy(() =>
+  loadFormRendering().then((module) => ({
+    default: module.RsvpBrandFormQuestions,
+  })),
+);
+const RsvpFormHandoff = React.lazy(() =>
+  loadFormRendering().then((module) => ({
+    default: module.PurchaseFormHandoff,
+  })),
+);
 import {
   submitPublicRsvp,
   submitRsvpContribution,
 } from "../../services/rsvpEvents";
+import { fetchPublicRsvpBrandForm } from "../../services/publicRsvpBrandForm";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this page is anon-tolerant). Keys from the entity factory.
 import { useQuery } from "@tanstack/react-query";
@@ -164,6 +182,7 @@ import {
 
 import {
   checkoutPublicPathWithSeed,
+  eventCalendarUrl,
   eventOgImageUrl,
   eventPublicPath,
   eventPublicUrl,
@@ -178,6 +197,7 @@ import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
 // into the public event chunk; that shared the Brand page into eager `__common`
 // (+~48KB) via Metro hoist (#3682 / ORCH-1083).
 import { useAuth } from "../../context/AuthContext";
+import { publicRsvpFormKeys } from "../checkout/intake/publicRsvpFormKeys";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
@@ -675,6 +695,63 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [resolvedAcquisitionState, serverAcquisitionOverride],
   );
   const isRsvp = event.event_type === "rsvp";
+  const rsvpBrandFormQuery = useQuery({
+    queryKey: publicRsvpFormKeys.forEvent(event.id),
+    enabled: isRsvp,
+    staleTime: 30_000,
+    queryFn: () => fetchPublicRsvpBrandForm(event.id),
+  });
+  // #4541 R1.3: the read is questions on the page, or an "After they RSVP" notice.
+  const rsvpBrandFormRead = rsvpBrandFormQuery.data ?? null;
+  const rsvpBrandFormPage =
+    rsvpBrandFormRead !== null && rsvpBrandFormRead.mode !== "after_purchase"
+      ? rsvpBrandFormRead
+      : null;
+  const rsvpAfterRsvpNotice =
+    rsvpBrandFormRead !== null && rsvpBrandFormRead.mode === "after_purchase"
+      ? rsvpBrandFormRead.notice
+      : null;
+  // #4541 R1.3: the guest's own form link, returned with a current RSVP.
+  const [rsvpFormHandoff, setRsvpFormHandoff] = useState<
+    { formId: string; token: string } | null
+  >(null);
+  const refetchRsvpBrandForm = rsvpBrandFormQuery.refetch;
+  const [rsvpFormAnswers, setRsvpFormAnswers] = useState<RsvpBrandFormAnswers>({});
+  const rsvpFormSeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    // A different form resets the answers; a new version of the same form
+    // (the host edited it mid-typing) keeps the answers whose question remains.
+    const seen = rsvpFormSeenRef.current;
+    rsvpFormSeenRef.current = rsvpBrandFormPage?.formId ?? null;
+    setRsvpFormAnswers((prev) =>
+      rsvpBrandFormPage === null || seen !== rsvpBrandFormPage.formId
+        ? Object.keys(prev).length === 0
+          ? prev
+          : {}
+        : carryOverRsvpAnswers(prev, rsvpBrandFormPage),
+    );
+  }, [rsvpBrandFormPage?.formId, rsvpBrandFormPage?.versionId]);
+  // `undefined` while the read failed: no capability marker goes to the server,
+  // so it completes the RSVP as "to answer". `null` = read ok, no form.
+  const rsvpFormReadFailed =
+    rsvpBrandFormQuery.isError && rsvpBrandFormQuery.data === undefined;
+  const rsvpFormReadPending = isRsvp && rsvpBrandFormQuery.isPending;
+  const rsvpFormMissing = useMemo(
+    () => rsvpFormMissingRequiredIds(rsvpBrandFormPage, rsvpFormAnswers),
+    [rsvpBrandFormPage, rsvpFormAnswers],
+  );
+  const rsvpBrandFormPayload = useMemo(
+    () => rsvpFormReadFailed
+      ? undefined
+      : rsvpBrandFormPage === null
+        ? null
+        : {
+            formId: rsvpBrandFormPage.formId,
+            versionId: rsvpBrandFormPage.versionId,
+            answers: rsvpFormAnswers,
+          },
+    [rsvpFormReadFailed, rsvpBrandFormPage, rsvpFormAnswers],
+  );
   const engagementScope = useMemo<OfferingEngagementScope>(
     () => ({ brandId: event.brandId, entityType: "event", entityId: event.id }),
     [event.brandId, event.id],
@@ -1438,9 +1515,6 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       onJoinWaitlist: (ticketId: string) => {
         setWaitlistTicketId(ticketId);
       },
-      onRequestApproval: (_ticketId: string) => {
-        showToast(BUYER_CLAIM_COPY.approvalToast);
-      },
       onOpenBrand: (brandSlug: string) => {
         recordShareDestination("view_brand");
         void captureOfferingCta(engagementScope, "view_brand");
@@ -1610,7 +1684,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       guestPhone: string;
       guestPhoneCountryIso?: string | null;
       plusCount: number;
-      guests: Array<{ name: string; email: string; phone: string }>;
+      // issue #4508 — number-only guests.
+      guests: import("@mingla/offering-rendering").RsvpGuestPayload[];
     }): Promise<{
       status: "going" | "not_going" | "waitlisted" | "maybe";
       approvalStatus: "pending" | "approved";
@@ -1619,6 +1694,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       credentials: import("@mingla/offering-rendering").RsvpPassCredential[];
       anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
       claim: { shortUrl: string | null; code: string | null } | null;
+      guests: import("@mingla/offering-rendering").RsvpSubmittedGuest[];
     }> => {
       // ORCH-1291 [rsvp-chip-in] — remember the just-submitted guest contact so an
       // anon web chip-in (a SEPARATE voluntary action AFTER the free RSVP) can
@@ -1635,16 +1711,36 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       if (input.rsvpStatus !== "not_going") {
         void captureOfferingCta(engagementScope, "rsvp");
       }
-      const result = await submitPublicRsvp({
-        eventId: event.id,
-        rsvpStatus: input.rsvpStatus,
-        guestName: input.guestName,
-        guestEmail: input.guestEmail,
-        guestPhone: input.guestPhone,
-        guestPhoneCountryIso: input.guestPhoneCountryIso,
-        plusCount: input.plusCount,
-        guests: input.guests,
-      });
+      let result: Awaited<ReturnType<typeof submitPublicRsvp>>;
+      try {
+        result = await submitPublicRsvp({
+          eventId: event.id,
+          rsvpStatus: input.rsvpStatus,
+          guestName: input.guestName,
+          guestEmail: input.guestEmail,
+          guestPhone: input.guestPhone,
+          guestPhoneCountryIso: input.guestPhoneCountryIso,
+          plusCount: input.plusCount,
+          guests: input.guests,
+          brandForm: rsvpBrandFormPayload,
+        });
+      } catch (error) {
+        // The host changed the form (or the answers were refused): refetch it so
+        // the guest sees the current questions; typed answers whose question
+        // still exists are kept by the version effect above.
+        if (error instanceof Error && isRsvpFormErrorCode(error.message)) {
+          void refetchRsvpBrandForm();
+        }
+        throw error;
+      }
+      // #4541 R1.3: only an approved Going or Maybe is handed the form; a
+      // pending or waitlisted RSVP gets its card once it is approved.
+      setRsvpFormHandoff(
+        result.approvalStatus === "approved" &&
+          (result.status === "going" || result.status === "maybe")
+          ? (result.brandFormHandoff ?? null)
+          : null,
+      );
       captureWeb("rsvp_acknowledgement_viewed", {
         surface: "anonymous_web",
         status: result.status,
@@ -1670,7 +1766,49 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       }
       return result;
     },
-    [engagementScope, event.id, event.currency, event.brandId],
+    [
+      engagementScope,
+      event.id,
+      event.currency,
+      event.brandId,
+      refetchRsvpBrandForm,
+      rsvpBrandFormPayload,
+    ],
+  );
+  // #4541 R1.3 — "After they RSVP": the one-line notice where the questions
+  // would sit, and the hand-off block the success popup draws (a node: the
+  // shared packages import nothing from forms).
+  const rsvpAfterRsvpNoticeNode =
+    rsvpAfterRsvpNotice === null ? null : (
+      <Text
+        style={{ marginTop: 16, color: palette.secondaryText, fontSize: 14 }}
+        testID="issue-4541-rsvp-after-notice"
+      >
+        {rsvpAfterRsvpNotice}
+      </Text>
+    );
+  // #4541 A3 — the popup hands its own close in: "Later" closes the popup.
+  const rsvpFormHandoffNode =
+    rsvpFormHandoff === null
+      ? null
+      : (close: () => void): React.ReactNode => (
+          <React.Suspense fallback={null}>
+            <RsvpFormHandoff
+              handoff={rsvpFormHandoff}
+              strip="rsvp"
+              brandName={brand?.displayName ?? null}
+              onClose={close}
+            />
+          </React.Suspense>
+        );
+  // issue #4508 1.2a / 1.8 — the live match under the guest number field. A
+  // signed-out visitor learns only whether the number is on Mingla.
+  const rsvpGuestLookup = useCallback(
+    (phone: string) =>
+      import("../../services/rsvpGuestLookup").then((m) =>
+        m.lookupPublicRsvpGuest(event.id, phone),
+      ),
+    [event.id],
   );
 
   // ── An anonymous guest's own reply, kept for this browser tab ──
@@ -1850,9 +1988,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             title: event.name,
             startIso: event.masterStartAtUtc ?? null,
             endIso: event.masterEndAtUtc ?? null,
-            location: publicEvent.hideAddressUntilTicket
-              ? publicEvent.venueName
-              : publicEvent.address ?? publicEvent.venueName,
+            location: offeringCalendarLocation({
+              venueName: publicEvent.venueName,
+              address: publicEvent.address,
+              addressHidden: publicEvent.hideAddressUntilTicket,
+            }),
             // Web only, and only when the page really has a location (test
             // windows and some embeds have none): no link rather than a crash.
             url:
@@ -1874,12 +2014,27 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       publicEvent.venueName,
     ],
   );
+  // #4420 — the chooser's "Apple" and "Other calendar" rows open the server's
+  // one-event file (api/event-calendar.js), built from the page's own slugs.
+  const calendarIcsUrl = useMemo((): string | null => {
+    try {
+      return eventCalendarUrl({
+        brandSlug: event.brandSlug,
+        eventSlug: event.eventSlug,
+      });
+    } catch {
+      return null;
+    }
+  }, [event.brandSlug, event.eventSlug]);
+  const handleCalendarLoadError = useCallback((): void => {
+    showToast("Couldn't load calendar options. Check your connection and try again.");
+  }, [showToast]);
+  const { open: openAddToCalendar, chooser: addToCalendarChooser } =
+    useAddToCalendar(calendarEntry, calendarIcsUrl, handleCalendarLoadError);
   const handleAddToCalendar =
     calendarEntry === null
       ? undefined
-      : (): void => {
-          addOfferingToCalendar(calendarEntry, `${event.id}@usemingla.com`);
-        };
+      : openAddToCalendar;
 
   if (isRsvp) {
     return (
@@ -2031,6 +2186,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
+          guestLookup={rsvpGuestLookup}
+          // issue #4508 T1 — signed out, "Bring someone" points to the app
+          // with this event's own download / deep link (the claim fallback).
+          onGetApp={() => handleOpenRsvpClaim(null)}
+          // issue #4508 1.15 — "Send it yourself too": the same clipboard as
+          // Copy address; Share uses navigator.share (clipboard fallback).
+          onCopyText={copyAddressForTarget}
           onOpenClaim={handleOpenRsvpClaim}
           // ORCH-1163-R3 — this FLOATING_BAR_CLEARANCE + insets.bottom expression is
           // the scroll-runway FLOOR (byte-identical to the event page). The RSVP bar
@@ -2047,8 +2209,46 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           safeAreaTop={insets.top}
           safeAreaBottom={insets.bottom}
           testID="orch-1150-rsvp-public"
+          questionsNode={
+            rsvpFormReadFailed ? (
+              <View
+                style={{ marginTop: 16, gap: 8 }}
+                accessibilityRole="alert"
+                testID="issue-4541-rsvp-questions-failed"
+              >
+                <Text style={{ color: palette.secondaryText, fontSize: 14 }}>
+                  Questions couldn&apos;t load. You can RSVP now and answer later.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Try again"
+                  onPress={() => void rsvpBrandFormQuery.refetch()}
+                  hitSlop={8}
+                >
+                  <Text style={{ color: palette.primaryText, fontSize: 14, fontWeight: "600" }}>
+                    Try again
+                  </Text>
+                </Pressable>
+              </View>
+            ) : rsvpBrandFormPage === null ? rsvpAfterRsvpNoticeNode : (
+              <React.Suspense fallback={<View style={{ minHeight: 120 }} />}>
+                <RsvpBrandFormQuestions
+                  page={rsvpBrandFormPage}
+                  answers={rsvpFormAnswers}
+                  onAnswersChange={setRsvpFormAnswers}
+                  onMissingChange={noopRsvpMissing}
+                />
+              </React.Suspense>
+            )
+          }
+          questionsRequired={
+            rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step"
+          }
+          questionsReady={!rsvpFormReadPending && rsvpFormMissing.length === 0}
+          formHandoff={rsvpFormHandoffNode}
         />
 
+        {addToCalendarChooser}
         <ShareModal
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
@@ -2446,6 +2646,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         <TicketCheckoutAccessNotice eventId={event.id} />
       </View>
 
+      {addToCalendarChooser}
       <ShareModal
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}

@@ -71,7 +71,8 @@
     "deleteSessionMsg": "Ṣé o dá ẹ lójú pé o fẹ́ pa \"{{name}}\" rẹ́? A kò le yí èyí padà àti gbogbo káàdì, ìdìbò, àti ìjíròrò yóò pa rẹ́ pátápátá.",
     "leaveSessionTitle": "Kúrò Ní Bọ́ọ̀dù",
     "leaveSessionMsg": "Ṣé o dá ẹ lójú pé o fẹ́ kúrò ní \"{{name}}\"?",
-    "namePlaceholder": "Tẹ orúkọ àjọ"
+    "namePlaceholder": "Tẹ orúkọ àjọ",
+    "sessionShareMessage": "I've added you to \"{{name}}\" on Mingla. Join here: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Ìjíròrò",

@@ -9,7 +9,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
 export const CONTRACT_PATH = path.join(REPO_ROOT, "supabase/function-env.contract.json");
 export const CONFIG_PATH = path.join(REPO_ROOT, "supabase/config.toml");
-export const CONTRACT_SHA256 = "d0612c9bf071aa7464bcc0f7c8baaa181f3fe1fac0a28198ff3305a4e6dfa49d";
+// #4561 phone code fallback: send-otp now requires SENTRY_DSN and SENTRY_ENVIRONMENT (top level, via _shared/sentryEdge.ts) in supabase/function-env.contract.json; re-sealed.
+export const CONTRACT_SHA256 = "61dce1afcbb2880951784794f270d9610591b1b90705991e833da6f4d1de5893";
 export const CONFIG_SHA256 = "cc9d8f5f5e8f4819d27c6ac97367bc5c74216e1925f4860aacfe69d55431e4cd";
 export const FUNCTION_POLICY_FILE = "function-policy.json";
 export const SHARED_POLICY_SUFFIX = ".function-policy.json";

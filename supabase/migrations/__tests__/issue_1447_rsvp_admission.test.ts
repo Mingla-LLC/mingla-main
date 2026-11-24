@@ -29,6 +29,9 @@ const passEdge = await read("../../functions/rsvp-pass-fetch/index.ts");
 const calendarPass = await read(
   "../../../app-mobile/src/components/activity/RsvpPassSheet.tsx",
 );
+const rsvpDeckService = await read(
+  "../../../app-mobile/src/services/rsvpDeckService.ts",
+);
 const publicRsvpService = await read(
   "../../../mingla-business/src/services/rsvpPassRecoveryService.ts",
 );
@@ -157,12 +160,17 @@ Deno.test("reviewed pass presentation and representation contracts", () => {
     "party tabs must render above Show at door",
   );
   for (const token of [
-    "fetchRsvpPartyPasses",
+    "fetchRsvpPartyDetails",
     "issue-1447-calendar-rsvp-download",
     "issue-1447-calendar-rsvp-share",
     'scrollMode="scroll"',
     "selectedCredential.qrCode",
   ]) assert(calendarPass.includes(token), `Explorer saved pass missing ${token}`);
+  assert(
+    rsvpDeckService.includes("export const fetchRsvpPartyDetails") &&
+      rsvpDeckService.includes('supabase.rpc("fetch_user_rsvp_party_passes"'),
+    "Explorer saved-pass details must still use the canonical party-pass RPC",
+  );
   for (const token of [
     '"Content-Type": "application/pdf"',
     '"application/json"',
@@ -244,7 +252,8 @@ Deno.test("operator surfaces show truthful and complete RSVP states", () => {
     "Checking pass…",
     "You're offline. Reconnect and scan again.",
     'AppState.addEventListener("change"',
-    "active={isAppActive}",
+    // #4541: the camera also pauses while the host reads a guest's answers.
+    "active={isAppActive && answersTarget === null}",
   ]) assert(scanner.includes(token), `scanner lifecycle state missing ${token}`);
   assert(
     !scanner.includes("summary.data?.checkedIn ?? 0"),

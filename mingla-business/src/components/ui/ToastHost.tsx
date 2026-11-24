@@ -121,6 +121,8 @@ const styles = StyleSheet.create({
   // success toast on top of the primary button (wizard Continue, sheet footer
   // Add / Save) for its whole four seconds. Top-centre covers no action: page
   // headers keep their buttons at the edges, and sheets open from the right.
+  // I-PRIVACY-BAR-NEVER-OCCLUDES (#4420 merge): a top-pinned stack never reaches the
+  // privacy strip at the bottom of the app root.
   stack: {
     position: "absolute",
     top: space[6],

@@ -42,6 +42,16 @@ import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
+/** A server-backed draft id is a UUID; a local draft id is `d_…`. */
+const SERVER_EVENT_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const GuestQuestionsRow = React.lazy(() =>
+  import("../forms/formsOwner").then((module) => ({
+    default: module.GuestQuestionsRow,
+  })),
+);
+
 const ROW_BG = Platform.select({
   ios: color.fill.inset,
   android: materials.control.solidFill,
@@ -209,6 +219,11 @@ export const rsvpHideCountSub = (privateGuestList: boolean): string =>
     ? "Guests won't see how many spots remain."
     : "Guests see who's going — not how many spots remain.";
 
+/** #4508 - copy for the "plus-ones can add their own guests" switch. */
+export const RSVP_GUESTS_CAN_BRING_LABEL = "Guests can bring guests";
+export const RSVP_GUESTS_CAN_BRING_SUB =
+  "Let a plus-one add their own guests once they claim their pass.";
+
 /** #3645 — locked body for the draft wizard's chip-in bank callout. */
 export const RSVP_CHIP_IN_DRAFT_CALLOUT_BODY =
   "Your draft saves either way. Connect now, or choose when you publish.";
@@ -249,9 +264,12 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
 
   const togglePlusOnes = useCallback(() => {
     const next = !draft.rsvpAllowPlusOnes;
+    // #4508 - "guests can bring guests" only means something while extras are
+    // allowed, so switching extras off clears it in the SAME patch.
     updateDraft({
       rsvpAllowPlusOnes: next,
       rsvpPlusOnesMax: next ? Math.max(draft.rsvpPlusOnesMax, 1) : 0,
+      ...(next ? {} : { rsvpGuestsCanBring: false }),
     });
   }, [draft.rsvpAllowPlusOnes, draft.rsvpPlusOnesMax, updateDraft]);
 
@@ -273,6 +291,26 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           : undefined
       }
     >
+      {/* #4541 — the draft RSVP owns the same attachment row as published RSVP
+          edit. The attachment RPC saves independently from the draft graph. */}
+      {SERVER_EVENT_ID_RE.test(draft.id) ? (
+        <React.Suspense fallback={null}>
+          <GuestQuestionsRow
+            eventId={draft.id}
+            brandId={draft.brandId}
+            kind="rsvp"
+            testID="rsvp-guest-questions-row"
+          />
+        </React.Suspense>
+      ) : (
+        <Text
+          style={{ ...type.body, color: color.text2, marginBottom: space[3] }}
+          testID="rsvp-guest-questions-unsaved"
+        >
+          Save your RSVP page to add guest questions.
+        </Text>
+      )}
+
       {/* 1. Capacity */}
       <ToggleRow
         label="Limit the guest list"
@@ -312,6 +350,17 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           max={RSVP_PLUS_ONES_MAX}
           onChange={(n) => updateDraft({ rsvpPlusOnesMax: Math.max(1, n) })}
           testID="rsvp-plusones-max"
+        />
+      ) : null}
+      {draft.rsvpAllowPlusOnes ? (
+        <ToggleRow
+          label={RSVP_GUESTS_CAN_BRING_LABEL}
+          sub={RSVP_GUESTS_CAN_BRING_SUB}
+          on={draft.rsvpGuestsCanBring === true}
+          onToggle={() =>
+            updateDraft({ rsvpGuestsCanBring: draft.rsvpGuestsCanBring !== true })
+          }
+          testID="rsvp-guests-can-bring-toggle"
         />
       ) : null}
 

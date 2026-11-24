@@ -39,6 +39,10 @@ import {
   taxBehaviorForRegion,
 } from "./allInPricingEngine.ts";
 import type { DiscountEngineLine, DiscountQuote } from "./discountEngine.ts";
+import {
+  chargeBelowProviderMinimum,
+  providerMinimumText,
+} from "./money/providerMinimums.ts";
 
 // ---------------------------------------------------------------------------
 // P-29 — error codes and the EXACT user-visible copy. VERBATIM from the spec
@@ -194,6 +198,17 @@ export const VENUE_ORDER_ERRORS = {
     guest: "We couldn't price that order. Nothing has been charged.",
     staff: "We couldn't price that order. Nothing has been charged.",
   },
+  // Issue #3645 (18 Nov payments audit, item 7) — the total is above zero but
+  // below the smallest amount the payment provider can charge in this
+  // currency, so it is refused before any row or provider call. {minimum} is
+  // the floor as money ("₦100.00").
+  order_below_provider_minimum: {
+    status: 422,
+    guest:
+      "Card payments start at {minimum}. Add a little more to your order. Nothing has been charged.",
+    staff:
+      "That's too small to bill to a phone: card payments start at {minimum}. Take it at the counter instead. Nothing has been charged.",
+  },
   too_many_orders: {
     status: 429,
     guest: "That's a lot of orders very quickly. Give it a moment.",
@@ -234,7 +249,8 @@ export type VenueOrderAudience = "guest" | "staff";
 export function venueOrderErrorCopy(
   code: VenueOrderErrorCode,
   audience: VenueOrderAudience,
-  vars: { venue?: string; item?: string; group?: string } = {},
+  vars: { venue?: string; item?: string; group?: string; minimum?: string } =
+    {},
 ): string | null {
   const spec = VENUE_ORDER_ERRORS[code];
   const raw = audience === "guest" ? spec.guest : spec.staff;
@@ -242,11 +258,62 @@ export function venueOrderErrorCopy(
   return raw
     .replace("{Venue}", vars.venue ?? "This venue")
     .replace("{Item}", vars.item ?? "That item")
-    .replace("{group}", vars.group ?? "that option");
+    .replace("{group}", vars.group ?? "that option")
+    .replace("{minimum}", vars.minimum ?? "a small minimum");
 }
 
 export function venueOrderErrorStatus(code: VenueOrderErrorCode): number {
   return VENUE_ORDER_ERRORS[code].status;
+}
+
+/**
+ * The currency a venue charge is actually made in. The Paystack rails charge
+ * NGN whatever the brand's pricing currency says (venue-order-create and
+ * venue-order-staff both send `currency: "NGN"` to Paystack), so the provider
+ * floor is checked in the currency the provider really sees.
+ */
+export function venueOrderChargeCurrency(
+  provider: string,
+  settlementCurrency: string,
+): string {
+  return provider === "paystack" ? "NGN" : settlementCurrency;
+}
+
+/**
+ * Issue #3645 (18 Nov payments audit, item 7) — the ONE refusal for a venue
+ * total above zero but below the payment provider's minimum charge
+ * (`_shared/money/providerMinimums.ts`). Guest create and staff bill-to-phone
+ * both use it, so the status, the body and each audience's words cannot
+ * drift. null = let the charge through (free, at/above the floor, or a
+ * currency with no known floor).
+ */
+export function venueOrderProviderFloorRefusal(
+  totalCents: number,
+  chargeCurrency: string,
+  audience: VenueOrderAudience,
+): {
+  status: number;
+  body: {
+    error: "order_below_provider_minimum";
+    message: string | null;
+    minCents: number;
+    currency: string;
+  };
+} | null {
+  const minCents = chargeBelowProviderMinimum(totalCents, chargeCurrency);
+  if (minCents === null) return null;
+  const currency = chargeCurrency.trim().toUpperCase();
+  return {
+    status: venueOrderErrorStatus("order_below_provider_minimum"),
+    body: {
+      error: "order_below_provider_minimum",
+      message: venueOrderErrorCopy("order_below_provider_minimum", audience, {
+        minimum: providerMinimumText(minCents, currency),
+      }),
+      minCents,
+      currency,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

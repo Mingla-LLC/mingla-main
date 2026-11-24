@@ -27,8 +27,9 @@ BEGIN
     RAISE EXCEPTION 'ISSUE-4064 FAIL: ops_card_lock is not pinned to PT409';
   END IF;
 
-  INSERT INTO public.ops_sprints(id, starts_on, goal)
-  VALUES (v_sprint, DATE '2099-01-05', 'Issue 4064 stale conflict fixture');
+  -- #4571: ops_sprints.goal is gone (goals live in ops_sprint_goals).
+  INSERT INTO public.ops_sprints(id, starts_on)
+  VALUES (v_sprint, DATE '2099-01-05');
   INSERT INTO public.ops_work_cards(
     id, title, instructions, done_means, due_on, due_source, sprint_id,
     created_by, updated_by, revision)

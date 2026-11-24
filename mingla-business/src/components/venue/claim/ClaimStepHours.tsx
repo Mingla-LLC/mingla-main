@@ -16,7 +16,11 @@ import {
 } from "../../../constants/designSystem";
 import type { BrandHourEntry } from "../../../types/brand";
 import { provenanceFor, useDraftVenueStore } from "../../../store/draftVenueStore";
-import { BrandHoursEditor } from "../BrandHoursEditor";
+// #4518 — host-only, so loaded on intent (when the hours step / card shows),
+// not in the shared boot payload every buyer page downloads.
+const BrandHoursEditor = React.lazy(() =>
+  import("../BrandHoursEditor").then((module) => ({ default: module.BrandHoursEditor })),
+);
 import { ProvenanceChip } from "../../ui/ProvenanceChip";
 
 export interface ClaimStepHoursProps {
@@ -65,11 +69,13 @@ export const ClaimStepHours: React.FC<ClaimStepHoursProps> = ({
         Late nights are fine — a close time earlier than the open time reads
         as next day.
       </Text>
-      <BrandHoursEditor
-        hours={hours}
-        onChange={handleChange}
-        showErrors={showErrors}
-      />
+      <React.Suspense fallback={null}>
+        <BrandHoursEditor
+          hours={hours}
+          onChange={handleChange}
+          showErrors={showErrors}
+        />
+      </React.Suspense>
     </View>
   );
 };

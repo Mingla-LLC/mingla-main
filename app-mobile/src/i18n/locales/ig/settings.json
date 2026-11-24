@@ -49,9 +49,13 @@
         "brand_campaign_push": "Ozi sitere n’ebe ị na-eso",
         "brand_campaign_push_hint": "Onyinye na akụkọ sitere n’ebe na ndị nnabata ị na-eso.",
         "brand_offering_invite": "Akwụkwọ ịkpọ òkù sitere n’ebe ị na-eso",
-        "brand_offering_invite_hint": "Mgbe otu ebe ma ọ bụ onye nnabata kpọrọ gị òkù."
+        "brand_offering_invite_hint": "Mgbe otu ebe ma ọ bụ onye nnabata kpọrọ gị òkù.",
+        "brand_form_request": "Ajụjụ sitere n'aka ndị nhazi",
+        "brand_form_request_hint": "Mgbe onye nhazi rịọrọ gị ka ị zaa ajụjụ ya. Email na-adị mgbe niile maka ndị a, n'ihi na o nwere njikọ nke gị. Ozi ederede na-agbaso ntọala ozi gị."
       }
-    }
+    },
+    "friends_going": "Friends going out",
+    "friends_going_hint": "When a close friend is going to an event"
   },
   "quiet_hours": {
     "title": "Oge Jụụ",

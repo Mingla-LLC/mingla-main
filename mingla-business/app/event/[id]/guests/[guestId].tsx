@@ -59,6 +59,10 @@ import { Toast } from "../../../../src/components/ui/Toast";
 // issue #3827 — the guest-list client loads on first use, so it stays out of
 // the business-web boot chunk (__common ceiling, orch-1083).
 const loadGuestList = () => import("../../../../src/services/guestListService");
+// #4541 R1.9 — the guest's answers load through the one lazy forms owner.
+const GuestAnswersCard = React.lazy(() =>
+  import("../../../../src/components/forms/formsOwner").then((m) => ({ default: m.GuestAnswersCard })),
+);
 const FALLBACK_COPY = "Something went wrong. Nothing was charged. Try again. Guests already added won't be added twice.";
 const guestListMessage = (error: unknown, fallback: string = FALLBACK_COPY): string =>
   error instanceof Error && error.name === "GuestListError" ? error.message : fallback;
@@ -981,6 +985,17 @@ export default function GuestDetailRoute(): React.ReactElement {
               ) : null}
             </GlassCard>
           </>
+        ) : null}
+
+        {/* #4541 R1.9 — the answers to the page's form (orders only) */}
+        {isOrder && typeof eventId === "string" ? (
+          <React.Suspense fallback={null}>
+            <GuestAnswersCard
+              brandId={brand?.id ?? null}
+              eventId={eventId}
+              subject={{ kind: "order", id: order.id }}
+            />
+          </React.Suspense>
         ) : null}
 
         {/* Other orders (orders only) */}

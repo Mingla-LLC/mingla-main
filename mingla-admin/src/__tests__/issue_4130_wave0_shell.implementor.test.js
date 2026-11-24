@@ -52,12 +52,12 @@ const PAGE_IDS = pageIds();
 // The approved sidebar (~/.mingla-private/4130 design, "sidebar").
 const MENU = [
   // #4255 W4: Notifications left the menu for Messages in the top bar.
-  ["Home", ["overview:Dashboard", "work-board:Work"]],
+  ["Home", ["overview:Dashboard", "messages:Messages", "work-board:Work"]],
   // #4130 + #3872: the Creator Program pages sit right under Hosts and creators.
   ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Leads", "forms:Forms", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
-  ["Support", ["support:Support", "community:Community"]],
+  ["Support", ["support:Support"]], // [TEST-MOD #4420] Community retired
   // #4383: what we tell hosts and explorers, each its own screen.
-  ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "roadmap:Roadmap", "email:Email", "blog:Blog", "links:Links page", "brand-groups:Brand groups", "website-pages:Website pages"]], // #4452 §7.2; §7.0 Website pages
+  ["Communications", ["communications:Overview", "push:Push", "announcements:Announcements", "email:Email", "blog:Blog", "links:Links page", "brand-groups:Brand groups", "website-pages:Website pages", "feature-guide:Feature guide"]], // [TEST-MOD #4420] Roadmap retired, Feature guide added // #4452 §7.2; §7.0 Website pages
   ["Business", ["people:People", "brands:Brands", "business-offerings:Offerings"]],
   ["Money", ["mingla-money:Mingla money", "business-payments:Payments", "business-orders:Orders", "business-money-ledger:Money ledger", "refund-operations:Refund operations", "subscriptions:Subscriptions", "pricing:Pricing and limits"]],
   ["Explorer app", ["placepool:Place pool"]],
@@ -119,13 +119,13 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     // #4255 W4: - Notifications (Messages is in the top bar).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(NAV_ITEMS.length, 43); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
+    assert.equal(NAV_ITEMS.length, 43); // [TEST-MOD #4420] - Community, - Roadmap, + Feature guide; #4517: + Messages; // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     for (const gone of ["drafts", "agent", "guide"]) assert.equal(ids.includes(gone), false, gone);
     // #4255 W4: + Messages (its button in the top bar, #/messages its full page).
-    assert.deepEqual(HEADER_PAGE_ITEMS.map((i) => i.id), ["agent", "guide", "messages"]);
+    assert.deepEqual(HEADER_PAGE_ITEMS.map((i) => i.id), ["agent", "guide"]); // #4517: Messages is a menu entry now
     for (const id of ["agent", "guide"]) assert.ok(PAGE_IDS.includes(id), `${id} keeps its route`);
     const header = stripComments(read("components/layout/Header.jsx"));
     assert.ok(header.includes('openPage("guide")') && header.includes('openPage("agent")'));
@@ -170,7 +170,8 @@ describe("#4130 W0-2: retired page ids redirect to their new homes", () => {
     assert.equal(redirectHash("#/drafts?record=r1"), "#/work-board?record=r1");
   });
   it("a live page, an unknown address or a hostile one is left alone", () => {
-    for (const hash of ["#/overview", "#/support", "#/community?tab=ideas", "#/email", "#/roadmap?card=x", "#/people?tab=hosts", "#/brands", "", "#/", "#/__proto__", "#/constructor", "#/toString", "#/Hosts", null, undefined, 7]) {
+    // [TEST-MOD #4420] #/community?tab=ideas and #/roadmap?card=x are retired addresses now (redirected; issue4420_admin_redirects pins them).
+    for (const hash of ["#/overview", "#/support", "#/feature-guide", "#/email", "#/announcements?x=1", "#/people?tab=hosts", "#/brands", "", "#/", "#/__proto__", "#/constructor", "#/toString", "#/Hosts", null, undefined, 7]) {
       assert.equal(redirectHash(hash), null, String(hash));
     }
   });
@@ -231,7 +232,8 @@ describe("#4130 W0-4: access is the union of the replaced pages, never wider", (
     // #4255 / #4383: Email and Blog are their own Communications screens, so
     // Support carries the console's access exactly, like Community.
     assert.deepEqual(PAGE_ACCESS_UNION.support, ["community-support"]);
-    assert.deepEqual(PAGE_ACCESS_UNION.community, ["community-support"]);
+    // [TEST-MOD #4420] Community is retired: it has no union and no page.
+    assert.equal(Object.hasOwn(PAGE_ACCESS_UNION, "community"), false);
   });
   it("for every combination of areas, a merged page opens exactly when one of its old pages did", () => {
     for (const who of everyone()) {
@@ -298,8 +300,9 @@ describe("#4130 W0-6: every page lights its own menu entry", () => {
     const shell = stripComments(read("components/layout/AppShell.jsx"));
     assert.ok(shell.includes("pageTitle(activeTab, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
     assert.equal(shell.includes("activeMenuId"), false);
-    assert.ok(NAV_ITEMS.some((i) => i.id === "support") && NAV_ITEMS.some((i) => i.id === "community"));
-    assert.ok(PAGE_IDS.includes("support") && PAGE_IDS.includes("community"));
+    // [TEST-MOD #4420] Community retired; Support and the Feature guide light their own entries.
+    assert.ok(NAV_ITEMS.some((i) => i.id === "support") && NAV_ITEMS.some((i) => i.id === "feature-guide"));
+    assert.ok(PAGE_IDS.includes("support") && PAGE_IDS.includes("feature-guide"));
   });
 });
 
@@ -307,11 +310,11 @@ describe("#4130 W0-7: the Work entry counts only your own waiting cards", () => 
   it("the badge sits on Work and reads cards, not drafts", () => {
     const sidebar = stripComments(read("components/layout/Sidebar.jsx"));
     // #4452 §7.2: + Brand groups' waiting count, from its own panel.
-    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : 0;'));
+    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : item.id === "messages" ? messages.count || 0 : 0;'));
     assert.equal(sidebar.includes('item.id === "drafts"'), false);
     const hook = stripComments(read("hooks/useReviewCount.js"));
     // #4270 (D20): the count is your own open cards due today or overdue.
-    assert.ok(hook.includes('cards: work.status === "ready" ? work.dueToday + work.overdue : null,'));
+    assert.ok(hook.includes('cards: work.status === "ready" ? workMenuCount(work.dueToday + work.overdue, ticketsNew) : null,'));
     assert.ok(hook.includes("dueTodayState({ enabled, data: counts.data, error: counts.error })"));
     assert.ok(hook.includes('canOpenPage(access, "work-board")'));
     assert.ok(/needs_person_mine/.test(hook) && /draft_needed_mine/.test(hook) && /wording_mine/.test(hook), "only the _mine counts");

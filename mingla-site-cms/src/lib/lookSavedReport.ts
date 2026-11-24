@@ -10,7 +10,7 @@ import { emitCmsObservation } from "./observability";
  * the single reporter. A failed report never undoes the owner's save; it is
  * observed (the plan simply stays unticked until the next save reaches Core).
  */
-const LOOK_FIELDS = ["design", "tokens", "fonts", "radius", "button_shape", "motion"] as const;
+const LOOK_FIELDS = ["design", "tokens", "fonts", "radius", "button_shape", "motion", "design_options"] as const;
 
 export function lookChanged(previous: Record<string, unknown> | undefined, next: Record<string, unknown>): boolean {
   return LOOK_FIELDS.some((field) => JSON.stringify(previous?.[field] ?? null) !== JSON.stringify(next[field] ?? null));

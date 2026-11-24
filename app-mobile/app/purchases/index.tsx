@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 
 import { PurchaseCard } from "../../src/components/purchases/PurchaseCard";
 import { PurchaseEmptyState } from "../../src/components/purchases/PurchaseEmptyState";
+import { StillToAnswerRow } from "../../src/components/forms/StillToAnswerRow";
 import { usePurchases } from "../../src/hooks/usePurchases";
 import { runClaimSweep } from "../../src/services/claimSweep";
 import { purchaseKeys } from "../../src/hooks/queryKeys";
@@ -142,6 +143,8 @@ export default function PurchasesRoute(): React.ReactElement {
         </View>
 
         <Text style={styles.intro}>{t("screen.intro")}</Text>
+
+        <StillToAnswerRow />
 
         <View accessibilityRole="tablist" style={styles.tabs}>
           {(["upcoming", "past"] as const).map((value) => {

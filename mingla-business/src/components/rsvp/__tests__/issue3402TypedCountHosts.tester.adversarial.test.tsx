@@ -17,6 +17,8 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 }));
 jest.mock("../../../utils/liveEventConverter", () => ({ convertDraftToLiveEvent: () => null }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+// [TEST-MOD #4514] the lazy "Guest questions" row is not under test here.
+jest.mock("../../forms/formsOwner", () => ({ GuestQuestionsRow: () => null }));
 jest.mock("../../intel/TurnoutForecastCard", () => ({ TurnoutForecastCard: () => null }));
 jest.mock("../../intel/useTurnoutFocusTarget", () => ({ useTurnoutFocusTarget: () => false }));
 
@@ -75,6 +77,8 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/draftRsvpValidation")) return { validateRsvpPublish: () => [], validateRsvpStep: () => [] };
     if (name.endsWith("/draftEventValidation")) return { validateStep: () => [] };
     if (name.endsWith("/draftEventPristine")) return { isDraftEventPristine: () => false };
+    // #4572 7e — the brand-zone default is pure, so it is supplied REAL.
+    if (name.endsWith("/timezones")) return jest.requireActual("../../../utils/timezones");
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
     // #3645 — pure, so it is supplied REAL: the order of "save, then publish".
@@ -107,11 +111,22 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/LazyInvitePeopleStep")) return { InvitePlanSummaryBridge: ({ onChange }: { onChange: (s: unknown) => void }) => { const R = require("react"); R.useEffect(() => { onChange(inviteSummaryStub); }, [onChange]); return null; }, PENDING_WIZARD_INVITE_SUMMARY: { plan: { data: undefined, isPending: true, isFetching: true, isError: false }, quote: { data: undefined, isPending: true, isFetching: true, isError: false }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }, InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
     if (name.endsWith("/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary") };
     if (name.endsWith("/lazySettingsSteps")) return { CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: RsvpStep5Setup }; // issue #3827: the settings steps load lazily; this suite drives the REAL RSVP step, as before
+    if (name.endsWith("/LazyCreatorStep1Basics")) return { CreatorStep1Basics: leaf("CreatorStep1Basics") }; // #4572 route-only lazy boundary; same inert step leaf
     if (name.endsWith("/LazyCreatorStep2When")) return { CreatorStep2When: leaf("CreatorStep2When") }; // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf
     if (name.endsWith("/LazyCreatorStep5Tickets")) return { CreatorStep5Tickets: leaf("CreatorStep5Tickets") }; // #3281 route-only lazy boundary; same inert step leaf
     if (name.endsWith("/useEventDateKeys")) return { useEventDateKeys: () => ({ data: undefined }) }; // #3281 sold-date keys; unused by these hosts
     if (name.endsWith("/ticketDayScope")) return require("../../../utils/ticketDayScope"); // #3281 pure helpers
     const exportName = name.split("/").pop()!;
+    // [TEST-MOD #4548] the guest pack working copy (nothing pending in this suite).
+    if (exportName === "guestPackGate") return {
+      guestPackEventIdForDraft: (id: string) => (id.startsWith("d_") ? null : id),
+      hasPendingGuestPack: () => false,
+      flushGuestPack: async () => ({ ok: true, saved: false }),
+      releaseGuestPackSession: () => undefined,
+      subscribeGuestPack: () => () => undefined,
+      useGuestPackPending: () => false,
+    };
+    if (exportName === "formsOwner") return { GuestQuestionsRow: () => null }; // [TEST-MOD #4514] the lazy Guest questions row is not under test here
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
     // [TEST-MOD-APPROVED #1023] Harness registration only: hosts import the
     // on-intent wrapper, which exports the same ThemeSheet name.

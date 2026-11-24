@@ -9,6 +9,7 @@ import {
   type PreviewDevicePreference,
 } from "../../../../sites/previewDevice";
 import { PREVIEW_TOKENS_MESSAGE } from "../../../../sites/previewFrame";
+import { usePreviewRefusalListener } from "../../../../sites/previewRefusalListener";
 
 import {
   color,
@@ -31,6 +32,9 @@ export type ScaledPreviewFrameProps = {
   minHeight?: number;
   tokenDeclarations?: readonly string[] | null;
   onLoad?: () => void;
+  /** #4572 item 1 — this frame's page said its grant is for an older draft, or it couldn't load. */
+  onStale?: () => void;
+  onFailed?: () => void;
 };
 
 function prefersReducedMotion(): boolean {
@@ -38,7 +42,7 @@ function prefersReducedMotion(): boolean {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export function ScaledPreviewFrame({ url, preference, maxHeight = 520, fill = false, minHeight, tokenDeclarations, onLoad }: ScaledPreviewFrameProps): React.ReactElement {
+export function ScaledPreviewFrame({ url, preference, maxHeight = 520, fill = false, minHeight, tokenDeclarations, onLoad, onStale, onFailed }: ScaledPreviewFrameProps): React.ReactElement {
   const [box, setBox] = useState({ width: 0, height: 0 });
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const { width, height: deviceHeight } = previewDimensions(preference);
@@ -57,6 +61,9 @@ export function ScaledPreviewFrame({ url, preference, maxHeight = 520, fill = fa
     const timer = setTimeout(() => latest.current(), 150);
     return () => clearTimeout(timer);
   }, [tokenDeclarations]);
+
+  // #4572 item 1 — only THIS frame's own page may report a stale or failed preview.
+  usePreviewRefusalListener(frameRef, onStale, onFailed);
 
   const onLayout = (event: LayoutChangeEvent) => {
     const next = event.nativeEvent.layout;

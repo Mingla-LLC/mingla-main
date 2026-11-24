@@ -193,7 +193,7 @@ describe("#4389 U-9 Home top bar", () => {
     const src = fs.readFileSync(path.join(__dirname, "../TopBar.tsx"), "utf8");
     // #4453: the brand slot is the WorkspaceBrandSwitcher, whose trigger is
     // the shared BrandChip.
-    expect(src).toContain("<WorkspaceBrandSwitcher onOpenSheet={onBrandTap} brandLoading={brandLoading} />");
+    expect(src).toContain("<WorkspaceBrandSwitcher onOpenSheet={onBrandTap} onDiscardDraft={onDiscardDraft} brandLoading={brandLoading} />");
     const switcher = fs.readFileSync(path.join(__dirname, "../../brand/WorkspaceBrandSwitcher.tsx"), "utf8");
     expect(switcher).toMatch(/<BrandChip\s/);
     const chip = fs.readFileSync(path.join(__dirname, "../BrandChip.tsx"), "utf8");

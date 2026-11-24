@@ -10,7 +10,7 @@
 // `selectVenueMapsTarget`. The plan link runs the real `planModel.placeLinkTarget`
 // with the real `inAppLink.mapsWebUrl`.
 //
-//   X-1 web (nothing asked): opened URL = `query=<lat>,<lng>&query_place_id=<id>`
+//   X-1 web (nothing asked): opened URL = `query=<label>&query_place_id=<id>` (#4334 M1)
 //   X-2 iOS, Google chosen in the chooser: the opened https URL carries the id;
 //       Apple chosen: Apple's link, no Google id
 //   X-3 Android (nothing asked): `geo:` intent unchanged; when it fails, the
@@ -85,18 +85,18 @@ const reset = (os: string) => {
   rn.rejectNext = 0;
 };
 
-Deno.test("X-1 web, nothing asked: the opened URL is the coordinate plus the place id", async () => {
+Deno.test("X-1 web, nothing asked: the opened URL is the venue label plus the place id", async () => {
   reset("web");
   openMapsTarget(target());
   await flush();
-  assertEquals(rn.opened, [`https://www.google.com/maps/search/?api=1&query=6.4478093,3.4723495&query_place_id=${ID}`], "web link");
+  assertEquals(rn.opened, [`https://www.google.com/maps/search/?api=1&query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=${ID}`], "web link");
 });
 
 Deno.test("X-2 iOS: Google chosen opens the https link with the id; Apple chosen carries no Google id", async () => {
   reset("ios");
   openMapsTarget(target(), { app: "google" });
   await flush();
-  assertEquals(rn.opened, [`https://www.google.com/maps/search/?api=1&query=6.4478093,3.4723495&query_place_id=${ID}`], "iOS Google link");
+  assertEquals(rn.opened, [`https://www.google.com/maps/search/?api=1&query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=${ID}`], "iOS Google link");
   reset("ios");
   openMapsTarget(target(), { app: "apple" });
   await flush();
@@ -136,7 +136,7 @@ Deno.test("X-6 chat plan: a Google-sourced place opens the map with its id", asy
   const { link, plan } = await loadPlanLink();
   const place = { poolId: null, name: "Didi Museum", address: null, lat: PIN.lat, lng: PIN.lng, link: null };
   const withId = plan.placeLinkTarget({ ...place, providerPlaceId: ID }, link.mapsWebUrl);
-  assertEquals(withId, { kind: "maps", url: `https://www.google.com/maps/search/?api=1&query=6.4478093,3.4723495&query_place_id=${ID}` }, "plan link with id");
+  assertEquals(withId, { kind: "maps", url: `https://www.google.com/maps/search/?api=1&query=Didi%20Museum&query_place_id=${ID}` }, "plan link with id");
   const without = plan.placeLinkTarget({ ...place, providerPlaceId: null }, link.mapsWebUrl);
   assertEquals(without, { kind: "maps", url: "https://www.google.com/maps/search/?api=1&query=6.4478093,3.4723495" }, "plan link without id");
 });

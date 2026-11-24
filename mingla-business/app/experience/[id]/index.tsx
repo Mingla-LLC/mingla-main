@@ -74,6 +74,8 @@ import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../src/utils/permissionGates";
+import { ActionTile } from "../../../src/components/event/ActionTile";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
@@ -143,6 +145,19 @@ function HeroStatusPill({
   }
   return <Pill variant="draft">Past</Pill>;
 }
+
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
 
 export default function ExperienceDashboardRoute(): React.ReactElement {
   const router = useRouter();
@@ -477,7 +492,30 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           } satisfies OfferingTile,
         ]
       : []),
-    ...pick(["guests", "orders", "insights"]),
+    ...pick(["guests"]),
+    // #4514 — "Guest questions": after Spots, before Orders (marketing manager
+    // and up; scanners never see it).
+    ...(canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES") && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
+      ? [
+          {
+            key: "guestQuestions",
+            icon: "list",
+            label: "Guest questions",
+            onPress: () => undefined,
+            node: (
+              <React.Suspense fallback={guestQuestionsTileLoading}>
+                <GuestQuestionsTile
+                  eventId={experience.id}
+                  brandId={experience.brandId}
+                  kind="experience"
+                  testID="experience-tile-guest-questions"
+                />
+              </React.Suspense>
+            ),
+          } satisfies OfferingTile,
+        ]
+      : []),
+    ...pick(["orders", "insights"]),
   ];
   const experienceMoreTiles = pick(["reconciliation", "public", "brand"]);
   const moneyCard = (

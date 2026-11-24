@@ -9,12 +9,17 @@
 //     assert fails.
 //   - delete the `orch-1167-date-row` full-width row → §0 canonical-order assert fails.
 //   - delete the `RsvpGoingConfirmDialog`/`confirmOpen` wiring → FLOW-A assert fails.
-//   - delete the per-guest `orch-1163-rsvp-guest-` fields → FLOW-B assert fails.
+//   - drop the guests from the write (buildGuestPayload) → FLOW-B assert fails.
 
 import {
   assert,
+  assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  parseRsvpBrandFormPage,
+  rsvpBrandFormPayload,
+} from "../rsvpBrandForm.ts";
 
 const read = async (rel: string): Promise<string> =>
   await Deno.readTextFile(new URL(rel, import.meta.url));
@@ -23,6 +28,59 @@ const body = await read("../RsvpOfferingBody.tsx");
 const dialog = await read("../RsvpGoingConfirmDialog.tsx");
 const popup = await read("../RsvpSuccessPopup.tsx");
 const barrel = await read("../index.ts");
+
+// #4541 — the shared body owns required-question gating, while each app owns
+// its renderer. This stays in the existing shared-body suite so a reversal of
+// the single-owner RSVP flow fails the same required lane.
+Deno.test("#4541 RSVP questions sit before the decision and required answers gate Going/Maybe", () => {
+  assertStringIncludes(body, "questionsNode?: React.ReactNode");
+  assertStringIncludes(body, "const decisionReady = contactReady && questionsReady");
+  assertStringIncludes(body, 'pendingDecision !== "not_going" ? props.questionsNode ?? null : null');
+  assertStringIncludes(body, "Answer the required questions to continue.");
+  assertStringIncludes(body, "The questions changed. Review your answers and try again.");
+  const boxStart = body.indexOf("export const RsvpDecisionBox");
+  const questions = body.indexOf("{state.questionsNode}", boxStart);
+  const decision = body.indexOf("<DecisionUnit", boxStart);
+  assert(boxStart >= 0 && questions > boxStart && decision > questions,
+    "questions must render before the Going/Maybe/Can't decision controls");
+});
+
+// #4541 bundle guard — the barrel is in the Host web eager chunk. A value
+// re-export of the form helpers there, or an import from the shared Host RSVP
+// service, hoists the parser into every visitor's first download (+2 KB
+// measured). Fails if either comes back.
+Deno.test("#4541 form helpers stay out of the barrel and the shared Host RSVP service", async () => {
+  const valueReexport = /export\s*\{[^}]*\}\s*from\s*"\.\/rsvpBrandForm"/;
+  assert(!valueReexport.test(barrel), "index.ts may re-export rsvpBrandForm TYPES only");
+  assert(/export type\s*\{[^}]*RsvpBrandFormPage[^}]*\}\s*from\s*"\.\/rsvpBrandForm"/.test(barrel));
+  const hostService = await read("../../../mingla-business/src/services/rsvpEvents.ts");
+  assert(!/import\s*\{[^}]*\}\s*from\s*"@mingla\/offering-rendering\/rsvpBrandForm"/.test(hostService));
+  assert(!hostService.includes("parseRsvpBrandFormPage"));
+  const leaf = await read("../../../mingla-business/src/services/publicRsvpBrandForm.ts");
+  assertStringIncludes(leaf, 'from "@mingla/offering-rendering/rsvpBrandForm"');
+});
+
+Deno.test("#4541 public RSVP form parser admits only on-page UUID-backed forms", () => {
+  const page = parseRsvpBrandFormPage({
+    active: true,
+    mode: "required_step",
+    formId: "45410000-0000-4000-8000-000000000001",
+    versionId: "45410000-0000-4000-8000-000000000002",
+    name: "Guest questions",
+    definition: { questions: [] },
+    doorFullAnswers: true,
+    brand: { displayName: "Mingla" },
+  });
+  assert(page !== null);
+  assertEquals(rsvpBrandFormPayload(page, { q1: "Vegan" }), {
+    formId: page.formId,
+    versionId: page.versionId,
+    answers: { q1: "Vegan" },
+  });
+  assertEquals(parseRsvpBrandFormPage({ ...page, mode: "after_purchase" }), null);
+  assertEquals(parseRsvpBrandFormPage({ ...page, versionId: "not-a-uuid" }), null);
+  assertEquals(rsvpBrandFormPayload(null, { q1: "Vegan" }), null);
+});
 
 // ── §A — ONE shared body, exported from the barrel ──
 Deno.test("ORCH-1163 §A — barrel exports the shared body + dock + state hook", () => {
@@ -119,17 +177,23 @@ Deno.test("ORCH-1163 §G — dialog/popup copy + package isolation (no designSys
   }
 });
 
-// ── FLOW B — per-guest plus-one contacts (name+email+phone), not a bare count ──
-Deno.test("ORCH-1163 §H — FLOW B: per-guest contact mini-forms, guests array, contactReady gate", () => {
-  assertStringIncludes(body, "orch-1163-rsvp-guest-");
-  assertStringIncludes(body, "RsvpGuestContact");
-  // body owns the per-guest stepper (hideStepper on the momentum unit) + guests array.
+// ── FLOW B — plus-ones are a party of real people, not a bare count ──
+// [#4508] Each plus-one used to be a name + email + phone mini-form
+// (`orch-1163-rsvp-guest-<i>-*`). Issue #4508 replaced them with "Who's coming
+// with you?": a guest is just a phone number (or a friend), sent as
+// `{ phone, phoneCountryIso }` by the guest model (each guest's payload). What this test pins is
+// unchanged in spirit: the body owns the guests (hideStepper on the momentum
+// unit), the party gates the decision, and the guests ride the write.
+Deno.test("ORCH-1163 §H — FLOW B: the body owns the party, guests ride the write", () => {
+  assertStringIncludes(body, 'testID="orch-1163-rsvp-guests"');
+  assertStringIncludes(body, "RsvpGuestPartyBlock");
   assertStringIncludes(body, "hideStepper");
   assertStringIncludes(body, "guestsValid");
-  // primary + every guest must be reachable.
+  // primary + the party must be ready.
   assertStringIncludes(body, "contactReady = primaryValid && guestsValid");
-  // guests submitted with the write.
-  assertStringIncludes(body, "guests: submittedGuests");
+  // guests submitted with the write, number-only.
+  // #4508 round 8: each guest carries its payload (set by the guest model).
+  assertStringIncludes(body, "guests: config.allowPlusOnes ? submittedGuests.map((g) => g.payload) : []");
 });
 
 // ── address privacy mirrors the event leg (city-only until going/maybe) ──
@@ -138,4 +202,56 @@ Deno.test("ORCH-1163 §C — client address reveal gate (going/maybe) + unlock c
   assertStringIncludes(body, 'state.guestStatus === "going"');
   assertStringIncludes(body, 'state.guestStatus === "maybe"');
   assertStringIncludes(body, 'testID="orch-1157-rsvp-address-unlock-caption"');
+});
+
+// ── #4541 — readiness is computed, not reported by the renderer ──
+import { rsvpFormMissingRequiredIds } from "../rsvpBrandForm.ts";
+import type { RsvpBrandFormPage } from "../rsvpBrandForm.ts";
+
+const mkPage = (questions: RsvpBrandFormPage["definition"]["questions"]): RsvpBrandFormPage => ({
+  active: true,
+  mode: "optional_on_page",
+  formId: "11111111-1111-4111-8111-111111111111",
+  versionId: "22222222-2222-4222-8222-222222222222",
+  name: "Q",
+  definition: { questions },
+  doorFullAnswers: false,
+  brand: {},
+});
+const q = (id: string, position: number, required: boolean, extra = {}) => ({
+  id, position, type: "short_text" as const, label: id, required, ...extra,
+});
+
+Deno.test("#4541 — missing required ids: unanswered listed, answered empty", () => {
+  const page = mkPage([q("a", 1, true), q("b", 2, false), q("c", 3, true)]);
+  assertEquals(rsvpFormMissingRequiredIds(page, {}), ["a", "c"]);
+  assertEquals(rsvpFormMissingRequiredIds(page, { a: "x", c: "y" }), []);
+});
+
+Deno.test("#4541 — blank string and empty array count as missing; optional never listed", () => {
+  const page = mkPage([
+    q("a", 1, true),
+    { ...q("m", 2, true), type: "multi_choice" as const, options: [{ id: "o", label: "O" }] },
+    q("opt", 3, false),
+  ]);
+  assertEquals(rsvpFormMissingRequiredIds(page, { a: "   ", m: [] }), ["a", "m"]);
+  assertEquals(rsvpFormMissingRequiredIds(page, { a: "x", m: ["o"] }), []);
+});
+
+Deno.test("#4541 — no required questions or no page ⇒ empty; hidden required is not listed", () => {
+  assertEquals(rsvpFormMissingRequiredIds(mkPage([q("a", 1, false)]), {}), []);
+  assertEquals(rsvpFormMissingRequiredIds(null, {}), []);
+  const page = mkPage([
+    { ...q("src", 1, false), type: "single_choice" as const, options: [{ id: "yes", label: "Y" }] },
+    q("dep", 2, true, { show_if: { question_id: "src", option_id: "yes" } }),
+  ]);
+  assertEquals(rsvpFormMissingRequiredIds(page, {}), []);
+  assertEquals(rsvpFormMissingRequiredIds(page, { src: "yes" }), ["dep"]);
+});
+
+Deno.test("#4541 — neither screen uses a __loading__ sentinel", async () => {
+  const web = await read("../../../mingla-business/src/components/event/PublicEventPage.tsx");
+  const app = await read("../../../app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx");
+  assert(!web.includes("__loading__"));
+  assert(!app.includes("__loading__"));
 });

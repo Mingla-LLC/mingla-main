@@ -131,7 +131,10 @@ export async function listReporterTickets(ticketIds) {
   const userIds = [...new Set(rows.map((row) => row.requester_user_id).filter(Boolean))];
   const brandIds = [...new Set(rows.map((row) => row.brand_id).filter(Boolean))];
   const [profiles, brands] = await Promise.all([
-    userIds.length ? supabase.from("profiles").select("id,display_name,username,email").in("id", userIds) : Promise.resolve({ data: [], error: null }),
+    // #3969 — reporters' names and emails through the admin contacts read.
+    userIds.length
+      ? supabase.rpc("issue_3969_admin_profile_contacts", { p_user_ids: userIds, p_email: null })
+      : Promise.resolve({ data: [], error: null }),
     brandIds.length ? supabase.from("brands").select("id,name").in("id", brandIds) : Promise.resolve({ data: [], error: null }),
   ]);
   const profileById = oneBy(unwrap(profiles, "Couldn't load reporters"), "id");
@@ -163,4 +166,26 @@ export async function tellProductReporters(signalId, draftId) {
     p_signal_id: signalId,
     p_draft_id: draftId,
   }), "Couldn't tell the reporters");
+}
+
+// #4420 (step 4) — one signal's Send to GitHub state, for a ticket's GitHub
+// section: its public wording, the issues found, the linked issue and the
+// commands run. The same tables the Product board read, for one signal.
+export async function getProductSignalWorkspace(signalId) {
+  const [review, candidates, link, commands] = await Promise.all([
+    supabase.from("product_avengers_reviews").select("*").eq("signal_id", signalId).maybeSingle(),
+    supabase.from("product_avengers_candidates").select("*").eq("signal_id", signalId).order("issue_number", { ascending: false }),
+    supabase.from("product_signal_avengers_links").select("signal_id,item_id,link_kind,linked_at").eq("signal_id", signalId).maybeSingle(),
+    supabase.from("product_avengers_commands").select("id,signal_id,action,state,error_code,requested_at,completed_at").eq("signal_id", signalId).order("requested_at", { ascending: false }).limit(20),
+  ]);
+  for (const result of [review, candidates, link, commands]) {
+    if (result.error) throw new Error(result.error.message || "Couldn't load the GitHub state of this ticket");
+  }
+  let item = null;
+  if (link.data?.item_id) {
+    const found = await supabase.from("product_avengers_items").select("*").eq("id", link.data.item_id).maybeSingle();
+    if (found.error) throw new Error(found.error.message || "Couldn't load the linked issue");
+    item = found.data || null;
+  }
+  return { review: review.data || null, candidates: candidates.data || [], link: link.data || null, item, commands: commands.data || [] };
 }

@@ -79,11 +79,45 @@ import { doorBookedLine } from "../../../../src/utils/bookedStart";
 
 // ---- Helpers --------------------------------------------------------
 
+// #4514 §6 — the server (scan-ticket, _shared/doorBookedStart.ts) sends the
+// door line ready to show: at most 3 lines, each answer already cut. This
+// screen only checks the shape and renders it; it never formats answers.
+type DoorLine = {
+  state: "answered" | "not_answered" | "unavailable";
+  header: string | null;
+  lines: string[];
+  fullAnswers: boolean;
+};
+const readDoorLine = (value: unknown): DoorLine | null => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const state = raw.state;
+  if (state !== "answered" && state !== "not_answered" && state !== "unavailable") return null;
+  const lines = Array.isArray(raw.lines)
+    ? raw.lines.filter((l): l is string => typeof l === "string" && l.length > 0)
+    : [];
+  if (lines.length === 0) return null;
+  return {
+    state,
+    header: typeof raw.header === "string" && raw.header.length > 0 ? raw.header : null,
+    lines,
+    fullAnswers: raw.fullAnswers === true,
+  };
+};
+
 // issue #3827 — the door "Find by name" sheet loads on first open, so it stays
 // out of the business-web boot chunk (__common ceiling, orch-1083).
 const DoorGuestSearchSheet = lazy(() =>
   import("../../../../src/components/scanner/DoorGuestSearchSheet").then((m) => ({
     default: m.DoorGuestSearchSheet,
+  })),
+);
+
+// #4514 wave 6 — "See all answers" loads through the forms renderer's ONE lazy
+// owner, so the renderer never reaches the business-web boot chunk.
+const DoorAnswersSheet = lazy(() =>
+  import("../../../../src/components/checkout/intake/formRenderingPrimitives").then((m) => ({
+    default: m.DoorAnswersSheet,
   })),
 );
 
@@ -149,6 +183,10 @@ interface ResultOverlayState {
   extras?: string;
   /** issue #3281 — "Booked for Sat, Nov 14, 7:30 PM"; never clipped. */
   booked?: string;
+  /** #4514 §6 — the door line (marked answers, not answered, unavailable). */
+  door?: DoorLine;
+  /** #4514 wave 6 — the scan that "See all answers" opens, with the guest's name. */
+  answersFor?: { scanId: string; guestName: string };
 }
 
 interface ResultOverlaySpec {
@@ -230,6 +268,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
   // a newer scan (or a dismissed overlay that a later scan reopened).
   const enrichmentGenerationRef = useRef<number>(0);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const answersOpenRef = useRef<boolean>(false);
   const overlayAnim = useRef(new Animated.Value(0)).current;
   // Cycle 17c §F.2 — respect OS reduce-motion preference per I-40 spirit.
   // Old RN Animated API has no useReducedMotion; subscribe to AccessibilityInfo.
@@ -254,6 +293,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
   const [logExpanded, setLogExpanded] = useState<boolean>(false);
   // issue #3827 — door "Find by name".
   const [findOpen, setFindOpen] = useState<boolean>(false);
+  // #4514 wave 6 — the guest whose full answers are open (holds the card open).
+  const [answersOpen, setAnswersOpen] = useState<{ scanId: string; guestName: string } | null>(null);
   const sessionStartRef = useRef<string>(new Date().toISOString());
 
   // Session log — raw subscription + useMemo (selector pattern rule).
@@ -337,6 +378,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
           useNativeDriver: true,
         }).start();
       }
+      // #4514 wave 6 — while a guest's answers are open the card stays.
+      if (answersOpenRef.current) return;
       overlayTimerRef.current = setTimeout(() => {
         dismissOverlay();
       }, RESULT_OVERLAY_DURATION_MS);
@@ -412,6 +455,16 @@ export default function ScannerCameraRoute(): React.ReactElement {
           const booked =
             doorBookedLine(kind, result.bookedStartAt, event.timezone) ??
             undefined;
+          // #4514 §6 — the door line, only on a ticket the door let in. The
+          // server never sends it otherwise; this guard keeps it that way.
+          const door =
+            kind === "success" || kind === "duplicate"
+              ? readDoorLine(result.doorAnswers) ?? undefined
+              : undefined;
+          const answersFor =
+            door?.fullAnswers === true && typeof result.scanId === "string"
+              ? { scanId: result.scanId, guestName: result.buyerName ?? "Guest" }
+              : undefined;
           if (kind === "success") {
             showResult({
               kind,
@@ -419,6 +472,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
               detail: result.ticketName ?? "Ticket",
               extras,
               booked,
+              door,
+              answersFor,
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -445,7 +500,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
             } else {
               message = "Ticket not found";
             }
-            showResult({ kind, message, detail, extras, booked });
+            showResult({ kind, message, detail, extras, booked, door, answersFor });
             void Haptics.notificationAsync(
               kind === "duplicate" ||
                 kind === "not_yet_open" ||
@@ -577,6 +632,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
               detail: copy.detail,
               extras,
               booked,
+              door,
+              answersFor,
             });
           } catch {
             // Keep the authoritative base overlay.
@@ -635,6 +692,25 @@ export default function ScannerCameraRoute(): React.ReactElement {
     },
     [recordServerScan],
   );
+
+  // #4514 wave 6 — "See all answers": hold the result card open (no 3 s
+  // self-close) while the guest's answers are open; closing them closes both.
+  const handleOpenAnswers = useCallback(
+    (target: { scanId: string; guestName: string }): void => {
+      if (overlayTimerRef.current !== null) {
+        clearTimeout(overlayTimerRef.current);
+        overlayTimerRef.current = null;
+      }
+      answersOpenRef.current = true;
+      setAnswersOpen(target);
+    },
+    [],
+  );
+  const handleCloseAnswers = useCallback((): void => {
+    answersOpenRef.current = false;
+    setAnswersOpen(null);
+    dismissOverlay();
+  }, [dismissOverlay]);
 
   // ---- Not-found shell ---------------------------------------------
   if (event === null && routeEvent.isLoading && typeof eventId === "string") {
@@ -758,6 +834,28 @@ export default function ScannerCameraRoute(): React.ReactElement {
   }
 
   // ---- Granted: camera viewport -----------------------------------
+  // #4514 wave 6 — the one lazy "See all answers" sheet. Opened from the scan
+  // card it sits at the root; opened from "Find by name" it renders inside the
+  // search sheet (a modal over that modal), so the search stays where it was.
+  const answersSheet =
+    answersOpen !== null ? (
+      <Suspense
+        fallback={
+          <View style={styles.answersLoading} testID="door-answers-chunk-loading">
+            <ActivityIndicator color={color.textStrong} />
+          </View>
+        }
+      >
+        <DoorAnswersSheet
+          visible
+          onClose={handleCloseAnswers}
+          eventId={event.id}
+          scanId={answersOpen.scanId}
+          guestName={answersOpen.guestName}
+        />
+      </Suspense>
+    ) : null;
+
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.chromeRow}>
@@ -812,7 +910,14 @@ export default function ScannerCameraRoute(): React.ReactElement {
               accessibilityRole="button"
               // issue #3281 — a screen reader hears the result, the ticket and
               // what the guest is still owed, not only how to dismiss it.
-              accessibilityLabel={[overlay.message, overlay.detail, overlay.booked, overlay.extras]
+              accessibilityLabel={[
+                overlay.message,
+                overlay.detail,
+                overlay.booked,
+                overlay.extras,
+                overlay.door?.header ?? undefined,
+                overlay.door?.lines.join(" · "),
+              ]
                 .filter((part): part is string => typeof part === "string" && part.length > 0)
                 .join(". ")}
               accessibilityHint="Dismisses the scan result"
@@ -849,6 +954,43 @@ export default function ScannerCameraRoute(): React.ReactElement {
                 <Text style={styles.overlayDetail} testID="scan-result-extras">
                   {overlay.extras}
                 </Text>
+              ) : null}
+              {overlay.door !== undefined ? (
+                // #4514 §6 — under the name, ticket, extras and booked lines,
+                // above a hairline. One line, two at most.
+                <View style={styles.doorBlock} testID="scan-result-door">
+                  {overlay.door.header !== null ? (
+                    <Text style={styles.doorHeader} numberOfLines={1}>
+                      {overlay.door.header}
+                    </Text>
+                  ) : null}
+                  <Text
+                    style={[
+                      styles.doorLine,
+                      overlay.door.state === "not_answered"
+                        ? styles.doorLineWarn
+                        : overlay.door.state === "unavailable"
+                          ? styles.doorLineMuted
+                          : null,
+                    ]}
+                    numberOfLines={2}
+                    testID={`scan-result-door-${overlay.door.state}`}
+                  >
+                    {overlay.door.lines.join(" · ")}
+                  </Text>
+                  {overlay.answersFor !== undefined ? (
+                    <Button
+                      label="See all answers"
+                      variant="secondary"
+                      size="sm"
+                      onPress={() => {
+                        if (overlay.answersFor !== undefined) handleOpenAnswers(overlay.answersFor);
+                      }}
+                      accessibilityHint="Opens this guest's answers"
+                      testID="scan-result-see-all-answers"
+                    />
+                  ) : null}
+                </View>
               ) : null}
             </Pressable>
           </Animated.View>
@@ -914,6 +1056,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
         ) : null}
       </View>
 
+      {answersOpen !== null && !findOpen ? answersSheet : null}
+
       {findOpen ? (
         <Suspense fallback={null}>
           <DoorGuestSearchSheet
@@ -923,6 +1067,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
             noun={kindCfg.noun}
             onAdmitted={handleNameAdmitted}
             timeZone={event.timezone}
+            onOpenAnswers={handleOpenAnswers}
+            answers={answersOpen !== null ? answersSheet : null}
           />
         </Suspense>
       ) : null}
@@ -1133,6 +1279,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: color.text2,
     textAlign: "center",
+  },
+  doorBlock: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: space[2],
+    marginTop: space[1],
+    paddingTop: space[2],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
+  doorHeader: {
+    fontSize: 12,
+    color: color.text3,
+    textAlign: "center",
+  },
+  doorLine: {
+    fontSize: 13,
+    color: color.text1,
+    textAlign: "center",
+  },
+  doorLineWarn: {
+    color: color.warningText,
+    fontWeight: "600",
+  },
+  doorLineMuted: {
+    color: color.text3,
+  },
+  answersLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: scrim.modal,
   },
   findWrap: {
     alignItems: "center",

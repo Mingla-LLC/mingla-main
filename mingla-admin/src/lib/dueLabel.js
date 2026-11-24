@@ -89,11 +89,16 @@ export function workingDaysSince(value, now = new Date()) {
   return n;
 }
 
-/** "Waiting on Seth" or, after two working days, "Waiting on Seth for 3 days". */
+/**
+ * "Waiting on Seth" or, after two working days, "Waiting on Seth for 3 days".
+ * #4571: with several watchers, "Waiting on any of: Seth, Ada" (waiting_on_all;
+ * the single waiting_on is read only from older servers).
+ */
 export function waitingWords(card, now = new Date()) {
   const r = card?.review;
   if (!r) return "";
-  const who = r.waiting_on || "the watcher";
+  const all = Array.isArray(r.waiting_on_all) ? r.waiting_on_all.filter(Boolean) : [];
+  const who = all.length > 1 ? `any of: ${all.join(", ")}` : all[0] || r.waiting_on || "the watcher";
   const n = workingDaysSince(r.requested_at, now);
   return n >= 2 ? `Waiting on ${who} for ${n} days` : `Waiting on ${who}`;
 }

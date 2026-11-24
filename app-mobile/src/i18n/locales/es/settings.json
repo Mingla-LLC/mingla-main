@@ -49,9 +49,13 @@
         "brand_campaign_push": "Mensajes de lugares que sigues",
         "brand_campaign_push_hint": "Ofertas y novedades de lugares y anfitriones que sigues.",
         "brand_offering_invite": "Invitaciones de lugares que sigues",
-        "brand_offering_invite_hint": "Cuando un lugar o anfitrión te invita a algo."
+        "brand_offering_invite_hint": "Cuando un lugar o anfitrión te invita a algo.",
+        "brand_form_request": "Preguntas de los anfitriones",
+        "brand_form_request_hint": "Cuando un anfitrión te pide responder sus preguntas. El correo siempre está activo para estas, porque lleva tu propio enlace. Los mensajes de texto siguen tu configuración de mensajes."
       }
-    }
+    },
+    "friends_going": "Amigos que salen",
+    "friends_going_hint": "Cuando un amigo cercano va a un evento"
   },
   "quiet_hours": {
     "title": "Horas de silencio",

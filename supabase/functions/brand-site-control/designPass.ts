@@ -16,7 +16,7 @@
  * Any failed read fails closed: the fact is 0 / absent, so the section is
  * left out (never invented).
  */
-import { primaryFormat, type FormatKey } from "../_shared/siteContracts/formats.ts";
+import { styleFormat, type FormatKey } from "../_shared/siteContracts/formats.ts";
 import { mainActionPage } from "../_shared/siteContracts/sitePlan.ts";
 
 type JsonObject = Record<string, unknown>;
@@ -182,7 +182,8 @@ export type PlanInputs = {
 /** The brand's primary format for the plan (v2 §4.1), or null. */
 export function planFormat(plan: PlanInputs): FormatKey | null {
   const mainAction = typeof plan.story?.main_action === "string" ? plan.story.main_action : null;
-  return primaryFormat({ offerings_selected: plan.offerings_selected, main_action_page: mainActionPage(mainAction, plan.offerings_selected) });
+  // #4572 item 6 — style picks judge a gallery as art (styleFormat).
+  return styleFormat({ offerings_selected: plan.offerings_selected, main_action_page: mainActionPage(mainAction, plan.offerings_selected) });
 }
 
 /** Other brands' live looks of the same format (no brand ids), capped. */

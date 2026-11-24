@@ -18,7 +18,6 @@ export const GROUPS = Object.freeze(["todo", "doing", "done"]);
 /** Colours offered for a new or recoloured column (stored as data on the column). */
 export const COLUMN_COLORS = Object.freeze(["#8a847b", "#2f6fd6", "#f97316", "#7a4fd1", "#c2367a", "#c27a12", "#1f8a5b", "#c42b1c"]);
 
-export const GOAL_LIMIT = 5;
 export const MAX_DEPTH = 2;
 export const FILE_MAX_BYTES = 26214400;
 export const FILES_PER_CARD = 50;
@@ -131,9 +130,9 @@ export function headerFit(width) {
   return "compact";
 }
 
-/** How many of the three filters are on. */
-export function activeFilterCount({ owner = null, show = "", linked = "" } = {}) {
-  return [owner, show, linked].filter(Boolean).length;
+/** How many of the filters are on (#4420: Type is the fourth). */
+export function activeFilterCount({ owner = null, show = "", linked = "", type = "" } = {}) {
+  return [owner, show, linked, type].filter(Boolean).length;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,13 +151,39 @@ export function goalStateLabel(state) {
 }
 
 /** A sprint takes up to five live goals. */
-export function canAddGoal(goals) {
-  return (Array.isArray(goals) ? goals.filter((g) => g && !g.archived) : []).length < GOAL_LIMIT;
+/** #4571: a sprint takes any number of goals. */
+export function canAddGoal() {
+  return true;
+}
+
+export const GOAL_NOTE_MAX = 500;
+/** #4571: SprintBar shows the first three goals, then "+N more". */
+export const GOAL_PILLS = 3;
+export function goalFold(goals, shown = GOAL_PILLS) {
+  const live = (Array.isArray(goals) ? goals : []).filter((g) => g && !g.archived);
+  return { shown: live.slice(0, shown), more: live.slice(shown) };
+}
+
+/**
+ * #4571 rework: how many goal pills fit a strip `width` px wide on a wide
+ * screen, so "+N more" always sits inside the bar and every pill keeps a
+ * readable title (at least GOAL_PILL_MIN px). No width yet (first paint, a
+ * phone where the strip scrolls): the usual GOAL_PILLS.
+ */
+export const GOAL_PILL_MIN = 88;
+export const GOAL_GAP = 6;
+export const GOAL_MORE_PILL = 96;
+export function goalPillsThatFit(width, count, max = GOAL_PILLS) {
+  const n = Math.max(0, Number(count) || 0);
+  if (!Number.isFinite(width) || width <= 0) return Math.min(n, max);
+  const per = GOAL_PILL_MIN + GOAL_GAP;
+  if (n <= max && n * per - GOAL_GAP <= width) return n;
+  return Math.max(0, Math.min(max, n, Math.floor((width - GOAL_MORE_PILL) / per)));
 }
 
 export function goalTitleProblem(title) {
   const v = String(title || "").replace(/\s+/g, " ").trim();
-  return v.length < 3 || v.length > 80 ? "Say the goal in 3 to 80 characters." : "";
+  return v.length < 3 || v.length > 120 ? "Say the goal in 3 to 120 characters." : "";
 }
 
 /** "6 h", "1.5 h", "45 min"; nothing for no estimate. */

@@ -23,6 +23,9 @@
  *   R-3 owned host, first segment we do not serve   -> "/"
  *   R-4 owned host, empty path or "/"               -> "/"
  *   R-5 owned host, served segment                  -> input unchanged (query + fragment intact)
+ *   R-5b owned host, the `form` segment ONLY        -> a `#t={token}` fragment becomes the query
+ *                                                      `?t={token}` (other query params kept); the
+ *                                                      result never leaves the device (#4541 R2.1)
  *   R-6 custom-scheme URL                           -> R-3/R-4/R-5 on its path; scheme is trusted
  *   R-7 anything throws                             -> "/"
  *
@@ -113,7 +116,11 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "e",
   "earnings",
   "enquiry",
+  // #4508 2.3 — an event by id (the friend-is-going push).
+  "event",
   "exp",
+  // #4541 R2.1 — the Explorer form screen (`app/form/[formId].tsx`).
+  "form",
   "local",
   // #4490 Explorer W1: venue web links the app now serves (/o/<id>).
   "o",
@@ -123,6 +130,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "purchases",
   // #4490 Explorer W1: /reserve/<brand>/manage opens on the web in-app.
   "reserve",
+  // #4508 — an RSVP guest's claim screen ("{Inviter} saved you a spot").
+  "rsvp-guest",
   "s",
   "stay",
   // #4382 — Help & Support and support request threads.
@@ -144,6 +153,26 @@ function firstSegment(pathname: string): string | null {
     if (part.length > 0) return part;
   }
   return null;
+}
+
+/**
+ * R-5b — `…/form/{id}?a=b#t={token}` -> `…/form/{id}?a=b&t={token}`. Only a
+ * fragment of exactly `t={64 hex}` moves; anything else is returned unchanged.
+ * String surgery on the already-validated URL: the token is never logged.
+ */
+function formTokenToQuery(path: string): string {
+  const hashAt = path.indexOf("#");
+  if (hashAt < 0) return path;
+  const fragment = path.slice(hashAt + 1);
+  const match = /^t=([0-9a-f]{64})$/i.exec(fragment);
+  if (match === null) return path;
+  const head = path.slice(0, hashAt);
+  const queryAt = head.indexOf("?");
+  const base = queryAt < 0 ? head : head.slice(0, queryAt);
+  const kept = queryAt < 0
+    ? []
+    : head.slice(queryAt + 1).split("&").filter((pair) => pair.length > 0 && !/^t=/.test(pair));
+  return `${base}?${[...kept, `t=${match[1]}`].join("&")}`;
 }
 
 export function redirectSystemPath({
@@ -189,6 +218,11 @@ export function redirectSystemPath({
     // R-3 — owned host, a segment this app does not serve (the #2180 case:
     // `/w36m` is an AppsFlyer OneLink template id, not a screen).
     if (!SERVED_ROUTE_SEGMENTS.has(segment)) return HOME;
+
+    // R-5b — #4541 R2.1: a personal form link keeps its token in the
+    // fragment (`/form/{id}#t={token}`), which expo-router drops. For the
+    // `form` segment only, move it into the query so the screen can read it.
+    if (segment === "form") return formTokenToQuery(path);
 
     // R-5 — a real deep link. Returned byte-for-byte so query strings and
     // fragments survive intact (share tokens, AppsFlyer `pid`/`c`).

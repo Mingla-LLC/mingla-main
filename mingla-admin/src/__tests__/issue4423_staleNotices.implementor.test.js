@@ -117,15 +117,14 @@ describe("#4423 P2-1 / P3-1: the hooks use the shared rules and the screens show
     assert.match(msgs, /whenCeilingLifts\(/);
     assert.match(msgs, /paused: !!current\.paused,/);
   });
-  it("5 Messages (panel and page), Home's draft counts and the board show the notice with Try again", () => {
+  it("5 Messages (the page), Home's draft counts and the board show the notice with Try again", () => {
     const body = read("components/messages/MessagesBody.jsx");
     assert.match(body, /\{messages\.stale && \(\s*<div data-messages-stale=""[\s\S]*?title="Messages may be out of date"[\s\S]*?onClick=\{\(\) => messages\.refetch\(\)\}>Try again<\/Button>[\s\S]*?\{messages\.paused \? STALE_PAUSED_WORDS : null\}/);
     const home = read("pages/RoleHomePage.jsx");
     assert.match(home, /\{!error && draftCounts\.stale && \(\s*<AlertCard variant="warning" title="Draft counts may be out of date"[\s\S]*?onClick=\{\(\) => draftCounts\.refetch\(\)\}>Try again<\/Button>[\s\S]*?\{draftCounts\.paused \? STALE_PAUSED_WORDS : null\}/);
     const board = read("pages/WorkBoardPage.jsx");
     assert.match(board, /\{list\.stale && <AlertCard variant="warning" title="The board may be out of date"[^\n]*>\{list\.paused \? STALE_PAUSED_WORDS : null\}<\/AlertCard>\}/);
-    // MessagesBody is the one body of both the panel and the full page.
-    assert.match(read("components/messages/MessagesButton.jsx"), /<MessagesBody /);
+    // MessagesBody is the one body of the full page (#4517: the panel is gone).
     assert.match(read("pages/MessagesPage.jsx"), /<MessagesBody messages=\{messages\}/);
   });
 });

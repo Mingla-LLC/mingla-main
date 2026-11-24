@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { SetupDraftState } from "../../../sites/setupStatus";
 import { Chip, Skeleton, WButton, ui } from "../website/ui";
 import { BuildPart } from "../plan/BuildPart";
+import { NOT_APPLICABLE_KEYS } from "../../../sites/setupFields";
 import type { PlanPartKey } from "../../../../../packages/site-contracts/src/sitePlan.ts";
 
 /** Design states 7, 8, 9 and the idle card. State 10 is drawn by the screen. */
@@ -13,7 +14,7 @@ function listWords(items: readonly string[]): string {
 
 const lowerFirst = (value: string): string => value.charAt(0).toLowerCase() + value.slice(1);
 
-export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, blockers = [], nextStep, onStart, onRetry, onTellMingla, onDone }: {
+export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, blockers = [], nextStep, onStart, onRetry, onTellMingla, onDone, onNotApplicable }: {
   brandId: string;
   brandName: string;
   state: SetupDraftState;
@@ -24,7 +25,9 @@ export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, 
    * What still stands before Build, from the same rule Ari reads
    * (`planBuildBlockers`). Shown before any press; Build stays off until empty.
    */
-  blockers?: readonly { key: string; label: string }[];
+  blockers?: readonly { key: string; label: string; requirement?: "required" | "recommended" }[];
+  /** #4572 item 4 (D1) — "Doesn't apply to my brand" for a recommended row (absent: read-only, no button). */
+  onNotApplicable?: (fieldKey: string) => Promise<void>;
   /** The first step still open, for "what's missing". */
   nextStep?: PlanPartKey | null;
   onStart: () => void;
@@ -32,6 +35,15 @@ export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, 
   onTellMingla: () => void;
   onDone: (next: PlanPartKey) => void;
 }): React.ReactElement | null {
+  const [marking, setMarking] = useState<ReadonlyMap<string, "saving" | "error">>(() => new Map());
+  const markNotApplicable = (key: string) => {
+    if (!onNotApplicable) return;
+    setMarking((current) => new Map(current).set(key, "saving"));
+    onNotApplicable(key).then(
+      () => setMarking((current) => { const next = new Map(current); next.delete(key); return next; }),
+      () => setMarking((current) => new Map(current).set(key, "error")),
+    );
+  };
   const refused = refusal ? (
     <View style={styles.host} testID="setup-draft-refused">
       <Text style={styles.title} accessibilityRole="alert">Your draft can&apos;t be built yet.</Text>
@@ -48,9 +60,37 @@ export function SetupDraftStep({ brandId, brandName, state, canManage, refusal, 
     return (
       <View style={styles.host} testID="setup-draft-blocked">
         <Text style={styles.title}>Your draft can&apos;t be built yet.</Text>
-        <Text style={styles.body} testID="setup-draft-still-needed">
-          {`Still needed: ${listWords(blockers.map((item) => lowerFirst(item.label)))}. Nothing has been created.`}
-        </Text>
+        <Text style={styles.body} testID="setup-draft-still-needed">Still needed. Nothing has been created.</Text>
+        {/* #4572 item 4 (D1) — one row per item; a recommended one the owner can mark "Doesn't apply". */}
+        <View style={styles.rows} accessibilityRole="list" accessibilityLabel={`Still needed: ${listWords(blockers.map((item) => lowerFirst(item.label)))}`}>
+          {blockers.map((item) => {
+            const optional = item.requirement === "recommended" && NOT_APPLICABLE_KEYS.has(item.key) && Boolean(onNotApplicable) && canManage;
+            const status = marking.get(item.key);
+            return (
+              <View key={item.key} style={styles.blockerRow} testID={`setup-draft-row-${item.key}`}>
+                <View style={styles.grow}>
+                  <Text style={styles.rowTitle}>{item.label}</Text>
+                  <Text style={styles.rowMeta}>
+                    {item.requirement === "recommended" ? "Recommended" : "Required"}
+                    {status === "error" ? <Text style={styles.rowError} testID={`setup-draft-row-${item.key}-error`}>{" · That didn't save"}</Text> : null}
+                  </Text>
+                </View>
+                {optional ? (
+                  <WButton
+                    label={status === "saving" ? "Saving…" : status === "error" ? "Try again" : "Doesn't apply to my brand"}
+                    variant="ghost"
+                    size="sm"
+                    loading={status === "saving"}
+                    disabled={status === "saving"}
+                    onPress={() => markNotApplicable(item.key)}
+                    accessibilityLabel={`${item.label} doesn't apply to my brand`}
+                    testID={`setup-draft-na-${item.key}`}
+                  />
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
         {nextStep ? (
           <View style={styles.row}>
             <WButton label="Go to what's missing" variant="primary" onPress={() => onDone(nextStep)} testID="setup-draft-missing" />
@@ -110,4 +150,10 @@ const styles = StyleSheet.create({
   body: { fontSize: 15, lineHeight: 22, color: ui.t2 },
   row: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   grow: { flex: 1, minWidth: 100 },
+  // #4572 item 4 — the "Still needed" rows.
+  rows: { gap: 8 },
+  blockerRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 10, minHeight: 44, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: ui.cardBorder, backgroundColor: ui.card },
+  rowTitle: { fontSize: 14, lineHeight: 20, fontWeight: "600", color: ui.t1 },
+  rowMeta: { fontSize: 12, lineHeight: 16, color: ui.t3 },
+  rowError: { color: ui.err },
 });

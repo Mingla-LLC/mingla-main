@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   LifeBuoy,
-  MessagesSquare,
   MessageSquare,
+  MessageSquareText,
   Home,
   Handshake,
   Inbox,
@@ -43,7 +43,7 @@ import {
   RadioTower,
   Send,
   BellRing,
-  Milestone,
+  BookOpen,
   Mail,
   Newspaper,
   Link,
@@ -69,6 +69,8 @@ import {
 // and never a typed "Mingla" beside it.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
 import { useReviewCount } from "../../hooks/useReviewCount";
+import { useMessages } from "../../hooks/useMessages";
+import { messagesButtonLabel } from "../../lib/messagesModel";
 import { BRAND_GROUP_WAITING_EVENT, brandGroupWaiting } from "../../lib/brandGroupWaiting";
 
 // The one registry of menu icons. Every `icon` named in NAV_GROUPS
@@ -94,8 +96,8 @@ const ICON_MAP = {
   CalendarClock,
   BarChart3,
   LifeBuoy,
-  MessagesSquare,
   MessageSquare,
+  MessageSquareText,
   Users,
   Building2,
   CalendarDays,
@@ -121,7 +123,7 @@ const ICON_MAP = {
   RadioTower,
   Send,
   BellRing,
-  Milestone,
+  BookOpen,
   Mail,
   Newspaper,
   Link,
@@ -161,6 +163,10 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const [foldedGroups, setFoldedGroups] = useState(() => readFoldedGroups(browserStorage()));
   const [signingOut, setSigningOut] = useState(false);
   const reviewCount = useReviewCount();
+  // #4517: the Messages row shows the same unread count as the top-bar button.
+  // useMessages is one shared store (one poll, one realtime channel for every
+  // caller), so this adds no second query.
+  const messages = useMessages();
   // #4452 §7.2: the Brand groups item shows how many groups wait on Mingla.
   const [groupsWaiting, setGroupsWaiting] = useState(brandGroupWaiting);
   useEffect(() => {
@@ -214,8 +220,10 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
     const isActive = activeTab === item.id;
     // #4270 (D20): the Work entry counts this person's own open cards due
     // today or overdue (useReviewCount().cards).
-    const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : 0;
-    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} ${item.id === "brand-groups" ? "waiting" : "due"}` : item.label;
+    const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : item.id === "messages" ? messages.count || 0 : 0;
+    const spokenLabel = item.id === "messages"
+      ? messagesButtonLabel(waiting)
+      : waiting > 0 ? `${item.label}, ${waiting} ${item.id === "brand-groups" ? "waiting" : "due"}` : item.label;
 
     return (
       <li key={item.id}>

@@ -238,6 +238,7 @@ export const PUBLIC_BUYER_ROUTE_PREFIXES = [
   "/visit/", // /visit/[groupId] — #4490 venue booking and pass (booking-token-authorized; buying never needs sign-in)
   "/paid/", // /paid/visit/[groupId], /paid/plan/[subscriptionId] — #4490 Explorer W1 app payment return (shows no booking data)
   "/receipt/", // /receipt/till/[paymentId] — #4490 spec 08 O1 in-person sale receipt (receipt-token-authorized)
+  "/form/", // /form/[formId]#t=… — #4514 a brand form's personal link (token in the fragment)
 ] as const;
 
 /**
@@ -284,6 +285,7 @@ export const isPublicBuyerRoute = (
  *   /stay/pay/ (staff-made Stay payment link, #4420)
  *   /visit/   (a guest's venue booking and pass, opened with its token, #4490)
  *   /receipt/ (a guest's Till receipt, opened with its token, #4490 spec 08)
+ *   /form/    (a brand form's personal link, #4514)
  * Everything else on host.usemingla.com (the dashboard, `/`, `/events`,
  * `/account`, `/team`, sign-in) is not a pixel route, so hosts and staff never
  * enter buyer audiences. Same segment-safe matching as isPublicBuyerRoute.
@@ -297,6 +299,7 @@ const NON_SHOPPING_BUYER_ROUTE_PREFIXES: readonly string[] = [
   "/visit/",
   "/paid/", // #4490 Explorer W1
   "/receipt/", // #4490 spec 08 O1
+  "/form/",
 ];
 
 export const isAdPixelRoute = (

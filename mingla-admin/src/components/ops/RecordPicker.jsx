@@ -2,9 +2,21 @@
 // card or expected event, searched in live Mingla data. Inline, no layer.
 import { useEffect, useId, useRef, useState } from "react";
 import * as ops from "../../services/opsService";
-import { LINK_KINDS, opsErrorWords } from "../../lib/opsModel";
+import { LINK_KINDS, linkLabelWords, linkSubWords, opsErrorWords } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
+
+/** #4571 final gate: one search result. A booking's status shows as its word (linkSubWords), never the raw id. */
+export function PickerResult({ kind, r, onPick }) {
+  return (
+    <li>
+      <button type="button" onClick={() => onPick({ kind, id: r.id, label: r.label })} className={`flex min-h-11 w-full min-w-0 flex-col justify-center rounded-lg px-2 py-1 text-left hover:bg-[var(--gray-100)] ${FOCUS}`}>
+        <span className="break-words text-[13px] font-medium text-[var(--color-text-primary)]">{linkLabelWords(r.label)}</span>
+        {r.sub && <span data-picker-sub="" className="break-words text-[12px] text-[var(--color-text-tertiary)]">{linkSubWords(kind, r.sub)}</span>}
+      </button>
+    </li>
+  );
+}
 
 export function RecordPicker({ onPick, onClose, kinds = LINK_KINDS }) {
   const id = useId();
@@ -20,7 +32,10 @@ export function RecordPicker({ onPick, onClose, kinds = LINK_KINDS }) {
     const mine = ++seq.current;
     const timer = setTimeout(async () => {
       try {
-        const answer = await ops.searchLinks(kind, query);
+        // #4420: a support conversation is found by customer name or number (Support staff only).
+        const answer = kind === "support_conversation"
+          ? { results: (await ops.searchConversations(query) || []).map((r) => ({ id: r.id, label: r.label, sub: [r.customer_name, r.segment === "business" ? "Host" : r.segment === "explorer" ? "Explorer" : ""].filter(Boolean).join(" · ") })) }
+          : await ops.searchLinks(kind, query);
         if (mine === seq.current) setFound({ kind, query, results: answer?.results || [], error: null });
       } catch (error) {
         if (mine === seq.current) setFound({ kind, query, results: [], error });
@@ -67,12 +82,7 @@ export function RecordPicker({ onPick, onClose, kinds = LINK_KINDS }) {
         ) : (
           <ul className="flex min-w-0 flex-col">
             {state.results.map((r) => (
-              <li key={r.id}>
-                <button type="button" onClick={() => onPick({ kind, id: r.id, label: r.label })} className={`flex min-h-11 w-full min-w-0 flex-col justify-center rounded-lg px-2 py-1 text-left hover:bg-[var(--gray-100)] ${FOCUS}`}>
-                  <span className="break-words text-[13px] font-medium text-[var(--color-text-primary)]">{r.label}</span>
-                  {r.sub && <span className="break-words text-[12px] text-[var(--color-text-tertiary)]">{r.sub}</span>}
-                </button>
-              </li>
+              <PickerResult key={r.id} kind={kind} r={r} onPick={onPick} />
             ))}
           </ul>
         )}

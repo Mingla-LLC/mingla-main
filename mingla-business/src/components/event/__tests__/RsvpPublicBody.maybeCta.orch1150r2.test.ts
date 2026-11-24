@@ -69,8 +69,11 @@ describe("ORCH-1157 — RsvpOfferingBody delegates the Going/Maybe/Can't decisio
     // ORCH-1163 [TEST-MOD-APPROVED ORCH-1163]: the promoted body splits the single
     // combined gate into a maybe-path gate (submitDirect) + a going-path gate
     // (onGoingTap); the INVARIANT (contact gate applies to BOTH going and maybe) holds.
-    expect(SRC).toMatch(/rsvpStatus === "maybe" && !contactReady/); // maybe path gate
-    expect(SRC).toMatch(/onGoingTap[\s\S]*?if \(!contactReady\)/); // going path gate
+    // #4541: both gates now read decisionReady, which is the contact gate AND the
+    // required-questions gate, so the contact gate still applies to both paths.
+    expect(SRC).toMatch(/const decisionReady = contactReady && questionsReady/);
+    expect(SRC).toMatch(/rsvpStatus === "maybe" && !decisionReady/); // maybe path gate
+    expect(SRC).toMatch(/onGoingTap[\s\S]*?if \(!decisionReady\)/); // going path gate
   });
 
   it("shows the keep-posted response copy for a resolved maybe", () => {

@@ -24,7 +24,7 @@ import {
   space,
   type,
 } from "../../../constants/designSystem";
-import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../../constants/supportHostFacing";
 import {
   TAP_CARD_NEEDS_INSERT_COPY,
   TAP_PROCESSING_TEXT,
@@ -347,7 +347,7 @@ export const TapToPaySaleScreen = ({
   // "Get help" on every failed result: the same Help & Support screen as
   // Account → Settings → Help & Support. A push, so the sale stays underneath.
   const openHelp = (): void => {
-    router.push(HELP_AND_SUPPORT_ROUTE as never);
+    router.push(HELP_SUPPORT_PERSON_ROUTE as never);
   };
 
   const payCodeAction = {

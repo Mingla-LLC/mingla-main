@@ -17,6 +17,7 @@ import {
   PAYOUT_HOLD_UNREADABLE_STATUS,
   readBrandPayoutHoldStamp,
 } from "../../_shared/payoutHoldStamp.ts";
+import { chargeBelowProviderMinimum } from "../../_shared/money/providerMinimums.ts";
 
 type Row = Record<string, unknown>;
 type Brands = "error" | "throw" | "stamped";
@@ -150,6 +151,7 @@ const boundary = {
   readBrandPayoutHoldStamp,
   PAYOUT_HOLD_UNREADABLE_ERROR,
   PAYOUT_HOLD_UNREADABLE_STATUS,
+  chargeBelowProviderMinimum,
   paystackInitializeTransaction: (input: Row) => {
     initialized.push(input);
     return Promise.resolve({ authorization_url: "https://x.invalid", reference: "r", access_code: "a" });

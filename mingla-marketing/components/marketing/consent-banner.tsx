@@ -6,11 +6,15 @@
 // banner, no OK prompt and no toast: analytics and ads are on unless this
 // visitor turned them off (I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF, #4128).
 //
-// I-PRIVACY-BAR-NEVER-OCCLUDES: the strip's height is `--mingla-privacy-inset`
-// on the root element (a CSS default before hydration, then its measured
-// height). The page body gets that much bottom padding so the last line can
-// always scroll clear, every bottom-fixed element adds it to its own offset,
-// and one-screen pages size themselves to `calc(100dvh - var(--mingla-privacy-inset))`.
+// I-PRIVACY-BAR-NEVER-OCCLUDES: the strip owns a constant band at the bottom,
+// `--mingla-privacy-strip` (28px plus the bottom safe area), set once in this
+// server-rendered CSS and never measured or written by JS. The page keeps
+// document scrolling: the body gets that much bottom padding so the last line
+// always scrolls clear, every bottom-fixed layer ends at
+// `bottom: var(--mingla-privacy-strip)` (scripts/issue-2331-strip-token-check.mjs
+// fails a fixed bottom layer without it), and one-screen pages size themselves
+// to `calc(100dvh - var(--mingla-privacy-strip))`. The strip sits on the top
+// z-layer: nothing paints over it.
 //
 // Tapping the strip opens the choices (Analytics, Ads measurement, Save) as a
 // sheet above it. The sheet traps focus, closes on Escape and returns focus to
@@ -29,7 +33,7 @@ import {
 } from '@/components/marketing/posthog-provider'
 import { captureMarketingAdClickIds } from '@/lib/ad-click-capture'
 
-export const PRIVACY_INSET_PROPERTY = '--mingla-privacy-inset'
+export const PRIVACY_STRIP_PROPERTY = '--mingla-privacy-strip'
 export const PRIVACY_STRIP_LABEL = 'Privacy & ad choices'
 export const PRIVACY_SAVED_LABEL = 'Saved'
 const PANEL_ID = 'mingla-privacy-panel'
@@ -65,17 +69,19 @@ function takeOverPrehydrationSheet(sheet: HTMLElement | null, running: Draft): D
 
 const SERVER_SNAPSHOT: MarketingPrivacySnapshot = { saved: true, analytics: false, ads: false, gpc: false }
 
-// Above page content and the fixed nav; below dialogs, sheets and the side menu (z ≥ 100).
+// The strip, then its scrim and sheet, on the top z-layer: above page content,
+// the fixed nav, dialogs, sheets and the side menu.
 const BAR_CSS = `
-:root{${PRIVACY_INSET_PROPERTY}:calc(28px + max(env(safe-area-inset-bottom,0px),0px))}
-body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
-.mps{position:fixed;left:0;right:0;bottom:0;z-index:95;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:calc(28px + max(env(safe-area-inset-bottom,0px),0px));margin:0;padding:0 12px max(env(safe-area-inset-bottom,0px),0px);transform:translateZ(0);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 var(--font-inter,-apple-system),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+:root{${PRIVACY_STRIP_PROPERTY}:calc(28px + max(env(safe-area-inset-bottom,0px),0px))}
+body{padding-bottom:var(--mingla-privacy-strip)}
+.mps{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:var(--mingla-privacy-strip);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;padding:0 12px max(env(safe-area-inset-bottom,0px),0px);transform:translateZ(0);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 var(--font-inter,-apple-system),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 .mps svg{display:block;flex:none;width:14px;height:14px}
+.mps span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .mps:focus{outline:none}
 .mps:focus-visible{outline:2px solid #eb7825;outline-offset:-3px}
 .mps-saved{color:#8fd3a8}
-.mpb-scrim{position:fixed;left:0;right:0;top:0;bottom:var(${PRIVACY_INSET_PROPERTY},0px);z-index:96;background:rgba(0,0,0,.45)}
-.mpb{position:fixed;left:0;right:0;bottom:var(${PRIVACY_INSET_PROPERTY},0px);z-index:97;box-sizing:border-box;margin:0;background:#15171c;color:#fff;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));max-height:80vh;max-height:80dvh;overflow-y:auto;overscroll-behavior:contain;font-family:var(--font-inter,inherit),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;animation:mpb-in .2s ease-out}
+.mpb-scrim{position:fixed;left:0;right:0;top:0;bottom:var(--mingla-privacy-strip);z-index:2147483001;background:rgba(0,0,0,.45)}
+.mpb{position:fixed;left:0;right:0;bottom:var(--mingla-privacy-strip);z-index:2147483002;box-sizing:border-box;margin:0;background:#15171c;color:#fff;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));max-height:80vh;max-height:80dvh;overflow-y:auto;overscroll-behavior:contain;font-family:var(--font-inter,inherit),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;animation:mpb-in .2s ease-out}
 .mpb *{box-sizing:border-box}
 .mpb-panel{max-width:640px;margin:0 auto;display:flex;flex-direction:column}
 .mpb-title{margin:0 0 4px;font-size:15px;line-height:20px;font-weight:700;color:#fff}
@@ -99,10 +105,6 @@ body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
 @keyframes mpb-in{from{transform:translateY(12px)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}
 `
-
-function writeInset(px: number): void {
-  document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, `${Math.max(0, Math.round(px))}px`)
-}
 
 export function ConsentBanner(): React.ReactElement {
   const privacy = useSyncExternalStore(
@@ -138,7 +140,6 @@ export function ConsentBanner(): React.ReactElement {
     window.addEventListener(PRIVACY_CHOICES_EVENT, reopen)
     return () => {
       window.removeEventListener(PRIVACY_CHOICES_EVENT, reopen)
-      writeInset(0)
     }
   }, [])
 
@@ -149,21 +150,6 @@ export function ConsentBanner(): React.ReactElement {
     adoptedDraftRef.current = null
     setDraft(adopted ?? { analytics: privacy.analytics, ads: privacy.ads })
   }, [open, privacy.analytics, privacy.ads])
-
-  // I-PRIVACY-BAR-NEVER-OCCLUDES — the strip's height is the page's bottom inset.
-  useLayoutEffect(() => {
-    const strip = stripRef.current
-    if (strip === null) return
-    const measure = (): void => writeInset(strip.getBoundingClientRect().height)
-    measure()
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', measure)
-      return () => window.removeEventListener('resize', measure)
-    }
-    const observer = new ResizeObserver(measure)
-    observer.observe(strip)
-    return () => observer.disconnect()
-  }, [])
 
   useEffect(() => {
     if (!saved) return

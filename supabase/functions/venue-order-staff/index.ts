@@ -95,7 +95,9 @@ import {
   venueDiscountSnapshot,
   type VenueOrderErrorCode,
   venueOrderErrorCopy,
+  venueOrderChargeCurrency,
   venueOrderErrorStatus,
+  venueOrderProviderFloorRefusal,
 } from "../_shared/venueOrderPricing.ts";
 import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
 import {
@@ -155,6 +157,7 @@ function fail(
 
 // deno-lint-ignore no-explicit-any
 type ServiceClient = any;
+
 
 serve(wrapEdgeHandler("venue-order-staff", async (req) => {
   if (req.method === "OPTIONS") {
@@ -880,6 +883,18 @@ async function billToPhone(
       : Number(pricing.vat_rate_bps),
   });
   if (money.totalCents <= 0) return fail("order_total_invalid");
+  // Issue #3645 (18 Nov payments audit, item 7): below the provider's minimum
+  // charge (in the currency the provider is charged in), refuse before the
+  // order moves to the Mingla path or any provider call. The order stays on
+  // `venue_collected`, and a tab left at `settling` can still close as
+  // `venue_collected` (biz_venue_tab_close cancels a settlement order that
+  // never left that path), which is what the staff copy tells them to do.
+  const refusal = venueOrderProviderFloorRefusal(
+    money.totalCents,
+    venueOrderChargeCurrency(routing.provider, settlementCurrency),
+    "staff",
+  );
+  if (refusal) return jsonResponse(refusal.body, refusal.status);
 
   const stripeAccountId = typeof pricing.stripe_account_id === "string"
     ? pricing.stripe_account_id

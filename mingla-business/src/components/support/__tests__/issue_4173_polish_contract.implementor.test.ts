@@ -5,39 +5,19 @@ const root = path.resolve(process.cwd(), "..");
 const read = (relative: string): string => fs.readFileSync(path.join(root, relative), "utf8");
 
 describe("#4173 Guides, Community and Brand-group polish", () => {
-  it("keeps exactly five foundations visible and hands the growing catalogue to the Help Centre", () => {
-    const guides = read("mingla-business/src/components/support/GuidesTabPanel.tsx");
-    const route = read("mingla-business/app/account/support.tsx");
-    expect(guides).toContain("FEATURED_GUIDE_SLUGS");
-    expect(guides).toContain("START_GUIDE");
-    expect(guides).toContain("ESSENTIAL_GUIDES");
-    expect(guides).toContain("View more videos");
-    expect(guides).toContain("openHelpCentre(HELP_CENTRE_URL)");
-    expect(guides).not.toContain("showAll");
-    expect(guides).not.toContain("Linking.openURL");
-    expect(guides).toContain('grid: { flex: 1, minHeight: 0');
-    expect(guides).toContain('mobileCell: { width: "48%", height: "48%"');
-    expect(guides).toContain('desktopCell: { flex: 1, height: "100%"');
-    expect(route).toContain('scrollEnabled={tab !== "guides"}');
+  // [TEST-MOD #4420] Guides, the in-app player and Community's section tabs
+  // left the Host app; the Help Centre hand-off moved to the Support column.
+  it("hands the growing catalogue to the Help Centre", () => {
+    const column = read("mingla-business/src/components/support/SupportColumn.tsx");
+    expect(column).toContain("openHelpCentre(HELP_CENTRE_URL)");
+    expect(column).not.toContain("Linking.openURL");
     expect(read("mingla-business/src/components/support/helpCentreLauncher.native.ts")).toContain("WebBrowser.openBrowserAsync");
-    expect(read("mingla-business/src/components/support/helpCentreLauncher.web.ts")).toContain("openExternal(url)");
-    expect(read("mingla-business/src/components/support/helpCentreLauncher.web.ts")).not.toContain("window.open");
-  });
-
-  it("never calls pause during guide teardown after Expo may release the player", () => {
-    const player = read("mingla-business/src/components/support/GuidePlayerModal.tsx");
-    expect(player).not.toContain("player.pause()");
-    expect(player).toContain("timeSubscription.remove()");
-    expect(player).toContain("endSubscription.remove()");
-  });
-
-  it("reveals selected Community tabs and keeps two compact mobile roadmap lanes visible", () => {
-    const community = read("mingla-business/src/components/support/CommunityTabPanel.tsx");
-    expect(community).toContain("selectedCommunityTabOffset");
-    expect(community).toContain("revealActiveSection");
-    expect(community).toContain("minHeight: 44");
-    // [TEST-MOD-APPROVED #4420] — spacing.sm is the space[2] token now (same 8).
-    expect(community).toContain("(width - 48 - space[2]) / 2");
+    // [TEST-MOD #4420] rework 3 (G7): web opens a new tab and never replaces the
+    // app (openExternal's popup-blocked fallback navigated the app tab away).
+    const web = read("mingla-business/src/components/support/helpCentreLauncher.web.ts");
+    expect(web).toContain('w.open(url, "_blank")');
+    expect(web).not.toContain("location.assign");
+    expect(web).not.toContain("noopener,");
   });
 
   it("keeps roster email out of the collapsed header and inside authorized details", () => {

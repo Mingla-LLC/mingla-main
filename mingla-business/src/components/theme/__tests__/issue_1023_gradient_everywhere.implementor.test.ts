@@ -122,6 +122,7 @@ const ALLOW: ReadonlyArray<{ re: RegExp; why: string }> = [
   { re: /hexToRgba\(palette\.accent/, why: "translucent glow derived from the first colour" },
   { re: /accentHex: palette\.accent|\[palette\.accent, venue\.lat/, why: "static map image pin colour (image API takes one hex)" },
   { re: /borderFocused: palette\.accent|^\s*accent: palette\.accent,|actionColor=\{palette\.accent\}/, why: "phone-input focus and caret tokens (focus indication stays solid)" },
+  { re: /^\s*accentLine: palette\.accent,$/, why: "#4541 form control token: the shared question renderers take one colour for a selected radio or checkbox" },
   { re: /outlineColor: palette\.accent/, why: "keyboard focus ring (stays solid for accessibility)" },
   { re: /ActivityIndicator color=/, why: "the native spinner takes one tint" },
   { re: /^\s*color=\{palette\.accent\}$/, why: "multi-line ActivityIndicator tint (one colour)" },

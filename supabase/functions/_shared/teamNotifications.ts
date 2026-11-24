@@ -203,6 +203,10 @@ export function renderTeamMessage(
     title = card
       ? `${sender} needs your decision · ${card}`
       : `${sender} needs your decision`;
+  } else if (String(payload.source_kind ?? "") === "crm_record") {
+    // #4571 W3: a host or creator card you watch moved stage.
+    const record = teamCut(payload.record_name, 40);
+    title = record ? `${sender} moved ${record}` : `${sender} moved a card you watch`;
   } else if (String(payload.source_kind ?? "") === "work_card") {
     if (reason === "mention") {
       title = card

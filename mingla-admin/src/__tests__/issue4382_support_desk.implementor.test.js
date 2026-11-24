@@ -4,8 +4,8 @@
 // MINGLA-INVARIANT: I-4382-SUPPORT-UPLOAD-STRIPS-METADATA | issue #4382 | Admin support images are re-encoded through a canvas (longest side <= 2560 px) and refused if EXIF/XMP survives
 // MINGLA-INVARIANT: I-4382-SUPPORT-UPLOAD-LIMITS | issue #4382 | 10 images per message, 10 MB each, images only
 // MINGLA-INVARIANT: I-4382-NOTE-NEVER-WAITS | issue #4382 | A note is isInternal true with no setWaiting; a reply is isInternal false; every desk send is actorMode staff
-// MINGLA-INVARIANT: I-4382-PRODUCT-BOARD-COLUMNS | issue #4382 | Each Product item sits in exactly one of five columns; wont_do only under its filter
-// MINGLA-INVARIANT: I-4382-TELL-REPORTERS-ONCE-UI | issue #4382 | Tell reporters is offered only for a shipped item with unsent Live wording and never while a send is in flight or after one succeeded
+// I-4382-PRODUCT-BOARD-COLUMNS: retired by #4420 with the Product board.
+// I-4382-TELL-REPORTERS-ONCE-UI: retired by #4420 with the Product board (the once-only server function is unchanged).
 // MINGLA-INVARIANT: I-4382-INBOX-ACTIVE-NEVER-PAGED-OUT | issue #4382 | Every new, open or waiting support ticket is loaded into the Admin inbox (up to 2000, with a visible showing-N-of-M note beyond that); only resolved and closed tickets are paged, and a partial view says it is partial.
 //
 // FAILS-ON-REVERT: drop the "customer spoke last" check from the needs view, or count
@@ -27,17 +27,11 @@ import { describe, it } from "node:test";
 import {
   ACTIVE_TICKET_CAP,
   CLOSED_PAGE_SIZE,
-  OPENED_BY_OPTIONS,
-  SUPPORT_INBOX_VIEWS,
   coverageNote,
   inboxViewCoverage,
-  railCountLabel,
-  isActiveUnassignedTicket,
-  originChip,
-  supportInboxCounts,
-  supportInboxRows,
   ticketNumberLabel,
 } from "../lib/supportTicketMetrics.js";
+import { INBOX_CHIPS, conversationRow, needsReplyCount, rowLabels, splitInbox } from "../lib/supportInboxModel.js";
 import {
   SUPPORT_UPLOAD_LIMITS,
   fitWithin,
@@ -47,25 +41,20 @@ import {
   uploadsReady,
 } from "../components/support/supportUploadModel.js";
 import { buildSendBody } from "../components/support/supportComposerModel.js";
-import {
-  BOARD_COLUMNS,
-  columnFor,
-  groupSignals,
-  tellButtonLabel,
-  tellReportersState,
-  PRODUCT_PREFILL_MAX,
-  productPrefillDetails,
-} from "../components/support/productBoardModel.js";
+// [TEST-MOD #4420] components/support/productBoardModel.js was deleted with the Product board.
 import {
   communitySupportCapabilities,
   communitySupportTabsForAccess,
 } from "../lib/communitySupportAccess.js";
-import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
+import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
 // ── Inbox views and counts ──────────────────────────────────────────────────
-describe("#4382 W2: inbox views, Opened by, filters and search", () => {
+// [TEST-MOD #4420] the eight-view rail, the Opened-by switch and the filter bar
+// were retired by the chat inbox (Open / Resolved, labels, search). The rules
+// below are the same rules, asserted through lib/supportInboxModel.js.
+describe("#4382 W2: inbox chips, Open and Resolved, and search", () => {
   const now = Date.parse("2026-11-10T12:00:00Z");
   const me = "staff-me";
   const rows = [
@@ -83,53 +72,38 @@ describe("#4382 W2: inbox views, Opened by, filters and search", () => {
   const brandsById = { "b-lnm": { name: "Lagos Night Market" }, "b-afro": { name: "Afro Fest" } };
   const base = { nowMs: now, me, profilesById, brandsById };
 
-  it("the rail is the approved seven views plus Website changes (#4453), Needs reply first", () => {
-    assert.deepEqual(SUPPORT_INBOX_VIEWS.map((v) => v.id), ["needs", "mine", "unassigned", "overdue", "waiting", "website", "resolved", "all"]);
-    assert.deepEqual(OPENED_BY_OPTIONS.map((o) => o.label), ["Everyone", "Customers", "Staff"]);
+  const inbox = rows.map(conversationRow);
+  const ids = (chip, ctx = base) => splitInbox(inbox, { ...ctx, chip }).open.map((r) => r.id);
+
+  it("the chips are Needs reply, Waiting on customer, Reported, Website, Mine, Unassigned, Overdue", () => {
+    assert.deepEqual(INBOX_CHIPS.map((c) => c.id), ["needs", "waiting", "reported", "website", "mine", "unassigned", "overdue"]);
   });
 
-  it("each view lists exactly the rows its rule names", () => {
-    const ids = (view, ctx = base) => supportInboxRows(rows, view, ctx).map((r) => r.id);
-    assert.deepEqual(ids("needs"), ["g", "d", "b", "a"], "open and the customer spoke last, longest waiting first");
+  it("each chip lists exactly the rows its rule names; Open lists Needs reply first", () => {
+    assert.deepEqual([...ids("needs")].sort(), ["a", "b", "d", "g"], "open and the customer spoke last");
+    assert.deepEqual(ids("needs"), ["a", "b", "d", "g"], "newest activity first");
     assert.deepEqual(ids("mine"), ["d", "c"], "mine and still active (resolved h left out)");
-    assert.deepEqual(ids("unassigned"), ["g", "b"], "nobody owns it and still active (closed i left out)");
+    assert.deepEqual(ids("unassigned"), ["b", "g"], "nobody owns it and still active (closed i left out)");
     assert.deepEqual(ids("overdue"), ["e"], "active and the promised update passed");
-    assert.deepEqual(ids("waiting"), ["f", "e"]);
-    assert.deepEqual(ids("resolved"), ["h", "i"], "newest first");
-    assert.equal(ids("all").length, rows.length);
+    assert.deepEqual(ids("waiting"), ["e", "f"]);
+    const all = splitInbox(inbox, base);
+    assert.deepEqual(all.resolved.map((r) => r.id), ["h", "i"], "newest first");
+    assert.equal(all.open.length + all.resolved.length, rows.length);
+    assert.equal(needsReplyCount(inbox), 4, "the page badge is the Needs reply count");
   });
 
-  it("every count equals the rows shown, under every Opened-by, filter and search", () => {
-    const contexts = [
-      base,
-      { ...base, openedBy: "customer" },
-      { ...base, openedBy: "staff" },
-      { ...base, filters: { priority: "normal" } },
-      { ...base, filters: { owner: "none" } },
-      { ...base, filters: { owner: me } },
-      { ...base, filters: { brand: "b-afro" } },
-      { ...base, filters: { productArea: "Host app · Payouts" } },
-      { ...base, search: "S-1048" },
-      { ...base, search: "lagos" },
-      { ...base, search: "tolu@example" },
-      { ...base, openedBy: "staff", search: "afro" },
-    ];
-    for (const ctx of contexts) {
-      const counts = supportInboxCounts(rows, ctx);
-      for (const { id } of SUPPORT_INBOX_VIEWS) {
-        assert.equal(counts[id], supportInboxRows(rows, id, ctx).length, `${id} under ${JSON.stringify({ ...ctx, profilesById: undefined, brandsById: undefined })}`);
-      }
-      assert.equal(counts.open, counts.needs, "the page badge reads the Needs reply count");
-    }
+  it("search finds S-numbers, people and brands", () => {
+    const found = (search) => { const r = splitInbox(inbox, { ...base, lookups: { profilesById, brandsById }, search }); return [...r.open, ...r.resolved].map((x) => x.id); };
+    assert.deepEqual(found("s-1048"), ["a"]);
+    assert.deepEqual(found("1044"), ["e"]);
+    assert.deepEqual(found("ada"), ["d"]);
+    assert.deepEqual(found("Afro").sort(), ["e", "f"]);
+    assert.deepEqual(found("lagos"), ["a"]);
+    assert.deepEqual(found("tolu@example"), ["a"]);
   });
 
-  it("Opened by splits customer and staff tickets; search finds S-numbers, people and brands", () => {
-    assert.deepEqual(supportInboxCounts(rows, { ...base, openedBy: "staff" }).all, 2);
-    assert.deepEqual(supportInboxCounts(rows, { ...base, openedBy: "staff" }).needs, 0, "a staff ticket never needs a customer reply");
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "s-1048" }).map((r) => r.id), ["a"]);
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "1044" }).map((r) => r.id), ["e"]);
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "ada" }).map((r) => r.id), ["d"]);
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "Afro" }).map((r) => r.id).sort(), ["e", "f"]);
+  it("a staff conversation never needs a customer reply", () => {
+    assert.equal(rowLabels(inbox.find((r) => r.id === "c")).some((l) => l.id === "needs"), false);
   });
 
   it("a ticket from before #4382 with no last sender: unanswered counts as the customer waiting", () => {
@@ -137,23 +111,20 @@ describe("#4382 W2: inbox views, Opened by, filters and search", () => {
       { id: "x", origin: "customer", status: "new", last_sender_kind: null, first_response_at: null, last_message_at: "2026-11-10T10:00:00Z" },
       { id: "y", origin: "customer", status: "open", last_sender_kind: null, first_response_at: "2026-11-10T10:30:00Z", last_message_at: "2026-11-10T10:30:00Z" },
     ];
-    assert.deepEqual(supportInboxRows(legacy, "needs", base).map((r) => r.id), ["x"]);
+    assert.deepEqual(splitInbox(legacy.map(conversationRow), { ...base, chip: "needs" }).open.map((r) => r.id), ["x"]);
   });
 
-  it("row words: S-number, origin chip and the unassigned rule", () => {
+  it("row words: the S-number and the Host / Explorer / Staff labels", () => {
     assert.equal(ticketNumberLabel({ ticket_number: 1048 }), "S-1048");
-    assert.equal(originChip({ origin: "staff", visibility: "brand" }).label, "Staff · Brand team");
-    assert.equal(originChip({ origin: "staff", visibility: "internal" }).label, "Staff · Internal");
-    assert.equal(originChip({ origin: "customer", requester_segment: "explorer" }).label, "Explorer");
-    assert.equal(originChip({ origin: "customer", requester_segment: "business" }).label, "Host");
-    assert.equal(isActiveUnassignedTicket({ status: "pending", assigned_staff_id: null }), true);
-    assert.equal(isActiveUnassignedTicket({ status: "resolved", assigned_staff_id: null }), false);
+    const first = (t) => rowLabels(conversationRow(t))[0].text;
+    assert.equal(first({ origin: "staff", visibility: "brand", status: "open" }), "Staff");
+    assert.equal(first({ origin: "customer", requester_segment: "explorer", status: "open" }), "Explorer");
+    assert.equal(first({ origin: "customer", requester_segment: "business", status: "open" }), "Host");
   });
 
-  it("the desk counts the same rows it lists, and keeps the props the Support page mounts", () => {
+  it("the desk lists the rows it counts, and keeps the props the Support page mounts", () => {
     const desk = read("pages/SupportDeskPage.jsx");
-    assert.match(desk, /const inboxCounts = useMemo\(\(\) => supportInboxCounts\(tickets, ctx\), \[tickets, ctx\]\);/);
-    assert.match(desk, /const visibleTickets = useMemo\(\(\) => supportInboxRows\(tickets, view, ctx\), \[tickets, view, ctx\]\);/);
+    assert.match(desk, /const inbox = useMemo\(\(\) => splitInbox\(allRows, \{ chip, search, lookups, me: myUserId \}\), \[allRows, chip, search, lookups, myUserId\]\);/);
     assert.match(desk, /export function SupportDeskPage\(\{ embedded = false, canManageAgents = true, onCounts \} = \{\}\)/);
     assert.equal(/NextUpdateModal|ProductInboxModal|InternalTicketModal|support_internal_threads|listInternalSupportThreads/.test(desk), false);
   });
@@ -288,9 +259,7 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
     }
     assert.deepEqual(inboxViewCoverage(loaded, "resolved"), { partial: true, loaded: 300, total: 420, canLoadOlder: true });
     assert.deepEqual(inboxViewCoverage(loaded, "all"), { partial: true, loaded: 340, total: 460, canLoadOlder: true });
-    assert.equal(railCountLabel(12, true), "12+");
-    assert.equal(railCountLabel(12, false), "12");
-    assert.equal(coverageNote(inboxViewCoverage(loaded, "resolved")), "Showing the newest 300 of 420 tickets. Counts cover the loaded tickets only.");
+    assert.equal(coverageNote(inboxViewCoverage(loaded, "resolved")), "Showing the newest 300 of 420 conversations. Counts cover the loaded tickets only.");
     assert.equal(coverageNote(inboxViewCoverage(loaded, "needs")), null);
   });
 
@@ -298,7 +267,7 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
     const capped = { activeLoaded: ACTIVE_TICKET_CAP, activeTotal: ACTIVE_TICKET_CAP + 5, closedLoaded: 0, closedTotal: 0 };
     assert.equal(inboxViewCoverage(capped, "needs").partial, true);
     assert.equal(inboxViewCoverage(capped, "needs").canLoadOlder, false);
-    assert.match(coverageNote(inboxViewCoverage(capped, "needs")), /of 2005 tickets/);
+    assert.match(coverageNote(inboxViewCoverage(capped, "needs")), /of 2005 conversations/);
   });
 
   it("the service loads active tickets with no 300 cap and pages resolved ones", () => {
@@ -310,30 +279,16 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
     assert.match(service, /\.in\("status", DONE_TICKET_STATUSES\)\s*\.order\("last_message_at", \{ ascending: false \}\)\s*\.range\(0, Math\.max\(CLOSED_PAGE_SIZE, closedLimit\) - 1\)/);
     const desk = read("pages/SupportDeskPage.jsx");
     assert.match(desk, /listSupportTickets\(\{ closedLimit: closedLimitRef\.current \}\)/);
-    assert.match(desk, /railCountLabel\(inboxCounts\[option\.id\], inboxViewCoverage\(coverage, option\.id\)\.partial\)/);
-    assert.match(desk, /viewCoverage\.canLoadOlder \?[\s\S]*Load older/);
+    assert.match(desk, /canLoadOlder=\{resolvedCoverage\.canLoadOlder\}/);
+    assert.match(read("components/support/InboxList.jsx"), /canLoadOlder \?[\s\S]*Load older/);
   });
 });
 
-describe("#4382 runtime: Reopened automatically and the Send to Product prefill", () => {
+// [TEST-MOD #4420] the Send to Product prefill left with the modal; Create
+// ticket's pre-fill is pinned in issue4420_support_inbox (ticketPrefill).
+describe("#4382 runtime: Reopened automatically", () => {
   it("the Admin thread shows system lines (the reopen marker) as centred notes", () => {
     assert.match(read("components/support/SupportThread.jsx"), /if \(message\.message_type === "system"[\s\S]{0,120}text-center text-xs italic/);
-  });
-  it("What's wrong starts from the customer's first message, about 500 characters, else the subject", () => {
-    const ticket = { subject: "Map is blank", requester_user_id: "u1" };
-    const messages = [
-      { id: "s", message_type: "system", content: "Reopened automatically", sender_id: null },
-      { id: "n", is_internal: true, content: "note", sender_id: "staff", sender_role_snapshot: "Mingla Support" },
-      { id: "r", content: "We are on it", sender_id: "staff", sender_role_snapshot: "Mingla Support" },
-      { id: "c", content: "  The map   stays blank after I book.  ", sender_id: "u1" },
-      { id: "c2", content: "Second message", sender_id: "u1" },
-    ];
-    assert.equal(productPrefillDetails(ticket, messages), "The map stays blank after I book.");
-    assert.equal(productPrefillDetails(ticket, []), "Map is blank");
-    const long = productPrefillDetails(ticket, [{ id: "l", content: "word ".repeat(200), sender_id: "u1" }]);
-    assert.ok(long.length <= PRODUCT_PREFILL_MAX + 1 && long.endsWith("…"));
-    assert.match(read("components/support/TicketPanel.jsx"), /onSendToProduct\(ticket, productPrefillDetails\(ticket, messages\)\)/);
-    assert.match(read("pages/SupportDeskPage.jsx"), /details: \(typeof details === "string" && details\.trim\(\)\) \? details : ticket\.subject,/);
   });
   it("the ticket panel keeps the thread at least ~55% tall with compact, collapsible facts", () => {
     const panel = read("components/support/TicketPanel.jsx");
@@ -382,108 +337,23 @@ describe("#4382 W2: the composer's support-send body", () => {
 });
 
 // ── Product board ───────────────────────────────────────────────────────────
-describe("#4382 W3: the Product board's columns", () => {
-  const signals = [
-    { id: "n1", state: "new", updated_at: "2026-11-10T10:00:00Z" },
-    { id: "n2", state: "new", updated_at: "2026-11-10T11:00:00Z" },
-    { id: "t1", state: "triaged", updated_at: "2026-11-09T10:00:00Z" },
-    { id: "p1", state: "planned", updated_at: "2026-11-09T10:00:00Z" },
-    { id: "s1", state: "shipped", updated_at: "2026-11-09T10:00:00Z" },
-    { id: "k1", state: "told", updated_at: "2026-11-08T10:00:00Z" },
-    { id: "w1", state: "wont_do", updated_at: "2026-11-08T10:00:00Z" },
-    { id: "z1", state: "needs_review", updated_at: "2026-11-08T10:00:00Z" },
-  ];
-
-  it("five columns, in stage order", () => {
-    assert.deepEqual(BOARD_COLUMNS.map((c) => c.label), ["New", "Triaged", "Planned", "Shipped", "Told"]);
-  });
-
-  it("each item sits in one column; Won't do and unknown states sit in none", () => {
-    const groups = groupSignals(signals);
-    assert.deepEqual(Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.map((s) => s.id)])), {
-      new: ["n2", "n1"], triaged: ["t1"], planned: ["p1"], shipped: ["s1"], told: ["k1"],
-    });
-    assert.equal(columnFor({ state: "wont_do" }), null);
-    assert.equal(columnFor({ state: "needs_review" }), null);
-  });
-
-  it("the Won't do filter lists only Won't do", () => {
-    assert.deepEqual(groupSignals(signals, { showWontDo: true }).wont_do.map((s) => s.id), ["w1"]);
-  });
-});
-
-// ── Tell reporters, once ────────────────────────────────────────────────────
-describe("#4382 W3: Tell reporters can be sent once", () => {
-  const ticketsById = {
-    t1: { id: "t1", visibility: "person" },
-    t2: { id: "t2", visibility: "brand" },
-    t3: { id: "t3", visibility: "internal" },
-  };
-  const shipped = {
-    state: "shipped",
-    sources: [
-      { source_kind: "support_ticket", source_id: "t1" },
-      { source_kind: "support_ticket", source_id: "t2" },
-      { source_kind: "support_ticket", source_id: "t3" },
-      { source_kind: "community_idea", source_id: "idea-1" },
-    ],
-    drafts: [
-      { id: "d-old", customer_status: "Planned", state: "draft", created_at: "2026-11-01T00:00:00Z" },
-      { id: "d-live", customer_status: "Live", state: "draft", created_at: "2026-11-09T00:00:00Z" },
-    ],
-  };
-
-  it("goes to the customer-visible tickets only, with the Live wording", () => {
-    const state = tellReportersState(shipped, ticketsById);
-    assert.equal(state.canSend, true);
-    assert.deepEqual(state.recipients.map((t) => t.id), ["t1", "t2"]);
-    assert.equal(state.draft.id, "d-live");
-    assert.equal(tellButtonLabel(state.recipients.length), "Send to 2 people");
-    assert.equal(tellButtonLabel(1), "Send to 1 person");
-  });
-
-  it("refuses while sending, after a send, once told, before shipped and with no Live wording", () => {
-    assert.equal(tellReportersState(shipped, ticketsById, { sending: true }).canSend, false);
-    assert.equal(tellReportersState(shipped, ticketsById, { sentOnce: true }).canSend, false);
-    assert.equal(tellReportersState({ ...shipped, state: "told" }, ticketsById).canSend, false);
-    assert.equal(tellReportersState({ ...shipped, state: "planned" }, ticketsById).canSend, false);
-    assert.equal(tellReportersState({ ...shipped, drafts: [{ id: "d", customer_status: "Live", state: "sent" }] }, ticketsById).canSend, false);
-  });
-
-  it("the button is held by that guard and the send calls the once-only server function", () => {
-    const card = read("components/support/ProductCardPanel.jsx");
-    assert.match(card, /const tell = tellReportersState\(signal, ticketsById, \{ sending: telling, sentOnce \}\);/);
-    assert.match(card, /async function sendTell\(\) \{\n\s+if \(!tell\.canSend \|\| !tell\.draft\) return;/);
-    assert.match(card, /disabled=\{!tell\.canSend \|\| busy/);
-    assert.match(card, /const result = await tellProductReporters\(signal\.id, tell\.draft\.id\);\n\s+setSentOnce\(true\);/);
-    assert.match(read("services/productAvengersService.js"), /rpc\("issue_4382_tell_reporters"/);
-    assert.match(read("services/productAvengersService.js"), /rpc\("issue_4382_set_wont_do"/);
-  });
-});
-
 // ── Who runs the Product board (D3) ─────────────────────────────────────────
-describe("#4382 W3: a founding partner runs the Product board", () => {
-  const allTabs = [...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS];
+// [TEST-MOD #4420] The Product board is retired (I-4382-PRODUCT-BOARD-COLUMNS
+// and I-4382-TELL-REPORTERS-ONCE-UI retire with it): no screen or tab shows
+// it, and no role gets it back. Its rows stay stored; tickets replace it.
+describe("#4382 W3: the retired Product board is shown to nobody", () => {
   const partner = {
     role: "partner",
     status: "active",
     areas: ["admin_console", "community_support", "community_support_support", "community_support_community"],
   };
-  const plainSupport = { role: "growth", status: "active", areas: ["community_support", "community_support_support"] };
-
-  it("an active founding partner (role partner, admin console) sees the Product board", () => {
-    assert.ok(allTabs.some((tab) => tab.id === "product"), "the Product board is a console tab");
+  it("no Support tab is the Product board, for any seat", () => {
+    assert.equal(SUPPORT_PAGE_TABS.some((tab) => tab.id === "product"), false);
+    assert.equal(communitySupportTabsForAccess(partner, SUPPORT_PAGE_TABS).some((tab) => tab.id === "product"), false);
     assert.equal(communitySupportCapabilities(partner).isAdmin, true);
-    assert.ok(communitySupportTabsForAccess(partner, allTabs).some((tab) => tab.id === "product"));
   });
-
-  it("plain Support staff, and a partner whose seat is not active, do not", () => {
-    assert.equal(communitySupportTabsForAccess(plainSupport, allTabs).some((tab) => tab.id === "product"), false);
-    assert.ok(communitySupportTabsForAccess(plainSupport, allTabs).some((tab) => tab.id === "support"));
-    assert.equal(communitySupportTabsForAccess({ ...partner, status: "revoked" }, allTabs).some((tab) => tab.id === "product"), false);
-  });
-
-  it("the page mounts the board on the same admin-console capability", () => {
-    assert.match(read("pages/CommunitySupportPage.jsx"), /activeTab === "product" && capabilities\.isAdmin && <ProductInboxPanel \/>/);
+  it("no page mounts the board", () => {
+    assert.equal(read("pages/SupportPage.jsx").includes("ProductInboxPanel"), false);
+    assert.equal(read("App.jsx").includes("ProductInboxPanel"), false);
   });
 });

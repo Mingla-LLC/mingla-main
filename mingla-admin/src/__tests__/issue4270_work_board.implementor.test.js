@@ -19,6 +19,7 @@
 // (from mingla-admin). B-3 and B-4 build the real components with esbuild
 // (run `npm ci` first; without it the test FAILS, it never skips).
 import { before, describe, it } from "node:test";
+import { supabaseStubPlugin } from "./_supabaseStubPlugin.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -119,7 +120,10 @@ export function strip(props) { return renderToStaticMarkup(<SprintBar onGoal={()
     jsx: "automatic",
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
     logLevel: "silent",
-    define: { "process.env.NODE_ENV": '"production"' },
+    // #4571: the bundled board now reaches lib/supabase.js (through the subtask links); the
+    // bundle is plain Node, so give it the two build-time vars it reads (a placeholder URL, no network).
+    plugins: [supabaseStubPlugin],
+    define: { "process.env.NODE_ENV": '"production"', "import.meta.env.VITE_SUPABASE_URL": '"http://localhost:54321"', "import.meta.env.VITE_SUPABASE_ANON_KEY": '"test-anon-key"' },
   });
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "issue4270-board-")), "harness.mjs");
   fs.writeFileSync(file, out.outputFiles[0].text);
@@ -212,10 +216,11 @@ describe("B-5 the Status dropdown", () => {
       at('data-card-description=""'), at("<CardSubtasks card={card}"), at("<CardFiles card={card}"), at('<Section title="Linked"'), at("<GithubLinks card={card}"),
     ];
     assert.deepEqual([...order].sort((x, y) => x - y), order);
-    for (const kept of ["Assign to me", "Mark blocked", "Push back", "Send back", "Reopen", "Override", "Unblock", "Open the draft in Roadmap", "agentPromptFor(card)", "ops.archiveWork", "<CardWording card={card}", "<WorkingMark", "<RecordPicker", "<GithubWait"]) {
+    for (const kept of ["Assign to me", "Mark blocked", "Push back", "Send back", "Reopen", "Override", "Unblock", "agentPromptFor(card)", "ops.archiveWork", "<CardWording card={card}", "<WorkingMark", "<RecordPicker", "<GithubWait"]) {
       assert.ok(detail.includes(kept), kept);
     }
-    for (const gone of ["<CardDrafts", "<NoteBox", "<CardHistory", "<PlanSteps", '<Section title="Result">', "<Fold "]) assert.ok(!detail.includes(gone), gone);
+    // [TEST-MOD #4420] "Open the draft in Roadmap" left the kept list: the Roadmap screen is retired.
+    for (const gone of ["<CardDrafts", "<NoteBox", "<CardHistory", "<PlanSteps", '<Section title="Result">', "<Fold ", "Open the draft in Roadmap"]) assert.ok(!detail.includes(gone), gone);
   });
 });
 
@@ -245,7 +250,7 @@ describe("B-7 Due today for you", () => {
     assert.deepEqual(dueTodayState({ data: { due_today_mine: 2, overdue_mine: 3 } }), { status: "ready", dueToday: 2, overdue: 3 });
     assert.deepEqual(dueTodayState({ data: null, error: new Error("x") }), { status: "error", dueToday: null, overdue: null });
     const hook = code("hooks/useReviewCount.js");
-    assert.match(hook, /cards: work\.status === "ready" \? work\.dueToday \+ work\.overdue : null,/);
+    assert.match(hook, /cards: work\.status === "ready" \? workMenuCount\(work\.dueToday \+ work\.overdue, ticketsNew\) : null,/);
     const page = code("pages/OverviewPage.jsx");
     assert.match(page, /<Kpi\s+label="Due today for you"\s+note=\{`\$\{Number\(review\.overdue \|\| 0\)\.toLocaleString\(\)\} overdue`\}/);
     assert.match(page, /<KpiFailed label="Due today for you"/);

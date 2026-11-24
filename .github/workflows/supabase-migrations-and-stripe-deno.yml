@@ -85,6 +85,7 @@ on:
       # (`waitlist-spot-open.adversarial.test.ts` is registered in no workflow
       # and has been failing on main since #1541 deleted what it asserts).
       - "supabase/functions/sms-delivery-reconcile/**"
+      - "supabase/functions/host-push-reconcile/**"
       - "supabase/functions/notification-retry-sweeper/**"
       - "supabase/functions/termii-delivery-status/**"
       - "supabase/functions/ticket-confirmation-dispatch/**"
@@ -175,7 +176,7 @@ on:
       - "mingla-admin/src/__tests__/issue4111_reported_enquiries.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue4111_reported_enquiries.tester.adversarial.test.js"
       - "mingla-admin/src/lib/reportedEnquiries.js"
-      - "mingla-admin/src/components/community/ReportedEnquiriesPanel.jsx"
+      - "mingla-admin/src/components/support/ReportedEnquiryThread.jsx"
       - "mingla-business/src/services/rsvpEvents.ts"
       - "mingla-business/src/services/rsvpApprovals.ts"
       - "mingla-business/src/services/guestRosterService.ts"
@@ -183,6 +184,9 @@ on:
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/hooks/useRsvpApprovals.ts"
       - "supabase/functions/rsvp-contribution-refund/**"
+      # Issue #3645 — the chip-in provider-minimum suite (stripe-deno lane) tests
+      # this handler; a change to it alone must re-run that suite.
+      - "supabase/functions/rsvp-contribution-create/**"
       # Issue #3391 — the host's paid-cancel route lives in this function; a
       # change to it alone must re-run the #3391 SQL and Deno suites.
       - "supabase/functions/venue-reservation-cancel/**"
@@ -527,6 +531,7 @@ on:
       # (`waitlist-spot-open.adversarial.test.ts` is registered in no workflow
       # and has been failing on main since #1541 deleted what it asserts).
       - "supabase/functions/sms-delivery-reconcile/**"
+      - "supabase/functions/host-push-reconcile/**"
       - "supabase/functions/notification-retry-sweeper/**"
       - "supabase/functions/termii-delivery-status/**"
       - "supabase/functions/ticket-confirmation-dispatch/**"
@@ -595,7 +600,7 @@ on:
       - "mingla-admin/src/__tests__/issue4111_reported_enquiries.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue4111_reported_enquiries.tester.adversarial.test.js"
       - "mingla-admin/src/lib/reportedEnquiries.js"
-      - "mingla-admin/src/components/community/ReportedEnquiriesPanel.jsx"
+      - "mingla-admin/src/components/support/ReportedEnquiryThread.jsx"
       - "mingla-business/src/services/rsvpEvents.ts"
       - "mingla-business/src/services/rsvpApprovals.ts"
       - "mingla-business/src/services/guestRosterService.ts"
@@ -603,6 +608,9 @@ on:
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/hooks/useRsvpApprovals.ts"
       - "supabase/functions/rsvp-contribution-refund/**"
+      # Issue #3645 — the chip-in provider-minimum suite (stripe-deno lane) tests
+      # this handler; a change to it alone must re-run that suite.
+      - "supabase/functions/rsvp-contribution-create/**"
       # Issue #3391 — the host's paid-cancel route lives in this function; a
       # change to it alone must re-run the #3391 SQL and Deno suites.
       - "supabase/functions/venue-reservation-cancel/**"

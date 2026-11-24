@@ -29,7 +29,8 @@
     "deleteFailed": "删除失败", "deleteFailedMsg": "无法删除此会话。",
     "permissionDeleteBoard": "只有会话创建者或管理员可以删除此会话。",
     "deleteSessionTitle": "删除会话", "deleteSessionMsg": "确定要删除\"{{name}}\"吗？此操作无法撤销，所有卡片、投票和讨论将被永久删除。",
-    "leaveSessionTitle": "离开面板", "leaveSessionMsg": "确定要离开\"{{name}}\"吗？", "namePlaceholder": "输入会话名称"
+    "leaveSessionTitle": "离开面板", "leaveSessionMsg": "确定要离开\"{{name}}\"吗？", "namePlaceholder": "输入会话名称",
+    "sessionShareMessage": "我把你加入了 Mingla 上的“{{name}}”。点这里加入：{{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "讨论", "cardDiscussion": "卡片讨论", "errorLoadMsg": "加载消息失败",

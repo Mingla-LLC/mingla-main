@@ -24,6 +24,7 @@ import { BrandPaymentsView } from "../../../../src/components/brand/BrandPayment
 // view's Paystack fork, so both rails are covered by one decision.
 import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
 import { color } from "../../../../src/constants/designSystem";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../../../src/constants/supportHostFacing";
 import { useBrand } from "../../../../src/hooks/useBrands";
 
 export default function BrandPaymentsRoute(): React.ReactElement {
@@ -70,7 +71,7 @@ export default function BrandPaymentsRoute(): React.ReactElement {
   };
 
   const handleContactSupport = (): void => {
-    router.push("/account/support?tab=support" as never);
+    router.push(HELP_SUPPORT_PERSON_ROUTE as never);
   };
 
   // #4271 — Tap to Pay setup for this brand.

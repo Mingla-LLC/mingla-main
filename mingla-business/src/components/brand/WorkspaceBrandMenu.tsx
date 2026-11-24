@@ -28,10 +28,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
 
 import { color, radius, shadow, space, type } from "../../constants/designSystem";
+import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
 import { useBrandSetupStates } from "../../hooks/useBrandSetupStates";
 import { useWorkspaceBrandSwitch } from "../../hooks/useWorkspaceBrandSwitch";
 import type { Brand } from "../../store/currentBrandStore";
+import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { filterBrandsByQuery, showsBrandSearch } from "../../utils/brandSearch";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "../ui/Icon";
@@ -59,6 +61,8 @@ export interface WorkspaceBrandMenuProps {
   anchor: BrandMenuAnchor | null;
   /** The host's full switcher (continue setup, discard a draft, delete). */
   onManageBrands?: () => void;
+  /** Discard a true draft (the host's own confirm flow). Without it a draft row has no discard. */
+  onDiscardDraft?: (brand: Brand) => void;
   /** The sheet's layer has left the page (focus can go back to the chip). */
   onClosed?: () => void;
   testID?: string;
@@ -108,10 +112,12 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
   activeBrandId,
   anchor,
   onManageBrands,
+  onDiscardDraft,
   onClosed,
   testID = "workspace-brand-menu",
 }) => {
   const router = useRouter();
+  const { user } = useAuth();
   const viewport = useWindowDimensions();
   const brandList = useBrandListState();
   const brands = brandList.brands;
@@ -167,6 +173,23 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
     return actions;
   }, [onClose, onManageBrands, openCreate]);
 
+  const [discardMenuFor, setDiscardMenuFor] = useState<string | null>(null);
+  const openSetup = useCallback(
+    (brand: Brand): void => {
+      onClose();
+      router.push(`/brand/${encodeURIComponent(brand.id)}/setup` as never);
+    },
+    [onClose, router],
+  );
+  const discard = useCallback(
+    (brand: Brand): void => {
+      setDiscardMenuFor(null);
+      onClose();
+      onDiscardDraft?.(brand);
+    },
+    [onClose, onDiscardDraft],
+  );
+
   const pick = useCallback(
     (brand: Brand): void => {
       onClose();
@@ -187,6 +210,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
     if (!visible) {
       setQuery("");
       setActiveIndex(-1);
+      setDiscardMenuFor(null);
       return undefined;
     }
     const start = searchable ? -1 : Math.max(0, currentIndex);
@@ -274,47 +298,93 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
         : setup.kind === "free_only"
           ? BRAND_SWITCHER_COPY.n3.freeOnlyTag
           : `${setup.kind === "draft" ? `${BRAND_SWITCHER_COPY.n3.draftLabel} · ` : ""}${BRAND_SWITCHER_COPY.n3.progress(setup.doneCount)}`;
+    const unfinished = setup.kind !== "none";
+    const canDiscard =
+      setup.kind === "draft" && onDiscardDraft !== undefined && canDeleteBrand(brand, user?.id ?? null);
     return (
-      <Pressable
-        key={brand.id}
-        ref={(node) => {
-          itemRefs.current[index] = node as Focusable;
-        }}
-        onPress={() => pick(brand)}
-        onFocus={() => setActiveIndex(index)}
-        onHoverIn={() => setActiveIndex(index)}
-        accessibilityRole="menuitem"
-        accessibilityLabel={
-          isCurrent ? `${brand.displayName}, the brand you are in` : `Switch to ${brand.displayName}`
-        }
-        accessibilityState={{ selected: isCurrent }}
-        testID={`workspace-brand-row-${brand.id}`}
-      >
+      <View key={brand.id}>
+        {/* The row is a plain box: the switch target, the Continue pill and the
+            "more" button are SIBLINGS, never nested (a tap on the row switches,
+            a tap on the pill opens setup). */}
         <View
           style={[
             styles.row,
             isCurrent ? styles.rowCurrent : null,
             activeIndex === index ? styles.rowActive : null,
           ]}
+          testID={`workspace-brand-rowbox-${brand.id}`}
         >
-          <BrandMark brand={brand} size={32} testID={`workspace-brand-mark-${brand.id}`} />
-          <View style={styles.rowText}>
-            <Text style={styles.rowName} numberOfLines={2}>
-              {brand.displayName}
-            </Text>
-            {subline !== null ? (
-              <Text style={styles.rowSub} numberOfLines={1}>
-                {subline}
+          <Pressable
+            ref={(node) => {
+              itemRefs.current[index] = node as Focusable;
+            }}
+            onPress={() => pick(brand)}
+            onFocus={() => setActiveIndex(index)}
+            onHoverIn={() => setActiveIndex(index)}
+            accessibilityRole="menuitem"
+            accessibilityLabel={
+              isCurrent ? `${brand.displayName}, the brand you are in` : `Switch to ${brand.displayName}`
+            }
+            accessibilityState={{ selected: isCurrent }}
+            style={styles.rowPick}
+            testID={`workspace-brand-row-${brand.id}`}
+          >
+            <BrandMark brand={brand} size={32} testID={`workspace-brand-mark-${brand.id}`} />
+            <View style={styles.rowText}>
+              <Text style={styles.rowName} numberOfLines={2}>
+                {brand.displayName}
               </Text>
-            ) : null}
-          </View>
+              {subline !== null ? (
+                <Text style={styles.rowSub} numberOfLines={1}>
+                  {subline}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
+          {unfinished ? (
+            <Pressable
+              onPress={() => openSetup(brand)}
+              accessibilityRole="button"
+              accessibilityLabel={`${BRAND_SWITCHER_COPY.n3.continue} ${brand.displayName}`}
+              hitSlop={6}
+              style={styles.continueBtn}
+              testID={`workspace-brand-continue-${brand.id}`}
+            >
+              <Text style={styles.continueLabel}>{BRAND_SWITCHER_COPY.n3.continue}</Text>
+            </Pressable>
+          ) : null}
+          {canDiscard ? (
+            <Pressable
+              onPress={() => setDiscardMenuFor((open) => (open === brand.id ? null : brand.id))}
+              accessibilityRole="button"
+              accessibilityLabel={`More for ${brand.displayName}`}
+              accessibilityState={{ expanded: discardMenuFor === brand.id }}
+              style={styles.moreBtn}
+              testID={`workspace-brand-more-${brand.id}`}
+            >
+              <Icon name="moreH" size={16} color={color.text3} />
+            </Pressable>
+          ) : null}
           {isCurrent ? (
             <View style={styles.tick} testID={`workspace-brand-tick-${brand.id}`}>
               <Icon name="check" size={14} color={color.ink} />
             </View>
           ) : null}
         </View>
-      </Pressable>
+        {canDiscard && discardMenuFor === brand.id ? (
+          <View style={styles.rowMenu} testID={`workspace-brand-more-menu-${brand.id}`}>
+            <Pressable
+              onPress={() => discard(brand)}
+              accessibilityRole="button"
+              accessibilityLabel={`${BRAND_SWITCHER_COPY.n3.discard} ${brand.displayName}`}
+              style={styles.rowMenuItem}
+              testID={`workspace-brand-discard-${brand.id}`}
+            >
+              <Text style={styles.rowMenuLabel}>{BRAND_SWITCHER_COPY.n3.discard}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
     );
   };
 
@@ -371,32 +441,36 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
         {list}
       </ScrollView>
       <View style={popover ? styles.footer : [styles.footer, styles.footerSheet]}>
-        {footer.map((action, offset) => {
-          const index = shown.length + offset;
-          return (
-            <Pressable
-              key={action.key}
-              ref={(node) => {
-                itemRefs.current[index] = node as Focusable;
-              }}
-              onPress={action.onPress}
-              onFocus={() => setActiveIndex(index)}
-              onHoverIn={() => setActiveIndex(index)}
-              accessibilityRole="menuitem"
-              accessibilityLabel={action.label}
-              testID={`workspace-brand-${action.key}`}
-            >
-              <View style={[styles.footerRow, activeIndex === index ? styles.rowActive : null]}>
-                <View style={styles.footerIcon}>
-                  <Icon name={action.icon} size={16} color={color.text1} />
-                </View>
-                <Text style={styles.footerLabel} numberOfLines={1}>
+        <View style={styles.footerButtons} testID="workspace-brand-footer-buttons">
+          {footer.map((action, offset) => {
+            const index = shown.length + offset;
+            const filled = action.key === "create";
+            return (
+              <Pressable
+                key={action.key}
+                ref={(node) => {
+                  itemRefs.current[index] = node as Focusable;
+                }}
+                onPress={action.onPress}
+                onFocus={() => setActiveIndex(index)}
+                onHoverIn={() => setActiveIndex(index)}
+                accessibilityRole="button"
+                accessibilityLabel={action.label}
+                style={[
+                  styles.footerBtn,
+                  filled ? styles.footerBtnFilled : styles.footerBtnOutlined,
+                  activeIndex === index ? styles.footerBtnActive : null,
+                ]}
+                testID={`workspace-brand-${action.key}`}
+              >
+                <Icon name={action.icon} size={16} color={filled ? color.ink : color.text1} />
+                <Text style={[styles.footerLabel, filled ? styles.footerLabelFilled : null]}>
                   {action.label}
                 </Text>
-              </View>
-            </Pressable>
-          );
-        })}
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -476,7 +550,38 @@ const styles = StyleSheet.create({
   rowCurrent: { backgroundColor: color.card3 },
   // Hover, keyboard focus and the arrow keys share one highlight.
   rowActive: { backgroundColor: color.fill.pressed },
+  rowPick: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+  },
   rowText: { flex: 1, minWidth: 0 },
+  // 32pt pill; hitSlop 6 makes the target 44pt.
+  continueBtn: {
+    height: 32,
+    paddingHorizontal: space[3],
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: color.lineStrong,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  continueLabel: { ...type.caption, color: color.text1, fontWeight: "600" },
+  moreBtn: { width: 44, height: 44, marginHorizontal: -space[2], alignItems: "center", justifyContent: "center" },
+  rowMenu: {
+    alignSelf: "flex-end",
+    marginRight: space[3],
+    marginTop: space[1],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.lineStrong,
+    backgroundColor: color.card3,
+  },
+  rowMenuItem: { minHeight: 44, paddingHorizontal: space[4], justifyContent: "center" },
+  rowMenuLabel: { ...type.small, color: color.text1, fontWeight: "600" },
   rowName: { ...type.row, color: color.text1, fontWeight: "600" },
   rowSub: { ...type.caption, color: color.text3 },
   tick: {
@@ -506,16 +611,22 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.line,
   },
-  footerRow: {
-    minHeight: 44,
+  footerButtons: { flexDirection: "column", gap: 10 },
+  footerBtn: {
+    alignSelf: "stretch",
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    gap: space[3],
+    justifyContent: "center",
+    gap: space[2],
     paddingHorizontal: space[3],
-    borderRadius: radius.md,
+    borderRadius: radius.full,
   },
-  footerIcon: { width: 32, alignItems: "center" },
-  footerLabel: { ...type.small, color: color.text1, fontWeight: "600", flex: 1 },
+  footerBtnFilled: { backgroundColor: color.text1 },
+  footerBtnOutlined: { borderWidth: 1, borderColor: color.lineStrong },
+  footerBtnActive: { opacity: 0.85 },
+  footerLabel: { ...type.small, color: color.text1, fontWeight: "600" },
+  footerLabelFilled: { color: color.ink },
 });
 
 export default WorkspaceBrandMenu;

@@ -421,6 +421,8 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
           selectedId={ws.cardFor}
           onSelect={(sectionId) => ws.select(sectionId, { card: true })}
           onRetry={retry}
+          onStale={ws.previewRefresh.onStale}
+          onFailed={ws.previewRefresh.onFailed}
           renderCard={!phone && card ? () => card : null}
         />
       )}

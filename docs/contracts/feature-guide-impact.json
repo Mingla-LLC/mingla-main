@@ -12,7 +12,21 @@
         "mingla-business/src/services/laneEdgeInvoke.ts",
         "mingla-business/src/services/resilientFetch.ts",
         "mingla-business/src/services/supabase.ts",
-        "mingla-business/src/theme/surfaceTokens.ts"
+        "mingla-business/src/theme/surfaceTokens.ts",
+        "mingla-business/app/_layout.tsx",
+        "mingla-business/app/b/[brandSlug]/index.tsx",
+        "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
+        "mingla-business/server/buyGateAnswers.js",
+        "mingla-business/src/components/buyer/BuyerConnectionNotice.tsx",
+        "mingla-business/src/components/buyer/BuyerConnectionNoticeFull.tsx",
+        "mingla-business/src/components/buyer/buyerConnectionNoticeTypes.ts",
+        "mingla-business/src/components/buyer/buyerConnectionCopy.ts",
+        "mingla-business/src/services/buyerMediaRoute.ts",
+        "mingla-business/src/services/connectionFailure.ts",
+        "packages/offering-rendering/CountAwareGallery.tsx",
+        "packages/offering-rendering/EventCoverMedia.tsx",
+        "packages/offering-rendering/offeringMediaRoute.ts",
+        "packages/offering-rendering/useOfferingImageUri.ts"
       ]
     },
     {
@@ -40,7 +54,10 @@
         "app-mobile/src/utils/explorerProfileAuthRest.ts",
         "app-mobile/src/utils/explorerReactivation.ts",
         "app-mobile/src/utils/authCleanup.ts",
-        "app-mobile/src/utils/signedOutProfileError.ts"
+        "app-mobile/src/utils/signedOutProfileError.ts",
+        "app-mobile/src/constants/profileColumns.ts",
+        "app-mobile/src/services/profileAccessService.ts",
+        "app-mobile/src/services/authService.ts"
       ]
     },
     {
@@ -88,7 +105,13 @@
         "app-mobile/src/services/peopleJourneyService.ts",
         "app-mobile/src/services/postHogService.ts",
         "app-mobile/src/services/screenTracking.ts",
-        "app-mobile/src/services/signupSourceHints.ts"
+        "app-mobile/src/services/signupSourceHints.ts",
+        "app-mobile/src/contexts/CoachMarkContext.tsx",
+        "app-mobile/src/services/mixpanelService.ts",
+        "app-mobile/src/i18n/locales/en/onboarding.json",
+        "app-mobile/src/utils/edgeFunctionError.ts",
+        "supabase/functions/send-otp/classifySendFailure.ts",
+        "supabase/functions/verify-otp/index.ts"
       ]
     },
     {
@@ -258,7 +281,11 @@
         "mingla-business/src/hooks/useRevealedFieldErrors.ts",
         "mingla-business/src/payments/openPaymentPage.ts",
         "mingla-business/src/payments/paymentSheetAppearance.ts",
-        "supabase/functions/_shared/stripeWebhookRetry.ts"
+        "supabase/functions/_shared/stripeWebhookRetry.ts",
+        "mingla-business/api/event-calendar.js",
+        "mingla-business/src/components/event/AddToCalendarChooser.tsx",
+        "mingla-business/src/components/event/useAddToCalendar.tsx",
+        "mingla-business/src/constants/publicUrls.ts"
       ]
     },
     {
@@ -282,13 +309,31 @@
         "mingla-business/app/checkout-trip/[tripEventId]/_layout.tsx",
         "mingla-business/src/components/offering/LazyPublicParts.tsx",
         "packages/offering-rendering/offeringCta.ts",
-        "packages/offering-rendering/socialProofMomentum.ts"
+        "packages/offering-rendering/socialProofMomentum.ts",
+        "mingla-business/api/experience-checkout-bundle.js",
+        "mingla-business/api/trip-checkout-bundle.js",
+        "mingla-business/app/checkout-experience/[experienceEventId]/index.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/index.tsx",
+        "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
+        "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+        "mingla-business/server/buyGateAnswers.js",
+        "mingla-business/src/components/buyer/BuyerConnectionNotice.tsx",
+        "mingla-business/src/components/buyer/BuyerConnectionNoticeFull.tsx",
+        "mingla-business/src/components/buyer/buyerConnectionNoticeTypes.ts",
+        "mingla-business/src/components/buyer/buyerConnectionCopy.ts",
+        "mingla-business/src/components/trip/TripPreview.tsx",
+        "mingla-business/src/hooks/usePublicTripBySlug.ts",
+        "mingla-business/src/services/buyerMediaRoute.ts",
+        "mingla-business/src/services/connectionFailure.ts",
+        "mingla-business/src/services/publicExperienceService.ts",
+        "packages/offering-rendering/CountAwareGallery.tsx"
       ]
     },
     {
       "capability_key": "staff-feature-guide",
       "paths": [
         "mingla-admin/src/components/community/FeatureGuidePanel.jsx",
+        "mingla-admin/src/pages/communications/FeatureGuidePage.jsx",
         "mingla-admin/src/services/featureGuideService.js",
         "supabase/functions/_shared/opsBridges.ts",
         "supabase/functions/product-avengers-sync/index.ts",
@@ -333,6 +378,7 @@
         "app-mobile/src/wrappers/SmartScrollView.native.tsx",
         "app-mobile/src/wrappers/SmartScrollView.tsx",
         "app-mobile/src/wrappers/useKeyboardIsVisible.native.ts",
+        "app-mobile/src/wrappers/keyboardVisibility.ts",
         "app-mobile/src/wrappers/useKeyboardIsVisible.ts",
         "mingla-admin/src/components/programs/CreatorShowcasePlayer.jsx",
         "mingla-admin/src/components/programs/CreatorStepMeter.jsx",
@@ -781,7 +827,9 @@
         "app-mobile/src/services/reportService.ts",
         "supabase/functions/open-view-once/handler.ts",
         "supabase/functions/open-view-once/index.ts",
-        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql"
+        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql",
+        "app-mobile/src/services/boardService.ts",
+        "app-mobile/src/services/sessionMembershipService.ts"
       ]
     },
     {
@@ -843,7 +891,14 @@
         "supabase/functions/send-friend-accepted-notification/index.ts",
         "supabase/migrations/20280403034261_issue_4261_friend_share_and_group_links.sql",
         "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql",
-        "app-mobile/src/components/profile/circle/YourCircleSection.tsx"
+        "app-mobile/src/components/profile/circle/YourCircleSection.tsx",
+        "app-mobile/src/components/connections/friendsSheetModel.ts",
+        "app-mobile/src/components/profile/circle/CircleAvatarTile.tsx",
+        "app-mobile/src/services/circleService.ts",
+        "app-mobile/src/types/circle.ts",
+        "app-mobile/src/hooks/useFriendProfile.ts",
+        "app-mobile/src/hooks/useFriends.ts",
+        "app-mobile/src/services/friendsService.ts"
       ]
     },
     {
@@ -893,7 +948,39 @@
         "packages/offering-rendering/normalizeCityCountry.ts",
         "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
-        "supabase/migrations/20280723004420_issue_4420_discovery_coarse_points.sql"
+        "supabase/migrations/20280723004420_issue_4420_discovery_coarse_points.sql",
+        "app-mobile/src/components/discover/FilterDropdown.tsx",
+        "app-mobile/src/components/discover/eventTypeGroups.ts",
+        "app-mobile/src/constants/eventTaxonomy.ts",
+        "app-mobile/src/i18n/locales/ar/discover.json",
+        "app-mobile/src/i18n/locales/bin/discover.json",
+        "app-mobile/src/i18n/locales/bn/discover.json",
+        "app-mobile/src/i18n/locales/de/discover.json",
+        "app-mobile/src/i18n/locales/el/discover.json",
+        "app-mobile/src/i18n/locales/en/discover.json",
+        "app-mobile/src/i18n/locales/es/discover.json",
+        "app-mobile/src/i18n/locales/fr/discover.json",
+        "app-mobile/src/i18n/locales/ha/discover.json",
+        "app-mobile/src/i18n/locales/he/discover.json",
+        "app-mobile/src/i18n/locales/hi/discover.json",
+        "app-mobile/src/i18n/locales/id/discover.json",
+        "app-mobile/src/i18n/locales/ig/discover.json",
+        "app-mobile/src/i18n/locales/it/discover.json",
+        "app-mobile/src/i18n/locales/ja/discover.json",
+        "app-mobile/src/i18n/locales/ko/discover.json",
+        "app-mobile/src/i18n/locales/ms/discover.json",
+        "app-mobile/src/i18n/locales/nl/discover.json",
+        "app-mobile/src/i18n/locales/pl/discover.json",
+        "app-mobile/src/i18n/locales/pt/discover.json",
+        "app-mobile/src/i18n/locales/ro/discover.json",
+        "app-mobile/src/i18n/locales/ru/discover.json",
+        "app-mobile/src/i18n/locales/sv/discover.json",
+        "app-mobile/src/i18n/locales/th/discover.json",
+        "app-mobile/src/i18n/locales/tr/discover.json",
+        "app-mobile/src/i18n/locales/uk/discover.json",
+        "app-mobile/src/i18n/locales/vi/discover.json",
+        "app-mobile/src/i18n/locales/yo/discover.json",
+        "app-mobile/src/i18n/locales/zh/discover.json"
       ]
     },
     {
@@ -1488,6 +1575,7 @@
         "mingla-sites/e2e/goldens/baseline/voyage/story-390.png",
         "mingla-sites/e2e/goldens/baseline/voyage/trips-1440.png",
         "mingla-sites/e2e/goldens/baseline/voyage/trips-390.png",
+        "mingla-sites/e2e/goldens/baseline/voyage/destination-390.png",
         "mingla-sites/package.json",
         "mingla-site-cms/tsconfig.json",
         "mingla-sites/src/lib/previewPublication.ts",
@@ -1570,7 +1658,29 @@
         "mingla-sites/src/designs/pulse/blocks/PulseBlocks.tsx",
         "mingla-sites/src/designs/sunset/SunsetPage.tsx",
         "mingla-sites/src/designs/sunset/blocks/SunsetBlocks.tsx",
-        "supabase/migrations/20280807064453_issue_4453_design_keys_6c.sql"
+        "supabase/migrations/20280807064453_issue_4453_design_keys_6c.sql",
+        "mingla-site-cms/src/app/(frontend)/preview/page.tsx",
+        "mingla-site-cms/src/components/PreviewChrome.tsx",
+        "mingla-site-cms/src/endpoints/sitesEndpoints.ts",
+        "mingla-site-cms/src/lib/brandLibrary.ts",
+        "mingla-site-cms/src/lib/mediaPipeline.ts",
+        "mingla-site-cms/src/lib/previewRefusal.ts",
+        "mingla-sites/src/designs/shared/Lines.tsx",
+        "mingla-sites/src/lib/offeringMedia.ts",
+        "supabase/functions/_shared/sitesContracts.ts",
+        "supabase/functions/brand-site-control/index.ts",
+        "supabase/migrations/20281129004572_issue_4572_sites_feed_poster_and_breaks.sql",
+        "supabase/migrations/20281129104572_issue_4572_first_publish_ready.sql",
+        "mingla-business/src/sites/setupFields.ts",
+        "mingla-business/src/sites/websiteJourney.ts",
+        "mingla-site-cms/src/collections/Media.ts",
+        "mingla-site-cms/src/components/StudioMediaManager.tsx",
+        "mingla-site-cms/src/lib/studioMediaClient.ts",
+        "mingla-site-cms/src/lib/studioMediaSelection.ts",
+        "mingla-business/src/sites/previewRefresh.ts",
+        "mingla-business/src/sites/previewRefusalListener.ts",
+        "mingla-business/src/sites/usePublishingPaused.ts",
+        "mingla-business/src/sites/brandLibraryApi.ts"
       ]
     },
     {
@@ -1598,7 +1708,8 @@
         "mingla-business/src/utils/guestCsvExport.ts",
         "mingla-business/src/components/guests/AddCompGuestSheet.tsx",
         "mingla-business/src/components/guests/TicketLinkRequestsSheet.tsx",
-        "mingla-business/src/components/guests/TicketLinksSheet.tsx"
+        "mingla-business/src/components/guests/TicketLinksSheet.tsx",
+        "supabase/migrations/20281127004573_issue_4573_form_request_safeupdate.sql"
       ]
     },
     {
@@ -1660,7 +1771,8 @@
         "supabase/functions/_shared/payoutCountries.ts",
         "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
         "mingla-business/src/utils/paidPublishGuards.ts",
-        "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx"
+        "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx",
+        "mingla-business/src/utils/ticketDisplay.ts"
       ]
     },
     {
@@ -1679,7 +1791,8 @@
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
         "mingla-business/src/components/event/EditAfterPublishBanner.tsx",
         "mingla-business/src/components/event/LazyChangeSummaryModal.tsx",
-        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx"
+        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx",
+        "supabase/migrations/20281129604572_issue_4572_repair_joined_venue_names.sql"
       ]
     },
     {
@@ -1695,7 +1808,10 @@
         "mingla-admin/src/pages/PeopleConsolePage.jsx",
         "supabase/functions/admin-person-activity/function-policy.json",
         "supabase/functions/admin-person-activity/index.ts",
-        "supabase/migrations/20281118024226_issue_4226_people_journey.sql"
+        "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
+        "mingla-admin/src/components/CommandPalette.jsx",
+        "mingla-admin/src/services/adminProfileContactsService.js",
+        "mingla-admin/src/lib/profileContactsPure.js"
       ]
     },
     {
@@ -1962,7 +2078,10 @@
         "mingla-business/src/services/peopleJourneyService.ts",
         "mingla-business/src/services/postHogService.ts",
         "mingla-business/src/services/postHogService.web.ts",
-        "mingla-business/src/services/screenTracking.ts"
+        "mingla-business/src/services/screenTracking.ts",
+        "mingla-business/src/components/brandContact/PinnedBottomBar.tsx",
+        "mingla-business/src/components/brandContact/PinnedBottomBar.web.tsx",
+        "packages/offering-rendering/priceFromLabel.ts"
       ]
     },
     {
@@ -2002,6 +2121,7 @@
         "mingla-admin/src/components/AppIdentityReadinessPanel.jsx",
         "mingla-admin/src/components/app-readiness/AppDownloadReadinessPanel.jsx",
         "app-mobile/app.json",
+        "app-mobile/package.json",
         "app-mobile/src/hooks/useRevenueCat.ts",
         "app-mobile/src/payments/checkoutAdTracking.ts",
         "app-mobile/src/services/analyticsOptOut.ts",
@@ -2230,7 +2350,12 @@
         "mingla-admin/src/components/ui/Table.jsx",
         "mingla-admin/src/components/ui/Tabs.jsx",
         "mingla-admin/src/lib/flowModel.js",
-        "supabase/migrations/20280720004452_issue_4452_dashboard_last_lead.sql"
+        "supabase/migrations/20280720004452_issue_4452_dashboard_last_lead.sql",
+        "mingla-admin/src/context/ToastContext.jsx",
+        "mingla-admin/src/lib/toastPage.js",
+        "mingla-admin/src/components/LoginScreen.jsx",
+        "mingla-admin/src/components/InviteSetupScreen.jsx",
+        "supabase/migrations/20281130014571_issue_4571_w1_people_and_goals.sql"
       ]
     },
     {
@@ -2326,7 +2451,30 @@
         "supabase/migrations/20280712004452_issue_4452_forms_core.sql",
         "supabase/migrations/20280712044452_issue_4452_leads.sql",
         "mingla-admin/scripts/verify-forms-kit-dist.mjs",
-        "mingla-marketing/app/apply/[slug]/resolve.ts"
+        "mingla-marketing/app/apply/[slug]/resolve.ts",
+        "mingla-admin/src/components/crm/CallsQueue.jsx",
+        "mingla-admin/src/components/crm/HygieneViews.jsx",
+        "mingla-admin/src/components/crm/OwnersField.jsx",
+        "mingla-admin/src/components/crm/RecordHygiene.jsx",
+        "mingla-admin/src/components/crm/RecordPanel.jsx",
+        "mingla-admin/src/components/crm/home/CadenceSweepPanel.jsx",
+        "mingla-admin/src/components/crm/home/OutreachNumbers.jsx",
+        "mingla-admin/src/components/leads/DemosBanner.jsx",
+        "mingla-admin/src/components/leads/DemosToLink.jsx",
+        "mingla-admin/src/components/leads/demoLinkModel.js",
+        "mingla-admin/src/lib/sopTools.js",
+        "mingla-admin/src/pages/PipelinePage.jsx",
+        "mingla-admin/src/services/crmService.js",
+        "supabase/migrations/20281130024571_issue_4571_w2_links_and_call_outcomes.sql",
+        "supabase/migrations/20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql",
+        "supabase/migrations/20281130044571_issue_4571_w4_demo_bookings_stage_rule.sql",
+        "supabase/migrations/20281130064571_issue_4571_w6a_archive_merge.sql",
+        "supabase/migrations/20281130074571_issue_4571_w6b_email_log_and_numbers.sql",
+        "supabase/migrations/20281130084571_issue_4571_w6c_cadence_sweep.sql",
+        "supabase/migrations/20281130094571_issue_4571_w6d_rework.sql",
+        "supabase/migrations/20281130104571_issue_4571_w7_brand_counts.sql",
+        "supabase/migrations/20281130114571_issue_4571_final_gate_fixes.sql",
+        "supabase/migrations/20281130124571_issue_4571_leftovers.sql"
       ]
     },
     {
@@ -2355,7 +2503,10 @@
         "mingla-admin/src/lib/panelStack.js",
         "mingla-admin/src/pages/ContentCalendarPage.jsx",
         "supabase/migrations/20280605004255_issue_4255_content_calendar_approved_designed.sql",
-        "mingla-admin/src/hooks/useContentCalendar.js"
+        "mingla-admin/src/hooks/useContentCalendar.js",
+        "mingla-admin/src/components/contentCalendar/WeekView.jsx",
+        "mingla-admin/src/lib/calendarWeek.js",
+        "supabase/migrations/20281130054571_issue_4571_w5_calendar_week.sql"
       ]
     },
     {
@@ -2383,7 +2534,7 @@
       "paths": [
         "mingla-admin/src/lib/communitySupportAccess.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
-        "mingla-admin/src/pages/CommunitySupportPage.jsx"
+        "mingla-admin/src/pages/SupportPage.jsx"
       ]
     },
     {
@@ -2403,7 +2554,8 @@
         "supabase/functions/team-agent/index.ts",
         "supabase/migrations/20280425004294_issue_4294_mingla_connector.sql",
         "mingla-admin/src/hooks/useAgentGuide.js",
-        "mingla-admin/src/hooks/useAgentKeys.js"
+        "mingla-admin/src/hooks/useAgentKeys.js",
+        "mingla-admin/src/lib/agentPrompts.js"
       ]
     },
     {
@@ -2456,7 +2608,11 @@
       "capability_key": "web-download",
       "paths": [
         "mingla-marketing/app/host/get/route.ts",
-        "mingla-marketing/lib/links-src.ts"
+        "mingla-marketing/lib/links-src.ts",
+        "mingla-marketing/components/cutout/primitives.tsx",
+        "mingla-marketing/components/marketing/app-qr-panel.tsx",
+        "mingla-marketing/components/ui/side-menu.tsx",
+        "mingla-marketing/components/ui/video-modal.tsx"
       ]
     },
     {
@@ -2596,6 +2752,7 @@
     {
       "capability_key": "account-settings",
       "paths": [
+        "supabase/migrations/20281201003969_issue_3969_profile_access_step2.sql",
         "app-mobile/src/components/ProfilePage.tsx",
         "app-mobile/src/components/profile/ProfileInterestsSection.tsx",
         "app-mobile/src/components/profile/ProfileSectionSkeleton.tsx",
@@ -2668,7 +2825,38 @@
         "supabase/functions/rsvp-notify/eventUpdate.ts",
         "supabase/functions/rsvp-notify/index.ts",
         "supabase/migrations/20280705004422_issue_4422_transactional_delivery_truth.sql",
-        "supabase/migrations/20280705104422_issue_4422_rsvp_message_links.sql"
+        "supabase/migrations/20280705104422_issue_4422_rsvp_message_links.sql",
+        "app-mobile/app/event/[eventId].tsx",
+        "app-mobile/app/rsvp-guest/[code].tsx",
+        "app-mobile/src/components/activity/RsvpPartyInvites.tsx",
+        "app-mobile/src/components/rsvpGuest/RsvpGuestClaimScreen.tsx",
+        "app-mobile/src/services/pendingRsvpGuest.ts",
+        "app-mobile/src/services/rsvpDeckService.ts",
+        "app-mobile/src/services/rsvpGuestLinkService.ts",
+        "app-mobile/src/services/smartNotificationService.ts",
+        "app-mobile/src/utils/inviteNotTextedAlert.ts",
+        "app-mobile/src/utils/rsvpGuestClaim.ts",
+        "app-mobile/src/services/invokeErrorCode.ts",
+        "app-mobile/src/utils/rsvpGuestBringCopy.ts",
+        "app-mobile/src/components/rsvpGuest/RsvpGuestPassCard.tsx",
+        "app-mobile/src/utils/rsvpGuestPassState.ts",
+        "mingla-marketing/app/c/[code]/ClaimLinkClient.tsx",
+        "mingla-marketing/app/c/[code]/RsvpGuestLanding.tsx",
+        "mingla-marketing/lib/rsvp-guest-client.ts",
+        "supabase/functions/_shared/friendInviteLink.ts",
+        "supabase/functions/_shared/rsvpGuestName.ts",
+        "supabase/functions/_shared/rsvpInviterName.ts",
+        "supabase/functions/public-submit-rsvp/guestOps.ts",
+        "supabase/functions/public-submit-rsvp/guestPayload.ts",
+        "supabase/functions/rsvp-pass-fetch/passAccess.ts",
+        "packages/phone-input/accessibilityLabel.ts",
+        "supabase/functions/rsvp-notify/friendGoingFailureAlert.ts",
+        "supabase/functions/rsvp-notify/guestInvite.ts",
+        "supabase/functions/rsvp-notify/signedOutCeilingAlert.ts",
+        "supabase/functions/_shared/rsvpGuestNotice.ts",
+        "supabase/functions/rsvp-notify/guestNotices.ts",
+        "supabase/migrations/20281119004508_issue_4508_guest_phone_match.sql",
+        "supabase/migrations/20281119014508_issue_4508_bring_a_friend.sql"
       ]
     },
     {
@@ -2854,6 +3042,8 @@
     {
       "capability_key": "staff-health",
       "paths": [
+        "supabase/functions/api-health-probe/sitesRecoveryWatch.ts",
+        "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
         "supabase/functions/api-health-probe/logic.ts",
         "supabase/functions/api-health-probe/index.ts",
@@ -2930,7 +3120,12 @@
         "mingla-business/src/utils/unsavedChangesGuard.ts",
         "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
         "mingla-business/src/wrappers/SmartScrollView.native.tsx",
-        "supabase/migrations/20280724004420_issue_4420_event_location_follows_address_rule.sql"
+        "supabase/migrations/20280724004420_issue_4420_event_location_follows_address_rule.sql",
+        "mingla-business/src/constants/eventTaxonomy.ts",
+        "supabase/functions/_shared/eventTaxonomy.ts",
+        "packages/offering-rendering/taxonomyLabels.ts",
+        "supabase/migrations/20281129504572_issue_4572_draft_payload_keeps_venue.sql",
+        "supabase/migrations/20281129704572_issue_4572_event_types.sql"
       ]
     },
     {
@@ -2953,7 +3148,8 @@
         "supabase/migrations/20280722004420_issue_4420_experience_stop_detail_visibility.sql",
         "mingla-business/src/components/experience/ExperiencePricingStep.tsx",
         "supabase/migrations/20280801003645_issue_3645_per_stop_paid_price.sql",
-        "supabase/migrations/20280806003645_issue_3645_paid_free_choice.sql"
+        "supabase/migrations/20280806003645_issue_3645_paid_free_choice.sql",
+        "mingla-business/src/hooks/useExperienceDraftAdapter.ts"
       ]
     },
     {
@@ -2979,6 +3175,7 @@
         "mingla-business/app.config.js",
         "mingla-business/app.json",
         "mingla-business/eas.json",
+        "mingla-business/.easignore",
         "mingla-business/app/(tabs)/account.tsx",
         "mingla-business/app/_layout.tsx",
         "mingla-business/app/account/tap-to-pay.tsx",
@@ -3124,7 +3321,8 @@
         "supabase/migrations/20280508003645_issue_3645_payout_debt_returns.sql",
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
         "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
-        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql"
       ]
     },
     {
@@ -3156,6 +3354,7 @@
         "mingla-admin/src/components/community/BrandGroupSidePanel.jsx",
         "mingla-admin/src/components/community/BrandGroupStrip.jsx",
         "mingla-admin/src/components/community/BrandGroupThread.jsx",
+        "mingla-admin/src/components/community/BrandGroupTicketModal.jsx",
         "mingla-admin/src/components/community/BrandGroupsPanel.jsx",
         "mingla-admin/src/components/community/HostCardEmptyState.jsx",
         "mingla-admin/src/components/community/PlanActivityCard.jsx",
@@ -3171,6 +3370,7 @@
         "mingla-business/src/components/messages/BrandPlanPanel.tsx",
         "mingla-business/src/components/ui/Sheet.web.tsx",
         "mingla-business/src/components/ui/SheetMobile.tsx",
+        "mingla-business/src/components/ui/sheetAnchorMetrics.ts",
         "mingla-business/src/components/ui/useSheetGone.ts",
         "mingla-business/src/hooks/brandPlanKeys.ts",
         "mingla-business/src/hooks/useBrandPlan.ts",
@@ -3255,7 +3455,21 @@
         "mingla-business/app/g/[token].tsx",
         "mingla-admin/src/hooks/useMinuteClock.js",
         "mingla-admin/src/lib/brandGroupHostAssign.js",
-        "mingla-admin/src/lib/brandGroupSideAccess.js"
+        "mingla-admin/src/lib/brandGroupSideAccess.js",
+        "mingla-business/src/components/messages/openMessageLink.ts",
+        "mingla-business/src/components/messages/webVisualViewport.ts",
+        "mingla-business/src/i18n/brandMessagesEnglish.ts",
+        "mingla-business/src/i18n/locales/en/brandMessages.json",
+        "mingla-business/src/utils/brandGroupPlanFold.ts",
+        "mingla-business/src/utils/brandMessagesInbox.ts",
+        "mingla-business/src/utils/brandThreadHistory.ts",
+        "mingla-business/src/utils/brandThreadSend.ts",
+        "mingla-business/src/utils/brandThreadSupport.ts",
+        "mingla-business/src/utils/messageLinks.ts",
+        "mingla-business/src/utils/threadRailPreference.ts",
+        "mingla-business/src/utils/webDocumentCss.ts",
+        "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
+        "mingla-business/src/services/brandGroupRosterService.ts"
       ]
     },
     {
@@ -3475,9 +3689,10 @@
         "mingla-business/src/components/checkout/TicketQrCarousel.tsx",
         "mingla-business/src/components/checkout/YoureInFollowCard.tsx",
         "mingla-business/src/components/checkout/intake/IntakeFilePickerChooserSheet.tsx",
-        "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx",
+        "packages/form-rendering/QuestionRenderers.tsx",
         "packages/phone-input/PhoneInput.tsx",
         "packages/phone-input/index.ts",
+        "packages/phone-input/pickerPresentation.ts",
         "packages/phone-input/tokens.ts",
         "packages/phone-input/types.ts"
       ]
@@ -3497,8 +3712,11 @@
         "packages/offering-rendering/OfferingGlassBar.tsx",
         "packages/offering-rendering/OfferingGlassContext.tsx",
         "packages/offering-rendering/OfferingSectionTitle.tsx",
-        "packages/offering-rendering/offeringCalendar.ts",
-        "packages/offering-rendering/offeringFrameMetrics.ts"
+        "packages/offering-rendering/offeringCalendar.cjs",
+        "packages/offering-rendering/offeringFrameMetrics.ts",
+        "packages/offering-rendering/calendarChooser.ts",
+        "packages/offering-rendering/offeringCalendar.d.cts",
+        "packages/offering-rendering/offeringCalendar.ts"
       ]
     },
     {
@@ -3524,6 +3742,7 @@
         "mingla-business/app/event/[id]/preview.tsx",
         "mingla-business/src/components/event/ActionTile.tsx",
         "mingla-business/src/components/event/CreatorStep1Basics.tsx",
+        "mingla-business/src/components/event/LazyCreatorStep1Basics.tsx",
         "mingla-business/src/components/event/CreatorStep2WhenRepeatPickerSheet.tsx",
         "mingla-business/src/components/event/EndSalesSheet.tsx",
         "mingla-business/src/components/event/EventDetailActivityRow.tsx",
@@ -3599,7 +3818,29 @@
         "mingla-business/src/components/rsvp/RsvpChipInBankChoiceDialog.tsx",
         "mingla-business/src/components/rsvp/RsvpGuestConsole.tsx",
         "mingla-business/src/components/rsvp/RsvpGuestDetailSheet.tsx",
-        "mingla-business/src/components/rsvp/RsvpStep5Setup.tsx"
+        "mingla-business/src/components/rsvp/RsvpStep5Setup.tsx",
+        "mingla-admin/src/lib/rsvpPlusGuests.js",
+        "mingla-business/src/hooks/useRsvpApprovals.ts",
+        "mingla-business/src/services/rsvpApprovals.ts",
+        "mingla-business/src/services/rsvpGuestLookup.ts",
+        "mingla-business/src/services/scanRsvpService.ts",
+        "mingla-business/src/utils/rsvpGuestDisplay.ts",
+        "packages/offering-rendering/RsvpGuestInvitesCard.tsx",
+        "packages/offering-rendering/RsvpGuestPartyBlock.tsx",
+        "packages/offering-rendering/inviteShare.ts",
+        "packages/offering-rendering/rsvpGuestCopy.ts",
+        "packages/offering-rendering/rsvpGuestErrors.ts",
+        "packages/offering-rendering/rsvpGuestParse.ts",
+        "packages/offering-rendering/rsvpGuestParty.ts",
+        "packages/offering-rendering/rsvpGuestRowLabel.ts",
+        "packages/offering-rendering/rsvpPassLabels.ts",
+        "packages/offering-rendering/rsvpGuestPartyModel.ts",
+        "packages/offering-rendering/rsvpGuestTextRoute.ts",
+        "app-mobile/src/components/rsvpGuest/RsvpSheetTextInput.tsx",
+        "app-mobile/src/utils/rsvpGuestPhone.ts",
+        "packages/offering-rendering/rsvpGuestTypes.ts",
+        "packages/offering-rendering/rsvpPhoneFieldTypes.ts",
+        "packages/offering-rendering/socialProofTypes.ts"
       ]
     },
     {
@@ -3907,7 +4148,13 @@
         "packages/offering-rendering/ParallaxCoverShell.tsx",
         "packages/offering-rendering/index.ts",
         "packages/offering-rendering/pageFooterAccessory.ts",
-        "mingla-marketing/lib/termsContent.ts"
+        "mingla-marketing/lib/termsContent.ts",
+        "mingla-business/playwright.issue2331strip.config.ts",
+        "mingla-business/playwright/issue2331/stripAudit.ts",
+        "mingla-business/playwright/issue2769/index.html",
+        "mingla-business/scripts/inject-mobile-blur-css.mjs",
+        "mingla-marketing/scripts/issue-2331-strip-token-check.mjs",
+        "mingla-business/playwright/issue2768/index.html"
       ]
     },
     {
@@ -4383,7 +4630,8 @@
         "mingla-marketing/app/careers/roles/[slug]/page.tsx",
         "mingla-marketing/app/careers/roles/layout.tsx",
         "mingla-marketing/app/careers/sitemap.xml/route.ts",
-        "mingla-marketing/lib/careers-seo.ts"
+        "mingla-marketing/lib/careers-seo.ts",
+        "mingla-marketing/app/careers/_components/sticky-apply-bar.tsx"
       ]
     },
     {
@@ -4451,7 +4699,6 @@
         "mingla-admin/src/components/communications/SchedulePicker.jsx",
         "mingla-admin/src/components/communications/ScheduleTime.jsx",
         "mingla-admin/src/components/community/FailedPushBanner.jsx",
-        "mingla-admin/src/components/community/RoadmapPanel.jsx",
         "mingla-admin/src/lib/communications.js",
         "mingla-admin/src/lib/communicationsErrors.js",
         "mingla-admin/src/lib/pushDestinations.js",
@@ -4460,7 +4707,6 @@
         "mingla-admin/src/pages/communications/CommunicationsOverviewPage.jsx",
         "mingla-admin/src/pages/communications/LinksPage.jsx",
         "mingla-admin/src/pages/communications/PushPage.jsx",
-        "mingla-admin/src/pages/communications/RoadmapPage.jsx",
         "mingla-admin/src/services/communicationsService.js",
         "supabase/functions/_shared/adminPushDestinations.ts",
         "supabase/functions/notify-outbox-drain/index.ts",
@@ -4530,6 +4776,7 @@
       "capability_key": "account-notification-settings",
       "paths": [
         "mingla-business/app/account/notifications.tsx",
+        "app-mobile/src/services/permissionOrchestrator.ts",
         "app-mobile/src/i18n/locales/ar/settings.json",
         "app-mobile/src/i18n/locales/bin/settings.json",
         "app-mobile/src/i18n/locales/bn/settings.json",
@@ -4561,7 +4808,15 @@
         "app-mobile/src/i18n/locales/zh/settings.json",
         "mingla-business/app/notifications.tsx",
         "mingla-business/src/components/notifications/BusinessNotificationsScreen.tsx",
-        "mingla-business/src/components/notifications/rowTap.ts"
+        "mingla-business/src/components/notifications/rowTap.ts",
+        "mingla-business/src/hooks/usePushPermissionMoment.ts",
+        "mingla-business/src/services/pushRegistrationHealth.ts",
+        "mingla-business/src/services/pushRegistrationHealth.web.ts",
+        "supabase/functions/host-push-reconcile/function-policy.json",
+        "supabase/functions/host-push-reconcile/index.ts",
+        "supabase/functions/host-push-reconcile/logic.ts",
+        "supabase/functions/host-push-reconcile/run.ts",
+        "supabase/migrations/20281124004549_issue_4549_host_push_device_health.sql"
       ]
     },
     {
@@ -4779,15 +5034,12 @@
     {
       "capability_key": "staff-community-support",
       "paths": [
-        "mingla-admin/src/components/community/ProductInboxPanel.jsx",
-        "mingla-admin/src/components/support/ProductCardPanel.jsx",
-        "mingla-admin/src/components/support/SendToProductModal.jsx",
-        "mingla-admin/src/components/support/productBoardModel.js",
+        "mingla-admin/src/components/ops/TicketGithubSection.jsx",
         "mingla-admin/src/services/productAvengersService.js",
         "mingla-admin/src/lib/brandGroupWaiting.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
         "mingla-admin/src/lib/supportCommunityTabs.js",
-        "mingla-admin/src/pages/CommunitySupportPage.jsx",
+        "mingla-admin/src/pages/SupportPage.jsx",
         "mingla-admin/src/pages/communications/BrandGroupsPage.jsx"
       ]
     },
@@ -4810,12 +5062,17 @@
         "mingla-business/src/hooks/useSupportTickets.ts",
         "mingla-business/src/i18n/locales/en/hostSupport.json",
         "mingla-business/src/services/supportService.ts",
-        "mingla-business/src/components/support/CommunityConversationsPanel.tsx",
         "mingla-business/src/components/support/CommunityMarkdown.tsx",
-        "mingla-business/src/components/support/CommunityTabPanel.tsx",
-        "mingla-business/src/components/support/GuidePlayerModal.tsx",
-        "mingla-business/src/components/support/GuidesTabPanel.tsx",
-        "mingla-business/src/components/support/HelpSupportHubTabs.tsx"
+        "mingla-business/src/components/support/HelpSupportHubTabs.tsx",
+        "mingla-business/src/components/support/AnnouncementsPanel.tsx",
+        "mingla-business/src/components/support/SupportColumn.tsx",
+        "mingla-business/src/components/support/SupportPersonPane.tsx",
+        "mingla-business/src/components/support/helpSupportHubCopy.ts",
+        "mingla-business/src/components/support/helpSupportRoute.ts",
+        "mingla-business/src/components/support/supportHandover.ts",
+        "mingla-business/src/hooks/supportTicketKeys.ts",
+        "mingla-business/src/i18n/locales/en/hostSupport.hub.json",
+        "mingla-business/src/services/supportHandoverService.ts"
       ]
     },
     {
@@ -5016,7 +5273,8 @@
         "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
         "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
         "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql",
-        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql"
       ]
     },
     {
@@ -5025,7 +5283,9 @@
         "mingla-business/app/auth/_layout.tsx",
         "mingla-business/app/auth/callback.tsx",
         "mingla-business/src/components/auth/SignedInNotFoundNotice.tsx",
-        "mingla-business/app/auth/index.tsx"
+        "mingla-business/app/auth/index.tsx",
+        "mingla-business/src/context/AuthContext.tsx",
+        "mingla-business/src/hooks/useOwnProfilePhoneOnFile.ts"
       ]
     },
     {
@@ -5070,6 +5330,7 @@
         "mingla-business/src/components/groupChat/GroupChatModerationSheet.tsx",
         "mingla-business/src/components/groupChat/GroupChatPanel.tsx",
         "mingla-business/src/components/groupChat/LazyGroupChatPanel.tsx",
+        "mingla-business/src/components/groupChat/LazyBrandGuestPeoplePanel.tsx",
         "mingla-business/src/components/messages/BrandGuestChatSection.tsx",
         "mingla-business/src/hooks/useBrandGuestChats.ts",
         "mingla-business/src/hooks/useEventGroupChat.ts",
@@ -5077,7 +5338,10 @@
         "mingla-business/src/services/brandGuestChatList.ts",
         "mingla-business/src/services/groupChatService.ts",
         "supabase/functions/claim-pending-trip-chat-participation/index.ts",
-        "supabase/migrations/20280805004459_issue_4459_brand_guest_chat.sql"
+        "supabase/migrations/20280805004459_issue_4459_brand_guest_chat.sql",
+        "mingla-business/src/utils/brandGuestAudience.ts",
+        "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
+        "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql"
       ]
     },
     {
@@ -5266,7 +5530,8 @@
       "paths": [
         "supabase/functions/_shared/venueOrderPricing.ts",
         "supabase/functions/venue-order-create/index.ts",
-        "supabase/functions/venue-order-staff/index.ts"
+        "supabase/functions/venue-order-staff/index.ts",
+        "mingla-sites/src/components/MenuCart.tsx"
       ]
     },
     {
@@ -5330,7 +5595,11 @@
         "supabase/migrations/20281119004453_issue_4453_website_team_requests.sql",
         "supabase/migrations/20281119014453_issue_4453_workspace_content_ranks.sql",
         "mingla-business/src/components/sites/website/workspace/AriRunHost.tsx",
-        "mingla-business/src/components/sites/website/workspace/ariRuntime.ts"
+        "mingla-business/src/components/sites/website/workspace/ariRuntime.ts",
+        "mingla-site-cms/src/lib/lookSavedReport.ts",
+        "mingla-site-cms/src/lib/siteLook.ts",
+        "mingla-site-cms/src/migrations/20261123_100000_issue_4575_design_options.ts",
+        "mingla-sites/public/designs/grid/options-1.css"
       ]
     },
     {
@@ -5355,6 +5624,384 @@
         "mingla-admin/src/components/support/WebsiteRequestBox.jsx",
         "mingla-admin/src/lib/websiteRequestModel.js",
         "supabase/migrations/20281119004453_issue_4453_website_team_requests.sql"
+      ]
+    },
+    {
+      "capability_key": "trips-intake-forms",
+      "paths": [
+        "mingla-business/app/(tabs)/marketing/forms/[formId]/index.tsx",
+        "mingla-business/app/(tabs)/marketing/forms/[formId]/responses.tsx",
+        "mingla-business/app/(tabs)/marketing/forms/index.tsx",
+        "mingla-business/app/+native-intent.tsx",
+        "mingla-business/app/form/[formId].tsx",
+        "mingla-business/jest.config.cjs",
+        "mingla-business/metro.config.js",
+        "mingla-business/package.json",
+        "mingla-business/src/components/forms/BrandFormBuilderScreen.tsx",
+        "mingla-business/src/components/forms/BrandFormPreview.tsx",
+        "mingla-business/src/components/forms/BrandFormResponsesScreen.tsx",
+        "mingla-business/src/components/forms/BrandFormsListScreen.tsx",
+        "mingla-business/src/components/forms/FormsNotice.tsx",
+        "mingla-business/src/components/forms/brandFormBuilderKit.ts",
+        "mingla-business/src/components/forms/brandFormsCopy.ts",
+        "mingla-business/src/components/forms/formsOwner.ts",
+        "mingla-business/src/components/forms/link/BrandFormLinkScreen.tsx",
+        "mingla-business/src/components/forms/link/brandFormLinkCopy.ts",
+        "mingla-business/src/components/forms/link/brandFormLinkModel.ts",
+        "mingla-business/src/components/forms/useFormsToast.tsx",
+        "mingla-business/src/components/marketing/marketingSubNavTabs.ts",
+        "mingla-business/src/components/marketing/marketingTabActions.ts",
+        "mingla-business/src/components/trip/EditPublishedTripIntakeAccordion.tsx",
+        "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
+        "mingla-business/src/components/trip/IntakeBrandFormFields.tsx",
+        "mingla-business/src/components/trip/IntakeQuestionBrandTags.tsx",
+        "mingla-business/src/components/trip/IntakeQuestionEditor.tsx",
+        "mingla-business/src/components/trip/IntakeQuestionEditor.web.tsx",
+        "mingla-business/src/components/trip/IntakeRequiredToggle.tsx",
+        "mingla-business/src/components/trip/IntakeSchemaBuilder.tsx",
+        "mingla-business/src/components/trip/IntakeSchemaBuilder.web.tsx",
+        "mingla-business/src/components/trip/IntakeTypePickerSheet.tsx",
+        "mingla-business/src/components/trip/TripCreatorStep6Intake.tsx",
+        "mingla-business/src/components/trip/intakeBuilderFeatures.ts",
+        "mingla-business/src/components/ui/DesktopSidebar.tsx",
+        "mingla-business/src/diagnostics/sentry.ts",
+        "mingla-business/src/diagnostics/sentryTokenScrub.ts",
+        "mingla-business/src/hooks/brandFormKeys.ts",
+        "mingla-business/src/hooks/useBrandForms.ts",
+        "mingla-business/src/services/brandFormLinkService.ts",
+        "mingla-business/src/services/brandFormsExportService.ts",
+        "mingla-business/src/services/brandFormsService.ts",
+        "mingla-business/src/services/intakeSchemaService.ts",
+        "mingla-business/src/utils/brandFormDefinition.ts",
+        "mingla-business/src/utils/brandFormHeader.ts",
+        "mingla-business/src/utils/brandFormResponses.ts",
+        "mingla-business/src/utils/coldLoadAuthGates.ts",
+        "mingla-business/src/utils/permissionGates.ts",
+        "mingla-business/tsconfig.json",
+        "mingla-business/vercel.json",
+        "packages/form-rendering/BrandFormView.tsx",
+        "packages/form-rendering/QuestionRenderers.tsx",
+        "packages/form-rendering/brandFormRules.ts",
+        "packages/form-rendering/index.ts",
+        "packages/form-rendering/package.json",
+        "packages/form-rendering/tsconfig.json",
+        "packages/form-rendering/types.ts",
+        "supabase/functions/_shared/brandFormDispatchTypes.ts",
+        "supabase/functions/_shared/brandFormNotify.ts",
+        "supabase/functions/_shared/brandFormsContract.ts",
+        "supabase/functions/_shared/contactCode.ts",
+        "supabase/functions/_shared/issue4111EnquiryNotifications.ts",
+        "supabase/functions/_shared/notifyTemplates.ts",
+        "supabase/functions/_shared/notifyV2.ts",
+        "supabase/functions/_shared/sentryEdge.ts",
+        "supabase/functions/brand-form-submit/code.ts",
+        "supabase/functions/brand-form-submit/function-policy.json",
+        "supabase/functions/brand-form-submit/index.ts",
+        "supabase/functions/brand-form-submit/submit.ts",
+        "supabase/functions/brand-form-submit/linkRead.ts",
+        "supabase/functions/notify-reminders/index.ts",
+        "supabase/migrations/20281120034514_issue_4514_brand_forms.sql"
+      ]
+    },
+    {
+      "capability_key": "checkout-tickets",
+      "paths": [
+        "mingla-business/src/components/checkout/intake/CheckoutQuestionsStep.tsx",
+        "mingla-business/src/components/checkout/intake/IntakeQuestionFileUpload.tsx",
+        "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx",
+        "mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx",
+        "mingla-business/src/components/checkout/intake/checkoutFormCopy.ts",
+        "mingla-business/src/components/checkout/intake/checkoutFormKeys.ts",
+        "mingla-business/src/components/checkout/intake/formRenderingPrimitives.tsx",
+        "mingla-business/src/services/checkoutBrandFormService.ts",
+        "supabase/functions/brand-form-submit/checkoutForm.ts",
+        "supabase/functions/brand-form-submit/purchaseLink.ts",
+        "supabase/functions/ticket-checkout-create/brandFormCheckout.ts"
+      ]
+    },
+    {
+      "capability_key": "checkout-trips-experiences",
+      "paths": [
+        "mingla-business/app/checkout-experience/[experienceEventId]/buyer.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/payment.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/intake.tsx"
+      ]
+    },
+    {
+      "capability_key": "events-guest-list",
+      "paths": [
+        "mingla-business/app/event/[id]/index.tsx",
+        "mingla-business/app/experience/[id]/index.tsx",
+        "mingla-business/app/rsvp/[id]/index.tsx",
+        "mingla-business/app/trip/[id]/index.tsx",
+        "mingla-business/src/components/event/ActionTile.tsx",
+        "mingla-business/src/components/event/eventGridTiles.ts",
+        "mingla-business/src/components/forms/FormRequestLog.tsx",
+        "mingla-business/src/components/forms/FormRequestSheet.tsx",
+        "mingla-business/src/components/forms/GuestAnswers.tsx",
+        "mingla-business/src/components/forms/GuestFormRequestRow.tsx",
+        "mingla-business/src/components/forms/GuestQuestionsRow.tsx",
+        "mingla-business/src/components/forms/GuestQuestionsSheet.tsx",
+        "mingla-business/src/components/forms/GuestQuestionsTile.tsx",
+        "mingla-business/src/components/guests/GuestRosterExperience.tsx",
+        "mingla-business/src/components/offering/OfferingHome.tsx",
+        "mingla-business/src/services/brandFormRequestService.ts",
+        "mingla-business/src/services/guestListService.ts",
+        "mingla-business/src/utils/formRequestCost.ts",
+        "mingla-business/src/utils/formRequestLog.ts",
+        "mingla-business/src/utils/guestQuestionsModel.ts",
+        "mingla-business/src/utils/guestRosterAnswers.ts",
+        "supabase/functions/_shared/brandFormRequestPreview.ts",
+        "supabase/functions/_shared/brandFormRequests.ts",
+        "supabase/functions/guest-list/index.ts",
+        "supabase/functions/guest-roster-actions/formRequest.ts",
+        "supabase/functions/guest-roster-actions/index.ts"
+      ]
+    },
+    {
+      "capability_key": "events-check-in",
+      "paths": [
+        "mingla-business/app/event/[id]/scanner/index.tsx",
+        "mingla-business/src/components/scanner/DoorAnswersSheet.tsx",
+        "mingla-business/src/components/scanner/DoorGuestSearchSheet.tsx",
+        "mingla-business/src/components/scanner/doorFullAnswersModel.ts",
+        "mingla-business/src/services/scanTicketService.ts",
+        "supabase/functions/_shared/doorBookedStart.ts",
+        "supabase/functions/scan-ticket/index.ts"
+      ]
+    },
+    {
+      "capability_key": "experiences-create",
+      "paths": [
+        "mingla-business/app/experience/[id]/edit.tsx",
+        "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      ]
+    },
+    {
+      "capability_key": "events-edit-live",
+      "paths": [
+        "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      ]
+    },
+    {
+      "capability_key": "marketing-people",
+      "paths": [
+        "supabase/functions/brand-people-export-worker/index.ts",
+        "supabase/functions/brand-people-export/csv.ts"
+      ]
+    },
+    {
+      "capability_key": "rsvp-create",
+      "paths": [
+        "app-mobile/app/+native-intent.tsx",
+        "app-mobile/src/components/forms/RsvpBrandFormQuestions.tsx",
+        "app-mobile/src/components/forms/RsvpFormWebDateInput.native.tsx",
+        "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx",
+        "mingla-business/src/components/checkout/intake/publicRsvpFormKeys.ts",
+        "mingla-business/src/components/forms/RsvpBrandFormQuestions.tsx",
+        "mingla-business/src/services/publicRsvpBrandForm.ts",
+        "packages/offering-rendering/rsvpBrandForm.ts",
+        "supabase/functions/public-submit-rsvp/brandFormRsvp.ts",
+        "supabase/migrations/20281121004541_issue_4541_rsvp_brand_forms.sql"
+      ]
+    },
+    {
+      "capability_key": "events-check-in",
+      "paths": [
+        "supabase/functions/scan-rsvp/doorAnswers.ts",
+        "supabase/functions/scan-rsvp/index.ts"
+      ]
+    },
+    {
+      "capability_key": "ari-host-assistant",
+      "paths": [
+        "supabase/functions/agent-attachments/copyToSupport.ts",
+        "supabase/functions/agent-attachments/index.ts"
+      ]
+    },
+    {
+      "capability_key": "help-support",
+      "paths": [
+        "mingla-business/src/components/support/CommunityConversationsPanel.tsx",
+        "mingla-business/src/components/support/CommunityTabPanel.tsx",
+        "mingla-business/src/components/support/GuidePlayerModal.tsx",
+        "mingla-business/src/components/support/GuidesTabPanel.tsx",
+        "mingla-business/src/components/support/guideCaptions.ts",
+        "mingla-business/src/components/support/helpCentreLauncher.web.ts",
+        "mingla-business/src/hooks/useCommunity.ts",
+        "mingla-business/src/services/communityService.ts",
+        "mingla-business/src/utils/communityTabReveal.ts",
+        "mingla-business/src/utils/helpSupportLastTab.ts",
+        "mingla-business/src/utils/roadmapBlurb.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/components/community/AvailabilityPanel.jsx",
+        "mingla-admin/src/components/community/CommunitySupportNavigation.jsx",
+        "mingla-admin/src/components/community/CutoverPanel.jsx",
+        "mingla-admin/src/components/community/IdeasPanel.jsx",
+        "mingla-admin/src/components/community/ProductInboxPanel.jsx",
+        "mingla-admin/src/components/community/QuestionsPanel.jsx",
+        "mingla-admin/src/components/community/ReportedEnquiriesPanel.jsx",
+        "mingla-admin/src/components/community/RoadmapPanel.jsx",
+        "mingla-admin/src/components/support/ProductCardPanel.jsx",
+        "mingla-admin/src/components/support/SendToProductModal.jsx",
+        "mingla-admin/src/components/support/productBoardModel.js",
+        "mingla-admin/src/pages/CommunitySupportPage.jsx",
+        "mingla-admin/src/pages/communications/RoadmapPage.jsx"
+      ]
+    },
+    {
+      "capability_key": "staff-support-desk",
+      "paths": [
+        "mingla-admin/src/components/support/CreateTicketPanel.jsx",
+        "mingla-admin/src/components/support/InboxLabels.jsx",
+        "mingla-admin/src/components/support/InboxList.jsx",
+        "mingla-admin/src/components/support/ReportedEnquiryThread.jsx",
+        "mingla-admin/src/components/support/TicketSummaryPanel.jsx",
+        "mingla-admin/src/lib/supportInboxModel.js"
+      ]
+    },
+    {
+      "capability_key": "staff-work-board",
+      "paths": [
+        "mingla-admin/src/components/ops/LogRow.jsx",
+        "mingla-admin/src/components/ops/RecordPicker.jsx",
+        "mingla-admin/src/components/ops/ReviewQueue.jsx",
+        "mingla-admin/src/components/ops/TicketChip.jsx",
+        "mingla-admin/src/components/ops/TicketConversations.jsx",
+        "mingla-admin/src/components/ops/TicketForm.jsx",
+        "mingla-admin/src/components/ops/TicketSections.jsx",
+        "mingla-admin/src/lib/ticketModel.js",
+        "supabase/migrations/20281121034420_issue_4420_tickets_on_work_board.sql"
+      ]
+    },
+    {
+      "capability_key": "trips-intake-forms",
+      "paths": [
+        "app-mobile/app/form/[formId].tsx",
+        "app-mobile/src/components/forms/BrandFormScreen.tsx",
+        "app-mobile/src/components/forms/CheckoutQuestionsBlock.tsx",
+        "app-mobile/src/components/forms/FormChoiceSheet.tsx",
+        "app-mobile/src/components/forms/FormHandoffBlock.tsx",
+        "app-mobile/src/components/forms/QuestionsCard.tsx",
+        "app-mobile/src/components/forms/RsvpBrandFormQuestions.tsx",
+        "app-mobile/src/components/forms/RsvpFormWebDateInput.native.tsx",
+        "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx",
+        "app-mobile/src/components/forms/StillToAnswerRow.tsx",
+        "app-mobile/src/components/forms/brandFormDraft.ts",
+        "app-mobile/src/components/forms/checkoutFormRefusal.ts",
+        "app-mobile/src/components/forms/formRoute.ts",
+        "app-mobile/src/components/forms/formsStartup.ts",
+        "app-mobile/src/components/forms/useFormPrimitives.tsx",
+        "app-mobile/src/components/purchases/NativeCheckoutSentSheet.tsx",
+        "app-mobile/src/hooks/useBrandForm.ts",
+        "app-mobile/src/i18n/index.ts",
+        "app-mobile/src/i18n/locales/ar/forms.json",
+        "app-mobile/src/i18n/locales/bin/forms.json",
+        "app-mobile/src/i18n/locales/bn/forms.json",
+        "app-mobile/src/i18n/locales/de/forms.json",
+        "app-mobile/src/i18n/locales/el/forms.json",
+        "app-mobile/src/i18n/locales/en/forms.json",
+        "app-mobile/src/i18n/locales/es/forms.json",
+        "app-mobile/src/i18n/locales/fr/forms.json",
+        "app-mobile/src/i18n/locales/ha/forms.json",
+        "app-mobile/src/i18n/locales/he/forms.json",
+        "app-mobile/src/i18n/locales/hi/forms.json",
+        "app-mobile/src/i18n/locales/id/forms.json",
+        "app-mobile/src/i18n/locales/ig/forms.json",
+        "app-mobile/src/i18n/locales/it/forms.json",
+        "app-mobile/src/i18n/locales/ja/forms.json",
+        "app-mobile/src/i18n/locales/ko/forms.json",
+        "app-mobile/src/i18n/locales/ms/forms.json",
+        "app-mobile/src/i18n/locales/nl/forms.json",
+        "app-mobile/src/i18n/locales/pl/forms.json",
+        "app-mobile/src/i18n/locales/pt/forms.json",
+        "app-mobile/src/i18n/locales/ro/forms.json",
+        "app-mobile/src/i18n/locales/ru/forms.json",
+        "app-mobile/src/i18n/locales/sv/forms.json",
+        "app-mobile/src/i18n/locales/th/forms.json",
+        "app-mobile/src/i18n/locales/tr/forms.json",
+        "app-mobile/src/i18n/locales/uk/forms.json",
+        "app-mobile/src/i18n/locales/vi/forms.json",
+        "app-mobile/src/i18n/locales/yo/forms.json",
+        "app-mobile/src/i18n/locales/zh/forms.json",
+        "app-mobile/src/services/brandFormService.ts",
+        "mingla-admin/src/lib/brandFormsSupport.js",
+        "mingla-admin/src/components/brands/BrandFormsSupportPanel.jsx",
+        "mingla-business/src/components/forms/BlastFormBlock.tsx",
+        "mingla-business/src/components/forms/BlastFormPicker.tsx",
+        "mingla-business/src/components/forms/DoorReadLog.tsx",
+        "mingla-business/src/components/forms/GuestAnswersCard.tsx",
+        "mingla-business/src/utils/guestQuestionModes.ts",
+        "packages/form-rendering/formCopy.ts",
+        "supabase/functions/_shared/derivedSecret.ts",
+        "supabase/functions/_shared/platformClientIp.ts",
+        "supabase/functions/brand-form-submit/blastForm.ts",
+        "supabase/functions/brand-form-submit/botTicket.ts",
+        "supabase/functions/brand-form-submit/pageForm.ts",
+        "supabase/migrations/20281122004541_issue_4541_forms_fixes.sql",
+        "supabase/migrations/20281122014541_issue_4541_forms_blast_push.sql"
+      ]
+    },
+    {
+      "capability_key": "marketing-campaigns",
+      "paths": [
+        "mingla-business/src/components/forms/BlastFormBlock.tsx",
+        "mingla-business/src/components/forms/BlastFormPicker.tsx",
+        "mingla-business/src/utils/marketing/blastFormLink.ts",
+        "mingla-business/src/utils/marketing/blastFormPayload.ts",
+        "mingla-business/src/utils/marketing/blastFormUsage.ts",
+        "supabase/functions/_shared/blastFormLinks.ts",
+        "supabase/functions/marketing-send/blastForm.ts",
+        "supabase/migrations/20281122014541_issue_4541_forms_blast_push.sql"
+      ]
+    },
+    {
+      "capability_key": "checkout-tickets",
+      "paths": [
+        "app-mobile/src/components/purchases/GuestPackCard.tsx",
+        "app-mobile/src/hooks/useMyEventGuestPack.ts",
+        "app-mobile/src/services/guestPackService.ts",
+        "app-mobile/src/utils/guestPackDisplay.ts",
+        "supabase/functions/_shared/guestPackPointer.ts",
+        "supabase/functions/_shared/orderConfirmationMessage.ts",
+        "supabase/functions/ticket-confirmation-dispatch/index.ts",
+        "supabase/migrations/20281122024548_issue_4548_event_guest_packs.sql"
+      ]
+    },
+    {
+      "capability_key": "events-edit-live",
+      "paths": [
+        "mingla-business/src/components/event/GuestPackEditor.tsx",
+        "mingla-business/src/services/guestPackService.ts",
+        "mingla-business/src/utils/guestPackGate.ts",
+        "mingla-business/src/utils/guestPackSession.ts",
+        "mingla-business/src/utils/guestPackValidation.ts"
+      ]
+    },
+    {
+      "capability_key": "events-ticket-types",
+      "paths": [
+        "mingla-business/src/components/event/GuestPackEditor.tsx",
+        "mingla-business/src/services/guestPackService.ts",
+        "mingla-business/src/utils/guestPackGate.ts",
+        "mingla-business/src/utils/guestPackSession.ts",
+        "mingla-business/src/utils/guestPackValidation.ts"
+      ]
+    },
+    {
+      "capability_key": "rsvp-passes",
+      "paths": [
+        "app-mobile/src/components/purchases/GuestPackCard.tsx",
+        "app-mobile/src/hooks/useMyEventGuestPack.ts",
+        "app-mobile/src/services/guestPackService.ts",
+        "app-mobile/src/utils/guestPackDisplay.ts",
+        "supabase/functions/_shared/guestPackPointer.ts",
+        "supabase/migrations/20281122024548_issue_4548_event_guest_packs.sql"
       ]
     }
   ]

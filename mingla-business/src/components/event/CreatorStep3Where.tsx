@@ -72,6 +72,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   showErrors,
   scrollToBottom,
   brandLocation,
+  guestPackSlot,
 }) => {
   const intelCityHighlight = useTurnoutFocusTarget("city");
   const venueError = showErrors ? errorForKey(errors, "venueName") : undefined;
@@ -419,6 +420,8 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           ) : null}
         </View>
       ) : null}
+      {/* #4548 — the guest pack: ticket holders only, under the address. */}
+      {guestPackSlot}
       <TurnoutForecastCard surface="where" />
     </View>
   );

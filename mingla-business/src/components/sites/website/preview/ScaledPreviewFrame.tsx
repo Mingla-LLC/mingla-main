@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { previewHttpRefusal } from "../../../../sites/previewRefresh";
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { WebView } from "react-native-webview";
 import {
@@ -26,9 +27,12 @@ export type ScaledPreviewFrameProps = {
   minHeight?: number;
   tokenDeclarations?: readonly string[] | null;
   onLoad?: () => void;
+  /** #4572 item 1 — the preview page refused: 409 is an older draft (refresh), anything else couldn't load. */
+  onStale?: () => void;
+  onFailed?: () => void;
 };
 
-export function ScaledPreviewFrame({ url, preference, maxHeight = 560, fill = false, minHeight, onLoad }: ScaledPreviewFrameProps): React.ReactElement {
+export function ScaledPreviewFrame({ url, preference, maxHeight = 560, fill = false, minHeight, onLoad, onStale, onFailed }: ScaledPreviewFrameProps): React.ReactElement {
   const [box, setBox] = useState({ width: 0, height: 0 });
   const { width, height: deviceHeight } = previewDimensions(preference);
   const scale = previewScale({ paneWidth: box.width, maxHeight: fill ? box.height : maxHeight, width, height: deviceHeight });
@@ -53,6 +57,11 @@ export function ScaledPreviewFrame({ url, preference, maxHeight = 560, fill = fa
           source={{ uri: url }}
           style={styles.web}
           onLoadEnd={onLoad}
+          onHttpError={(event) => {
+            const kind = previewHttpRefusal(event.nativeEvent.statusCode);
+            if (kind === "stale") onStale?.();
+            else if (kind === "failed") onFailed?.();
+          }}
           sharedCookiesEnabled={false}
           setSupportMultipleWindows={false}
           accessibilityLabel={`Draft preview of your website at ${PREVIEW_DEVICE_LABELS[preference.device].toLowerCase()} size`}

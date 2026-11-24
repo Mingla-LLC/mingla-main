@@ -6,6 +6,16 @@ import {
   hasCurrentVerifiedPhoneOwnership,
   isProfileOnlyPhoneOwner,
 } from '../_shared/phoneIdentityOwnership.ts'
+import { captureEdgeExceptionAsync } from '../_shared/sentryEdge.ts'
+import {
+  alternativesAfter,
+  CHANNEL_UNAVAILABLE_TEXT,
+  classifySendFailure,
+  INVALID_NUMBER_TEXT,
+  RATE_LIMITED_TEXT,
+  SEND_FAILED_TEXT,
+  type SendFailure,
+} from './classifySendFailure.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +30,40 @@ const E164_REGEX = /^\+[1-9]\d{1,14}$/
 // investigation ORCH-0370 for UX and rate-limit implications.
 const ALLOWED_CHANNELS = ['sms', 'whatsapp', 'call'] as const
 type AllowedChannel = typeof ALLOWED_CHANNELS[number]
+
+// #4561: report a provider refusal without delaying the response. No phone
+// number, user id or provider text goes into the event or the log line.
+function reportSendFailure(failure: SendFailure, channel: AllowedChannel): void {
+  const twilioCode = failure.providerCode === null ? 'none' : String(failure.providerCode)
+  const loud = failure.failureClass === 'account_config'
+  const line = `[send-otp] provider refused send failure_class=${failure.failureClass} twilio_code=${twilioCode} channel=${channel}`
+  if (loud) console.error(`${line} ALERT=account_or_configuration`)
+  else console.warn(line)
+  const report = captureEdgeExceptionAsync(
+    new Error(`send-otp ${failure.failureClass} ${twilioCode} ${channel}`),
+    {
+      fn: 'send-otp',
+      tags: {
+        failure_class: failure.failureClass,
+        twilio_code: twilioCode,
+        channel,
+        ...(loud ? { alert: 'account_or_configuration' } : {}),
+      },
+    },
+  )
+  const runtime = (globalThis as {
+    EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void }
+  }).EdgeRuntime
+  if (runtime?.waitUntil) runtime.waitUntil(report)
+}
+
+async function readProviderBody(response: Response): Promise<unknown> {
+  try {
+    return JSON.parse(await response.text())
+  } catch {
+    return null
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -92,7 +136,7 @@ serve(async (req) => {
     let ownership = await getPhoneIdentityOwners(serviceClient, phone)
     if (ownership.error) {
       console.error('[send-otp] Phone ownership lookup failed:', ownership.error)
-      return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+      return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.', code: 'send_failed' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -104,7 +148,7 @@ serve(async (req) => {
       // owned by profiles alone. A verified ledger or GoTrue owner must never
       // be cleared as an onboarding side effect.
       if (!isProfileOnlyPhoneOwner(owner)) {
-        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.', code: 'phone_taken' }), {
           status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -112,14 +156,14 @@ serve(async (req) => {
       const { data: authCheck, error: authCheckError } =
         await serviceClient.auth.admin.getUserById(owner.userId)
       if (authCheck?.user) {
-        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.' }), {
+        return new Response(JSON.stringify({ error: 'This phone number is already associated with another account.', code: 'phone_taken' }), {
           status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
       if (authCheckError && authCheckError.status !== 404) {
         console.error('[send-otp] Could not validate profile-only phone owner:', authCheckError.message)
-        return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+        return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.', code: 'send_failed' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -131,7 +175,7 @@ serve(async (req) => {
         .eq('id', owner.userId)
       if (clearError) {
         console.error('[send-otp] Failed to clear orphaned phone:', clearError.message)
-        return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.' }), {
+        return new Response(JSON.stringify({ error: 'Could not free phone number. Please try again.', code: 'send_failed' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -145,7 +189,7 @@ serve(async (req) => {
         conflictingPhoneOwners(ownership.owners, user.id).length > 0
       ) {
         console.error('[send-otp] Phone ownership remained ambiguous after orphan cleanup:', ownership.error)
-        return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.' }), {
+        return new Response(JSON.stringify({ error: 'Could not verify phone availability. Please try again.', code: 'send_failed' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -177,29 +221,53 @@ serve(async (req) => {
       }
     )
 
-    const twilioData = await twilioResponse.json()
+    const twilioData = await readProviderBody(twilioResponse)
 
     if (!twilioResponse.ok) {
-      if (twilioResponse.status === 429 || twilioData?.code === 60203) {
-        return new Response(JSON.stringify({ error: 'Too many attempts. Try again later.' }), {
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
+      const failure = classifySendFailure(twilioResponse.status, twilioData)
+      reportSendFailure(failure, channel)
+      switch (failure.code) {
+        case 'rate_limited':
+          return new Response(JSON.stringify({ error: RATE_LIMITED_TEXT, code: 'rate_limited' }), {
+            status: 429,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        case 'invalid_number':
+          return new Response(JSON.stringify({ error: INVALID_NUMBER_TEXT, code: 'invalid_number' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        case 'channel_unavailable':
+          return new Response(JSON.stringify({
+            error: CHANNEL_UNAVAILABLE_TEXT,
+            code: 'channel_unavailable',
+            channel,
+            alternatives: alternativesAfter(channel),
+          }), {
+            status: 422,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        case 'send_failed':
+          return new Response(JSON.stringify({ error: SEND_FAILED_TEXT, code: 'send_failed' }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        default: {
+          const unreachable: never = failure.code
+          return unreachable
+        }
       }
-      console.error('Twilio error:', twilioData)
-      return new Response(JSON.stringify({ error: "Couldn't send code. Try again." }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
     }
 
-    return new Response(JSON.stringify({ success: true, status: twilioData.status, channel }), {
+    const sentStatus = (twilioData as { status?: unknown } | null)?.status
+    return new Response(JSON.stringify({ success: true, status: sentStatus, channel }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    console.error('send-otp error:', err)
-    return new Response(JSON.stringify({ error: err.message }), {
+    // #4561: the exception text never reaches the client.
+    console.error('[send-otp] unexpected error:', err instanceof Error ? err.name : typeof err)
+    return new Response(JSON.stringify({ error: SEND_FAILED_TEXT, code: 'send_failed' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

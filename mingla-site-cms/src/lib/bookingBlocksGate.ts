@@ -22,8 +22,30 @@ function key(block: RawBlock): string {
   return `${String(block.blockType)}:${String(block.id ?? "")}`;
 }
 
+/*
+ * #4572 item 10/11 (D11) — INVARIANT sites-caption-not-booking: gallery
+ * captions never trip BOOKING_BLOCKS_OFF. A caption is words under a photo,
+ * not a booking feature, so the gate reads each block with its gallery
+ * captions removed. Everything else the contract's usesBookingBlocksFeature
+ * counts (booking blocks, a booking bar, a rating) is still gated. The
+ * contract list (BOOKING_BLOCK_NEW_FIELDS) is unchanged on purpose (#3355).
+ */
+export function usesGatedBookingFeature(block: RawBlock): boolean {
+  const type = typeof block.type === "string" ? block.type : block.blockType;
+  if (type !== "gallery") return usesBookingBlocksFeature(block);
+  const { captions: _captions, images, ...rest } = block;
+  const plainImages = Array.isArray(images)
+    ? images.map((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+      const { caption: _caption, ...image } = row as Record<string, unknown>;
+      return image;
+    })
+    : images;
+  return usesBookingBlocksFeature({ ...rest, images: plainImages });
+}
+
 /** The booking-feature blocks in `next` that were not already in `previous` (matched by block id and type). */
-export function newBookingFeatureBlocks(next: readonly RawBlock[], previous: readonly RawBlock[], uses: (block: RawBlock) => boolean = usesBookingBlocksFeature): RawBlock[] {
+export function newBookingFeatureBlocks(next: readonly RawBlock[], previous: readonly RawBlock[], uses: (block: RawBlock) => boolean = usesGatedBookingFeature): RawBlock[] {
   // Counted, not just matched: a copy of a stored booking block (same id) is a new one (tester P3-4).
   const left = new Map<string, number>();
   for (const block of previous) if (uses(block)) left.set(key(block), (left.get(key(block)) ?? 0) + 1);

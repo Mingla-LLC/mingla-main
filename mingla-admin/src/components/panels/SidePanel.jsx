@@ -1,7 +1,7 @@
 // Issue #4255 — panel two: the linked item, whatever page it is opened from.
 //
 //   card              a work card (WorkDetail, the same card as on Work)
-//   host / creator    a host or creator record (RecordDrawer, the same card as
+//   host / creator    a host or creator record (RecordPanel, #4571 W3, the same card as
 //                     on Hosts and creators)
 //   content           a post (ContentDrawer, the same panel as the Calendar's)
 //   event / expected  an event or a promised event (EventPanel)
@@ -11,7 +11,7 @@
 //
 // Each is drawn in a Drawer, which the PanelStack turns into a docked panel.
 // A small "Open full page" link is there for when someone really means to go.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
@@ -19,7 +19,6 @@ import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { WorkDetail } from "../ops/WorkDetail";
 import { EventPanel } from "../ops/EventPanel";
 import { CardThread } from "../ops/CardThread";
-import { RecordDrawer } from "../crm/RecordDrawer";
 import { ReasonPrompt } from "../crm/ReasonPrompt";
 import { ContentDrawer } from "../contentCalendar/ContentDrawer";
 import { BrandDrawer } from "../brands/BrandDrawer";
@@ -32,6 +31,8 @@ import { errorWords, freshnessVerdict, loadErrorWords, moveBlocker, stageDef, st
 import { CONTENT_STAGES, canMoveTo, contentErrorWords, moveNeedsFields, movePrompt, requestKey } from "../../lib/contentCalendarModel";
 import * as contentService from "../../services/contentCalendarService";
 import { sideHref } from "../../lib/panelStack";
+// #4571 W3: the host and creator card loads on first open.
+const RecordPanel = lazy(() => import("../crm/RecordPanel").then((m) => ({ default: m.RecordPanel })));
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
@@ -130,7 +131,8 @@ function RecordSide({ side, onClose, onOpenSide }) {
   }
   return (
     <>
-      <RecordDrawer
+      <Suspense fallback={<Drawer open onClose={onClose} title={`Opening ${side.kind}`}><p role="status" aria-busy="true" className="text-sm text-[var(--color-text-secondary)]">Loading…</p></Drawer>}>
+      <RecordPanel
         key={side.id}
         pipeline={pipeline}
         def={def}
@@ -149,6 +151,7 @@ function RecordSide({ side, onClose, onOpenSide }) {
         footerExtra={<FullPageLink side={side} />}
         onOpenSide={onOpenSide}
       />
+      </Suspense>
       {reasonFor && (
         <ReasonPrompt
           open

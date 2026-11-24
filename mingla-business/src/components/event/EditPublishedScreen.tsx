@@ -121,9 +121,22 @@ import { Toast } from "../ui/Toast";
 
 // #4420 — lazy: the sheet is mounted hidden and opens on intent.
 import { ChangeSummaryModal } from "./LazyChangeSummaryModal";
-import { CreatorStep1Basics } from "./CreatorStep1Basics";
+import { CreatorStep1Basics } from "./LazyCreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
+import {
+  flushGuestPack,
+  hasPendingGuestPack,
+  useGuestPackPending,
+  releaseGuestPackSession,
+} from "../../utils/guestPackGate";
+// #4548 — the guest pack editor loads with its own chunk. Declared here, not in
+// a shared module: a module shared by several lazy screens is hoisted into the
+// eager boot chunk, and this one must stay out of it.
+const GuestPackEditorLazy = React.lazy(async () => ({
+  default: (await import("./GuestPackEditor")).GuestPackEditor,
+}));
+
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
@@ -137,6 +150,21 @@ import { CreatorStep6SettingsLazy, RsvpStep5SetupLazy } from "./lazySettingsStep
 // makes Metro hoist it into the eager `__common` chunk that EVERY buyer
 // downloads before anything renders — for a control only a brand owner ever
 // sees. Same treatment, and same reason, as SeeWhosGoingGate.
+// #4514 — the "Guest questions" row (and its attach sheet) loads on demand, so
+// it adds nothing to the eager web bundle.
+const GuestQuestionsRow = React.lazy(() =>
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestQuestionsRow })),
+);
+
+/**
+ * #4514 — where the "Guest questions" row sits: right after "Tickets" on a
+ * ticketed event (before Settings) and right after "RSVP" on an RSVP, the last
+ * section. The row is not a draft section (it saves through its own RPC, not
+ * "Save changes"), so it is not in the section lists. Kept here, beside its
+ * only caller, so the shared section module (eager) does not grow.
+ */
+const guestQuestionsAfterSection = (rsvpMode: boolean): SectionKey =>
+  rsvpMode ? "rsvp-setup" : "tickets";
 const EventTicketCheckoutAccessCard = React.lazy(() =>
   import("./EventTicketCheckoutAccessCard").then((m) => ({
     default: m.EventTicketCheckoutAccessCard,
@@ -875,6 +903,34 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     sectionErrors,
     showToast,
   ]);
+
+  // #4548 — "Save changes" saves a changed guest pack first (its own call, never
+  // inside the live-edit payload). A failed pack save keeps the host here.
+  const guestPackId = liveEvent.serverEventId ?? null;
+  useEffect(
+    () => () => releaseGuestPackSession(guestPackId),
+    [guestPackId],
+  );
+  const handleSaveWithGuestPack = useCallback((): void => {
+    if (!hasPendingGuestPack(guestPackId)) {
+      handleSavePress();
+      return;
+    }
+    void flushGuestPack(guestPackId).then((result) => {
+      if (!result.ok) {
+        showToast(result.message);
+        return;
+      }
+      // Written through a named count on purpose: the #2009 gate pins the ONE
+      // clean-state expression on the Save button's disabled rule.
+      const eventFieldChangeCount = Object.keys(currentPatch).length;
+      if (eventFieldChangeCount === 0) {
+        showToast("Guest pack saved.");
+        return;
+      }
+      handleSavePress();
+    });
+  }, [guestPackId, handleSavePress, currentPatch, showToast]);
 
   const invalidateServerEventCaches = useCallback((): void => {
     queryClient.invalidateQueries({
@@ -1615,7 +1671,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 ? "This online event can't be updated right now. Contact support and quote city_required."
                 : "Pick the venue address from the suggestions so we have a city."
               : code.includes("party_types_required")
-                ? "Pick at least one party type before saving."
+                ? "Pick at least one event type before saving."
                 : code.includes("party_types_not_canonical") ||
                     code.includes("vibe_tags_not_canonical") ||
                     code.includes("music_genres_not_canonical")
@@ -1768,8 +1824,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => JSON.stringify(editState) !== JSON.stringify(seededEditStateRef.current),
     [editState],
   );
+  // #4548 — a typed guest pack change counts too ("Save changes" stays off for a
+  // pack-only change, so leaving must ask rather than drop it).
+  const guestPackPending = useGuestPackPending(guestPackId);
   const hasUnsavedEdits = shouldConfirmLeave({
-    dirty: editedSinceSeed,
+    dirty: editedSinceSeed || guestPackPending,
     busy: submitting,
   });
   const handleBack = useCallback((): void => {
@@ -1822,7 +1881,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         case "when":
           return <CreatorStep2When {...stepBodyProps} />;
         case "where":
-          return <CreatorStep3Where {...stepBodyProps} />;
+          return (
+            <CreatorStep3Where
+              {...stepBodyProps}
+              guestPackSlot={
+                <React.Suspense fallback={null}>
+                  <GuestPackEditorLazy
+                    eventId={liveEvent.serverEventId ?? null}
+                    liveEdit
+                    onShowToast={showToast}
+                  />
+                </React.Suspense>
+              }
+            />
+          );
         case "cover":
           return <CreatorStep4Cover {...stepBodyProps} showThemeRow={false} />;
         case "visual":
@@ -1955,6 +2027,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           (changedKeys.has("rsvpCapacity") ||
             changedKeys.has("rsvpAllowPlusOnes") ||
             changedKeys.has("rsvpPlusOnesMax") ||
+            changedKeys.has("rsvpGuestsCanBring") ||
             changedKeys.has("rsvpWaitlistEnabled") ||
             changedKeys.has("rsvpApprovalMode") ||
             changedKeys.has("rsvpDiscoverable") ||
@@ -2021,7 +2094,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           const isEdited = editedSectionKeys.has(sec.key);
           const hasErrors = showErrors && sectionErrors[sec.key].length > 0;
           return (
-            <View key={sec.key} style={styles.sectionCard}>
+            <React.Fragment key={sec.key}>
+            <View style={styles.sectionCard}>
               <Pressable
                 onPress={() => handleToggleSection(sec.key)}
                 accessibilityRole="button"
@@ -2056,6 +2130,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 </View>
               ) : null}
             </View>
+            {/* #4514 — "Guest questions": after Tickets (before Settings) on an
+                event, after RSVP (the last section) on an RSVP. Its own RPC
+                saves it; it is not part of "Save changes". */}
+            {sec.key === guestQuestionsAfterSection(rsvpMode) && brandId !== null ? (
+              <React.Suspense fallback={null}>
+                <GuestQuestionsRow
+                  eventId={liveEvent.serverEventId ?? liveEvent.id}
+                  brandId={brandId}
+                  kind={rsvpMode ? "rsvp" : "event"}
+                  testID="edit-guest-questions-row"
+                />
+              </React.Suspense>
+            ) : null}
+            </React.Fragment>
           );
         })}
 
@@ -2129,7 +2217,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           ) : null}
           <Button
             label="Save changes"
-            onPress={handleSavePress}
+            onPress={handleSaveWithGuestPack}
             variant="primary"
             size="lg"
             fullWidth

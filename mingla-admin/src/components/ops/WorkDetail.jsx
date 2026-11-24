@@ -29,6 +29,9 @@ import { AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
+import { isFullAdmin } from "../../lib/access";
+import { TicketSections } from "./TicketSections";
 import { useOpsCard } from "../../hooks/useOpsCard";
 import { useCardUploads } from "../../hooks/useCardFiles";
 import * as ops from "../../services/opsService";
@@ -36,7 +39,8 @@ import {
   personActionFor,
   personReasonLabel,
   isTagged,
-  roadmapDraftHref,
+  DETAIL_LINK_KINDS,
+  subtasksWithLink,
   addDays,
   agentName,
   agentPromptFor,
@@ -53,13 +57,14 @@ import {
   todayIso,
   workingWords,
   showsHostSees,
+  linkLabelWords,
 } from "../../lib/opsModel";
 import { GROUP_LABELS, hoursLabel, liveColumns, parseEstimate, writeShowChanges } from "../../lib/workBoardModel";
 import { DUE_TONE, dueLabel, waitingWords } from "../../lib/dueLabel";
-import { closeFormWords, reviewRole, SEND_BACK_MAX, SEND_BACK_MIN } from "../../lib/workReview";
+import { andWords, closeFormWords, reviewRole, SEND_BACK_MAX, SEND_BACK_MIN } from "../../lib/workReview";
 import { OpsChip } from "./OpsChip";
 import { PeopleField, PersonAvatar } from "../people/PeopleField";
-import { suggestedPeople } from "../../lib/peopleField";
+import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords, suggestedPeople } from "../../lib/peopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { RecordPicker } from "./RecordPicker";
 import { ProofForm } from "./ProofForm";
@@ -73,8 +78,16 @@ import { DraftKeptNote, SideLink, usePanelLinks } from "../ui/PanelStack";
 import { usePanelDraft } from "../../hooks/usePanelDraft";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 import { linkSide, sideHref } from "../../lib/panelStack";
+import { isTicketCard, ticketNumber } from "../../lib/ticketModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
+// #4571 W2: these labels already say what they are ("Call · …", "Demo · …").
+const SELF_NAMED_KINDS = new Set(["call", "booking"]);
+function unlinkWords(link, answer) {
+  const n = Array.isArray(answer?.subtasks_changed) ? answer.subtasks_changed.length : 0;
+  if (!n) return `${link.label} unlinked`;
+  return `${link.label} unlinked here and from ${n === 1 ? "Card" : "Cards"} ${answer.subtasks_changed.join(", ")}`;
+}
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
 const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]";
 const CHIP = `inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg px-2 text-[12.5px] hover:bg-[var(--gray-100)] disabled:opacity-60 ${FOCUS}`;
@@ -110,12 +123,14 @@ function troubleWords(card, today) {
   if (card.blocked) parts.push(`Blocked${card.blocked_reason ? `: ${card.blocked_reason}` : ""}`);
   if (card.status !== "done" && !(card.owners || []).length) parts.push("No owner");
   if (!parts.length) return "";
-  const owner = (card.owners || [])[0];
-  return `${parts.join(" · ")}${owner && card.status !== "done" ? ` · next: ${owner.name} ${nextVerb(card)}` : ""}`;
+  // #4571: "next: Ada and 1 more finishes it" when a card has several owners.
+  const owners = card.owners || [];
+  const next = owners.length > 1 ? `${owners[0].name} and ${owners.length - 1} more` : owners[0]?.name;
+  return `${parts.join(" · ")}${next && card.status !== "done" ? ` · next: ${next} ${nextVerb(card)}` : ""}`;
 }
 
 /** A property chip: its value, or a faint "+ Due" when empty; it opens a small picker. */
-function PropChip({ label, value, empty, children, disabled, danger = false, width = "w-64" }) {
+export function PropChip({ label, value, empty, children, disabled, danger = false, width = "w-64" }) {
   return (
     <Popover label={label} width={width} disabled={disabled} dataAttr={`prop:${label}`}
       button={value
@@ -128,7 +143,7 @@ function PropChip({ label, value, empty, children, disabled, danger = false, wid
 }
 
 /** Owners or Watching: avatars, + to change, in a popover with the people field. */
-function PeopleChip({ id, label, people, field }) {
+export function PeopleChip({ id, label, people, field }) {
   return (
     <Popover label={label} width="w-80" dataAttr={`people:${label}`}
       button={<span className="inline-flex items-center gap-1.5"><span className="text-[var(--color-text-tertiary)]">{label}</span>
@@ -144,6 +159,7 @@ function PeopleChip({ id, label, people, field }) {
 // the wording card's link to another page is not shown there.
 export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, onClose, onOpenSide = null, focus = false, onFocus = null, onOpenCard = null, columns: givenColumns = null }) {
   const { addToast } = useToast();
+  const { access } = useAuth();
   const read = useOpsCard(cardId);
   const card = read.data?.card || null;
   const directory = usePeopleDirectory();
@@ -156,6 +172,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [closeTo, setCloseTo] = useState(null);
   const [closeChildren, setCloseChildren] = useState(false);
   const [linking, setLinking] = useState(false);
+  // #4571 W2: the link being removed, and whether its subtasks lose it too (off by default).
+  const [unlinking, setUnlinking] = useState(null);
+  const [alsoSubs, setAlsoSubs] = useState(false);
   // #4255: what is typed is kept per card (lib/panelDrafts.js) until it is
   // saved, so it survives a linked item or the thread opening beside it.
   const [title, setTitle, titleDraft] = usePanelDraft(`work:${cardId}:title`, card?.title || "");
@@ -164,7 +183,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [description, setDescription, descriptionDraft] = usePanelDraft(`work:${cardId}:description`, savedDescription);
   const [blockReason, setBlockReason] = useState("");
   const [backReason, setBackReason] = useState("");  // #4398: Send back
-  // #4398: a closed card without one owner and one watcher reopens with the people picked here.
+  // #4398, #4571: a closed card that lacks an owner or a watcher reopens with the people picked here.
   const [reopenNeed, setReopenNeed] = useState("");
   const [reopenOwner, setReopenOwner] = useState([]);
   const [reopenWatcher, setReopenWatcher] = useState([]);
@@ -295,7 +314,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const thisWeek = mondayOf(today);
   const weeks = Array.from(new Set([card.sprint?.starts_on, ...[0, 7, 14, 21, 28].map((d) => addDays(thisWeek, d))].filter(Boolean))).sort();
   const action = personActionFor(card);
-  const draftHref = roadmapDraftHref(card);
   const tagged = isTagged(card);
   const closed = card.status === "done";
   const column = columns.find((c) => c.id === card.status_id) || card.column || null;
@@ -336,15 +354,16 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const reopen = async () => {
     setBusy("reopen");
     try {
-      const answer = await ops.reopenWork(card.id, null, card.revision, reopenNeed ? { owner: reopenOwner[0], watcher: reopenWatcher[0] } : {});
+      // #4571: lists; blank means the card keeps its own people, else takes its parent's.
+      const answer = await ops.reopenWork(card.id, null, card.revision, reopenNeed ? { owners: reopenOwner, watchers: reopenWatcher } : {});
       setReopenNeed("");
       await refresh();
       offerUndo(answer, "Reopened");
     } catch (error) {
       if (error?.token === "card_people") {
         setReopenNeed(opsErrorWords(error));
-        setReopenOwner(ownerEmails.length === 1 ? ownerEmails : []);
-        setReopenWatcher(watcherEmails.length === 1 ? watcherEmails : []);
+        setReopenOwner(ownerEmails);
+        setReopenWatcher(watcherEmails.filter((e) => !ownerEmails.includes(e)));
       } else await failed(error);
     } finally { setBusy(""); }
   };
@@ -389,7 +408,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 <span aria-hidden="true">›</span>
               </span>
             ))}
-            <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">#{card.number}</span>
+            <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">{isTicketCard(card) ? ticketNumber(card.number) : `#${card.number}`}</span>
             {column && <span className="truncate">· {GROUP_LABELS[column.grp] || ""}</span>}
             {saveState && <span role="status" className="ml-2 shrink-0 text-[12px]">{saveState}</span>}
           </nav>
@@ -478,7 +497,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 </Popover>
               )}
               {tagged && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}
-              {draftHref && <a href={draftHref} target="_blank" rel="noopener" title="Opens in a new tab, so this card stays as it is" className={`inline-flex h-9 items-center rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
               {(busy === "save" || busy === "start" || busy === "move") && <span role="status" className="text-[12px] text-[var(--color-text-tertiary)]">Saving…</span>}
             </div>
             {trouble && !card.archived && (
@@ -499,12 +517,12 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             {closed && reopenNeed && (
               <div data-reopen-people="" className="flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--color-warning-100)] bg-[var(--color-warning-50)] p-3">
                 <p role="alert" className="break-words text-[13px] font-semibold text-[var(--color-warning-700)]">{reopenNeed}</p>
-                <PeopleField id={`card-${card.id}-reopen-owner`} label="Owner" single min={0} value={reopenOwner} team={team} me={directory.me}
+                <PeopleField id={`card-${card.id}-reopen-owner`} label="Owners" min={0} value={reopenOwner} team={team} me={directory.me}
                   exclude={reopenWatcher} disabled={locked} busy={!!busy} onChange={(next) => setReopenOwner(next)} />
-                <PeopleField id={`card-${card.id}-reopen-watcher`} label="Watcher" single min={0} value={reopenWatcher} team={team} me={directory.me}
+                <PeopleField id={`card-${card.id}-reopen-watcher`} label="Watching" min={0} value={reopenWatcher} team={team} me={directory.me}
                   exclude={reopenOwner} disabled={locked} busy={!!busy} onChange={(next) => setReopenWatcher(next)} />
                 <div className="flex flex-wrap gap-2">
-                  <Button className="min-h-11" data-reopen-with-people="" disabled={locked || !!busy || reopenOwner.length !== 1 || reopenWatcher.length !== 1} onClick={reopen}>Reopen with these people</Button>
+                  <Button className="min-h-11" data-reopen-with-people="" disabled={locked || !!busy || (!reopenOwner.length && !card.parent_id) || (!reopenWatcher.length && !card.parent_id)} onClick={reopen}>Reopen with these people</Button>
                   <Button variant="ghost" className="min-h-11" onClick={() => setReopenNeed("")}>Cancel</Button>
                 </div>
               </div>
@@ -512,12 +530,12 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             {closed && card.confirmed_by_name && <p className="text-[12.5px] text-[var(--color-text-secondary)]">Closed by {card.closed_by_name}, confirmed by {card.confirmed_by_name}.</p>}
             {form === "reviewback" && card.review && (
               <div data-send-back-form="" className="flex min-w-0 flex-col gap-1.5">
-                <label htmlFor={`card-${card.id}-backwhy`} className="text-[12px] font-semibold text-[var(--color-text-primary)]">What is missing? {owners[0]?.name || "The owner"} sees this.</label>
+                <label htmlFor={`card-${card.id}-backwhy`} className="text-[12px] font-semibold text-[var(--color-text-primary)]">What is missing? {andWords(owners.map((o) => o.name)) || "The owner"} {owners.length > 1 ? "see" : "sees"} it.</label>
                 <textarea id={`card-${card.id}-backwhy`} value={backReason} maxLength={SEND_BACK_MAX} rows={3} onChange={(e) => setBackReason(e.target.value)}
                   placeholder="For example: post the link to the published video" className={`${INPUT} min-h-16`} />
                 <div className="flex flex-wrap items-center gap-2">
                   <Button className="min-h-11" disabled={locked || !!busy || backReason.trim().length < SEND_BACK_MIN} onClick={async () => {
-                    const a = await run("reviewback", () => ops.sendBackWork(card.id, backReason.trim(), card.revision), `Sent back to ${owners[0]?.name || "the owner"}`);
+                    const a = await run("reviewback", () => ops.sendBackWork(card.id, backReason.trim(), card.revision), `Sent back to ${andWords(owners.map((o) => o.name)) || "the owner"}`);
                     if (a) { setForm(""); setBackReason(""); }
                   }}>Send back</Button>
                   <Button variant="ghost" className="min-h-11" onClick={() => { setForm(""); setBackReason(""); }}>Cancel</Button>
@@ -620,19 +638,19 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           <section aria-label="People and dates" className="flex min-w-0 flex-col gap-1">
             <div data-people-line="" className="flex min-w-0 flex-wrap items-center gap-1">
               <PeopleChip id={`card-${card.id}-owners-pop`} label="Owners" people={owners} field={
-                <PeopleField id={`card-${card.id}-owners`} label="Owner" single value={ownerEmails} team={team} me={directory.me}
-                  suggested={suggestedPeople(directory.me, ownerEmails)} exclude={watcherEmails} min={1}
-                  disabled={!canEdit} busy={!!busy}
+                <PeopleField id={`card-${card.id}-owners`} label="Owners" value={ownerEmails} team={team} me={directory.me}
+                  suggested={suggestedPeople(directory.me, ownerEmails)} exclude={watcherEmails} min={1} max={10}
+                  minWords={lastOwnerWords} hint={OWNERS_HINT} disabled={!canEdit} busy={!!busy}
                   onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} owns it now and was told.` : `${nameOf(change.removed)} removed.`)} />
               } />
               <PeopleChip id={`card-${card.id}-watchers-pop`} label="Watching" people={watchers} field={
-                <PeopleField id={`card-${card.id}-watchers`} label="Watcher" single value={watcherEmails} team={team} me={directory.me}
-                  suggested={[directory.me].filter(Boolean)} exclude={ownerEmails} min={1} disabled={!canEdit} busy={!!busy}
-                  minWords="A card has one watcher, who is not the owner. Pick someone else to change it."
+                <PeopleField id={`card-${card.id}-watchers`} label="Watching" value={watcherEmails} team={team} me={directory.me}
+                  suggested={[directory.me].filter(Boolean)} exclude={ownerEmails} min={1} max={10} disabled={!canEdit} busy={!!busy}
+                  minWords={lastWatcherWords} hint={WATCHERS_HINT}
                   onChange={(next, change) => update({ watchers: next }, change.added ? `${nameOf(change.added)} watches it now and was told.` : `${nameOf(change.removed)} removed.`)} />
               } />
               {directory.me && !ownerEmails.includes(directory.me) && !watcherEmails.includes(directory.me) && canEdit && (
-                <button type="button" data-assign-me="" disabled={!!busy} onClick={() => update({ owners: [directory.me] }, "You own it now.")} className={`${CHIP} font-semibold text-[var(--color-text-secondary)]`}>Assign to me</button>
+                <button type="button" data-assign-me="" disabled={!!busy} onClick={() => update({ owners: [...ownerEmails, directory.me].slice(0, 10) }, "You own it too now.")} className={`${CHIP} font-semibold text-[var(--color-text-secondary)]`}>Assign to me</button>
               )}
             </div>
             <div data-dates-line="" className="flex min-w-0 flex-wrap items-center gap-1">
@@ -695,6 +713,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             )}
           </section>
 
+          {/* #4420: a ticket's type, reporters, conversations and Send to GitHub, above the Description */}
+          {isTicketCard(card) && <TicketSections card={card} canEdit={canEdit} isOperator={isFullAdmin(access)} locked={locked} onChanged={refresh} />}
+
           {/* (5) Description */}
           <section aria-labelledby={`desc-${card.id}`} data-card-description="" className="flex min-w-0 flex-col gap-1.5">
             <div className="flex min-w-0 items-center justify-between gap-2">
@@ -724,18 +745,41 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                   <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[12.5px]">
                     {l.exists && linkSide(l) ? (
                       <SideLink side={linkSide(l)} aria-label={`Open ${l.label}`} className={`inline-flex min-h-7 min-w-0 items-center break-words rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
-                        <span><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}</span>
+                        <span>{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{linkLabelWords(l.label)}</span>
                       </SideLink>
                     ) : (
-                      <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
+                      <span className="min-w-0 break-words">{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{linkLabelWords(l.label)}{l.exists ? "" : " (removed)"}</span>
                     )}
-                    <button type="button" aria-label={`Unlink ${l.label}`} disabled={!canEdit} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`inline-grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+                    <button type="button" aria-label={`Unlink ${l.label}`} disabled={!canEdit || !!busy} onClick={() => {
+                      // #4571 W2: removing never cascades by itself; with subtasks holding it, ask.
+                      if (subtasksWithLink(subtasks, l).length) { setUnlinking(l); setAlsoSubs(false); return; }
+                      run("save", () => ops.removeLink(card.id, l, false, card.revision), `${l.label} unlinked`);
+                    }} className={`inline-grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
                   </li>
                 ))}
               </ul>
             )}
+            {unlinking && (
+              <div role="group" aria-label={`Unlink ${unlinking.label}`} data-unlink-ask="" className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--gray-200)] p-3 text-[13px]">
+                <span className="font-semibold text-[var(--color-text-primary)]">Unlink {unlinking.label}?</span>
+                <label className="inline-flex min-h-11 items-center gap-2 text-[var(--color-text-secondary)]">
+                  <input type="checkbox" checked={alsoSubs} onChange={(e) => setAlsoSubs(e.target.checked)} className="h-4 w-4" />
+                  <span>Also remove from {subtasksWithLink(subtasks, unlinking).length} {subtasksWithLink(subtasks, unlinking).length === 1 ? "subtask" : "subtasks"}</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" loading={busy === "save"} onClick={async () => {
+                    const l = unlinking;
+                    const answer = await run("save", () => ops.removeLink(card.id, l, alsoSubs, card.revision),
+                      (a) => unlinkWords(l, a));
+                    if (answer) setUnlinking(null);
+                  }}>Unlink</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setUnlinking(null)}>Keep it</Button>
+                </div>
+              </div>
+            )}
             {linking && (
               <RecordPicker
+                kinds={DETAIL_LINK_KINDS}
                 onClose={() => setLinking(false)}
                 onPick={async (pick) => {
                   const answer = await update({ links: [...(card.links || []).map((x) => ({ kind: x.kind, id: x.id })), { kind: pick.kind, id: pick.id }] }, `${pick.label} linked`);

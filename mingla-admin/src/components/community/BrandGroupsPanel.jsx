@@ -6,7 +6,7 @@
 // list folds to a strip of avatars. Every column scrolls on its own.
 //
 // This file is the controller: loads, realtime, read marks, sending (with
-// Try again), mute, files, the Product signal modal, the side panel's stack,
+// Try again), mute, files, Create ticket (#4420), the side panel's stack,
 // Esc and focus. The columns are their own components.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
@@ -15,7 +15,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { Button } from "../ui/Button";
 import { SectionCard } from "../ui/Card";
-import { SendToProductModal } from "../support/SendToProductModal";
+import { BrandGroupTicketModal } from "./BrandGroupTicketModal";
+import { brandGroupTicketPrefill } from "../../lib/supportInboxModel";
 import {
   addBrandGroupReaction,
   listBrandGroupInbox,
@@ -33,7 +34,6 @@ import {
   setOfficialBrandGroupMuted,
   uploadOfficialBrandGroupFile,
 } from "../../services/communityService";
-import { listProductSignals } from "../../services/supportProductWorkflowService";
 import { useHashQuery } from "../../hooks/useHashQuery";
 import { usePanelStack } from "../../hooks/usePanelStack";
 import { useBrandGroupLive } from "../../hooks/useBrandGroupLive";
@@ -80,6 +80,7 @@ import { BrandGroupComposer } from "./BrandGroupComposer";
 import { BrandGroupRail } from "./BrandGroupRail";
 import { BrandGroupSidePanel } from "./BrandGroupSidePanel";
 import { subscribePageReturn } from "../../lib/pageReturn";
+import { ticketNumber } from "../../lib/ticketModel";
 
 /** The page this panel is drawn on, and so the address it reads and writes. */
 export const BRAND_GROUPS_PAGE_ID = "brand-groups";
@@ -182,8 +183,8 @@ export function BrandGroupsPanel({ onCounts }) {
   const [composer, setComposer] = useState("");
   const [replyTo, setReplyTo] = useState(null);
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
-  const [signalSource, setSignalSource] = useState(null);
-  const [signals, setSignals] = useState([]);
+  // #4420: Create ticket (replaced Send to Product) opens with this pre-fill.
+  const [ticketPrefill, setTicketPrefill] = useState(null);
   const fileInputRef = useRef(null);
   const [uploads, setUploads] = useState([]);
   const [filePreview, setFilePreview] = useState(null);
@@ -304,13 +305,9 @@ export function BrandGroupsPanel({ onCounts }) {
     const current = () => mounted.current && gate.applies(ticket);
     if (!quiet) { loadingTicket.current = ticket; setThreadLoading(true); }
     try {
-      const [rows, productSignals] = await Promise.all([
-        listOfficialBrandGroupMessages(conversationId),
-        listProductSignals(),
-      ]);
+      const rows = await listOfficialBrandGroupMessages(conversationId);
       if (!current()) return rows;
       setMessages(rows);
-      setSignals(productSignals);
       await markOfficialBrandGroupRead(conversationId);
       if (gate.isOpen(conversationId)) announceRead();
       await loadGroups();
@@ -321,7 +318,7 @@ export function BrandGroupsPanel({ onCounts }) {
     } finally {
       if (mounted.current && loadingTicket.current === ticket) { loadingTicket.current = null; setThreadLoading(false); }
     }
-  }, [addToast, loadGroups, announceRead, setSignals]);
+  }, [addToast, loadGroups, announceRead]);
 
   // The first reads start from a microtask: the reads set state, and an effect body
   // must not set state in the same turn. Nothing paints in between.
@@ -519,7 +516,7 @@ export function BrandGroupsPanel({ onCounts }) {
   }, [search, setSearch, stack]);
 
   // Esc: a field in the panel lets go first; then the panel closes. A dialog
-  // on top (file preview, Product signal, a reason prompt) has its own Esc.
+  // on top (file preview, Create ticket, a reason prompt) has its own Esc.
   useEffect(() => {
     if (!sideOpen) return undefined;
     const onKeyDown = (e) => {
@@ -693,18 +690,14 @@ export function BrandGroupsPanel({ onCounts }) {
 
   function openSignal(message) {
     const evidence = [message, ...selectedMessages.filter((item) => item.id !== message.id)]
-      .map((item) => `${personName(item.sender_display_name, nameFor(item.sender_id))}: ${item.content}`)
-      .join("\n");
-    setSignalSource({
-      id: message.id,
-      source_kind: "brand_group_message",
-      label: "this brand group message",
-      subject: `${selectedGroup?.brand_name || "Brand group"}: ${message.content.slice(0, 120)}`,
-      details: evidence,
-      requester_user_id: message.sender_id,
-      priority: "normal",
-      next_update_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    });
+      .map((item) => `${personName(item.sender_display_name, nameFor(item.sender_id))}: ${item.content}`);
+    // #4420: a ticket on the Work board, linked to this brand, the messages quoted.
+    const prefill = brandGroupTicketPrefill({ brandId: selectedGroup?.brand_id, brandName: selectedGroup?.brand_name, lines: evidence });
+    if (!prefill) {
+      addToast({ variant: "error", title: "Couldn't start a ticket", description: "This Brand group has no brand to link. Reload and try again." });
+      return;
+    }
+    setTicketPrefill(prefill);
   }
 
   // Add to plan / Make a work card from messages: the rail's form opens filled.
@@ -945,21 +938,22 @@ export function BrandGroupsPanel({ onCounts }) {
         )}
       </div>
 
-      <SendToProductModal
-        source={signalSource}
-        signals={signals}
-        onClose={() => setSignalSource(null)}
-        onCreated={async () => {
-          setSignals(await listProductSignals());
+      <BrandGroupTicketModal
+        prefill={ticketPrefill}
+        onClose={() => setTicketPrefill(null)}
+        onCreated={(card) => {
+          setTicketPrefill(null);
           setSelectedMessageIds([]);
-          addToast({ variant: "success", title: "Sent to Product" });
+          addToast({ variant: "success", title: card?.number ? `Ticket ${ticketNumber(card.number)} is on the Work board` : "Ticket made", description: "Nothing was sent to the brand." });
         }}
-        onLinked={async () => {
-          setSignals(await listProductSignals());
-          setSelectedMessageIds([]);
-          addToast({ variant: "success", title: "Brand group report linked" });
+        onOpenCard={(id) => {
+          setTicketPrefill(null);
+          if (!id) return;
+          // The ticket opens beside the chat (panel two), never by leaving it;
+          // without Hosts and Creators access the side panel cannot show a card.
+          if (canHosts) openInside({ kind: "card", id });
+          else addToast({ variant: "info", title: "That ticket is already on the Work board", description: "Ask someone with Work board access to add to it." });
         }}
-        onError={(cause) => addToast({ variant: "error", title: "Couldn't save the Product signal", description: cause?.message })}
       />
       {filePreview ? (
         <div role="dialog" aria-modal="true" aria-label={`Preview ${filePreview.name}`} className="fixed inset-0 z-50 flex flex-col bg-black/85 p-4"

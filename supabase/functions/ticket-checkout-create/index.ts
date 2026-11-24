@@ -120,6 +120,17 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+import {
+  brandFormRefusal,
+  checkoutFormPayload,
+  isCheckoutBrandFormRefusal,
+  isCheckFunctionMissing,
+  outcomeOf,
+  reportBrandFormCheckFailOpen,
+  parseCheckoutBrandForm,
+  releaseUnpaidSession,
+  stashBrandFormOrRelease,
+} from "./brandFormCheckout.ts";
 // Issue #3645 — each later Paystack payment priced at checkout by the deposit's
 // engine, shown to the buyer, persisted on the session and charged unchanged.
 import {
@@ -271,25 +282,6 @@ const totalRequestedQuantity = (
     }
   }
   return saw ? total : null;
-};
-
-/** Fail an infinity hold that never joined the queue so stock is released. */
-const failUnregisteredQueueHold = async (
-  // deno-lint-ignore no-explicit-any
-  client: any,
-  checkoutSessionId: string,
-  reason: string,
-): Promise<void> => {
-  await client
-    .from("ticket_checkout_sessions")
-    .update({
-      status: "failed",
-      failure_reason: reason,
-      expires_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", checkoutSessionId)
-    .is("order_id", null);
 };
 
 /**
@@ -865,6 +857,13 @@ export const createTicketCheckoutCreateHandler = (
     }
     const isCheckoutV2 = requestedContractVersion ===
       TICKET_CHECKOUT_CONTRACT_VERSION;
+    // #4514 wave 5 — the brand form fields (capability marker + answers). A
+    // door sale is exempt (C9): its body is rebuilt from the code and never
+    // carries them, and the check below is skipped for it by name.
+    const parsedBrandForm = parseCheckoutBrandForm(body);
+    if (isCheckoutBrandFormRefusal(parsedBrandForm)) {
+      return jsonResponse(parsedBrandForm.body, parsedBrandForm.status);
+    }
     let checkoutAttemptId: string | null = null;
     let checkoutV2Lines: CheckoutV2Line[] | null = null;
     if (isCheckoutV2) {
@@ -2061,6 +2060,49 @@ export const createTicketCheckoutCreateHandler = (
       }
     }
 
+    // #4514 wave 5 — I-4514-CHECKOUT-FORM-BEFORE-PAYMENT. A required, live form
+    // on the page with the capability marker: missing or invalid answers are
+    // refused HERE, before the session RPC, any snapshot, provider object or
+    // free order. No marker: the order completes and the buyer is "to answer".
+    // The off switch (inside SQL) checks nothing. Door pay is exempt (C9).
+    // Without the marker there is nothing to refuse and nothing to keep, so an
+    // older client's request makes no extra database call at all.
+    // The check and the stash take the buyer's own credentials (the bearer's
+    // user and the private ticket link hash), so they apply the SAME visibility
+    // rule as the checkout form read the Details step used (OP-5 included).
+    let brandFormFailedOpen = false;
+    let brandFormCheckOutcome: string | null = null;
+    if (doorPay === null && parsedBrandForm.capable) {
+      const formCheck = await supabase.rpc("brand_form_checkout_check", {
+        p_event_id: eventId,
+        p_capable: parsedBrandForm.capable,
+        p_form: checkoutFormPayload(parsedBrandForm),
+        p_buyer_user_id: userId,
+        p_ticket_link_hash: ticketLinkHash,
+      });
+      if (formCheck.error) {
+        const refusal = brandFormRefusal(formCheck.error);
+        if (refusal !== null) {
+          return jsonResponse(refusal.body, refusal.status);
+        }
+        if (isCheckFunctionMissing(formCheck.error)) {
+          // [TRANSITIONAL] fail-open while brand_form_checkout_check is not in
+          // PostgREST's schema: there can be no form yet. Exit: remove once
+          // 20281120034514 is in the production migration ledger and PostgREST
+          // is reloaded. Raised as an ops alert, never a silent console line.
+          brandFormFailedOpen = true;
+          reportBrandFormCheckFailOpen(formCheck.error);
+        } else {
+          console.error("[ticket-checkout-create] brand form check failed", {
+            error: formCheck.error.message,
+          });
+          return jsonResponse({ error: "brand_form_check_failed" }, 409);
+        }
+      } else {
+        brandFormCheckOutcome = outcomeOf(formCheck.data);
+      }
+    }
+
     // #3859 — capability preflight before the session RPC and before provider
     // I/O. Public readers remove unsupported plans, but a stale client can
     // still replay `auto`/`installments`; selected tier metadata is therefore
@@ -2601,6 +2643,25 @@ export const createTicketCheckoutCreateHandler = (
       canonicalIntakeFormData = attached.data;
     }
 
+    // #4514 wave 5 — stash the answers against this session BEFORE any quote
+    // bind, free finalization or provider I/O. The trigger
+    // brand_form_finalize_checkout_answers makes them the order's response in
+    // the same transaction that gives the session its order (paid and free).
+    // If this write fails the reply is 409 and payment never starts.
+    if (doorPay === null && parsedBrandForm.capable && !brandFormFailedOpen) {
+      // #4541 R1.13: the stash step and the session release on refusal live in
+      // brandFormCheckout.ts.
+      const stashRefusal = await stashBrandFormOrRelease(supabase, {
+        checkoutSessionId,
+        eventId,
+        parsed: parsedBrandForm,
+        buyerUserId: userId,
+        ticketLinkHash,
+        checkOutcome: brandFormCheckOutcome,
+      }, jsonResponse);
+      if (stashRefusal !== null) return stashRefusal;
+    }
+
     // #3859 checkout-v2 binds the normalized client intent to the canonical
     // server quote before any free finalization or provider I/O. The legacy
     // path never enters this block and remains byte-for-byte on its scalar
@@ -2836,7 +2897,7 @@ export const createTicketCheckoutCreateHandler = (
           "[ticket-checkout-create] queue path status token persist failed",
           tokenErr,
         );
-        await failUnregisteredQueueHold(
+        await releaseUnpaidSession(
           supabase,
           checkoutSessionId,
           "buyer_status_token_persist_failed",
@@ -2861,7 +2922,7 @@ export const createTicketCheckoutCreateHandler = (
       );
       if ((joinErr || !joinData) && !joinPastQueue) {
         console.error("[ticket-checkout-create] queue join failed", joinErr);
-        await failUnregisteredQueueHold(
+        await releaseUnpaidSession(
           supabase,
           checkoutSessionId,
           joinErr?.message ?? "queue_join_failed",
@@ -2875,7 +2936,7 @@ export const createTicketCheckoutCreateHandler = (
         const join = joinData as Record<string, unknown>;
         if (join.duplicate === true) {
           // Same device already waiting on another hold — release this one.
-          await failUnregisteredQueueHold(
+          await releaseUnpaidSession(
             supabase,
             checkoutSessionId,
             "queue_duplicate_device",

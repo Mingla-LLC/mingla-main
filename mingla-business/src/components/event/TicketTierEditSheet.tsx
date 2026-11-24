@@ -317,6 +317,12 @@ interface ToggleRowProps {
   value: boolean;
   onChange: (v: boolean) => void;
   accessibilityLabel: string;
+  /** #4572 7c — a switch that cannot be turned on (it ignores the press). */
+  disabled?: boolean;
+  /** #4572 7c — a short status chip beside the label. */
+  badge?: { label: string; tone: "neutral" | "warning" };
+  /** #4572 7c — "warning" colours the sub-line amber. */
+  subTone?: "default" | "warning";
 }
 
 const ToggleRow: React.FC<ToggleRowProps> = ({
@@ -325,19 +331,59 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
   value,
   onChange,
   accessibilityLabel,
+  disabled = false,
+  badge,
+  subTone = "default",
 }) => (
   <Pressable
-    onPress={() => onChange(!value)}
+    onPress={() => {
+      if (disabled) return;
+      onChange(!value);
+    }}
+    disabled={disabled}
     accessibilityRole="switch"
-    accessibilityState={{ checked: value }}
+    accessibilityState={disabled ? { checked: value, disabled: true } : { checked: value }}
     accessibilityLabel={accessibilityLabel}
+    accessibilityHint={disabled ? sub : undefined}
     style={styles.toggleRow}
   >
     <View style={styles.toggleLabelCol}>
-      <Text style={styles.toggleLabel}>{label}</Text>
-      <Text style={styles.toggleSub}>{sub}</Text>
+      <View style={styles.toggleLabelLine}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        {badge !== undefined ? (
+          <View
+            style={[
+              styles.toggleBadge,
+              badge.tone === "warning" ? styles.toggleBadgeWarning : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.toggleBadgeText,
+                badge.tone === "warning" ? styles.toggleBadgeTextWarning : null,
+              ]}
+            >
+              {badge.label}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      <Text
+        style={[
+          styles.toggleSub,
+          subTone === "warning" ? styles.toggleSubWarning : null,
+        ]}
+      >
+        {sub}
+      </Text>
     </View>
-    <View style={[styles.toggleTrack, value && styles.toggleTrackOn]}>
+    <View
+      style={[
+        styles.toggleTrack,
+        value && styles.toggleTrackOn,
+        disabled && styles.toggleTrackDisabled,
+      ]}
+    >
       <View
         style={[
           styles.toggleThumb,
@@ -347,6 +393,19 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
     </View>
   </Pressable>
 );
+
+// #4572 7c (D7) — ticket approval is not enforced yet (no pending ticket, no
+// host queue): guests get their ticket straight away. So a new ticket cannot
+// turn it on, and a ticket that already has it on says so and can turn it off.
+// The real flow is its own initiative (D10 label "Request to attend" then).
+export const TICKET_APPROVAL_COPY = {
+  label: "Approval required",
+  offBadge: "Coming soon",
+  offSub: "Coming soon: approve guests before they get a ticket.",
+  onBadge: "Not checked yet",
+  onSub:
+    "Not checked yet: guests get their ticket straight away. Turn this off to remove the label.",
+} as const;
 
 interface WaitlistEntriesSheetProps {
   visible: boolean;
@@ -1609,11 +1668,25 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           <Text style={styles.sectionHeader}>Access controls</Text>
 
           <ToggleRow
-            label="Approval required"
-            sub="Buyers will request access. You approve or reject before they pay."
+            label={TICKET_APPROVAL_COPY.label}
+            sub={
+              approvalRequired
+                ? TICKET_APPROVAL_COPY.onSub
+                : TICKET_APPROVAL_COPY.offSub
+            }
+            subTone={approvalRequired ? "warning" : "default"}
+            badge={
+              approvalRequired
+                ? { label: TICKET_APPROVAL_COPY.onBadge, tone: "warning" }
+                : { label: TICKET_APPROVAL_COPY.offBadge, tone: "neutral" }
+            }
             value={approvalRequired}
-            onChange={setApprovalRequired}
-            accessibilityLabel="Approval required"
+            // Only switching OFF is possible (D7): once off it stays off.
+            onChange={(next) => {
+              if (!next) setApprovalRequired(false);
+            }}
+            disabled={!approvalRequired}
+            accessibilityLabel={TICKET_APPROVAL_COPY.label}
           />
 
           <ToggleRow
@@ -2329,15 +2402,41 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: space[2],
   },
+  toggleLabelLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: space[2],
+  },
   toggleLabel: {
     fontSize: type.small.fontSize,
     fontWeight: "500",
     color: color.text1,
   },
+  toggleBadge: {
+    borderRadius: radiusTokens.full,
+    paddingHorizontal: space[2],
+    paddingVertical: 2,
+    backgroundColor: color.fill.step,
+  },
+  toggleBadgeWarning: {
+    backgroundColor: color.warningTint,
+  },
+  toggleBadgeText: {
+    fontSize: type.caption.fontSize,
+    fontWeight: "600",
+    color: color.text2,
+  },
+  toggleBadgeTextWarning: {
+    color: color.warning,
+  },
   toggleSub: {
     fontSize: type.caption.fontSize,
     color: color.text3,
     marginTop: 2,
+  },
+  toggleSubWarning: {
+    color: color.warningText,
   },
   toggleTrack: {
     width: 44,
@@ -2348,6 +2447,9 @@ const styles = StyleSheet.create({
   },
   toggleTrackOn: {
     backgroundColor: color.paper,
+  },
+  toggleTrackDisabled: {
+    opacity: 0.4,
   },
   toggleThumb: {
     width: 20,

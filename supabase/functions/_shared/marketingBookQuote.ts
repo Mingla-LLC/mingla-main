@@ -1,5 +1,10 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import { smsBlastBodyWithFollow } from "./marketingBlastFollow.ts";
+import {
+  BLAST_FORM_SAMPLE_URL,
+  blastFormSmsLine,
+  embeddedFormIdOf,
+} from "./blastFormLinks.ts";
 import { allocateSmsCosts } from "./smsPriceBook.ts";
 import { smsMarketingCountry } from "./e164Country.ts";
 import { smsCountryProfile } from "./smsCountries.ts";
@@ -76,10 +81,12 @@ export function marketingBookSmsWireBody(
    * ends with a branded opt-out link of the same fixed length as at send.
    */
   optOutLink = false,
+  /** #4541 R4.10: an untracked line added after link tracking (the Blast form link). */
+  untrackedSuffix = "",
 ): string {
   return composeSmsBody(
     rewriteMarketingSmsLinks(rawBody, trackingOrigin, () => QUOTE_TRACKING_ID)
-      .rewritten,
+      .rewritten + untrackedSuffix,
     true,
     optOutLink ? `${trackingOrigin}/${QUOTE_TRACKING_ID}` : undefined,
   );
@@ -233,10 +240,15 @@ export async function buildMarketingBookQuote(
     const origin = options.trackingOrigin ?? resolveMarketingTrackingOrigin();
     // #4273 — quote = send: a text that carries the opt-out link is measured
     // with it (the send appends a link of exactly this length).
-    const wireBody = marketingBookSmsWireBody(authorBody, origin);
+    // #4541 R4.10: a Blast with a form adds each recipient's own form link
+    // (untracked, about 130 characters): measured at its real length.
+    const formLine = embeddedFormIdOf(input.content) === null
+      ? ""
+      : blastFormSmsLine(BLAST_FORM_SAMPLE_URL);
+    const wireBody = marketingBookSmsWireBody(authorBody, origin, false, formLine);
     const segmentsWithStop = computeSegments(wireBody);
     const segmentsWithLink = computeSegments(
-      marketingBookSmsWireBody(authorBody, origin, true),
+      marketingBookSmsWireBody(authorBody, origin, true, formLine),
     );
     const priced = allocateSmsCosts(
       deliverable.map((candidate) => {

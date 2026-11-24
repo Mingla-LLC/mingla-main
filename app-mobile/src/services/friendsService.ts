@@ -35,7 +35,6 @@ export interface FriendRequest {
     first_name?: string;
     last_name?: string;
     avatar_url?: string;
-    email?: string;
   };
   status: "pending" | "accepted" | "declined" | "cancelled";
   created_at: string;
@@ -148,7 +147,7 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
   if (uniqueProfileIds.length > 0) {
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, username, display_name, first_name, last_name, avatar_url, email")
+      .select("id, username, display_name, first_name, last_name, avatar_url")
       .in("id", uniqueProfileIds);
     profilesMap = new Map((profiles || []).map((p: any) => [p.id, p]));
   }
@@ -167,7 +166,6 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
         first_name: profile?.first_name,
         last_name: profile?.last_name,
         avatar_url: profile?.avatar_url,
-        email: profile?.email,
       },
       status: request.status,
       created_at: request.created_at,
@@ -187,7 +185,6 @@ export async function fetchFriendRequests(userId: string): Promise<FriendRequest
         first_name: profile?.first_name,
         last_name: profile?.last_name,
         avatar_url: profile?.avatar_url,
-        email: profile?.email,
       },
       status: request.status,
       created_at: request.created_at,

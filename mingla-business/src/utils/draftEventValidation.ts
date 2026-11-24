@@ -143,7 +143,7 @@ export const validateBasics = (
       errs.push({
         fieldKey: "partyTypes",
         step: 0,
-        message: "Pick at least one party type.",
+        message: "Pick at least one event type.",
       });
     }
   } else if (!d.partyTypes.every((s) => (PARTY_TYPE_SLUGS as readonly string[]).includes(s))) {
@@ -151,7 +151,7 @@ export const validateBasics = (
     errs.push({
       fieldKey: "partyTypes",
       step: 0,
-      message: "One of the selected party types is no longer supported. Pick again.",
+      message: "One of the selected event types is no longer supported. Pick again.",
     });
   }
   // Vibe tags and music genres are optional, but if present must be canonical.

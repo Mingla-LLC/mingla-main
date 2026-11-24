@@ -42,6 +42,12 @@ export const MARKETING_TAB_ACTIONS: Readonly<
     icon: "gift",
     href: "/(tabs)/marketing/referrals?action=offer",
   },
+  forms: {
+    label: "Create a form",
+    compactLabel: "New",
+    icon: "plus",
+    href: "/(tabs)/marketing/forms?action=create",
+  },
   people: {
     label: "Import people",
     compactLabel: "Import",

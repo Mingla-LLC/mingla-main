@@ -303,13 +303,15 @@ function makeHarness(opts) {
     },
     '../store/appStore': { __esModule: true, useAppStore: () => ({ user: userBox.id ? { id: userBox.id } : null }) },
     '../services/supabase': { __esModule: true, supabase: sb.supabase },
+    // #3969: the step is read through the own-profile read; same stub chain.
+    '../services/profileAccessService': { __esModule: true, readMyProfile: () => sb.supabase.from('profiles') },
     '../constants/coachMarkSteps': stepsModule,
     './coachMarkSkipState': skipStateModule,
     '../services/mixpanelService': {
       __esModule: true,
       mixpanelService: {
         track() {}, timeEvent() {},
-        trackCoachMarkViewed() {}, trackCoachMarkCompleted() {},
+        trackCoachMarkViewed() {}, trackCoachMarkCompleted() {}, trackCoachMarkHeld() {},
         trackCoachTourCompleted() {}, trackCoachMarkSkipped() {},
       },
     },
@@ -340,6 +342,7 @@ async function observe(clock, stored, stepsModule, fetchPlan) {
     isCoachPending: v.isCoachPending,
     isCoachLoading: v.isCoachLoading,
     overlayVisible: v.overlayVisible,
+    isTourExitOnScreen: v.isTourExitOnScreen,
     configId: v.currentStepConfig ? v.currentStepConfig.id : null,
     writes: h.sb.writes.map((w) => w.step),
     dbAfter: h.sb.db[USER_A],
@@ -452,9 +455,9 @@ async function run() {
     {
       const appIndex = fs.readFileSync(APP_INDEX_PATH, 'utf8');
       assert.ok(
-        appIndex.includes('const locked = isCoachLoading || isCoachPending || isCoachActive;'),
+        appIndex.includes('const locked = isTourExitOnScreen;'),
         'T-2: CoachMarkNavigationGate no longer computes `locked` from exactly ' +
-        '(isCoachLoading || isCoachPending || isCoachActive) — this suite\'s nav-liveness ' +
+        '(isTourExitOnScreen) — this suite\'s nav-liveness ' +
         'model is stale. Re-derive it from app/index.tsx before trusting any verdict.',
       );
       assert.ok(
@@ -462,7 +465,11 @@ async function run() {
         'T-2: CoachMarkNavigationGate no longer disables the tab bar via ' +
         "pointerEvents={locked ? 'none' : 'auto'} — the nav-liveness model is stale.",
       );
-      const locked = (s) => s.isCoachLoading || s.isCoachPending || s.isCoachActive;
+      // [TEST-MOD-APPROVED #4562] The gate now locks only while the overlay has drawn a
+      // bubble (isTourExitOnScreen). This suite mounts the provider alone, so nothing is
+      // ever drawn here and `locked` must be false for every stored value, including the
+      // in-progress ones that used to lock the tab bar with no bubble on screen.
+      const locked = (s) => s.isTourExitOnScreen;
 
       // The nav MUST stay live in every state that renders nothing. A state that paints
       // no overlay while holding the tab bar dead is a dead nav with no way out.
@@ -486,6 +493,26 @@ async function run() {
           `tab bar pointerEvents='none'. The user has no overlay to dismiss and no nav to ` +
           `tap (Constitution #1).`,
         );
+      }
+
+      // [TEST-MOD-APPROVED #4562] Every step the tour can be in, with NO overlay mounted
+      // (nothing drawn): the tab bar must be live, because the lock now follows the bubble.
+      {
+        // -2: the read is still in flight (mount, no clock advance).
+        const hl = makeHarness({ rows: { [USER_A]: 5 }, stepsModule: realSteps });
+        const il = hl.mount();
+        assert.equal(hl.read(il).currentStep, LOADING_SENTINEL, 'T-2: the first render is the LOADING sentinel');
+        assert.equal(locked(hl.read(il)), false, 'T-2 DEAD NAV: a step read in flight must not lock the tab bar');
+        hl.unmount(il);
+        // 0 (pending) and 1..12 (in progress), once resolved.
+        for (const stored of [0, ...Array.from({ length: 12 }, (_, i) => i + 1)]) {
+          const { snap, h } = await observe(clock, stored, realSteps);
+          allWrites.push(...h.sb.writes.map((w) => w.step));
+          assert.equal(
+            locked(snap), false,
+            `T-2 DEAD NAV: stored=${stored} with no bubble drawn must leave the tab bar live.`,
+          );
+        }
       }
 
       // TOUR_UNAVAILABLE is the state the rework INVENTED. It is the one the gate has

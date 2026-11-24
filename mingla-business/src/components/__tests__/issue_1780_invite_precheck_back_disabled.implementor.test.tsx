@@ -409,6 +409,10 @@ const BOUNDARY: Record<string, () => unknown> = {
   }),
   draftRsvpValidation: () => ({ validateRsvpPublish: () => [], validateRsvpStep: () => [] }),
   draftEventPristine: () => ({ isDraftEventPristine: () => false }),
+  // #4572 7e: the Event and RSVP wizards read the brand-zone default. Pure, so
+  // it is supplied REAL (no brand here, so it never changes the draft).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  timezones: () => require("../../utils/timezones"),
   brandPayout: () => ({
     payoutGateStatus: () => "active",
     isBrandPayoutReady: () => true,
@@ -538,6 +542,15 @@ const BOUNDARY: Record<string, () => unknown> = {
     ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
       "Accept the Organiser Terms, then tap Publish again.",
   }), // [TEST-MOD-APPROVED #3645]
+  // [TEST-MOD #4548] the guest pack working copy (nothing pending in this suite).
+  guestPackGate: () => ({
+    guestPackEventIdForDraft: (id: string) => (id.startsWith("d_") ? null : id),
+    hasPendingGuestPack: () => false,
+    flushGuestPack: async () => ({ ok: true, saved: false }),
+    releaseGuestPackSession: () => undefined,
+    subscribeGuestPack: () => () => undefined,
+    useGuestPackPending: () => false,
+  }),
   useIntakeSchema: () => ({
     useTripIntakeSchemasByEvent: () => intakeQuery,
     useUpsertTripIntakeSchema: () => mutation,
@@ -563,6 +576,9 @@ function loadCompiledCreator(relative: string, exportName: string): React.Compon
     const key = specifier.split("/").pop() as string;
     const supply = BOUNDARY[specifier] ?? BOUNDARY[key];
     if (supply !== undefined) return supply();
+    if (key === "LazyCreatorStep1Basics") {
+      return { CreatorStep1Basics: leaf("CreatorStep1Basics") };
+    } // #4572 route-only lazy boundary; same inert step leaf
     if (key === "LazyCreatorStep2When") {
       return { CreatorStep2When: leaf("CreatorStep2When") };
     } // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf

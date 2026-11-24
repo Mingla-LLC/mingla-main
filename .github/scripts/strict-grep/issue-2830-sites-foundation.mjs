@@ -28,6 +28,10 @@ const PATHS = {
   // detaching window, every address of the site); its definitions are now the
   // live ones, so the host-binding pins below hold for it too.
   customDomainsMigration: "supabase/migrations/20280119082829_issue_2829_custom_domains.sql",
+  // #4574 — the first-publish backup budgets moved into SQL helpers (48 h
+  // database backup, 26 h manifest); this migration re-emits the live gate.
+  backupBudgetMigration:
+    "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
   deployWrapper: "scripts/ops/deploy-sites-edge-functions.sh",
   deployWrapperTest: "scripts/ops/__tests__/issue_2893_sites_edge_deploy_wrapper.test.mjs",
   security: "supabase/functions/_shared/sitesSecurity.ts",
@@ -483,6 +487,39 @@ export function violations(files) {
     "AND v_config.restore_drill_verified_at > clock_timestamp() - interval '100 days'",
     "OR (v_config.environment = 'local' AND v_latest_source = 'local_synthetic')",
   ]) need(authorizeBody, token, "Core multi-brand first-publish readiness", failures);
+  // #4574 — the LIVE gate is now the re-emitted one: it reads each budget from
+  // its one owner, and neither budget is a literal in the gate any more.
+  const backupBudgetMigration = files.backupBudgetMigration ?? "";
+  const liveAuthorizeBody = sqlFunctionBody(backupBudgetMigration, "brand_site_authorize_operation");
+  for (const token of [
+    "OR (p_kind IN ('publish','rollback') AND v_rank < 50)",
+    "OR NOT public.brand_site_entitled(v_site.brand_id) THEN",
+    "IF p_kind = 'publish' AND v_site.last_successful_publication_id IS NULL THEN",
+    "AND v_config.database_backup_verified_at > clock_timestamp() - public.brand_site_database_backup_budget()",
+    "AND v_config.object_manifest_verified_at > clock_timestamp() - public.brand_site_object_manifest_budget()",
+    "AND v_config.restore_drill_verified_at > clock_timestamp() - interval '100 days'",
+    "OR (v_config.environment = 'local' AND v_latest_source = 'local_synthetic')",
+  ]) need(liveAuthorizeBody, token, "Core #4574 first-publish readiness", failures);
+  for (const token of [
+    "database_backup_verified_at > clock_timestamp() - interval",
+    "object_manifest_verified_at > clock_timestamp() - interval",
+  ]) forbid(liveAuthorizeBody, token, "Core #4574 first-publish readiness", failures);
+  need(sqlFunctionBody(backupBudgetMigration, "brand_site_database_backup_budget"),
+    "SELECT interval '48 hours'", "Core #4574 backup budget owner", failures);
+  need(sqlFunctionBody(backupBudgetMigration, "brand_site_object_manifest_budget"),
+    "SELECT interval '26 hours'", "Core #4574 backup budget owner", failures);
+  for (const token of [
+    "config.database_backup_verified_at + public.brand_site_database_backup_budget()",
+    "config.object_manifest_verified_at + public.brand_site_object_manifest_budget()",
+  ]) need(sqlFunctionBody(backupBudgetMigration, "brand_site_recovery_watch_snapshot"), token,
+    "Core #4574 alert reads the gate budget", failures);
+  for (const token of [
+    "IS DISTINCT FROM '06956f65c9d27612919a982340f16681' THEN",
+    "'issue_4574_sites_recovery_watch',",
+    "body := '{\"mode\":\"sites_recovery\"}'::jsonb,",
+    "WHERE EXISTS (SELECT 1 FROM public.brand_site_recovery_watch_state)",
+    "REVOKE ALL ON FUNCTION public.brand_site_recovery_watch_snapshot() FROM PUBLIC, anon, authenticated;",
+  ]) need(backupBudgetMigration, token, "Core #4574 recovery watch", failures);
   const evidenceBody = sqlFunctionBody(multiBrandMigration, "brand_site_record_readiness_evidence");
   for (const token of [
     "OR v_database_at <= v_accepted_at - interval '26 hours'",
@@ -735,8 +772,9 @@ export function violations(files) {
   if (
     // #3645: the payout-release RAK is the approved 90th name.
     // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat (GOOGLE_SEEDING_API_KEY).
-    manifest.rollout?.expected_user_managed_count !== 91 ||
-    manifest.secrets?.length !== 91 ||
+    // #4334: Seth approved unsetting the retired map-vendor token on 2026-11-20 in chat; the declared set is exactly 90 under the unchanged 87/91 ceilings.
+    manifest.rollout?.expected_user_managed_count !== 90 ||
+    manifest.secrets?.length !== 90 ||
     manifest.exceptions?.length !== 1 ||
     manifest.exceptions?.[0]?.issue !== 2830 ||
     sitesSecret?.class !== "credential_bundle" ||
@@ -1016,9 +1054,35 @@ export function violations(files) {
   )?.length ?? 0;
   // #2829 W6 — duration_ms, kind, stream_video_id, stream_url and
   // stream_host are system fields too (14 -> 19); none is owner-writable.
-  if (protectedMediaFieldCount !== 19) {
+  // #4572 item 16 — exactly three of those 19 (state, kind, detected_mime)
+  // moved to pickerFieldAccess: a site member may READ them so Studio's
+  // pickers can filter, but only Mingla's system creates or updates them.
+  // 16 stay fully system-only.
+  if (protectedMediaFieldCount !== 16) {
     failures.push(
-      `custom media pipeline boundary: expected 19 read-protected system fields, found ${protectedMediaFieldCount}`,
+      `custom media pipeline boundary: expected 16 read-protected system fields, found ${protectedMediaFieldCount}`,
+    );
+  }
+  const mediaSource = files.cmsMediaCollection ?? "";
+  const pickerFieldNames = [];
+  for (const match of mediaSource.matchAll(/access: pickerFieldAccess/g)) {
+    const before = mediaSource.slice(0, match.index);
+    const names = [...before.matchAll(/name: "([a-z_]+)"/g)];
+    pickerFieldNames.push(names.length ? names[names.length - 1][1] : "?");
+  }
+  const pickerFieldList = pickerFieldNames.slice().sort().join(",");
+  if (pickerFieldList !== "detected_mime,kind,state") {
+    failures.push(
+      `custom media pipeline boundary: expected exactly the picker-readable fields detected_mime,kind,state, found ${pickerFieldList || "none"}`,
+    );
+  }
+  const pickerAccessBlock = mediaSource.match(/const pickerFieldAccess = \{([\s\S]*?)\n\};/)?.[1] ?? "";
+  if (
+    !/\bcreate: systemMediaField,/.test(pickerAccessBlock) ||
+    !/\bupdate: systemMediaField,/.test(pickerAccessBlock)
+  ) {
+    failures.push(
+      "custom media pipeline boundary: pickerFieldAccess must keep create and update on systemMediaField",
     );
   }
   for (const token of [
@@ -1120,6 +1184,9 @@ export function violations(files) {
       // instead: __common 2,743,812 B to 2,808,468 B, of which 51.9 KB was
       // Ari's chat graph.
       "mingla-business/src/components/sites/website/workspace/ariRuntime.ts",
+      // #4420 — Help & Support's Support column embeds the ordinary Ari chat:
+      // one sibling lazy boundary over the SAME module, so still one chunk.
+      "mingla-business/src/components/support/LazySupportScreens.tsx",
     ]);
     // #4453 — the same rule for the pieces of that chunk the workspace uses:
     // no Website file may import them as values (types are free).
@@ -1149,7 +1216,12 @@ export function violations(files) {
         );
       }
     }
-    for (const file of [...walk("mingla-business/app"), ...walk("mingla-business/src/components/sites")]) {
+    for (const file of [
+      ...walk("mingla-business/app"),
+      ...walk("mingla-business/src/components/sites"),
+      // #4420 — the support feature embeds Ari's chat; hold it to the same rule.
+      ...walk("mingla-business/src/components/support"),
+    ]) {
       // Strip comments: docblocks name the module on purpose.
       const body = fs.readFileSync(path.join(ROOT, file), "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -1442,7 +1514,7 @@ export function violations(files) {
   for (const token of [
     "issue_2830_sites_foundation_happy.test.ts",
     "issue_2893_sites_live_readiness.test.ts",
-    "final 91-name bundled-authority state",
+    "final 90-name bundled-authority state",
   ]) need(files.secretWorkflow ?? "", token, "existing secret CI lane", failures);
   for (const token of [
     "mingla-site-cms-build:",
@@ -1662,7 +1734,7 @@ function selfTest() {
     ["businessPublish", "result_summary?.retryable === true", "result_summary?.retryable !== false", "terminal publication recovery"],
     ["businessView", "if (canCheckAvailability && websiteAvailable === false) {", "if (false) {", "Business Website route"],
     ["businessOverview", "testID=\"overview-ari\"", "testID=\"overview-ari\" Journey state", "customer-safe Website state"],
-    ["secretWorkflow", "final 91-name bundled-authority state", "final state", "existing secret CI lane"],
+    ["secretWorkflow", "final 90-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
     // CMS job step name is unique; strip only that lane's --allowlist command.
     [

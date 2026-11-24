@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// #4572 item 1 — the same names as lib/previewRefusal.ts (kept literal: this is a client bundle).
+const PREVIEW_STALE = "mingla:preview-stale";
+const PREVIEW_FAILED = "mingla:preview-failed";
+const MAX_AUTO_REFRESH = 2;
 
 type PreviewViewport = "mobile" | "tablet" | "desktop";
 
@@ -16,16 +21,43 @@ export default function PreviewChrome({
   publishUrl,
   revision,
   expiresAt,
+  businessOrigin,
 }: {
   frameSrc: string;
   closeUrl: string;
   publishUrl: string;
   revision: string;
   expiresAt: number;
+  /** #4572 item 1 — where a framed Studio relays preview refusals (omitted: no relay). */
+  businessOrigin?: string;
 }) {
   const [viewport, setViewport] = useState<PreviewViewport>("desktop");
   const [refresh, setRefresh] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const autoRefreshes = useRef(0);
+  /*
+   * #4572 item 1 — a refused preview page tells its parent what happened.
+   * Only messages from THIS frame count. A stale draft refreshes the frame
+   * (at most twice); both messages are relayed to Studio's own parent when
+   * Studio itself is framed, to the Host origin only (never "*").
+   */
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (!frameRef.current || event.source !== frameRef.current.contentWindow) return;
+      const type = (event.data as { type?: unknown } | null)?.type;
+      if (type !== PREVIEW_STALE && type !== PREVIEW_FAILED) return;
+      if (type === PREVIEW_STALE && autoRefreshes.current < MAX_AUTO_REFRESH) {
+        autoRefreshes.current += 1;
+        setRefresh((value) => value + 1);
+      }
+      if (window.parent !== window && businessOrigin) {
+        window.parent.postMessage({ type }, businessOrigin);
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [businessOrigin]);
   return (
     <main className="studio-preview-shell">
       {/*
@@ -93,7 +125,10 @@ export default function PreviewChrome({
           <button
             type="button"
             className="studio-preview-details-refresh"
-            onClick={() => setRefresh((value) => value + 1)}
+            onClick={() => {
+              autoRefreshes.current = 0;
+              setRefresh((value) => value + 1);
+            }}
           >
             Refresh preview
           </button>
@@ -101,6 +136,7 @@ export default function PreviewChrome({
       ) : null}
       <div className="studio-preview-canvas">
         <iframe
+          ref={frameRef}
           key={refresh}
           title="Private preview — not live"
           src={frameSrc}

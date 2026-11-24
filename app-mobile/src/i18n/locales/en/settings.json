@@ -103,9 +103,13 @@
         "messages": "Messages",
         "messages_hint": "Direct messages and chat.",
         "reminders": "Activity reminders",
-        "reminders_hint": "Nudges about your activity."
+        "reminders_hint": "Nudges about your activity.",
+        "brand_form_request": "Questions from hosts",
+        "brand_form_request_hint": "When a host asks you to answer their questions. Email stays on for these, because it carries your own link. Texts follow your text settings."
       }
-    }
+    },
+    "friends_going": "Friends going out",
+    "friends_going_hint": "When a close friend is going to an event"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

@@ -303,6 +303,8 @@ export const PACKAGE_CONSUMERS = {
   "brand-assets": ["mingla-admin", "mingla-business"],
   "brand-rendering": ["mingla-business"],
   "card-identity": ["mingla-business"],
+  // #4514 — the brand form renderer (buyer web, link page, Host builder preview).
+  "form-rendering": ["mingla-business"],
   "help-content": ["mingla-business"],
   "location-input": ["mingla-business"],
   "offering-rendering": ["mingla-business"],
@@ -313,7 +315,8 @@ export const PACKAGE_CONSUMERS = {
   "sharing": ["mingla-business"],
   // #2829 — the Sites contracts: mingla-business imports them by relative path;
   // the runtime and Studio carry checked-in generated copies (site-contracts sync).
-  "site-contracts": ["mingla-business"],
+  // #4572 — Studio's caption gate test reads packages/site-contracts/src/blocks.ts.
+  "site-contracts": ["mingla-business", "mingla-site-cms"],
   "theme-animations": ["mingla-business"],
   "video-upload": ["mingla-admin", "mingla-business"],
 };

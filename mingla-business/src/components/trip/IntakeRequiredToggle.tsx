@@ -20,6 +20,8 @@ export interface IntakeRequiredToggleProps {
   value: boolean;
   onValueChange: (next: boolean) => void;
   disabled?: boolean;
+  /** #4514: who answers. Trips keep "Travelers"; brand forms say "Guests". */
+  audience?: "travelers" | "guests";
   testID?: string;
 }
 
@@ -27,11 +29,24 @@ export const IntakeRequiredToggle: React.FC<IntakeRequiredToggleProps> = ({
   value,
   onValueChange,
   disabled = false,
+  audience = "travelers",
   testID,
 }) => {
+  const who = audience === "guests" ? "Guests" : "Travelers";
   return (
     <View style={styles.row}>
-      <Text style={styles.label}>Required</Text>
+      {audience === "guests" ? (
+        <View style={styles.textCol}>
+          <Text style={styles.label}>Required</Text>
+          <Text style={styles.helper}>
+            {value
+              ? `${who} must answer this question to continue`
+              : `${who} can skip this question`}
+          </Text>
+        </View>
+      ) : (
+        <Text style={styles.label}>Required</Text>
+      )}
       <Switch
         value={value}
         onValueChange={onValueChange}
@@ -43,8 +58,8 @@ export const IntakeRequiredToggle: React.FC<IntakeRequiredToggleProps> = ({
         accessibilityLabel="Required question"
         accessibilityHint={
           value
-            ? "Travelers must answer this question to continue"
-            : "Travelers can skip this question"
+            ? `${who} must answer this question to continue`
+            : `${who} can skip this question`
         }
         accessibilityState={{ checked: value, disabled }}
         testID={testID}
@@ -60,6 +75,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: space[1],
     minHeight: 44,
+  },
+  textCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  helper: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: color.text3,
   },
   label: {
     fontSize: 16,

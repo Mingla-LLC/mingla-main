@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { handler as offeringDispatch } from "../offering-invite-dispatch/index.ts";
+import { dispatchV2, type MinimalClient } from "../_shared/notifyV2.ts";
+import { loadSmsRates } from "../_shared/smsPriceTable.ts";
+import { handleFormRequest, isFormRequestBody } from "./formRequest.ts";
 
 type Channel = "email" | "push" | "sms";
 type PreviewBody = {
@@ -62,6 +65,8 @@ export async function handler(request: Request): Promise<Response> {
   if (new TextEncoder().encode(text).byteLength > 262_144) return json({ ok: false, code: "request_too_large" }, 413);
   let untrusted: unknown;
   try { untrusted = JSON.parse(text); } catch { return json({ ok: false, code: "invalid_json" }, 400); }
+  // #4514 wave 4: the form operations (Ask guests to answer, Remind) have their own body.
+  if (isFormRequestBody(untrusted)) return await formRequest(request, untrusted);
   if (!isBody(untrusted)) return json({ ok: false, code: "invalid_request" }, 400);
   const body = untrusted;
   const url = Deno.env.get("SUPABASE_URL") ?? "";
@@ -139,6 +144,29 @@ export async function handler(request: Request): Promise<Response> {
   return json({ ok: true, status: "queued", groupId: result.groupId, selectedCount: result.selectedCount,
     reachableCount: result.reachableCount, suppressedCount: result.suppressedCount,
     estimatedCostMinor: result.estimatedCostMinor, currency: result.currency, replayed: result.replayed ?? false });
+}
+
+async function formRequest(request: Request, body: Parameters<typeof handleFormRequest>[0]): Promise<Response> {
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const authorization = request.headers.get("authorization") ?? "";
+  if (!url || !anonKey || !serviceKey || !authorization.startsWith("Bearer ")) {
+    return json({ ok: false, code: "unauthorized" }, 401);
+  }
+  const user = createClient(url, anonKey, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
+  const service = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const { data: actorData, error: actorError } = await user.auth.getUser();
+  if (actorError || actorData.user === null) return json({ ok: false, code: "unauthorized" }, 401);
+  const result = await handleFormRequest(body, actorData.user.id, {
+    rpc: async (fn, args) => {
+      const { data, error } = await service.rpc(fn, args);
+      return { data, error: error === null ? null : { message: error.message, code: error.code ?? null } };
+    },
+    dispatch: (input) => dispatchV2(service as unknown as MinimalClient, input),
+    smsRates: () => loadSmsRates(service).catch(() => null),
+  });
+  return json(result.body, result.status);
 }
 
 if (import.meta.main) serve(handler);

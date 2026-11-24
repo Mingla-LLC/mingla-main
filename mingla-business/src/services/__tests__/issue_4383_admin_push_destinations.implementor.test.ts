@@ -52,9 +52,10 @@ describe("#4383 Host-app push destinations", () => {
     expect(screenFileFor(tapped)).not.toBeNull();
   });
 
-  test("Community opens Account > Support on its Community tab; Home opens the Home tab", () => {
+  // [TEST-MOD #4420] Community left the Host app: the link opens Help & Support's default.
+  test("Community opens Help & Support; Home opens the Home tab", () => {
     expect(resolveBusinessNavTarget({ type: "business.mingla_update", deepLink: "mingla-business://community" }))
-      .toBe("/account/support?tab=community");
+      .toBe("/account/support");
     expect(resolveBusinessNavTarget({ type: "business.mingla_update", deepLink: "mingla-business://(tabs)/home" }))
       .toBe("/(tabs)/home");
   });

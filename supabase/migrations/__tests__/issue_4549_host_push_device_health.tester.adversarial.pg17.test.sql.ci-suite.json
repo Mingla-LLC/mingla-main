@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4549_host_push_device_health.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4549-host-push-device-health-tester",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

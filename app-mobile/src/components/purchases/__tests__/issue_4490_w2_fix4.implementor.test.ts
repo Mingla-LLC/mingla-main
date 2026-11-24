@@ -160,11 +160,14 @@ describe("W2-N32 the Purchases detail back is never a dead tap", () => {
     expect(osLinkPushIsDuplicate("os", "route")).toBe(false);
     expect(osLinkPushIsDuplicate("os", undefined)).toBe(false);
     const index = read(INDEX);
-    const handler = index.slice(index.indexOf("const handleDeepLink = async (url: string, source"));
+    const handler = index.slice(index.indexOf("const handleDeepLink = async (url: string, opts"));
+    // [TEST-MOD-APPROVED #4490] merge with #4508: the OS link paths pass
+    // { routerOpened }, so passing opts at all is the "os" source.
+    expect(handler.slice(0, 400)).toContain('const source: "os" | "replay" = opts === undefined ? "replay" : "os";');
     expect(handler.slice(0, handler.indexOf("executeDeepLink(action, {"))).toContain("if (osLinkPushIsDuplicate(source, action?.kind)) {");
     const linking = index.slice(index.indexOf("Linking.getInitialURL().then(async (url) => {"));
-    expect(linking.slice(0, 1600)).toContain('handleDeepLink(url, "os");');
-    expect(linking.slice(0, 1600)).toContain('handleDeepLink(event.url, "os");');
+    expect(linking.slice(0, 1600)).toContain('handleDeepLink(url, { routerOpened: routerServesLink(url) });');
+    expect(linking.slice(0, 1600)).toContain('handleDeepLink(event.url, { routerOpened: routerServesLink(event.url) });');
   });
 
   test("F4-B3 every purchase kind's detail uses the shared back", () => {

@@ -60,12 +60,13 @@ const APP = read("App.jsx");
 // 27 pages, Home first. (#4130: Careers is its own page again.) Retired ids redirect (lib/adminRoutes.js).
 const MENU = [
   // #4255 W4: Notifications left the menu for Messages in the top bar.
-  ["Home", ["overview", "work-board"]],
+  ["Home", ["overview", "messages", "work-board"]],
   // #4130 + #3872: the four Creator Program pages sit under Hosts and creators.
   ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "forms", "content-calendar", "team-dashboard"]], // #4452 §7.0: + Forms
-  ["Support", ["support", "community"]],
+  ["Support", ["support"]], // [TEST-MOD #4420] Community retired
   // #4383: what we tell hosts and explorers, each its own screen.
-  ["Communications", ["communications", "push", "announcements", "roadmap", "email", "blog", "links", "brand-groups", "website-pages"]], // #4452 §7.2: + Brand groups; §7.0: + Website pages
+  // [TEST-MOD #4420] Roadmap retired; the Feature guide is its own screen, last in the group.
+  ["Communications", ["communications", "push", "announcements", "email", "blog", "links", "brand-groups", "website-pages", "feature-guide"]], // #4452 §7.2: + Brand groups; §7.0: + Website pages
   ["Business", ["people", "brands", "business-offerings"]],
   ["Money", ["mingla-money", "business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["placepool"]],
@@ -78,13 +79,13 @@ const MENU = [
 
 // The words on each menu item. #4130: the polish design's names.
 const LABELS = {
-  overview: "Dashboard", "work-board": "Work",
+  overview: "Dashboard", messages: "Messages", "work-board": "Work",
   outreach: "Hosts and creators",
   // #4130 + #3872: the Creator Program pages keep their #3872 labels.
   "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
   inbound: "Leads", forms: "Forms", "content-calendar": "Calendar", "team-dashboard": "Team dashboard", // #4452 A1.8: Leads
-  support: "Support", community: "Community",
-  communications: "Overview", push: "Push", announcements: "Announcements", roadmap: "Roadmap", email: "Email", blog: "Blog", links: "Links page", "brand-groups": "Brand groups", "website-pages": "Website pages",
+  support: "Support", // [TEST-MOD #4420] Community retired
+  communications: "Overview", push: "Push", announcements: "Announcements", email: "Email", blog: "Blog", links: "Links page", "brand-groups": "Brand groups", "feature-guide": "Feature guide", "website-pages": "Website pages",
   people: "People", brands: "Brands", "business-offerings": "Offerings",
   "mingla-money": "Mingla money", "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing and limits",
@@ -153,9 +154,10 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4130 + #3872: + the four Creator Program pages (Creators, Gigs, Mingla Locals, Disputes).
     // #3355: the guarded Ari Improvement Lab is the 32nd admin destination.
     // #4255 W4: - Notifications (Messages is in the top bar).
+    // #4517: + Messages (menu entry under Dashboard; its top-bar button opens the same page).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(ids.length, 43); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
+    assert.equal(ids.length, 43); // [TEST-MOD #4420] - Community, - Roadmap, + Feature guide; #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -169,7 +171,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // community-support console is a redirect, not a page.
     const menuPages = NAV_ITEMS.map((i) => i.id);
     // #4255 W4: Messages is a header page too (its full page, #/messages).
-    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "agent", "guide", "messages", ...menuPages].sort());
+    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "agent", "guide", ...menuPages].sort());
   });
   it("the role Home group is still put first by lib/access.js, not by the menu list", () => {
     assert.equal(NAV_ITEMS.some((i) => i.id === "home"), false);
@@ -436,7 +438,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   const MIGRATED = [
     "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
-    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DraftsPage.jsx", "EmailPage.jsx", "FormsPage.jsx", "WebsitePagesPage.jsx",
+    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "SupportPage.jsx" /* [TEST-MOD #4420] replaced CommunitySupportPage.jsx */, "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DraftsPage.jsx", "EmailPage.jsx", "FormsPage.jsx", "WebsitePagesPage.jsx",
     // [TEST-MOD-APPROVED #3980] the Work board and Agent log draw the one header.
     "WorkBoardPage.jsx", "AgentLogPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
@@ -589,7 +591,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   // Hosts and Creators: the two exported pages each draw the one board page.
   // #4130 Wave 6: SupportPage and CommunityPage hand their page id to the
   // shared frame, SupportCommunityConsole, which draws every state.
-  const VIEWS = { "FormsPage.jsx": ["FormsList"] /* #4452: the list; the builder draws its own PageHeader */, "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"], "CommunitySupportPage.jsx": ["SupportCommunityConsole"], "ProgramCreatorsPage.jsx": ["CreatorBoard", "CreatorRecord"] }; // #4402: the board and the full-page creator record each draw the header.
+  const VIEWS = { "FormsPage.jsx": ["FormsList"] /* #4452: the list; the builder draws its own PageHeader */, "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"], /* [TEST-MOD #4420] SupportPage.jsx draws its own states */ "ProgramCreatorsPage.jsx": ["CreatorBoard", "CreatorRecord"] }; // #4402: the board and the full-page creator record each draw the header.
 
   function pageReturns(file) {
     const names = VIEWS[file] ?? [null];

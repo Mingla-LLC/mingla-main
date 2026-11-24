@@ -443,7 +443,8 @@ describe("D rendered", () => {
     assert.doesNotMatch(html, /Assign to me|Mingla owner/);
     const box = harness.composer({ brandName: "Harmattan Club", value: "", chips: quickReplies({ brandName: "Harmattan Club" }), replyingAs: "Seth Ogieva", selectedCount: 2, canPlanActions: true });
     assert.match(box, />2 messages selected</);
-    for (const label of ["Create product signal", "Add to plan", "Make a work card", "Cancel"]) assert.match(box, new RegExp(`>${label}<`));
+    // [TEST-MOD #4420] Send to Product became Create ticket (the Product board is retired).
+    for (const label of ["Create ticket", "Add to plan", "Make a work card", "Cancel"]) assert.match(box, new RegExp(`>${label}<`));
     assert.match(box, /<span class="sr-only">Message Harmattan Club<\/span>/);
     assert.match(box, /placeholder="Message Harmattan Club…"/);
     assert.match(box, /Replying as <strong[^>]*>Seth Ogieva · Mingla Support<\/strong> · the brand team gets a push/);
@@ -778,8 +779,8 @@ describe("R rework 1 (test report D-1 … D-14)", () => {
     assert.match(side, /<SidePanel side=\{side\} onClose=\{onClose\} onChanged=\{onChanged\} onOpenSide=\{onOpenSide\} \/>/);
     assert.match(code("components/community/BrandGroupsPanel.jsx"), /onOpenSide=\{openSideInPanel\}/);
     const sp = code("components/panels/SidePanel.jsx");
-    for (const re of [/<WorkDetail [^>]*onOpenSide=\{onOpenSide\}/, /onOpenSide=\{onOpenSide\}\s*\/>\s*\{reasonFor/, /<DraftsPage [^>]*onOpenSide=\{onOpenSide\}/, /<BrandDrawer [^>]*onOpenSide=\{onOpenSide\}/]) assert.match(sp, re);
-    const rd = code("components/crm/RecordDrawer.jsx");
+    for (const re of [/<WorkDetail [^>]*onOpenSide=\{onOpenSide\}/, /onOpenSide=\{onOpenSide\}\s*\/>\s*<\/Suspense>\s*\{reasonFor/, /<DraftsPage [^>]*onOpenSide=\{onOpenSide\}/, /<BrandDrawer [^>]*onOpenSide=\{onOpenSide\}/]) assert.match(sp, re);
+    const rd = code("components/crm/RecordPanel.jsx");
     const toast = rd.slice(rd.indexOf('label: "Open the card"'), rd.indexOf('label: "Open the card"') + 400);
     assert.match(toast, /if \(typeof onOpenSide === "function"\) onOpenSide\(pipeline === "creators" \? "creator" : "host", recordId\);\s*else window\.location\.hash/);
     assert.match(rd, /<HostTeamSection record=\{record\} read=\{hostRead\} onOpenSide=\{onOpenSide\} \/>/);
@@ -816,7 +817,7 @@ describe("R rework 2 (retest 1: R-1, N-2, N-3, X-1, toast reopen)", () => {
     win.history.go(ph.closeStep().delta);
     ph.reset();
     const closedAt = win.location.href;
-    // RecordDrawer's "Open the card" toast, after the panel was closed.
+    // RecordPanel's "Open the card" toast, after the panel was closed.
     ph.follow(() => { win.location.hash = sideHash(`host:${U1}`); }, { panelOpen: false });
     assert.equal(ph.depth(), 1);
     assert.deepEqual(ph.closeStep(), { kind: "go", delta: -1 });

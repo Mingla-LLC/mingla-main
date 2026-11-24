@@ -9,8 +9,8 @@
     "build-dev-ios": "npx eas build --platform ios --profile development",
     "build-preview-android": "npx eas build --platform android --profile preview",
     "build-preview-ios": "npx eas build --platform ios --profile preview",
-    "build-production-android": "npx eas build --platform android --profile production",
-    "build-production-ios": "npx eas build --platform ios --profile production",
+    "build-production-android": "node ../scripts/release/store-build-guard.cjs && npx eas build --platform android --profile production",
+    "build-production-ios": "node ../scripts/release/store-build-guard.cjs && npx eas build --platform ios --profile production",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -99,6 +99,7 @@
     "@mingla/help-content": "file:../packages/help-content",
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
     "@mingla/card-identity": "file:../packages/card-identity",
+    "@mingla/form-rendering": "file:../packages/form-rendering",
     "@mingla/location-input": "file:../packages/location-input",
     "@mingla/offering-rendering": "file:../packages/offering-rendering",
     "@mingla/payments-native": "file:../packages/payments-native",
@@ -210,7 +211,6 @@
     "autolinking": {
       "android": {
         "exclude": [
-          "react-native-onesignal",
           "react-native-purchases"
         ]
       }

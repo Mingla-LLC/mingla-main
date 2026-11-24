@@ -154,6 +154,9 @@ jest.mock("../../ui/GlassCard", () => ({
 jest.mock("../../event/CreatorStep2When", () => ({ CreatorStep2When: (): null => null }));
 jest.mock("../ExperienceCoverStep", () => ({ ExperienceCoverStep: (): null => null }));
 jest.mock("../ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
+// [TEST-MOD #4548] the Guest pack editor mounts on the Stops step and reads its own
+// RPC; this suite asserts the exact RPC sequence of the refund-terms writes.
+jest.mock("../../event/GuestPackEditor", () => ({ GuestPackEditor: (): null => null }));
 jest.mock("../../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: () =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports

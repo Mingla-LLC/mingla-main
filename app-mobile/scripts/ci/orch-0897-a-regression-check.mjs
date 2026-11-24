@@ -168,10 +168,13 @@ check(
 
 check(
   "T-A08 Composer placeholder swaps to caption mode when attachment is set",
-  // #4459: no attachment in a Guest chat; the placeholder names the brand when
-  // one is known, else falls back to "Write a reply".
+  // #4459: no attachment in a Guest chat. #4420: the composer names its audience
+  // through the Messages locale (Message guests as <brand> / Broadcast as <brand>),
+  // and the English words carry both strings.
   groupChatPanel !== null &&
-    /placeholder=\{postingAs \? `Message as \$\{postingAs\}` : "Write a reply"\}/.test(groupChatPanel),
+    /placeholder=\{broadcastOnly \? t\("messages\.placeholder_broadcast"[^)]*\) : t\("messages\.placeholder_open"[^)]*\)\}/.test(groupChatPanel) &&
+    /"placeholder_broadcast":\s*"Broadcast as \{\{brand\}\}"/.test(read("mingla-business/src/i18n/locales/en/brandMessages.json") ?? "") &&
+    /"placeholder_open":\s*"Message guests as \{\{brand\}\}"/.test(read("mingla-business/src/i18n/locales/en/brandMessages.json") ?? ""),
   "Caption-with-image UX requires placeholder swap so the planner knows the field is optional.",
 );
 

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/scan-ticket/__tests__/issue_4541_door_receipts.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4541-scan-ticket-door-receipts",
+  "profile": "deno-2-unit"
+}

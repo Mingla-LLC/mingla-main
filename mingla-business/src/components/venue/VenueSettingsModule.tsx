@@ -73,7 +73,11 @@ import {
   paidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
-import { BrandHoursEditor } from "./BrandHoursEditor";
+// #4518 — host-only, so loaded on intent (when the hours step / card shows),
+// not in the shared boot payload every buyer page downloads.
+const BrandHoursEditor = React.lazy(() =>
+  import("./BrandHoursEditor").then((module) => ({ default: module.BrandHoursEditor })),
+);
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -783,13 +787,15 @@ export const VenueSettingsModule = forwardRef<
               !canMutate || upsertHours.isPending ? "none" : "auto"
             }
           >
-            <BrandHoursEditor
-              hours={hoursDraft}
-              onChange={handleHoursChange}
-              showErrors={hoursDirty}
-              disabled={!canMutate || upsertHours.isPending}
-              allowWindows
-            />
+            <React.Suspense fallback={null}>
+              <BrandHoursEditor
+                hours={hoursDraft}
+                onChange={handleHoursChange}
+                showErrors={hoursDirty}
+                disabled={!canMutate || upsertHours.isPending}
+                allowWindows
+              />
+            </React.Suspense>
           </View>
         )}
         {hoursError ? (

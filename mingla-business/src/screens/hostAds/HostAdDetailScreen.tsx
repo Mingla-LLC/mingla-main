@@ -124,6 +124,7 @@ import {
 } from "../../components/marketing/ads/HostAdManageSheets";
 import { HostAdTopUpSheet } from "../../components/marketing/ads/HostAdTopUpSheet";
 import { randomId, randomUuid } from "../../utils/randomId";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../constants/supportHostFacing";
 import { hostAdGoalName } from "../../components/marketing/ads/hostAdBuilderCopy";
 import { hostAdMinimumPayCents, hostAdPayFromCredit } from "../../components/marketing/ads/hostAdBuilderModel";
 
@@ -664,7 +665,7 @@ function HostAdDetailBody(): React.ReactElement {
             {permissions.canPlan ? (
               <Button label={hm("detail.changeVideo")} variant="secondary" size="sm" onPress={() => void onDuplicate("creative")} testID="ads-detail-change-video" />
             ) : null}
-            <Button label={hm("detail.help")} variant="ghost" size="sm" onPress={() => router.push("/account/support" as never)} testID="ads-detail-help" />
+            <Button label={hm("detail.help")} variant="ghost" size="sm" onPress={() => router.push(HELP_SUPPORT_PERSON_ROUTE as never)} testID="ads-detail-help" />
           </>
         }
       />

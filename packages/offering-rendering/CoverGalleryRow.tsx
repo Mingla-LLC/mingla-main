@@ -17,7 +17,6 @@
 
 import React from "react";
 import {
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -29,6 +28,8 @@ import Svg, { Path } from "react-native-svg";
 import { deriveCoverPosterUrl } from "./coverMediaPresentation";
 import { type ThemePalette } from "./themePalette";
 import { type OfferingGalleryImage } from "./types";
+// issue #4518 — thumbnails take the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 import { accentFill, accentOutline } from "./themeAccentStyle";
 
 export interface CoverGalleryRowProps {
@@ -203,7 +204,7 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
     const cardContents = (
       <>
         {thumbUrl !== null ? (
-          <Image
+          <OfferingRoutedImage
             source={{ uri: thumbUrl }}
             style={styles.cardImage}
             resizeMode="cover"

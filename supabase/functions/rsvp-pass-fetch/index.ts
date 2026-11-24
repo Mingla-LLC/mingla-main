@@ -9,6 +9,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildRsvpPassPdf } from "../_shared/ticketPdf.ts";
+// #4508 R-9 — one display-name rule for a plus-one.
+import { rsvpGuestDisplayName } from "../_shared/rsvpGuestName.ts";
+// #4508 K — a plus-one's pass is fetchable only once claimed.
+import { passAccess } from "./passAccess.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -99,6 +103,7 @@ serve(async (req: Request): Promise<Response> => {
   let parentOwnerUserId: string | null = null;
   let name = "Guest";
   let qrCode: string | null = null;
+  let guestClaimed = false;
   const { data: primary } = await admin.from("event_rsvps")
     .select(
       "id,user_id,guest_name,qr_code,event_id,rsvp_status,approval_status",
@@ -114,7 +119,7 @@ serve(async (req: Request): Promise<Response> => {
     if (entityType !== "guest") return reply(404, { error: "not_found" });
     const { data: guest } = await admin.from("event_rsvp_guests")
       .select(
-        "id,rsvp_id,matched_user_id,name,qr_code",
+        "id,rsvp_id,matched_user_id,name,qr_code,claimed_at",
       )
       .eq("id", entityId).maybeSingle();
     if (!guest) return reply(404, { error: "not_found" });
@@ -125,8 +130,10 @@ serve(async (req: Request): Promise<Response> => {
     role = "guest";
     ownerUserId = guest.matched_user_id;
     parentOwnerUserId = parent.user_id;
-    name = guest.name ?? "Guest";
+    // #4508 R-9: the 1.11 name (a number-only guest has no stored name).
+    name = await rsvpGuestDisplayName(admin, String(guest.id), guest.name);
     qrCode = guest.qr_code;
+    guestClaimed = guest.claimed_at !== null && guest.claimed_at !== undefined;
     state = parent as Record<string, unknown>;
   }
   const authenticatedEntityOwner = userId !== null && ownerUserId === userId;
@@ -141,6 +148,16 @@ serve(async (req: Request): Promise<Response> => {
     );
     return reply(403, { error: "sign_in_required" });
   }
+  // #4508 K: the matched account of an UNCLAIMED plus-one gets "claim your
+  // pass", never the pass; the party owner keeps their read.
+  const access = passAccess({
+    role,
+    userId,
+    ownerUserId,
+    parentOwnerUserId,
+    guestClaimed,
+  });
+  if (!access.ok) return reply(access.status, { error: access.error });
   if (
     state?.rsvp_status !== "going" || state?.approval_status !== "approved" ||
     !qrCode

@@ -1,7 +1,12 @@
 /**
  * #3720 Slice G — Host-facing Community reads + prefs.
  *
- * Announcements and roadmap are RLS-scoped (published only). Mutations go
+ * #4420 — the Host app keeps only announcements, the email preference and
+ * support availability. Roadmap, ideas, questions, votes, comments, reports,
+ * blocks and appeals left the Host app with Community; their server RPCs and
+ * tables stay for Host phones still on an older build.
+ *
+ * Announcements are RLS-scoped (published only). Mutations go
  * through SECURITY DEFINER RPCs (`community_mark_announcement_read`,
  * `community_set_email_pref`). Support availability is `support_is_online()`.
  */
@@ -19,51 +24,6 @@ export type CommunityAnnouncement = {
   read_at: string | null;
 };
 
-export type CommunityRoadmapLane = "now" | "next" | "later" | "shipped";
-
-export type CommunityRoadmapCard = {
-  id: string;
-  public_title: string;
-  public_body: string | null;
-  lane: CommunityRoadmapLane;
-  sort_order: number;
-  shipped_at: string | null;
-  target_label: string | null;
-  idea_count: number;
-};
-
-export type CommunityPostKind = "idea" | "question";
-
-export type CommunityPost = {
-  id: string;
-  kind: CommunityPostKind;
-  title: string;
-  body: string;
-  author_label: string;
-  brand_label: string;
-  review_state: "pending" | "published" | "rejected" | "removed";
-  created_at: string;
-  vote_count: number;
-  comment_count: number;
-  voted_by_me: boolean;
-  is_mine: boolean;
-  accepted_comment_id: string | null;
-  workflow_status: string | null;
-  public_response: string | null;
-  pinned: boolean;
-  locked: boolean;
-  staff_answered: boolean;
-};
-
-export type CommunityComment = {
-  id: string;
-  body: string;
-  author_label: string;
-  created_at: string;
-  is_mine: boolean;
-  staff_answer: boolean;
-};
-
 type AnnouncementRow = {
   id: string;
   title: string;
@@ -77,22 +37,6 @@ type ReceiptRow = {
   announcement_id: string;
   read_at: string;
 };
-
-type RoadmapRow = {
-  id: string;
-  public_title: string;
-  public_body: string | null;
-  lane: string;
-  sort_order: number;
-  shipped_at?: string | null;
-  target_label?: string | null;
-  idea_count?: number;
-};
-
-function asLane(raw: string): CommunityRoadmapLane {
-  if (raw === "next" || raw === "later" || raw === "shipped") return raw;
-  return "now";
-}
 
 /** Published announcements newest-first, with this host's read receipt joined. */
 export async function listPublishedAnnouncements(): Promise<
@@ -141,27 +85,6 @@ export async function markAnnouncementRead(
   if (error) throw new Error(error.message);
 }
 
-/** Host-safe roadmap projection (no internal_note). */
-export async function listPublicRoadmap(): Promise<CommunityRoadmapCard[]> {
-  const { data, error } = await supabase
-    .from("community_roadmap_public")
-    .select("id, public_title, public_body, lane, sort_order, shipped_at, target_label, idea_count")
-    .order("sort_order", { ascending: true })
-    .order("id", { ascending: true });
-  if (error) throw new Error(error.message);
-
-  return ((data ?? []) as RoadmapRow[]).map((row) => ({
-    id: row.id,
-    public_title: row.public_title,
-    public_body: row.public_body,
-    lane: asLane(row.lane),
-    sort_order: row.sort_order,
-    shipped_at: row.shipped_at ?? null,
-    target_label: row.target_label ?? null,
-    idea_count: Number(row.idea_count) || 0,
-  }));
-}
-
 /**
  * Email preference for community announcements.
  * Absent row = on (transactional category default).
@@ -190,113 +113,4 @@ export async function fetchSupportIsOnline(): Promise<boolean> {
   const { data, error } = await supabase.rpc("support_is_online");
   if (error) throw new Error(error.message);
   return Boolean(data);
-}
-
-export async function listCommunityPosts(
-  kind?: CommunityPostKind,
-): Promise<CommunityPost[]> {
-  const { data, error } = await supabase.rpc("issue_3720_community_feed_v2", {
-    p_kind: kind ?? null,
-  });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as CommunityPost[]).map((post) => ({
-    ...post,
-    vote_count: Number(post.vote_count) || 0,
-    comment_count: Number(post.comment_count) || 0,
-  }));
-}
-
-export async function submitCommunityPost(input: {
-  kind: CommunityPostKind;
-  title: string;
-  body: string;
-}): Promise<{ post_id: string; review_state: string }> {
-  const { data, error } = await supabase.rpc(
-    "issue_3720_community_submit_post",
-    { p_kind: input.kind, p_title: input.title, p_body: input.body },
-  );
-  if (error) throw new Error(error.message);
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.post_id) throw new Error("The Community post was not saved.");
-  return row;
-}
-
-export async function toggleCommunityVote(postId: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc(
-    "issue_3720_community_toggle_vote",
-    { p_post_id: postId },
-  );
-  if (error) throw new Error(error.message);
-  return data === true;
-}
-
-export async function listCommunityComments(
-  postId: string,
-): Promise<CommunityComment[]> {
-  const { data, error } = await supabase.rpc("issue_3720_community_comments_v2", {
-    p_post_id: postId,
-  });
-  if (error) throw new Error(error.message);
-  return (data ?? []) as CommunityComment[];
-}
-
-export async function addCommunityComment(
-  postId: string,
-  body: string,
-): Promise<string> {
-  const { data, error } = await supabase.rpc(
-    "issue_3720_community_add_comment",
-    { p_post_id: postId, p_body: body },
-  );
-  if (error) throw new Error(error.message);
-  return String(data);
-}
-
-export async function acceptCommunityAnswer(
-  postId: string,
-  commentId: string,
-): Promise<boolean> {
-  const { data, error } = await supabase.rpc(
-    "issue_3720_community_accept_answer",
-    { p_post_id: postId, p_comment_id: commentId },
-  );
-  if (error) throw new Error(error.message);
-  return data === true;
-}
-
-export async function reportCommunityContent(
-  targetType: "post" | "comment",
-  targetId: string,
-  reason: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("issue_3720_community_report", {
-    p_target_type: targetType,
-    p_target_id: targetId,
-    p_reason: reason,
-  });
-  if (error) throw new Error(error.message);
-}
-
-export async function blockCommunityAuthor(
-  targetType: "post" | "comment",
-  targetId: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("issue_3720_community_block_author", {
-    p_target_type: targetType,
-    p_target_id: targetId,
-  });
-  if (error) throw new Error(error.message);
-}
-
-export async function appealCommunityModeration(
-  targetType: "post" | "comment",
-  targetId: string,
-  reason: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("issue_3720_community_appeal", {
-    p_target_type: targetType,
-    p_target_id: targetId,
-    p_reason: reason,
-  });
-  if (error) throw new Error(error.message);
 }

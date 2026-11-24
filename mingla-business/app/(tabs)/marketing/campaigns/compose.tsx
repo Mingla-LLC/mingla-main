@@ -161,6 +161,11 @@ import {
 } from "../../../../src/services/marketing/marketingCircleAudienceService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
+import {
+  BLAST_FORM_SMS_LINE,
+  blastFormErrorCopy,
+} from "../../../../src/utils/marketing/blastFormLink";
+import { embeddedFormIdOf } from "../../../../src/utils/marketing/blastFormPayload";
 // issue #2291 — the ONE payload contract, shared with the send path's Deno copy.
 import {
   CAMPAIGN_DRAFT_INCOMPLETE_BANNER,
@@ -352,6 +357,13 @@ export {
   SentMethodTabs,
   SentSmsCost,
 } from "../../../../src/components/marketing/SentCampaignPreviews";
+
+// #4541 R4.2 — "+ Form": the picker and the block load through the forms
+// owner, one lazy hop from this (already lazy) screen; the cards' "+ Form"
+// buttons are static and only call back.
+const loadFormsOwner = () => import("../../../../src/components/forms/formsOwner");
+const BlastFormPicker = React.lazy(() => loadFormsOwner().then((m) => ({ default: m.BlastFormPicker })));
+const BlastFormBlock = React.lazy(() => loadFormsOwner().then((m) => ({ default: m.BlastFormBlock })));
 
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
@@ -715,6 +727,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [bookUnpricedConfirmationCount, setBookUnpricedConfirmationCount] =
     useState(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  // #4541 R4.2 — the form this Blast carries (one per campaign), and its picker.
+  const [embeddedForm, setEmbeddedForm] = useState<{ formId: string; name: string | null } | null>(null);
+  const [formPickerOpen, setFormPickerOpen] = useState(false);
+  const openFormPicker = useCallback((): void => setFormPickerOpen(true), []);
   useEffect(() => {
     if (!showReview || !isBookAudience) return;
     const timer = setInterval(() => setBookNow(Date.now()), 1000);
@@ -746,6 +762,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       return "You no longer have permission to send this campaign.";
     if (code.includes("MONTHLY_CAP"))
       return "This blast would exceed your monthly send limit. Lower the audience or wait until next month.";
+    const formCopy = blastFormErrorCopy(code);
+    if (formCopy !== null) return formCopy;
     if (code.includes("FLAG_DISABLED") || code.includes("AUDIENCE_NOT_FOUND"))
       return "Book blasts aren't available. Your access or this feature changed.";
     return "The server preview is unavailable. Refresh it before confirming.";
@@ -981,6 +999,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         // composer, never a dead screen.
         const storedPayload: unknown = row.channel_payload;
         const payloadIssues = campaignPayloadIssues(storedPayload);
+        // #4541 R4.2: a reopened draft keeps its form (named from the brand's forms).
+        const storedFormId = embeddedFormIdOf(storedPayload);
+        if (storedFormId !== null) setEmbeddedForm({ formId: storedFormId, name: null });
         if (row.channel_payload.kind === "email") {
           setSubject(row.channel_payload.subject ?? "");
           setBody(row.channel_payload.body_html ?? "");
@@ -1037,11 +1058,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // `channel` from `kind`, so the discriminated union drives everything.
   // #3682 wave 2 — the payload for ANY channel (lead or "Also send by").
   const payloadFor = useCallback((kind: CampaignChannel): CampaignChannelPayload => {
+    // #4541 R4.2: the Blast's form rides on every channel's payload.
+    const form = embeddedForm === null ? {} : { embedded_form: { form_id: embeddedForm.formId } };
     if (kind === "push") {
       return {
         kind: "push",
         body: stripUnsupportedTokens(pushBody, brandName),
         ...(pushTitle.length > 0 ? { title: pushTitle } : {}),
+        ...form,
       };
     }
     if (kind === "sms") {
@@ -1050,6 +1074,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         body: stripUnsupportedTokens(smsBody, brandName),
         include_follow_cta: includeSmsFollowCta,
         ...(mmsMediaUrls.length > 0 ? { media_urls: mmsMediaUrls } : {}),
+        ...form,
       };
     }
     return {
@@ -1058,8 +1083,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       body_html: body,
       body_text: stripHtml(body),
       embedded_events: extractEmbeddedEventIds(body),
+      ...form,
     };
-  }, [brandName, pushBody, pushTitle, smsBody, includeSmsFollowCta, mmsMediaUrls, subject, body]);
+  }, [brandName, pushBody, pushTitle, smsBody, includeSmsFollowCta, mmsMediaUrls, subject, body, embeddedForm]);
 
   const buildPayload = useCallback(
     (): CampaignChannelPayload => payloadFor(channel),
@@ -1417,8 +1443,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               setBookStaleWarning(true);
               return;
             }
+            // #4541 R4.3: the Blast's form is not live, or not this brand's.
+            const formCopy =
+              error instanceof MarketingBookSendError ? blastFormErrorCopy(error.code) : null;
             setErrorBanner(
-              "Confirmation failed. Refresh the preview and retry.",
+              formCopy ?? "Confirmation failed. Refresh the preview and retry.",
             );
           },
         },
@@ -2452,6 +2481,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       brandName={brandName}
                       currentDraftIsDirty={isDirty}
                       onErrorToast={(msg) => setErrorBanner(msg)}
+                      onAddForm={embeddedForm === null ? openFormPicker : undefined}
                     />
                   </View>
                 ) : (
@@ -2515,6 +2545,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                           void handlePickMms();
                         }}
                         onRemoveMedia={handleRemoveMms}
+                        onAddForm={embeddedForm === null ? openFormPicker : undefined}
+                        appendedText={embeddedForm === null ? "" : BLAST_FORM_SMS_LINE}
                       />
                     ) : null}
                     {sendChannels.has("push") ? (
@@ -2528,9 +2560,29 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                         }}
                         brandName={brandName ?? "Your brand"}
                         reason={pushAudienceReason}
+                        onAddForm={embeddedForm === null ? openFormPicker : undefined}
                       />
                     ) : null}
                   </ComposerMethodCards>
+                ) : null}
+                {embeddedForm !== null ? (
+                  <React.Suspense fallback={null}>
+                    <BlastFormBlock
+                      brandId={brandId}
+                      formId={embeddedForm.formId}
+                      formName={embeddedForm.name}
+                      channels={{
+                        email: sendChannels.has("email"),
+                        sms: sendChannels.has("sms"),
+                        push: sendChannels.has("push"),
+                      }}
+                      scheduled={sendMode === "schedule"}
+                      onRemove={() => {
+                        setEmbeddedForm(null);
+                        setIsDirty(true);
+                      }}
+                    />
+                  </React.Suspense>
                 ) : null}
               </View>
 
@@ -2726,6 +2778,20 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               : undefined
           }
         />
+        {formPickerOpen ? (
+          <React.Suspense fallback={null}>
+            <BlastFormPicker
+              visible
+              brandId={brandId}
+              onClose={() => setFormPickerOpen(false)}
+              onPick={(form) => {
+                setEmbeddedForm({ formId: form.formId, name: form.name });
+                setIsDirty(true);
+                setFormPickerOpen(false);
+              }}
+            />
+          </React.Suspense>
+        ) : null}
         <SchedulePickerSheet
           visible={showSchedulePicker}
           initialIso={scheduledForIso}

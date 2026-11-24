@@ -135,6 +135,33 @@ export const EXPLORER_SUPPORT_PUSH_TYPES: readonly string[] = [
   'explorer.support_product_update',
 ];
 
+/** #4541 R2.1 — the params the form route accepts, in a fixed order. */
+const FORM_ROUTE_PARAMS: readonly string[] = ['event', 'as', 'sid', 'campaign', 'from', 't'];
+const FORM_SUBJECT_KINDS: readonly string[] = ['rsvp', 'rsvp_guest', 'order'];
+const FORM_FROM: readonly string[] = ['link', 'pass', 'ticket', 'purchase', 'rsvp', 'push', 'blast'];
+
+/**
+ * #4541 R2.1 — `/form/<uuid>?…` keeping only valid known params (ids must be
+ * uuids, `as` a subject kind, `from` a known opener, `t` a 64-hex token).
+ * Kept inline (not imported) because this file loads import-free in the node
+ * and Deno routing suites.
+ */
+export function formRoutePath(formId: string, params: Record<string, string>): string {
+  const q = new URLSearchParams();
+  for (const key of FORM_ROUTE_PARAMS) {
+    const value = params[key];
+    if (typeof value !== 'string' || value.length === 0) continue;
+    const ok =
+      key === 'as' ? FORM_SUBJECT_KINDS.includes(value)
+      : key === 'from' ? FORM_FROM.includes(value)
+      : key === 't' ? /^[0-9a-f]{64}$/.test(value)
+      : PROGRAM_UUID.test(value);
+    if (ok) q.set(key, key === 'as' || key === 'from' || key === 't' ? value : value.toLowerCase());
+  }
+  const query = q.toString();
+  return `/form/${formId.toLowerCase()}${query ? `?${query}` : ''}`;
+}
+
 // ── Parser ───────────────────────────────────────────────────────────────────
 
 /**
@@ -258,6 +285,24 @@ export function parseDeepLink(url: string): Destination | null {
           !purchaseId ||
           !(PURCHASE_DEEP_LINK_KINDS as readonly string[]).includes(purchaseKind)
         ) return null;
+        // #4541 R2.1 / R3.3 — a form request push names its form and event on
+        // the purchase link 1.3.x already opens; this build opens the form
+        // for that order or RSVP instead. Without a valid form id, as today.
+        if (
+          (purchaseKind === 'order' || purchaseKind === 'rsvp') &&
+          params.form && PROGRAM_UUID.test(params.form) &&
+          PROGRAM_UUID.test(purchaseId)
+        ) {
+          return {
+            kind: 'route',
+            path: formRoutePath(params.form, {
+              ...(params.event && PROGRAM_UUID.test(params.event) ? { event: params.event } : {}),
+              as: purchaseKind,
+              sid: purchaseId,
+              from: 'push',
+            }),
+          };
+        }
         return {
           kind: 'purchase',
           purchaseKind: purchaseKind as PurchaseDeepLinkKind,
@@ -276,6 +321,14 @@ export function parseDeepLink(url: string): Destination | null {
         return route ? { kind: 'route', path: route } : null;
       }
 
+      // #4541 R2.1 — `mingla://form/<formId>?event=&as=&sid=&campaign=&from=`:
+      // the form screen. Only the known params pass; anything else is dropped.
+      case 'form': {
+        const formId = pathSegments[1];
+        if (!formId || !PROGRAM_UUID.test(formId) || pathSegments.length !== 2) return null;
+        return { kind: 'route', path: formRoutePath(formId, params) };
+      }
+
       // #4382 — `mingla://support/<ticketId>` (the explorer.support_* pushes)
       // opens that request's thread; bare `mingla://support` opens Help &
       // Support. A malformed id still lands on Help & Support, never Home.
@@ -283,10 +336,29 @@ export function parseDeepLink(url: string): Destination | null {
         return { kind: 'route', path: supportRoutePath(pathSegments[1] ?? null) };
 
       case 'c': {
+        // A /c/ code may be a ticket / pass claim or (#4508) an RSVP guest
+        // link; the shell's claim handler asks claim-link which one it is.
         const code = pathSegments[1]?.trim().toUpperCase();
         return code && /^[0-9A-Z]{10}$/.test(code)
           ? { kind: 'claim', code }
           : null;
+      }
+
+      // #4508 — `com.mingla.app.v2://rsvp-guest/<CODE>`: the guest claim screen.
+      case 'rsvp-guest': {
+        const code = pathSegments[1]?.trim().toUpperCase();
+        return code && /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{10}$/.test(code)
+          ? { kind: 'route', path: `/rsvp-guest/${code}` }
+          : null;
+      }
+
+      // #4508 2.3 — `mingla://event/<eventId>` (the friend-is-going push):
+      // open that event's page, where RSVP is one tap away.
+      case 'event': {
+        const eventId = pathSegments[1];
+        return eventId && PROGRAM_UUID.test(eventId)
+          ? { kind: 'route', path: `/event/${eventId.toLowerCase()}` }
+          : { kind: 'page', page: 'home' };
       }
 
       case 'calendar': {
@@ -412,6 +484,12 @@ export function typeFallbackDestination(
     return enquiryId
       ? { kind: 'enquiry', enquiryId, ...(conversationId ? { conversationId } : {}) }
       : { kind: 'page', page: 'connections' };
+  }
+
+  // #4541 R2.1 — a host's form request with no usable link opens Purchases,
+  // where the questions card is (never Home).
+  if (type === 'brand_form_request') {
+    return { kind: 'route', path: '/purchases' };
   }
 
   // #4382 — Mingla Support replied, changed the status, or told you it's
@@ -675,6 +753,21 @@ export function registerShellDestinationSink(
  * Open a shell destination from anywhere. Returns false when no shell is
  * mounted (Constitution #3 — the caller shows its own error).
  */
+/**
+ * issue #4508 — an OS link (Linking) whose path is a served file route is
+ * already opened by expo-router itself (app/+native-intent.tsx returns the
+ * path). Pushing the same route again from the shell's Linking listener put a
+ * second copy of the screen on the stack: on the simulator,
+ * `com.mingla.app.v2://event/<id>` mounted /event twice, so closing the event
+ * showed the other copy, and on a slow device the first copy's replace() took
+ * the second copy's place and left a loading "Event" screen behind the event.
+ * `routerOpened` is true only for an OS link that expo-router serves; pushes
+ * and other callers (notifications, OneLink) still open the route.
+ */
+export function shellSkipsRouterLink(dest: Destination | null, routerOpened: boolean): boolean {
+  return routerOpened && dest !== null && dest.kind === 'route';
+}
+
 export function openShellDestination(dest: Destination): boolean {
   if (_shellDestinationSink === null) return false;
   _shellDestinationSink(dest);

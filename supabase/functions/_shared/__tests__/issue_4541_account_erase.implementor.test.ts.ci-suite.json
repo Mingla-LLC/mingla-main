@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4541_account_erase.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4541-account-erase",
+  "profile": "deno-2-unit"
+}

@@ -13,6 +13,8 @@ import type {
   BrandSiteDomains,
   StudioExchange,
 } from "../sites/contracts";
+import type { DesignOptions } from "../../../packages/site-contracts/src/designs.ts";
+import { designOptionsPayload, safeDesignOptions } from "../sites/siteLook";
 
 interface SitesSuccess<T> {
   ok: true;
@@ -293,6 +295,27 @@ export async function clearProvisionOperation(brandId: string): Promise<void> {
  */
 const UNAVAILABLE_MESSAGE = "Website tools are temporarily unavailable.";
 
+/**
+ * #4572 item 15 — a NEW site's first Go live waits while Mingla finishes a
+ * routine safety backup (Core's brand_site_first_publish_ready()). The same
+ * sentence the server sends with `reason_code: "PUBLISHING_PAUSED"`.
+ */
+export const PUBLISHING_PAUSED_TITLE = "Publishing is paused for a few minutes";
+export const PUBLISHING_PAUSED_MESSAGE =
+  "Mingla is finishing a routine safety backup. Your draft is saved and nothing is lost. Try again shortly.";
+
+/**
+ * #4572 item 15 — is this never-published site's first Go live paused? Read
+ * from Core's brand_site_publishing_paused() (the one owner, shared with the
+ * server's gate). A missing function (the migration not applied yet) or a
+ * failed read is "not paused": the server still refuses, with the same words.
+ */
+export async function getBrandSitePublishingPaused(siteId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("brand_site_publishing_paused", { p_site_id: siteId });
+  if (error) return false;
+  return data === true;
+}
+
 export const SITES_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   FORBIDDEN: "Only brand admins and owners can do this.",
   NOT_FOUND: "Mingla couldn\u2019t find this website.",
@@ -337,6 +360,9 @@ export function brandSitesErrorFrom(
   // address, too many pages) as VALIDATION_FAILED + reason_code; the reason is
   // the more useful code to show and act on.
   const reason = (failure as { reason_code?: unknown } | undefined)?.reason_code;
+  if (reason === "PUBLISHING_PAUSED") {
+    return new BrandSitesError("PUBLISHING_PAUSED", PUBLISHING_PAUSED_MESSAGE, true);
+  }
   if ((reason === "PATH_COLLISION" || reason === "PAGE_LIMIT_EXCEEDED") &&
     (status === null || status < 500)) {
     return new BrandSitesError(reason, SITES_ERROR_MESSAGES[reason]!, false);
@@ -625,6 +651,10 @@ export interface BrandSiteLook {
   design: string | null;
   tokens: unknown;
   fonts: unknown;
+  /** #4575 — Grid's cover and photos options (empty when none are set). */
+  designOptions: DesignOptions;
+  /** #4572 item 16 — the site's logo (one of its own READY photos), or null when the header shows the name. */
+  logoMediaId: string | null;
   revision: string;
 }
 
@@ -643,8 +673,32 @@ export async function getBrandSiteLook(input: { brandId: string; siteId: string 
     design: typeof settings.design === "string" ? settings.design : null,
     tokens: settings.tokens ?? null,
     fonts: settings.fonts ?? null,
+    designOptions: safeDesignOptions(settings.design_options),
+    logoMediaId: relationIdOf(settings.logo),
     revision: settings.updatedAt,
   };
+}
+
+function relationIdOf(value: unknown): string | null {
+  if (typeof value === "string" && value) return value;
+  if (value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string") return (value as { id: string }).id;
+  return null;
+}
+
+/** #4572 item 16 — the site's logo on the draft: one of its photos, or null to show the site's name (never published here). */
+export async function saveBrandSiteLogo(input: { brandId: string; siteId: string; revision: string; logoMediaId: string | null }): Promise<{ revision: string }> {
+  const data = await invoke<{ revision?: unknown }>(`/v1/sites/${input.siteId}/ari`, "POST", {
+    operation_id: operationId(),
+    action: "propose_site_settings_update",
+    brand_id: input.brandId,
+    args: {
+      brand_id: input.brandId,
+      site_id: input.siteId,
+      expected_revision: input.revision,
+      changes: { logo: input.logoMediaId },
+    },
+  });
+  return { revision: typeof data?.revision === "string" ? data.revision : input.revision };
 }
 
 /** #2829 W3 — saves the owner's exact colours and fonts to the draft (never published here). */
@@ -656,6 +710,8 @@ export async function saveBrandSiteLook(input: {
   fonts: unknown;
   /** #2829 W9a — the design, when the owner switched it. */
   design?: string;
+  /** #4575 — Grid's options, only when the owner changed them (an older app never sends them, so they are kept). */
+  designOptions?: DesignOptions;
 }): Promise<{ revision: string }> {
   const data = await invoke<{ revision?: unknown }>(`/v1/sites/${input.siteId}/ari`, "POST", {
     operation_id: operationId(),
@@ -669,6 +725,7 @@ export async function saveBrandSiteLook(input: {
         tokens: input.tokens,
         fonts: input.fonts,
         ...(input.design ? { design: input.design } : {}),
+        ...(input.designOptions !== undefined ? { design_options: designOptionsPayload(input.designOptions) } : {}),
       },
     },
   });

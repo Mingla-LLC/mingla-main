@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Kò ṣeé yọ. Gbìyànjú lẹ́ẹ̀kan sí i.",
   "brand_guests_leave_title": "Fi Àwọn àlejò {{brand}} sílẹ̀?",
   "brand_guests_leave_body": "Ìforúkọsílẹ̀ tuntun kò ní fi ọ́ kún un mọ́. O lè padà wọlé láti inú ìforúkọsílẹ̀ rẹ.",
-  "brand_guests_left_toast": "O ti fi Àwọn àlejò {{brand}} sílẹ̀. O lè padà wọlé láti inú ìforúkọsílẹ̀ rẹ."
+  "brand_guests_left_toast": "O ti fi Àwọn àlejò {{brand}} sílẹ̀. O lè padà wọlé láti inú ìforúkọsílẹ̀ rẹ.",
+  "af_send_yourself_title": "Send it yourself too",
+  "af_send_yourself_body": "A message from you lands best. Same link as our text.",
+  "af_copy_message": "Copy message",
+  "af_message_copied": "Message copied"
 }

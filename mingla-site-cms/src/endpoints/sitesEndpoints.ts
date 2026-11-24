@@ -28,11 +28,15 @@ import {
 import { presignedGet, readObject, writeObject } from "../lib/objectStore";
 import {
   applyStudioMediaSelection,
+  applyStudioSettingsSelection,
+  assertStudioSettingsPhoto,
+  studioSettingsTargets,
   studioMediaTargets,
 } from "../lib/studioMediaSelection";
 import { base64url } from "../lib/crypto";
 import { cmsConfig } from "../lib/config";
 import { businessPreviewFrameAncestor } from "../lib/origins";
+import { previewRefusalResponse } from "../lib/previewRefusal";
 import { sitesJsonResponse } from "../lib/http";
 import {
   emitCmsObservation,
@@ -65,7 +69,7 @@ import {
   isHomePage,
   tenantPagePaths,
 } from "../lib/pageTree";
-import { DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
+import { assertDesignOptions, DESIGN_KEYS, type DesignKey } from "../contracts/generated/designs.ts";
 import { previewPagePath } from "../lib/previewPath";
 import { buildPreviewSections, MAX_PREVIEW_SECTIONS_BYTES, previewSectionsKey } from "../contracts/generated/previewSections.ts";
 import { reportPreviewBuilt } from "../lib/previewBuiltReport";
@@ -110,6 +114,72 @@ function logMaskedFailure(error: unknown): void {
   console.error(maskedFailureLine(error));
 }
 
+/*
+ * #4572 item 1 — one sentence per refusal code, so a host is told what really
+ * happened. Only SERVICE_TEMPORARILY_UNAVAILABLE says "Website tools are
+ * temporarily unavailable." (INVARIANT sites-safe-failure-named-copy, pinned by
+ * safeFailureCopy.issue4572.test.ts).
+ */
+export const GENERIC_FAILURE_MESSAGE = "Website tools are temporarily unavailable.";
+export const SAFE_FAILURE_COPY: Readonly<Record<string, { message: string; retryable: boolean }>> = {
+  REVISION_CONFLICT: { message: "Your draft changed since you opened it. Refresh to see the latest.", retryable: true },
+  FORBIDDEN: { message: "You don't have access to this website. Ask the brand's owner to add you.", retryable: false },
+  NOT_FOUND: { message: "We couldn't find that. It may have been removed. Refresh and try again.", retryable: false },
+  VALIDATION_FAILED: { message: "Something in that change isn't valid. Check it and try again.", retryable: false },
+  INVALID_STATE: { message: "That can't be done right now. Refresh and try again.", retryable: true },
+  SESSION_EXPIRED: { message: "Your session ended. Open your website again from Mingla.", retryable: false },
+  IDEMPOTENCY_CONFLICT: { message: "That was already sent with different details. Refresh and try again.", retryable: false },
+  PAGE_LIMIT_EXCEEDED: { message: "Your website has the most pages it can hold. Remove one to add another.", retryable: false },
+  PATH_COLLISION: { message: "Another page already uses that address. Choose a different one.", retryable: false },
+  ROUTE_COLLISION: { message: "Another page already uses that address. Choose a different one.", retryable: false },
+  DESIGN_CHECKS_REQUIRED: { message: "We're still checking your design. Try publishing again in a minute.", retryable: true },
+  STREAM_VIDEO_UNAVAILABLE: { message: "Video streaming is off for now. Upload the video as a file instead.", retryable: false },
+  PUBLISH_FAILED_LAST_GOOD_PRESERVED: { message: "Publishing didn't finish. Your live website hasn't changed. Try again.", retryable: true },
+  /*
+   * #2830 — say what is accepted, and do not call a video an image. A
+   * rejection that names no requirement is a dead end.
+   */
+  MEDIA_REJECTED: { message: "That file could not be accepted. Images must be JPEG, PNG or WebP under 20 MB; video must be MP4 (H.264, fast start) up to 50 MB.", retryable: false },
+  MEDIA_PROCESSING: { message: "That file is still being checked. Try again in a moment.", retryable: true },
+  // #4572 QA P2-3 — the logo and social image must be photos.
+  MEDIA_NOT_A_PHOTO: { message: "The logo and social image must be a photo (JPEG, PNG or WebP). Choose a photo instead.", retryable: false },
+  // #2829 W11 (A11) — say where removed media is still used.
+  MEDIA_IN_USE_DRAFT: { message: "This is still used in your draft website. Take it off the page or entry that uses it, then remove it.", retryable: false },
+  MEDIA_IN_USE_LIVE: { message: "Your live website (or a version you can restore) still shows this. Publish a version without it, then remove it.", retryable: false },
+  // #4453 PR 2 — the booking lock (D5).
+  OUTBOUND_ACTION_LINK: { message: OUTBOUND_ACTION_LINK_MESSAGE, retryable: false },
+  BOOKING_LINK_UNVERIFIED: { message: BOOKING_LINK_UNVERIFIED_MESSAGE, retryable: true },
+  UNREVIEWED_SECTIONS: { message: UNREVIEWED_SECTIONS_MESSAGE, retryable: false },
+  SERVICE_TEMPORARILY_UNAVAILABLE: { message: GENERIC_FAILURE_MESSAGE, retryable: true },
+};
+
+/** The sentence and retry hint for one refusal code (unknown codes read as the service failure). */
+export function safeFailureCopy(code: string): { message: string; retryable: boolean } {
+  return SAFE_FAILURE_COPY[code] ?? SAFE_FAILURE_COPY.SERVICE_TEMPORARILY_UNAVAILABLE!;
+}
+
+/** The refusal code safeFailure would send (unknown errors are logged and read as the service failure). */
+export function safeFailureCode(error: unknown): string {
+  const value = error instanceof Error && error.name === "ValidationError" ? "VALIDATION_FAILED" : error instanceof Error ? error.message : "";
+  if (value in SAFE_FAILURE_COPY && value !== "SERVICE_TEMPORARILY_UNAVAILABLE") return value;
+  logMaskedFailure(error);
+  return "SERVICE_TEMPORARILY_UNAVAILABLE";
+}
+
+function previewDraftRefusal(req: PayloadRequest, error: unknown): Response {
+  let fa: string | null = null;
+  try {
+    fa = new URL(req.url || "http://local").searchParams.get("fa");
+  } catch {
+    fa = null;
+  }
+  return previewRefusalResponse(safeFailureCode(error), [
+    cmsConfig().businessOrigin,
+    cmsConfig().cmsOrigin,
+    businessPreviewFrameAncestor(fa),
+  ]);
+}
+
 function safeFailure(error: unknown, returnUrl?: string) {
   // #2829 W2 — Studio's field-level refusals (e.g. the page tree) are a
   // validation failure to every caller that is not Studio's own form.
@@ -126,6 +196,7 @@ function safeFailure(error: unknown, returnUrl?: string) {
       "SESSION_EXPIRED",
       "MEDIA_REJECTED",
       "MEDIA_PROCESSING",
+      "MEDIA_NOT_A_PHOTO",
       "PUBLISH_FAILED_LAST_GOOD_PRESERVED",
       "IDEMPOTENCY_CONFLICT",
       // #2829 — a named refusal, never a truncated site.
@@ -145,6 +216,8 @@ function safeFailure(error: unknown, returnUrl?: string) {
       // #2829 W11 (A11) — media removal refused: where it is still used.
       "MEDIA_IN_USE_DRAFT",
       "MEDIA_IN_USE_LIVE",
+      // #4572 item 1 — a missing record is its own refusal, not an outage.
+      "NOT_FOUND",
     ].includes(error.message)
       ? error.message
       : "SERVICE_TEMPORARILY_UNAVAILABLE";
@@ -154,36 +227,8 @@ function safeFailure(error: unknown, returnUrl?: string) {
       ok: false,
       error: {
         code,
-        message:
-          code === "MEDIA_REJECTED"
-            /*
-             * #2830 — say what is accepted, and do not call a video an image.
-             *
-             * This copy said "That image could not be accepted." for every
-             * rejection. Video uploads were refused with it while the pipeline
-             * behind the gate was fully capable of video, and the message sent
-             * whoever hit it looking for a problem with their picture. A
-             * rejection that names no requirement is a dead end.
-             */
-            ? "That file could not be accepted. Images must be JPEG, PNG or WebP under 20 MB; video must be MP4 (H.264, fast start) up to 50 MB."
-            // #2829 W11 (A11) — say where removed media is still used.
-            : code === "MEDIA_IN_USE_DRAFT"
-              ? "This is still used in your draft website. Take it off the page or entry that uses it, then remove it."
-              : code === "MEDIA_IN_USE_LIVE"
-                ? "Your live website (or a version you can restore) still shows this. Publish a version without it, then remove it."
-                // #4453 PR 2 — the booking lock (D5).
-                : code === "OUTBOUND_ACTION_LINK"
-                  ? OUTBOUND_ACTION_LINK_MESSAGE
-                  : code === "BOOKING_LINK_UNVERIFIED"
-                    ? BOOKING_LINK_UNVERIFIED_MESSAGE
-                  : code === "UNREVIEWED_SECTIONS"
-                    ? UNREVIEWED_SECTIONS_MESSAGE
-                  : "Website tools are temporarily unavailable.",
-        retryable: [
-          "MEDIA_PROCESSING",
-          "SERVICE_TEMPORARILY_UNAVAILABLE",
-          "BOOKING_LINK_UNVERIFIED",
-        ].includes(code),
+        message: safeFailureCopy(code).message,
+        retryable: safeFailureCopy(code).retryable,
         ...(returnUrl ? { return_url: returnUrl } : {}),
         // #4453 PR 2 — which buttons to change (page, block, field; never the link itself).
         ...(error instanceof OutboundActionLinkError
@@ -205,7 +250,9 @@ function safeFailure(error: unknown, returnUrl?: string) {
     },
     code === "FORBIDDEN" || code === "SESSION_EXPIRED"
       ? 403
-      : code === "SERVICE_TEMPORARILY_UNAVAILABLE"
+      : code === "NOT_FOUND"
+        ? 404
+        : code === "SERVICE_TEMPORARILY_UNAVAILABLE"
         ? 503
         : 409,
   );
@@ -949,7 +996,7 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
     }
     const mediaScoped = studioMediaGrantRequest(request);
     const tenantWhere = { tenant: { equals: session.tenant_id } };
-    const [pages, media] = await Promise.all([
+    const [pages, media, settings] = await Promise.all([
       findAllTenantPages(request, session.tenant_id)
         .then((docs) => ({ docs })),
       req.payload.find({
@@ -962,6 +1009,16 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
         sort: "-updatedAt",
         where: tenantWhere,
       }),
+      // #4572 item 16 — the logo and social image are places a photo can go too.
+      req.payload.find({
+        collection: "site-settings",
+        overrideAccess: false,
+        req: request,
+        draft: true,
+        depth: 0,
+        limit: 1,
+        where: tenantWhere,
+      }).then((result) => result.docs[0] ?? null),
     ]);
     // #2829 W11 (A11) — "in use" is the same full scan removal checks
     // (every page, content entry, setting, navigation and footer field), so
@@ -988,7 +1045,7 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
               ? item.recovery_until
               : null,
         })),
-        targets: studioMediaTargets(pages.docs),
+        targets: [...studioSettingsTargets(settings), ...studioMediaTargets(pages.docs)],
         close_url: "/admin/collections/pages",
       },
     });
@@ -1038,6 +1095,7 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
     const { request } = await requireAuthenticatedStudioRequest(req);
     const body = await objectBody(req);
     const mediaId = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
+    if (body.scope === "site_settings") return await studioSettingsAttach(req, request, body, mediaId);
     const { page, media } = await loadStudioMediaAttachRecords(
       request,
       String(body.page_id || ""),
@@ -1080,6 +1138,57 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
   } catch (error) {
     return safeFailure(error);
   }
+}
+
+/** #4572 item 16 — a READY photo as the site's logo or social image (draft); a stale revision is refused. */
+async function studioSettingsAttach(
+  req: PayloadRequest,
+  request: PayloadRequest,
+  body: Record<string, unknown>,
+  mediaId: string,
+): Promise<Response> {
+  const [settings, media] = await Promise.all([
+    req.payload.findByID({
+      collection: "site-settings",
+      id: String(body.page_id || ""),
+      overrideAccess: false,
+      req: request,
+      draft: true,
+      depth: 0,
+    }),
+    req.payload.findByID({
+      collection: "media",
+      id: mediaId,
+      overrideAccess: false,
+      req: studioMediaGrantRequest(request),
+      depth: 0,
+    }),
+  ]);
+  if (media.state !== "READY") throw new Error("MEDIA_PROCESSING");
+  assertStudioSettingsPhoto(media);
+  const data = applyStudioSettingsSelection(settings, String(media.id), {
+    expectedRevision: String(body.expected_revision || ""),
+    field: body.field,
+  });
+  const updated = await req.payload.update({
+    collection: "site-settings",
+    id: settings.id,
+    overrideAccess: false,
+    req: request,
+    draft: true,
+    depth: 0,
+    data: data as never,
+  });
+  return json({
+    ok: true,
+    data: {
+      page_id: String(updated.id),
+      media_id: String(media.id),
+      draft_revision: String(updated.updatedAt ?? ""),
+      state: 8,
+      return_url: `/admin/collections/site-settings/${encodeURIComponent(String(updated.id))}`,
+    },
+  });
 }
 
 async function mediaTombstone(req: PayloadRequest): Promise<Response> {
@@ -1596,6 +1705,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
         "radius",
         "button_shape",
         "motion",
+        // #4575 — Grid's cover and photos options (validated below).
+        "design_options",
         "seo_title",
         "seo_description",
         "social_image",
@@ -1605,6 +1716,13 @@ async function ari(req: PayloadRequest): Promise<Response> {
         Object.keys(changes).some((key) => !allowed.has(key))
       )
         throw new Error("VALIDATION_FAILED");
+      if (changes.design_options !== undefined) {
+        try {
+          assertDesignOptions(changes.design_options);
+        } catch {
+          throw new Error("VALIDATION_FAILED");
+        }
+      }
       const updated = await req.payload.update({
         collection: "site-settings",
         id: settings.id,
@@ -1850,7 +1968,8 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       },
     });
   } catch (error) {
-    return safeFailure(error);
+    // #4572 item 1 — the frame gets a page, never the JSON envelope.
+    return previewDraftRefusal(req, error);
   }
 }
 

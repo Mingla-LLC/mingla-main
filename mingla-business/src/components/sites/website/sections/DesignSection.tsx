@@ -5,10 +5,10 @@ import { Card, CardTitle, Chip, Hint, Segmented, SectionHead, Skeleton, Toggle, 
 import { WebsiteIcon } from "../WebsiteIcon";
 import { PhotoChooser } from "../PhotoField";
 import { useFontSpecimens } from "../fontPreview";
-import { useBrandSiteLook, useSaveBrandSiteLook } from "../../../../hooks/useBrandSite";
+import { useBrandSiteLook, useSaveBrandSiteLogo, useSaveBrandSiteLook } from "../../../../hooks/useBrandSite";
 import { useBrand, useUpdateBrand } from "../../../../hooks/useBrands";
 import { joinBrandDescription } from "../../../../services/brandMapping";
-import { useFontSearch, useSetSiteCover, useSiteCover } from "../../../../sites/contentApi";
+import { useFontSearch, useMediaLibrary, useSetSiteCover, useSiteCover } from "../../../../sites/contentApi";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,6 +20,7 @@ import {
   designFor,
   designSwatches,
   type DesignDefinition,
+  type DesignOptions,
 } from "../../../../../../packages/site-contracts/src/designs.ts";
 import {
   resolveTokens,
@@ -31,6 +32,7 @@ import { readabilityWarnings } from "../../../../../../packages/site-contracts/s
 import { THEME_FONT_SLUGS } from "../../../../../../packages/offering-rendering/designTokens";
 import {
   restoreColours,
+  safeDesignOptions,
   safeFontOverrides,
   safeTokenOverrides,
   setSwatch,
@@ -105,6 +107,8 @@ export function DesignSection(): React.ReactElement {
   const [designKey, setDesignKey] = useState<string | null>(null);
   const [tokens, setTokens] = useState<OwnerTokenOverrides | null>(null);
   const [fonts, setFonts] = useState<OwnerFontOverrides | null>(null);
+  // #4575 — Grid's options; null = as stored.
+  const [designOptions, setDesignOptions] = useState<DesignOptions | null>(null);
   const [alsoMingla, setAlsoMingla] = useState(false);
   const readOnly = lock.heldByOther;
 
@@ -113,11 +117,15 @@ export function DesignSection(): React.ReactElement {
   const design: DesignDefinition = designFor(designKey) ?? storedDesign;
   const currentTokens = tokens ?? safeTokenOverrides(stored?.tokens);
   const currentFonts = fonts ?? safeFontOverrides(stored?.fonts);
+  const storedOptions = safeDesignOptions(stored?.designOptions);
+  const currentOptions = designOptions ?? storedOptions;
+  const optionsChanged = JSON.stringify(safeDesignOptions(currentOptions)) !== JSON.stringify(storedOptions);
   const resolved = useMemo(() => resolveTokens(design.tokens, currentTokens), [design, currentTokens]);
   const dirty = stored !== undefined && (
     (designKey !== null && designKey !== storedDesign.key) ||
     JSON.stringify(currentTokens) !== JSON.stringify(safeTokenOverrides(stored.tokens)) ||
     JSON.stringify(currentFonts) !== JSON.stringify(safeFontOverrides(stored.fonts)) ||
+    optionsChanged ||
     alsoMingla
   );
 
@@ -138,6 +146,7 @@ export function DesignSection(): React.ReactElement {
     setDesignKey(null);
     setTokens(null);
     setFonts(null);
+    setDesignOptions(null);
     setAlsoMingla(false);
   };
 
@@ -145,7 +154,7 @@ export function DesignSection(): React.ReactElement {
     if (!stored) return;
     const familyOf = (slot: LookFontSlot) => slotFamily(design, currentFonts, slot);
     save.mutate(
-      { revision: stored.revision, tokens: currentTokens, fonts: currentFonts, ...(designKey ? { design: designKey } : {}) },
+      { revision: stored.revision, tokens: currentTokens, fonts: currentFonts, ...(designKey ? { design: designKey } : {}), ...(optionsChanged ? { designOptions: currentOptions } : {}) },
       {
         onSuccess: async () => {
           if (alsoMingla && brand.data && controller.user?.id) {
@@ -213,7 +222,9 @@ export function DesignSection(): React.ReactElement {
     <View testID="website-design">
       <SectionHead ref={headingRef} phone={phone} title="Website design" subtitle="Any colour and any Google font. We point out text that's hard to read, but we never change your choices." />
       <DesignCard design={design} onChoose={chooseDesign} disabled={readOnly} />
+      <DesignOptionsCard design={design} options={currentOptions} onOptions={setDesignOptions} disabled={readOnly} />
       <CoverCard disabled={readOnly} />
+      <LogoCard brandId={brandId} siteId={siteId} logoMediaId={stored.logoMediaId} revision={stored.revision} disabled={readOnly} />
       <ColoursCard
         design={design}
         resolved={resolved}
@@ -328,7 +339,13 @@ export function CoverCard({ disabled }: { disabled: boolean }): React.ReactEleme
       <CardTitle>Cover</CardTitle>
       <Hint style={styles.cardHint}>The big photo or video at the top of your home page. Videos play muted, on a loop, with a pause button; phones in low-data or reduced-motion mode see a still frame.</Hint>
       {cover.isLoading ? <Skeleton height={140} /> : !data?.available ? (
-        <Hint>Your home page has no cover section. Add one in the page editor.</Hint>
+        // #4572 item 8 (D4) — the truth, with a way forward: a photo makes the colour panel a cover.
+        <View style={styles.coverRow} testID="design-cover-colour-panel">
+          <Hint>Your home page opens with a colour panel. Add a photo, and a video if you like, to make it a cover.</Hint>
+          <View style={styles.coverActions}>
+            <WButton label="Add a cover" icon="image" variant="primary" size="sm" onPress={() => setChoosing("image")} disabled={disabled || setCover.isPending || !data?.revision} testID="cover-add" />
+          </View>
+        </View>
       ) : (
         <View style={styles.coverRow}>
           <View style={styles.coverSlot}>
@@ -359,7 +376,57 @@ export function CoverCard({ disabled }: { disabled: boolean }): React.ReactEleme
           const kind = choosing;
           setChoosing(null);
           if (kind === "video") apply({ videoMediaId: picked.id }, "Cover video saved to your draft.");
-          else apply({ photoMediaId: picked.id }, "Cover photo saved to your draft.");
+          else apply({ photoMediaId: picked.id }, data?.available === false ? "Cover added to the top of your home page." : "Cover photo saved to your draft.");
+        }}
+      />
+    </Card>
+  );
+}
+
+/**
+ * #4572 item 16 — the site's logo: one of its photos in the header, or the
+ * site's name when there is none. Saved to the draft; the preview reads it again.
+ */
+export function LogoCard({ brandId, siteId, logoMediaId, revision, disabled }: {
+  brandId: string;
+  siteId: string | null;
+  logoMediaId: string | null;
+  revision: string;
+  disabled: boolean;
+}): React.ReactElement {
+  const ctx = useWebsite();
+  const save = useSaveBrandSiteLogo(brandId, siteId);
+  const library = useMediaLibrary(siteId, logoMediaId !== null);
+  const [choosing, setChoosing] = useState(false);
+  const current = logoMediaId ? library.data?.find((item) => item.id === logoMediaId) ?? null : null;
+  const apply = (next: string | null) => {
+    save.mutate({ revision, logoMediaId: next }, {
+      onSuccess: () => ctx.toast(next ? "Logo saved to your draft." : "Logo removed. Your header shows your site’s name.", "success"),
+      onError: (error) => ctx.toast(error instanceof BrandSitesError ? error.message : "Your logo didn’t save. Try again.", "error"),
+    });
+  };
+  return (
+    <Card testID="design-logo">
+      <CardTitle>Logo</CardTitle>
+      <Hint style={styles.cardHint}>Shown in your website’s header. Without one, the header shows your site’s name. Check it on light and dark parts of the preview.</Hint>
+      <View style={styles.coverRow}>
+        <View style={[styles.coverSlot, styles.logoSlot]} testID={logoMediaId ? "design-logo-set" : "design-logo-none"}>
+          {current?.thumb_url ? <Image source={{ uri: current.thumb_url }} style={StyleSheet.absoluteFill} resizeMode="contain" accessibilityLabel="Your logo" /> : null}
+          {logoMediaId ? null : <><WebsiteIcon name="image" size={24} color={ui.t3} /><Text style={styles.coverEmpty}>No logo · your site’s name is shown</Text></>}
+        </View>
+        <View style={styles.coverActions}>
+          <WButton label={logoMediaId ? "Replace logo" : "Choose a logo"} icon="image" size="sm" variant={logoMediaId ? "secondary" : "primary"} onPress={() => setChoosing(true)} disabled={disabled || save.isPending} testID="logo-choose" />
+          {logoMediaId ? (
+            <WButton label="Remove logo" variant="ghost" size="sm" onPress={() => apply(null)} disabled={disabled} loading={save.isPending} testID="logo-remove" />
+          ) : null}
+        </View>
+      </View>
+      <PhotoChooser
+        visible={choosing}
+        onClose={() => setChoosing(false)}
+        onPick={(picked) => {
+          setChoosing(false);
+          apply(picked.id);
         }}
       />
     </Card>
@@ -634,6 +701,59 @@ function FontPicker({ slot, current, onPick }: { slot: OwnerFontSlot; current: s
   );
 }
 
+/**
+ * #4575 — the design's own options (only Grid offers any): the top of every
+ * page (the index sheet or a full-screen photo) and the photos (as designed,
+ * full colour, or black and white). "Index sheet" and "As designed" store
+ * nothing, so a site that never picks one publishes exactly as before.
+ */
+export function DesignOptionsCard({ design, options, onOptions, disabled }: {
+  design: DesignDefinition;
+  options: DesignOptions;
+  onOptions: (next: DesignOptions) => void;
+  disabled: boolean;
+}): React.ReactElement | null {
+  if (!design.options?.length) return null;
+  const pick = (key: keyof DesignOptions, value: string, unset: string) => {
+    const next: DesignOptions = { ...options };
+    if (value === unset) delete next[key];
+    else (next as Record<string, string>)[key] = value;
+    onOptions(next);
+  };
+  return (
+    <Card testID="design-options">
+      <CardTitle>Grid options</CardTitle>
+      {design.options.includes("cover") ? (
+        <View style={styles.shapeRow}>
+          <Text style={styles.fieldLabel}>Top of the page</Text>
+          <Segmented
+            label="Top of the page"
+            options={[{ value: "index", label: "Index sheet" }, { value: "full", label: "Full-screen photo" }]}
+            value={options.cover ?? "index"}
+            onChange={(value) => pick("cover", value, "index")}
+            disabled={disabled}
+            testIDPrefix="option-cover"
+          />
+        </View>
+      ) : null}
+      {design.options.includes("photos") ? (
+        <View style={styles.shapeRow}>
+          <Text style={styles.fieldLabel}>Photos</Text>
+          <Segmented
+            label="Photos"
+            options={[{ value: "design", label: "As designed" }, { value: "colour", label: "Full colour" }, { value: "mono", label: "Black and white" }]}
+            value={options.photos ?? "design"}
+            onChange={(value) => pick("photos", value, "design")}
+            disabled={disabled}
+            testIDPrefix="option-photos"
+          />
+        </View>
+      ) : null}
+      <Text style={styles.help}>Full-screen photo opens every page on its top photo across the whole screen, with a black menu bar and the grid drawn over your photos. As designed means full colour with the full-screen photo, black and white without it.</Text>
+    </Card>
+  );
+}
+
 export function ShapeRow({ label, field, options, tokens, onTokens, disabled }: {
   label: string;
   field: "button_shape" | "radius" | "motion" | "heading_case";
@@ -704,6 +824,7 @@ const styles = StyleSheet.create({
   coverChipText: { color: color.text1, fontSize: 12, fontWeight: "600" },
   coverEmpty: { color: ui.t3, fontSize: 13 },
   coverActions: { minWidth: 200, gap: 8 },
+  logoSlot: { minHeight: 96, justifyContent: "center", alignItems: "center" },
   groupName: { marginTop: 16, marginBottom: 4, fontSize: 12, fontWeight: "600", color: ui.t3 },
   swatchRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
   swatch: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: color.lineStrong, overflow: "hidden" },

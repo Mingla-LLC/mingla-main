@@ -81,7 +81,12 @@ export function PeopleField({
   // #4398: one person only (a card's owner, or its watcher). Picking someone
   // else changes the person instead of adding a second; the box says Change.
   single = false,
+  // #4420 rework 3 (G8): keep the pick list inside the field's width (a
+  // narrow side panel must not scroll sideways).
+  fitMenu = false,
 }) {
+  // #4420 G8: a fitted list stays inside the field; otherwise it may grow to 24rem.
+  const menuWidth = fitMenu ? "w-full max-w-full" : "w-[max(100%,17rem)] max-w-[min(24rem,calc(100vw-2.5rem))]";
   const autoId = useId();
   const id = givenId || `people-${autoId.replace(/:/g, "")}`;
   const listId = `${id}-list`;
@@ -128,8 +133,10 @@ export function PeopleField({
     if (r.refused) { tell(r.refused); return; }
     if (r.value.length !== emails.length) { tell(""); onChange?.(r.value, { added: email }); }
   };
+  // #4571: minWords may name the person ("Ada is the last owner. ...").
+  const minText = (email) => (typeof minWords === "function" ? minWords(known(email)) : minWords);
   const remove = (email) => {
-    const r = removePerson(emails, email, min, minWords);
+    const r = removePerson(emails, email, min, minText(email));
     if (r.refused) { tell(r.refused); return; }
     tell("");
     onChange?.(r.value, { removed: email });
@@ -147,7 +154,7 @@ export function PeopleField({
     if (event.key === "Backspace" && query) return;
     if (event.key !== "Backspace" || emails.length) event.preventDefault();
     if (event.key === "Escape" && !open) return;
-    const next = fieldKey({ open, hi }, event.key, { options, value: emails, query, min, minWords });
+    const next = fieldKey({ open, hi }, event.key, { options, value: emails, query, min, minWords: minText(emails[emails.length - 1]) });
     setOpen(next.state.open);
     setHi(next.state.hi);
     if (next.refused) tell(next.refused, next.refused === invitedWords(options[hi]) ? options[hi] : null);
@@ -208,13 +215,14 @@ export function PeopleField({
           placeholder={placeholder || (single ? (picked.length ? "Change" : "Pick one person") : picked.length ? "Add someone" : "Type a name")}
           onFocus={() => setOpen(true)}
           onClick={() => setOpen(true)}
-          onChange={(event) => { setQuery(event.target.value); setOpen(true); setHi(0); }}
+          // #4571 rework: typing moves on, so a refusal ("the last owner") clears.
+          onChange={(event) => { setQuery(event.target.value); setOpen(true); setHi(0); if (message) tell(""); }}
           onKeyDown={onKeyDown}
           className="min-h-8 min-w-[8rem] flex-1 border-0 bg-transparent px-1.5 text-[13px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)]"
         />
       </div>
       {open && !locked && (
-        <div id={listId} role="listbox" aria-label={`${label}: pick from the team`} className="absolute left-0 top-full z-30 mt-1.5 max-h-[300px] w-[max(100%,17rem)] max-w-[min(24rem,calc(100vw-2.5rem))] overflow-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]">
+        <div id={listId} role="listbox" aria-label={`${label}: pick from the team`} className={`absolute left-0 top-full z-30 mt-1.5 max-h-[300px] overflow-auto ${menuWidth} rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]`}>
           {groups.suggested.length > 0 && <div role="presentation" className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Suggested</div>}
           {groups.suggested.map((p, i) => row(p, i))}
           {groups.everyone.length > 0 && <div role="presentation" className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Everyone</div>}

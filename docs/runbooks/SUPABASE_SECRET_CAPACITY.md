@@ -25,18 +25,19 @@ response into GitHub, chat, logs, artifacts, or this file.
 - Review names monthly. Escalate an expired, unexpected, missing, duplicate, or consumerless
   name immediately regardless of the count.
 
-The pull-request audit validates the exact 91-name target manifest offline. The scheduled/manual
+The pull-request audit validates the exact 90-name target manifest offline. The scheduled/manual
 workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
 runtime and emits sorted names/reasons/counts, never raw CLI output. If that separately
 authorized credential is missing, the scheduled/manual workflow emits an error and fails; a
 green skipped live audit is forbidden.
 
 `supabase/secrets.manifest.json` is in `enforced` / `complete` mode. The live audit accepts only
-the exact 91-name manifest set and applies the 87/91 ceilings. Slot 88 is the sole time-bounded,
+the exact 90-name manifest set and applies the 87/91 ceilings. Slot 88 is the sole time-bounded,
 founder-approved issue #2830 exception; its live value remains separately gated. Slot 89 is
 `SPRINT_ROLLOVER_TOKEN` (#3980, see below); it adds no exception record and runs inside the same
 #2830 window. Slot 90 is `STRIPE_RAK_PAYOUT_RELEASE_LIVE` (#3645, see below). Slot 91 is
-`GOOGLE_SEEDING_API_KEY` (#4276, see below), the final absolute-ceiling name. The historical `transition` /
+`GOOGLE_SEEDING_API_KEY` (#4276, see below). #4334 unset the retired map-vendor token (see
+below), so the declared set is 90 and one slot under the absolute ceiling is unfilled. The historical `transition` /
 `pre_rollout` mode remains test-covered solely to prove the original #1203 consolidation math; it
 is not an authorized production state.
 
@@ -93,6 +94,15 @@ The normal ceiling stays 87; the absolute ceiling moves from 90 to 91. The decla
 exactly 91, the #2241 migration band stays empty, and any 92nd name is an unconditional breach.
 The #2830 exception is unchanged and remains the sole current exception authorizing operation
 above the normal 87-name ceiling through its recorded expiry.
+
+### #4334: the retired map-vendor token leaves the manifest (90 names)
+
+#4334: count 90 approved by Seth Ogieva on 2026-11-20 in chat. The retired map-vendor geocoding
+token has no reader after #4334 moved every address surface to Google, so its manifest row is
+removed and the live secret is unset straight after the recording pull request merges. The 87/91
+ceilings do not move. The declared set is now exactly 90, the #2241 migration band stays empty,
+and the readiness gate refuses any undeclared live name, so the unfilled slot 91 admits nothing
+without a new approved manifest row. The #2830 exception is unchanged.
 
 ## Ownership and secure re-entry
 
@@ -179,7 +189,7 @@ after all 19 pass may the bundle be transformed value-blindly to exact schema v3
 Paystack field false and all six pre-existing controls unchanged. Activation is a separate
 post-#1845 operation.
 
-### #2241 exact-91 readiness reconciliation
+### #2241 exact-90 readiness reconciliation
 
 `supabase/function-env.contract.json` is the checked inventory for every production Edge
 function. Run `audit-function-secret-contract.mjs` before any deploy; it follows recursive
@@ -206,10 +216,10 @@ the complete authoritative object(s) supplied in the same process: `--ad-input <
 an AD reader, `--delivery-input <0600-path>` for the checkout delivery reader, and
 `--google-input <0600-path>` for a Calendar or Drive reader, alongside
 the explicit `--function`, `--project-ref`, and `--merged-commit` arguments. Before its first
-apply or deploy, that route requires value-blind live-name parity: every one of the 91 declared
+apply or deploy, that route requires value-blind live-name parity: every one of the 90 declared
 names must be live and no extra name is tolerated. Any other live name fails `unexpected:`; any
-absent declared name fails `missing:`. Normal and remediation modes both require exact 91-name
-parity; the migration band is empty at the absolute ceiling.
+absent declared name fails `missing:`. Normal and remediation modes both require exact 90-name
+parity; the migration band is empty.
 It then applies the complete object, creates and consumes the protected in-memory receipt, runs
 the later function-readiness preflight, deploys only the selected functions with `--use-api`, and
 verifies source/JWT parity. A receipt file, receipt CLI argument, receipt environment variable,
@@ -251,9 +261,9 @@ credential as a substitute for continuity.
 
 The remediation is valid only from the exact clean merged commit that current remote `main`
 reports via `git ls-remote` (a stale local tracking ref is not authority), within 72 hours, against
-production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 91-name manifest. The
+production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 90-name manifest. The
 migration band narrowed from five names to two on 2026-09-02, to one on 2026-10-21 (#3980), and
-to empty when #3645 consumed the then-final slot; it stays empty at #4276's slot 91. Its recursive
+to empty when #3645 consumed the then-final slot; it stays empty at #4276's slot 91 and at #4334's 90 names. Its recursive
 deploy set is exactly:
 
 `brand-paystack-onboard`, `brand-stripe-onboard`, `payout-release-sweep`, `marketing-send`,
@@ -264,7 +274,7 @@ deploy set is exactly:
 `attendance-claim-link`, `claim-attendance`, `attendance-claim-backfill`,
 `competitor-intel-worker`, and `resend-webhook`.
 
-The coordinator first proves exact value-blind 91-name remediation parity; mismatch permits zero
+The coordinator first proves exact value-blind 90-name remediation parity; mismatch permits zero
 apply or deploy calls. It then applies the reconstructed complete AD object. A same-run applied AD receipt
 and a prepared-transition receipt for the exact preserved delivery-v3 → v4 candidate authorize
 that one 23-function deploy. It downloads each deployed function, recursively follows relative
@@ -294,7 +304,7 @@ closed the migration band instead of authorizing a 91st name; #4276's approved s
 reopen it. Do not invoke
 `attendance-claim-backfill` as a smoke: it sends claim deliveries in batches of up to 50. Stop on
 any fallback or invalid-bundle diagnostic or failed smoke. Then run the exact names-only audit and
-manually dispatch the credential-backed workflow; both must execute and report exact 91 parity.
+manually dispatch the credential-backed workflow; both must execute and report exact 90 parity.
 
 Rollback before any unset restores the prior complete bundle from its authoritative source.
 After an unset, restore that exact direct name first from its approved source, verify the fallback
@@ -319,9 +329,10 @@ authorize a secret, provider, or operational-boolean change.
    exit the locked order is: `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`,
    `PAYOUT_HOLD_ONBOARD_FLIP`, then `NOTIFICATION_RECIPIENT_HMAC_SECRET`.
 6. Run the exact names-only audit. After the #1770 approved standalone pepper, the enforced
-   pre-Sites state is exactly 87 user-managed names. The approved repository target is exactly 91
-   names: the #2830 slot-88 exception, #3980 slot 89, #3645 slot 90, and #4276 slot 91. Supabase
-   still reports 9 provider-capacity slots, but repository policy authorizes none above 91; no
+   pre-Sites state is exactly 87 user-managed names. The approved repository target is exactly 90
+   names: #4334 unset the retired map-vendor token from the pre-Sites set, then the #2830 slot-88
+   exception, #3980 slot 89, #3645 slot 90, and #4276 slot 91 were added. Supabase
+   still reports 10 provider-capacity slots, but repository policy authorizes none above 91; no
    other missing or unexpected name is allowed.
 7. Merge repository truth only after live truth exists and independent testing passes. Removing
    compatibility code requires a separate reviewed issue.
@@ -372,7 +383,7 @@ Seth approved (2026-09-15) putting a working "Manage or cancel" link in venue bo
 emails. The link's token is `<kid>.` + base64url(HMAC-SHA256(key, checkout session id)); only its
 hash is stored. The key is four fields of the existing `AD_CONVERSION_TOKENS` object. This adds,
 removes and renames no Supabase secret name: the names-only audit stayed at exactly 88 at install
-time (89 after #3980, 90 after #3645 and 91 after #4276).
+time (89 after #3980, 90 after #3645, 91 after #4276 and 90 after #4334).
 
 **Never run `supabase secrets set VENUE_RESERVATION_MANAGE_TOKEN_...`.** A direct name is an
 undeclared user-managed name: `preflight-function-secret-readiness` then fails `unexpected:<NAME>` and blocks
@@ -408,6 +419,10 @@ button. Treat either log line after the install as a failed install.
    `scripts/deploy-supabase-functions.sh --project-ref gqnoajqerqhnvulmnyvv --merged-commit <sha> --function resend-webhook --ad-input <0600-file>`.
    The setter's strict parser rejects a non-canonical key, a bad kid, or a kid or key equal to any
    other slot in the envelope. Then shred the input file.
+   **Trap:** run `scripts/deploy-supabase-functions.sh --sites-input` (and every governed input flag) from a
+   real path. In a checkout under `/tmp` (a symlink to `/private/tmp` on macOS) the Node steps skip their
+   main block, print nothing and exit 0, so nothing deploys. Always read back the function version
+   afterwards (seen 2026-11-19, #3381).
 5. Verify with a synthetic web booking, never a real guest: the confirmation email shows **Manage
    or cancel**, the link opens the booking, and neither log line from above appears.
 

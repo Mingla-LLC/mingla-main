@@ -139,9 +139,8 @@ Deno.test("#3980 W3 a held giveaway card: Override only for the owner or an admi
 
 Deno.test("#3980 W3 the conversion runs only from its confirm step, for the owner, for the ticked rows", () => {
   const panels = code("components/ops/TeamOpsPanels.jsx");
-  // the panel is the owner's only
-  assertMatch(panels, /\{canConvert && <NextStepConversion /);
-  assertMatch(panels, /const canConvert = !!config\.data\?\.me\?\.can_convert;/);
+  // the panel is the owner's only (#4571 W1: the dead TeamOpsPanels went; Settings' NextStepsToCards keeps the guard)
+  assertMatch(panels, /if \(!config\.data\?\.me\?\.can_convert\) return null;\s*return <NextStepConversion /);
   // one call site, guarded by the confirm state
   assertEquals([...panels.matchAll(/ops\.convertNextActions\(/g)].length, 1);
   assertMatch(panels, /if \(state !== "confirm" \|\| chosen\.length === 0\) return;\s*setState\("converting"\);/);
@@ -160,9 +159,12 @@ Deno.test("#3980 W3 the Team dashboard and My day show the new panels and keep w
   assertMatch(home, /<AgentPromptStrip routine="my_plate" \/>\s*<MyCardsPanels \/>/);
   assertMatch(home, /label="Drafts waiting"/);
   const panels = read("components/ops/TeamOpsPanels.jsx");
-  for (const words of ["Runway", "Open calendar", "Open board", "Person", "Needs your OK", "Overdue", "Agent closed", "Carried", "Copy prompt", "Turn next steps into cards", "Preview"]) {
+  for (const words of ["Runway", "Open calendar", "Turn next steps into cards", "Preview"]) {
     assert(panels.includes(words), words);
   }
+  // #4571 W1: the dead sprint table (Open board, Person, Needs your OK, Overdue,
+  // Agent closed, Carried, Copy prompt) was removed; the sprint lives on Work.
+  for (const gone of ["Needs your OK", "Agent closed", "Carried"]) assert(!panels.includes(gone), gone);
   const mine = read("components/ops/MyCardsPanels.jsx");
   for (const words of ["My cards", "Watching", "Open Work board"]) assert(mine.includes(words), words);
 });

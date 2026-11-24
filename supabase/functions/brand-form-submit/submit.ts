@@ -1,0 +1,555 @@
+// #4514 brand-form-submit: the logic (BUILD CONTRACT v2 §3.7, §3.8; C2, C8).
+// index.ts wires the runtime.
+//
+// Order of operations (each step names its failure response):
+//   1 origin (403; native apps send no Origin) · 2 method (405) · 3 body ≤ 32 KB (413)
+//   · 4 JSON shape (400 bad_request) · 5 #4541 R8.4: one atomic admission per
+//   request per salted address hash (brand_form_attempt_admit, 20 / 10 min and
+//   100 / 24 h over all forms; 429), before any other database work · 6 the
+//   database off switch (503 forms_paused) · 7 who: a personal link token, else a signed-in user
+//   (401 sign_in_required) · 8 answers the database cannot store (NUL, a lone
+//   surrogate, nested values: 422 form_answers_invalid) · 9 brand_form_submit_core
+//   (SQL; a data exception it raises is 422 form_answers_invalid, never 500)
+//   · 10 response.
+//
+// #4541 R8.4: the client address is the one the platform's edge sets
+// (_shared/platformClientIp.ts), never a caller-supplied x-forwarded-for hop.
+// Its salt is not a constant in the repo: it is derived from the platform's
+// service-role key with the shared #3201 derivation (_shared/derivedSecret.ts),
+// so no new secret or env var exists.
+//
+// Logs carry the outcome and the form id only: never a token, an answer or a contact.
+
+import {
+  BRAND_FORM_ERROR_STATUS,
+  BRAND_FORM_MAX_BODY_BYTES,
+  type BrandFormSubmitError,
+  type BrandFormSubmitErrorCode,
+  type BrandFormSubmitSuccess,
+  coreErrorCode,
+  corePayload,
+  parseSubmitRequest,
+  unstorableAnswerErrors,
+} from "../_shared/brandFormsContract.ts";
+import {
+  deriveScopedSecret,
+  type ScopedSecretRootEnv,
+} from "../_shared/derivedSecret.ts";
+import {
+  type CodeDeps,
+  handleCodeRequest,
+  isCodeOp,
+  parseCodeRequest,
+} from "./code.ts";
+import {
+  handlePurchaseLink,
+  isPurchaseLinkOp,
+  parsePurchaseLinkRequest,
+  type PurchaseLinkDeps,
+} from "./purchaseLink.ts";
+import {
+  type CheckoutFormDeps,
+  handleCheckoutForm,
+  isCheckoutFormOp,
+  parseCheckoutFormRequest,
+} from "./checkoutForm.ts";
+import {
+  handleLinkRead,
+  isLinkReadOp,
+  type LinkReadDeps,
+  parseLinkReadRequest,
+} from "./linkRead.ts";
+import {
+  handlePageForm,
+  isPageFormOp,
+  type PageFormDeps,
+  parsePageFormRequest,
+} from "./pageForm.ts";
+import {
+  platformClientIp,
+  UNKNOWN_CLIENT_IP,
+} from "../_shared/platformClientIp.ts";
+import {
+  type BlastFormDeps,
+  handleBlastForm,
+  isBlastFormOp,
+  parseBlastFormRequest,
+} from "./blastForm.ts";
+import { type BotTicketKey, verifyBotTicket } from "./botTicket.ts";
+
+/** The derivation label for this limiter's salt (one label per purpose, #3201). */
+export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
+
+/** The address-hash salt: derived from the platform service-role key, never stored. */
+export function defaultIpSalt(env?: ScopedSecretRootEnv): Promise<string> {
+  return deriveScopedSecret(IP_SALT_LABEL, env);
+}
+
+const PRODUCTION_ORIGIN = "https://host.usemingla.com";
+const PREVIEW_ORIGIN = /^https:\/\/mingla-business-[a-z0-9-]+\.vercel\.app$/;
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):[0-9]{2,5}$/;
+
+export interface CoreError {
+  message: string;
+  details?: string | null;
+  /** The SQLSTATE PostgREST reports (for example 22008). */
+  code?: string | null;
+}
+
+/** #4541 R8.4: submit 20 / 100, read 60 / 600, unknown 2,000 / 20,000 (10 min / 24 h). */
+export type AttemptBucket = "submit" | "read" | "unknown";
+
+export interface BrandFormSubmitDb {
+  switchedOff(): Promise<boolean>;
+  /**
+   * #4541 R8.4: one atomic admission (brand_form_attempt_admit): counts the
+   * address's bucket and records this request under one lock. A refused or
+   * failed request still counts, because the row is written here.
+   */
+  attemptAdmit(
+    ipHash: string,
+    formId: string | null,
+    bucket: AttemptBucket,
+  ): Promise<{ allowed: boolean }>;
+  /** The signed-in user behind a bearer token, or null (anon key, expired, absent). */
+  userFromBearer(jwt: string): Promise<string | null>;
+  submitCore(
+    payload: Record<string, unknown>,
+  ): Promise<{ data: Record<string, unknown> | null; error: CoreError | null }>;
+}
+
+export interface BrandFormSubmitDeps {
+  db: BrandFormSubmitDb;
+  log?: (line: string) => void;
+  /** The address-hash salt; defaults to the service-role-derived one. */
+  ipSalt?: () => Promise<string>;
+  /** Wave 3: the link page's one-time code actions (./code.ts). */
+  code?: CodeDeps;
+  /** Wave 5: the after-purchase link for the buyer's own order (./purchaseLink.ts). */
+  purchase?: Pick<PurchaseLinkDeps, "purchaseLink">;
+  /** Wave 5 review fix 1: the checkout's form read (./checkoutForm.ts). */
+  checkout?: Pick<CheckoutFormDeps, "checkoutForm" | "hashTicketLink">;
+  /** The link page's read, so brand_form_my_response is never anon-executable (./linkRead.ts). */
+  linkRead?: Pick<LinkReadDeps, "myResponse">;
+  /** #4541 R1.14: the RSVP page's form read (./pageForm.ts). */
+  page?: Pick<PageFormDeps, "pageForm" | "botTicketKey">;
+  /** #4541 R4.5: the Blast form read (./blastForm.ts). */
+  blast?: Pick<BlastFormDeps, "blastForm">;
+  /** #4541 R8.5: the bot ticket key (tests); defaults to the shared derivation. */
+  botTicketKey?: BotTicketKey;
+  /** Tests only: the clock the bot ticket is checked against. */
+  nowMs?: () => number;
+}
+
+export function corsFor(origin: string | null): Record<string, string> | null {
+  const base = {
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+  if (origin === null) return base; // native apps
+  if (
+    origin === PRODUCTION_ORIGIN || PREVIEW_ORIGIN.test(origin) ||
+    LOCAL_ORIGIN.test(origin)
+  ) {
+    return { ...base, "Access-Control-Allow-Origin": origin };
+  }
+  return null;
+}
+
+export async function hashIp(ip: string, salt: string): Promise<string> {
+  if (!salt) throw new Error("ip_salt_unavailable");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`brand-forms:${ip}${salt}`),
+  );
+  return Array.from(new Uint8Array(digest)).map((b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+function json(
+  body: BrandFormSubmitSuccess | BrandFormSubmitError,
+  status: number,
+  cors: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors, "Content-Type": "application/json" },
+  });
+}
+
+function fail(
+  code: BrandFormSubmitErrorCode,
+  cors: Record<string, string>,
+  extra: Partial<BrandFormSubmitError> = {},
+): Response {
+  return json(
+    { ok: false, error: code, ...extra },
+    BRAND_FORM_ERROR_STATUS[code],
+    cors,
+  );
+}
+
+function parseDetail(details: string | null | undefined): unknown {
+  if (!details) return null;
+  try {
+    return JSON.parse(details);
+  } catch {
+    return null;
+  }
+}
+
+function bearerOf(req: Request): string | null {
+  const h = req.headers.get("authorization") ?? "";
+  const m = /^Bearer\s+(.+)$/i.exec(h.trim());
+  return m ? m[1].trim() : null;
+}
+
+let unknownIpLogged = false;
+
+/** Tests only: forget that this instance already logged an unknown address. */
+export function __resetUnknownIpLogForTest(): void {
+  unknownIpLogged = false;
+}
+
+/**
+ * #4541 R8.4: the admission bucket for this address. With no platform address
+ * every caller lands in one generous "unknown" bucket (logged once per
+ * instance), so a platform header change can never lock everyone out silently.
+ */
+export function attemptBucket(
+  ip: string,
+  kind: "submit" | "read",
+  log: (line: string) => void,
+): AttemptBucket {
+  if (ip !== UNKNOWN_CLIENT_IP) return kind;
+  if (!unknownIpLogged) {
+    unknownIpLogged = true;
+    log("[brand-form-submit] ip_unknown");
+  }
+  return "unknown";
+}
+
+export async function handleBrandFormSubmit(
+  req: Request,
+  deps: BrandFormSubmitDeps,
+): Promise<Response> {
+  const log = deps.log ?? ((l: string) => console.log(l));
+  const cors = corsFor(req.headers.get("origin"));
+  if (!cors) {
+    return new Response(JSON.stringify({ ok: false, error: "origin" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { status: 200, headers: cors });
+  }
+  if (req.method !== "POST") return fail("method", cors);
+
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > BRAND_FORM_MAX_BODY_BYTES) {
+    return fail("too_large", cors);
+  }
+  let text: string;
+  try {
+    text = await req.text();
+  } catch {
+    return fail("bad_request", cors);
+  }
+  if (new TextEncoder().encode(text).length > BRAND_FORM_MAX_BODY_BYTES) {
+    return fail("too_large", cors);
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return fail("bad_request", cors);
+  }
+  // Wave 5: {op:"purchase_link"} is the buyer success screen asking for the
+  // after-purchase form link of its own order (./purchaseLink.ts).
+  if (isPurchaseLinkOp(raw)) {
+    const linkReq = parsePurchaseLinkRequest(raw);
+    if (!linkReq || !deps.purchase) return fail("bad_request", cors);
+    try {
+      if (await deps.db.switchedOff()) return fail("forms_paused", cors);
+      const result = await handlePurchaseLink(linkReq, {
+        log,
+        ...deps.purchase,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] purchase_link server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  // Wave 5 review fix 1: {op:"checkout_form"} is the buyer checkout reading the
+  // page's form with the credential it presents to checkout (./checkoutForm.ts).
+  if (isCheckoutFormOp(raw)) {
+    const formReq = parseCheckoutFormRequest(raw);
+    if (!formReq || !deps.checkout) return fail("bad_request", cors);
+    try {
+      const jwt = bearerOf(req);
+      const userId = jwt ? await deps.db.userFromBearer(jwt) : null;
+      const result = await handleCheckoutForm(formReq, userId, {
+        log,
+        ...deps.checkout,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] checkout_form server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  // #4541 R1.14: {op:"page_form"} is the RSVP page (web and Explorer) reading
+  // its form through this edge (./pageForm.ts): the read is service-role only.
+  if (isPageFormOp(raw)) {
+    const pageReq = parsePageFormRequest(raw);
+    if (!pageReq || !deps.page) return fail("bad_request", cors);
+    try {
+      const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+      const ip = platformClientIp(req);
+      const ipHash = await hashIp(ip, salt);
+      const admit = await deps.db.attemptAdmit(
+        ipHash,
+        null,
+        attemptBucket(ip, "read", log),
+      );
+      if (!admit.allowed) {
+        log("[brand-form-submit] page_form rate_limited");
+        return fail("rate_limited", cors);
+      }
+      const result = await handlePageForm(pageReq, { log, ...deps.page });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] page_form server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  // #4541 R4.5: {op:"blast_form"} is the link page (or app) reading a form sent
+  // in a Blast, with the campaign window checked (./blastForm.ts).
+  if (isBlastFormOp(raw)) {
+    const blastReq = parseBlastFormRequest(raw);
+    if (!blastReq || !deps.blast) return fail("bad_request", cors);
+    try {
+      const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+      const ip = platformClientIp(req);
+      const admit = await deps.db.attemptAdmit(
+        await hashIp(ip, salt),
+        blastReq.formId,
+        attemptBucket(ip, "read", log),
+      );
+      if (!admit.allowed) {
+        log("[brand-form-submit] blast_form rate_limited");
+        return fail("rate_limited", cors);
+      }
+      const result = await handleBlastForm(blastReq, {
+        log,
+        botTicketKey: deps.botTicketKey,
+        ...deps.blast,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] blast_form server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  // {op:"link_read"} is the link page reading its form with the personal token
+  // (./linkRead.ts): the read is service-role only, never anon PostgREST.
+  if (isLinkReadOp(raw)) {
+    const readReq = parseLinkReadRequest(raw);
+    if (!readReq || !deps.linkRead) return fail("bad_request", cors);
+    try {
+      const result = await handleLinkRead(readReq, { log, ...deps.linkRead });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] link_read server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  // Wave 3: {op:"code_begin"|"code_verify"} are the link page's one-time code
+  // actions (./code.ts); every other body is an answer submit.
+  if (isCodeOp(raw)) {
+    const codeReq = parseCodeRequest(raw);
+    if (!codeReq || !deps.code) return fail("bad_request", cors);
+    try {
+      if (await deps.db.switchedOff()) return fail("forms_paused", cors);
+      const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+      const ipHash = await hashIp(platformClientIp(req), salt);
+      const result = await handleCodeRequest(codeReq, ipHash, {
+        log,
+        ...deps.code,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] code server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  const body = parseSubmitRequest(raw);
+  if (!body) return fail("bad_request", cors);
+
+  try {
+    const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+    const ip = platformClientIp(req);
+    const ipHash = await hashIp(ip, salt);
+    // #4541 R8.4: one atomic admission, before any other database work.
+    const admit = await deps.db.attemptAdmit(
+      ipHash,
+      body.formId,
+      attemptBucket(ip, "submit", log),
+    );
+    if (!admit.allowed) {
+      log(`[brand-form-submit] rate_limited form=${body.formId}`);
+      return fail("rate_limited", cors);
+    }
+    // C8: the emergency off switch lives in the database.
+    if (await deps.db.switchedOff()) {
+      log(`[brand-form-submit] paused form=${body.formId}`);
+      return fail("forms_paused", cors);
+    }
+
+    let userId: string | null = null;
+    if (!body.token) {
+      const jwt = bearerOf(req);
+      userId = jwt ? await deps.db.userFromBearer(jwt) : null;
+    }
+    const payload = corePayload(body, userId);
+    if (!payload) {
+      return fail("sign_in_required", cors);
+    }
+    // #4541 R8.5: an Unknown Blast reply (no link, not signed in) passes the
+    // honeypot and the bot ticket before any write. A filled honeypot gets a
+    // fake success and nothing is written.
+    const credential = payload.credential as Record<string, unknown>;
+    if (credential.kind === "unknown") {
+      if (typeof body.website === "string" && body.website.length > 0) {
+        log(`[brand-form-submit] honeypot form=${body.formId}`);
+        return json(
+          {
+            ok: true,
+            responseId: crypto.randomUUID(),
+            editCount: 0,
+            versionId: body.versionId ?? "",
+            created: true,
+            editable: false,
+          },
+          200,
+          cors,
+        );
+      }
+      const ticketOk = await verifyBotTicket(
+        body.botTicket,
+        body.formId,
+        body.campaignId ?? null,
+        deps.botTicketKey,
+        deps.nowMs ? deps.nowMs() : Date.now(),
+      );
+      if (!ticketOk) {
+        log(`[brand-form-submit] refused code=bot_check_failed form=${body.formId}`);
+        return fail("bot_check_failed", cors);
+      }
+    }
+    const unstorable = unstorableAnswerErrors(body.answers);
+    if (unstorable.length > 0) {
+      log(
+        `[brand-form-submit] refused code=form_answers_invalid form=${body.formId}`,
+      );
+      return fail("form_answers_invalid", cors, { errors: unstorable });
+    }
+
+    const { data, error } = await deps.db.submitCore(payload);
+    if (error) {
+      const code = coreErrorCode(error.message, error.code);
+      log(`[brand-form-submit] refused code=${code} form=${body.formId}`);
+      const detail = parseDetail(error.details);
+      const extra: Partial<BrandFormSubmitError> = {};
+      if (code === "form_answers_invalid") {
+        extra.errors = Array.isArray(detail)
+          ? detail as BrandFormSubmitError["errors"]
+          : [{ questionId: null, code: "type" }];
+      }
+      if (code === "form_changed" && detail && typeof detail === "object") {
+        const v = (detail as Record<string, unknown>).versionId;
+        if (typeof v === "string") extra.versionId = v;
+      }
+      if (code === "response_stale" && detail && typeof detail === "object") {
+        const n = (detail as Record<string, unknown>).editCount;
+        if (typeof n === "number") extra.editCount = n;
+      }
+      return fail(code, cors, extra);
+    }
+    if (!data || typeof data.responseId !== "string") {
+      log(`[brand-form-submit] core_shape form=${body.formId}`);
+      return fail("server_error", cors);
+    }
+    log(
+      `[brand-form-submit] accepted form=${body.formId} created=${
+        String(data.created)
+      }`,
+    );
+    return json(
+      {
+        ok: true,
+        responseId: data.responseId,
+        editCount: Number(data.editCount ?? 0),
+        versionId: String(data.versionId ?? ""),
+        created: data.created === true,
+        ...(data.editable === false ? { editable: false } : {}),
+      },
+      200,
+      cors,
+    );
+  } catch (e) {
+    log(
+      `[brand-form-submit] server_error form=${body.formId} ${
+        e instanceof Error ? e.name : "unknown"
+      }`,
+    );
+    return fail("server_error", cors);
+  }
+}

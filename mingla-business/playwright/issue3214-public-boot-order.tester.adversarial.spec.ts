@@ -84,7 +84,10 @@ const CLASSIFIED: Record<string, Row> = {
   'https://analytics.tiktok.com': { verdict: 'admitted', directives: ['script-src', 'connect-src'], why: 'TikTok pixel script and events' },
   'https://sc-static.net': { verdict: 'admitted', directives: ['script-src'], why: 'Snap pixel script' },
   'https://www.redditstatic.com': { verdict: 'admitted', directives: ['script-src'], why: 'Reddit pixel script' },
-  'https://cdnapi.bamboo-cloud.com': { verdict: 'admitted', directives: ['media-src'], why: 'Host Guide HLS manifests and video segments; poster images remain covered by the existing img-src https: policy' },
+  // [TEST-MOD #4420] the Bamboo guide-video row and the lanternroom.example
+  // Guide-copy row are gone: guides left the Host app (they live in the Help
+  // Centre), so neither literal is in the export and media-src no longer
+  // admits the Bamboo origin.
   // [TEST-MOD-APPROVED #3720] This origin was previously navigation-only. The
   // in-app Guide player also fetches caption sidecars from it, so connect-src
   // must now admit the exact origin as well.
@@ -126,6 +129,9 @@ const CLASSIFIED: Record<string, Row> = {
   // [TEST-MOD-APPROVED #4420] Add to calendar on the public event page opens
   // Google Calendar's prefilled event as a new top-level page.
   'https://calendar.google.com': { verdict: 'navigation', why: 'Add to Google Calendar link (offeringCalendar), opened as a top-level navigation' },
+  // [TEST-MOD-APPROVED #4420] The Add to calendar chooser's Outlook row opens
+  // Outlook's prefilled compose page as a new top-level page.
+  'https://outlook.live.com': { verdict: 'navigation', why: 'Add to Outlook link (offeringCalendar), opened as a top-level navigation' },
   'https://x.com': { verdict: 'navigation', why: 'social link' },
   'https://twitter.com': { verdict: 'navigation', why: 'social link' },
   'https://facebook.com': { verdict: 'navigation', why: 'social link' },
@@ -163,7 +169,6 @@ const CLASSIFIED: Record<string, Row> = {
   'https://github.com': { verdict: 'inert', why: 'library issue links in warning text' },
   'https://example.com': { verdict: 'inert', why: 'library documentation placeholder' },
   'https://competitor.com': { verdict: 'inert', why: "Mingla's own fixture/validation string" },
-  'https://lanternroom.example': { verdict: 'inert', why: 'literal example website rendered as instructional Guide copy; it is never passed to fetch, Linking, an image, or the video player' },
   'https://phony.example': { verdict: 'inert', why: 'placeholder base for relative-URL parsing (new URL(x, base))' },
   'http://placeholder.base': { verdict: 'inert', why: 'placeholder base for relative-URL parsing' },
   'http://www.w3.org': { verdict: 'inert', why: 'XML/SVG namespace URIs; never fetched' },
@@ -469,7 +474,8 @@ const layout = (page: Page) => page.evaluate(() => {
     html: document.documentElement.getBoundingClientRect().height,
     root: root ? root.getBoundingClientRect().height : -1,
     // #4318 — the permanent privacy strip's height (its inset).
-    inset: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mingla-privacy-inset')) || 0,
+    // #2331 — the band is the CSS constant --mingla-privacy-strip: the strip's own height.
+      inset: document.querySelector('.mps')?.getBoundingClientRect().height ?? 0,
     stripBottom: document.querySelector('[data-testid="privacy-strip"]')?.getBoundingClientRect().bottom ?? -1,
     scrollers: Array.from(document.querySelectorAll('#root *'))
       .filter((element) => /(auto|scroll)/.test(getComputedStyle(element).overflowY))
@@ -717,7 +723,7 @@ test.describe('#3214 tester adversarial — desktop width', () => {
     expect(Math.round(measured.stripBottom)).toBe(800)
     expect(measured.html).toBe(measured.viewport)
     // The handed-over scroll owner: #root itself while the strip holds the
-    // inset (html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto}),
+    // band (#root{position:fixed;...;overflow-y:auto}, #2331),
     // or a scroll area inside it.
     const owner = await page.evaluate(() => {
       const root = document.getElementById('root')

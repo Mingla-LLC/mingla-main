@@ -138,12 +138,21 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD #4518] Re-derived after #4518 added the locally declared
   // checkout one-colour-owner gate (issue-4518-checkout-one-colour-owner,
   // +2 batch:A executions: self-test and plain). Read off the plan command as above.
+  // [TEST-MOD #4514] Re-derived after #4514 added the locally declared
+  // brand forms one-question-model gate (i-4514-one-question-model, +2 batch:A
+  // executions: self-test and plain). Read off the plan command as above.
+  // [TEST-MOD #4541] Re-derived after #4541 added the locally declared
+  // no-client-service-role-rpc gate (issue-4541-no-client-service-role-rpc,
+  // +2 batch:A executions: self-test and plain), then the forms-owner-no-nested-lazy
+  // gate (issue-4541-forms-owner-no-nested-lazy, +2 more). Read off the plan command as above.
   // [TEST-MOD-APPROVED #4490] Re-derived after #4490 added the locally declared
   // Host wiring pins gate (issue-4490-host-wiring, +2 batch:A executions:
   // self-test and plain). Read off the plan command as above.
-  executions: 1069,
-  loadsSeconds: [385.9, 386.0, 386.0],
-  counts: [355, 357, 357],
+  // [TEST-MOD-APPROVED #4490] Re-derived after merging origin/main 886723868d (the
+  // #4514/#4541 gates beside the #4490 Host wiring pins gate). Read off the plan command.
+  executions: 1075,
+  loadsSeconds: [386.1, 386.2, 386.2],
+  counts: [357, 359, 359],
 });
 
 const tempDir = (label) =>

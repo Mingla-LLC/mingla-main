@@ -92,6 +92,8 @@ import {
 import { themeTextAccent } from "@mingla/offering-rendering/themePalette";
 
 import { ThemeAccentFill } from "@mingla/offering-rendering/ThemeAccentFill";
+// issue #4518 — the venue thumbnail takes the picture road (one fallback).
+import { useOfferingImageUri } from "@mingla/offering-rendering/useOfferingImageUri";
 
 import { spacing } from "./designTokens";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
@@ -128,6 +130,7 @@ import {
   OfferingGlassBar,
 } from "@mingla/offering-rendering/OfferingGlassBar";
 import { OfferingFactRows } from "@mingla/offering-rendering/OfferingFactRows";
+import { priceFromLabel } from "@mingla/offering-rendering/priceFromLabel";
 import { BrandOfferingCard } from "./BrandOfferingCard";
 import { GlassTabs, type GlassTabNode } from "./GlassTabs";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
@@ -181,17 +184,8 @@ const normalizeSocialUrl = (raw: string, base: string): string => {
   return `${base}${handle}`;
 };
 
-const formatCurrencyRound = (value: number, currency: string): string => {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `${currency} ${Math.round(value)}`;
-  }
-};
+// #4572 7b — every "From" / "Free" label comes from priceFromLabel
+// (@mingla/offering-rendering/priceFromLabel, I-4572-PRICE-FROM-ONE-OWNER).
 
 // ORCH-1186-C — DISPLAY-ONLY menu price formatter + menu pane: moved VERBATIM
 // to ./PublicMenuSections.tsx (META-ORCH-1255(R2), ORCH-1083 bundle budget).
@@ -238,10 +232,10 @@ const minPriceLabel = (
   displayCurrency?: string | null,
 ): string | null => {
   if (typeof displayPriceCents === "number" && displayPriceCents > 0) {
-    return `From ${formatCurrencyRound(
-      displayPriceCents / 100,
-      displayCurrency ?? fallbackCurrency ?? "USD",
-    )}`;
+    return priceFromLabel({
+      minorUnits: displayPriceCents,
+      currency: displayCurrency ?? fallbackCurrency ?? null,
+    });
   }
   const visible = tickets.filter((t) => t.visibility !== "hidden");
   const paid = visible
@@ -249,27 +243,30 @@ const minPriceLabel = (
     .filter((p): p is number => typeof p === "number" && p > 0)
     .sort((a, b) => a - b);
   if (paid.length > 0) {
-    return `From ${formatCurrencyRound(paid[0], fallbackCurrency ?? "USD")}`;
+    return priceFromLabel({
+      minorUnits: Math.round((paid[0] ?? 0) * 100),
+      currency: fallbackCurrency ?? null,
+    });
   }
-  return visible.some((t) => t.isFree === true) ? "Free" : null;
+  return priceFromLabel({
+    isFree: visible.some((t) => t.isFree === true),
+    minorUnits: null,
+  });
 };
 
-const offeringPriceLabel = (item: {
+// #4572 7b — subtract: the brand page's own `offeringPriceLabel` checked the
+// price before the free flag ("From NGN 0" on a free event). Upcoming rows and
+// experiences now read the one shared rule.
+const upcomingPriceLabel = (item: {
   isFree?: boolean;
   priceFromMinorUnits?: number | null;
   currency?: string | null;
-}): string | null => {
-  if (
-    item.priceFromMinorUnits !== null &&
-    item.priceFromMinorUnits !== undefined
-  ) {
-    return `From ${formatCurrencyRound(
-      item.priceFromMinorUnits / 100,
-      item.currency ?? "USD",
-    )}`;
-  }
-  return item.isFree === true ? "Free" : null;
-};
+}): string | null =>
+  priceFromLabel({
+    isFree: item.isFree,
+    minorUnits: item.priceFromMinorUnits,
+    currency: item.currency,
+  });
 
 // #3426 — a past date carries its YEAR: "Ended 12 Sep" is ambiguous a year on.
 const formatPastDate = (iso: string | null | undefined): string | null => {
@@ -732,7 +729,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     upcoming.length > 0 && callbacks.onOpenUpcoming !== undefined
       ? (upcoming[0] ?? null)
       : null;
-  const nextUpPrice = nextUp !== null ? offeringPriceLabel(nextUp) : null;
+  const nextUpPrice = nextUp !== null ? upcomingPriceLabel(nextUp) : null;
   const nextUpCta =
     nextUp !== null ? NEXT_UP_CTA_LABEL[nextUp.offeringType] : null;
   const nextUpBar =
@@ -1423,10 +1420,10 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
     typeof event.displaySalePriceCents === "number" &&
     event.displaySalePriceCents > 0 &&
     event.displaySalePriceCents < (event.displayPriceCents ?? Number.MAX_SAFE_INTEGER)
-      ? `From ${formatCurrencyRound(
-          event.displaySalePriceCents / 100,
-          event.displayCurrency ?? event.currency ?? "USD",
-        )}`
+      ? priceFromLabel({
+          minorUnits: event.displaySalePriceCents,
+          currency: event.displayCurrency ?? event.currency ?? null,
+        })
       : null;
   const price = salePrice ?? listPrice;
   const action = isRsvp ? "View RSVP" : "View tickets";
@@ -1544,12 +1541,14 @@ const TripMiniCard: React.FC<{
   past?: boolean;
 }> = ({ trip, theme, palette, surface, isDesktop, onPress, past = false }) => {
   const dateLine = formatTripDateRange(trip.startAt, trip.endAt, trip.timezone);
-  const price =
-    trip.minPriceCents !== null && trip.currency !== null
-      ? `From ${formatCurrencyRound(trip.minPriceCents / 100, trip.currency)}`
-      : trip.hasFreeTier
-        ? "Free"
-        : null;
+  // Trips keep their order (a priced trip shows its price) through the one
+  // shared label (#4572 7b).
+  const tripPriced = trip.minPriceCents !== null && trip.currency !== null;
+  const price = priceFromLabel({
+    isFree: !tripPriced && trip.hasFreeTier === true,
+    minorUnits: tripPriced ? trip.minPriceCents : null,
+    currency: trip.currency,
+  });
   const spotsLabel =
     trip.spotsLeft === null
       ? null
@@ -1640,7 +1639,7 @@ const OfferingMiniCard: React.FC<OfferingMiniCardProps> = ({
   isDesktop,
   onPress,
 }: OfferingMiniCardProps) => {
-  const price = offeringPriceLabel(item);
+  const price = upcomingPriceLabel(item);
   const kindLabel = OFFERING_KIND_LABEL[item.offeringType];
   return (
     <BrandOfferingCard
@@ -1706,7 +1705,7 @@ const offeringSectionCard = (
   startsAt: item.startsAt,
   endsAt: item.endsAt ?? null,
   // A price on something that has ended is not an offer.
-  priceLabel: section === "past" ? null : offeringPriceLabel(item),
+  priceLabel: section === "past" ? null : upcomingPriceLabel(item),
   open: (callbacks) => callbacks.onOpenUpcoming?.(item),
 });
 
@@ -1991,7 +1990,7 @@ const ExperienceMiniCard: React.FC<{
   isDesktop: boolean;
   onPress?: (experience: PublicBrandExperience) => void;
 }> = ({ experience, theme, palette, surface, isDesktop, onPress }) => {
-  const price = offeringPriceLabel(experience);
+  const price = upcomingPriceLabel(experience);
   return (
     <BrandOfferingCard
       onPress={() => onPress?.(experience)}
@@ -2072,6 +2071,26 @@ const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
 // via onOpenVenue. 0 venues → renders nothing (real-data-only). Inline param
 // annotation (not React.FC) so the section stays fully typed under every
 // consumer tsconfig.
+/**
+ * issue #4518 — a venue thumbnail on the picture road (one fallback). A real
+ * react-native <Image> stays at this site so the #2539 round-clip gate keeps
+ * resolving it: `styles.venueThumb` has a borderRadius, so no shadow / tint /
+ * blur may ever join it here (see the gate). The hook's handlers change
+ * identity only with the url (#3827).
+ */
+const VenueThumb = ({ url }: { url: string }): React.ReactElement => {
+  const media = useOfferingImageUri(url);
+  return (
+    <Image
+      source={{ uri: media.uri ?? url }}
+      style={styles.venueThumb}
+      onLoad={media.onLoad}
+      onError={media.onError}
+      accessibilityIgnoresInvertColors
+    />
+  );
+};
+
 const ReservationsPane = ({
   venues,
   palette,
@@ -2145,11 +2164,7 @@ const ReservationsPane = ({
             ]}
           >
             {v.photoUrl !== null ? (
-              <Image
-                source={{ uri: v.photoUrl }}
-                style={styles.venueThumb}
-                accessibilityIgnoresInvertColors
-              />
+              <VenueThumb url={v.photoUrl} />
             ) : null}
             <View style={styles.venueCopy}>
               <Text

@@ -215,6 +215,21 @@ jobs:
         run: |
           test -f playwright/issue2768/public-venue-hit-target-fidelity.happy.spec.ts
           npx playwright test -c playwright.issue2768.config.ts
+      # [WORKFLOW-MOD-APPROVED #2331] I-PRIVACY-BAR-NEVER-OCCLUDES on both sites.
+      # Static leg: no fixed bottom layer in mingla-marketing without the
+      # --mingla-privacy-strip token. Browser leg: the edge-based gate on the
+      # Host export (with the vercel.json post-export injector applied to a copy,
+      # so the band ships in the first HTML as in production) and on the
+      # marketing production build the #2771 step above already made.
+      - name: "#2331 nothing touches the privacy strip (both sites)"
+        working-directory: mingla-business
+        run: |
+          node ../mingla-marketing/scripts/issue-2331-strip-token-check.mjs --self-test
+          node ../mingla-marketing/scripts/issue-2331-strip-token-check.mjs
+          rm -rf "$RUNNER_TEMP/s2331" && mkdir -p "$RUNNER_TEMP/s2331" && cp -R dist "$RUNNER_TEMP/s2331/dist"
+          (cd "$RUNNER_TEMP/s2331" && node "$GITHUB_WORKSPACE/mingla-business/scripts/inject-mobile-blur-css.mjs")
+          grep -q 'id="mingla-privacy-strip-shell"' "$RUNNER_TEMP/s2331/dist/index.html"
+          DIST_2331="$RUNNER_TEMP/s2331/dist" npx playwright test -c playwright.issue2331strip.config.ts
 
   # [WORKFLOW-MOD-APPROVED #2830] The approved two-app Sites foundation uses
   # this existing build lane; no new workflow or deployment is created here.

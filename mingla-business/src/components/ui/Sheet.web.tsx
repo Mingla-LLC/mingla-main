@@ -70,6 +70,9 @@ import { hideModalFocusBrackets } from "./hideModalFocusBrackets";
 import { Icon } from "./Icon";
 import { useEscapeLayer } from "./escapeLayerStack";
 import { useSheetGone } from "./useSheetGone";
+// #4508 T4 — the centred card's own toast layer (as SheetMobile and Modal
+// have): a toast fired while this card is open draws above it, not under it.
+import { ToastHost } from "./ToastHost";
 
 // Import the canonical bottom sheet from the platform-NEUTRAL `./SheetMobile`,
 // never from the bare `./Sheet` specifier. On web, Metro resolves `./Sheet` to
@@ -88,7 +91,6 @@ import {
   type SheetSnapValue,
 } from "./SheetMobile";
 
-import { ToastHost } from "./ToastHost";
 
 // Re-export the type aliases so existing imports
 // `import { Sheet, SheetProps, SheetSnapValue } from '.../Sheet'`
@@ -427,11 +429,10 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
             ) : null}
           </View>
         </View>
-        {/* #4490 D6 — a toast fired while this desktop card is open draws in
-            THIS window, above the card. Without an overlay host it went to the
-            app-root layer, which sits under the Modal portal, so cover-picker
-            toasts showed behind the sheet and half off screen. SheetMobile,
-            Modal and ConfirmDialog already mount the same host. */}
+        {/* #4508 T4 / #4420 B4 / #4490 D6: toasts fired while this card is open
+            draw above it (the root host sits under this Modal's portal), so
+            cover-picker toasts no longer show behind the sheet. SheetMobile,
+            Modal and ConfirmDialog mount the same host. */}
         <ToastHost layer="overlay" open={visible} />
       </View>
     </Modal>

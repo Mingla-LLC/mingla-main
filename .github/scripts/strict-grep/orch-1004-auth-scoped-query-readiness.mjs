@@ -395,6 +395,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   // (team members of the enquiry's brand). A pre-auth read would cache an
   // empty inbox and a zero Messages badge; it folds isAuthReady into enabled.
   "useBrandEnquiries.ts",
+  // #4514 — brand forms are read through auth.uid()-scoped RPCs (brand members,
+  // and the event manager's own responses). Every query's enabled folds
+  // isAuthReady (through useReady) so a pre-auth read is never cached as "no forms".
+  "useBrandForms.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

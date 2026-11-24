@@ -63,7 +63,9 @@ const mutations = [
   ["supabase/secrets.manifest.json", "BRAND_PERSON_ERASURE_CHALLENGE_SECRET", "BRAND_PERSON_ERASURE_SHARED_SECRET", "bundle field"],
   // [TEST-MOD-APPROVED #4276] — [secret count 91 approved by Seth]: a true-source
   // rollback below the approved slot 91 must make the exact-envelope requirement fail closed.
-  ["scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs", "91-name envelope", "90-name envelope", "slot-91 secret proof envelope"],
+  // [TEST-MOD-APPROVED #4334] — [secret count 90 approved by Seth]: the proof now names the exact
+  // 90-name envelope; any other count in its title must fail closed.
+  ["scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs", "90-name envelope", "91-name envelope", "exact 90-name secret proof envelope"],
   ["supabase/secrets.manifest.json", "supabase/functions/support-brand-person-erasure/erasureContract.ts", "supabase/functions/support-brand-person-erasure/index.ts", "sole manifest reader"],
   ["supabase/secrets.manifest.json", '"name":"BRAND_PERSON_ERASURE_CHALLENGE_SECRET","owner":"Platform Security","source_type":"secure_vault"', '"name":"BRAND_PERSON_ERASURE_CHALLENGE_SECRET","owner":"Growth Engineering","source_type":"provider_dashboard"', "field ownership/source"],
   ["supabase/functions/support-brand-person-erasure/erasureContract.ts", "const bundle = readEnv(ERASURE_SECRET_BUNDLE);", "const bundle = readEnv(ERASURE_SECRET_FIELD) ?? readEnv(ERASURE_SECRET_BUNDLE);", "direct-name fallback"],
@@ -85,7 +87,7 @@ const mutations = [
   [".github/scripts/parity/l5-terminal-mutations.sql", "NEW.approval_status:='pending';", "NEW.approval_status:='denied';", "A7 L-5 terminal stale-state mutation"],
   [".github/scripts/parity/l5-terminal-mutations.sql", "CREATE TRIGGER l5_issue_1772_keep_rsvp_pending", "CREATE TRIGGER l5_issue_1772_removed", "A7 L-5 RSVP trigger"],
   [".github/scripts/parity/l5-terminal-mutations.sql", "-- @l5-verify: SELECT is_called FROM public.l5_fired /* issue_1772_terminal_rsvp */", "-- @l5-verify: SELECT false /* issue_1772_terminal_rsvp */", "A7 L-5 mutation witness"],
-  ["supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql", "6fd8b31bf22cb58eabf49c889a55d6df", "00000000000000000000000000000000", "A6 #1773 writer fingerprint"],
+  ["supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql", "c16055658e7e77503a20b12b48934717", "00000000000000000000000000000000", "A6 #1773 writer fingerprint"],
   ["mingla-business/src/services/peopleMaintenanceService.ts", '"biz_list_brand_person_merge_candidates"', '"biz_list_brand_person_merge_candidates_removed"', "A6 lazy maintenance RPC owner"],
   ["mingla-business/src/services/peopleService.ts", "export class PeopleServiceError", 'export { mergeBrandPeople } from "./peopleMaintenanceService";\nexport class PeopleServiceError', "A6 no eager maintenance re-export"],
   ["mingla-business/src/hooks/marketing/useBrandPersonMaintenance.ts", 'import AsyncStorage from "@react-native-async-storage/async-storage"', 'const AsyncStorage = null as never', "A6 durable recovery owner"],

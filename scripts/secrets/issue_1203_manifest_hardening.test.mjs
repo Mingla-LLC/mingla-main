@@ -20,6 +20,7 @@ const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
 // [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
 // 91st name; historical transition fixtures remove it with the other later
 // names, and the enforced target is the approved 91-name manifest.
+// [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token is unset; the derived pre-rollout fixture moves 86 -> 85 target and 99 -> 98 live names (still under the historical 99), and the enforced target is the approved 90-name manifest.
 
 function clone(value) {
   return structuredClone(value);
@@ -72,7 +73,7 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   transition.rollout.transition_stage = "pre_rollout";
   const target = transition.secrets.map((record) => record.name);
   const pending = new Set(transition.rollout.pending_bundle_names);
-  assert.equal(target.length, 86);
+  assert.equal(target.length, 85);
   // [TEST-MOD-APPROVED #3720] GOOGLE_CALENDAR_KEYS now has governed field
   // ownership, so the historical transition fixture derives one more bundle
   // and one fewer direct-name-era slot without changing the enforced 88 names.
@@ -88,9 +89,9 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
       1,
     );
   }
-  assert.equal(preRolloutNames.length, 99);
+  assert.equal(preRolloutNames.length, 98);
   assert.ok(preRolloutNames.length <= 99);
-  transition.rollout.expected_user_managed_count = 99;
+  transition.rollout.expected_user_managed_count = 98;
   const expected = auditSecretBudget({
     manifest: transition,
     liveNames: preRolloutNames,
@@ -112,12 +113,12 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   assert.match(drifted.failures.join("\n"), /transition_count/);
 });
 
-test("issue #1203: enforced live audit uses only the approved 91-name target", () => {
+test("issue #1203: enforced live audit uses only the approved 90-name target", () => {
   const enforced = clone(manifest);
   enforced.rollout.live_audit_mode = "enforced";
-  enforced.rollout.expected_user_managed_count = 91;
+  enforced.rollout.expected_user_managed_count = 90;
   const target = enforced.secrets.map((record) => record.name);
-  assert.equal(target.length, 91);
+  assert.equal(target.length, 90);
   assert.equal(
     auditSecretBudget({
       manifest: enforced,

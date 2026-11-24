@@ -117,6 +117,13 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "event",
   "exp",
   "experience",
+  // #4514: the brand form link page (`/form/{formId}`). Listed because the
+  // route exists (T-7). This does NOT make the Host app claim form links: the
+  // claims live in app.json's intent filters and the AASA, which leave /form
+  // out (decision 11: form links belong to the Explorer app; the web page
+  // offers "Open in the Explorer app"). A /form link the OS never hands this
+  // app is never routed here.
+  "form",
   "g",
   "home",
   "hub",

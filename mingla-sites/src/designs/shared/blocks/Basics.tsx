@@ -10,7 +10,7 @@ import { StoryGrid } from "../../../components/v2/neutral/CollectionBlocks";
 import { ContactFormBlock } from "../../../components/v2/neutral/FormBlocks";
 import { ContactDetailsNeutral } from "../../../components/v2/neutral/BasicBlocks";
 import { playableVideoUrl } from "../../../lib/siteVideo";
-import { ActionButton, Blk, Label, Photo, rows, SecHead, sectionId, text, type SharedBlockProps } from "../parts";
+import { ActionButton, Blk, HeadlineLines, Label, Photo, rows, SecHead, sectionId, text, type SharedBlockProps } from "../parts";
 import { galleryImages } from "../data";
 
 /*
@@ -31,12 +31,39 @@ export function PageHeaderBasic({ block, index, ctx }: SharedBlockProps) {
   const id = sectionId(block, index);
   const picture = isSafeHref(block.media_url) ? String(block.media_url) : null;
   const lines = text(block.subheading).split("\n").map((line) => line.trim()).filter(Boolean);
+  if (picture && ctx.artifact.design.options?.cover === "full") return <PageHeaderCover block={block} index={index} ctx={ctx} picture={picture} lines={lines} />;
   return (
     <section className={`mg-phd${picture ? " mg-phd--photo mg-on-photo" : " mg-band"}`} aria-labelledby={id} data-mg-hero="">
       {picture ? <div className="mg-phd__bg" data-mg-hero-bg=""><Photo artifact={ctx.artifact} url={picture} hero sizes="100vw" /></div> : null}
       <div className="mg-wrap mg-phd__inner">
         <h1 id={id} className="mg-phd__h">{text(block.heading)}</h1>
         {lines.length ? <p className="mg-lede mg-phd__sub">{lines.map((line, lineIndex) => <span key={lineIndex} className="mg-phd__line">{line}</span>)}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * #4575 — a page title over a photo, drawn as the full-screen cover: the same
+ * markup and classes as HeroFullbleed, so the design's cover rules apply.
+ */
+function PageHeaderCover({ block, index, ctx, picture, lines }: SharedBlockProps & { picture: string; lines: string[] }) {
+  const id = sectionId(block, index);
+  const heading = text(block.heading);
+  return (
+    <section className="mg-hero mg-hero-full mg-on-photo" aria-labelledby={id} data-mg-hero="">
+      <div className="mg-hero__bg" data-mg-hero-bg="">
+        <Photo artifact={ctx.artifact} url={picture} hero sizes="100vw" />
+      </div>
+      <div className="mg-wrap mg-hero__inner">
+        <HeadlineLines lines={[heading]} heading={heading} as="h1" id={id} />
+        {lines.length ? (
+          <div className="mg-hero__row">
+            <div className="mg-hero__main">
+              <p className="mg-lede" data-mg-in="">{lines.join(" · ")}</p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

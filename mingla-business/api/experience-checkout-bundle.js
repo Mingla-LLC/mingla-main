@@ -4,6 +4,7 @@
 // errors. Wraps `pg_public_experience_by_slug`. Do NOT CDN publicSearchDocument
 // HTML (#2986).
 const { requestRpcJson } = require("../server/supabaseRpc");
+const { withBuyGateAnswers } = require("../server/buyGateAnswers");
 
 const firstQueryValue = (value) => (Array.isArray(value) ? value[0] : value);
 
@@ -48,7 +49,9 @@ module.exports = async function experienceCheckoutBundleHandler(req, res) {
       return;
     }
 
-    send(res, 200, data, true);
+    // #4518 — only checkoutAccessMode: the experience RPC already carries a
+    // server-computed `bookable`, so brandCanCollect is never added here.
+    send(res, 200, await withBuyGateAnswers(data, { brandCanCollect: false }), true);
   } catch {
     send(res, 502, { error: "upstream_unavailable" }, false);
   }

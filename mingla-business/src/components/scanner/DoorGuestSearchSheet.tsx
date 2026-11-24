@@ -58,6 +58,32 @@ const SEARCH_FAILED = "Couldn't search. Check your connection and try again.";
 const isGuestListError = (error: unknown): error is Error & { code?: string } =>
   error instanceof Error && error.name === "GuestListError";
 
+// #4514 §6 — the admit answer carries the door line ready to show, built by
+// the server exactly as for a ticket scan (_shared/doorBookedStart.ts). This
+// panel only checks the shape and renders it; it never formats answers.
+type DoorLine = {
+  state: "answered" | "not_answered" | "unavailable";
+  header: string | null;
+  lines: string[];
+  fullAnswers: boolean;
+};
+const readDoorLine = (value: unknown): DoorLine | null => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const state = raw.state;
+  if (state !== "answered" && state !== "not_answered" && state !== "unavailable") return null;
+  const lines = Array.isArray(raw.lines)
+    ? raw.lines.filter((l): l is string => typeof l === "string" && l.length > 0)
+    : [];
+  if (lines.length === 0) return null;
+  return {
+    state,
+    header: typeof raw.header === "string" && raw.header.length > 0 ? raw.header : null,
+    lines,
+    fullAnswers: raw.fullAnswers === true,
+  };
+};
+
 const DEBOUNCE_MS = 300;
 const MIN_CHARS = 2;
 
@@ -101,6 +127,11 @@ export interface DoorGuestSearchPanelProps {
   autoFocus?: boolean;
   /** issue #3281 — the offering's zone, for each guest's booked start. */
   timeZone?: string | null;
+  /**
+   * #4514 wave 6 — "See all answers" for the admitted guest, through the
+   * scanner's own lazy answers sheet. Absent (the web door): the line only.
+   */
+  onOpenAnswers?: (target: { scanId: string; guestName: string }) => void;
 }
 
 export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
@@ -109,6 +140,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
   onAdmitted,
   autoFocus = false,
   timeZone = null,
+  onOpenAnswers,
 }) => {
   const queryClient = useQueryClient();
   const network = useNetInfoSafe();
@@ -124,6 +156,10 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
     { orderId: string; admittedDateIds: string[]; at: number } | null
   >(null);
   const [admitError, setAdmitError] = useState<string | null>(null);
+  // #4514 §6 — the last admitted ticket's door line and its scan receipt.
+  const [lastDoor, setLastDoor] = useState<
+    { line: DoorLine; scanId: string | null; guestName: string } | null
+  >(null);
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(text.trim()), DEBOUNCE_MS);
@@ -150,6 +186,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
         // Every day a ticket was actually admitted for: "Admit all" can cover
         // more than one when scan windows overlap.
         const admittedDateIds: string[] = [];
+        let door: { line: DoorLine; scanId: string | null; guestName: string } | null = null;
         for (const ticket of tickets) {
           const res = await (await loadGuestList()).admitTicket({ eventId, ticketId: ticket.ticketId });
           copy = describeScanResult(
@@ -166,12 +203,22 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           ) {
             admittedDateIds.push(res.eventDateId);
           }
+          // The server sends it only for a ticket the door let in.
+          const line = readDoorLine(res.doorAnswers);
+          if (line !== null) {
+            door = {
+              line,
+              scanId: typeof res.scanId === "string" ? res.scanId : null,
+              guestName: res.buyerName ?? guest.displayName,
+            };
+          }
           onAdmitted?.(copy, res);
         }
         if (copy !== null && tickets.length > 1 && admitted > 1) {
           copy = { ...copy, message: `${guest.displayName}: ${admitted} checked in` };
         }
         setLastResult(copy);
+        setLastDoor(door);
         setLastAdmitted({ orderId: guest.orderId, admittedDateIds, at: Date.now() });
       } catch (error) {
         setAdmitError(isGuestListError(error) ? error.message : SEARCH_FAILED);
@@ -227,6 +274,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
             setText(next);
             setLastResult(null);
             setLastAdmitted(null);
+            setLastDoor(null);
             setAdmitError(null);
           }}
           placeholder="Search name or email"
@@ -263,6 +311,42 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
           ) : null}
           {lastExtras !== null ? (
             <Text style={styles.resultDetail} testID="door-admit-extras">{lastExtras}</Text>
+          ) : null}
+          {lastDoor !== null ? (
+            // #4514 §6 — the same door line as a ticket scan, under a hairline.
+            <View style={styles.doorBlock} testID="door-admit-door">
+              {lastDoor.line.header !== null ? (
+                <Text style={styles.doorHeader} numberOfLines={1}>{lastDoor.line.header}</Text>
+              ) : null}
+              <Text
+                style={[
+                  styles.resultDetail,
+                  lastDoor.line.state === "not_answered"
+                    ? styles.doorLineWarn
+                    : lastDoor.line.state === "unavailable"
+                      ? styles.doorLineMuted
+                      : styles.doorLine,
+                ]}
+                numberOfLines={2}
+                testID={`door-admit-door-${lastDoor.line.state}`}
+              >
+                {lastDoor.line.lines.join(" · ")}
+              </Text>
+              {lastDoor.line.fullAnswers && lastDoor.scanId !== null && onOpenAnswers !== undefined ? (
+                <Button
+                  label="See all answers"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    if (lastDoor.scanId !== null) {
+                      onOpenAnswers({ scanId: lastDoor.scanId, guestName: lastDoor.guestName });
+                    }
+                  }}
+                  accessibilityHint="Opens this guest's answers"
+                  testID="door-admit-see-all-answers"
+                />
+              ) : null}
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -373,9 +457,15 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
 export interface DoorGuestSearchSheetProps extends DoorGuestSearchPanelProps {
   visible: boolean;
   onClose: () => void;
+  /**
+   * #4514 wave 6 — the scanner's lazy "See all answers" sheet, rendered inside
+   * this sheet so it presents over it (a modal over a modal). The scanner owns
+   * the lazy load; this module never imports the forms renderer.
+   */
+  answers?: React.ReactNode;
 }
 
-export const DoorGuestSearchSheet: React.FC<DoorGuestSearchSheetProps> = ({ visible, onClose, ...panel }) => (
+export const DoorGuestSearchSheet: React.FC<DoorGuestSearchSheetProps> = ({ visible, onClose, answers = null, ...panel }) => (
   <Sheet visible={visible} onClose={onClose} snapPoint="full">
     <View style={styles.sheetBody}>
       <View style={styles.sheetHead}>
@@ -392,6 +482,7 @@ export const DoorGuestSearchSheet: React.FC<DoorGuestSearchSheetProps> = ({ visi
       >
         {visible ? <DoorGuestSearchPanel {...panel} autoFocus /> : null}
       </ScrollView>
+      {answers}
     </View>
   </Sheet>
 );
@@ -552,6 +643,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: color.text2,
     textAlign: "center",
+  },
+  doorBlock: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: space[2],
+    marginTop: space[1],
+    paddingTop: space[2],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line,
+  },
+  doorHeader: {
+    fontSize: 12,
+    color: color.text3,
+    textAlign: "center",
+  },
+  doorLine: {
+    color: color.text1,
+  },
+  doorLineWarn: {
+    color: color.warningText,
+    fontWeight: "600",
+  },
+  doorLineMuted: {
+    color: color.text3,
   },
 });
 

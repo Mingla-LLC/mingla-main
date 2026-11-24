@@ -57,6 +57,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/draftEventValidation")) return { validatePublish: () => [], validateStep: () => [], computePublishability: () => ({ status: "ready" }) };
     if (name.endsWith("/draftRsvpValidation")) return { validateRsvpPublish: () => [], validateRsvpStep: () => [] };
     if (name.endsWith("/draftEventPristine")) return { isDraftEventPristine: () => false };
+    // #4572 7e — the brand-zone default is pure, so it is supplied REAL.
+    if (name.endsWith("/timezones")) return jest.requireActual("../../../utils/timezones");
     if (name.endsWith("/brandPayout")) return { payoutGateStatus: () => "ready" };
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
@@ -74,6 +76,15 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
       };
     } // [TEST-MOD-APPROVED #3645]
     if (name.endsWith("/refundPolicyTerms")) return { OfferingRefundTermsError: class extends Error {} };
+    // [TEST-MOD #4548] the guest pack working copy (nothing pending in this suite).
+    if (name.endsWith("/guestPackGate")) return {
+      guestPackEventIdForDraft: (id: string) => (id.startsWith("d_") ? null : id),
+      hasPendingGuestPack: () => false,
+      flushGuestPack: async () => ({ ok: true, saved: false }),
+      releaseGuestPackSession: () => undefined,
+      subscribeGuestPack: () => () => undefined,
+      useGuestPackPending: () => false,
+    };
     if (name.endsWith("/recurrenceRule")) return { expandRecurrenceToDates: () => [] };
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };
     if (name.endsWith("/createDeferredTurnoutIntelProvider")) return { createDeferredTurnoutIntelProvider: () => leaf("IntelProvider") };
@@ -104,6 +115,7 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/invites/LazyInvitePeopleStep")) return { InvitePlanSummaryBridge: ({ onChange }: { onChange: (s: unknown) => void }) => { const R = require("react"); R.useEffect(() => { onChange(inviteSummaryStub); }, [onChange]); return null; }, PENDING_WIZARD_INVITE_SUMMARY: { plan: { data: undefined, isPending: true, isFetching: true, isError: false }, quote: { data: undefined, isPending: true, isFetching: true, isError: false }, refreshAuthoritative: async () => ({ plan: null, quote: null }) }, InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780] lazy owner, same inert leaves
     if (name.endsWith("/invites/InvitePeopleStep")) return { InvitePeopleStep: leaf("InvitePeopleStep"), InvitePlanReviewSummary: leaf("InvitePlanReviewSummary"), InvitePeoplePublishConfirmation: leaf("InvitePeoplePublishConfirmation") }; // [TEST-MOD-APPROVED #1780]
     if (name.endsWith("/lazySettingsSteps")) return { CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: leaf("RsvpStep5Setup") }; // issue #3827: the two settings steps load lazily; same inert leaves
+    if (name.endsWith("/LazyCreatorStep1Basics")) return { CreatorStep1Basics: leaf("CreatorStep1Basics") }; // #4572 route-only lazy boundary; same inert step leaf
     if (name.endsWith("/LazyCreatorStep2When")) return { CreatorStep2When: leaf("CreatorStep2When") }; // [TEST-MOD-APPROVED #3872] route-only lazy boundary; same inert step leaf
     if (name.endsWith("/LazyCreatorStep5Tickets")) return { CreatorStep5Tickets: leaf("CreatorStep5Tickets") }; // #3281 route-only lazy boundary; same inert step leaf
     if (name.endsWith("/useEventDateKeys")) return { useEventDateKeys: () => ({ data: undefined }) }; // #3281 sold-date keys; unused by these hosts

@@ -129,10 +129,12 @@ export const NAV_GROUPS = [
     label: "Home",
     items: [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
+      // #4517: Messages (the page the top-bar button also opens) sits right
+      // under Dashboard; its entry carries the unread count.
+      { id: "messages",                  label: "Messages",           icon: "MessageSquareText" },
       // #4270 (D20): the Work entry carries the count of your own open cards
       // due today or overdue.
       { id: "work-board",                label: "Work",               icon: "SquareKanban" },
-      // #4255 W4: Notifications left the menu for Messages in the top bar.
     ],
   },
   {
@@ -157,22 +159,22 @@ export const NAV_GROUPS = [
   {
     label: "Support",
     items: [
-      // #4130 Wave 6: two pages, split from the Community & Support console.
+      // #4130 Wave 6: split from the Community & Support console. #4420:
+      // Community is retired (its old addresses redirect, lib/adminRoutes.js).
       { id: "support",                   label: "Support",            icon: "LifeBuoy" },
-      { id: "community",                 label: "Community",          icon: "MessagesSquare" },
     ],
   },
   {
     // #4383: everything we tell hosts and explorers, each its own screen.
-    // Email, Blog and Links page came out of Support, Announcements and
-    // Roadmap out of Community; each keeps exactly the access its tab had
+    // Email, Blog and Links page came out of Support, Announcements (and
+    // #4420's Feature guide) out of Community; each keeps exactly the access its tab had
     // (lib/access.js). Old tab addresses redirect (lib/adminRoutes.js).
     label: "Communications",
     items: [
       { id: "communications",            label: "Overview",           icon: "RadioTower" },
       { id: "push",                      label: "Push",               icon: "Send" },
       { id: "announcements",             label: "Announcements",      icon: "BellRing" },
-      { id: "roadmap",                   label: "Roadmap",            icon: "Milestone" },
+      // #4420: the Roadmap screen is retired (#/roadmap opens Announcements).
       { id: "email",                     label: "Email",              icon: "Mail" },
       { id: "blog",                      label: "Blog",               icon: "Newspaper" },
       { id: "links",                     label: "Links page",         icon: "Link" },
@@ -180,6 +182,8 @@ export const NAV_GROUPS = [
       { id: "brand-groups",              label: "Brand groups",       icon: "Hand" },
       // #4452 §7.0: the Website pages editor.
       { id: "website-pages",             label: "Website pages",      icon: "LayoutTemplate" },
+      // #4420: moved unchanged out of Community, with the access its tab had.
+      { id: "feature-guide",             label: "Feature guide",      icon: "BookOpen" },
     ],
   },
   {
@@ -243,8 +247,6 @@ export const NAV_GROUPS = [
 export const HEADER_PAGE_ITEMS = [
   { id: "agent", label: "My agent" },
   { id: "guide", label: "Guide" },
-  // #4255 W4: Messages (the top-bar button; #/messages is its full page).
-  { id: "messages", label: "Messages" },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)

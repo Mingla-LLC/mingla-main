@@ -68,7 +68,8 @@ Deno.test("#3980 W3 D-11: the Pipeline menu is Needs you, Work and Calendar toge
   const home = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Home");
   assertEquals(home?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
     // #4255 W4: Notifications left the menu for Messages in the top bar.
-    "overview:Dashboard", "work-board:Work",
+    // #4517: Messages has its own row under Dashboard.
+    "overview:Dashboard", "messages:Messages", "work-board:Work",
   ]);
   const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
   assertEquals(outreach?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
@@ -206,7 +207,7 @@ Deno.test("#3980 W3 R9: the one people field is used for every owner, watcher an
   assertNotMatch(field, /break-all|overflow-wrap:anywhere/);
   // Work card owners keep one, except cards Mingla made by itself.
   // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D5): an automatic card keeps its last owner too once it has one; with none it shows the field empty.
-  assertMatch(code("components/ops/WorkDetail.jsx"), /label="Owner" single[\s\S]{0,240}?min=\{1\}/  /* #4398: one owner, always kept */);
+  assertMatch(code("components/ops/WorkDetail.jsx"), /label="Owners" value=\{ownerEmails\}[\s\S]{0,240}?min=\{1\} max=\{10\}/  /* #4571 W1: 1 to 10 owners, the last one always kept */);
 });
 
 Deno.test("#3980 W3 R6: the four plain states and their words", () => {

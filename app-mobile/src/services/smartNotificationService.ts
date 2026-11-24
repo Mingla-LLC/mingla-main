@@ -23,6 +23,8 @@ export interface NotificationPreferences {
   messages: boolean;
   collaboration_invites: boolean;
   marketing: boolean;
+  /** #4508 2.3 — "{Name} is going to {event}" pushes (default on). */
+  friends_going?: boolean;
   created_at?: string;
   updated_at?: string;
 }

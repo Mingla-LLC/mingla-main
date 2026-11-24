@@ -49,9 +49,13 @@
         "brand_campaign_push": "Pesan dari tempat yang kamu ikuti",
         "brand_campaign_push_hint": "Penawaran dan kabar dari tempat dan host yang kamu ikuti.",
         "brand_offering_invite": "Undangan dari tempat yang kamu ikuti",
-        "brand_offering_invite_hint": "Saat tempat atau host mengundangmu ke sesuatu."
+        "brand_offering_invite_hint": "Saat tempat atau host mengundangmu ke sesuatu.",
+        "brand_form_request": "Pertanyaan dari penyelenggara",
+        "brand_form_request_hint": "Saat penyelenggara memintamu menjawab pertanyaannya. Email selalu aktif untuk ini, karena berisi tautan pribadimu. SMS mengikuti pengaturan SMS-mu."
       }
-    }
+    },
+    "friends_going": "Teman yang pergi",
+    "friends_going_hint": "Saat teman dekat pergi ke sebuah acara"
   },
   "quiet_hours": {
     "title": "Jam Tenang",

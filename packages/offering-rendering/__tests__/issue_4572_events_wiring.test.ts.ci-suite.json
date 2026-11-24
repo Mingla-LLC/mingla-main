@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_4572_events_wiring.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4572-events-wiring-01",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

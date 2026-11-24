@@ -69,6 +69,9 @@ const BOUNDARY: Record<string, () => unknown> = {
   "@mingla/offering-rendering": () => jest.requireActual("@mingla/offering-rendering"),
   "@mingla/offering-rendering/currencyGlyph": () =>
     jest.requireActual("@mingla/offering-rendering/currencyGlyph"),
+  // [TEST-MOD-APPROVED #4518] Harness registration only: trip day pictures now render through the real routed image.
+  "@mingla/offering-rendering/useOfferingImageUri": () =>
+    jest.requireActual("@mingla/offering-rendering/useOfferingImageUri"),
   EventCoverMedia: () => ({ EventCoverMedia: nothing }),
   Icon: () => ({ Icon: nothing }),
   CollapsibleDescription: () => ({ CollapsibleDescription: leaf("CollapsibleDescription") }),

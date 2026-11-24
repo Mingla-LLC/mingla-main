@@ -223,7 +223,13 @@ scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 77a2d8b08e
 // [TEST-MOD-APPROVED #3643] #3643 [freeze invariant registry]
 // Re-seals only the localized #1579 declaration and the mechanically reconciled
 // Phase 2 suite provenance; every executable command and capability lock remains.
-const PHASE2_SUITES_SHA256 = "305f1b1be4488bf34842430c7c8230ece590e60a170280e33c5054509be264c1";
+// [TEST-MOD-APPROVED #4514] The renderers moved from
+// mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx to
+// packages/form-rendering/QuestionRenderers.tsx (the one question model), so
+// issue-1027-keyboard-and-datetime-tests [7] watches the new path in place of the
+// deleted one. One originPaths entry changed; ids, order, commands and every
+// other seal are unchanged.
+const PHASE2_SUITES_SHA256 = "352d2fc5863b178d3fb15fa586d086745090d3c82307b50f1f503c4f04820b6b";
 const PHASE2_COMMANDS_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
 const PROVIDER_REF_COUNTS_SHA256 = "394b2a8ad3c984b0c4278f8e4a469f34f25b936fdf1fc346eebb1f4fa8ecd5b6";
 

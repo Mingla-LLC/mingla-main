@@ -104,8 +104,8 @@ import {
   initializeOneSignal,
   onForegroundNotification,
   onNotificationClicked,
-  syncPushPermissionTag,
 } from "../src/services/oneSignalService";
+import { ensurePushRegistrationOnForeground } from "../src/services/pushRegistrationHealth";
 import {
   processBusinessNotification,
   type BusinessNavTarget,
@@ -147,6 +147,18 @@ import { installFieldFocusCss } from "../src/components/ui/fieldFocusCss";
 import { installAppBackgroundCss } from "../src/components/ui/appBackgroundCss";
 import { NativeTabletColumn } from "../src/components/ui/NativeTabletColumn";
 import { usePhonePortraitLock } from "../src/hooks/usePhonePortraitLock";
+import { installWebDocumentCss } from "../src/utils/webDocumentCss";
+// #4518 — buyer pictures take the second road on web (one fallback each).
+import { OfferingMediaRouteContext } from "@mingla/offering-rendering/offeringMediaRoute";
+import { buyerMediaRoute } from "../src/services/buyerMediaRoute";
+
+// #4420 D1: the page is the dark canvas and never bounces, from the first
+// paint (web only: native has no document, so this does nothing there).
+installWebDocumentCss();
+
+// Web only: native gets the package's pass-through default (no provider).
+const WEB_MEDIA_ROUTE =
+  Platform.OS === "web" && typeof window !== "undefined" ? buyerMediaRoute : null;
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -931,7 +943,7 @@ export default function RootLayout(): React.ReactElement {
   useEffect(() => {
     const handleAppStateChange = (status: AppStateStatus): void => {
       focusManager.setFocused(status === "active");
-      if (status === "active") void syncPushPermissionTag();
+      if (status === "active") void ensurePushRegistrationOnForeground();
 
       const wasBackground = prevAppStateRef.current === "background";
       prevAppStateRef.current = status;
@@ -1024,7 +1036,13 @@ export default function RootLayout(): React.ReactElement {
                     {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
                         every route (inside AuthProvider so identify works). */}
                     <PostHogAnalyticsProvider>
-                      <RootLayoutInner />
+                      {WEB_MEDIA_ROUTE !== null ? (
+                        <OfferingMediaRouteContext.Provider value={WEB_MEDIA_ROUTE}>
+                          <RootLayoutInner />
+                        </OfferingMediaRouteContext.Provider>
+                      ) : (
+                        <RootLayoutInner />
+                      )}
                     </PostHogAnalyticsProvider>
                     <KeyboardToolbarRoot />
                     <ConsentBanner />

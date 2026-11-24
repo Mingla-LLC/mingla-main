@@ -28,6 +28,7 @@ import {
 // rendered moments are present so the v2 core can fan out the seeded categories.
 
 import { formatMessageTime, type MessageTime } from "./messageTime.ts";
+import { isBrandFormCategory, renderBrandFormMessage } from "./brandFormNotify.ts";
 import { type BuyerSmsNoun, renderBuyerSms } from "./sms/buyerSms.ts";
 import { renderTillReceiptEmailBody } from "./email/tillReceiptEmail.ts";
 import {
@@ -288,6 +289,10 @@ export function renderCategoryMessage(
   // #3682 wave 2 — account invites and campaign push name the brand and why.
   if (isBrandReachCategory(categoryKey)) {
     return renderBrandReachMessage(categoryKey, payload);
+  }
+  // #4514 wave 4 — a host's form request and the held-reminder notice.
+  if (isBrandFormCategory(categoryKey)) {
+    return renderBrandFormMessage(categoryKey, payload);
   }
   // #4255 W4 — "Ray mentioned you · #612", "Feyikemi in Lagos launch"; the
   // words come from the names the drain resolved from the payload's ids.

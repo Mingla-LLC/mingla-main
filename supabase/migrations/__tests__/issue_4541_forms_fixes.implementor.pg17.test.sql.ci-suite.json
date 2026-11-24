@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4541_forms_fixes.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4541-forms-fixes-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

@@ -118,6 +118,10 @@ $vacuity$;
 -- country_code: the category has no SMS channel) adds one writer: 45 -> 46.
 -- issue_4453_website_team_requests.implementor.pg17 asserts the NULL country
 -- on its rows.
+-- [TEST-MOD #4514] The brand form automatic reminder's "held" host notice
+-- (brand_form_auto_reminders_due; business.brand_form_reminder_held, in-app and
+-- push only, an explicit NULL country_code) adds one writer: 46 -> 47.
+-- issue_4514_brand_forms.implementor.pg17 asserts the NULL country on its row.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
 --     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255, and 44 -> 45 for #4420, and 45 -> 46 for #4453, and 46 -> 49 for #4490.
@@ -205,6 +209,10 @@ $ratchet$;
 --       issue_4490_till_receipt_send        → mingla_e164_country(phone) on the text row,
 --                                             explicit NULL on the email row (#4490 08-O1)
 --       issue_4490_till_pay_code_text       → mingla_e164_country(p_phone_e164) (#4490 08-O2)
+--       brand_form_auto_reminders_due       → explicit NULL (#4514 "reminder held"
+--                                             host notice: in-app and push; no SMS)
+--       brand_form_blast_hold_if_closed     → explicit NULL (#4541 "Blast not sent"
+--                                             host notice: in-app and push; no SMS)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -286,7 +294,13 @@ DECLARE
     -- [TEST-MOD-APPROVED #4490] spec 08 O2 scan to pay: "Text them the link"
     -- writes one buyer_door_pay_link SMS row with mingla_e164_country(phone);
     -- issue_4490_ops_till_pay.implementor.pg17 (O2-DB11b) asserts it.
-    'issue_4490_till_pay_code_text'
+    'issue_4490_till_pay_code_text',
+    'brand_form_auto_reminders_due',
+    -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
+    -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
+    'brand_form_blast_hold_if_closed',
+    -- #4571 W3 host/creator watcher notice: Admin in-app plus a Host team-screen push, no SMS; writes an explicit NULL country_code. issue_4571_w3_crm_card_watchers_contacts.implementor.pg17 asserts the notice.
+    'crm_notify_watchers'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -458,7 +472,13 @@ DECLARE
     -- [TEST-MOD-APPROVED #4490] spec 08 O2 scan to pay: "Text them the link"
     -- writes one buyer_door_pay_link SMS row with mingla_e164_country(phone);
     -- issue_4490_ops_till_pay.implementor.pg17 (O2-DB11b) asserts it.
-    'issue_4490_till_pay_code_text'
+    'issue_4490_till_pay_code_text',
+    'brand_form_auto_reminders_due',
+    -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
+    -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
+    'brand_form_blast_hold_if_closed',
+    -- #4571 W3 host/creator watcher notice: Admin in-app plus a Host team-screen push, no SMS; writes an explicit NULL country_code. issue_4571_w3_crm_card_watchers_contacts.implementor.pg17 asserts the notice.
+    'crm_notify_watchers'
   ];
   v_missing text;
 BEGIN

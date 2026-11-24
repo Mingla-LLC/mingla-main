@@ -25,7 +25,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -103,6 +102,8 @@ import type {
 // issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
 import { ticketAvailabilityCaption } from "./remainingCountVisibility";
 import { accentFill, themeBoldFace } from "./themeAccentStyle";
+// issue #4518 — the brand photo takes the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -690,7 +691,7 @@ const PublishedBody = ({
             ]}
           >
             {brand?.photo !== undefined && brand.photo.length > 0 ? (
-              <Image
+              <OfferingRoutedImage
                 source={{ uri: brand.photo }}
                 style={[
                   styles.brandTile,
@@ -1101,10 +1102,8 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
       return;
     }
     if (isSoldOutTicket) return;
-    if (ticket.approvalRequired) {
-      callbacks.onRequestApproval(ticket.id);
-      return;
-    }
+    // #4572 7c (D7): ticket approval is not enforced yet, so an approval ticket
+    // follows the same free / buy path as the main button (no fake request).
     if (ticket.isFree) {
       callbacks.onClaimFreeTicket(ticket.id);
       return;
@@ -1120,7 +1119,6 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     if (isDoorOnly) return "Pay at the door";
     if (isSoldOutTicket && ticket.waitlistEnabled) return "Join waitlist";
     if (isSoldOutTicket) return "Sold out";
-    if (ticket.approvalRequired) return "Request approval";
     if (ticket.isFree) return "Get free ticket";
     return "Buy ticket";
   })();

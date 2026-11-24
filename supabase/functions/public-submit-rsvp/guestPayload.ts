@@ -1,0 +1,317 @@
+// Issue #4508 1.9 — plus-ones are a phone number each. Name and email are
+// optional, so older app versions that still send {name, email, phone} keep
+// working. C1: a signed-in inviter may instead send {userId} for a friend
+// picked from their friends list; the database checks the friendship and
+// resolves that account's proven number itself (never sent back). The
+// database re-checks everything (host limit, own number, duplicates, numbers
+// already on the list, released numbers, the caps); this module gives the
+// friendly 400s before the write.
+
+export type NormalizedGuest =
+  | {
+    name?: string;
+    email?: string;
+    phone: string;
+    phoneCountryIso: string | null;
+  }
+  | { userId: string };
+
+export type GuestParseResult =
+  | { ok: true; guests: NormalizedGuest[]; plusCount: number }
+  | { ok: false; error: string };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^\+[1-9][0-9]{7,14}$/;
+const COUNTRY_ISO_RE = /^[A-Z]{2}$/;
+const GUEST_KEYS = ["name", "email", "phone", "phoneCountryIso"];
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const digitsOf = (phone: string): string => phone.replace(/\D/g, "");
+
+/**
+ * `plusCount` may be omitted by new clients: it is then the number of guests.
+ * When sent, it must equal the number of guests (going / maybe).
+ *
+ * The inviter's own number is NOT refused here (P3-6): an older app re-sends
+ * the whole party, and a guest already on it must pass. The database refuses
+ * the own number only for a guest being added (rsvp_guest_own_number).
+ */
+export function parseGuests(input: {
+  rawGuests: unknown;
+  rawPlusCount: unknown;
+  rsvpStatus: "going" | "not_going" | "maybe";
+  primaryPhone: string | null;
+  /** C1: only a signed-in inviter may pick a friend by account. */
+  signedIn?: boolean;
+}): GuestParseResult {
+  if (input.rsvpStatus === "not_going") {
+    return { ok: true, guests: [], plusCount: 0 };
+  }
+  const rawGuests = Array.isArray(input.rawGuests) ? input.rawGuests : [];
+  const plusCount = typeof input.rawPlusCount === "number" &&
+      Number.isFinite(input.rawPlusCount)
+    ? Math.max(0, Math.floor(input.rawPlusCount))
+    : rawGuests.length;
+  if (plusCount === 0) return { ok: true, guests: [], plusCount: 0 };
+  if (rawGuests.length !== plusCount) {
+    return { ok: false, error: "rsvp_guest_count_mismatch" };
+  }
+  const seen = new Set<string>();
+  const seenUsers = new Set<string>();
+  const guests: NormalizedGuest[] = [];
+  for (const g of rawGuests) {
+    // C1: {userId} alone, from a signed-in inviter.
+    if (
+      g && typeof g === "object" && !Array.isArray(g) &&
+      "userId" in (g as Record<string, unknown>)
+    ) {
+      const picked = g as Record<string, unknown>;
+      if (
+        input.signedIn !== true || Object.keys(picked).length !== 1 ||
+        typeof picked.userId !== "string" || !UUID_RE.test(picked.userId)
+      ) {
+        return { ok: false, error: "rsvp_guest_keys_invalid" };
+      }
+      const userId = picked.userId.toLowerCase();
+      if (seenUsers.has(userId)) {
+        return { ok: false, error: "rsvp_guest_duplicate" };
+      }
+      seenUsers.add(userId);
+      guests.push({ userId });
+      continue;
+    }
+    if (
+      !g || typeof g !== "object" || Array.isArray(g) ||
+      Object.keys(g).some((key) => !GUEST_KEYS.includes(key))
+    ) {
+      return { ok: false, error: "rsvp_guest_keys_invalid" };
+    }
+    const guest = g as Record<string, unknown>;
+    if (
+      (guest.name !== undefined && guest.name !== null &&
+        typeof guest.name !== "string") ||
+      (guest.email !== undefined && guest.email !== null &&
+        typeof guest.email !== "string")
+    ) {
+      return { ok: false, error: "rsvp_guest_keys_invalid" };
+    }
+    const name = typeof guest.name === "string" ? guest.name.trim() : "";
+    const email = typeof guest.email === "string" ? guest.email.trim() : "";
+    const rawPhone = typeof guest.phone === "string" ? guest.phone.trim() : "";
+    if (name.length > 120 || email.length > 254 || rawPhone.length > 40) {
+      return { ok: false, error: "rsvp_guest_payload_invalid" };
+    }
+    if (rawPhone.length === 0) {
+      return { ok: false, error: "rsvp_guest_contact_required" };
+    }
+    if (email.length > 0 && !EMAIL_RE.test(email)) {
+      return { ok: false, error: "rsvp_guest_email_invalid" };
+    }
+    const iso = guest.phoneCountryIso;
+    let phoneCountryIso: string | null = null;
+    if (iso !== undefined && iso !== null && iso !== "") {
+      if (typeof iso !== "string" || !COUNTRY_ISO_RE.test(iso)) {
+        return { ok: false, error: "rsvp_guest_phone_country_invalid" };
+      }
+      phoneCountryIso = iso;
+    }
+    if (!PHONE_RE.test(rawPhone)) {
+      return { ok: false, error: "rsvp_guest_phone_invalid" };
+    }
+    const digits = digitsOf(rawPhone);
+    if (seen.has(digits)) return { ok: false, error: "rsvp_guest_duplicate" };
+    seen.add(digits);
+    guests.push({
+      ...(name.length > 0 ? { name } : {}),
+      ...(email.length > 0 ? { email } : {}),
+      phone: rawPhone,
+      phoneCountryIso,
+    });
+  }
+  return { ok: true, guests, plusCount };
+}
+
+/** Issue #4508 T1 — adding a plus-one needs a signed-in Mingla account. */
+export const GUEST_SIGN_IN_REQUIRED = "rsvp_guest_sign_in_required";
+
+/** The one answer a caller without a verified session gets when it sends any
+ * guest. A constant: it is built from nothing the caller sent, so it is the
+ * same bytes for every number (on the list, released, an account's, new). */
+export const guestSignInRequiredResponse = (): {
+  status: number;
+  body: { error: string };
+} => ({ status: 403, body: { error: GUEST_SIGN_IN_REQUIRED } });
+
+/**
+ * Issue #4508 T1 — does a signed-out submit carry guests? Decided from the
+ * guest COUNT alone (never a number): not_going carries none, plusCount when
+ * sent (0 ignores a stray array, as the old app relies on), else the array's
+ * length. Any guest from a caller without a verified session refuses the
+ * whole RSVP (never a silent drop); a signed-out RSVP without guests passes.
+ */
+export function signedOutGuestRefusal(input: {
+  signedIn: boolean;
+  rawGuests: unknown;
+  rawPlusCount: unknown;
+  rsvpStatus: unknown;
+}): { status: number; body: { error: string } } | null {
+  if (input.signedIn || input.rsvpStatus === "not_going") return null;
+  const count = typeof input.rawPlusCount === "number" &&
+      Number.isFinite(input.rawPlusCount)
+    ? Math.max(0, Math.floor(input.rawPlusCount))
+    : Array.isArray(input.rawGuests)
+    ? input.rawGuests.length
+    : 0;
+  return count > 0 ? guestSignInRequiredResponse() : null;
+}
+
+/** RPC messages the form can act on, with their HTTP status. */
+export const GUEST_RPC_ERRORS: ReadonlyArray<readonly [string, number]> = [
+  [GUEST_SIGN_IN_REQUIRED, 403],
+  ["rsvp_guest_has_pass", 409],
+  ["rsvp_plus_ones_exceeded", 400],
+  ["rsvp_guest_own_number", 400],
+  ["rsvp_guest_duplicate", 400],
+  ["rsvp_guest_already_listed", 409],
+  ["rsvp_guest_released", 409],
+  ["rsvp_guest_email_invalid", 400],
+  ["rsvp_guest_phone_invalid", 400],
+  ["rsvp_guest_phone_country_invalid", 400],
+  ["rsvp_guest_keys_invalid", 400],
+  ["rsvp_guest_not_friend", 400],
+  ["rsvp_guest_daily_cap", 429],
+];
+
+export function mapGuestRpcError(
+  code: string | undefined,
+  message: string | undefined,
+): { error: string; status: number } | null {
+  if (code === "P4508") return { error: "rsvp_guest_daily_cap", status: 429 };
+  const text = message ?? "";
+  for (const [error, status] of GUEST_RPC_ERRORS) {
+    if (text.includes(error)) return { error, status };
+  }
+  return null;
+}
+
+/** Issue #4508 P1-2 — the salted hash a signed-out inviter's caps are keyed
+ * by (hex, 64). The raw address never leaves this function. */
+export async function rsvpClientKey(ip: string): Promise<string> {
+  const data = new TextEncoder().encode(`mingla-rsvp-client:${ip}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Issue #4508 R-1 — a signed-out submit's guest numbers are counted BEFORE
+ * the submit, in their own transaction (rsvp_guest_signed_out_attempt), so a
+ * submit the database refuses and rolls back still uses up the caller's and
+ * the event's daily allowance. Signed-in callers and parties without guest
+ * numbers pass straight through. Fails closed: if the count cannot be
+ * written, the submit does not run. */
+export async function signedOutGuestGate(input: {
+  signedIn: boolean;
+  guests: readonly NormalizedGuest[];
+  attempt(count: number): Promise<{
+    data: unknown;
+    error: { message?: string; code?: string } | null;
+  }>;
+}): Promise<{ status: number; body: { error: string } } | null> {
+  if (input.signedIn) return null;
+  const count = input.guests.filter((guest) => "phone" in guest).length;
+  if (count === 0) return null;
+  let outcome: { data: unknown; error: unknown };
+  try {
+    outcome = await input.attempt(count);
+  } catch {
+    return { status: 503, body: { error: "unavailable" } };
+  }
+  if (outcome.error) return { status: 503, body: { error: "unavailable" } };
+  const row = Array.isArray(outcome.data) ? outcome.data[0] : outcome.data;
+  const allowed = row !== null && typeof row === "object" &&
+    (row as Record<string, unknown>).allowed === true;
+  return allowed
+    ? null
+    : { status: 429, body: { error: "rsvp_guest_daily_cap" } };
+}
+
+export interface SubmitGuestRow {
+  /** R-1: null for a signed-out caller (the database returns no guest id). */
+  guestId?: string | null;
+  phoneLast4?: string | null;
+  onMingla?: boolean;
+  displayName?: string | null;
+  claimed?: boolean;
+  addedFromFriend?: boolean;
+  willText?: boolean;
+  notTextedReason?: string | null;
+}
+
+/** Issue #4508 1.15 / C3 / R-2 / R-1 — one guest of the submit response. A
+ * signed-out caller never learns whether a number has an account (onMingla
+ * false, no name) nor why a guest will not be texted (willText only), and
+ * gets no guest id and no invite link: a number already on the list is
+ * answered like a new one (no row), and an id or a link that opens would
+ * tell the two apart. The database already answers that way; this is the
+ * second line. The guest's own text still carries their link. */
+export function shapeSubmitGuest(
+  guest: SubmitGuestRow,
+  link: { url: string | null; code: string | null } | null,
+  signedIn: boolean,
+): Record<string, unknown> {
+  const willText = guest.willText !== false;
+  return {
+    guestId: signedIn ? guest.guestId ?? null : null,
+    phoneLast4: guest.phoneLast4 ?? null,
+    onMingla: signedIn && guest.onMingla === true,
+    displayName: signedIn ? guest.displayName ?? null : null,
+    claimed: signedIn && guest.claimed === true,
+    inviteUrl: signedIn ? link?.url ?? null : null,
+    inviteCode: signedIn ? link?.code ?? null : null,
+    // C1: a friend picked from the list; the server never returns their
+    // number or its last four.
+    addedFromFriend: signedIn && guest.addedFromFriend === true,
+    // C3: sending is asynchronous, so no send status is claimed.
+    willText,
+    notTextedReason: signedIn && !willText
+      ? guest.notTextedReason ?? null
+      : null,
+  };
+}
+
+/** Issue #4508 P3 — why a guest will not be texted when the SMS adapter has no
+ * route for the number's country (it would fail at send time). */
+export const UNSUPPORTED_REGION = "unsupported_region";
+
+/**
+ * Issue #4508 P3 — a guest whose number the SMS adapter cannot route (no
+ * country mapping, e.g. some +233 numbers) is answered willText false with
+ * notTextedReason "unsupported_region", so the inviter is told now to send
+ * the invite themselves instead of "Text on its way". `phoneOf` gives the
+ * stored number of a guest row (signed-in callers only: they alone have
+ * guests); `routable` is the adapter's own routing rule.
+ */
+export function applySmsRoute<T extends SubmitGuestRow>(
+  guests: readonly T[],
+  phoneOf: (guestId: string) => string | null | undefined,
+  routable: (phone: string) => boolean,
+): T[] {
+  return guests.map((guest) => {
+    if (guest.willText === false || typeof guest.guestId !== "string") {
+      return guest;
+    }
+    const phone = phoneOf(guest.guestId);
+    if (typeof phone !== "string" || phone.length === 0 || routable(phone)) {
+      return guest;
+    }
+    return { ...guest, willText: false, notTextedReason: UNSUPPORTED_REGION };
+  });
+}
+
+// The notice builder lives in _shared so rsvp-notify sends the same words.
+export {
+  type GuestNotice,
+  guestNoticeDispatch,
+} from "../_shared/rsvpGuestNotice.ts";

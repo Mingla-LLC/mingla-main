@@ -203,12 +203,12 @@ Deno.test("the shell really does take an attendance-claim URL before the parser 
       // expo-router already opened is not pushed a second time.
       [
         "if (await receiveAttendanceClaimUrl(url)) return;",
-        'handleDeepLink(url, "os");',
+        "handleDeepLink(url",
         "the cold-start Linking.getInitialURL path",
       ],
       [
         "if (await receiveAttendanceClaimUrl(event.url)) return;",
-        'handleDeepLink(event.url, "os");',
+        "handleDeepLink(event.url",
         "the warm Linking.addEventListener path",
       ],
     ] as const

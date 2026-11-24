@@ -19,6 +19,7 @@
 // (from mingla-admin; R-1 builds WorkColumns with esbuild: run `npm ci` first,
 // without it the test FAILS, it never skips).
 import { before, describe, it } from "node:test";
+import { supabaseStubPlugin } from "./_supabaseStubPlugin.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -54,7 +55,10 @@ export function columns({ columnInfo, cards, layout = "phone" }) { return render
     },
     bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
     banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
-    define: { "process.env.NODE_ENV": '"production"' },
+    // #4571: the bundled board now reaches lib/supabase.js (through the subtask links); the
+    // bundle is plain Node, so give it the two build-time vars it reads (a placeholder URL, no network).
+    plugins: [supabaseStubPlugin],
+    define: { "process.env.NODE_ENV": '"production"', "import.meta.env.VITE_SUPABASE_URL": '"http://localhost:54321"', "import.meta.env.VITE_SUPABASE_ANON_KEY": '"test-anon-key"' },
   });
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "issue4270-rework-")), "harness.mjs");
   fs.writeFileSync(file, out.outputFiles[0].text);
@@ -84,7 +88,7 @@ describe("R-1 a long To do never empties In progress or Done (P2-1)", () => {
   it("the board asks for each column on its own and drops the one-page notice", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /useOpsWork\(\{[^}]*limit: BOARD_LIMIT, perStatus: true/);
-    assert.match(page, /info=\{view\.show \|\| view\.linked \? null : list\.data\?\.status_columns \|\| null\}/);
+    assert.match(page, /info=\{view\.show \|\| view\.linked \|\| view\.type \? null : list\.data\?\.status_columns \|\| null\}/);
     assert.doesNotMatch(page, /Showing the first \$\{BOARD_LIMIT\} cards/);
     const hook = code("hooks/useOpsWork.js");
     assert.match(hook, /\.\.\.\(perStatus \? \{ per_status: true \} : \{\}\)/);

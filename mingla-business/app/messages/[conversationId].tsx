@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { webPrivacyMaxHeight } from "../../src/components/messages/webViewportPin";
+import { messagesScreenWebSize, webPrivacyMaxHeight } from "../../src/components/messages/webViewportPin";
+import { HostShellInsetContext } from "../../src/components/ui/hostShellContext";
+import { useVisibleBandShift } from "../../src/components/messages/webVisualViewport";
 import {
   ActivityIndicator,
   Modal,
@@ -35,7 +37,13 @@ import { BrandGroupInboxList } from "../../src/components/messages/BrandGroupInb
 import { BrandGroupMessageMenu } from "../../src/components/messages/BrandGroupMessageMenu";
 import { BrandGroupMessageRow, BrandGroupMessageText } from "../../src/components/messages/BrandGroupMessageRow";
 import { BrandGroupTile } from "../../src/components/messages/BrandGroupTile";
+import { openMessageLink } from "../../src/components/messages/openMessageLink";
+// #4420: the Guests side of a brand's one thread is the Guest chat panel, on
+// intent through the one shared lazy chunk (never a static GroupChatPanel).
+import { LazyBrandGuestPeoplePanel } from "../../src/components/groupChat/LazyBrandGuestPeoplePanel";
+import { LazyGroupChatPanel, ensureMessagesEnglish, threadSupport } from "../../src/components/groupChat/LazyGroupChatPanel";
 import { Button } from "../../src/components/ui/Button";
+import { createRetryableLazyErrorBoundary } from "../../src/components/ui/RetryableLazyBoundary";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { Toast, type ToastKind } from "../../src/components/ui/Toast";
@@ -43,6 +51,8 @@ import { brandGroupChat } from "../../src/constants/brandGroupChatTokens";
 import { color, radius, size, space } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
+import { useBrandGuestChats } from "../../src/hooks/useBrandGuestChats";
+import { brandGuestChatHref } from "../../src/services/brandGuestChatList";
 import { useBrandGroupLive } from "../../src/hooks/useBrandGroupLive";
 import { useBrandGroupUploadQueue } from "../../src/hooks/useBrandGroupUploadQueue";
 import { brandGroupMediaKeys } from "../../src/hooks/brandGroupMediaKeys";
@@ -61,7 +71,6 @@ import {
   markBrandGroupRead,
   sendBrandGroupMessage,
   type BrandGroupMessage,
-  type BrandGroupSummary,
 } from "../../src/services/brandGroupsService";
 import { listBrandGroupMembers, listBrandGroupMentionCandidates } from "../../src/services/brandGroupRosterService";
 import { supabase } from "../../src/services/supabase";
@@ -80,6 +89,27 @@ import {
   type SelectedBrandGroupMention,
 } from "../../src/utils/brandGroupMentions";
 import { isNearLatestBrandGroupMessage } from "../../src/utils/brandGroupScroll";
+import {
+  BRAND_PLAN_CARD_PREVIEW,
+  brandPlanActivityTitle,
+  foldBrandPlanLines,
+} from "../../src/utils/brandGroupPlanFold";
+import {
+  brandInboxOpenSide,
+  brandInboxRowHref,
+  guestChatRedirectHref,
+  parseMessagesSide,
+  showsSideSwitcher,
+  type BrandInboxRow,
+  type MessagesSide,
+} from "../../src/utils/brandMessagesInbox";
+import {
+  readThreadRailCollapsed,
+  resolveThreadRail,
+  writeThreadRailCollapsed,
+  type ThreadRailTab,
+} from "../../src/utils/threadRailPreference";
+import type { BrandThreadSendTarget } from "../../src/utils/brandThreadSend";
 import { visibleBrandGroupPendingUploads } from "../../src/utils/brandGroupPendingUploads";
 import {
   BRAND_GROUP_HEART,
@@ -165,34 +195,72 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   return <BrandGroupMessagesShell conversationId={conversationId} />;
 }
 
+// #4420: the Messages words and thread helpers load on intent (never in the
+// boot chunk); the lazy boundary shows the loader and Try again.
+const BrandGroupMessagesShell = createRetryableLazyErrorBoundary<{ conversationId: string | null }>(
+  async () => {
+    await ensureMessagesEnglish();
+    return { default: BrandGroupMessagesShellBody };
+  },
+  { loadingLabel: "Opening Messages", style: { flex: 1 } },
+);
+
 /**
  * #4304 — on desktop web the Messages page is three panes: the group list,
  * the thread and the details rail. Choosing another group swaps the thread in
  * place (router.setParams), so the list keeps its scroll, search and filter.
  * Phones keep separate screens.
  */
-function BrandGroupMessagesShell({ conversationId }: { conversationId: string | null }): React.ReactElement {
+function BrandGroupMessagesShellBody({ conversationId }: { conversationId: string | null }): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const { height: windowHeight } = useWindowDimensions();
   const router = useRouter();
   const { user } = useAuth();
   const staff = useSupportStaff();
   const { groups, loading, error, refresh } = useBrandGroups();
-  if (!isWideDesktop) return <BrandGroupThreadScreen key={conversationId ?? "none"} />;
-  const openGroup = (group: BrandGroupSummary): void => {
-    if (group.conversation_id === conversationId) return;
+  // #4420: the brand Guest chats, joined onto their brand's one row and
+  // shown as the Guests side of its thread.
+  const guestChats = useBrandGuestChats();
+  const shellActive = React.useContext(HostShellInsetContext);
+  const { t } = useBusinessMediaTranslation();
+  // #4420 redirect: /messages/<a Guest chat id> lands on its brand's thread
+  // with Guests selected (or the Guest chat alone when there is no Team chat).
+  const inGroups = groups.some((group) => group.conversation_id === conversationId);
+  const guestMatch = inGroups ? null : guestChats.chats.find((chat) => chat.conversation_id === conversationId) ?? null;
+  if (guestMatch) {
+    return <Redirect href={(guestChatRedirectHref(guestMatch.brand_id, groups) ?? brandGuestChatHref(guestMatch.brand_id)) as never} />;
+  }
+  if (!inGroups && (loading || guestChats.loading)) {
+    return (
+      <SafeScreen edges={["top"]} style={styles.screen}>
+        <View style={styles.state} accessibilityLabel={t("messages.opening")}><ActivityIndicator color={color.text2} /></View>
+      </SafeScreen>
+    );
+  }
+  if (!isWideDesktop) return <BrandGroupThreadScreen key={conversationId ?? "none"} guestChats={guestChats} />;
+  const openRow = (row: BrandInboxRow): void => {
+    if (!row.group) {
+      router.push(brandInboxRowHref(row) as never);
+      return;
+    }
+    if (row.group.conversation_id === conversationId) return;
+    const side = brandInboxOpenSide(row);
     router.setParams({
-      conversationId: group.conversation_id,
-      mode: group.access_kind === "support" ? "support" : "brand",
+      conversationId: row.group.conversation_id,
+      mode: row.group.access_kind === "support" ? "support" : "brand",
+      side: side === "guests" ? "guests" : undefined,
       focusMessageId: undefined,
       gallery: undefined,
     } as never);
   };
+  const selectedBrandId = groups.find((group) => group.conversation_id === conversationId)?.brand_id ?? null;
   return (
     <View
       style={[
         styles.desktopShell,
-        Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null,
+        // #4420 A2: fills the desktop shell's slot under its top bar (a full
+        // window pin made #root scroll the composer away).
+        messagesScreenWebSize(windowHeight, shellActive),
         // #4420: capped clear of the Privacy & ad choices strip.
         webPrivacyMaxHeight(),
       ]}
@@ -201,17 +269,22 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
       <View style={styles.desktopList}>
         <BrandGroupInboxList
           groups={groups}
+          guestChats={guestChats.chats}
+          guestActivity={guestChats.activity}
           loading={loading}
           error={error ?? null}
-          onRetry={() => void refresh()}
+          onRetry={() => {
+            void refresh();
+            void guestChats.refresh();
+          }}
           viewerId={user?.id ?? null}
           isStaff={staff.isStaff}
-          selectedId={conversationId}
-          onOpen={openGroup}
+          selectedBrandId={selectedBrandId}
+          onOpen={openRow}
         />
       </View>
       <View style={styles.desktopThread}>
-        <BrandGroupThreadScreen key={conversationId ?? "none"} embedded />
+        <BrandGroupThreadScreen key={conversationId ?? "none"} embedded guestChats={guestChats} />
       </View>
     </View>
   );
@@ -221,9 +294,16 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
 function BrandGroupRailTabRow({
   tabs,
   active,
+  onCollapse,
+  collapseLabel,
+  collapseRef,
 }: {
   tabs: { key: string; label: string; accessibilityLabel: string; onPress: () => void; testID?: string }[];
   active: string;
+  /** #4420 SC-17: hides the rail; the thread takes its width. */
+  onCollapse?: () => void;
+  collapseLabel?: string;
+  collapseRef?: React.Ref<View>;
 }): React.ReactElement {
   return (
     <View style={styles.railTabs} accessibilityRole="tablist" testID="brand-group-rail-tabs">
@@ -243,12 +323,145 @@ function BrandGroupRailTabRow({
           </Pressable>
         );
       })}
+      {onCollapse ? (
+        <Pressable
+          ref={collapseRef}
+          accessibilityRole="button"
+          accessibilityLabel={collapseLabel}
+          {...({ title: collapseLabel } as Record<string, unknown>)}
+          onPress={onCollapse}
+          hitSlop={4}
+          style={styles.railCollapse}
+          testID="brand-group-rail-collapse"
+        >
+          <Icon name="chevR" size={18} color={brandGroupChat.textSecondary} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): React.ReactElement {
-  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[]; plan?: string | string[] }>();
+/**
+ * #4420 — one Team | Guests switcher in the thread header. Team is the private
+ * Brand group with Mingla; Guests is everyone with a ticket or RSVP, where the
+ * team posts as the brand. The unread count of the side not showing is in the
+ * tab and its label.
+ */
+function BrandThreadSideSwitcher({
+  side,
+  teamUnread,
+  guestUnread,
+  onChange,
+  fullWidth,
+}: {
+  side: MessagesSide;
+  teamUnread: number;
+  guestUnread: number;
+  onChange: (side: MessagesSide) => void;
+  fullWidth: boolean;
+}): React.ReactElement {
+  const { t } = useBusinessMediaTranslation();
+  const tabs: { key: MessagesSide; label: string; a11y: string; unread: number }[] = [
+    { key: "team", label: t("messages.team"), a11y: t("messages.team_a11y"), unread: teamUnread },
+    { key: "guests", label: t("messages.guests"), a11y: t("messages.guests_a11y"), unread: guestUnread },
+  ];
+  return (
+    <View style={[styles.switcher, fullWidth && styles.switcherFull]} accessibilityRole="tablist" accessibilityLabel={t("messages.switcher_a11y")} testID="brand-thread-switcher">
+      {tabs.map((tab) => {
+        const on = side === tab.key;
+        const showBadge = !on && tab.unread > 0;
+        return (
+          <Pressable
+            key={tab.key}
+            accessibilityRole="tab"
+            accessibilityLabel={showBadge ? t("messages.unread_a11y", { label: tab.a11y, n: tab.unread }) : tab.a11y}
+            accessibilityState={{ selected: on }}
+            onPress={() => onChange(tab.key)}
+            style={[styles.switcherTab, fullWidth && styles.switcherTabFull, on && (tab.key === "guests" ? styles.switcherTabGuestsOn : styles.switcherTabTeamOn)]}
+            testID={`brand-thread-side-${tab.key}`}
+          >
+            <Icon name={tab.key === "guests" ? "megaphone" : "shield"} size={15} color={on ? (tab.key === "guests" ? color.infoText : color.textStrong) : color.text2} />
+            <Text style={[styles.switcherText, on && (tab.key === "guests" ? styles.switcherTextGuestsOn : styles.switcherTextOn)]}>{tab.label}</Text>
+            {showBadge ? (
+              <View style={tab.key === "guests" ? styles.switcherBadgeGuests : styles.switcherBadge}>
+                <Text style={tab.key === "guests" ? styles.switcherBadgeGuestsText : styles.switcherBadgeText}>{tab.unread > 99 ? "99+" : tab.unread}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * #4420 — plan activity: a run of quiet plan lines is one card ("Mingla added
+ * 11 items to the plan") with the first three, Show all, and Open Plan. Each
+ * line opens the plan.
+ */
+function BrandPlanActivityCard({
+  lines,
+  onOpenPlan,
+}: {
+  lines: BrandGroupMessage[];
+  onOpenPlan: (() => void) | null;
+}): React.ReactElement {
+  const { t } = useBusinessMediaTranslation();
+  const [open, setOpen] = useState(false);
+  const shown = open ? lines : lines.slice(0, BRAND_PLAN_CARD_PREVIEW);
+  const last = lines[lines.length - 1];
+  const at = last ? new Date(last.created_at) : null;
+  const time = at && Number.isFinite(at.getTime())
+    ? at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : "";
+  return (
+    <View style={styles.planCard} testID="brand-plan-activity-card" accessibilityRole="summary">
+      <View style={styles.planCardHead}>
+        <View style={styles.planCardIcon}><Icon name="calendar" size={18} color={color.text1} /></View>
+        <View style={styles.headerCopy}>
+          <Text style={styles.planCardTitle}>{brandPlanActivityTitle(t, lines)}</Text>
+          {time ? <Text style={styles.planCardSub}>{time}</Text> : null}
+        </View>
+      </View>
+      <View style={styles.planCardList}>
+        {shown.map((line) => (
+          <Pressable
+            key={line.id}
+            accessibilityRole={onOpenPlan ? "button" : "text"}
+            accessibilityLabel={onOpenPlan ? t("messages.line_opens_plan", { line: line.content }) : line.content}
+            disabled={!onOpenPlan}
+            onPress={onOpenPlan ?? undefined}
+            style={({ pressed }) => [styles.planCardLine, pressed && styles.optionRowPressed]}
+            testID="brand-plan-activity-line"
+          >
+            <Text style={styles.planCardLineText}>{line.content}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.planCardFoot}>
+        {lines.length > BRAND_PLAN_CARD_PREVIEW ? (
+          <Button
+            label={open ? t("messages.show_fewer") : t("messages.show_all", { n: lines.length })}
+            variant="secondary"
+            size="sm"
+            onPress={() => setOpen((value) => !value)}
+            testID="brand-plan-activity-toggle"
+          />
+        ) : null}
+        {onOpenPlan ? <Button label={t("messages.open_plan")} variant="primary" size="sm" onPress={onOpenPlan} testID="brand-plan-activity-open" /> : null}
+      </View>
+    </View>
+  );
+}
+
+function BrandGroupThreadScreen({
+  embedded = false,
+  guestChats,
+}: {
+  embedded?: boolean;
+  guestChats: ReturnType<typeof useBrandGuestChats>;
+}): React.ReactElement {
+  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[]; plan?: string | string[]; side?: string | string[] }>();
   const conversationId = first(params.conversationId);
   const requestedMode = first(params.mode);
   const requestedFocusMessageId = first(params.focusMessageId);
@@ -261,18 +474,44 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const queryClient = useQueryClient();
   const { t } = useBusinessMediaTranslation();
   const { isWideDesktop, width: layoutWidth } = useResponsiveLayout();
-  const showRail = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
+  const shellActive = React.useContext(HostShellInsetContext);
+  const bandShift = useVisibleBandShift(!embedded && !shellActive);
+  // #4420 SC-17: wide enough for the rail, and the viewer has not hidden it.
+  const railAllowed = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
+  const [railCollapsed, setRailCollapsedState] = useState<boolean>(() => readThreadRailCollapsed());
+  const showRail = railAllowed && !railCollapsed;
+  const railCollapseRef = useRef<View>(null);
+  const railShowRef = useRef<View>(null);
   // #4304 — on a phone, Plan and Media in the header are icon-only so the
   // group's name keeps its room (both carry an accessibility label).
-  const compactHeaderButtons = !showRail && (layoutWidth ?? 0) < 520;
+  const compactHeaderButtons = !railAllowed && (layoutWidth ?? 0) < 520;
   const { isAuthReady, user } = useAuth();
   const staff = useSupportStaff();
   const { groups, refresh: refreshGroups, setMuted } = useBrandGroups();
   const group = groups.find((item) => item.conversation_id === conversationId) ?? null;
   const canBrand = group?.access_kind === "brand";
   const canSupport = staff.isStaff;
-  // #4270: the plan is for the brand's own team; support staff use Admin.
-  const planBrandId = canBrand && group ? group.brand_id : null;
+  // #4270 / #4420 SC-12: the brand's team reads and writes its plan; Mingla
+  // support staff read it (server: brand_plan_can_read, writes stay rank-based,
+  // so the panel shows no Add and no item menu for them).
+  const planBrandId = group ? group.brand_id : null;
+  // #4420: the brand's Guest chat (team rows only) and which side shows. The
+  // URL `side` param is the one owner of the visible side.
+  const guestChat = canBrand && group
+    ? guestChats.chats.find((chat) => chat.brand_id === group.brand_id) ?? null
+    : null;
+  const hasSwitcher = showsSideSwitcher(group, guestChat);
+  const side: MessagesSide = hasSwitcher ? parseMessagesSide(params.side) : "team";
+  const guestUnread = guestChat ? guestChats.activity.get(guestChat.conversation_id)?.unread_count ?? 0 : 0;
+  const setSide = useCallback((next: MessagesSide): void => {
+    router.setParams({ side: next === "guests" ? "guests" : undefined } as never);
+  }, [router]);
+  // #4420 SC-4: the Guests draft lives here so it survives a switch to Team
+  // (the Team draft is `composer` below); the first-send check is once per
+  // thread open.
+  const [guestDraft, setGuestDraft] = useState("");
+  const [guestSendConfirmed, setGuestSendConfirmed] = useState(false);
+  const refreshGuestActivity = guestChats.refreshActivity;
   const [actorMode, setActorMode] = useState<"brand" | "support">(
     requestedMode === "support" ? "support" : "brand",
   );
@@ -303,13 +542,21 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const [peopleSheetOpen, setPeopleSheetOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [menuMessage, setMenuMessage] = useState<BrandGroupMessage | null>(null);
+  // #4420 SC-16: the Select text sheet (phones), for either side.
+  const [selectText, setSelectText] = useState<string | null>(null);
+  // #4420 history: null until the first page says whether older ones exist.
+  const [hasEarlier, setHasEarlier] = useState<boolean | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [farFromLatest, setFarFromLatest] = useState(false);
   const [planPanelOpen, setPlanPanelOpen] = useState(requestedPlan === "1" && requestedGallery !== "1");
   // #4270: on wide web the rail opens on the plan, unless the address asks for
   // the gallery. A group with no plan (support access) shows People instead.
   const [desktopDetailTab, setDesktopDetailTab] = useState<"people" | "plan" | "media">(
     requestedGallery === "1" ? "media" : "plan",
   );
-  const detailTab = desktopDetailTab === "plan" && !planBrandId ? "people" : desktopDetailTab;
+  // #4420 D4: Media is the Team chat's; the Guests side has no Media tab.
+  const mediaShown = side === "team";
+  const detailTab = (desktopDetailTab === "plan" && !planBrandId) || (desktopDetailTab === "media" && !mediaShown) ? "people" : desktopDetailTab;
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const autoFollowLatest = useRef(requestedFocusMessageId === null);
@@ -385,6 +632,13 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const showError = useCallback((message: string): void => {
     setToast({ visible: true, message, kind: "error" });
   }, []);
+  // #4420 SC-15: a link in a message opens in the in-app browser (phones) or a
+  // new tab (web); a refused or failed open says so.
+  const openLink = useCallback((url: string): void => {
+    void openMessageLink(url).catch((cause: unknown) => {
+      showError(cause instanceof Error && cause.message !== "unsafe_link" ? cause.message : t("messages.link_failed"));
+    });
+  }, [showError, t]);
   const liveMessageIds = useMemo(
     () => messages.filter((message) => message.message_type !== "system" && message.message_type !== "brand_enquiry_card").map((message) => message.id),
     [messages],
@@ -397,8 +651,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     onError: showError,
   });
   const announceRead = live.announceRead;
+  // #4420: runs of quiet plan lines fold into one plan activity card.
   const threadItems = useMemo(
-    () => buildBrandGroupThreadItems(messages, user?.id ?? null),
+    () => foldBrandPlanLines(buildBrandGroupThreadItems(messages, user?.id ?? null)),
     [messages, user?.id],
   );
   const seenBy = useMemo(
@@ -446,7 +701,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     try {
       const result = await listBrandGroupMessages(conversationId);
       if (result.error) throw new Error(result.error);
-      setMessages(result.messages);
+      // #4420: a refresh keeps older pages already loaded with Load earlier.
+      setMessages((current) => threadSupport().mergeNewestPage(current, result.messages));
+      setHasEarlier((current) => current ?? threadSupport().mayHaveEarlier(result.messages.length));
       setError(null);
       await markBrandGroupRead(conversationId);
       announceRead();
@@ -483,13 +740,13 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   }, [conversationId, requestedFocusMessageId]);
 
   useEffect(() => {
-    if (requestedGallery === "1") {
-      setMediaPanelOpen(true);
-      setDesktopDetailTab("media");
-    } else if (requestedPlan === "1") {
-      setPlanPanelOpen(true);
-      setDesktopDetailTab("plan");
-    }
+    // #4420 SC-17: a gallery or plan deep link opens a collapsed rail too.
+    const request: ThreadRailTab | null = requestedGallery === "1" ? "media" : requestedPlan === "1" ? "plan" : null;
+    if (request === null) return;
+    if (request === "media") setMediaPanelOpen(true);
+    else setPlanPanelOpen(true);
+    setDesktopDetailTab(request);
+    setRailCollapsedState((collapsed) => resolveThreadRail({ collapsed, tab: request }, request).collapsed);
   }, [requestedGallery, requestedPlan]);
 
   useEffect(() => {
@@ -513,18 +770,40 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     return () => { void supabase.removeChannel(channel); };
   }, [conversationId, planBrandId, queryClient, refresh]);
 
+  // #4420 SC-17: show / hide the rail; any tab request opens it on that tab.
+  const setRailCollapsed = useCallback((collapsed: boolean): void => {
+    setRailCollapsedState(collapsed);
+    writeThreadRailCollapsed(collapsed);
+    // Focus follows the control: collapsing lands on "Show panel", expanding
+    // on "Hide panel" (web keyboard users never lose their place).
+    setTimeout(() => {
+      const target = collapsed ? railShowRef.current : railCollapseRef.current;
+      if (target && "focus" in target && typeof target.focus === "function") target.focus();
+    }, 0);
+  }, []);
+  const openRailTab = useCallback((tab: ThreadRailTab): void => {
+    const next = resolveThreadRail({ collapsed: railCollapsed, tab: desktopDetailTab }, tab);
+    if (next.collapsed !== railCollapsed) setRailCollapsed(next.collapsed);
+    setDesktopDetailTab(next.tab);
+    setMediaPanelOpen(next.tab === "media");
+  }, [desktopDetailTab, railCollapsed, setRailCollapsed]);
+
+  // #4420: declared after openRailTab, which it calls (a hook dependency
+  // array is read during render: a later const is a crash, P0 on 2a5f48061d).
   const openMedia = useCallback(() => {
     if (!conversationId) return;
+    if (railAllowed && railCollapsed) {
+      openRailTab("media");
+      return;
+    }
     setDesktopDetailTab("media");
     setMediaPanelOpen(true);
-  }, [conversationId]);
+  }, [conversationId, openRailTab, railAllowed, railCollapsed]);
 
   const openPeople = useCallback(() => {
-    if (showRail) {
-      setDesktopDetailTab("people");
-      setMediaPanelOpen(false);
-    } else setPeopleSheetOpen(true);
-  }, [showRail]);
+    if (railAllowed) openRailTab("people");
+    else setPeopleSheetOpen(true);
+  }, [openRailTab, railAllowed]);
 
   const closeMedia = useCallback(() => {
     setMediaPanelOpen(false);
@@ -579,6 +858,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const updateLatestMessageProximity = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      setFarFromLatest(threadSupport().showsJumpToLatest(contentSize.height - layoutMeasurement.height - contentOffset.y));
       autoFollowLatest.current = isNearLatestBrandGroupMessage({
         contentHeight: contentSize.height,
         viewportHeight: layoutMeasurement.height,
@@ -588,20 +868,52 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     [],
   );
 
+  // #4420: Load earlier messages, the real older page (120 per page).
+  async function loadEarlier(): Promise<void> {
+    const before = threadSupport().earlierCursor(messages);
+    if (!conversationId || !before || loadingEarlier) return;
+    autoFollowLatest.current = false;
+    setLoadingEarlier(true);
+    try {
+      const older = await listBrandGroupMessages(conversationId, before);
+      if (older.error) throw new Error(older.error);
+      setMessages((current) => threadSupport().prependEarlierPage(current, older.messages));
+      setHasEarlier(threadSupport().mayHaveEarlier(older.messages.length));
+    } catch (cause) {
+      showError(cause instanceof Error ? cause.message : t("messages.earlier_failed"));
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }
+
+  function jumpToLatest(): void {
+    autoFollowLatest.current = true;
+    setFarFromLatest(false);
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }
+
   async function send(): Promise<void> {
-    if (!conversationId || !composer.trim() || sending) return;
+    // #4420 SC-5: the send is bound to the Team chat showing when Send was
+    // pressed; a switch to Guests mid-send never redirects it.
+    const content = composer.trim();
+    const target = threadSupport().captureSendTarget("team", conversationId);
+    if (!target || !content || sending) return;
     setSending(true);
     try {
-      await sendBrandGroupMessage({
-        conversationId,
-        content: composer.trim(),
-        replyToId: replyTo?.id,
-        relatedMessageIds: selectedIds,
-        mentionedUserIds: selectedMentions.map((mention) => mention.userId),
-        actorMode,
+      await threadSupport().dispatchBrandThreadSend(target, content, {
+        team: (id, text) => sendBrandGroupMessage({
+          conversationId: id,
+          content: text,
+          replyToId: replyTo?.id,
+          relatedMessageIds: selectedIds,
+          mentionedUserIds: selectedMentions.map((mention) => mention.userId),
+          actorMode,
+        }),
+        guests: () => Promise.reject(new Error("The Team composer never sends to guests.")),
       });
       live.stopTyping();
-      setComposer("");
+      // Only the Team draft that was sent is cleared.
+      setComposer((current) => (current.trim() === content ? "" : current));
       setComposerHeight(COMPOSER_MIN);
       setSelectedMentions([]);
       setMentionCandidates([]);
@@ -660,6 +972,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
         return;
       case "copy":
         void copyMessage(message);
+        return;
+      case "select_text":
+        setSelectText(message.content);
         return;
       case "signal":
         setSignalSourceId(message.id);
@@ -736,7 +1051,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     />
   );
 
-  if (!showRail && planPanelOpen && planBrandId) {
+  if (!railAllowed && planPanelOpen && planBrandId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
         <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={color.text2} /></View>}>
@@ -752,7 +1067,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
     );
   }
 
-  if (!showRail && mediaPanelOpen && conversationId) {
+  if (!railAllowed && mediaPanelOpen && mediaShown && conversationId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
         <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={color.text2} /></View>}>
@@ -781,14 +1096,39 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   }
 
   const memberCount = group?.member_count ?? members.length;
-  const subtitle = typingText ?? (brandGroupHeaderSubtitle(members, user?.id ?? null) || (group ? `${memberCount} teammates` : "Official Brand group"));
+  const teamSubtitle = typingText ?? (brandGroupHeaderSubtitle(members, user?.id ?? null) || (group ? `${memberCount} teammates` : "Official Brand group"));
+  // #4420: the header says which side is showing.
+  // #4420 D5: on phones and narrow web the subtitle is the short form, so it
+  // is never cut mid-word ("Guests room", "Team chat · private").
+  const narrowHeader = !railAllowed;
+  const subtitle = side === "guests"
+    ? t(narrowHeader ? "messages.subtitle_guests_short" : "messages.subtitle_guests")
+    : hasSwitcher && !typingText
+      ? narrowHeader ? t("messages.subtitle_team_short") : t("messages.subtitle_team", { who: teamSubtitle })
+      : teamSubtitle;
+  const openPlan = planBrandId
+    ? (): void => {
+      if (railAllowed) openRailTab("plan");
+      else setPlanPanelOpen(true);
+    }
+    : null;
+  const switcher = hasSwitcher ? (
+    <BrandThreadSideSwitcher
+      side={side}
+      teamUnread={group?.unread_count ?? 0}
+      guestUnread={guestUnread}
+      onChange={setSide}
+      fullWidth={!railAllowed}
+    />
+  ) : null;
   const menuActions = menuMessage
     ? buildBrandGroupMessageMenu({
       senderName: menuMessage.sender_display_name,
       hasText: menuMessage.content.trim().length > 0 && !menuMessage.file_id,
       canSupport,
       selected: selectedIds.includes(menuMessage.id),
-    })
+      canSelectText: Platform.OS !== "web",
+    }).map((action) => (action.key === "select_text" ? { ...action, label: t("messages.select_text"), accessibilityLabel: t("messages.select_text") } : action))
     : [];
   const myMenuReactions = menuMessage
     ? (live.reactionsByMessage.get(menuMessage.id) ?? []).filter((pill) => pill.mine).map((pill) => pill.emoji)
@@ -799,15 +1139,20 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       edges={embedded ? [] : ["top"]}
       style={[
         styles.screen,
-        Platform.OS === "web" && windowHeight > 0
-          ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
-          : null,
+        // #4420 A2: embedded in the desktop page (or inside the desktop shell)
+        // the thread fills its pane; on phones it is pinned to the visible
+        // height, capped clear of the privacy strip, so the composer rides
+        // the keyboard.
+        messagesScreenWebSize(windowHeight, embedded || shellActive),
         // #4420: capped clear of the Privacy & ad choices strip.
         webPrivacyMaxHeight(),
+        // #4420 SC-10: on phone web, follow the visible band when the
+        // keyboard scrolls it down (transform only, see webVisualViewport).
+        bandShift > 0 ? { transform: [{ translateY: bandShift }] } : null,
       ]}
       testID="brand-group-thread"
     >
-      <View style={styles.header}>
+      <View style={[styles.header, side === "guests" && styles.headerGuests]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton} hitSlop={6}>
           <Icon name="arrowL" size={20} color={brandGroupChat.textPrimary} />
         </Pressable>
@@ -821,15 +1166,16 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           <BrandGroupTile name={group?.brand_name || "Brand group"} photoUrl={group?.brand_photo_url} seed={group?.brand_id ?? conversationId ?? "brand"} size={38} />
           <View style={styles.headerCopy}>
             <Text style={styles.title} numberOfLines={1}>{group?.brand_name || "Brand group"}</Text>
-            <Text style={[styles.subtitle, typingText ? styles.subtitleTyping : null]} numberOfLines={1}>{subtitle}</Text>
+            <Text style={[styles.subtitle, typingText && side === "team" ? styles.subtitleTyping : null, side === "guests" && styles.subtitleGuests]} numberOfLines={1}>{subtitle}</Text>
           </View>
         </Pressable>
-        {!showRail && planBrandId ? (
+        {railAllowed ? switcher : null}
+        {!showRail && planBrandId && openPlan ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t("plan.pill_a11y")}
             hitSlop={5}
-            onPress={() => setPlanPanelOpen(true)}
+            onPress={openPlan}
             style={styles.mediaButton}
             testID="brand-plan-pill"
           >
@@ -837,6 +1183,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
             {compactHeaderButtons ? null : <Text style={styles.mediaButtonText}>{t("plan.pill")}</Text>}
           </Pressable>
         ) : null}
+        {mediaShown ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("chat.media_a11y")}
@@ -848,6 +1195,23 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           <Icon name="grid" size={16} color={brandGroupChat.textPrimary} />
           {compactHeaderButtons ? null : <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>}
         </Pressable>
+        ) : null}
+        {railAllowed && railCollapsed ? (
+          // #4420 SC-17: the way back while the rail is hidden.
+          <Pressable
+            ref={railShowRef}
+            accessibilityRole="button"
+            accessibilityLabel={t("messages.rail_show")}
+            {...({ title: t("messages.rail_show") } as Record<string, unknown>)}
+            hitSlop={5}
+            onPress={() => setRailCollapsed(false)}
+            style={styles.mediaButton}
+            testID="brand-group-rail-show"
+          >
+            <Icon name="chevL" size={16} color={brandGroupChat.textPrimary} />
+            <Text style={styles.mediaButtonText}>{t("messages.rail_show")}</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Brand group options"
@@ -860,7 +1224,10 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
         </Pressable>
       </View>
 
-      {group?.muted ? (
+      {/* #4420: below the header, full width, on phones and narrow web. */}
+      {!railAllowed && switcher ? <View style={[styles.switcherRow, side === "guests" && styles.headerGuests]}>{switcher}</View> : null}
+
+      {group?.muted && side === "team" ? (
         <View style={styles.mutedNote}>
           <Text style={styles.mutedNoteText}>{"Muted: routine push alerts are off, but direct @mentions still notify you."}</Text>
         </View>
@@ -880,6 +1247,36 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
         style={styles.workspace}
       >
       <View style={styles.threadColumn}>
+      {side === "guests" && guestChat ? (
+        // #4420: the Guests side. Its draft and first-send check live here,
+        // so a switch to Team and back keeps them for this thread open.
+        <LazyGroupChatPanel
+          key={guestChat.brand_id}
+          brandId={guestChat.brand_id}
+          embedded
+          thread={{
+            draft: guestDraft,
+            onDraftChange: setGuestDraft,
+            onSent: (_target: BrandThreadSendTarget, text: string) => {
+              setGuestDraft((current) => (current.trim() === text.trim() ? "" : current));
+            },
+            sendConfirmed: guestSendConfirmed,
+            onSendConfirmed: () => setGuestSendConfirmed(true),
+            onRead: () => void refreshGuestActivity(),
+            // #4420 SC-15 / SC-16: guest messages get the same links and Select text.
+            renderText: (content: string, mine: boolean) => (
+              <BrandGroupMessageText
+                content={content}
+                mine={mine}
+                mentionNames={[]}
+                onOpenLink={openLink}
+                onLongPress={Platform.OS === "web" ? undefined : () => setSelectText(content)}
+              />
+            ),
+          }}
+        />
+      ) : (
+      <>
       {loading ? (
         <View style={styles.state}><ActivityIndicator color={color.text2} /></View>
       ) : error ? (
@@ -896,12 +1293,38 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={followLatestMessage}
           onScroll={updateLatestMessageProximity}
+          // #4420: day markers stay at the top while you scroll.
+          stickyHeaderIndices={messages.length ? threadSupport().stickyDayIndices(threadItems, 1) : undefined}
           scrollEventThrottle={16}
           testID="brand-group-message-scroll"
         >
+          {messages.length > 0 ? (
+            hasEarlier ? (
+              <View style={styles.historyTop}>
+                <Button
+                  label={loadingEarlier ? t("messages.loading_earlier") : t("messages.load_earlier")}
+                  variant="secondary"
+                  size="sm"
+                  loading={loadingEarlier}
+                  disabled={loadingEarlier}
+                  onPress={() => void loadEarlier()}
+                  testID="brand-group-load-earlier"
+                />
+              </View>
+            ) : (
+              <Text style={styles.historyNote}>{t("messages.start_team", { brand: group?.brand_name || "Brand" })}</Text>
+            )
+          ) : null}
           {messages.length === 0 && pendingUploads.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
           ) : threadItems.map((item) => {
+            if (item.kind === "plan") {
+              return (
+                <View key={item.key} style={styles.cardRow}>
+                  <BrandPlanActivityCard lines={item.lines} onOpenPlan={openPlan} />
+                </View>
+              );
+            }
             if (item.kind === "day") {
               return (
                 <View key={item.key} style={styles.dayRow} accessibilityRole="header">
@@ -971,9 +1394,9 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
                       onLongPress={openMenu}
                       style={isMedia ? styles.mediaBubble : styles.fileCard}
                     >
-                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineText : color.accent} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
+                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineBubbleText : color.accent} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
-                  ) : <BrandGroupMessageText content={message.content} mine={mine} mentionNames={mentionNames} />}
+                  ) : <BrandGroupMessageText content={message.content} mine={mine} mentionNames={mentionNames} onOpenLink={openLink} onLongPress={() => setMenuMessage(message)} />}
                 />
               </View>
             );
@@ -983,6 +1406,14 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           ))}
         </ScrollView>
       )}
+      {farFromLatest && !loading && !error ? (
+        <View style={styles.jumpWrap} pointerEvents="box-none">
+          <Pressable accessibilityRole="button" accessibilityLabel={t("messages.jump_latest")} onPress={jumpToLatest} style={styles.jump} testID="brand-group-jump-latest">
+            <Icon name="chevD" size={16} color={brandGroupChat.textPrimary} />
+            <Text style={styles.jumpText}>{t("messages.jump_latest")}</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View
         style={[
@@ -995,6 +1426,17 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           },
         ]}
       >
+        {hasSwitcher ? (
+          <View style={styles.teamAudience}>
+            <View style={styles.teamAudienceChip} testID="brand-team-audience">
+              <Icon name="shield" size={13} color={brandGroupChat.textSecondary} />
+              <Text style={styles.teamAudienceText} numberOfLines={1}>{t("messages.team_audience")}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel={t("messages.switch_to_guests")} onPress={() => setSide("guests")} style={styles.teamAudienceSwap} testID="brand-team-switch-guests">
+              <Text style={styles.teamAudienceSwapText}>{t("messages.switch_to_guests")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {canBrand && canSupport ? (
           <View style={styles.actorBar}>
             <Text style={styles.actorLabel}>Replying as</Text>
@@ -1100,21 +1542,29 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
           </Pressable>
         </View>
       </View>
+      </>
+      )}
       </View>
       {showRail && conversationId ? (
-        <View style={styles.detailsRail}>
+        <View style={styles.detailsRail} testID="brand-group-details-rail">
           <BrandGroupRailTabRow
             active={detailTab}
+            onCollapse={() => setRailCollapsed(true)}
+            collapseLabel={t("messages.rail_hide")}
+            collapseRef={railCollapseRef}
             tabs={[
-              { key: "people", label: `People · ${members.length || "—"}`, accessibilityLabel: "Show people", onPress: () => { setDesktopDetailTab("people"); setMediaPanelOpen(false); } },
+              { key: "people", label: side === "guests" ? t("messages.guests") : `People · ${members.length || "—"}`, accessibilityLabel: "Show people", onPress: () => { setDesktopDetailTab("people"); setMediaPanelOpen(false); } },
               // #4270 — the brand's plan, for the brand's own team.
               ...(planBrandId
                 ? [{ key: "plan", label: t("plan.pill"), accessibilityLabel: t("plan.pill_a11y"), onPress: () => { setDesktopDetailTab("plan"); setMediaPanelOpen(false); }, testID: "brand-plan-rail-tab" }]
                 : []),
-              { key: "media", label: t("chat.media"), accessibilityLabel: "Show media", onPress: openMedia },
+              ...(mediaShown ? [{ key: "media", label: t("chat.media"), accessibilityLabel: "Show media", onPress: openMedia }] : []),
             ]}
           />
-          {detailTab === "people" ? (
+          {detailTab === "people" && side === "guests" && guestChat ? (
+            // #4420: People follows the side; Guests lists the guests.
+            <LazyBrandGuestPeoplePanel conversationId={guestChat.conversation_id} />
+          ) : detailTab === "people" ? (
             <BrandGroupPeoplePanel
               groupName={group?.brand_name ?? "Brand group"}
               members={members}
@@ -1150,7 +1600,16 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       ) : null}
       </KeyboardAvoidingView>
 
-      {!showRail && peopleSheetOpen ? (
+      {!railAllowed && peopleSheetOpen && side === "guests" && guestChat ? (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setPeopleSheetOpen(false)}>
+          <View style={styles.peopleScrim}>
+            <Pressable accessibilityRole="button" accessibilityLabel={t("messages.close")} style={StyleSheet.absoluteFill} onPress={() => setPeopleSheetOpen(false)} />
+            <View style={styles.peopleSheet}>
+              <LazyBrandGuestPeoplePanel conversationId={guestChat.conversation_id} onClose={() => setPeopleSheetOpen(false)} />
+            </View>
+          </View>
+        </Modal>
+      ) : !railAllowed && peopleSheetOpen ? (
         <BrandGroupPeopleSheet
           visible
           groupName={group?.brand_name ?? "Brand group"}
@@ -1174,10 +1633,12 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
                 <Icon name="users" size={18} color={brandGroupChat.textSecondary} />
                 <Text style={styles.optionText}>People</Text>
               </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="Show media" onPress={() => { setOptionsOpen(false); openMedia(); }} style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
-                <Icon name="grid" size={18} color={brandGroupChat.textSecondary} />
-                <Text style={styles.optionText}>{t("chat.media")}</Text>
-              </Pressable>
+              {mediaShown ? (
+                <Pressable accessibilityRole="button" accessibilityLabel="Show media" onPress={() => { setOptionsOpen(false); openMedia(); }} style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
+                  <Icon name="grid" size={18} color={brandGroupChat.textSecondary} />
+                  <Text style={styles.optionText}>{t("chat.media")}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={group?.muted ? "Unmute notifications" : "Mute notifications"}
@@ -1193,6 +1654,37 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
         </Modal>
       ) : null}
 
+      {selectText !== null ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setSelectText(null)}>
+          {/* #4420 SC-16: the message in a read-only field the OS lets you
+              partly select and copy. Close button, backdrop and back all
+              dismiss it. */}
+          <View style={styles.optionsScrim}>
+            <Pressable accessibilityRole="button" accessibilityLabel={t("messages.close")} style={StyleSheet.absoluteFill} onPress={() => setSelectText(null)} />
+            <View style={styles.selectSheet} testID="brand-group-select-text">
+              <View style={styles.selectSheetHead}>
+                <Text style={styles.selectSheetTitle}>{t("messages.select_text")}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={t("messages.close")} hitSlop={6} onPress={() => setSelectText(null)} style={styles.iconButton} testID="brand-group-select-text-close">
+                  <Icon name="close" size={18} color={brandGroupChat.textPrimary} />
+                </Pressable>
+              </View>
+              <Text style={styles.selectSheetHint}>{t("messages.select_hint")}</Text>
+              <TextInput
+                value={selectText}
+                onChangeText={() => undefined}
+                multiline
+                scrollEnabled
+                showSoftInputOnFocus={false}
+                caretHidden
+                contextMenuHidden={false}
+                accessibilityLabel={t("messages.select_field_a11y")}
+                style={styles.selectSheetField}
+                testID="brand-group-select-text-field"
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
       <BrandGroupMessageMenu
         message={menuMessage}
         actions={menuActions}
@@ -1240,7 +1732,8 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
 const styles = StyleSheet.create({
   screen: { backgroundColor: brandGroupChat.screenBg },
   desktopShell: { flex: 1, flexDirection: "row", backgroundColor: brandGroupChat.screenBg },
-  desktopList: { width: 280, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline, paddingTop: space[2] },
+  // #4420 one-thread design: fixed desktop columns, inbox 360, rail 400.
+  desktopList: { width: 360, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline, paddingTop: space[2] },
   desktopThread: { flex: 1, minWidth: 0 },
   header: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[2], paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.screenBg },
   iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
@@ -1249,11 +1742,44 @@ const styles = StyleSheet.create({
   title: { color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
   subtitle: { color: brandGroupChat.textSoft, fontSize: 12, marginTop: 1 },
   subtitleTyping: { color: brandGroupChat.accent, fontWeight: "600" },
+  // #4420 Guests side: the header edge and subtitle turn info blue.
+  headerGuests: { borderBottomColor: color.guestLine },
+  subtitleGuests: { color: color.infoText },
+  switcher: { flexDirection: "row", gap: 2, padding: 3, borderRadius: radius.full, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.input },
+  switcherFull: { alignSelf: "stretch" },
+  switcherRow: { paddingHorizontal: space[4], paddingTop: space[2], paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
+  switcherTab: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 14, borderRadius: radius.full, borderWidth: 1, borderColor: color.transparent },
+  switcherTabFull: { flex: 1 },
+  switcherTabTeamOn: { backgroundColor: color.fill.tabOn, borderColor: color.line },
+  switcherTabGuestsOn: { backgroundColor: color.guestTint2, borderColor: color.guestLine },
+  switcherText: { color: color.text2, fontSize: 14, fontWeight: "600" },
+  switcherTextOn: { color: color.textStrong },
+  switcherTextGuestsOn: { color: color.infoText },
+  switcherBadge: { minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
+  switcherBadgeText: { color: color.ink, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  switcherBadgeGuests: { minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: color.info },
+  switcherBadgeGuestsText: { color: color.textStrong, fontSize: 11, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  teamAudience: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  teamAudienceChip: { flexShrink: 1, minHeight: 26, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, borderRadius: radius.full, backgroundColor: color.fill.tile },
+  teamAudienceText: { flexShrink: 1, color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600" },
+  teamAudienceSwap: { marginLeft: "auto", minHeight: 32, justifyContent: "center", paddingHorizontal: 10, borderRadius: radius.full, borderWidth: 1, borderColor: color.line },
+  teamAudienceSwapText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600" },
+  // #4420 plan activity card.
+  planCard: { alignSelf: "center", width: "100%", maxWidth: 540, padding: 14, borderRadius: 20, borderWidth: 1, borderColor: color.line, borderTopColor: color.lineStrong, backgroundColor: color.card },
+  planCardHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+  planCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
+  planCardTitle: { color: color.text1, fontSize: 15, lineHeight: 21, fontWeight: "600" },
+  planCardSub: { color: color.text3, fontSize: 13 },
+  planCardList: { marginTop: 12, borderTopWidth: 1, borderTopColor: color.line },
+  planCardLine: { minHeight: 40, justifyContent: "center", paddingVertical: 8, paddingHorizontal: 2, borderBottomWidth: 1, borderBottomColor: color.line },
+  planCardLineText: { color: color.text1, fontSize: 14, lineHeight: 20 },
+  planCardFoot: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: 12 },
   mediaButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.pressed },
   mediaButtonActive: { borderColor: color.lineStrong, shadowColor: color.accent, shadowOpacity: 0.35, shadowRadius: 10 },
   mediaButtonText: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "700" },
-  detailsRail: { width: 340, minWidth: 300, maxWidth: "36%", borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
+  detailsRail: { width: size.sidePanel, minWidth: 300, maxWidth: "36%", borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   mediaRail: { flex: 1, minHeight: 0 },
+  railCollapse: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line },
   railTabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: space[2], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
   railTab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
   railTabActive: { borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },
@@ -1271,15 +1797,24 @@ const styles = StyleSheet.create({
   messages: { flex: 1 },
   messagesContent: { paddingHorizontal: 12, paddingTop: space[4], paddingBottom: space[6] },
   empty: { margin: space[6], padding: space[7], borderRadius: 20, backgroundColor: brandGroupChat.surface },
-  dayRow: { alignItems: "center", marginVertical: 12 },
-  dayText: { color: brandGroupChat.textSoft, fontSize: 12, fontWeight: "700", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, overflow: "hidden", backgroundColor: brandGroupChat.strip },
+  // #4420 D3: the day marker sticks while you scroll, so its chip is opaque
+  // (glass fallback: the solid card), sits above the bubbles and keeps a top
+  // inset: bubble text never shows through it.
+  dayRow: { alignItems: "center", paddingTop: space[2], paddingBottom: space[1], marginVertical: 4, zIndex: 3, elevation: 3 },
+  // #4420 history affordances.
+  historyTop: { alignItems: "center", paddingTop: space[2], paddingBottom: space[1] },
+  historyNote: { color: brandGroupChat.textSoft, fontSize: 13, textAlign: "center", paddingTop: space[2] },
+  jumpWrap: { position: "relative", height: 0, zIndex: 4 },
+  jump: { position: "absolute", right: space[4], bottom: space[2], minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: radius.full, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.card2 },
+  jumpText: { color: brandGroupChat.textPrimary, fontSize: 14, fontWeight: "600" },
+  dayText: { color: brandGroupChat.textSecondary, fontSize: 13, fontWeight: "600", paddingHorizontal: 12, paddingVertical: 5, borderRadius: radius.full, overflow: "hidden", borderWidth: 1, borderColor: color.line, borderTopColor: color.lineStrong, backgroundColor: color.card2 },
   systemLine: { alignItems: "center", paddingHorizontal: space[7], marginVertical: 8 },
   systemLineText: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, textAlign: "center" },
   cardRow: { marginVertical: 8 },
-  messageTextMine: { color: brandGroupChat.mineText },
+  messageTextMine: { color: brandGroupChat.mineBubbleText },
   fileCard: { minWidth: 220, flexDirection: "row", alignItems: "center", gap: space[2] },
   fileCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tabOn },
-  fileCardIconMine: { backgroundColor: color.spinnerTrackOnPaper },
+  fileCardIconMine: { backgroundColor: color.fill.tabOn },
   fileCardCopy: { flex: 1, minWidth: 0 },
   fileName: { color: brandGroupChat.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: "800" },
   fileMeta: { color: brandGroupChat.textMuted, fontSize: 11, marginTop: 3 },
@@ -1318,6 +1853,13 @@ const styles = StyleSheet.create({
   sendButton: { width: size.btn.phone, height: size.btn.phone, borderRadius: radius.full, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
   sendButtonDisabled: { backgroundColor: color.card2 },
   optionsScrim: { flex: 1, alignItems: "flex-end", paddingTop: 64, paddingHorizontal: space[4], backgroundColor: brandGroupChat.scrim },
+  peopleScrim: { flex: 1, justifyContent: "flex-end", backgroundColor: brandGroupChat.scrim },
+  peopleSheet: { height: "72%", overflow: "hidden", paddingBottom: space[7], borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: 1, borderBottomWidth: 0, borderColor: color.lineStrong, backgroundColor: color.canvas },
+  selectSheet: { alignSelf: "stretch", maxHeight: "80%", gap: space[2], padding: space[5], paddingBottom: space[7], borderRadius: 28, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
+  selectSheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  selectSheetTitle: { color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
+  selectSheetHint: { color: brandGroupChat.textSoft, fontSize: 13 },
+  selectSheetField: { minHeight: 120, maxHeight: 360, padding: space[3], borderRadius: 16, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.input, color: brandGroupChat.textPrimary, fontSize: 16, lineHeight: 22, textAlignVertical: "top" },
   optionsCard: { width: 240, overflow: "hidden", borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   optionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   optionRowPressed: { backgroundColor: brandGroupChat.strip },

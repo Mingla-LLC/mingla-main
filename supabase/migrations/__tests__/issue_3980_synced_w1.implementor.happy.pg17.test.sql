@@ -56,8 +56,8 @@ BEGIN
 END
 $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards DEFERRED;
 -- [TEST-MOD-APPROVED #3980] X3: follow-through counts from the switch-on time; these G5 checks run as if it was switched on long ago.
 update public.ops_settings set value = to_jsonb(now() - interval '400 days') where key = 'follow_through_since';
 

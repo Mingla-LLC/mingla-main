@@ -273,6 +273,28 @@ export async function fetchPublicEventSeedBySlug(
 }
 
 /**
+ * issue #4508 2.3 — an event named only by id (the friend-is-going push) →
+ * its in-app page path, or null when it is not public. Errors THROW.
+ */
+export async function fetchPublicEventPathById(
+  eventId: string,
+): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
+    return null;
+  }
+  const { supabase } = await import("./supabase");
+  const { data, error } = await supabase
+    .from("business_public_events_view")
+    .select("brand_slug, slug")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (error !== null) throw new Error(error.message);
+  const row = data as { brand_slug?: string | null; slug?: string | null } | null;
+  if (!row?.brand_slug || !row.slug) return null;
+  return `/e/${encodeURIComponent(row.brand_slug)}/${encodeURIComponent(row.slug)}`;
+}
+
+/**
  * Unlisted RSVP invite link — the exact-link RSVP row.
  *
  * An UNLISTED RSVP (events.visibility = 'hidden') has no ticketed bundle and no

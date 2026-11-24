@@ -188,8 +188,9 @@ export async function syncBusinessMediaLanguage(
   isCurrentUser: () => boolean = () => true,
 ): Promise<void> {
   const { supabase } = await import("../services/supabase");
+  // #3969 — the own-profile read (the language is a private field).
   const { data, error } = await supabase
-    .from("profiles")
+    .rpc("get_my_profile")
     .select("preferred_language")
     .eq("id", userId)
     .maybeSingle();

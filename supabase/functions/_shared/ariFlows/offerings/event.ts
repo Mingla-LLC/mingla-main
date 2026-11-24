@@ -1072,7 +1072,7 @@ const publishReadyStep: StepDefinition = {
         key: "publish_ready",
         title: "Get it ready to publish?",
         text:
-          "Want to get it ready to publish? I'll need a party type, a short description, tickets, and whether it's public or unlisted. A cover photo helps too.",
+          "Want to get it ready to publish? I'll need an event type, a short description, tickets, and whether it's public or unlisted. A cover photo helps too.",
         options: [
           { id: "yes", label: "Yes, get it ready" },
           { id: "not_now", label: "Not now" },
@@ -1155,7 +1155,7 @@ const PARTY_LABELS: ReadonlyMap<string, string> = new Map(
 
 const partyStep: StepDefinition = {
   key: "event_party_types",
-  title: "Party type",
+  title: "Event type",
   kind: "question",
   depends_on: ["event_cover"],
   policy: "blocking",
@@ -1176,14 +1176,14 @@ const partyStep: StepDefinition = {
         kind: "question",
         answer_mode: "form",
         reuse_key: `event:party:${attemptOf(ctx)}`,
-        title: "Party type",
+        title: "Event type",
         text: `${
           problem ? `${problem} ` : ""
         }What kind of event is it? Pick one or more.`,
         options: [],
         rendition: formRendition({
           id: "party_types",
-          title: "Party type",
+          title: "Event type",
           body: "What kind of event is it? Pick one or more.",
           choices: {
             options: PARTY_TYPES.map((option) => ({
@@ -1219,7 +1219,7 @@ const partyStep: StepDefinition = {
     ];
     if (slugs.length === 0) {
       return Promise.resolve(
-        retry(ctx, "Pick at least one party type. Nothing was saved."),
+        retry(ctx, "Pick at least one event type. Nothing was saved."),
       );
     }
     return Promise.resolve({
@@ -1298,7 +1298,7 @@ const detailsSaveStep: StepDefinition = {
       return {
         done: true,
         note: proposed
-          ? "Saved and checked: the party type and description are on the draft."
+          ? "Saved and checked: the event type and description are on the draft."
           : undefined,
         evidence: {
           probe: "event_details",
@@ -1326,7 +1326,7 @@ const detailsSaveStep: StepDefinition = {
       : [];
     const rows = [
       ...(labels.length > 0
-        ? [{ label: "Party type", value: labels.join(", ") }]
+        ? [{ label: "Event type", value: labels.join(", ") }]
         : []),
       ...(typeof args.description === "string"
         ? [{ label: "Description", value: args.description }]
@@ -1347,7 +1347,7 @@ const detailsSaveStep: StepDefinition = {
       ask: choiceQuestion({
         key: "details:ready",
         title: "Save the details",
-        text: "Ready to save the party type and description to the draft?",
+        text: "Ready to save the event type and description to the draft?",
         options: [{ id: "save", label: "Save to the draft" }],
       }),
       record: { data: {} },
@@ -1903,9 +1903,9 @@ export function hostPublishGaps(row: FlowEventRow): string[] {
   const draft = row.draft;
   if (!row.title.trim()) gaps.push("a name");
   if (!row.description) gaps.push("a description");
-  // #4490 07-A: Party Type is optional for an event at a venue (the server
-  // publish gate reads events.venue_id the same way).
-  if (row.party_types.length === 0 && row.venue_id === null) gaps.push("a party type");
+  // #4490 07-A: Event type (was Party Type) is optional for an event at a venue
+  // (the server publish gate reads events.venue_id the same way).
+  if (row.party_types.length === 0 && row.venue_id === null) gaps.push("an event type");
   const when = (draft.when ?? {}) as Record<string, unknown>;
   if (!when.endsAt) gaps.push("an end time");
   const format = draft.format;
@@ -2115,7 +2115,7 @@ export const CREATE_EVENT_FLOW: FlowDefinition = {
   follow_up: {
     step: "event_publish_ready",
     text:
-      "Want to get it ready to publish? I'll need a party type, a short description, tickets, and whether it's public or unlisted. A cover photo helps too.",
+      "Want to get it ready to publish? I'll need an event type, a short description, tickets, and whether it's public or unlisted. A cover photo helps too.",
     yes: { id: "yes", label: "Yes, get it ready" },
     no: { id: "not_now", label: "Not now" },
     yes_answers: { publish_ready: owner(true) },

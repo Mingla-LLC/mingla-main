@@ -16,15 +16,16 @@ import {
   isSlug,
   redirectRuleProblem,
 } from "../contracts/generated/routes.ts";
-import { DESIGN_KEYS, DESIGNS } from "../contracts/generated/designs.ts";
+import { DESIGN_KEYS, DESIGNS, designFor } from "../contracts/generated/designs.ts";
 import { BUTTON_SHAPES, MOTION_PRESETS, RADIUS_PRESETS } from "../contracts/generated/tokens.ts";
-import { validateFontsField, validateTokensField } from "../lib/siteLook";
+import { validateDesignOptionsField, validateFontsField, validateTokensField } from "../lib/siteLook";
 import {
   assertReadyTenantMedia,
   bindRequestTenant,
   singletonPerTenant,
 } from "../lib/tenantIntegrity";
 import { collectMediaIds } from "../lib/mediaFields";
+import { studioSettingsMediaFilter } from "../lib/studioMediaSelection";
 import { reportLookSavedHook } from "../lib/lookSavedReport";
 
 
@@ -120,10 +121,7 @@ export const SiteSettings: CollectionConfig = {
       name: "logo",
       type: "relationship",
       relationTo: "media",
-      filterOptions: ({ req }) => {
-        const tenantId = (req.user as { tenantId?: string })?.tenantId;
-        return tenantId ? { tenant: { equals: tenantId }, state: { equals: "READY" } } : false;
-      },
+      filterOptions: ({ req }) => studioSettingsMediaFilter((req.user as { tenantId?: string })?.tenantId),
     },
     /*
      * #2829 AD-2 — the site's look: its design, and the owner's exact choices
@@ -189,6 +187,34 @@ export const SiteSettings: CollectionConfig = {
     },
     {
       /*
+       * #4575 — the design's own options (only Grid offers any): the
+       * full-screen cover and full-colour photos. Frozen into the published
+       * artifact as `design.options` only when one changes the drawing
+       * (resolveDesignOptions); ignored on a design that does not offer them.
+       */
+      name: "design_options",
+      label: "Design options",
+      type: "group",
+      admin: {
+        condition: (data) => Boolean(designFor(data?.design)?.options?.length),
+        description: "Grid only. Full-screen photo: each page opens on a full-screen photo with a black menu bar.",
+      },
+      validate: validateDesignOptionsField,
+      fields: [
+        { name: "cover", label: "Top of the page", type: "select", options: [{ value: "full", label: "Full-screen photo" }] },
+        {
+          name: "photos",
+          label: "Photos",
+          type: "select",
+          options: [
+            { value: "colour", label: "Full colour" },
+            { value: "mono", label: "Black and white" },
+          ],
+        },
+      ],
+    },
+    {
+      /*
        * #2829 W9r — past Mingla trips the owner hid from the website (display
        * only; the trip itself is untouched). Not in Studio's form: written
        * only by the Business app's Past trips switch, whose Core-signed call
@@ -242,10 +268,7 @@ export const SiteSettings: CollectionConfig = {
       name: "social_image",
       type: "relationship",
       relationTo: "media",
-      filterOptions: ({ req }) => {
-        const tenantId = (req.user as { tenantId?: string })?.tenantId;
-        return tenantId ? { tenant: { equals: tenantId }, state: { equals: "READY" } } : false;
-      },
+      filterOptions: ({ req }) => studioSettingsMediaFilter((req.user as { tenantId?: string })?.tenantId),
     },
     /*
      * #2829 AD-5 — where each collection's detail pages live, the site's

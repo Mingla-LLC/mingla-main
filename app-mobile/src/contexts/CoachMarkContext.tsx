@@ -3,6 +3,7 @@ import { BackHandler, Dimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
+import { readMyProfile } from '../services/profileAccessService';
 import { COACH_STEPS, COACH_STEP_COUNT, CoachStep } from '../constants/coachMarkSteps';
 import { mixpanelService } from '../services/mixpanelService';
 import {
@@ -74,6 +75,13 @@ interface CoachMarkContextType {
    *  render. This is the deterministic measurement-consumption signal that releases
    *  step 1's deck-hold (NOT a timer). */
   targetVersion: number;
+  /** #4562: true only while the overlay has drawn a bubble (with its way out) for the
+   *  CURRENT step. The bottom tabs lock on this and on nothing else, so every state in
+   *  which no bubble is drawn leaves the tabs live (fail open). */
+  isTourExitOnScreen: boolean;
+  /** #4562: the overlay reports the step whose bubble it has drawn, or null when it draws
+   *  nothing (and on unmount). The only input to `isTourExitOnScreen`. */
+  reportPresentation: (step: number | null) => void;
 }
 
 interface CoachMarkProviderProps {
@@ -168,6 +176,14 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   if (user?.id) userIdRef.current = user.id;
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
   const [overlayVisible, setOverlayVisible] = useState(false);
+  // #4562: the step whose bubble the overlay has actually drawn (null = nothing drawn).
+  const [presentedStep, setPresentedStep] = useState<number | null>(null);
+  // #4562: per step entry, when it began and whether its Viewed event already fired.
+  const stepEntryRef = useRef<{ step: number; at: number; viewed: boolean }>({
+    step: LOADING_SENTINEL,
+    at: 0,
+    viewed: false,
+  });
   const [scrollLockActive, setScrollLockActive] = useState(false);
   const [skippedStepIds, setSkippedStepIds] = useState<ReadonlySet<number>>(
     () => readSkippedCoachSteps(user?.id),
@@ -231,8 +247,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
     async function fetchStep(attempt: number): Promise<void> {
       try {
-        const { data, error } = await supabase
-          .from('profiles')
+        // Issue #3969: the own-profile read (the step is a private field).
+        const { data, error } = await readMyProfile()
           .select('coach_mark_step')
           .eq('id', user!.id)
           .single();
@@ -340,20 +356,15 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   // via scrollToKnownPosition, including its centered fallback). A resumed in-progress
   // step therefore always paints — the tour is never left invisible-but-active.
   useEffect(() => {
+    // #4562: a new step entry starts its own clock and may fire its own Viewed event.
+    stepEntryRef.current = { step: currentStep, at: Date.now(), viewed: false };
     if (currentStep >= 1 && currentStep <= COACH_STEP_COUNT) {
       // Navigate to the correct tab
       const config = COACH_STEPS.find((s) => s.id === currentStep);
       if (config) {
         navigateToTabRef.current(config.tab);
-        mixpanelService.trackCoachMarkViewed({
-          step_id: String(config.id),
-          step_title: config.title,
-          tab: config.tab,
-        });
-        // Start tour timer on first step
-        if (config.id === 1) {
-          mixpanelService.timeEvent('Coach Tour Completed');
-        }
+        // #4562: `Coach Mark Viewed` and the tour timer no longer start here; they start
+        // when the bubble is actually drawn (see the presentation effect below).
       }
 
       // ORCH-0635: scroll-offset step (Profile Account Settings row)
@@ -660,17 +671,20 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     });
   }, []);
 
+  // #4562: the tour owns Android Back only while a bubble is drawn. With nothing drawn the
+  // person is not inside the tour, so Back behaves normally (fail open).
+  const backOwnedByTour = currentStep >= 1 && currentStep <= COACH_STEP_COUNT && presentedStep === currentStep;
   useEffect(() => {
-    if (!isFinite(currentStep) || currentStep < 1 || currentStep > COACH_STEP_COUNT) return;
+    if (!backOwnedByTour) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      // An active tour owns Android Back even at its first step. Returning false
+      // A drawn bubble owns Android Back even at its first step. Returning false
       // here delegates to React Native and can exit the app behind the overlay.
       if (currentStep <= 1) return true;
       prevStep();
       return true;
     });
     return () => subscription.remove();
-  }, [currentStep, prevStep]);
+  }, [backOwnedByTour, currentStep, prevStep]);
 
   // ── Skip tour ───────────────────────────────────────────────────────────
   const skipTour = useCallback((): void => {
@@ -697,6 +711,33 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const isCoachActive = currentStep >= 1 && currentStep <= COACH_STEP_COUNT;
   const isCoachPending = currentStep === TOUR_NOT_STARTED;
   const isCoachLoading = currentStep === LOADING_SENTINEL;
+  // #4562: the ONLY input to the bottom-tab lock. isCoachLoading / isCoachPending /
+  // isCoachActive remain for other consumers but lock nothing.
+  const isTourExitOnScreen = isCoachActive && presentedStep === currentStep;
+  const reportPresentation = useCallback((step: number | null): void => {
+    setPresentedStep(step);
+  }, []);
+
+  // #4562: `Coach Mark Viewed` fires on the false-to-true edge of a drawn bubble, once per
+  // step entry, with how long the person waited for it.
+  useEffect(() => {
+    if (!isTourExitOnScreen) return;
+    const entry = stepEntryRef.current;
+    if (entry.viewed || entry.step !== currentStep) return;
+    entry.viewed = true;
+    const config = COACH_STEPS.find((s) => s.id === currentStep);
+    if (!config) return;
+    mixpanelService.trackCoachMarkViewed({
+      step_id: String(config.id),
+      step_title: config.title,
+      tab: config.tab,
+      waited_ms: Math.max(0, Date.now() - entry.at),
+    });
+    // Start tour timer on first step
+    if (config.id === 1) {
+      mixpanelService.timeEvent('Coach Tour Completed');
+    }
+  }, [isTourExitOnScreen, currentStep]);
   const currentStepConfig = isCoachActive
     ? COACH_STEPS.find((s) => s.id === currentStep) ?? null
     : null;
@@ -731,6 +772,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     overlayVisible,
     scrollLockActive,
     targetVersion,
+    isTourExitOnScreen,
+    reportPresentation,
   }), [
     currentStep,
     isCoachActive,
@@ -752,6 +795,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     overlayVisible,
     scrollLockActive,
     targetVersion,
+    isTourExitOnScreen,
+    reportPresentation,
   ]);
 
   return (

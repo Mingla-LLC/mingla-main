@@ -44,6 +44,9 @@ import {
 } from "../../../src/components/purchases/VenuePurchaseDetail";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
+import { GuestPackCard } from "../../../src/components/purchases/GuestPackCard";
+import { isOrderGuestPackEligible } from "../../../src/utils/guestPackDisplay";
+import { QuestionsCard } from "../../../src/components/forms/QuestionsCard";
 import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
 import { BrandGuestChatBookingAction } from "../../../src/components/purchases/BrandGuestChatBookingAction";
 import { Icon } from "../../../src/components/ui/Icon";
@@ -883,6 +886,20 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               </View>
             ) : null}
 
+            {/* #4548 — the host's Guest pack, below the venue block. */}
+            {order ? (
+              <GuestPackCard
+                bookedAtIso={order.createdAt}
+                endsAtIso={item.endsAt}
+                eventId={order.eventId}
+                eligible={isOrderGuestPackEligible({
+                  paymentStatus: order.paymentStatus,
+                  cancelledAt: order.cancelledAt,
+                })}
+                startsAtIso={item.startsAt}
+              />
+            ) : null}
+
             {allTickets.length > 0 ? (
               <View style={styles.passSection}>
                 <View style={styles.sectionTitleRow}>
@@ -1135,6 +1152,8 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                 </Pressable>
               </View>
             ) : null}
+
+            <QuestionsCard subjectKind={shared ? null : kind} subjectId={id} from="ticket" />
 
             <View style={styles.detailCard}>
               <Text style={styles.sectionTitle}>{t("link.details")}</Text>

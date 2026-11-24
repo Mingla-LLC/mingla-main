@@ -271,6 +271,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/paid/",
       // TEST-MOD-APPROVED #4490 (spec 08 O1): a guest's Till receipt (receipt-token-authorized).
       "/receipt/",
+      // #4514 — a brand form's personal link (token in the URL fragment).
+      "/form/",
     ]);
   });
 

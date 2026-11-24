@@ -49,9 +49,13 @@
         "brand_campaign_push": "Takip ettiğin mekânlardan mesajlar",
         "brand_campaign_push_hint": "Takip ettiğin mekân ve ev sahiplerinden fırsatlar ve haberler.",
         "brand_offering_invite": "Takip ettiğin mekânlardan davetler",
-        "brand_offering_invite_hint": "Bir mekân ya da ev sahibi seni bir şeye davet ettiğinde."
+        "brand_offering_invite_hint": "Bir mekân ya da ev sahibi seni bir şeye davet ettiğinde.",
+        "brand_form_request": "Organizatörlerden sorular",
+        "brand_form_request_hint": "Bir organizatör sorularını yanıtlamanı istediğinde. Bunlar için e-posta her zaman açıktır, çünkü kişisel bağlantını taşır. SMS'ler SMS ayarlarına göre gelir."
       }
-    }
+    },
+    "friends_going": "Dışarı çıkan arkadaşlar",
+    "friends_going_hint": "Yakın bir arkadaşın bir etkinliğe gittiğinde"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

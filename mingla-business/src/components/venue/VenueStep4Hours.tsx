@@ -18,7 +18,11 @@ import {
 } from "../../constants/designSystem";
 import type { BrandHourEntry } from "../../types/brand";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
-import { BrandHoursEditor } from "./BrandHoursEditor";
+// #4518 — host-only, so loaded on intent (when the hours step / card shows),
+// not in the shared boot payload every buyer page downloads.
+const BrandHoursEditor = React.lazy(() =>
+  import("./BrandHoursEditor").then((module) => ({ default: module.BrandHoursEditor })),
+);
 
 export interface VenueStep4HoursProps {
   showErrors: boolean;
@@ -66,12 +70,14 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
         Set the days and times you open. Add a window for a split day, and close after midnight if you need to.
       </Text>
       {/* #4490 D5 — the same multi-window editor as Availability. */}
-      <BrandHoursEditor
-        hours={hours}
-        onChange={handleChange}
-        showErrors={showErrors}
-        allowWindows
-      />
+      <React.Suspense fallback={null}>
+        <BrandHoursEditor
+          hours={hours}
+          onChange={handleChange}
+          showErrors={showErrors}
+          allowWindows
+        />
+      </React.Suspense>
     </View>
   );
 };

@@ -38,10 +38,13 @@ export function init(options?: unknown): void {
   if (!options || typeof options !== "object") return;
   const opts = options as Record<string, unknown>;
   if (!opts.dsn) return; // no DSN => no-op (dev / preview)
-  void import("@sentry/browser")
-    .then((mod) => {
+  // #4514: the guest form link token scrub loads WITH the SDK (one lazy chunk),
+  // never in the boot bundle.
+  void Promise.all([import("@sentry/browser"), import("./sentryTokenScrub")])
+    .then(([mod, scrub]) => {
       sdk = mod;
       mod.init(opts as any);
+      scrub.install(mod);
     })
     .catch(() => {
       /* never surface a diagnostics-loader failure to the user */

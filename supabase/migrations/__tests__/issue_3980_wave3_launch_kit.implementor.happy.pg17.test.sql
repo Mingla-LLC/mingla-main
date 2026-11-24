@@ -41,6 +41,11 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 
 -- [TEST-MOD-APPROVED #4398] every automatic card goes under a main task and
 -- takes its owner and watcher: this suite's cards go under one fallback main
@@ -63,8 +68,8 @@ BEGIN
 END
 $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards DEFERRED;
 -- #4270 W2 (D16): a promised event is made the way it was before; see the fixture.
 \ir issue_4270_promised_event_before_d16.fixture.sql
 

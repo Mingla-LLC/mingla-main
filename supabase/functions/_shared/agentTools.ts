@@ -844,7 +844,7 @@ const updateEvent: AgentToolDefinition = {
       party_types: {
         type: "array",
         items: { type: "string" },
-        description: "Party type slugs the owner picked (draft only)",
+        description: "Event type slugs the owner picked (draft only)",
       },
       // issue #2009 + #1931 — `private` is NOT offerable: the database refuses
       // the Private boundary for EVERY writer until #2144, so advertising it

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-form-submit/issue_4514_link_read.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4514-link-read",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "env",
+    "read"
+  ]
+}

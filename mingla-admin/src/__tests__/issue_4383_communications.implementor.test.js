@@ -42,12 +42,10 @@ import {
 import { isRetiredPageId, redirectHash } from "../lib/adminRoutes.js";
 import {
   COMMUNICATIONS_TAB_PAGES,
-  COMMUNITY_PAGE_TABS,
   SUPPORT_PAGE_TABS,
 } from "../lib/supportCommunityTabs.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
-import { isRoadmapHash, roadmapCardFromHash, roadmapDraftHref } from "../lib/opsModel.js";
 import { emailViewFromHash, emailViewHash, emailViewsFor } from "../lib/emailViews.js";
 import { checkLaterTime, formatInZone, scheduleLabel, utcToZonedInputs, zonedLocalToUtc } from "../lib/scheduleTime.js";
 import { EXPLORER_DESTINATIONS, HOST_DESTINATIONS, opensLabel, pushReach } from "../lib/pushDestinations.js";
@@ -61,18 +59,19 @@ const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 const APP = read("App.jsx");
 const SIDEBAR = read("components/layout/Sidebar.jsx");
 
-// The approved menu (spec §4.1).
+// The approved menu (spec §4.1). [TEST-MOD #4420] Roadmap retired; the
+// Feature guide joins the group, last.
 const COMMUNICATIONS = [
   ["communications", "Overview", "RadioTower"],
   ["push", "Push", "Send"],
   ["announcements", "Announcements", "BellRing"],
-  ["roadmap", "Roadmap", "Milestone"],
   ["email", "Email", "Mail"],
   ["blog", "Blog", "Newspaper"],
   ["links", "Links page", "Link"],
   // #4452 §7.2: Brand groups left Community for its own screen.
   ["brand-groups", "Brand groups", "Hand"],
   ["website-pages", "Website pages", "LayoutTemplate"], // #4452 §7.0
+  ["feature-guide", "Feature guide", "BookOpen"], // #4420
 ];
 
 describe("C-1 the Communications menu group", () => {
@@ -82,7 +81,7 @@ describe("C-1 the Communications menu group", () => {
     const group = NAV_GROUPS.find((g) => g.label === "Communications");
     assert.deepEqual(group.items.map((item) => [item.id, item.label, item.icon]), COMMUNICATIONS);
     // #4255 W4 took Notifications out of the menu (Messages is in the top bar): 33 + 7.
-    assert.equal(NAV_ITEMS.length, 43, "34 entries (#4452: + Forms) + the nine Communications screens (#4452: + Brand groups, + Website pages)");
+    assert.equal(NAV_ITEMS.length, 43, "[TEST-MOD #4420] - Community, - Roadmap, + Feature guide; 35 entries (#4517: + Messages; #4452: + Forms) + the nine Communications screens (#4452: + Brand groups, + Website pages)");
   });
 
   it("each screen is a page App draws, and its icon is registered", () => {
@@ -92,20 +91,22 @@ describe("C-1 the Communications menu group", () => {
     }
   });
 
-  it("Support keeps the inbox and People and roles; Community opens on Ideas", () => {
+  // [TEST-MOD #4420] Community is retired; its address opens Support.
+  it("Support keeps the inbox and People and roles; Community is retired", () => {
     assert.deepEqual(SUPPORT_PAGE_TABS.map((t) => [t.id, t.label]), [["support", "Inbox"], ["team", "People and roles"]]);
-    assert.deepEqual(COMMUNITY_PAGE_TABS.map((t) => t.id), ["ideas", "questions", "moderation", "enquiry-reports", "feature-guide", "product"]);
-    assert.equal(COMMUNITY_PAGE_TABS.find((t) => t.id === "product").label, "Product board");
+    assert.equal(redirectHash("#/community"), "#/support");
   });
 
   it("the moved panels are drawn by their own screens, not by Support or Community", () => {
-    const console = read("pages/CommunitySupportPage.jsx");
+    const console = read("pages/SupportPage.jsx"); // [TEST-MOD #4420] Support's own file
     for (const gone of ["<EmailPage", "<BlogPanel", "<LinksPagePanel", "<AnnouncementsPanel", "<RoadmapPanel", "<FailedPushBanner", "community:new-announcement"]) {
       assert.equal(console.includes(gone), false, gone);
     }
     assert.match(read("pages/communications/AnnouncementsPage.jsx"), /<AnnouncementsPanel \/>/);
     assert.match(read("pages/communications/AnnouncementsPage.jsx"), /<FailedPushBanner \/>/);
-    assert.match(read("pages/communications/RoadmapPage.jsx"), /<RoadmapPanel \/>/);
+    // [TEST-MOD #4420] the Roadmap screen is retired; the Feature guide is a screen.
+    assert.equal(fs.existsSync(path.join(SRC, "pages/communications/RoadmapPage.jsx")), false);
+    assert.match(read("pages/communications/FeatureGuidePage.jsx"), /<FeatureGuidePanel canManage=\{isAdmin\} \/>/);
     assert.match(read("pages/communications/BlogPage.jsx"), /<BlogPanel onCounts=\{onCounts\} \/>/);
     assert.match(read("pages/communications/LinksPage.jsx"), /<LinksPagePanel \/>/);
     assert.equal(/embedded/.test(read("pages/EmailPage.jsx")), false, "Email is a screen, not an embed");
@@ -121,13 +122,14 @@ describe("C-2 old addresses land on the new screens", () => {
     [`#/support?view=editor&tab=blog&post=${POST}`, `#/blog?view=editor&post=${POST}`],
     ["#/support?tab=links", "#/links"],
     ["#/community?tab=announcements", "#/announcements"],
-    [`#/community?tab=roadmap&card=${CARD}`, `#/roadmap?card=${CARD}`],
-    [`#/community?card=${CARD}&tab=roadmap`, `#/roadmap?card=${CARD}`],
+    // [TEST-MOD #4420] the Roadmap screen is retired: its addresses open Announcements.
+    [`#/community?tab=roadmap&card=${CARD}`, "#/announcements"],
+    [`#/community?card=${CARD}&tab=roadmap`, "#/announcements"],
     ["#/community-support?tab=email&x=1", "#/email?x=1"],
     [`#/community-support?tab=blog&view=editor&post=${POST}`, `#/blog?view=editor&post=${POST}`],
     ["#/community-support?tab=links", "#/links"],
     ["#/community-support?tab=announcements", "#/announcements"],
-    [`#/community-support?x=1&tab=roadmap&card=${CARD}`, `#/roadmap?x=1&card=${CARD}`],
+    [`#/community-support?x=1&tab=roadmap&card=${CARD}`, "#/announcements"],
     [`#/community-support?tab=support&ticket=${CARD}`, `#/support?ticket=${CARD}`],
     // #4452 §7.2: Brand groups' old Community tab keeps the group and the rest.
     [`#/community?tab=brand-groups&group=${CARD}`, `#/brand-groups?group=${CARD}`],
@@ -138,19 +140,20 @@ describe("C-2 old addresses land on the new screens", () => {
     for (const [from, to] of TABLE) assert.equal(redirectHash(from), to, from);
   });
 
-  it("the new screens, Support, Community and #/email are live addresses", () => {
-    for (const live of ["#/email", "#/email?view=sent", "#/blog?view=editor&post=x", "#/links", "#/brand-groups", "#/brand-groups?group=x", "#/announcements", "#/roadmap?card=x", "#/communications", "#/community", "#/support", "#/support?tab=team", "#/community?tab=ideas"]) {
+  // [TEST-MOD #4420] Community and Roadmap are retired addresses now; the Feature guide is live.
+  it("the new screens, Support and #/email are live addresses", () => {
+    for (const live of ["#/email", "#/email?view=sent", "#/blog?view=editor&post=x", "#/links", "#/brand-groups", "#/brand-groups?group=x", "#/announcements", "#/feature-guide", "#/communications", "#/support", "#/support?tab=team"]) {
       assert.equal(redirectHash(live), null, live);
     }
     assert.equal(isRetiredPageId("email"), false);
-    // #/community with no tab opens Ideas (the page's first tab).
-    assert.equal(COMMUNITY_PAGE_TABS[0].id, "ideas");
+    assert.equal(isRetiredPageId("community"), true);
+    assert.equal(isRetiredPageId("roadmap"), true);
   });
 
   it("every moved tab names a real page, and that page's old tab is gone everywhere", () => {
     for (const [tab, page] of Object.entries(COMMUNICATIONS_TAB_PAGES)) {
       assert.ok(COMMUNICATIONS.some(([id]) => id === page), `${tab} -> ${page}`);
-      assert.equal([...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS].some((t) => t.id === tab), false, `${tab} is still a tab`);
+      assert.equal(SUPPORT_PAGE_TABS.some((t) => t.id === tab), false, `${tab} is still a tab`);
       assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT[tab].page, page, `${tab} contract row names its screen`);
     }
   });
@@ -163,18 +166,18 @@ describe("C-2 old addresses land on the new screens", () => {
   });
 });
 
+// [TEST-MOD #4420] the Roadmap screen is retired: Work cards no longer link to
+// a roadmap card, and every old roadmap address opens Announcements.
 describe("C-3 roadmap card links", () => {
   const id = "00000000-0000-4000-8000-0000000000aa";
-  it("the new form and both older forms open the card", () => {
-    assert.equal(roadmapDraftHref({ links: [{ kind: "roadmap_card", id }] }), `#/roadmap?card=${id}`);
+  it("the new form and both older forms open Announcements", () => {
     for (const hash of [`#/roadmap?card=${id}`, `#/community?tab=roadmap&card=${id}`, `#/community-support?tab=roadmap&card=${id}`]) {
-      assert.equal(roadmapCardFromHash(hash), id, hash);
+      assert.equal(redirectHash(hash), "#/announcements", hash);
     }
+    assert.equal(read("lib/opsModel.js").includes("roadmapDraftHref"), false);
   });
-  it("a Work card address is not a roadmap address", () => {
-    assert.equal(isRoadmapHash(`#/work-board?card=${id}`), false);
-    assert.equal(roadmapCardFromHash(`#/work-board?card=${id}`), null);
-    assert.equal(roadmapCardFromHash("#/roadmap?card=not-a-card"), null);
+  it("a Work card address is not rewritten", () => {
+    assert.equal(redirectHash(`#/work-board?card=${id}`), null);
   });
 });
 
@@ -211,19 +214,21 @@ describe("C-4 nobody gains or loses a panel (I-4383-COMMS-ACCESS-UNCHANGED)", ()
     noAccess: [],
   };
 
+  // [TEST-MOD #4420] Community's tabs and the Roadmap screen are retired
+  // (Reported enquiries arrive in the Support inbox, which the "support" panel
+  // is); every surviving panel opens for exactly the personas it did.
+  const RETIRED = ["enquiry-reports", "ideas", "moderation", "product", "questions", "roadmap"];
+  const after = (who) => BEFORE[who].filter((id) => !RETIRED.includes(id));
   function panelsAfter(access) {
     const out = [];
-    for (const page of ["support", "community"]) {
-      if (!canOpenPage(access, page)) continue;
-      out.push(...communitySupportTabsForAccess(access, page === "support" ? SUPPORT_PAGE_TABS : COMMUNITY_PAGE_TABS).map((t) => t.id));
-    }
-    for (const screen of Object.values(COMMUNICATIONS_TAB_PAGES)) if (canOpenPage(access, screen)) out.push(screen);
+    if (canOpenPage(access, "support")) out.push(...communitySupportTabsForAccess(access, SUPPORT_PAGE_TABS).map((t) => t.id));
+    for (const screen of [...Object.values(COMMUNICATIONS_TAB_PAGES), "feature-guide"]) if (canOpenPage(access, screen)) out.push(screen);
     return out.sort();
   }
 
-  it("each persona opens exactly the panels it opened before", () => {
+  it("each persona opens exactly the surviving panels it opened before", () => {
     for (const [who, access] of Object.entries(PERSONAS)) {
-      assert.deepEqual(panelsAfter(access), BEFORE[who], who);
+      assert.deepEqual(panelsAfter(access), after(who), who);
     }
   });
 
@@ -231,16 +236,16 @@ describe("C-4 nobody gains or loses a panel (I-4383-COMMS-ACCESS-UNCHANGED)", ()
     const known = NAV_ITEMS.map((i) => i.id);
     for (const [who, access] of Object.entries(PERSONAS)) {
       if (!access || access.status !== "active") continue;
-      for (const screen of ["announcements", "roadmap", "email", "blog", "links"]) {
+      for (const screen of ["announcements", "email", "blog", "links", "feature-guide"]) {
         const route = resolveRoute(screen, access, known);
-        assert.equal(route.pageId === screen, BEFORE[who].includes(screen), `${who} -> ${screen}`);
+        assert.equal(route.pageId === screen, after(who).includes(screen), `${who} -> ${screen}`);
       }
     }
   });
 
   it("Overview opens for whoever opens any Communications screen, and nobody else", () => {
     for (const [who, access] of Object.entries(PERSONAS)) {
-      const any = ["announcements", "roadmap", "email", "blog", "links"].some((id) => canOpenPage(access, id));
+      const any = ["announcements", "email", "blog", "links", "feature-guide"].some((id) => canOpenPage(access, id)); // [TEST-MOD #4420]
       assert.equal(canOpenPage(access, "communications"), any, who);
     }
   });
@@ -251,10 +256,11 @@ describe("C-4 nobody gains or loses a panel (I-4383-COMMS-ACCESS-UNCHANGED)", ()
     // #4452 §7.0: + Website pages (view-only for growth).
     assert.deepEqual(menu(PERSONAS.growth).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog", "website-pages"]);
     // #4452 §7.2: the Support area keeps Brand groups, now as its own screen.
-    assert.deepEqual(menu(PERSONAS.supportOnly).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog", "links", "brand-groups"]);
+    assert.deepEqual(menu(PERSONAS.supportOnly).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog", "links", "brand-groups", "feature-guide"]);
     assert.deepEqual(menu(PERSONAS.communityOnly).filter((id) => COMMUNICATIONS.some(([c]) => c === id)), ["communications", "email", "blog"]);
+    // [TEST-MOD #4420] Community has no menu entry any more; Support stays.
     for (const who of ["supportOnly", "communityOnly", "supportAndCommunity"]) {
-      assert.ok(menu(PERSONAS[who]).includes("support") && menu(PERSONAS[who]).includes("community"), who);
+      assert.ok(menu(PERSONAS[who]).includes("support") && !menu(PERSONAS[who]).includes("community"), who);
     }
     assert.deepEqual(menu(PERSONAS.noAccess), []);
   });
@@ -363,15 +369,14 @@ describe("C-9 the screens and the server", () => {
       .filter((name) => !["issue_4383_push_deep_link", "issue_4383_check_schedule"].includes(name));
     for (const name of granted) assert.match(SERVICE, new RegExp(`supabase\\.rpc\\("${name}"`), name);
   });
-  it("Push, Announcements and Roadmap check a Later time in its zone at submit", () => {
+  // [TEST-MOD #4420] the Roadmap screen is retired; Push and Announcements still check.
+  it("Push and Announcements check a Later time in its zone at submit", () => {
     const push = read("pages/communications/PushPage.jsx");
     assert.ok((push.match(/checkLaterTime\(form\.later\)/g) || []).length >= 2, "checked at review and again at confirm");
     assert.match(read("components/community/AnnouncementsPanel.jsx"), /checkLaterTime\(editor\.later\)/);
-    assert.match(read("components/community/RoadmapPanel.jsx"), /checkLaterTime\(goLive\.later\)/);
-    assert.match(read("components/community/RoadmapPanel.jsx"), /checkLaterTime\(notifyLater\)/);
   });
   it("every load has an error state with Retry, and no load error is swallowed", () => {
-    for (const file of ["pages/communications/PushPage.jsx", "pages/communications/CommunicationsOverviewPage.jsx", "components/community/AnnouncementsPanel.jsx", "components/community/RoadmapPanel.jsx"]) {
+    for (const file of ["pages/communications/PushPage.jsx", "pages/communications/CommunicationsOverviewPage.jsx", "components/community/AnnouncementsPanel.jsx"]) { // [TEST-MOD #4420] RoadmapPanel retired
       const src = read(file);
       assert.match(src, /<LoadError/, file);
       assert.equal(/catch\s*\(\)\s*\{\s*\}/.test(src), false, `${file}: empty catch`);

@@ -499,14 +499,28 @@ export const detectDeviceTimezone = (): string => {
 };
 
 export interface DefaultTimezoneForBrandInput {
+  /**
+   * #4572 7e (D9) — `brands.default_timezone` (Brand Edit, or filled by the
+   * database from a single-zone country). When valid it wins over every guess.
+   */
+  brandZone?: string | null;
   payoutCountry?: string | null;
   currency?: string | null;
   deviceZone?: string | null;
 }
 
+/**
+ * The zone a NEW event / RSVP / experience starts in. One rule for every
+ * wizard (#4572 7e, D9): the brand's saved zone, then the payout or payment
+ * country, then the currency, then the device.
+ */
 export const defaultTimezoneForBrand = (
   input: DefaultTimezoneForBrandInput = {},
 ): string => {
+  const brandZone = (input.brandZone ?? "").trim();
+  if (brandZone.length > 0 && isRuntimeZone(brandZone)) {
+    return brandZone;
+  }
   const country = (input.payoutCountry ?? "").trim().toUpperCase();
   if (country.length > 0) {
     const fromCountry = COUNTRY_DEFAULT_ZONE[country];
@@ -524,4 +538,41 @@ export const defaultTimezoneForBrand = (
   const device = (input.deviceZone ?? "").trim();
   if (device.length > 0) return device;
   return detectDeviceTimezone();
+};
+
+export interface BrandZoneForNewDraftInput {
+  brand: {
+    defaultTimezone?: string | null;
+    payoutCountry?: string | null;
+    paymentCountry?: string | null;
+    defaultCurrency?: string | null;
+  } | null;
+  /** The draft's first date; a dated draft never moves zone. */
+  draftDate: string | null;
+  draftTimezone: string;
+  deviceZone?: string;
+}
+
+/**
+ * #4572 7e — the one-shot brand-zone default the Event and RSVP wizards apply
+ * to a draft. Returns the zone to set, or null to leave the draft alone:
+ * no brand yet, a dated draft, or a zone the host already changed from the
+ * device default are never touched.
+ */
+export const brandZoneForNewDraft = ({
+  brand,
+  draftDate,
+  draftTimezone,
+  deviceZone = detectDeviceTimezone(),
+}: BrandZoneForNewDraftInput): string | null => {
+  if (brand === null) return null;
+  if (draftDate !== null) return null;
+  if (draftTimezone !== deviceZone) return null;
+  const zone = defaultTimezoneForBrand({
+    brandZone: brand.defaultTimezone ?? null,
+    payoutCountry: brand.payoutCountry ?? brand.paymentCountry ?? null,
+    currency: brand.defaultCurrency ?? null,
+    deviceZone: draftTimezone,
+  });
+  return zone !== draftTimezone ? zone : null;
 };

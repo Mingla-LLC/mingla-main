@@ -69,7 +69,9 @@ import {
   venueDiscountSnapshot,
   type VenueOrderErrorCode,
   venueOrderErrorCopy,
+  venueOrderChargeCurrency,
   venueOrderErrorStatus,
+  venueOrderProviderFloorRefusal,
   venueOrderIdempotencyKey,
 } from "../_shared/venueOrderPricing.ts";
 import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
@@ -130,6 +132,7 @@ function fail(
     venueOrderErrorStatus(code),
   );
 }
+
 
 serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (req.method === "OPTIONS") {
@@ -765,6 +768,22 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     }
   }
 
+  // Issue #3645 (18 Nov payments audit, item 7) — the guest pays `totalCents`
+  // (items, venue charge, any passed fees and tax, tip; after discounts and
+  // after a dropped tip on a free order), so that is what the provider is
+  // asked to charge, in the currency it is charged in. Below the provider's
+  // minimum, refuse here: AFTER the replay above (a retry of an order that
+  // already exists keeps resuming it) and BEFORE the discount reservation,
+  // any row write and any provider call. A free order (0) never reaches it.
+  if (movesMoney) {
+    const refusal = venueOrderProviderFloorRefusal(
+      money.totalCents,
+      venueOrderChargeCurrency(routing.provider, settlementCurrency),
+      "guest",
+    );
+    if (refusal) return jsonResponse(refusal.body, refusal.status);
+  }
+
   const orderId = crypto.randomUUID();
   let discountUsesReserved = false;
   const releaseDiscountUses = async (): Promise<void> => {
@@ -834,6 +853,22 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     } catch (error) {
       console.error("[venue-order-create] discount reserve failed", error);
       return fail("internal_error");
+    }
+    // #3645 (review of #4560): the reservation checks the guest's own
+    // quoteDigest, not necessarily the quote priced above, so it can hand back
+    // a stronger discount and a total that is now under the provider minimum.
+    // Check the final total again; on refusal, give the reserved uses back
+    // before answering. Still before any row write or provider call.
+    if (movesMoney) {
+      const reservedRefusal = venueOrderProviderFloorRefusal(
+        money.totalCents,
+        venueOrderChargeCurrency(routing.provider, settlementCurrency),
+        "guest",
+      );
+      if (reservedRefusal) {
+        await releaseDiscountUses();
+        return jsonResponse(reservedRefusal.body, reservedRefusal.status);
+      }
     }
   }
 

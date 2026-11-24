@@ -71,7 +71,8 @@
     "deleteSessionMsg": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone e all cards, votes, e discussions will be permanently deleted.",
     "leaveSessionTitle": "Lascia Bacheca",
     "leaveSessionMsg": "Are you sure you want to leave \"{{name}}\"?",
-    "namePlaceholder": "Inserisci nome sessione"
+    "namePlaceholder": "Inserisci nome sessione",
+    "sessionShareMessage": "Ti ho aggiunto a \"{{name}}\" su Mingla. Unisciti qui: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Discussione",

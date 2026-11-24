@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "সরানো যায়নি। আবার চেষ্টা করুন।",
   "brand_guests_leave_title": "{{brand}} অতিথি ছাড়বেন?",
   "brand_guests_leave_body": "নতুন বুকিং আপনাকে আবার যোগ করবে না। আপনি বুকিং থেকে আবার যোগ দিতে পারেন।",
-  "brand_guests_left_toast": "আপনি {{brand}} অতিথি ছেড়েছেন। বুকিং থেকে আবার যোগ দিতে পারেন।"
+  "brand_guests_left_toast": "আপনি {{brand}} অতিথি ছেড়েছেন। বুকিং থেকে আবার যোগ দিতে পারেন।",
+  "af_send_yourself_title": "নিজেও পাঠান",
+  "af_send_yourself_body": "আপনার পাঠানো বার্তা সবচেয়ে ভালো কাজ করে। আমাদের টেক্সটের একই লিংক।",
+  "af_copy_message": "বার্তা কপি করুন",
+  "af_message_copied": "বার্তা কপি হয়েছে"
 }

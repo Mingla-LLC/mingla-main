@@ -60,8 +60,9 @@ test('(b) the strip is server-rendered on every route and holds the inset from t
   assert.doesNotMatch(banner, /if \(!mounted\)|setMounted|const visible|privacy\.saved/)
   assert.match(banner, /<style id="mingla-privacy-bar-style" dangerouslySetInnerHTML=\{\{ __html: BAR_CSS \}\} \/>/)
   // #4452 §2.14: the inset is clamped at 0 (max(...)) now that viewport-fit=cover makes it real.
-  assert.match(banner, /:root\{\$\{PRIVACY_INSET_PROPERTY\}:calc\(28px \+ max\(env\(safe-area-inset-bottom,0px\),0px\)\)\}/)
-  assert.match(banner, /\.mps\{position:fixed;left:0;right:0;bottom:0;[^}]*height:calc\(28px \+ max\(env\(safe-area-inset-bottom,0px\),0px\)\)/)
+  // [TEST-MOD-APPROVED #2331] One CSS constant, --mingla-privacy-strip; the strip is that band.
+  assert.match(banner, /:root\{\$\{PRIVACY_STRIP_PROPERTY\}:calc\(28px \+ max\(env\(safe-area-inset-bottom,0px\),0px\)\)\}/)
+  assert.match(banner, /\.mps\{position:fixed;left:0;right:0;bottom:0;[^}]*height:var\(--mingla-privacy-strip\)/)
   assert.match(banner, /\.mps\{[^}]*background:#15171c;color:rgba\(255,255,255,\.9\)/)
   // No first-visit banner, OK, toast or folded icon.
   assert.doesNotMatch(banner, /privacy-bar-ok|privacy-bar-options|privacy-toast|privacy-bar-folded|Mingla uses cookies|Turn off all/)

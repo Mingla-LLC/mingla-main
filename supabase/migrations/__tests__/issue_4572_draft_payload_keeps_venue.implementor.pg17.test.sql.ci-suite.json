@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4572_draft_payload_keeps_venue.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4572-draft-payload-keeps-venue-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "postgres", "reset": "suite-owned" }
+}

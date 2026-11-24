@@ -28,7 +28,8 @@ let _loginComplete = false
  * NOTE: This does NOT request notification permission. On Android 13+,
  * POST_NOTIFICATIONS is a runtime permission that should only be requested
  * after the user has context. Call `loginToOneSignal()` on auth, then
- * `requestPushPermission()` later (e.g. after coach mark tour).
+ * `requestPushPermission()` later (e.g. after coach mark tour); the latter opts
+ * the subscription in once the user grants.
  */
 export function initializeOneSignal(): void {
   if (_initialized) return
@@ -174,69 +175,87 @@ export function resumeInAppMessages(): void {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Login + activate push subscription: link this device to a Supabase user ID
- * and register for push delivery.
- *
- * ORCH-0407: optIn() moved here from requestPushPermission(). Without optIn(),
- * the device is logged in but has no active push subscription — OneSignal
- * returns invalid_aliases when you try to send push. optIn() registers the
- * subscription immediately; requestPermission() (OS dialog) is still deferred
- * to the coach mark tour. These are separate concerns:
- *   - optIn() = "register this device for push delivery" (server-side)
- *   - requestPermission() = "let the OS show banners" (client-side)
- *
- * Revert: move optIn() back to requestPushPermission() if immediate
- * subscription causes issues.
+ * #4517: the user the SDK is logged in as, the user we already opted in, and
+ * the single in-flight-or-finished login for a user id. Cleared by logout.
  */
-export async function loginToOneSignal(userId: string): Promise<void> {
+let _loginUserId: string | null = null
+let _optedInUserId: string | null = null
+let _loginFlight: { userId: string; promise: Promise<void> } | null = null
+
+/**
+ * Login + activate push subscription: link this device to a Supabase user ID
+ * and, ONLY when the OS permission was already answered and granted, register
+ * the push subscription.
+ *
+ * #4517: optIn() is NOT an unconditional sign-in step. The SDK's optIn() raises
+ * the OS notification prompt when the user was never asked, and raises the
+ * "notifications turned off / Open Settings" alert when they were asked and
+ * declined (or are mid-prompt). The sign-in effect runs this up to four times per
+ * launch, so an unconditional optIn() showed the prompt at sign-in and then the
+ * false alert after Allow, and nagged decliners on every launch (Apple 4.5.4).
+ * The OS prompt belongs to requestPushPermission() (after onboarding or on
+ * reaching home); that call opts in once the user grants.
+ *
+ * Single-flight per user id: a call for a user whose login is in flight or has
+ * already completed this session returns the same promise. Logout clears it.
+ * Never throws.
+ */
+export function loginToOneSignal(userId: string): Promise<void> {
   if (!_initialized) {
     console.warn('[OneSignal] loginToOneSignal called before init — skipping')
-    return
+    return Promise.resolve()
   }
+  if (_loginFlight && _loginFlight.userId === userId) return _loginFlight.promise
+  const flight = { userId, promise: runLogin(userId) }
+  _loginFlight = flight
+  return flight.promise
+}
+
+async function runLogin(userId: string): Promise<void> {
   try {
     await OneSignal.login(userId)
-    // ORCH-1264: refresh OneSignal's cached notification-permission to the TRUE OS
-    // value BEFORE optIn() so optIn cannot pop the native fallbackToSettings
-    // "notifications turned off / Open Settings" dialog on a stale/denied cache.
-    // Proven on-device: for a returning user whose iOS notifications are ON, optIn()
-    // fired with OneSignal's permission cache stale ("off") and surfaced that false
-    // dialog. getPermissionAsync() is a pure READ (no prompt) that reconciles the
-    // cache to real OS truth first, so optIn() sees "on" and never falls back.
-    // Self-guarded so a read failure never disrupts login or skips optIn (mirrors
-    // syncPushPermissionTag's try/catch style — the diagnostic build proved this
-    // read is exactly what suppressed the popup).
+    _loginUserId = userId
+    // ORCH-1264 (kept): read the true OS permission before deciding on optIn().
+    // #4517: the read now decides WHETHER to opt in, not only how fresh the cache is.
+    // A failed read means "unknown", which is treated as "do not opt in".
+    let promptAnswered = false
+    let granted = false
     try {
-      await OneSignal.Notifications.getPermissionAsync()
+      promptAnswered = !(await OneSignal.Notifications.canRequestPermission())
+      granted = await OneSignal.Notifications.getPermissionAsync()
     } catch (permErr) {
-      console.warn('[OneSignal] pre-optIn getPermissionAsync failed:', permErr)
+      console.warn('[OneSignal] pre-optIn permission read failed:', permErr)
     }
-    await OneSignal.User.pushSubscription.optIn()
+    if (promptAnswered && granted && _optedInUserId !== userId) {
+      _optedInUserId = userId
+      OneSignal.User.pushSubscription.optIn()
+    }
     _loginComplete = true
-    if (__DEV__) logger.push('login + optIn', { userId })
-    // ORCH-1243: keep the OS-permission tag fresh once identity + subscription
-    // are established (the tag is now attached to the logged-in user).
+    if (__DEV__) logger.push('login', { userId, optedIn: _optedInUserId === userId })
+    // ORCH-1243: keep the OS-permission tag fresh once identity is established.
     await syncPushPermissionTag()
   } catch (e) {
     console.warn('[OneSignal] loginToOneSignal failed:', e)
+    // Let a later call retry a failed login instead of replaying the failure.
+    if (_loginFlight?.userId === userId) _loginFlight = null
   }
 }
 
 /**
- * Request OS-level notification permission (Android 13+ POST_NOTIFICATIONS).
+ * Request OS-level notification permission (iOS prompt, Android 13+
+ * POST_NOTIFICATIONS).
  *
- * Call AFTER the user has context for why they need notifications (e.g. after
- * coach mark tour completes). Do NOT call on app boot.
+ * Call AFTER the user has context for why they need notifications (after the
+ * onboarding tour, or for a returning user on reaching home). Do NOT call on boot.
  *
- * NOTE: optIn() is now called at login time (loginToOneSignal), not here.
- * This function only handles the OS permission dialog. The push subscription
- * is already active by the time this runs.
+ * #4517: when the user grants, this opts the push subscription in (once for the
+ * logged-in user) and syncs the tag. If no user is logged in yet, loginToOneSignal
+ * opts in later because it then finds the permission granted.
  *
- * ORCH-1244 (Apple Guideline 4.5.4): push must be optional + consent-based.
- * We pass `fallbackToSettings: false` so a user who already DECLINED is NOT
- * nagged into the iOS Settings app — their choice is respected silently. The
- * first OS dialog still shows (it already carries a real "Don't Allow"); a prior
- * denial is never re-surfaced. Callers gate this behind `canRequestPushPermission()`
- * so the dialog is only ever shown on a never-asked device.
+ * ORCH-1244 (Apple Guideline 4.5.4): push must be optional + consent-based. We pass
+ * `fallbackToSettings: false` so a user who already DECLINED is never nagged into
+ * Settings. Callers gate this behind `canRequestPushPermission()` so the dialog is
+ * only shown on a never-asked device.
  */
 export async function requestPushPermission(): Promise<boolean> {
   if (!_initialized) {
@@ -244,15 +263,13 @@ export async function requestPushPermission(): Promise<boolean> {
     return false
   }
   try {
-    // ORCH-1244: fallbackToSettings = false (was true). `true` steered a
-    // previously-declining user into the iOS Settings app to flip notifications
-    // on — the textbook 4.5.4 "push feels mandatory" trigger. `false` respects
-    // the user's decline.
     const granted = await OneSignal.Notifications.requestPermission(false)
     if (__DEV__) logger.push('permission result', { granted })
-    // optIn() already called at login — no need to call again here (ORCH-0407)
-    // ORCH-1243: a fresh grant/deny from the OS dialog must update the tag
-    // immediately so the In-App Message audience reconciles right away.
+    if (granted === true && _loginUserId && _optedInUserId !== _loginUserId) {
+      _optedInUserId = _loginUserId
+      OneSignal.User.pushSubscription.optIn()
+    }
+    // ORCH-1243: a fresh grant/deny must update the tag immediately.
     await syncPushPermissionTag()
     return granted
   } catch (e) {
@@ -328,6 +345,10 @@ export async function syncPushPermissionTag(): Promise<void> {
  * Call immediately after Supabase sign-out.
  */
 export function logoutOneSignal(): void {
+  // #4517: a later login (same or different user) must run again.
+  _loginFlight = null
+  _loginUserId = null
+  _optedInUserId = null
   if (!_initialized) return
   _loginComplete = false
   try {

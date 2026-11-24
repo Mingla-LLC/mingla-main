@@ -4,17 +4,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { color, radius, space } from "../../../../constants/designSystem";
 import { useWebsite } from "../WebsiteContext";
 import { Banner, Card, CardTitle, Skeleton, WButton, ui } from "../ui";
-import { ColoursCard, CoverCard, DesignCard, FontsCard, ShapeRow } from "../sections/DesignSection";
+import { ColoursCard, CoverCard, DesignCard, DesignOptionsCard, FontsCard, ShapeRow } from "../sections/DesignSection";
 import { useBrandSiteLook } from "../../../../hooks/useBrandSite";
 import { unsavedWork } from "../../../../hooks/useUnsavedChangesGuard";
 import { BrandSiteContentConflict, setSiteLook, type SiteWorkspace } from "../../../../sites/contentApi";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { AUTOSAVE_IDLE_MS } from "../../../../sites/draftWriter";
-import { restoreColours, safeFontOverrides, safeTokenOverrides } from "../../../../sites/siteLook";
+import { restoreColours, safeDesignOptions, safeFontOverrides, safeTokenOverrides } from "../../../../sites/siteLook";
 import { activeMood, applyMood, drawnContrastIssues, fixDrawnContrast, moodsFor, type MoodKey } from "../../../../sites/designMoods";
 import { changeLabel } from "../../../../sites/sectionEdits";
-import { DESIGNS, designFor, type DesignDefinition } from "../../../../../../packages/site-contracts/src/designs.ts";
+import { DESIGNS, designFor, type DesignDefinition, type DesignOptions } from "../../../../../../packages/site-contracts/src/designs.ts";
 import { resolveTokens, tokenCssDeclarations, type OwnerTokenOverrides } from "../../../../../../packages/site-contracts/src/tokens.ts";
 import type { OwnerFontOverrides } from "../../../../../../packages/site-contracts/src/fontSlots.ts";
 import { CONFLICT_MESSAGE, type Workspace } from "./useWorkspace";
@@ -26,7 +26,8 @@ import { GroupLabel, PanelNote, parts } from "./parts";
  * undoable change; there is no Save button. A hard-to-read pair gets a
  * one-tap fix here, and until it is fixed Publish says so.
  */
-type Look = { design: string; tokens: OwnerTokenOverrides; fonts: OwnerFontOverrides };
+/** #4575 — `designOptions`: Grid's cover and photos (kept across a design switch; the builder ignores them elsewhere). */
+type Look = { design: string; tokens: OwnerTokenOverrides; fonts: OwnerFontOverrides; designOptions: DesignOptions };
 /** "As designed" and "not set" are the same choice; key order never matters. */
 const tidy = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(tidy);
@@ -55,7 +56,7 @@ export function DesignPanel({ ws, onAskAri }: { ws: Workspace; onAskAri: (reques
   const look = useBrandSiteLook(brandId, ws.siteId);
   const stored = look.data;
   const storedLook: Look | null = useMemo(() => (stored
-    ? { design: (designFor(stored.design) ?? DESIGNS.atelier).key, tokens: safeTokenOverrides(stored.tokens), fonts: safeFontOverrides(stored.fonts) }
+    ? { design: (designFor(stored.design) ?? DESIGNS.atelier).key, tokens: safeTokenOverrides(stored.tokens), fonts: safeFontOverrides(stored.fonts), designOptions: safeDesignOptions(stored.designOptions) }
     : null), [stored]);
   const [draft, setDraft] = useState<Look | null>(null);
   const [saving, setSaving] = useState(false);
@@ -111,6 +112,7 @@ export function DesignPanel({ ws, onAskAri }: { ws: Workspace; onAskAri: (reques
         radius: want.tokens.radius ?? "design",
         buttonShape: want.tokens.button_shape ?? "design",
         motion: want.tokens.motion ?? "design",
+        ...(!same(want.designOptions, have.designOptions) ? { designOptions: want.designOptions } : {}),
       }, null);
       client.setQueryData<SiteWorkspace>(brandSiteKeys.siteData(workspace.siteId, "workspace"), (value) => (value ? { ...value, look_revision: result.look_revision } : value));
       workspace.afterChange({ look: true });
@@ -232,6 +234,7 @@ export function DesignPanel({ ws, onAskAri }: { ws: Workspace; onAskAri: (reques
       ) : null}
 
       <DesignCard design={design} onChoose={chooseDesign} disabled={readOnly} hint="Switching keeps all your words, photos and pages. Colours and fonts change to the new style’s. Undo puts it back." />
+      <DesignOptionsCard design={design} options={current.designOptions} onOptions={(designOptions) => change({ designOptions }, "the Grid options")} disabled={readOnly} />
       <CoverCard disabled={readOnly} />
       <ColoursCard design={design} resolved={resolved} tokens={current.tokens} disabled={readOnly} guard onTokens={(tokens) => change({ tokens }, "a colour")} />
       <FontsCard design={design} fonts={current.fonts} disabled={readOnly} onFonts={(fonts) => change({ fonts }, "a font")} />

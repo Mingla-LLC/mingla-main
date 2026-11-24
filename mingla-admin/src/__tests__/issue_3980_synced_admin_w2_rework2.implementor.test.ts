@@ -16,9 +16,10 @@ import {
   personActionFor,
   REVIEW_GROUPS,
   reviewGroupOf,
-  roadmapCardFromHash,
-  roadmapDraftHref,
 } from "../lib/opsModel.js";
+// [TEST-MOD #4420] the Roadmap screen is retired: roadmapDraftHref and
+// roadmapCardFromHash (its deep link) were removed with it, and their two
+// tests left; the wording is approved on the Work card itself (CardWording).
 // #4130 Wave 6: Roadmap is a tab of the Community page.
 import { redirectHash } from "../lib/adminRoutes.js";
 
@@ -50,19 +51,6 @@ Deno.test("#3980 W2 rework 2: To review has a 'What hosts are told' group and th
 });
 
 // #4383: Roadmap is its own Communications screen (#/roadmap).
-Deno.test("#3980 W2 rework 2: 'Open the draft in Roadmap' is a deep link the Roadmap screen reads back", () => {
-  const href = roadmapDraftHref(approval)!;
-  assertEquals(href, `#/roadmap?card=${DRAFT}`);
-  assertEquals(redirectHash(href), null, "a live Roadmap address");
-  const old = `#/community-support?tab=roadmap&card=${DRAFT}`;
-  assertEquals(redirectHash(old), href, "a link sent before the split lands in the same place");
-  assertEquals(redirectHash(`#/community?tab=roadmap&card=${DRAFT}`), href, "a link sent before #4383 lands there too");
-  assertEquals(roadmapCardFromHash(href), DRAFT, "and the panel opens this card");
-  assertEquals(roadmapDraftHref(eventCard), null, "no roadmap card linked, no link");
-  assertEquals(roadmapDraftHref({ links: [{ kind: "roadmap_card", id: "" }] }), null);
-  assertEquals(roadmapCardFromHash("#/community-support?tab=roadmap&card=not-a-card"), null);
-  assertEquals(roadmapCardFromHash("#/community-support?tab=roadmap"), null);
-});
 
 Deno.test("#3980 W2 rework 2: To review shows the draft link and Close with proof, never Mark published, on an approval card", () => {
   const q = read("components/ops/ReviewQueue.jsx");
@@ -70,7 +58,7 @@ Deno.test("#3980 W2 rework 2: To review shows the draft link and Close with proo
   assertMatch(q, /REVIEW_GROUPS\.map\(\(g\) => \{\n\s+const rows = cards\.filter\(\(c\) => reviewGroupOf\(c\) === g\.id\);/);
   assert(!/card\.person_reason === "publish" && <Button/.test(q), "Mark published no longer follows the bare reason");
   assertMatch(q, /\{personActionFor\(card\)\?\.action === "mark_published" && <Button[^\n]*>Mark published<\/Button>\}/);
-  assertMatch(q, /\{roadmapDraftHref\(card\) && <a href=\{roadmapDraftHref\(card\)\}[^\n]*>Open the draft in Roadmap<\/a>\}/);
+  assert(!/Open the draft in Roadmap/.test(q), "[TEST-MOD #4420] no link to the retired Roadmap screen");
   assertMatch(q, /\{isRoadmapApproval\(card\) && <Button[^\n]*>Close with proof<\/Button>\}/);
   assertMatch(q, /form === "close" && <ProofForm [^\n]*act\("close", null, proof, result\)/);
   assertMatch(q, /action === "close"\n\s+\? await ops\.closeWork\(card\.id, proof, result \|\| null, card\.revision\)/);
@@ -79,8 +67,10 @@ Deno.test("#3980 W2 rework 2: To review shows the draft link and Close with proo
 Deno.test("#3980 W2 rework 2: the Work board card shows the draft link and Close with proof on an approval card", () => {
   const d = read("components/ops/WorkDetail.jsx");
   assert(!/PERSON_ACTIONS\[card\.person_reason\]/.test(d), "the action is no longer read from the bare reason");
-  assertMatch(d, /const action = personActionFor\(card\);\n\s+const draftHref = roadmapDraftHref\(card\);/);
-  assertMatch(d, /\{draftHref && <a href=\{draftHref\}[^\n]*>Open the draft in Roadmap<\/a>\}/);
+  // [TEST-MOD #4420] no link to the retired Roadmap screen; the card's own wording editor stays.
+  assertMatch(d, /const action = personActionFor\(card\);/);
+  assert(!/draftHref|Open the draft in Roadmap/.test(d));
+  assertMatch(d, /<CardWording card=\{card\}/);
   // #4270: the Next step box calls it "Done with proof". #4255 W3: the status line's one primary
   // button is the card's action when it has one, else Done with proof (tagged or In progress).
   assertMatch(d, /else if \(tagged && action\) primary = <Button[^\n]*>\{action\.label\}<\/Button>;/);
@@ -88,11 +78,3 @@ Deno.test("#3980 W2 rework 2: the Work board card shows the draft link and Close
   assertMatch(d, /else primary = <Button[^\n]*onClick=\{startClose\}>\{role\.isWatcher \? "Close as done" : "Mark done"\}<\/Button>;/);
 });
 
-Deno.test("#3980 W2 rework 2: Community, Roadmap opens the linked draft in the editor", () => {
-  const r = read("components/community/RoadmapPanel.jsx");
-  assertMatch(r, /useState\(\(\) => roadmapCardFromHash\(window\.location\.hash\)\)/);
-  assertMatch(r, /window\.addEventListener\("hashchange", onHash\)/);
-  const effect = r.slice(r.indexOf("if (!openCardId || loading) return;"));
-  assertMatch(effect.slice(0, 900), /setStatusFilter\(row\.status\);\n\s+setEditor\(\{\n\s+id: row\.id,/);
-  assertMatch(effect.slice(0, 900), /That roadmap card isn’t here any more/);
-});

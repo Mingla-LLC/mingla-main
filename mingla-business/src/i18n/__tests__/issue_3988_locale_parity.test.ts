@@ -7,12 +7,21 @@ const STRUCTURAL_SHARED = new Set([
   "media.subtitle", "media.subtitle_panel", "media.file_row_meta",
   "media.month_year", "format.kb", "format.mb",
   "plan.by_mingla", "plan.more",
+  // #4420: the brand name and the side tags read the same in every language.
+  "messages.people_mingla",
+  // #4571: the Work card's people line joins two translated phrases.
+  "team.card_people_list",
 ]);
 const VALID_COGNATES = new Set([
   "id:chat.media", "id:media.title", "it:chat.media", "it:media.title",
   "it:media.count_files_one", "ms:chat.media", "ms:media.title",
   "nl:chat.media", "nl:media.title",
   "de:plan.pill", "es:plan.pill", "fr:plan.pill", "nl:plan.pill", "ro:plan.pill", "pl:plan.pill", "sv:plan.pill", "tr:plan.pill",
+  // #4420: "Team" is the word in German, Italian, Dutch and Swedish too.
+  "de:messages.team", "de:messages.tag_team", "de:messages.mode_broadcast",
+  "it:messages.team", "it:messages.tag_team",
+  "nl:messages.team", "nl:messages.tag_team", "nl:messages.mode_open",
+  "sv:messages.team", "sv:messages.tag_team",
   "de:plan.kind_event", "fr:plan.date", "it:plan.kind_post", "pl:plan.kind_post", "ro:plan.seg_calendar",
 ]);
 
@@ -41,6 +50,9 @@ describe("#3988 Host brand-group media translations", () => {
   // #4255 W5: so do the Mingla team screens' words.
   const teamEnglish = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../locales/en/teamChat.json"), "utf8")) as Record<string, Record<string, unknown>>;
   englishTree.team = { ...englishTree.team, ...teamEnglish.team };
+  // #4420: so do Host Messages' words (one thread per brand, Guests side).
+  const messagesEnglish = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../locales/en/brandMessages.json"), "utf8")) as Record<string, Record<string, unknown>>;
+  englishTree.messages = { ...englishTree.messages, ...messagesEnglish.messages };
   const english = flatten(englishTree as Record<string, unknown>);
   const fixedEnglishKeys = Object.keys(english).filter((key) => !/^media\.count_(photos_videos|files)_/.test(key)).sort();
 

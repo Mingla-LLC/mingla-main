@@ -20,6 +20,7 @@ import {
   DONE_TICKET_STATUSES,
 } from "../lib/supportTicketMetrics";
 import { WEBSITE_TOPIC, readyErrorMessage } from "../lib/websiteRequestModel";
+import { inboxLookupsFromResults } from "../lib/supportInboxModel";
 
 export const SUPPORT_ATTACHMENT_BUCKET = "support-attachments";
 export const SIGNED_URL_SECONDS = 60 * 60;
@@ -113,6 +114,47 @@ export async function listSupportTickets({ closedLimit = CLOSED_PAGE_SIZE } = {}
   };
 }
 
+/**
+ * #4420 (step 5): one conversation by id, for an address that names one the
+ * loaded list does not hold (an old resolved one). Same columns and counts as
+ * the list rows; null when it does not exist or staff cannot read it.
+ */
+export async function getSupportTicket(id) {
+  const row = unwrap(
+    await supabase.from("support_tickets").select(TICKET_COLUMNS).eq("id", id).maybeSingle(),
+    "Couldn't open that conversation",
+  );
+  if (!row) return null;
+  const websiteRequests = await loadWebsiteRequests(row.topic === WEBSITE_TOPIC ? [row.id] : []);
+  return { ...row, image_count: 0, voice_ms: 0, website_request: websiteRequests.get(row.id) || null };
+}
+
+/**
+ * #4420 (step 5): the newest customer-visible message of each conversation, for
+ * the list snippets: { [conversation_id]: message }. Internal notes are never
+ * asked for (is_internal = false) and system lines are skipped, so a note's
+ * words cannot reach a preview. Asks for at most 150 conversations at a time.
+ */
+export async function loadLastPublicMessages(conversationIds) {
+  const ids = [...new Set((conversationIds || []).filter(Boolean))].slice(0, ID_CHUNK);
+  if (ids.length === 0) return {};
+  const rows = unwrap(
+    await supabase
+      .from("messages")
+      .select("conversation_id, content, message_type, is_internal, sender_id, sender_role_snapshot, created_at")
+      .in("conversation_id", ids)
+      .eq("is_internal", false)
+      .is("deleted_at", null)
+      .neq("message_type", "system")
+      .order("created_at", { ascending: false })
+      .limit(ids.length * 6),
+    "Couldn't load the message previews",
+  ) || [];
+  const latest = {};
+  for (const row of rows) if (!latest[row.conversation_id]) latest[row.conversation_id] = row;
+  return latest;
+}
+
 const WEBSITE_REQUEST_COLUMNS = [
   "ticket_id", "brand_id", "site_id", "requested_by", "page_path", "section_id",
   "section_label", "what", "why", "missing_capability", "draft_digest",
@@ -169,18 +211,21 @@ export async function markWebsiteRequestReady(ticketId, note) {
  * Profiles (with segment) and every brand name, for the rows and filters.
  * #4226 Phase 2: the segment is the People classifier's (admin_people_lookup),
  * one owner with People and the person record.
+ *
+ * #4420 rework 3 (G1): never throws. The server lets only full admins call
+ * admin_people_lookup, so for a Support teammate it is refused; a refused or
+ * failed lookup is "no enrichment" (see inboxLookupsFromResults), and the
+ * inbox still loads from the conversation rows. `missing` says what is absent.
  */
 export async function loadInboxLookups(userIds) {
-  const [profilePages, brands] = await Promise.all([
-    Promise.all(chunks(userIds).map((ids) => supabase.rpc("admin_people_lookup", { p_user_ids: ids, p_query: null }))),
-    supabase.from("brands").select("id, name").is("deleted_at", null).order("name", { ascending: true }).limit(2000),
+  const settle = (call) => Promise.resolve().then(call).catch((err) => (err instanceof Error ? err : new Error(String(err))));
+  const [peoplePages, brands] = await Promise.all([
+    Promise.all(chunks(userIds).map((ids) => settle(() => supabase.rpc("admin_people_lookup", { p_user_ids: ids, p_query: null })))),
+    settle(() => supabase.from("brands").select("id, name").is("deleted_at", null).order("name", { ascending: true }).limit(2000)),
   ]);
-  const profileRows = profilePages.flatMap((page) => unwrap(page, "Couldn't load people") || []);
-  const brandRows = unwrap(brands, "Couldn't load brands") || [];
-  return {
-    profilesById: Object.fromEntries(profileRows.map((row) => [row.id, row])),
-    brandsById: Object.fromEntries(brandRows.map((row) => [row.id, row])),
-  };
+  const out = inboxLookupsFromResults({ peoplePages, brands });
+  if (out.missing.length) console.warn("[support desk] inbox shown without:", out.missing.join(", "));
+  return out;
 }
 
 /** A ticket's thread with each message's attachments. */

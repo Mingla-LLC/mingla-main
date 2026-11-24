@@ -83,7 +83,7 @@ import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/o
 import { groupChatUrl, groupJoinAction } from "../src/utils/friendShareLink";
 import { router, useLocalSearchParams } from "expo-router";
 import type { Href } from "expo-router";
-import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
+import { ensureAttRequested, requestPostTourPermissions, requestReturningUserPushPermission, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
@@ -129,6 +129,8 @@ import {
   supabase,
   supabaseUrl,
 } from "../src/services/supabase";
+import { readMyProfile } from "../src/services/profileAccessService";
+import type { User as ProfileUser } from "../src/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../src/constants/colors";
 import { logger } from "../src/utils/logger";
@@ -164,7 +166,12 @@ import { ClaimLinkLandedSheet } from "../src/components/purchases/ClaimLinkLande
 import { useClaimRecheck } from "../src/hooks/useClaimRecheck";
 import type { OnboardingMode } from "../src/hooks/ticketFirstLogic";
 import * as friendsService from "../src/services/friendsService";
-import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, registerShellDestinationSink, type NavigationHandlers } from "../src/services/deepLinkService";
+import { parseDeepLink, executeDeepLink, typeFallbackDestination, registerOpenDirectMessageSink, registerShellDestinationSink, shellSkipsRouterLink, type NavigationHandlers } from "../src/services/deepLinkService";
+import { redirectSystemPath } from "./+native-intent";
+
+// #4508 — true when expo-router itself opens this OS link (a served route).
+const routerServesLink = (url: string): boolean =>
+  redirectSystemPath({ path: url, initial: false }) !== "/";
 import {
   dismissCollaborationInviteNotifications,
   type ServerNotification,
@@ -185,8 +192,9 @@ const TAB_BAR_ICON_SIZE = ms(20);
  *  indicator zone. v6 had 0 (flush); v6.1 tried 5px; v6.2 bumped to 6px for a touch more
  *  breathing room. `layout.bottomNavPadding` prop kept for rollback. */
 function CoachMarkNavigationGate({ layout, children }: { layout: any; children: React.ReactNode }) {
-  const { isCoachLoading, isCoachPending, isCoachActive } = useCoachMarkContext();
-  const locked = isCoachLoading || isCoachPending || isCoachActive;
+  // #4562: the tabs lock only while the overlay has drawn a bubble with a way out.
+  const { isTourExitOnScreen } = useCoachMarkContext();
+  const locked = isTourExitOnScreen;
   // ORCH-0610 fix: iOS overlaps the home-indicator zone for tight bezel-hugging;
   // Android respects insets.bottom so the nav clears the system navigation panel
   // (gesture bar or 3-button nav).
@@ -890,6 +898,23 @@ function AppContent() {
     (code: string, noun: ClaimNoun | null = null): void => {
       setTicketClaimResolvingNoun(noun);
       void (async () => {
+        // #4508 1.16 — a /c/ code may be an RSVP guest link ("{Inviter} saved
+        // you a spot"). Ask claim-link first; any status but not_found opens
+        // the guest claim screen. A failed check falls through to the ticket
+        // claim path below, which reports its own failure.
+        try {
+          const { resolveRsvpGuestLink } = await import("../src/services/rsvpGuestLinkService");
+          const guest = await resolveRsvpGuestLink(code);
+          if (guest.status !== "not_found") {
+            const { rsvpGuestRoutePath } = await import("../src/utils/rsvpGuestClaim");
+            // Signed out, the screen shows the invite and holds the code when
+            // the person taps Get my pass (it reopens after sign-in).
+            router.push(rsvpGuestRoutePath(code) as never);
+            return;
+          }
+        } catch (e) {
+          console.warn("[ClaimLink] RSVP guest check failed; trying the ticket claim", e);
+        }
         const generation = ++pendingClaimLoadGenerationRef.current;
         await waitForAuthSettled();
         const accountAtOpen = userIdRef.current ?? null;
@@ -1793,6 +1818,45 @@ function AppContent() {
     });
   }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
 
+  // #4508 1.16 — an RSVP guest code held through install, sign-up and
+  // onboarding reopens its claim screen once the person is in the app.
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth || showOnboardingFlow) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { takePendingRsvpGuest } = await import("../src/services/pendingRsvpGuest");
+        const { rsvpGuestRoutePath } = await import("../src/utils/rsvpGuestClaim");
+        const code = await takePendingRsvpGuest();
+        if (code !== null && !cancelled) router.push(rsvpGuestRoutePath(code) as never);
+      } catch (e) {
+        console.warn("[DEEPLINK] held RSVP guest link failed", e);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
+
+  // #4541 — once signed in: reopen a form held through sign-in (R2.3
+  // S-SIGNIN) and tell the server, at most daily, that this phone can open
+  // the form screen (R2.11; a failure is ignored).
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth || showOnboardingFlow) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { takePendingFormRoute, reportFormCapabilityDaily } = await import("../src/components/forms/formsStartup");
+        const { default: Constants } = await import("expo-constants");
+        const path = await takePendingFormRoute();
+        if (path !== null && !cancelled) router.push(path as never);
+        await reportFormCapabilityDaily(Platform.OS, Constants.expoConfig?.version);
+      } catch (e) {
+        console.warn("[forms] signed-in startup skipped", e instanceof Error ? e.name : "unknown");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
+
   // Get friends from useFriends hook for session creation
   const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
   
@@ -1898,6 +1962,19 @@ function AppContent() {
     // ORCH-1313: intentionally-once at mount ([] deps) — no auth gate. attFiredRef +
     // ensureAttRequested single-flight + startAppsFlyer _started guard keep it idempotent.
   }, []);
+
+  // #4517: returning user (onboarding already completed) who has never been asked
+  // for notifications gets the gated request once per app session on reaching home,
+  // after ATT. Users still in onboarding are asked by the onboarding onComplete call.
+  // Single-flight inside requestReturningUserPushPermission shares its gate with that
+  // call, so the two never double-prompt.
+  useEffect(() => {
+    if (!_hasHydrated || isLoadingAuth || !isAuthenticated || !user?.id) return;
+    if (showOnboardingFlow || profile?.has_completed_onboarding !== true) return;
+    requestReturningUserPushPermission().catch((e) =>
+      console.warn('[AppContent] Returning-user push request failed:', e)
+    );
+  }, [_hasHydrated, isLoadingAuth, isAuthenticated, user?.id, showOnboardingFlow, profile?.has_completed_onboarding]);
   // ───────────────────────────────────────────────────────────────────────────
 
   // Structured navigation logging
@@ -2527,11 +2604,11 @@ function AppContent() {
       try {
         const handledByStripe = await handleURLCallback(url);
         if (!handledByStripe) {
-          handleDeepLink(url, "os");
+          handleDeepLink(url, { routerOpened: routerServesLink(url) });
         }
       } catch (err) {
         console.warn('[Deeplink] handleURLCallback threw; falling back to handleDeepLink', err);
-        handleDeepLink(url, "os");
+        handleDeepLink(url, { routerOpened: routerServesLink(url) });
       }
     });
 
@@ -2541,11 +2618,11 @@ function AppContent() {
       try {
         const handledByStripe = await handleURLCallback(event.url);
         if (!handledByStripe) {
-          handleDeepLink(event.url, "os");
+          handleDeepLink(event.url, { routerOpened: routerServesLink(event.url) });
         }
       } catch (err) {
         console.warn('[Deeplink] handleURLCallback threw; falling back to handleDeepLink', err);
-        handleDeepLink(event.url, "os");
+        handleDeepLink(event.url, { routerOpened: routerServesLink(event.url) });
       }
     });
 
@@ -2555,10 +2632,17 @@ function AppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiveAttendanceClaimUrl]);
 
-  // W2-N32: `source` "os" = the OS handed this URL to the app (initial URL or
-  // "url" event); expo-router's own linking has opened any route it serves.
-  const handleDeepLink = async (url: string, source: "os" | "replay" = "replay") => {
+  // #4508: `opts.routerOpened` = expo-router serves this exact OS link (+native-intent).
+  // W2-N32 (#4490): only the OS link paths pass `opts`, so its presence is the
+  // `source` "os" (the OS handed this URL to the app: initial URL or "url"
+  // event); a replay (deferred link after sign-in) passes none.
+  const handleDeepLink = async (url: string, opts?: { routerOpened?: boolean }) => {
+    const source: "os" | "replay" = opts === undefined ? "replay" : "os";
     console.log("Deep link received:", url);
+
+    // #4508 — expo-router already opened a served route for this OS link
+    // (+native-intent); pushing it again stacked a second copy.
+    if (shellSkipsRouterLink(parseDeepLink(url), opts?.routerOpened === true)) return;
 
     // OAuth callbacks MUST run immediately — they ARE the auth flow.
     // All other deep links: if the user isn't authenticated, defer to
@@ -2660,13 +2744,13 @@ function AppContent() {
             console.log("✅ Session set successfully via deep link");
 
             // Load profile
-            const { data: profile, error: profileError } = await supabase
-              .from("profiles")
-              .select("*")
+            const { data: profile, error: profileError } = await readMyProfile()
               .eq("id", data.session.user.id)
-              .single();
+              .single<ProfileUser>();
 
-            if (!profileError && profile) {
+            if (profileError) {
+              console.error("Error loading profile after deep-link sign-in:", profileError);
+            } else if (profile) {
               setProfile(profile);
             }
           }
@@ -2855,6 +2939,26 @@ function AppContent() {
         case 'claim':
           handleIncomingClaimCode(dest.code);
           return;
+
+        case 'rsvp_guest': {
+          // #4508 1.16 — an RSVP guest link after install. Hold the code (it
+          // survives sign-up and onboarding) and open the claim screen, which
+          // shows the invite signed out and claims once signed in.
+          void (async () => {
+            try {
+              const { setPendingRsvpGuest } = await import("../src/services/pendingRsvpGuest");
+              const { rsvpGuestRoutePath } = await import("../src/utils/rsvpGuestClaim");
+              if (!userIdRef.current || !onboardedRef.current) {
+                await setPendingRsvpGuest(dest.code);
+                if (!userIdRef.current) return;
+              }
+              router.push(rsvpGuestRoutePath(dest.code) as never);
+            } catch (e) {
+              console.warn('[OneLink] rsvp_guest handling failed:', e);
+            }
+          })();
+          return;
+        }
 
         case 'friend_invite': {
           // Issue #4114 — a friend's text invite. Hold the token the way

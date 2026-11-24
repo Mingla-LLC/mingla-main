@@ -14,11 +14,39 @@ import { CSS } from "@dnd-kit/utilities";
 import { ChevronRight, GripVertical, MessageSquare, Plus } from "lucide-react";
 import { PersonAvatar } from "../people/PeopleField";
 import * as ops from "../../services/opsService";
-import { opsErrorWords, requestKey, todayIso } from "../../lib/opsModel";
+import { linkChips, opsErrorWords, requestKey, todayIso } from "../../lib/opsModel";
+import { SideLink } from "../ui/PanelStack";
+import { linkSide } from "../../lib/panelStack";
 import { DUE_TONE, dueLabel } from "../../lib/dueLabel";
 import { canHaveSubtasks, liveColumns, makeSubtaskAdder, reorderIds, subtaskProgress, tickProof } from "../../lib/workBoardModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
+
+/**
+ * #4571 W2: a card's links as chips, at most two then "+N". With `open`, a chip
+ * for a record opens it beside the card (subtask rows); on a board tile, which
+ * is itself a button, the chips are words only.
+ */
+export function LinkChips({ links, open = false, max = 2 }) {
+  const { shown, more } = linkChips(links, max);
+  if (!shown.length) return null;
+  const chip = "inline-flex max-w-[12rem] min-w-0 items-center rounded-full bg-[var(--gray-100)] px-2 py-px text-[11px] text-[var(--color-text-secondary)]";
+  return (
+    <span data-link-chips="" className="inline-flex min-w-0 flex-wrap items-center gap-1">
+      {shown.map((l) => {
+        const side = open ? linkSide(l) : null;
+        return side ? (
+          <SideLink key={`${l.kind}:${l.id}`} side={side} aria-label={`Open ${l.label}`} className={`${chip} hover:underline ${FOCUS}`}>
+            <span className="truncate">{l.label}</span>
+          </SideLink>
+        ) : (
+          <span key={`${l.kind}:${l.id}`} className={chip}><span className="truncate">{l.label}</span></span>
+        );
+      })}
+      {more > 0 && <span data-links-more="" aria-label={`and ${more} more linked`} className={chip}>+{more}</span>}
+    </span>
+  );
+}
 
 function SubtaskRow({ sub, columns, depth, disabled, onTick, onOpen, canReorder, onMove, index, count, expandable }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sub.id, disabled: !canReorder });
@@ -49,6 +77,7 @@ function SubtaskRow({ sub, columns, depth, disabled, onTick, onOpen, canReorder,
         ) : <span className="w-5 shrink-0" />}
         <input type="checkbox" data-subtask-tick={sub.id} checked={done} disabled={disabled} onChange={() => onTick(sub)} aria-label={done ? `Reopen ${sub.title}` : `Tick ${sub.title} done`} className="h-4 w-4 shrink-0 accent-[var(--color-success-600)]" />
         <button type="button" onClick={() => onOpen(sub.id)} className={`min-w-0 flex-1 truncate rounded text-left text-[13px] ${done ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]"} hover:underline ${FOCUS}`}>{sub.title}</button>
+        <span className="hidden shrink-0 sm:inline-flex"><LinkChips links={sub.links} open /></span>
         {n.total > 0 && <span className="shrink-0 text-[11.5px] tabular-nums text-[var(--color-text-tertiary)]">{n.done}/{n.total}</span>}
         {Number(sub.thread_count) > 0 && <span className="inline-flex shrink-0 items-center gap-0.5 text-[11.5px] text-[var(--color-text-tertiary)]" aria-label={`${sub.thread_count} messages`}><MessageSquare aria-hidden="true" className="h-3.5 w-3.5" />{sub.thread_count}</span>}
         {col && <span className="hidden shrink-0 items-center gap-1 rounded-full bg-[var(--gray-100)] px-2 py-0.5 text-[11px] text-[var(--color-text-secondary)] sm:inline-flex"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: col.color }} />{col.name}</span>}
@@ -71,7 +100,9 @@ function SubtaskRow({ sub, columns, depth, disabled, onTick, onOpen, canReorder,
                 <input type="checkbox" checked={k.status === "done"} disabled={disabled} onChange={async () => { await onTick(k); try { const r = await ops.getWork(sub.id, todayIso()); setKids(r?.subtasks || []); } catch { setKids(null); } }} aria-label={k.status === "done" ? `Reopen ${k.title}` : `Tick ${k.title} done`} className="h-4 w-4 shrink-0 accent-[var(--color-success-600)]" />
                 <button type="button" onClick={() => onOpen(k.id)} className={`min-w-0 flex-1 truncate text-left text-[12.5px] ${k.status === "done" ? "text-[var(--color-text-tertiary)] line-through" : "text-[var(--color-text-primary)]"} hover:underline ${FOCUS}`}>{k.title}</button>
                 {(() => { const d = dueLabel(k, todayIso()); return d.tone !== "none" ? <span data-due={d.tone} className={`shrink-0 rounded-full px-1.5 py-px text-[11px] tabular-nums ${DUE_TONE[d.tone]}`}>{d.text}</span> : null; })()}
-                {(k.owners || [])[0] && <PersonAvatar person={k.owners[0]} size="sm" />}
+                {/* #4571: every owner, two faces then +N */}
+                {(k.owners || []).slice(0, 2).map((o) => <PersonAvatar key={o.email} person={o} size="sm" />)}
+                {(k.owners || []).length > 2 && <span aria-label={`and ${k.owners.length - 2} more owners`} className="shrink-0 text-[11px] font-semibold text-[var(--color-text-tertiary)]">+{k.owners.length - 2}</span>}
               </li>
             ))}
         </ul>

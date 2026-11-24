@@ -5,86 +5,46 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { truncateRoadmapBlurb } from "../../utils/roadmapBlurb";
-
 const ROOT = path.resolve(__dirname, "../../../..");
 const read = (relative: string) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 
+// [TEST-MOD #4420] Help & Support became Announcements and Support. Roadmap,
+// Ideas, Questions, Guides and the last-tab memory left the Host app, so
+// their pins are gone; the surviving pins follow AnnouncementsPanel.
 describe("#3720 Host Help & Support rebuild", () => {
-  test("H6 roadmap blurbs execute the bounded host-facing summary behavior", async () => {
-    const result = await Promise.resolve(
-      truncateRoadmapBlurb("Hosts can see an honest target without an overflowing internal planning note.", 34),
-    );
-    expect(result).toBe("Hosts can see an honest target…");
-    expect(result.length).toBeLessThanOrEqual(35);
-  });
-
-  test("H1-H2 keep the desktop shell, wide panes and four section navigation", () => {
+  test("H1-H2 keep the desktop shell and wide panes", () => {
     const route = read("mingla-business/app/account/support.tsx");
-    const community = read("mingla-business/src/components/support/CommunityTabPanel.tsx");
     expect(route).toContain("DesktopCanvas");
     expect(route).not.toMatch(/Account\s+›\s+Help &amp; Support/);
     expect(route).not.toContain("sectionRail");
     expect(route).not.toContain("maxWidth: 760");
-    expect(route).toContain("community-floating-action");
-    expect(route).toContain("hasCommunityTarget ? \"community\" : null");
-    expect(route).toContain("target.kind === \"idea\" ? \"ideas\" : \"questions\"");
-    for (const label of ["Announcements", "Roadmap", "Ideas", "Questions"]) {
-      expect(community).toContain(`label: "${label}"`);
-    }
-    expect(community).toContain("showSectionTabs = true");
+    expect(route).not.toContain("community-floating-action");
   });
 
-  test("H3-H5 keep normal placeholders, list-first ideas and complete announcements", () => {
+  test("H3-H5 keep normal placeholders and complete announcements", () => {
     // #4382: the request inputs moved into the new-request form.
     const support = read("mingla-business/src/components/support/SupportNewRequestForm.tsx");
-    const conversations = read("mingla-business/src/components/support/CommunityConversationsPanel.tsx");
-    const community = read("mingla-business/src/components/support/CommunityTabPanel.tsx");
+    const announcements = read("mingla-business/src/components/support/AnnouncementsPanel.tsx");
     expect(support).toMatch(/subjectInput:[\s\S]+letterSpacing: 0/);
-    expect(conversations).toMatch(/input:[\s\S]+letterSpacing: 0/);
-    expect(conversations).toContain("Suggest an idea");
-    expect(conversations).toContain("Vote instead?");
-    expect(conversations).toContain("setTimeout(() => setSettledTitle(title), 600)");
-    expect(conversations).toContain("Community guidelines");
-    expect(conversations).toMatch(/author_label} · {post.brand_label/);
-    expect(community).toContain("unreadCard");
-    expect(community).toContain("What you need to do");
-    expect(community).toContain("On the roadmap");
+    expect(announcements).toContain("unreadCard");
+    expect(announcements).toContain('hubCopy("announcements.action_heading")');
   });
 
-  test("H6-H9 keep honest roadmap rows, compact guides, sign-out confirmation and chat hint", () => {
-    const community = read("mingla-business/src/components/support/CommunityTabPanel.tsx");
-    const guides = read("mingla-business/src/components/support/GuidesTabPanel.tsx");
+  test("H8-H9 keep sign-out confirmation and the new-request hint", () => {
     const account = read("mingla-business/app/(tabs)/account.tsx");
     const support = read("mingla-business/src/components/support/SupportTabPanel.tsx");
-    expect(community).toContain('const LANE_ORDER = ["now", "next", "later"] as const');
-    for (const label of ['now: "Now"', 'next: "Next"', 'later: "Later"']) expect(community).toContain(label);
-    expect(community).toContain("truncateRoadmapBlurb");
-    expect(community).toContain("Aiming for");
-    expect(community).toContain("Fed by");
-    // [TEST-MOD-APPROVED #4173] Guides now keep five foundations on one
-    // screen: one start card and four equal flex-fill essentials.
-    expect(guides).toContain("FEATURED_GUIDE_SLUGS");
-    expect(guides).toContain("START_GUIDE");
-    expect(guides).toContain("ESSENTIAL_GUIDES");
-    expect(guides).toContain("View more videos");
-    expect(guides).toContain('mobileCell: { width: "48%", height: "48%"');
-    expect(guides).toContain('desktopCell: { flex: 1, height: "100%"');
     expect(account).toContain('icon="logout"');
     expect(account).toContain("Sign out of Mingla Host on this device?");
     // #4382: the disabled Send explains what is missing, from the new-request form.
     const form = read("mingla-business/src/components/support/SupportNewRequestForm.tsx");
     expect(form).toContain('supportCopy("form.need_summary")');
     expect(support).toContain("SupportNewRequestForm");
-    expect(read("mingla-business/src/utils/helpSupportLastTab.ts")).toMatch(/unreadCount > 0[\s\S]+return "community"/);
   });
 
   test("Host reads stay on bounded v2 projections and Admin authors the action fields", () => {
     const service = read("mingla-business/src/services/communityService.ts");
     const migration = read("supabase/migrations/20271108073720_issue_3720_host_help_support.sql");
     const admin = read("mingla-admin/src/components/community/AnnouncementsPanel.jsx");
-    expect(service).toContain("issue_3720_community_feed_v2");
-    expect(service).toContain("issue_3720_community_comments_v2");
     expect(service).toContain("action_line, roadmap_card_id");
     expect(migration).toContain("issue_3720_admin_upsert_announcement");
     expect(migration).toContain("Independent Host");

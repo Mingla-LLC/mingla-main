@@ -245,8 +245,8 @@ BEGIN
   PERFORM pg_temp.ok('H-RSVP-CLAIM an anonymous RSVP joins on claim', pg_temp.in_one('b1', 'hal'));
 
   -- Matched plus-one.
-  INSERT INTO public.event_rsvp_guests(rsvp_id, name, email, phone, matched_user_id)
-    VALUES (v_rsvp, 'Ivy', 'ivy@example.test', '+15550000001', pg_temp.u('ivy'));
+  INSERT INTO public.event_rsvp_guests(rsvp_id, name, email, phone, matched_user_id, claimed_at)
+    VALUES (v_rsvp, 'Ivy', 'ivy@example.test', '+15550000001', pg_temp.u('ivy'), now());
   PERFORM pg_temp.ok('H-PLUS-ONE a matched plus-one joins', pg_temp.in_one('b1', 'ivy'));
 
   -- Anonymous order, then claim_attendance_internal_v2 binds buyer_user_id.
@@ -399,6 +399,11 @@ BEGIN
   v := pg_temp.rpc_as('mgr', format('SELECT public.issue_4459_remove_brand_guest(%L, %L)', pg_temp.chat('b1'), pg_temp.u('b1_owner')));
   PERFORM pg_temp.ok('L-REMOVE-TEAM the team cannot remove a team member', v::text LIKE '%22023%');
 END $l$;
+
+-- [TEST-MOD #4420] New Guest rooms start in Broadcast (20281120024420). The
+-- cases below need guests to post, so the rooms are switched to Open chat
+-- first; what each case proves is unchanged.
+UPDATE public.conversations SET is_broadcast_only = false WHERE linked_entity_type = 'brand_guests';
 
 -- ═══ A: adversarial ═════════════════════════════════════════════════════════
 DO $a$

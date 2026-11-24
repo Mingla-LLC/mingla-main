@@ -320,8 +320,9 @@ describe("#2229 adversarial — hostile and degenerate inputs", () => {
 
 describe("#2229 adversarial — the #2188 money clause holds on every string", () => {
   it("each owned constant states whether the buyer was charged", () => {
-    // issue #3281 adds the extras refusal (18).
-    expect(NATIVE_CHECKOUT_MESSAGES).toHaveLength(18);
+    // issue #3281 adds the extras refusal (18); #4541 R2.10 adds the five
+    // brand form refusals (required, invalid, changed, check, stash) (23).
+    expect(NATIVE_CHECKOUT_MESSAGES).toHaveLength(23);
     for (const message of NATIVE_CHECKOUT_MESSAGES) {
       expect(message).toMatch(/charge/i);
       // ...and states it as a NEGATIVE or a NOT-TWICE, never an ambiguity.

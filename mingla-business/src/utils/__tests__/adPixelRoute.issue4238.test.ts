@@ -52,7 +52,7 @@ describe("#4238 W2-4 isAdPixelRoute", () => {
     expect(isAdPixelRoute(undefined)).toBe(false);
   });
 
-  test("the pixel list is the public buyer list minus the five account-service pages", () => {
+  test("the pixel list is the public buyer list minus the account-service pages (and #4514's form links)", () => {
     const pixel = PUBLIC_BUYER_ROUTE_PREFIXES.filter((prefix) =>
       isAdPixelRoute(`${prefix}x`),
     );
@@ -62,6 +62,6 @@ describe("#4238 W2-4 isAdPixelRoute", () => {
     // TEST-MOD-APPROVED #4490: /visit/ (a token-opened booking page) is not a shopping page either.
     // TEST-MOD-APPROVED #4490 (Explorer W1): /paid/ (the app payment return) is not a shopping page.
     // TEST-MOD-APPROVED #4490 (spec 08 O1): /receipt/ (a token-opened Till receipt) is not a shopping page.
-    expect([...excluded].sort()).toEqual(["/booking/", "/m/", "/paid/", "/pay/", "/receipt/", "/refund/", "/stay/pay/", "/visit/"]);
+    expect([...excluded].sort()).toEqual(["/booking/", "/form/", "/m/", "/paid/", "/pay/", "/receipt/", "/refund/", "/stay/pay/", "/visit/"]);
   });
 });

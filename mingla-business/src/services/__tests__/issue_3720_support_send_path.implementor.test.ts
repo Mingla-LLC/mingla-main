@@ -61,15 +61,13 @@ describe("#3720 support send path (implementor)", () => {
     expect(src).toMatch(/from ["']\.\.\/\.\.\/constants\/supportHostFacing["']/);
   });
 
-  test("Help & Support Guides tab exposes the growing Help Centre video catalogue", () => {
-    // #3720 Slice G moved Help Centre into GuidesTabPanel (still under hub).
+  // [TEST-MOD #4420] The Guides tab left the Host app; the Help Centre link
+  // ("Browse all help videos") moved to the Support column.
+  test("Help & Support links to the growing Help Centre video catalogue", () => {
     const src = fs.readFileSync(
-      path.join(ROOT, "src/components/support/GuidesTabPanel.tsx"),
+      path.join(ROOT, "src/components/support/SupportColumn.tsx"),
       "utf8",
     );
-    // [TEST-MOD-APPROVED #4173] The compact redesign names the handoff
-    // "View more videos" while preserving the canonical Help Centre target.
-    expect(src).toContain("View more videos");
     expect(src).toContain("openHelpCentre(HELP_CENTRE_URL)");
     expect(src).toContain("HELP_CENTRE_URL");
     expect(HELP_CENTRE_URL).toBe("https://usemingla.com/help");

@@ -47,6 +47,11 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 
@@ -538,6 +543,11 @@ rollback;
 -- The #3980 suites' copy of the old save lives in pg_temp, inside their
 -- transaction: after a rollback it is gone from this session too.
 begin;
+-- #4571 W4: this suite's fixtures and moves predate the Demo booked rule
+-- (meeting and later need a linked booked demo; that rule is tested in
+-- issue_4571_w4_demo_stage_rule.implementor.pg17.test.sql). Its trigger is off
+-- inside this transaction only.
+alter table public.crm_records disable trigger crm_4571_demo_stage_guard;
 \ir issue_4270_promised_event_before_d16.fixture.sql
 select (to_regproc('pg_temp.t4270_promise_create') is not null) as tw_fixture_in \gset
 rollback;
