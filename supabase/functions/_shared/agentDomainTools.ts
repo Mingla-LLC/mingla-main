@@ -710,7 +710,8 @@ const updateExperience = writeTool(
           },
           name: {
             type: "string",
-            description: "Required and never blank: the price name guests see. There is no default \"Standard\".",
+            description:
+              'Required and never blank: the price name guests see. There is no default "Standard".',
           },
           price_cents: { type: "integer", minimum: 0 },
           price_basis: {
@@ -718,19 +719,21 @@ const updateExperience = writeTool(
             enum: ["person", "group", "block"],
           },
           block_minutes: {
-              type: "integer",
-              minimum: 15,
-              maximum: 1440,
-              description: "Block length in minutes: a multiple of 15, from 15 up to a full day (1440).",
-            },
+            type: "integer",
+            minimum: 15,
+            maximum: 1440,
+            description:
+              "Block length in minutes: a multiple of 15, from 15 up to a full day (1440).",
+          },
           min_blocks: { type: "integer", minimum: 1 },
           max_blocks: { type: "integer", minimum: 1 },
           group_max: {
-              type: "integer",
-              minimum: 2,
-              maximum: 32767,
-              description: "Largest group this price covers (2 or more; no 50-person cap).",
-            },
+            type: "integer",
+            minimum: 2,
+            maximum: 32767,
+            description:
+              "Largest group this price covers (2 or more; no 50-person cap).",
+          },
           capacity: { type: "integer", minimum: 1, nullable: true },
           is_hidden: { type: "boolean" },
         },

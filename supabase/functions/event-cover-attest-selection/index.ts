@@ -180,13 +180,22 @@ export const storageObjectOf = (
 export const venueCoverRefusal = (input: {
   rank: number;
   managerRank: number;
-  event: { brand_id: string | null; venue_id: string | null; event_type: string | null; deleted_at: string | null } | null;
+  event: {
+    brand_id: string | null;
+    venue_id: string | null;
+    event_type: string | null;
+    deleted_at: string | null;
+  } | null;
   venue: ({ brand_id: string | null } & CoverRow) | null;
   venueId: string;
 }): string | null => {
-  if (input.event === null || input.event.deleted_at !== null) return "event_not_found";
+  if (input.event === null || input.event.deleted_at !== null) {
+    return "event_not_found";
+  }
   if (input.rank < input.managerRank) return "not_authorized";
-  if (input.venue === null || input.venue.brand_id !== input.event.brand_id) return "venue_not_found";
+  if (input.venue === null || input.venue.brand_id !== input.event.brand_id) {
+    return "venue_not_found";
+  }
   if (input.event.venue_id !== input.venueId) return "event_not_at_venue";
   if (
     input.venue.cover_media_url === null ||
@@ -203,11 +212,16 @@ export const venueCoverRefusal = (input: {
   if (input.venue.cover_media_type !== "video") {
     const owned = (url: string | null): boolean => {
       const o = storageObjectOf(url);
-      return o !== null && o.bucket === "brand_covers" && input.event !== null &&
-        input.event.brand_id !== null && o.path.startsWith(`${input.event.brand_id}/`);
+      return o !== null && o.bucket === "brand_covers" &&
+        input.event !== null &&
+        input.event.brand_id !== null &&
+        o.path.startsWith(`${input.event.brand_id}/`);
     };
     if (!owned(input.venue.cover_media_url)) return "venue_cover_not_copyable";
-    if (input.venue.cover_media_type === "gif" && !owned(input.venue.cover_media_poster_url)) {
+    if (
+      input.venue.cover_media_type === "gif" &&
+      !owned(input.venue.cover_media_poster_url)
+    ) {
       return "venue_cover_not_copyable";
     }
   }
@@ -223,13 +237,21 @@ const copyObject = async (
   source: { bucket: string; path: string },
   target: string,
 ): Promise<string> => {
-  const download = await service.storage.from(source.bucket).download(source.path);
-  if (download.error || !download.data) throw new Error("venue_cover_download_failed");
+  const download = await service.storage.from(source.bucket).download(
+    source.path,
+  );
+  if (download.error || !download.data) {
+    throw new Error("venue_cover_download_failed");
+  }
   const blob = download.data as Blob;
-  const upload = await service.storage.from("event_covers").upload(target, blob, {
-    contentType: blob.type || undefined,
-    upsert: false,
-  });
+  const upload = await service.storage.from("event_covers").upload(
+    target,
+    blob,
+    {
+      contentType: blob.type || undefined,
+      upsert: false,
+    },
+  );
   if (upload.error) throw new Error("venue_cover_upload_failed");
   return `${publicBase}${PUBLIC_MARK}event_covers/${target}`;
 };
@@ -247,26 +269,45 @@ const handleCopyVenueCover = async (
 ): Promise<Response> => {
   const eventId = asString(body.event_id);
   const venueId = asString(body.venue_id);
-  if (!eventId || !venueId) return jsonResponse(400, { error: "cover_selection_invalid" });
+  if (!eventId || !venueId) {
+    return jsonResponse(400, { error: "cover_selection_invalid" });
+  }
   const { data: event } = await service.from("events")
     .select("id, brand_id, venue_id, event_type, deleted_at")
     .eq("id", eventId).maybeSingle();
   const { data: venue } = await service.from("venue_listings")
-    .select("id, brand_id, cover_media_url, cover_media_type, cover_media_poster_url")
+    .select(
+      "id, brand_id, cover_media_url, cover_media_type, cover_media_poster_url",
+    )
     .eq("id", venueId).maybeSingle();
   let rank = 0;
   let managerRank = 1;
   if (event?.brand_id) {
     const [r1, r2] = await Promise.all([
-      service.rpc("biz_brand_effective_rank", { p_brand_id: event.brand_id, p_user_id: userId }),
+      service.rpc("biz_brand_effective_rank", {
+        p_brand_id: event.brand_id,
+        p_user_id: userId,
+      }),
       service.rpc("biz_role_rank", { p_role: "event_manager" }),
     ]);
     rank = typeof r1.data === "number" ? r1.data : 0;
-    managerRank = typeof r2.data === "number" ? r2.data : Number.MAX_SAFE_INTEGER;
+    managerRank = typeof r2.data === "number"
+      ? r2.data
+      : Number.MAX_SAFE_INTEGER;
   }
-  const refusal = venueCoverRefusal({ rank, managerRank, event: event ?? null, venue: venue ?? null, venueId });
+  const refusal = venueCoverRefusal({
+    rank,
+    managerRank,
+    event: event ?? null,
+    venue: venue ?? null,
+    venueId,
+  });
   if (refusal !== null) {
-    const status = refusal === "not_authorized" ? 403 : refusal === "event_not_found" || refusal === "venue_not_found" ? 404 : 409;
+    const status = refusal === "not_authorized"
+      ? 403
+      : refusal === "event_not_found" || refusal === "venue_not_found"
+      ? 404
+      : 409;
     return jsonResponse(status, { error: refusal });
   }
   const type = String(venue.cover_media_type);
@@ -279,22 +320,47 @@ const handleCopyVenueCover = async (
     });
   }
   const media = storageObjectOf(venue.cover_media_url);
-  if (media === null) return jsonResponse(409, { error: "venue_cover_not_copyable" });
+  if (media === null) {
+    return jsonResponse(409, { error: "venue_cover_not_copyable" });
+  }
   const stem = `${event.brand_id}/${eventId}/venue-${crypto.randomUUID()}`;
   // The copy's public URL uses the same public origin the venue cover was
   // served from (the edge's own SUPABASE_URL can be an internal address).
-  const publicBase = String(venue.cover_media_url).slice(0, String(venue.cover_media_url).indexOf(PUBLIC_MARK)) || supabaseUrl;
+  const publicBase = String(venue.cover_media_url).slice(
+    0,
+    String(venue.cover_media_url).indexOf(PUBLIC_MARK),
+  ) || supabaseUrl;
   try {
-    const url = await copyObject(service, publicBase, media, `${stem}.${extOf(media.path, type === "gif" ? "gif" : "jpg")}`);
+    const url = await copyObject(
+      service,
+      publicBase,
+      media,
+      `${stem}.${extOf(media.path, type === "gif" ? "gif" : "jpg")}`,
+    );
     let posterUrl = url;
     if (type === "gif") {
       const poster = storageObjectOf(venue.cover_media_poster_url);
-      if (poster === null) return jsonResponse(409, { error: "venue_cover_not_copyable" });
-      posterUrl = await copyObject(service, publicBase, poster, `${stem}-poster.${extOf(poster.path, "jpg")}`);
+      if (poster === null) {
+        return jsonResponse(409, { error: "venue_cover_not_copyable" });
+      }
+      posterUrl = await copyObject(
+        service,
+        publicBase,
+        poster,
+        `${stem}-poster.${extOf(poster.path, "jpg")}`,
+      );
     }
-    return jsonResponse(200, { url, type, poster_url: posterUrl, provider: "upload" });
+    return jsonResponse(200, {
+      url,
+      type,
+      poster_url: posterUrl,
+      provider: "upload",
+    });
   } catch (error) {
-    console.error("[event-cover-attest-selection] copy_venue_cover failed", error);
+    console.error(
+      "[event-cover-attest-selection] copy_venue_cover failed",
+      error,
+    );
     return jsonResponse(502, { error: "venue_cover_copy_failed" });
   }
 };
@@ -339,7 +405,12 @@ export const handleEventCoverAttestSelection = async (
     const service = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    return await handleCopyVenueCover(service, supabaseUrl, authData.user.id, body);
+    return await handleCopyVenueCover(
+      service,
+      supabaseUrl,
+      authData.user.id,
+      body,
+    );
   }
   const eventId = asString(body.event_id);
   const selectionRef = asString(body.selection_ref);
