@@ -9,17 +9,6 @@
 -- FAILS-ON-REVERT: without 20281203334490 K-1 fails (claim_links_subject_kind_check / claim_kind_invalid),
 -- S-4 fails (stay_group resolves the offer booking) and P-1 fails (no passInApp).
 \set ON_ERROR_STOP on
--- Shared lane database: the #4422 suites re-apply 20280705104422 before this
--- one runs, which puts back #4422's claim_links_subject_kind_check (no venue
--- kinds). Re-assert the constraint exactly as 20281203334490 leaves it, the
--- schema every later #4490 suite also mints venue claim links against.
-ALTER TABLE public.claim_links DROP CONSTRAINT IF EXISTS claim_links_subject_kind_check;
-ALTER TABLE public.claim_links ADD CONSTRAINT claim_links_subject_kind_check
-  CHECK (subject_kind IN (
-    'order','rsvp','rsvp_guest','reservation','stay_group','venue_order',
-    'ticket','waitlist_offer','event_page',
-    'venue_booking','venue_membership','venue_waitlist','venue_till_sale'
-  ));
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
 INSERT INTO public.feature_flags (flag_key, is_enabled)
