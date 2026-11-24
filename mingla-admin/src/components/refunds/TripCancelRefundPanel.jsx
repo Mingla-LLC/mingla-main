@@ -11,6 +11,7 @@ import {
   majorToMinor,
   TRIP_CANCEL_OUTCOMES,
   tripCancelChargeRows,
+  tripCancelPanelTitle,
   validateTripCancelResolution,
   waitingHours,
 } from "../../lib/refundOperationsView";
@@ -55,7 +56,7 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
   };
 
   return (
-    <SectionCard title="Trip cancel, part unconfirmed">
+    <SectionCard title={tripCancelPanelTitle(detail)}>
       <div className="space-y-4 text-sm">
         <dl className="grid gap-2 sm:grid-cols-2">
           <div>
@@ -165,7 +166,7 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
               )}
               {(chosenOutcome === "refunded_at_provider" || chosenOutcome === "refunded_elsewhere") && (
                 <Input
-                  label={chosenOutcome === "refunded_elsewhere" ? "Reference of that other Paystack refund" : "Paystack refund reference"
+                  label={chosenOutcome === "refunded_elsewhere" ? "Reference of that other Paystack refund" : "Paystack refund reference"}
                   value={reference}
                   onChange={(event) => {
                     setReference(event.target.value);

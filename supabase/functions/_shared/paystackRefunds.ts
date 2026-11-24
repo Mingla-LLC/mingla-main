@@ -349,6 +349,19 @@ function isDuplicateRefundSignal(
     signal.includes("duplicate");
 }
 
+/**
+ * issue #4522 pass 9 (P9-5): errors createPaystackRefund raised BEFORE it
+ * asked Paystack to make the refund (its minimum check, the transaction
+ * verify, the refund-list read, a state it will not send on). Nothing was
+ * sent. The error itself is unchanged for every caller; only callers that ask
+ * (paystackRefundNotSent) can tell "not sent" from "sent, no answer".
+ */
+const notSentErrors = new WeakSet<object>();
+
+export function paystackRefundNotSent(error: unknown): boolean {
+  return typeof error === "object" && error !== null && notSentErrors.has(error);
+}
+
 export async function createPaystackRefund(params: {
   transaction: string;
   expectedTransactionId?: number;
@@ -356,6 +369,29 @@ export async function createPaystackRefund(params: {
   amountSubunits?: number;
   currency?: string;
 }): Promise<PaystackRefundResult> {
+  let secret: string;
+  try {
+    const before = await paystackRefundPreSend(params);
+    if ("existing" in before) return before.existing;
+    secret = resolvePaystackSecretKey();
+  } catch (error) {
+    if (typeof error === "object" && error !== null) notSentErrors.add(error);
+    throw error;
+  }
+  return await sendPaystackRefund(params, secret);
+}
+
+/** Everything createPaystackRefund checks before it asks Paystack (P9-5). */
+async function paystackRefundPreSend(params: {
+  transaction: string;
+  expectedTransactionId?: number;
+  merchantNote: string;
+  amountSubunits?: number;
+  currency?: string;
+}): Promise<
+  | { existing: PaystackRefundResult }
+  | { sendable: true }
+> {
   if (
     params.amountSubunits !== undefined &&
     params.amountSubunits < PAYSTACK_MIN_REFUND_SUBUNITS
@@ -372,7 +408,7 @@ export async function createPaystackRefund(params: {
     params,
     partialOnly,
   );
-  if (reconciliation.existing) return reconciliation.existing;
+  if (reconciliation.existing) return { existing: reconciliation.existing };
   if (
     reconciliation.identity.state !== "success" &&
     !partialRefundFitsReversedTransaction(
@@ -386,8 +422,22 @@ export async function createPaystackRefund(params: {
       409,
     );
   }
+  return { sendable: true };
+}
 
-  const secret = resolvePaystackSecretKey();
+async function sendPaystackRefund(
+  params: {
+    transaction: string;
+    expectedTransactionId?: number;
+    merchantNote: string;
+    amountSubunits?: number;
+    currency?: string;
+  },
+  secret: string,
+): Promise<PaystackRefundResult> {
+  const partialOnly = {
+    tolerateUnreadableListWhenReversed: params.amountSubunits !== undefined,
+  };
   const res = await fetch(`${PAYSTACK_BASE_URL}/refund`, {
     method: "POST",
     headers: {

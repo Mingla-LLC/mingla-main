@@ -55,6 +55,7 @@ import {
   isRetryablePaystackRefundError,
   listPaystackTransactionRefunds,
   PAYSTACK_MIN_REFUND_SUBUNITS,
+  paystackRefundNotSent,
   paystackRefundOutcomeStatus,
   persistPaystackRefundOutcome,
   reconcilePaystackRefund,
@@ -84,6 +85,7 @@ import { overpaymentReturnCents } from "./refundEntries.ts";
 import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
 import {
   alertTripCancelNotFinished,
+  cardRefundsRequestedUnrecorded,
   alertUnrecordedTripRefund,
   providerRefundsMade,
 } from "../_shared/installments/unrecordedRefunds.ts";
@@ -126,6 +128,8 @@ interface BeginRpcResult {
   cancel_reason?: string | null;
   /** issue #4522 G-4 — card refunds refused with no money moved, per charge. */
   card_tries?: Record<string, number>;
+  /** Pass 9 (P9-2): set when this operation is an owed part of an earlier cancel. */
+  shortfall_of?: Record<string, unknown> | null;
 }
 
 interface ComputeRpcResult {
@@ -752,6 +756,9 @@ serve(async (req: Request): Promise<Response> => {
   // progress for a host retry and the instalment run, never rolled back.
   const resumable = begin.operation === true;
   const resumed = begin.resume === true;
+  // Pass 9 (P9-2): this operation is the owed part of an earlier cancel (a
+  // refund it counted later failed); absent before the #4522 migration.
+  const isShortfallPart = typeof begin.shortfall_of === "object" && begin.shortfall_of !== null;
   if (resumed) {
     actorKind = begin.actor_kind === "buyer" ? "buyer" : "operator";
   }
@@ -804,12 +811,15 @@ serve(async (req: Request): Promise<Response> => {
     };
     if (note.alert === true) {
       const made = await providerRefundsMade(supabase, refundId).catch(() => []);
+      // Pass 9 (P9-4): card charges asked of the provider with no answer recorded.
+      const requested = await cardRefundsRequestedUnrecorded(supabase, refundId).catch(() => []);
       await alertTripCancelNotFinished(installmentOpsAlert, {
         orderId,
         refundId,
         currency,
         detail: detail ?? kind,
         made,
+        requested,
         intended: perPaymentRefund,
         unconfirmed,
         // Seventh pass (H-1 b): past the 24-hour ceiling it says so.
@@ -1166,6 +1176,17 @@ serve(async (req: Request): Promise<Response> => {
             });
             madeRefund = created;
           } catch (sendErr) {
+            // Pass 9 (P9-5): the send failed before Paystack was asked (its
+            // pre-send check, e.g. the refund list could not be read):
+            // nothing was sent, so the claim is handed back and the next run
+            // sends it once. Counted as a failed attempt (the 3-try ceiling).
+            if (resumable && paystackRefundNotSent(sendErr)) {
+              await supabase.rpc("issue_4522_unclaim_trip_paystack_send", {
+                p_refund_id: refundId,
+                p_merchant_note: merchantNote,
+              });
+              throw sendErr;
+            }
             // The provider refused it (no money moved): it may be sent later.
             if (
               resumable && sendErr instanceof PaystackApiError &&
@@ -1555,8 +1576,10 @@ serve(async (req: Request): Promise<Response> => {
       refund_record_id: refundId,
     };
 
-    // buyer_order_cancelled (the cancellation email)
-    const { error: notif1Err } = await supabase.from(
+    // buyer_order_cancelled (the cancellation email). Pass 9 (P9-2): an owed
+    // part sent after the booking's cancel (shortfall_of) is a refund only:
+    // the traveler was already told the booking is cancelled.
+    const { error: notif1Err } = isShortfallPart ? { error: null } : await supabase.from(
       "ticket_order_notifications",
     ).insert({
       order_id: orderId,

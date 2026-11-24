@@ -77,6 +77,25 @@ export async function providerRefundsMade(
   return made;
 }
 
+/**
+ * Pass 9 (P9-4): card charges of this refund that Mingla asked the provider
+ * to refund (the call was permitted) with no provider refund recorded: the
+ * provider may or may not have made it, so the alert never says "not refunded".
+ */
+export async function cardRefundsRequestedUnrecorded(
+  supabase: Client,
+  refundId: string,
+): Promise<string[]> {
+  if (refundId === "") return [];
+  const { data } = await supabase.from("ticket_refund_attempts")
+    .select("payment_intent_id")
+    .eq("refund_id", refundId).is("buyer_refund_id", null)
+    .not("provider_call_permitted_at", "is", null);
+  return ((data ?? []) as Record<string, unknown>[])
+    .map((a) => String(a.payment_intent_id ?? ""))
+    .filter((pi) => pi.length > 0);
+}
+
 /** The one ops alert for a cancel whose provider refunds were not recorded. */
 export async function alertUnrecordedTripRefund(
   alert: (subject: string, paragraphs: string[]) => Promise<void>,
@@ -129,6 +148,8 @@ export async function alertTripCancelNotFinished(
     intended: IntendedTripRefund[];
     unconfirmed: string[];
     cause: "failure" | "unconfirmed" | "stuck";
+    /** Pass 9 (P9-4): card charges asked of the provider, answer not recorded. */
+    requested?: string[];
   },
 ): Promise<void> {
   const cur = input.currency.toUpperCase();
@@ -145,6 +166,8 @@ export async function alertTripCancelNotFinished(
       ? `refunded at the provider, not yet recorded (provider refund ${made.providerRefundId})`
       : sentNoAnswer
       ? "sent to the provider, no answer yet (never re-sent automatically)"
+      : e.source_pi !== null && (input.requested ?? []).includes(e.source_pi)
+      ? "asked of the provider; its answer was not recorded, so it may already be refunded there. Check this charge with the provider before doing anything"
       : "not refunded yet";
     return `Charge ${e.source_pi ?? "?"} (${which}): ${e.refund_cents} ${cur} (minor units): ${state}`;
   });
@@ -239,19 +262,54 @@ export async function alertTripCancelShortfalls(
   }
   const rows = (Array.isArray(data) ? data : []) as Record<string, unknown>[];
   for (const row of rows) {
-    await alert("A cancelled trip booking still owes the traveler money", tripCancelShortfallParagraphs(row));
+    await alert(tripCancelShortfallSubject(row), tripCancelShortfallParagraphs(row));
   }
   return rows.length;
 }
 
-/** The ops alert text for one owed amount (exact minor units). */
+/** Pass 9: the subject of one claimed entry, by its kind. */
+export function tripCancelShortfallSubject(row: Record<string, unknown>): string {
+  if (row.kind === "unresolved") return "A trip cancel is waiting on a seat or add-on refund that is not finished";
+  if (row.kind === "overlap") return "A refund Mingla marked failed later went through after the owed amount was sent";
+  return row.held === true
+    ? "A cancelled trip booking still owes the traveler money (not sent: check the provider)"
+    : "A cancelled trip booking's owed refund is being sent automatically";
+}
+
+/** The ops alert text for one claimed entry (exact minor units). */
 export function tripCancelShortfallParagraphs(row: Record<string, unknown>): string[] {
   const cur = String(row.currency ?? "?").toUpperCase();
+  const ids = `Order: ${String(row.order_id ?? "?")}; cancel refund: ${String(row.cancel_refund_id ?? "?")}; seat or add-on refund: ${String(row.failed_refund_id ?? "?")}`;
+  // Pass 9 (P9-3): still pending 24 hours after the cancel counted it.
+  if (row.kind === "unresolved") {
+    return [
+      "A trip cancel counted a seat or add-on refund that was still in progress as already refunded, so it asked for less. 24 hours later that refund is still not finished. Nothing has been sent automatically and nothing has been written off.",
+      ids,
+      `Still pending: ${String(row.pending_refund_cents ?? "?")} ${cur} (minor units). At stake for the traveler if it never goes through: ${String(row.owed_cents ?? "?")} ${cur} (the cancel's ${String(row.tier_pct ?? "?")}% policy on it).`,
+      "Next (staff): check that seat or add-on refund with the provider. If the provider made it, the host pressing Refund again on that seat records it and nothing is sent twice. If the provider refused it, that same retry records it as failed, and Mingla then sends the traveler the amount at stake automatically, once, on the same payment.",
+    ];
+  }
+  if (row.kind === "overlap") {
+    return [
+      "A seat or add-on refund that Mingla had recorded as failed was later recorded as made, after Mingla had already sent the traveler the owed amount for it. The traveler may have been refunded more than the policy. Nothing has been written off.",
+      ids,
+      `Owed amount already sent: ${String(row.owed_cents ?? "?")} ${cur} (minor units), refund ${String(row.shortfall_refund_id ?? "?")}.`,
+      "Next (staff): check both refunds with the provider and escalate to finance.",
+    ];
+  }
+  if (row.held === true) {
+    return [
+      "A trip cancel counted a seat or add-on refund that was still in progress as already refunded, so it refunded less. That refund was then marked failed, but the provider shows a sign it was made (or sent with no answer), so Mingla has NOT sent the difference automatically and has not written it off.",
+      ids,
+      `Owed to the traveler if that refund was really not made: ${String(row.owed_cents ?? "?")} ${cur} (minor units), the cancel's ${String(row.tier_pct ?? "?")}% policy on its ${String(row.failed_refund_cents ?? "?")} ${cur}.`,
+      "Next (staff): check that seat or add-on refund with the provider. If it was made, the traveler is whole and nothing is owed. If it was not, escalate to finance.",
+    ];
+  }
   return [
-    "A trip cancel counted a seat or add-on refund that was still in progress as already refunded, so it refunded less. That refund has since failed, so the traveler is owed the difference. Mingla has NOT sent it automatically and has not written it off.",
-    `Order: ${String(row.order_id ?? "?")}; cancel refund: ${String(row.cancel_refund_id ?? "?")}; failed refund: ${String(row.failed_refund_id ?? "?")}`,
-    `Owed to the traveler: ${String(row.owed_cents ?? "?")} ${cur} (minor units), the cancel's ${String(row.tier_pct ?? "?")}% policy on the failed refund's ${String(row.failed_refund_cents ?? "?")} ${cur}.`,
-    "Next (staff): refund exactly this amount to the traveler once from Admin (order refund), then note it on the order. Do not ask the host to repeat the cancel.",
+    "A trip cancel counted a seat or add-on refund that was still in progress as already refunded, so it refunded less. That refund then did not go through (the provider refused it, or it was cancelled before it was sent; no money moved), so the traveler is owed the difference. Mingla is sending it automatically, once, on the same payment. This is for your information.",
+    ids,
+    `Owed and being sent: ${String(row.owed_cents ?? "?")} ${cur} (minor units), the cancel's ${String(row.tier_pct ?? "?")}% policy on that refund's ${String(row.failed_refund_cents ?? "?")} ${cur}; it goes out as refund ${String(row.shortfall_refund_id ?? "?")}.`,
+    "Nothing to do unless a later alert says that refund could not be finished. The traveler gets a refund email when it is made.",
   ];
 }
 

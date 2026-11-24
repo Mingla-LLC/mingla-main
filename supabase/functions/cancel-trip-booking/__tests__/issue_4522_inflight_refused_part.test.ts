@@ -76,7 +76,7 @@ Deno.test("R-4 an owed amount is told to ops once with the exact figure; missing
         claims += 1;
         return Promise.resolve({
           data: claims === 1
-            ? [{ order_id: "o1", cancel_refund_id: "c1", failed_refund_id: "s1", owed_cents: 25000, currency: "usd", tier_pct: 50, failed_refund_cents: 50000 }]
+            ? [{ kind: "shortfall", order_id: "o1", cancel_refund_id: "c1", failed_refund_id: "s1", owed_cents: 25000, currency: "usd", tier_pct: 50, failed_refund_cents: 50000, shortfall_refund_id: "sf1" }]
             : [],
           error: null,
         });
@@ -87,8 +87,11 @@ Deno.test("R-4 an owed amount is told to ops once with the exact figure; missing
   await resumeTripCancels(client, 5, () => Promise.resolve(new Response("{}")), alert);
   await resumeTripCancels(client, 5, () => Promise.resolve(new Response("{}")), alert);
   assertEquals(sent.length, 1);
-  assertStringIncludes(sent[0].paragraphs.join("\n"), "Owed to the traveler: 25000 USD (minor units)");
-  assertStringIncludes(sent[0].paragraphs.join("\n"), "NOT sent it automatically");
+  // Pass 9 (P9-2): the owed amount is sent automatically, once; the alert
+  // is informational and never sends staff to a refund Admin cannot make.
+  assertStringIncludes(sent[0].paragraphs.join("\n"), "Owed and being sent: 25000 USD (minor units)");
+  assertStringIncludes(sent[0].paragraphs.join("\n"), "it goes out as refund sf1");
+  assert(!sent[0].paragraphs.join("\n").includes("Admin (order refund)"));
   const missing = { rpc: () => Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function" } }) };
   assertEquals(await alertTripCancelShortfalls(missing, alert), 0);
   assertEquals(sent.length, 1);

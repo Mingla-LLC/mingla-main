@@ -174,7 +174,9 @@ test("P8-2: a refused part offers 'partly refunded already' and needs the amount
   assert.equal(majorToMinor("12.5"), 1250);
   assert.equal(majorToMinor("-1"), null);
   assert.deepEqual(Object.keys(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "", reason: "Paystack lists the seat refund", refundedElsewhere: "", chargeCents: 100000000 })).sort(), ["reference", "refundedElsewhere"]);
-  assert.ok(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "PS1", reason: "Paystack lists the seat refund", refundedElsewhere: "1000000", chargeCents: 100000000 }).refundedElsewhere);
+  // Pass 9 (GAP): the whole payment is accepted (nothing left to send); more never is.
+  assert.ok(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "PS1", reason: "Paystack lists the seat refund", refundedElsewhere: "1000000.01", chargeCents: 100000000 }).refundedElsewhere);
+  assert.equal(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "PS1", reason: "Paystack lists the whole payment refunded", refundedElsewhere: "1000000", chargeCents: 100000000 }), null);
   assert.equal(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "PS1", reason: "Paystack lists the seat refund", refundedElsewhere: "500000", chargeCents: 100000000 }), null);
   assert.ok(TRIP_CANCEL_OUTCOMES.some((o) => o.value === "refunded_elsewhere"));
   assert.match(panelSource, /Ask only for what is left/);

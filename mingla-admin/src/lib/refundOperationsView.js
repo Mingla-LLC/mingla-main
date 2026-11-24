@@ -15,8 +15,10 @@ export function queueRowModel(item) {
       key: `${item.itemKind}:${item.itemId}`,
       kind: "trip_cancel",
       id: row.refund_id ?? item.itemId,
-      source: "Trip cancel, part unconfirmed",
-      amountCents: row.unconfirmed_amount_cents ?? null,
+      source: tripCancelPanelTitle(row),
+      // Pass 9 (P9-6): what is still owed on the parts waiting for staff:
+      // unanswered and refused (a refused part showed 0.00 before).
+      amountCents: tripCancelOpenAmountCents(row),
       currency: typeof row.currency === "string" ? row.currency.toUpperCase() : null,
       provider: providerName(row.provider),
       buyer: null,
@@ -118,6 +120,38 @@ function providerName(provider) {
   return provider === "paystack" ? "Paystack" : provider ?? null;
 }
 
+/**
+ * Pass 9 (P9-6): the amount still waiting for staff on a stuck trip cancel
+ * (unanswered plus refused parts), or null when the server gave neither.
+ */
+export function tripCancelOpenAmountCents(row) {
+  const unconfirmed = Number.isInteger(row?.unconfirmed_amount_cents) ? row.unconfirmed_amount_cents : null;
+  const refused = Number.isInteger(row?.refused_amount_cents) ? row.refused_amount_cents : null;
+  if (unconfirmed === null && refused === null) return null;
+  return (unconfirmed ?? 0) + (refused ?? 0);
+}
+
+/** Pass 9 (P9-6): the row and panel title names the parts' real state. */
+export function tripCancelPanelTitle(row) {
+  const unconfirmed = Number.isInteger(row?.unconfirmed_amount_cents) ? row.unconfirmed_amount_cents : 0;
+  const refused = Number.isInteger(row?.refused_amount_cents) ? row.refused_amount_cents : 0;
+  if (refused > 0 && unconfirmed > 0) return "Trip cancel, parts unconfirmed and refused";
+  if (refused > 0) return "Trip cancel, part refused by Paystack";
+  return "Trip cancel, part unconfirmed";
+}
+
+/**
+ * Pass 9 (P9-6): the panel's identity for one loaded state of the item, so a
+ * reload after an action shows the new state with a fresh form (no stale
+ * figures, choices or attempt).
+ */
+export function tripCancelPanelKey(detail) {
+  const parts = (detail?.charges ?? []).map((charge) =>
+    [charge.attempt_id, charge.state, charge.amount_cents, charge.ops_resolution?.outcome ?? "",
+      charge.ops_resolution?.at ?? ""].join(":"));
+  return [detail?.refund_id ?? "", detail?.cancel_amount_cents ?? "", ...parts].join("|");
+}
+
 /** Queue items for the stuck trip cancels (listed after the captured queue). */
 export function tripCancelQueueItems(rows) {
   return (Array.isArray(rows) ? rows : [])
@@ -186,8 +220,10 @@ export function validateTripCancelResolution({ outcome, reference, reason, refun
     const minor = majorToMinor(refundedElsewhere);
     if (minor === null || minor <= 0) {
       errors.refundedElsewhere = "Enter the amount Paystack shows already refunded on this payment.";
-    } else if (Number.isInteger(chargeCents) && minor >= chargeCents) {
-      errors.refundedElsewhere = "That is the whole payment or more. Check it in Paystack, or escalate.";
+    } else if (Number.isInteger(chargeCents) && minor > chargeCents) {
+      // Pass 9 (GAP): the whole payment is accepted (nothing left to send);
+      // more than the payment never is.
+      errors.refundedElsewhere = "That is more than the whole payment. Check it in Paystack, or escalate.";
     }
     if (ref.length === 0) errors.reference = "Enter the reference of that other Paystack refund.";
     else if (ref.length > 200) errors.reference = "The refund reference is too long. Check it in Paystack.";
@@ -202,6 +238,7 @@ export function validateTripCancelResolution({ outcome, reference, reason, refun
 }
 
 const TRIP_CANCEL_ERROR_WORDS = {
+  refunded_elsewhere_more_than_charge: "That is more than the whole payment. Check it in Paystack, or escalate.",
   provider_refund_reference_already_used: "That refund reference is already recorded on another refund. Check it in Paystack.",
   provider_refund_reference_required: "Enter the Paystack refund reference to record it.",
   trip_cancel_refund_already_confirmed: "Paystack has already confirmed this refund. Refresh the queue.",

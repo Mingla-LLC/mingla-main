@@ -17,6 +17,7 @@ import {
   queueRowModel,
   refundQueueErrorMessage,
   tripCancelErrorMessage,
+  tripCancelPanelKey,
   tripCancelQueueItems,
   validateActionReason,
 } from "../lib/refundOperationsView";
@@ -245,9 +246,11 @@ export function RefundOperationsPage() {
     setTripActionError("");
     setTripNotice("");
     try {
-      await resolveTripCancelRefund(input);
+      const result = await resolveTripCancelRefund(input);
       setTripNotice(
-        input.outcome === "refunded_at_provider"
+        result?.recorded_whole_charge === true
+          ? "Recorded. Paystack shows the whole payment refunded already, so nothing more is sent. The cancel finishes on the next run."
+          : input.outcome === "refunded_at_provider"
           ? "Recorded. The cancel finishes on the next run: the traveler gets their refund email and the host's payout updates."
           : input.outcome === "refunded_elsewhere"
           ? "Saved. The next run asks Paystack only for what is left on this payment, once."
@@ -523,7 +526,7 @@ export function RefundOperationsPage() {
       )}
       {selectedTrip && (
         <TripCancelRefundPanel
-          key={selectedTrip.refund_id}
+          key={tripCancelPanelKey(selectedTrip)}
           detail={selectedTrip}
           money={money}
           busy={busy}
