@@ -9,9 +9,10 @@
 -- MINGLA-INVARIANT: I-4490-VOID-RESTOCK-NO-SCREEN | issue #4490 | a void of a sent line gives its units back exactly when the void's "Put it back in stock" is on and either the line's station has no kitchen screen or the screen never started it; never more than the line took, never twice; every choice on a counted line is audited (stock.set via void).
 --
 -- FAILS-ON-REVERT (verified on a fresh replay; outputs in the fix 1 report):
--- put back 20280809615490's one-refund-per-order mint and F3-2 fails; put
--- back the derived payment days and the current-hours service day and F1-3
--- fails; put back the fired_at-only void restock and F4-1 fails.
+-- put back 20280809615490's one-refund-per-order mint and F3-2 fails
+-- (sold_out_refund_once); put back the current-hours service day and F1-3
+-- fails; put back only the derived payment / refund days and F1-12 fails;
+-- put back the fired_at-only void restock and F4-1 fails.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -627,6 +628,26 @@ $after$;
 SELECT public.t5f_ok((SELECT p.business_date = public.t5f_t() - 1 FROM public.venue_till_payments p WHERE p.sale_id = public.t5f_id('after'))
   AND (SELECT (s->'late'->>'count')::int = 0 FROM public.issue_4490_day_summary(public.t5f_id('v2'), public.t5f_t(), public.t5f_id('owner'), NULL) s),
   'F1-11 a sale recorded after the change is the night before''s (the new hours), never late money of the closed day T');
+-- The close reads the day the Till STORED, not a day worked out again from
+-- the moment: even a later change of the venue's time zone (twelve hours on)
+-- moves no payment or refund of the closed day T.
+UPDATE public.venue_booking_settings SET timezone = CASE WHEN timezone LIKE 'Etc/GMT-%'
+    THEN 'Etc/GMT+' || GREATEST(12 - substr(timezone, 9)::int, 0) ELSE 'Etc/GMT-' || LEAST(12 - substr(timezone, 9)::int, 14) END
+WHERE venue_id = public.t5f_id('v2');
+SELECT public.t5f_ok(
+  (SELECT array_agg(x::text ORDER BY x::text) FROM unnest(public.issue_4490_day_payment_ids(public.t5f_id('v2'), (public.t5f_rv('snap_t')->>'businessDate')::date)) x)
+    = (SELECT array_agg(x ORDER BY x) FROM jsonb_array_elements_text(public.t5f_rv('snap_t')->'paymentIds') x)
+  AND (SELECT array_agg(x::text ORDER BY x::text) FROM unnest(public.issue_4490_day_refund_ids(public.t5f_id('v2'), (public.t5f_rv('snap_t')->>'businessDate')::date)) x)
+    = (SELECT array_agg(x ORDER BY x) FROM jsonb_array_elements_text(public.t5f_rv('snap_t')->'refundIds') x),
+  'F1-12 after a time zone change the close of T still reads exactly T''s stored payments and refund');
+-- A pending (unverified) venue takes no money and keeps no hours history, so
+-- its #2099 identity correction never meets these rows.
+UPDATE public.venue_listings SET claim_status = 'pending_review' WHERE id = public.t5f_id('v1');
+UPDATE public.brand_hours SET close_time = close_time WHERE venue_id = public.t5f_id('v1');
+INSERT INTO public.brand_hours (brand_id, venue_id, weekday, open_time, close_time, is_closed)
+SELECT '44900616-0000-4000-9000-000000000010', public.t5f_id('v1'), d, '09:00', '17:00', false FROM generate_series(0, 6) d;
+SELECT public.t5f_ok(NOT EXISTS (SELECT 1 FROM public.venue_hours_history WHERE venue_id = public.t5f_id('v1')),
+  'F1-13 a pending venue''s hours change writes no history (nothing for #2099 to block on)');
 SELECT public.t5f_reset();
 
 ROLLBACK;

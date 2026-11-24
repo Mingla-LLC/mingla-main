@@ -643,6 +643,7 @@ AS $function$
               FROM public.venue_special_hours s WHERE s.venue_id = p_venue_id), '{}'::jsonb);
 $function$;
 
+-- Only verified venues (the ones that can take money) keep a history.
 -- BEFORE a change: the first time a venue's hours change, keep the hours as
 -- they were (-infinity). For a multi-row statement the first row sees the
 -- table as it was before the statement.
@@ -660,7 +661,7 @@ BEGIN
       CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN OLD.venue_id END] LOOP
     CONTINUE WHEN v_venue IS NULL;
     IF NOT EXISTS (SELECT 1 FROM public.venue_hours_history x WHERE x.venue_id = v_venue)
-       AND EXISTS (SELECT 1 FROM public.venue_listings v WHERE v.id = v_venue) THEN
+       AND EXISTS (SELECT 1 FROM public.venue_listings v WHERE v.id = v_venue AND v.claim_status = 'verified') THEN
       INSERT INTO public.venue_hours_history (venue_id, valid_from, weekly, specials)
       SELECT v_venue, '-infinity'::timestamptz, st.weekly, st.specials FROM public.issue_4490_venue_hours_state(v_venue) st
       ON CONFLICT (venue_id, valid_from) DO NOTHING;
@@ -684,8 +685,11 @@ BEGIN
       CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN NEW.venue_id END,
       CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN OLD.venue_id END] LOOP
     CONTINUE WHEN v_venue IS NULL;
-    -- A venue being deleted keeps no history (its rows cascade away).
-    CONTINUE WHEN NOT EXISTS (SELECT 1 FROM public.venue_listings v WHERE v.id = v_venue);
+    -- A venue being deleted keeps no history (its rows cascade away). A
+    -- pending (unverified) venue takes no money, so it keeps none either: its
+    -- history starts with its first hours change once verified, and a pending
+    -- venue's identity correction (#2099) sees no rows here.
+    CONTINUE WHEN NOT EXISTS (SELECT 1 FROM public.venue_listings v WHERE v.id = v_venue AND v.claim_status = 'verified');
     INSERT INTO public.venue_hours_history (venue_id, valid_from, weekly, specials)
     SELECT v_venue, statement_timestamp(), st.weekly, st.specials FROM public.issue_4490_venue_hours_state(v_venue) st
     ON CONFLICT (venue_id, valid_from) DO UPDATE SET weekly = EXCLUDED.weekly, specials = EXCLUDED.specials;
