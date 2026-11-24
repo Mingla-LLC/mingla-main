@@ -800,7 +800,7 @@ export interface TillServer {
   /** #4490 after #4579: a Mingla admin is "<name> from Mingla" (or "Mingla Team"), never an email. */
   name: string | null;
   /** #4579: an auto-added Mingla admin (full Brand admin parity; may sell). */
-  isMinglaTeam: boolean;
+  isMinglaTeam?: boolean;
   openChecks: number;
 }
 
