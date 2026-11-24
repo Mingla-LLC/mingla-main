@@ -12,6 +12,7 @@
  */
 import React from "react";
 import { Dimensions, StyleSheet, Text } from "react-native";
+import type { ViewStyle } from "react-native";
 
 interface RenderTreeNode {
   type: unknown;
@@ -154,7 +155,7 @@ describe("O5-B4 closed-day money is never truncated", () => {
       for (const id of ["day-close-done-takings", "day-close-done-tips", "day-close-done-cash"]) {
         const tile = tree.root.findAll((n) => n.props.testID === id && n.props.style !== undefined)[0];
         expect(tile).toBeDefined();
-        expect(StyleSheet.flatten(tile.props.style as never).flexBasis).toBe(width >= 1024 ? "22%" : "100%");
+        expect((StyleSheet.flatten(tile.props.style as ViewStyle) as ViewStyle).flexBasis).toBe(width >= 1024 ? "22%" : "100%");
       }
       await TestRenderer.act(async () => { tree.unmount(); });
     });

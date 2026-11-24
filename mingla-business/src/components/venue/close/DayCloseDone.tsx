@@ -9,6 +9,7 @@
 
 import React from "react";
 import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
 
 import { color, space, type } from "../../../constants/designSystem";
 import type { DaySummary } from "../../../services/venueDayCloseService";
@@ -36,7 +37,7 @@ export function DayCloseDone({ summary, exporting, printing, onExport, onPrint, 
   const diff = close?.differenceMinor ?? null;
   const words = diff === null ? null : differenceWords(diff, summary.currency);
   const { width } = useWindowDimensions();
-  const tileStyle = [styles.tile, { flexBasis: closedTileBasis(width) }] as const;
+  const tileStyle: StyleProp<ViewStyle> = [styles.tile, { flexBasis: closedTileBasis(width) }];
   return (
     <View style={styles.root} testID="day-close-done">
       <GlassCard>
