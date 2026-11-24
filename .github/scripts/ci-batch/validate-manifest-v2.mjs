@@ -737,12 +737,16 @@ export function phase3dContractDigest(manifest) {
 // #3969 step 2 profile access: listed migration 20281201003969 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4580 release sync timeouts: registered migrations 20281202004580 and 20281202014580 in the #1857, #1931 and #2117 inventories after 20281201003969 and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4580 tester adversarial suite: registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
+// #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 merge of origin/main 886723868d: kept both sides\' rows and skips; MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 renumber: #4490 migrations now 20281203004490..20281203754490 (same order, after main); MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 08-O5 fix 4: the fix 3 tester adversarial suite registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 retest P1/P3: the two fix 4 tester adversarial suites registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "70823de36672c82fa0931813ad3e1fdd27692999597edec860758aa9eff6c023";
+// issue #4490 merge of origin/main 68a54f2f30 (#4580, #4592): kept both sides' rows (filename order; main's two #4580 migrations before the #4490 block); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "83cf9b26b9e3893b9d63a6817e30b139e1db32b881274125bd845b1d52458275";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

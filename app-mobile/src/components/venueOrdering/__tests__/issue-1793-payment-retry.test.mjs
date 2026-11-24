@@ -146,3 +146,22 @@ test("A-5 the pickup link uses tokens and a 44 pt tap target", () => {
   assert.doesNotMatch(block.slice(0, block.indexOf("});")), /fontSize: \d|lineHeight: \d|gap: \d/);
   assert.match(paritySlots, /style=\{counterStyles\.target\}/);
 });
+
+test("#3645 — a 'review the new price' refusal fetches the preview again before the next Pay", () => {
+  const hook = read(
+    "app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts",
+  );
+  const wire = read("packages/brand-rendering/venueOrdering/venueOrderingWire.ts");
+
+  // The shared parser gives the bare 409 the guest sentence, not "Something went wrong".
+  assert.match(wire, /export const VENUE_ORDER_REVIEW_REQUIRED = "checkout_review_required";/);
+  assert.match(wire, /venueOrderNeedsFreshQuote\(code\)\s*\?\s*VENUE_ORDER_PRICE_CHANGED_MESSAGE/);
+  // The hook refetches the preview on exactly that code, inside the submit catch,
+  // so the next Pay carries the new quote digest instead of being refused again.
+  assert.match(hook, /const refetchPreview = previewQuery\.refetch;/);
+  assert.match(
+    hook,
+    /error instanceof VenueOrderError &&\s*venueOrderNeedsFreshQuote\(error\.code\)\s*\)\s*\{\s*void refetchPreview\(\);/,
+  );
+  assert.match(hook, /quoteDigest: previewQuery\.data\?\.quoteDigest \?\? null/);
+});

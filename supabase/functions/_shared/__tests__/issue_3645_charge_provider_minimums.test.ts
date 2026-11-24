@@ -14,6 +14,10 @@
 // plus seams pinning the exact call (amount, charge currency, audience) and
 // where it sits: after the replay, before every row write and provider call.
 //
+// After the discount reservation reprices a guest order, `venueOrderRepricedVerdict`
+// decides it again on the FINAL total: a free/paid flip goes back to review
+// and a paid total is held to the floor (review of #4565).
+//
 // Fails on revert: removing the helper or either venue check fails the
 // boundary or seam tests below.
 import {
@@ -31,6 +35,7 @@ import {
   venueOrderErrorCopy,
   venueOrderErrorStatus,
   venueOrderProviderFloorRefusal,
+  venueOrderRepricedVerdict,
 } from "../venueOrderPricing.ts";
 
 Deno.test("#3645 floor: one minor unit under the minimum returns the floor, for every listed currency", () => {
@@ -185,44 +190,87 @@ Deno.test("#3645 venue-order-create: the guest floor runs on the charged total i
   }
 });
 
-Deno.test("#3645 venue-order-create: a discount reservation that lowers the total is checked again, hands the uses back, and refuses before any row or provider call", async () => {
+Deno.test("#3645 repriced: free → paid after the reservation sends the guest back to review, never a free completion", () => {
+  // The bug: movesMoney was decided on the pre-reservation total (0), so a
+  // repriced 2500 landed as payment_status 'paid' with nothing charged.
+  assertEquals(venueOrderRepricedVerdict(false, 2_500, "USD"), { kind: "review" });
+  // Even a total under the floor is a review first: the guest must see it.
+  assertEquals(venueOrderRepricedVerdict(false, 1, "USD"), { kind: "review" });
+  assertEquals(venueOrderRepricedVerdict(false, 1, "NGN"), { kind: "review" });
+});
+
+Deno.test("#3645 repriced: paid → free after the reservation sends the guest back to review, never a zero charge", () => {
+  assertEquals(venueOrderRepricedVerdict(true, 0, "USD"), { kind: "review" });
+  assertEquals(venueOrderRepricedVerdict(true, 0, "NGN"), { kind: "review" });
+});
+
+Deno.test("#3645 repriced: a paid total that stays paid is held to the floor on the FINAL amount", () => {
+  const verdict = venueOrderRepricedVerdict(true, 49, "USD");
+  assertEquals(verdict.kind, "refuse");
+  if (verdict.kind !== "refuse") return;
+  assertEquals(verdict.refusal, venueOrderProviderFloorRefusal(49, "USD", "guest"));
+  assertEquals(verdict.refusal.status, 422);
+  assertEquals(verdict.refusal.body.error, "order_below_provider_minimum");
+  assertEquals(verdict.refusal.body.minCents, 50);
+  // Paystack charges naira: the ₦100 floor applies.
+  const ngn = venueOrderRepricedVerdict(true, 9_999, "NGN");
+  assertEquals(ngn.kind, "refuse");
+  if (ngn.kind === "refuse") assertEquals(ngn.refusal.body.minCents, 10_000);
+});
+
+Deno.test("#3645 repriced: unchanged free, paid at or above the floor, and unknown-currency paid totals proceed", () => {
+  assertEquals(venueOrderRepricedVerdict(false, 0, "USD"), { kind: "proceed" });
+  assertEquals(venueOrderRepricedVerdict(true, 50, "USD"), { kind: "proceed" });
+  assertEquals(venueOrderRepricedVerdict(true, 10_000, "NGN"), { kind: "proceed" });
+  assertEquals(venueOrderRepricedVerdict(true, 1, "BGN"), { kind: "proceed" });
+});
+
+Deno.test("#3645 venue-order-create: after the reservation reprices, the verdict runs on the final total, hands the uses back, and answers before any row or provider call", async () => {
   const source = await Deno.readTextFile(
     new URL("../../venue-order-create/index.ts", import.meta.url),
   );
-  const recheck = `if (movesMoney) {
-      const reservedRefusal = venueOrderProviderFloorRefusal(
-        money.totalCents,
-        venueOrderChargeCurrency(routing.provider, settlementCurrency),
-        "guest",
-      );
-      if (reservedRefusal) {
-        await releaseDiscountUses();
-        return jsonResponse(reservedRefusal.body, reservedRefusal.status);
+  const verdict = `const repriced = venueOrderRepricedVerdict(
+      movesMoney,
+      money.totalCents,
+      venueOrderChargeCurrency(routing.provider, settlementCurrency),
+    );
+    if (repriced.kind !== "proceed") {
+      await releaseDiscountUses();
+      if (repriced.kind === "refuse") {
+        return jsonResponse(repriced.refusal.body, repriced.refusal.status);
       }
+      return checkoutReviewRequired(discountQuote, pricedDiscount, reviewDetail);
     }`;
-  assertEquals(source.split(recheck).length, 2, "exactly one post-reservation recheck");
-  const at = source.indexOf(recheck);
+  assertEquals(source.split(verdict).length, 2, "exactly one post-reservation verdict");
+  const at = source.indexOf(verdict);
+  // The old movesMoney-gated recheck (which skipped free → paid) is gone.
+  assertEquals(source.includes("const reservedRefusal ="), false);
   // It reads the total the reservation just priced…
-  const repriced = source.indexOf(
+  const repricedAt = source.indexOf(
     "({ discountedCart, money, notices, pricingBreakdown } = pricedDiscount);",
   );
-  assert(repriced > source.indexOf("callReserveDiscountUses(supabase, {"));
-  assert(at > repriced, "recheck must follow the reservation's repricing");
+  assert(repricedAt > source.indexOf("callReserveDiscountUses(supabase, {"));
+  assert(at > repricedAt, "verdict must follow the reservation's repricing");
   // …inside the discount branch (only a reservation can change the total)…
   const branch = source.indexOf("if (discountedCart.discountCents > 0) {");
-  assert(branch >= 0 && branch < repriced);
-  assert(at < source.indexOf("let referralAttribution: ReferrerResolution;", repriced));
-  // …and still before any row write or provider call.
+  assert(branch >= 0 && branch < repricedAt);
+  assert(
+    at < source.indexOf("let referralAttribution: ReferrerResolution;", repricedAt),
+  );
+  // …and before every write or provider call, including the ones that read
+  // movesMoney (row payment state, the zero-total completion).
   for (
     const later of [
       '.from("venue_order_sessions")\n      .insert(',
       "await insertVenueOrderRow(",
+      'payment_status: movesMoney ? "pending" : "paid"',
+      "if (!movesMoney) {",
       "paystackInitializeTransaction({",
       "checkout.sessions.create(",
       "paymentIntents.create(",
     ]
   ) {
-    assert(source.indexOf(later) > at, `recheck must precede ${later}`);
+    assert(source.indexOf(later, repricedAt) > at, `verdict must precede ${later}`);
   }
   // The release really hands the reserved uses back for this order.
   const release = between(
@@ -234,6 +282,9 @@ Deno.test("#3645 venue-order-create: a discount reservation that lowers the tota
   assert(
     release.includes('callReleaseDiscountUses(supabase, "venue_order", orderId)'),
   );
+  // Both review answers share one shape (the client already handles it).
+  assertEquals(source.split('error: "checkout_review_required"').length, 2);
+  assertEquals(source.split("return checkoutReviewRequired(").length, 3);
 });
 
 Deno.test("#3645 venue-order-staff: billToPhone refuses below the floor before the order moves to Mingla or a provider is called", async () => {

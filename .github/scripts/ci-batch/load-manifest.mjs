@@ -479,13 +479,17 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3969 step 2 profile access: listed migration 20281201003969 after 20281128004574 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows and suites after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed.
+// #4580 release sync timeouts: listed migrations 20281202004580 and 20281202014580 after 20281201003969 in the #1857, #1931 and #2117 lanes and registered their two pg17 suites and sidecars in the #1931 and #2117 inventories; neither needs a filtered-replay skip (nothing they read is skipped); re-sealed.
+// #4580 tester adversarial suite: registered issue_4580_release_sync.tester.adversarial.pg17.test.sql and its sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
 // #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
+// #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed.
 // issue #4490 merge of origin/main 886723868d: kept both sides\' inventory rows (filename order) and both sides\' exact-filename skips in the #1931 baseline and #2117 phase-1 lanes (main\'s duplicate "run" key in the #1931 baseline replay collapsed to its effective, later value); re-sealed.
 // issue #4490 renumber: the 76 #4490 migrations moved from 20280809004490..20280809618490 to 20281203004490..20281203754490 (same relative order, after every main migration); every lane row, exact-filename skip and suite reference follows; the three sorted expectedFiles inventories re-sorted; re-sealed.
 // issue #4490 08-O5 fix 4: registered the fix 3 tester adversarial suite (issue_4490_o5_fix3.tester.adversarial.pg17.test.sql + sidecar) beside the O5 tester suite in the #1931 and #2117 inventories; re-sealed.
 // issue #4490 retest P1/P3: registered the two fix 4 tester adversarial suites (issue_4490_o5_fix4 / issue_4490_p1_fix4 .tester.adversarial.pg17.test.sql + sidecars) in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "955894d9257ff5434d826517b55663197a4a9652437e2618f14cca0f4935e8cb";
+// issue #4490 merge of origin/main 68a54f2f30 (#4580, #4592): kept both sides' rows (filename order; main's two #4580 migrations before the #4490 block); re-sealed.
+export const BOOTSTRAP_SHA256 = "fadd963a680936cb1b423d6281c1c6a24941ebeb950f2b45b620e6e0c8971bba";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

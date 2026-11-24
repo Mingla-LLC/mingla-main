@@ -53,7 +53,10 @@ import {
   venueOrderSittingKey,
   venueOrderingQueryKeys,
 } from "@mingla/brand-rendering/venueOrdering";
-import { VENUE_ORDERING_UNAVAILABLE } from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
+import {
+  VENUE_ORDERING_UNAVAILABLE,
+  venueOrderNeedsFreshQuote,
+} from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 
 import {
@@ -343,6 +346,7 @@ export function useConsumerVenueOrdering(
     gcTime: 0,
     retry: 0,
   });
+  const refetchPreview = previewQuery.refetch;
 
   const previewStatus: ConsumerVenueOrdering["previewStatus"] =
     cart.state.lines.length === 0
@@ -632,6 +636,15 @@ export function useConsumerVenueOrdering(
       } catch (error) {
         // N134: the failed start left a dead order under this key; mint anew.
         if (venueOrderSubmitFailure({ kind: "threw" }, "").resetKey) keyRef.current = null;
+        // #3645 — the price changed on the server (a discount moved, or the
+        // order switched between free and paid). Fetch the preview again so
+        // the guest reads the new total, and the next Pay carries its digest.
+        if (
+          error instanceof VenueOrderError &&
+          venueOrderNeedsFreshQuote(error.code)
+        ) {
+          void refetchPreview();
+        }
         setSubmitError(
           error instanceof VenueOrderError
             ? error.message
@@ -653,6 +666,7 @@ export function useConsumerVenueOrdering(
     pollUntilPaid,
     presentPaymentSheet,
     priceSignature,
+    refetchPreview,
     request,
     previewQuery.data?.quoteDigest,
     sitting?.buyerStatusToken,
