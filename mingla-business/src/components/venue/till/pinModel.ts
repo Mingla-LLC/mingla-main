@@ -7,7 +7,10 @@
 /** One person on "Who's selling?" (the server's list; venueTillService maps it). */
 export interface TillPinPerson {
   memberId: string;
+  /** #4490 after #4579: a Mingla admin is "<name> from Mingla" (or "Mingla Team"), never an email. */
   name: string;
+  /** #4579: an auto-added Mingla admin (full Brand admin parity: may hold a PIN, sell, approve). */
+  isMinglaTeam?: boolean;
   role: string;
   profile: string | null;
   canSell: boolean;

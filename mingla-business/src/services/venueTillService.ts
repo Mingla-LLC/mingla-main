@@ -797,16 +797,29 @@ export function setTillServer(input: {
 
 export interface TillServer {
   userId: string;
+  /** #4490 after #4579: a Mingla admin is "<name> from Mingla" (or "Mingla Team"), never an email. */
   name: string | null;
+  /** #4579: an auto-added Mingla admin (full Brand admin parity; may sell). */
+  isMinglaTeam: boolean;
   openChecks: number;
 }
 
 /** The people who may sell at this venue (who can take a check over). */
 export async function fetchTillServers(venueId: string): Promise<TillServer[]> {
-  const data = obj(await till<unknown>({ action: "servers", venueId }));
+  return mapTillServers(await till<unknown>({ action: "servers", venueId }));
+}
+
+/** The "servers" reply, read field by field (#4490; isMinglaTeam since #4579). */
+export function mapTillServers(reply: unknown): TillServer[] {
+  const data = obj(reply);
   return arr(data.servers).map((v) => {
     const r = obj(v);
-    return { userId: str(r.userId), name: strOrNull(r.name), openChecks: num(r.openChecks) };
+    return {
+      userId: str(r.userId),
+      name: strOrNull(r.name),
+      isMinglaTeam: r.isMinglaTeam === true,
+      openChecks: num(r.openChecks),
+    };
   }).filter((r) => r.userId.length > 0);
 }
 

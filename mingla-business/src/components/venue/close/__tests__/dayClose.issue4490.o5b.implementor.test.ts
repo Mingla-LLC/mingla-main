@@ -68,10 +68,12 @@ describe("D-1 the difference reads in words", () => {
 });
 
 describe("D-2 people on the close", () => {
-  test("a Till device is never a person; Mingla support is labelled; an unnamed member reads Team member", () => {
+  // TEST-MOD-APPROVED #4490 (after #4579): the server's name for a Mingla admin is
+  // #4579's public name with the Mingla mark ("Tola from Mingla"); Host shows it as is.
+  test("a Till device is never a person; a Mingla admin reads '<name> from Mingla'; an unnamed member reads Team member", () => {
     expect(personName({ kind: "device", name: "Front till", userId: "d" })).toBe("Till device");
-    expect(personName({ kind: "mingla_support", name: "Tola", userId: "m" })).toBe("Tola (Mingla support)");
-    expect(personName({ kind: "mingla_support", name: null, userId: "m" })).toBe("Mingla support");
+    expect(personName({ kind: "mingla_support", name: "Tola from Mingla", userId: "m" })).toBe("Tola from Mingla");
+    expect(personName({ kind: "mingla_support", name: null, userId: "m" })).toBe("Mingla Team");
     expect(personName({ kind: "person", name: null, userId: "p" })).toBe("Team member");
     expect(personName({ kind: "system", name: null, userId: null })).toBe("Cleared by the Till");
     expect(personName(null)).toBe("Team member");
@@ -149,7 +151,7 @@ describe("D-5 the export: one CSV row per payment, the server's numbers", () => 
         takenBy: { kind: "person", name: "Ada" }, server: { kind: "person", name: "Ada" }, paidAfterCancel: false, late: false },
       { paymentId: "p2", reference: "EF56GH78", paidAtLocal: "2026-11-21 23:55", check: null, method: "scan_transfer",
         amountMinor: 550000, serviceChargeMinor: 50000, tipMinor: 0, guestFeeMinor: 8250, refundedMinor: 550000,
-        takenBy: { kind: "device" }, server: { kind: "mingla_support", name: "Tola" }, paidAfterCancel: true, late: true },
+        takenBy: { kind: "device" }, server: { kind: "mingla_support", name: "Tola from Mingla" }, paidAfterCancel: true, late: true },
     ],
   });
   const csv = serializeDayCloseCsv(data);
@@ -160,7 +162,7 @@ describe("D-5 the export: one CSV row per payment, the server's numbers", () => 
   });
   test("plain decimal amounts in the day's currency; commas quoted; names only", () => {
     expect(lines[1]).toBe('2026-11-21 19:00,AB12CD34,"Table 6, by the window",Cash,NGN,11000.00,1000.00,1000.00,0.00,0.00,Ada,Ada,No,No');
-    expect(lines[2]).toContain("Scan to pay - bank transfer,NGN,5500.00,500.00,0.00,82.50,5500.00,Till device,Tola (Mingla support),Yes,Yes");
+    expect(lines[2]).toContain("Scan to pay - bank transfer,NGN,5500.00,500.00,0.00,82.50,5500.00,Till device,Tola from Mingla,Yes,Yes");
     expect(csv).not.toMatch(/@/);
     expect(csvAmount(1200, "JPY")).toBe("1200");
     expect(csvAmount(-1505, "NGN")).toBe("-15.05");

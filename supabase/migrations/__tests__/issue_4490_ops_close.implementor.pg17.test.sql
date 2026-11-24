@@ -116,9 +116,14 @@ FROM generate_series(0, 6) d;
 -- AT that moment (venue_hours_history). This fixture writes its hours now and then places money in the
 -- past, so it states that these hours were always the venue's: no history, the live hours for every moment.
 DELETE FROM public.venue_hours_history WHERE venue_id = '44900613-0000-4000-9000-0000000000a1';
--- The Mingla admin row (#4579's column is added in this suite only; on the
--- branch it does not exist yet, so the label is a no-op there).
-ALTER TABLE public.brand_team_members ADD COLUMN IF NOT EXISTS granted_via text NULL;
+-- The Mingla admin row (#4579, on main since d3527e3b93): a brand_admin row
+-- granted_via = 'mingla_admin' tied to its admin_users row. The admin row is
+-- 'invited' so #4579's status trigger adds nothing on the other brand; the
+-- member row is written as #4579's grant writes it.
+-- TEST-MOD-APPROVED #4490 (merge of #4579): #4579's column exists with a CHECK that
+-- a mingla_admin row names its admin_users row, so the suite no longer adds the column.
+INSERT INTO public.admin_users (id, email, role, status) VALUES
+  ('44900613-0000-4000-b000-000000000008', 'till-close-8@example.test', 'admin', 'invited');
 INSERT INTO public.brand_team_members (id, brand_id, user_id, role, accepted_at) VALUES
   ('44900613-0000-4000-a000-000000000002', '44900613-0000-4000-9000-000000000010', '44900613-0000-4000-8000-000000000002', 'venue_staff', now()),
   ('44900613-0000-4000-a000-000000000003', '44900613-0000-4000-9000-000000000010', '44900613-0000-4000-8000-000000000003', 'finance_manager', now()),
@@ -126,7 +131,9 @@ INSERT INTO public.brand_team_members (id, brand_id, user_id, role, accepted_at)
   ('44900613-0000-4000-a000-000000000005', '44900613-0000-4000-9000-000000000010', '44900613-0000-4000-8000-000000000005', 'venue_staff', now()),
   ('44900613-0000-4000-a000-000000000007', '44900613-0000-4000-9000-000000000010', '44900613-0000-4000-8000-000000000007', 'venue_staff', now()),
   ('44900613-0000-4000-a000-000000000008', '44900613-0000-4000-9000-000000000010', '44900613-0000-4000-8000-000000000008', 'brand_admin', now());
-UPDATE public.brand_team_members SET granted_via = 'mingla_admin' WHERE id = '44900613-0000-4000-a000-000000000008';
+UPDATE public.brand_team_members
+   SET granted_via = 'mingla_admin', granted_admin_user_id = '44900613-0000-4000-b000-000000000008'
+ WHERE id = '44900613-0000-4000-a000-000000000008';
 INSERT INTO public.brand_team_member_venue_grants (member_id, venue_id, access_profile, capabilities) VALUES
   ('44900613-0000-4000-a000-000000000002', '44900613-0000-4000-9000-0000000000a1', 'custom', ARRAY['venue.sell']),
   ('44900613-0000-4000-a000-000000000004', '44900613-0000-4000-9000-0000000000a1', 'custom', ARRAY['venue.sell']),

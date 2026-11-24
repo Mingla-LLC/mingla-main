@@ -189,7 +189,8 @@ export function dayPersonName(person: Source | null | undefined): string {
   const name = str(person?.name);
   if (kind === "device") return "Till device";
   if (kind === "system") return "Cleared by the Till";
-  if (kind === "mingla_support") return name ? `${name} (Mingla support)` : "Mingla support";
+  // #4490 after #4579: the name already reads "Kunle from Mingla" (never an email).
+  if (kind === "mingla_support") return name || "Mingla Team";
   return name || "Team member";
 }
 

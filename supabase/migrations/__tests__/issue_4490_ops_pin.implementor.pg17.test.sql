@@ -290,27 +290,50 @@ BEGIN
     'PIN-3d only a Till device login at that venue is gated');
 END
 $who$;
--- [TRANSITIONAL] #4579: with the granted_via column present, an auto-added
--- Mingla admin is not listed and cannot switch in.
+-- #4579 (on main since d3527e3b93), full parity (Seth, #4490 23 Nov 19:22): an
+-- auto-added Mingla admin is venue staff like any Brand admin. They are listed
+-- on the PIN pad by #4579's public name with the Mingla mark ("<name> from
+-- Mingla"), never an email or handle, and they may hold and use a Till PIN.
+-- TEST-MOD-APPROVED #4490 (merge of #4579): PIN-3e/3f asserted the old exclusion
+-- through a suite-added column; Seth chose full parity and #4579's column exists.
 DO $mingla$
 DECLARE
   v jsonb;
+  e jsonb;
 BEGIN
-  SET LOCAL ROLE postgres; -- the table owner adds #4579's column for this proof only
-  ALTER TABLE public.brand_team_members ADD COLUMN granted_via text NULL;
-  UPDATE public.brand_team_members SET granted_via = 'mingla_admin' WHERE id = '44900500-0000-4000-a000-000000000004';
+  SET LOCAL ROLE postgres;
+  INSERT INTO public.admin_users (id, email, role, status) VALUES
+    ('44900500-0000-4000-b000-000000000004', 'pin-o5-4@example.test', 'admin', 'invited');
+  UPDATE public.profiles SET display_name = 'Kunle' WHERE id = '44900500-0000-4000-8000-000000000004';
+  IF NOT FOUND THEN
+    INSERT INTO public.profiles (id, display_name) VALUES ('44900500-0000-4000-8000-000000000004', 'Kunle');
+  END IF;
+  UPDATE public.brand_team_members
+     SET granted_via = 'mingla_admin', granted_admin_user_id = '44900500-0000-4000-b000-000000000004'
+   WHERE id = '44900500-0000-4000-a000-000000000004';
   v := public.issue_4490_pin_staff('44900500-0000-4000-9000-0000000000a1', '44900500-0000-4000-8000-000000000005');
-  PERFORM public.t4490p_ok(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'staff') e
-                                       WHERE e->>'memberId' = '44900500-0000-4000-a000-000000000004')
-      AND NOT public.issue_4490_pin_member_eligible('44900500-0000-4000-9000-0000000000a1',
-                                                    '44900500-0000-4000-a000-000000000004', 'refund'),
-    'PIN-3e a granted_via = mingla_admin member is not venue staff on Who''s selling (#4579)');
-  ALTER TABLE public.brand_team_members DROP COLUMN granted_via;
+  SELECT x INTO e FROM jsonb_array_elements(v->'staff') x WHERE x->>'memberId' = '44900500-0000-4000-a000-000000000004';
+  PERFORM public.t4490p_ok(e IS NOT NULL
+      AND e->>'name' = 'Kunle from Mingla'
+      AND (e->>'isMinglaTeam')::boolean
+      AND (e->>'canApprove')::boolean
+      AND v::text !~* 'example\.test'
+      AND public.issue_4490_pin_member_eligible('44900500-0000-4000-9000-0000000000a1',
+                                                '44900500-0000-4000-a000-000000000004', 'refund'),
+    'PIN-3e a Mingla admin (granted_via = mingla_admin) is on the PIN pad as "Kunle from Mingla", can approve, no email (#4579 parity) ' || coalesce(e::text, 'missing'));
+  -- No safe public name (the display name is the email handle): "Mingla Team".
+  UPDATE public.profiles SET display_name = 'pin-o5-4' WHERE id = '44900500-0000-4000-8000-000000000004';
+  v := public.issue_4490_pin_staff('44900500-0000-4000-9000-0000000000a1', '44900500-0000-4000-8000-000000000005');
+  SELECT x INTO e FROM jsonb_array_elements(v->'staff') x WHERE x->>'memberId' = '44900500-0000-4000-a000-000000000004';
+  PERFORM public.t4490p_ok(e->>'name' = 'Mingla Team' AND v::text !~* 'pin-o5-4',
+    'PIN-3f a Mingla admin whose only name is their email handle shows as "Mingla Team" ' || coalesce(e::text, 'missing'));
+  -- Back to an invited member for the rest of the suite.
+  UPDATE public.brand_team_members SET granted_via = 'invite', granted_admin_user_id = NULL
+   WHERE id = '44900500-0000-4000-a000-000000000004';
+  UPDATE public.profiles SET display_name = NULL WHERE id = '44900500-0000-4000-8000-000000000004';
+  DELETE FROM public.admin_users WHERE id = '44900500-0000-4000-b000-000000000004';
   RESET ROLE;
   PERFORM public.t4490p_service();
-  PERFORM public.t4490p_ok(public.issue_4490_pin_member_eligible('44900500-0000-4000-9000-0000000000a1',
-                                                                '44900500-0000-4000-a000-000000000004', 'refund'),
-    'PIN-3f without the column the filter is a no-op');
 END
 $mingla$;
 

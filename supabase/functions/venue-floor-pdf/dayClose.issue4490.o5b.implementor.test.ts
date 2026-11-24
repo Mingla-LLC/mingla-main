@@ -90,7 +90,8 @@ const summary = (paper = "a4", state = "closed") => ({
       },
       {
         kind: "mingla_support",
-        name: "Tola",
+        // #4490 after #4579: the server sends the Mingla-marked public name.
+        name: "Tola from Mingla",
         userId: "u8",
         salesCount: 1,
         salesMinor: 550000,
@@ -362,7 +363,7 @@ Deno.test("C4 the PDF writes money with the currency code, the difference in wor
       "NGN 129,000.00",
       "NGN 500.00 short",
       "Closed 23:48 by Chioma",
-      "Tola (Mingla support)",
+      "Tola from Mingla",
       "Team member",
       "Scan to pay - bank transfer",
       "Late payments since close",

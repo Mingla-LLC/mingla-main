@@ -135,7 +135,7 @@ export const CLOSE_COPY = {
     teamMember: "Team member",
     device: "Till device",
     system: "Cleared by the Till",
-    minglaSupport: "Mingla support",
+    minglaSupport: "Mingla Team",
   },
   method: {
     cash: "Cash",

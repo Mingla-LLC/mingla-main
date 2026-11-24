@@ -98,6 +98,7 @@ export function mapTillPinStaff(v: unknown): TillPinStaff {
       return {
         memberId: str(x.memberId),
         name: str(x.name, "Team member"),
+        isMinglaTeam: x.isMinglaTeam === true,
         role: str(x.role),
         profile: strOrNull(x.profile),
         canSell: x.canSell === true,

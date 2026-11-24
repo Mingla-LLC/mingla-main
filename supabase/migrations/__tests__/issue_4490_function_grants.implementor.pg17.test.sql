@@ -572,7 +572,6 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   -- 08-O5 part A (20281203684490): PINs, PIN sessions, step-up, the floor audit, all internal.
   ('issue_4490_pin_gate(uuid,uuid)', 'internal'),
   ('issue_4490_pin_is_weak(text)', 'internal'),
-  ('issue_4490_pin_member_is_mingla_admin(uuid)', 'internal'),
   ('issue_4490_pin_member_eligible(uuid,uuid,text)', 'internal'),
   ('issue_4490_pin_can_reset(uuid,uuid)', 'internal'),
   ('issue_4490_pin_can_manage_venue(uuid,uuid)', 'internal'),
@@ -650,6 +649,9 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   -- 08-O3 part A (20281203584490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),
+  -- after #4579 (20281203774490): the one Till staff naming rule, internal; the
+  -- PIN stand-in issue_4490_pin_member_is_mingla_admin was dropped (full parity).
+  ('issue_4490_staff_name(uuid,uuid,text)', 'internal'),
   ('issue_4490_item_station(uuid,uuid)', 'internal'),
   ('issue_4490_order_item_station()', 'internal'),
   ('issue_4490_station_order_visible(venue_orders)', 'internal'),

@@ -72,7 +72,8 @@ export function csvAmount(minor: number, currency: string): string {
 function who(p: DayPerson): string {
   if (p.kind === "device") return "Till device";
   if (p.kind === "system") return "Cleared by the Till";
-  if (p.kind === "mingla_support") return p.name ? `${p.name} (Mingla support)` : "Mingla support";
+  // #4490 after #4579: the name already reads "Kunle from Mingla" (never an email).
+  if (p.kind === "mingla_support") return p.name ?? "Mingla Team";
   return p.name ?? "Team member";
 }
 

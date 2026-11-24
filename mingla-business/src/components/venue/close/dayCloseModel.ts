@@ -45,7 +45,9 @@ export function personName(p: DayPerson | null | undefined): string {
     case "system":
       return CLOSE_COPY.person.system;
     case "mingla_support":
-      return p.name ? `${p.name} (${CLOSE_COPY.person.minglaSupport})` : CLOSE_COPY.person.minglaSupport;
+      // #4490 after #4579: the server's name already carries the Mingla mark
+      // ("Kunle from Mingla"); "Mingla Team" when there is no safe name.
+      return p.name ?? CLOSE_COPY.person.minglaSupport;
     case "person":
       return p.name ?? CLOSE_COPY.person.teamMember;
     default: {
