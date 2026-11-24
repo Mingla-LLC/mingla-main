@@ -6,8 +6,10 @@
 -- MINGLA-INVARIANT: I-4490-STOCK-NEVER-NEGATIVE | issue #4490 | menu_items.stock_count is never below zero: every decrement is one guarded statement (stock_count >= quantity) inside the caller's transaction; a Till send that finds too little raises PT409 item_sold_out and sends nothing; a paid guest order takes only what is left and is flagged sold_out_after_payment.
 -- MINGLA-INVARIANT: I-4490-STOCK-ONE-ORDERABLE-RULE | issue #4490 | an item is orderable when is_available AND (stock_count IS NULL OR stock_count > 0) (issue_4490_menu_item_orderable); public_menus_view lists exactly the orderable items, public_menu_sold_out_view exactly the switched-on sold-out ones, and a NULL count changes nothing; sold out never flips is_available.
 -- MINGLA-INVARIANT: I-4490-STOCK-ONLY-THE-STOCK-FUNCTIONS | issue #4490 | the stock columns of menu_items change only inside the #4490 stock functions (transaction-local mingla.issue_4490_stock naming the row, never as anon or authenticated); a direct write by a client role or the service role is refused stock_write_refused.
--- MINGLA-INVARIANT: I-4490-SOLD-OUT-NEVER-DROPPED | issue #4490 | a paid guest line the count could not cover is never refused and never dropped: it is flagged, then swapped (same station, same price or less, the difference refunded) or refunded, each exactly once, with at most one line refund per order.
+-- MINGLA-INVARIANT: I-4490-SOLD-OUT-NEVER-DROPPED | issue #4490 | a paid guest line the count could not cover is never refused and never dropped: it is flagged, then swapped (same station, same price or less, the difference refunded) or refunded, each exactly once; every money resolution is its own line refund on the order (08-O5 fix 1: never "one per order"), and together they never return more than the guest paid for those lines.
 --
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): the SOLD-OUT-NEVER-DROPPED invariant no longer says "at most one
+-- line refund per order" (the O5-T3 defect); K-8q/K-8r prove two refunds on one order (below).
 -- FAILS-ON-REVERT (verified on a fresh replay): drop the guard trigger and
 -- K-2a fails (a direct write changes the count); take the guard off the
 -- send (stock_count >= quantity) and K-6b fails (the count goes below 0);
@@ -551,12 +553,26 @@ SELECT public.t5c_pay(public.t5c_id('guest_g4'));
 SELECT public.issue_4490_order_sold_out_resolve(public.t5c_id('guest_g4'),
   ARRAY[public.t5c_line(public.t5c_id('guest_g4'), public.t5c_id('rice'))], 'refund', NULL,
   '44900615-0000-4000-8000-000000000001', NULL, 'k5c-g4-first');
-SELECT public.t5c_expect(format($$SELECT public.issue_4490_order_sold_out_resolve(%L, ARRAY[%L]::uuid[], 'refund', NULL, %L, NULL, 'k5c-g4-second')$$,
-  public.t5c_id('guest_g4'), public.t5c_line(public.t5c_id('guest_g4'), public.t5c_id('jollof')), '44900615-0000-4000-8000-000000000001'),
-  'PT409', 'sold_out_refund_once', 'K-8q a second line refund on the same order is refused (one per order)');
-SELECT public.t5c_ok((SELECT count(*) FROM public.source_refunds sr WHERE sr.source_id = public.t5c_id('guest_g4')) = 1
-  AND (SELECT sold_out_resolution IS NULL FROM public.venue_order_items WHERE id = public.t5c_line(public.t5c_id('guest_g4'), public.t5c_id('jollof'))),
-  'K-8r still one refund row; the Jollof line stays waiting (never dropped)');
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1, O5-T3): "one line refund per order" was the P1 defect: a
+-- guest who paid for two sold-out lines could only ever get one back. K-8q/K-8r now prove the fixed
+-- rule on a fresh order (g5) with two sold-out lines, each refunded on its own; g4 keeps one line
+-- waiting for K-9d and the escalation scan below.
+SELECT public.t5c_guest('g5', jsonb_build_array(jsonb_build_array(public.t5c_id('rice'), 1), jsonb_build_array(public.t5c_id('jollof'), 1)));
+SELECT public.t5c_pay(public.t5c_id('guest_g5'));
+SELECT public.issue_4490_order_sold_out_resolve(public.t5c_id('guest_g5'),
+  ARRAY[public.t5c_line(public.t5c_id('guest_g5'), public.t5c_id('rice'))], 'refund', NULL,
+  '44900615-0000-4000-8000-000000000001', NULL, 'k5c-g5-first');
+SELECT public.t5c_ok((SELECT (r->>'refundMinor')::bigint > 0 AND NOT (r->>'replayed')::boolean
+    FROM public.issue_4490_order_sold_out_resolve(public.t5c_id('guest_g5'),
+      ARRAY[public.t5c_line(public.t5c_id('guest_g5'), public.t5c_id('jollof'))], 'refund', NULL,
+      '44900615-0000-4000-8000-000000000001', NULL, 'k5c-g5-second') r),
+  'K-8q a second sold-out line on the same order is refunded too (its own refund)');
+SELECT public.t5c_ok((SELECT count(*) FROM public.source_refunds sr WHERE sr.source_id = public.t5c_id('guest_g5')) = 2
+  AND (SELECT array_agg(sr.refund_kind ORDER BY sr.refund_kind) FROM public.source_refunds sr WHERE sr.source_id = public.t5c_id('guest_g5'))
+      = ARRAY['venue_order_line_refund', 'venue_order_line_refund_2']
+  AND (SELECT count(*) FROM public.venue_order_items WHERE venue_order_id = public.t5c_id('guest_g5')
+         AND sold_out_at IS NOT NULL AND sold_out_resolution IS NULL) = 0,
+  'K-8r two refund rows on the order (line refund 1 and 2); no line left waiting');
 SELECT public.t5c_reset();
 
 -- ===========================================================================

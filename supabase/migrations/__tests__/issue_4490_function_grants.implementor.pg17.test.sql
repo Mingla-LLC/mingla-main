@@ -71,6 +71,9 @@
 -- role only), the orderable rule and the stock guard trigger (invoker helpers); the functions it
 -- re-emits or patches (till send, till void, the finalizer, the floor audit, the day summary) keep
 -- their classes.
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): 20280809616490 adds the line refund kind rule and the
+-- sold-out refund formula (pure invoker helpers), the resolved-basis read (internal, service role only); the
+-- functions it re-emits or patches keep their classes.
 -- TEST-MOD-APPROVED #4490 (08-O5 part B): 20280809613490 adds the daily close (summary, close, reopen,
 -- carry over, the drawer, export and their helpers) and its two guard trigger functions, all internal
 -- (service role only); it re-emits the floor audit helper and the Till business date (same signatures,
@@ -627,6 +630,11 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_order_sold_out(uuid,uuid)', 'internal'),
   ('issue_4490_sold_out_open(uuid)', 'internal'),
   ('issue_4490_sold_out_escalation_scan(timestamp with time zone,integer)', 'internal'),
+  -- 08-O5 fix 1 (20280809616490): every sold-out line resolvable once; hours as they were; the
+  -- no-screen void restock. Two pure invoker rules; everything else internal (service role only).
+  ('issue_4490_is_line_refund_kind(text)', 'helper'),
+  ('issue_4490_sold_out_refund_for_basis(bigint,bigint,bigint,bigint)', 'helper'),
+  ('issue_4490_sold_out_basis_done(uuid)', 'internal'),
   -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),

@@ -15,7 +15,7 @@
  * (TillStepUpHost), so a guest who paid is never stuck waiting for a manager's
  * own phone. Swaps need no PIN.
  */
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -38,7 +38,7 @@ import type { TillPinStaff } from "../../../services/venueTillService";
 import { TillStepUpHost } from "../till/TillStepUp";
 import { approvers } from "../till/pinModel";
 import { STOCK_COPY, stockErrorCopy } from "./stockCopy";
-import { swapChoice } from "./stockModel";
+import { canRefundSoldOutLine, swapChoice } from "./stockModel";
 
 export const orderSoldOutKey = (venueId: string, orderId: string) =>
   ["venueOrders", "soldOut", venueId, orderId] as const;
@@ -86,7 +86,6 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
   const money = (minor: number): string => formatCurrency(minor, currency, true);
 
   const data = query.data;
-  const waiting = useMemo(() => (data?.lines ?? []).filter((l) => l.resolution === null), [data]);
 
   const run = async (line: SoldOutLine, resolution: "swap" | "refund", swapId: string | null): Promise<void> => {
     if (busy) return;
@@ -160,7 +159,7 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
                     disabled={busy} onPress={() => setSwapFor(swapFor?.orderItemId === line.orderItemId ? null : line)}
                     testID={`order-sold-out-swap-${line.orderItemId}`} />
                 ) : null}
-                {data.canRefund && !data.refundUsed ? (
+                {canRefundSoldOutLine(data, line) ? (
                   <Button label={STOCK_COPY.refundAmount(money(line.refundPreviewMinor))} variant="secondary" size="md"
                     style={styles.flex} disabled={busy} onPress={() => setRefundFor(line)}
                     testID={`order-sold-out-refund-${line.orderItemId}`} />
@@ -206,9 +205,6 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
           )}
         </View>
       ))}
-      {waiting.length > 0 && data.refundUsed && data.canRefund ? (
-        <Text style={styles.caption}>{stockErrorCopy("sold_out_refund_once")}</Text>
-      ) : null}
       {error !== null ? (
         <Text style={styles.error} accessibilityRole="alert" testID="order-sold-out-error-text">{error}</Text>
       ) : null}

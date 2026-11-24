@@ -83,3 +83,16 @@ export function tillSoldOutSentence(
   if (context === "send" && typeof left === "number" && left > 0) return STOCK_COPY.onlyLeft(left);
   return context === "pay" ? STOCK_COPY.soldOutBeforePaying(item) : STOCK_COPY.soldOutBeforeSending(item);
 }
+
+/**
+ * #4490 08-O5 fix 1 (O5-T3): a sold-out line offers "Refund" whenever the
+ * person may refund and the line is still waiting. Every waiting line can be
+ * refunded, each exactly once (the server keeps one refund per line, never
+ * "one per order"), so an earlier refund on the order never hides it.
+ */
+export function canRefundSoldOutLine(
+  data: { canRefund: boolean },
+  line: { resolution: string | null },
+): boolean {
+  return data.canRefund && line.resolution === null;
+}

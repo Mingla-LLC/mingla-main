@@ -1,0 +1,408 @@
+-- #4490 spec 08 O5 fix round 1: executable PostgreSQL 17 proof for migration
+-- 20280809616490 (O5-T3 every sold-out line resolvable once each; O5-T1 a
+-- moment's business day never moves when opening hours change; O5-T4 a
+-- no-screen void's "Put it back in stock"). The suite owns its fixture and
+-- rolls back.
+--
+-- MINGLA-INVARIANT: I-4490-SOLD-OUT-EVERY-LINE-ONCE | issue #4490 | every guest line that sold out after payment can be resolved (refund, or swap with the difference refunded) exactly once, in any order and any mix, one call or several; each money resolution is its own source_refunds row on the order; together they return exactly what the guest paid for those lines (discount and service charge share, rounding included) and never more than the order took; the whole-order staff refund then returns only what is left, with Mingla's fee netted, so no money is refunded twice and none is stranded.
+--
+-- FAILS-ON-REVERT (verified on a fresh replay; outputs in the fix 1 report):
+-- put back 20280809615490's one-refund-per-order mint and F3-2 fails; put
+-- back the derived payment days and the current-hours service day and F1-3
+-- fails; put back the fired_at-only void restock and F4-1 fails.
+\set ON_ERROR_STOP on
+BEGIN;
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
+
+CREATE FUNCTION public.t5f_ok(p_ok boolean, p_label text)
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+  IF NOT COALESCE(p_ok, false) THEN RAISE EXCEPTION 'T4490F FAIL: %', p_label; END IF;
+  RAISE NOTICE 'PASS  %', p_label;
+END
+$f$;
+CREATE FUNCTION public.t5f_expect(p_sql text, p_state text, p_message text, p_label text)
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+  BEGIN EXECUTE p_sql;
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLSTATE <> p_state OR (p_message IS NOT NULL AND SQLERRM <> p_message) THEN
+      RAISE EXCEPTION 'T4490F FAIL: % (expected % %, got % %)', p_label, p_state, p_message, SQLSTATE, SQLERRM;
+    END IF;
+    RAISE NOTICE 'PASS  %', p_label;
+    RETURN;
+  END;
+  RAISE EXCEPTION 'T4490F FAIL: % (expected % %, no error)', p_label, p_state, p_message;
+END
+$f$;
+CREATE FUNCTION public.t5f_as(p_user uuid)
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+  PERFORM set_config('role', 'none', true);
+  PERFORM set_config('request.jwt.claim.sub', COALESCE(p_user::text, ''), true);
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', p_user, 'role', 'authenticated')::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+END
+$f$;
+CREATE FUNCTION public.t5f_service()
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+  PERFORM set_config('role', 'none', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+  PERFORM set_config('role', 'service_role', true);
+END
+$f$;
+CREATE FUNCTION public.t5f_reset()
+RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN
+  PERFORM set_config('role', 'none', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+END
+$f$;
+GRANT EXECUTE ON FUNCTION public.t5f_ok(boolean,text), public.t5f_expect(text,text,text,text),
+  public.t5f_as(uuid), public.t5f_service(), public.t5f_reset() TO PUBLIC;
+CREATE TEMP TABLE t5f_ids (k text PRIMARY KEY, v uuid) ON COMMIT DROP;
+GRANT ALL ON t5f_ids TO PUBLIC;
+-- A write's answer, kept for the NEXT statement (a STABLE read in the same
+-- statement as the write sees the statement's snapshot).
+CREATE TEMP TABLE t5f_r (k text PRIMARY KEY, v jsonb) ON COMMIT DROP;
+GRANT ALL ON t5f_r TO PUBLIC;
+CREATE FUNCTION public.t5f_rv(p_k text) RETURNS jsonb LANGUAGE sql AS $f$ SELECT v FROM t5f_r WHERE k = p_k $f$;
+CREATE FUNCTION public.t5f_id(p_k text) RETURNS uuid LANGUAGE sql AS $f$ SELECT v FROM t5f_ids WHERE k = p_k $f$;
+GRANT EXECUTE ON FUNCTION public.t5f_rv(text), public.t5f_id(text) TO PUBLIC;
+CREATE FUNCTION public.t5f_v(p_sale uuid) RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT version FROM public.venue_till_sales WHERE id = p_sale
+$f$;
+CREATE FUNCTION public.t5f_stock(p_item uuid) RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT stock_count FROM public.menu_items WHERE id = p_item
+$f$;
+GRANT EXECUTE ON FUNCTION public.t5f_v(uuid), public.t5f_stock(uuid) TO PUBLIC;
+
+INSERT INTO public.feature_flags (flag_key, is_enabled)
+SELECT k, true FROM unnest(ARRAY['VENUE_OFFERS_READS','VENUE_OFFERS_WRITES','STAY_RESERVE_READS','STAY_RESERVE_WRITES','VENUE_TILL']) k
+ON CONFLICT (flag_key) DO UPDATE SET is_enabled = true;
+
+-- Users: 01 owner, 02 seller (venue.sell), 03 kitchen (venue.kitchen), 04 event manager.
+INSERT INTO auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+SELECT ('44900616-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid,
+  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+  'o5-fix1-' || n || '@example.test', now(), now()
+FROM generate_series(1, 4) n;
+INSERT INTO public.creator_accounts (id, created_at) VALUES ('44900616-0000-4000-8000-000000000001', now());
+INSERT INTO public.brands (id, account_id, name, slug, default_currency, payment_provider,
+  payout_hold_cutover_at, created_at, updated_at) VALUES
+  ('44900616-0000-4000-9000-000000000010', '44900616-0000-4000-8000-000000000001',
+   'O5 Fix 4490', 'o5-fix-4490', 'NGN', 'paystack', now() - interval '1 day', now(), now());
+-- V1: guest orders and the Till's voids (T3, T4). V2: the daily close (T1).
+INSERT INTO public.venue_listings (id, brand_id, slug, name, lat, lng, venue_category, claim_status, country_code) VALUES
+  ('44900616-0000-4000-9000-0000000000a1', '44900616-0000-4000-9000-000000000010', 'o5fixa', 'Fix Kitchen',
+   6.45, 3.40, 'restaurant', 'verified', 'NG'),
+  ('44900616-0000-4000-9000-0000000000a2', '44900616-0000-4000-9000-000000000010', 'o5fixb', 'Fix Grill',
+   6.45, 3.40, 'restaurant', 'verified', 'NG');
+INSERT INTO public.brand_team_members (id, brand_id, user_id, role, accepted_at) VALUES
+  ('44900616-0000-4000-a000-000000000002', '44900616-0000-4000-9000-000000000010', '44900616-0000-4000-8000-000000000002', 'venue_staff', now()),
+  ('44900616-0000-4000-a000-000000000003', '44900616-0000-4000-9000-000000000010', '44900616-0000-4000-8000-000000000003', 'venue_staff', now()),
+  ('44900616-0000-4000-a000-000000000004', '44900616-0000-4000-9000-000000000010', '44900616-0000-4000-8000-000000000004', 'event_manager', now());
+INSERT INTO public.brand_team_member_venue_grants (member_id, venue_id, access_profile, capabilities) VALUES
+  ('44900616-0000-4000-a000-000000000002', '44900616-0000-4000-9000-0000000000a1', 'custom', ARRAY['venue.sell']),
+  ('44900616-0000-4000-a000-000000000002', '44900616-0000-4000-9000-0000000000a2', 'custom', ARRAY['venue.sell']),
+  ('44900616-0000-4000-a000-000000000003', '44900616-0000-4000-9000-0000000000a1', 'custom', ARRAY['venue.kitchen']);
+INSERT INTO public.menus (id, brand_id, venue_id, name, is_active) VALUES
+  ('44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', '44900616-0000-4000-9000-0000000000a1', 'Dinner', true),
+  ('44900616-0000-4000-b000-000000000002', '44900616-0000-4000-9000-000000000010', '44900616-0000-4000-9000-0000000000a2', 'Grill', true);
+-- V1: Jollof 5,000 kitchen · Chapman 3,000 bar · Zobo 2,000 bar · Water 500 bar · Asun 4,000 kitchen
+-- · Rice 3,000 kitchen · Beans 4,000 kitchen. V2: Beer 2,000.
+INSERT INTO public.menu_items (id, menu_id, brand_id, name, price_cents, currency, is_available, prep_station, sort_order) VALUES
+  ('44900616-0000-4000-b000-000000000011', '44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', 'Jollof', 500000, 'NGN', true, 'kitchen', 1),
+  ('44900616-0000-4000-b000-000000000012', '44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', 'Chapman', 300000, 'NGN', true, 'bar', 2),
+  ('44900616-0000-4000-b000-000000000013', '44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', 'Zobo', 200000, 'NGN', true, 'bar', 3),
+  ('44900616-0000-4000-b000-000000000014', '44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', 'Water', 50000, 'NGN', true, 'bar', 4),
+  ('44900616-0000-4000-b000-000000000015', '44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', 'Asun', 400000, 'NGN', true, 'kitchen', 5),
+  ('44900616-0000-4000-b000-000000000016', '44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', 'Rice', 300000, 'NGN', true, 'kitchen', 6),
+  ('44900616-0000-4000-b000-000000000017', '44900616-0000-4000-b000-000000000001', '44900616-0000-4000-9000-000000000010', 'Beans', 400000, 'NGN', true, 'kitchen', 7),
+  ('44900616-0000-4000-b000-000000000021', '44900616-0000-4000-b000-000000000002', '44900616-0000-4000-9000-000000000010', 'Beer', 200000, 'NGN', true, NULL, 1);
+INSERT INTO public.venue_ordering_settings (venue_id, brand_id, service_charge_bps) VALUES
+  ('44900616-0000-4000-9000-0000000000a1', '44900616-0000-4000-9000-000000000010', 1000),
+  ('44900616-0000-4000-9000-0000000000a2', '44900616-0000-4000-9000-000000000010', 0)
+ON CONFLICT (venue_id) DO UPDATE SET service_charge_bps = EXCLUDED.service_charge_bps;
+INSERT INTO t5f_ids VALUES
+  ('v1', '44900616-0000-4000-9000-0000000000a1'), ('v2', '44900616-0000-4000-9000-0000000000a2'),
+  ('jollof', '44900616-0000-4000-b000-000000000011'), ('chapman', '44900616-0000-4000-b000-000000000012'),
+  ('zobo', '44900616-0000-4000-b000-000000000013'), ('water', '44900616-0000-4000-b000-000000000014'),
+  ('asun', '44900616-0000-4000-b000-000000000015'), ('rice', '44900616-0000-4000-b000-000000000016'),
+  ('beans', '44900616-0000-4000-b000-000000000017'), ('beer', '44900616-0000-4000-b000-000000000021'),
+  ('owner', '44900616-0000-4000-8000-000000000001'), ('seller', '44900616-0000-4000-8000-000000000002'),
+  ('kitchen', '44900616-0000-4000-8000-000000000003'), ('evm', '44900616-0000-4000-8000-000000000004');
+
+SELECT public.t5f_as('44900616-0000-4000-8000-000000000001');
+SELECT public.issue_4490_set_venue_feature('44900616-0000-4000-9000-0000000000a1', 'menu', true, NULL, NULL, NULL, 'f5f-menu-on', true);
+SELECT public.issue_4490_set_venue_feature('44900616-0000-4000-9000-0000000000a1', 'till', true, NULL, NULL, NULL, 'f5f-till-on', true);
+SELECT public.issue_4490_set_venue_feature('44900616-0000-4000-9000-0000000000a1', 'kitchen_screens', true, NULL, NULL, NULL, 'f5f-ks-on', true);
+SELECT public.issue_4490_set_venue_feature('44900616-0000-4000-9000-0000000000a2', 'menu', true, NULL, NULL, NULL, 'f5f-menu2-on', true);
+SELECT public.issue_4490_set_venue_feature('44900616-0000-4000-9000-0000000000a2', 'till', true, NULL, NULL, NULL, 'f5f-till2-on', true);
+SELECT public.t5f_reset();
+
+-- Builders, as the edge calls them.
+CREATE SEQUENCE public.t5f_pickup START 501;
+GRANT USAGE ON SEQUENCE public.t5f_pickup TO PUBLIC;
+CREATE FUNCTION public.t5f_open(p_venue uuid, p_key text, p_actor uuid) RETURNS uuid
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT (public.issue_4490_till_open(p_venue, p_actor, NULL, initcap(p_key), NULL, 'f5f-open:' || p_key)->>'id')::uuid
+$f$;
+-- A held Till round of one line: p_qty x the item (the venue's service charge).
+CREATE FUNCTION public.t5f_round(p_sale uuid, p_item uuid, p_qty integer, p_actor uuid) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
+DECLARE
+  v_order uuid := gen_random_uuid();
+  v_sale public.venue_till_sales%ROWTYPE;
+  v_price integer;
+  v_name text;
+  v_bps integer;
+BEGIN
+  SELECT * INTO v_sale FROM public.venue_till_sales WHERE id = p_sale;
+  SELECT price_cents, name INTO v_price, v_name FROM public.menu_items WHERE id = p_item;
+  SELECT service_charge_bps INTO v_bps FROM public.venue_ordering_settings WHERE venue_id = v_sale.venue_id;
+  INSERT INTO public.venue_orders (
+    id, session_id, brand_id, venue_id, source, taken_by_user_id, pickup_code, buyer_name,
+    money_path, currency, subtotal_cents, list_subtotal_cents, discount_cents, service_charge_bps, service_charge_cents,
+    tip_cents, effective_take_rate_bps, service_fee_bps, pass_mingla_fee, pass_service_fee, pass_tax,
+    buyer_subtotal_cents, total_cents, payment_status, fulfillment_status, idempotency_key, metadata
+  ) VALUES (
+    v_order, v_sale.session_id, '44900616-0000-4000-9000-000000000010', v_sale.venue_id, 'staff',
+    p_actor, lpad(nextval('public.t5f_pickup')::text, 3, '0'), 'Guest',
+    'venue_collected', 'NGN', v_price * p_qty, v_price * p_qty, 0, v_bps, (v_price * p_qty) * v_bps / 10000, 0, 0, 0,
+    false, false, false, v_price * p_qty + (v_price * p_qty) * v_bps / 10000, v_price * p_qty + (v_price * p_qty) * v_bps / 10000,
+    'pending', 'held', 'till-f5f-round:' || v_order, jsonb_build_object('unsettled_staff_order', true));
+  INSERT INTO public.venue_order_items (venue_order_id, menu_item_id, line_no, item_name_at_order, unit_price_cents,
+    currency, quantity, modifiers_total_cents, line_total_cents)
+  VALUES (v_order, p_item, 1, v_name, v_price, 'NGN', p_qty, 0, v_price * p_qty);
+  PERFORM public.issue_4490_till_attach_round(p_sale, v_order, p_actor, NULL);
+  RETURN v_order;
+END
+$f$;
+-- A pending guest page order (Paystack) at a venue: lines = [[item, qty], ...];
+-- p_discount (minor) off the list, the venue's service charge on the rest.
+CREATE FUNCTION public.t5f_guest(p_venue uuid, p_key text, p_lines jsonb, p_discount integer DEFAULT 0) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
+DECLARE
+  v_order uuid := gen_random_uuid();
+  v_session uuid := gen_random_uuid();
+  v_list integer := 0;
+  v_sub integer;
+  v_sc integer;
+  v_bps integer;
+  r jsonb;
+  n integer := 0;
+  v_price integer;
+  v_name text;
+BEGIN
+  FOR r IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
+    SELECT price_cents INTO v_price FROM public.menu_items WHERE id = (r->>0)::uuid;
+    v_list := v_list + v_price * (r->>1)::integer;
+  END LOOP;
+  SELECT service_charge_bps INTO v_bps FROM public.venue_ordering_settings WHERE venue_id = p_venue;
+  v_sub := v_list - p_discount;
+  v_sc := v_sub * v_bps / 10000;
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.venue_order_sessions (id, brand_id, venue_id, currency)
+  VALUES (v_session, '44900616-0000-4000-9000-000000000010', p_venue, 'NGN');
+  INSERT INTO public.venue_orders (
+    id, session_id, brand_id, venue_id, source, buyer_name, buyer_email, buyer_phone_e164,
+    money_path, currency, subtotal_cents, list_subtotal_cents, discount_cents, service_charge_bps, service_charge_cents, tip_cents,
+    effective_take_rate_bps, service_fee_bps, mingla_fee_cents, platform_service_fee_cents,
+    pass_mingla_fee, pass_service_fee, pass_tax, buyer_subtotal_cents, tax_amount_cents, total_cents,
+    provider, payment_status, paystack_reference, pickup_code, idempotency_key, metadata)
+  VALUES (v_order, v_session, '44900616-0000-4000-9000-000000000010', p_venue,
+    'guest_page', 'Ada', 'ada@example.com', '+2348030000000',
+    'mingla', 'NGN', v_sub, v_list, p_discount, v_bps, v_sc, 0, 150, 0, (v_sub + v_sc) * 150 / 10000, 0,
+    false, false, false, v_sub + v_sc, 0, v_sub + v_sc,
+    'paystack', 'pending', 'mingla_vo_f5f_' || p_key, lpad(nextval('public.t5f_pickup')::text, 3, '0'),
+    'f5f-guest:' || p_key, '{}'::jsonb);
+  FOR r IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
+    n := n + 1;
+    SELECT price_cents, name INTO v_price, v_name FROM public.menu_items WHERE id = (r->>0)::uuid;
+    INSERT INTO public.venue_order_items (venue_order_id, menu_item_id, line_no, item_name_at_order, unit_price_cents,
+      currency, quantity, modifiers_total_cents, line_total_cents, station)
+    VALUES (v_order, (r->>0)::uuid, n, v_name, v_price, 'NGN', (r->>1)::integer, 0, v_price * (r->>1)::integer,
+      public.issue_4490_item_station((r->>0)::uuid, p_venue));
+  END LOOP;
+  SET LOCAL session_replication_role = origin;
+  INSERT INTO t5f_ids VALUES ('guest_' || p_key, v_order);
+  RETURN v_order;
+END
+$f$;
+CREATE FUNCTION public.t5f_pay(p_order uuid) RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT public.pg_venue_order_finalize_payment(o.id, 'paystack', o.total_cents, 'NGN', o.paystack_reference, NULL, NULL, NULL)
+  FROM public.venue_orders o WHERE o.id = p_order
+$f$;
+CREATE FUNCTION public.t5f_line(p_order uuid, p_item uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT id FROM public.venue_order_items WHERE venue_order_id = p_order AND menu_item_id = p_item ORDER BY line_no LIMIT 1
+$f$;
+CREATE FUNCTION public.t5f_set(p_item uuid, p_count integer) RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT public.issue_4490_stock_set(p_item, p_count, NULL, '44900616-0000-4000-8000-000000000001', NULL)
+$f$;
+-- One sold-out resolution as the edge calls it.
+CREATE FUNCTION public.t5f_resolve(p_order uuid, p_items uuid[], p_resolution text, p_swap uuid, p_actor uuid, p_key text)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT public.issue_4490_order_sold_out_resolve(p_order, p_items, p_resolution, p_swap, p_actor, NULL, p_key)
+$f$;
+-- The provider settles a refund (the write-back record_source_refund_provider_event
+-- does for a processed buyer leg), for the in-flight versus processed cases.
+CREATE FUNCTION public.t5f_settle(p_refund uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
+DECLARE v public.source_refunds%ROWTYPE;
+BEGIN
+  UPDATE public.source_refunds SET buyer_state = 'processed', buyer_refund_processed_cents = buyer_refund_requested_cents,
+    fee_state = CASE WHEN fee_state = 'not_required' THEN fee_state ELSE 'processed' END,
+    fee_reversal_processed_cents = fee_reversal_required_cents, processed_at = now()
+  WHERE id = p_refund RETURNING * INTO v;
+  UPDATE public.venue_orders
+  SET refunded_amount_cents = LEAST(total_cents, refunded_amount_cents + v.buyer_refund_requested_cents),
+      payment_status = CASE WHEN refunded_amount_cents + v.buyer_refund_requested_cents >= total_cents
+                            THEN 'refunded' ELSE 'partial_refund' END
+  WHERE id = v.subject_id;
+END
+$f$;
+CREATE FUNCTION public.t5f_refunds(p_order uuid) RETURNS TABLE (n bigint, requested bigint, fee bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+  SELECT count(*), COALESCE(sum(buyer_refund_requested_cents), 0)::bigint, COALESCE(sum(fee_reversal_required_cents), 0)::bigint
+  FROM public.source_refunds WHERE source_type = 'venue_menu_order' AND source_id = p_order
+$f$;
+GRANT EXECUTE ON FUNCTION public.t5f_open(uuid, text, uuid), public.t5f_round(uuid, uuid, integer, uuid),
+  public.t5f_guest(uuid, text, jsonb, integer), public.t5f_pay(uuid), public.t5f_line(uuid, uuid), public.t5f_set(uuid, integer),
+  public.t5f_resolve(uuid, uuid[], text, uuid, uuid, text), public.t5f_settle(uuid), public.t5f_refunds(uuid) TO PUBLIC;
+
+-- ===========================================================================
+-- F3 O5-T3: every sold-out line, each exactly once.
+-- ===========================================================================
+SELECT public.t5f_service();
+-- Order A: 2 Jollof + 2 Chapman + 1 Zobo = 18,000.00, service 10% = 1,800.00, total 19,800.00.
+-- Jollof 1 left, Chapman 1 left, Zobo none: all three lines sell out after payment.
+SELECT public.t5f_set(public.t5f_id('jollof'), 1);
+SELECT public.t5f_set(public.t5f_id('chapman'), 1);
+SELECT public.t5f_set(public.t5f_id('zobo'), 0);
+SELECT public.t5f_set(public.t5f_id('zobo'), 0);
+SELECT public.t5f_guest(public.t5f_id('v1'), 'a', jsonb_build_array(
+  jsonb_build_array(public.t5f_id('jollof'), 2), jsonb_build_array(public.t5f_id('chapman'), 2),
+  jsonb_build_array(public.t5f_id('zobo'), 1)));
+INSERT INTO t5f_r VALUES ('a_pay', public.t5f_pay(public.t5f_id('guest_a')));
+SELECT public.t5f_ok((public.t5f_rv('a_pay')->>'soldOutAfterPayment')::boolean
+  AND (SELECT count(*) FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('guest_a') AND sold_out_at IS NOT NULL) = 3
+  AND (SELECT total_cents FROM public.venue_orders WHERE id = public.t5f_id('guest_a')) = 1980000,
+  'F3-0 a guest pays 19,800.00 for Jollof x2, Chapman x2, Zobo x1; all three lines sold out after payment');
+-- The tester's exact sequence: refund the Jollof line, then the Chapman line.
+INSERT INTO t5f_r VALUES ('a_jollof', public.t5f_resolve(public.t5f_id('guest_a'),
+  ARRAY[public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('jollof'))], 'refund', NULL, public.t5f_id('owner'), 'f5f-a-jollof'));
+SELECT public.t5f_ok((public.t5f_rv('a_jollof')->>'refundMinor')::bigint = 1100000 AND (public.t5f_rv('a_jollof')->>'unresolved')::int = 2,
+  'F3-1 refund the Jollof line: 11,000.00 back (10,000.00 + its 1,000.00 service charge); 2 lines still waiting');
+INSERT INTO t5f_r VALUES ('a_chapman', public.t5f_resolve(public.t5f_id('guest_a'),
+  ARRAY[public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('chapman'))], 'refund', NULL, public.t5f_id('owner'), 'f5f-a-chapman'));
+SELECT public.t5f_ok((public.t5f_rv('a_chapman')->>'refundMinor')::bigint = 660000
+  AND (SELECT n = 2 AND requested = 1760000 FROM public.t5f_refunds(public.t5f_id('guest_a')))
+  AND (SELECT array_agg(refund_kind ORDER BY requested_at, refund_kind) FROM public.source_refunds WHERE source_id = public.t5f_id('guest_a'))
+      = ARRAY['venue_order_line_refund', 'venue_order_line_refund_2'],
+  'F3-2 then refund the Chapman line: 6,600.00 back, its own refund row (line refund 2); 17,600.00 asked back in all');
+INSERT INTO t5f_r VALUES ('a_jollof_again', public.t5f_resolve(public.t5f_id('guest_a'),
+  ARRAY[public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('jollof'))], 'refund', NULL, public.t5f_id('owner'), 'f5f-a-jollof'));
+SELECT public.t5f_ok((public.t5f_rv('a_jollof_again')->>'replayed')::boolean
+  AND public.t5f_rv('a_jollof_again')->>'refundId' = public.t5f_rv('a_jollof')->>'refundId'
+  AND (SELECT n FROM public.t5f_refunds(public.t5f_id('guest_a'))) = 2,
+  'F3-3 the first request again (same key) answers its first result; no new refund');
+SELECT public.t5f_expect(format($$SELECT public.t5f_resolve(%L, ARRAY[%L]::uuid[], 'refund', NULL, %L, 'f5f-a-jollof-2')$$,
+  public.t5f_id('guest_a'), public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('jollof')), public.t5f_id('owner')),
+  'PT409', 'sold_out_already_resolved', 'F3-4 the Jollof line again with a new key is refused: a line is resolved once');
+SELECT public.t5f_expect(format($$SELECT public.t5f_resolve(%L, ARRAY[%L]::uuid[], 'swap', %L, %L, 'f5f-a-chapman-swap')$$,
+  public.t5f_id('guest_a'), public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('chapman')), public.t5f_id('water'), public.t5f_id('seller')),
+  'PT409', 'sold_out_already_resolved', 'F3-5 a refunded line cannot be swapped afterwards');
+-- The third line is swapped for something cheaper: Zobo 2,000 -> Water 500, 1,650.00 back.
+INSERT INTO t5f_r VALUES ('a_zobo', public.t5f_resolve(public.t5f_id('guest_a'),
+  ARRAY[public.t5f_line(public.t5f_id('guest_a'), public.t5f_id('zobo'))], 'swap', public.t5f_id('water'), public.t5f_id('seller'), 'f5f-a-zobo'));
+SELECT public.t5f_ok((public.t5f_rv('a_zobo')->>'refundMinor')::bigint = 165000 AND (public.t5f_rv('a_zobo')->>'unresolved')::int = 0
+  AND (SELECT n = 3 AND requested = 1925000 FROM public.t5f_refunds(public.t5f_id('guest_a'))),
+  'F3-6 the seller swaps Zobo for Water: 1,650.00 back (line refund 3); 19,250.00 back in all = what was paid for the three lines');
+SELECT public.t5f_ok((SELECT fee = floor(o.mingla_fee_cents * 1925000.0 / o.total_cents + 0.5)
+    FROM public.t5f_refunds(public.t5f_id('guest_a')), public.venue_orders o WHERE o.id = public.t5f_id('guest_a')),
+  'F3-7 Mingla''s fee comes back once, pro rata on the running total (never more than the three lines'' share)');
+-- What is left (the Water the guest still has) can still be refunded by the
+-- ordinary whole-order staff refund, netting what the lines gave back.
+UPDATE public.venue_orders SET refund_requested_at = now() WHERE id = public.t5f_id('guest_a');
+SELECT public.t5f_as(public.t5f_id('owner'));
+INSERT INTO t5f_r VALUES ('a_whole', public.biz_venue_order_refund_decision(public.t5f_id('guest_a'), 'approved', 'Sorry about tonight'));
+SELECT public.t5f_service();
+SELECT public.t5f_ok((public.t5f_rv('a_whole')->'refund'->>'amountCents')::bigint = 55000
+  AND (SELECT n = 4 AND requested = 1980000 FROM public.t5f_refunds(public.t5f_id('guest_a')))
+  AND (SELECT fee = o.mingla_fee_cents FROM public.t5f_refunds(public.t5f_id('guest_a')), public.venue_orders o
+       WHERE o.id = public.t5f_id('guest_a')),
+  'F3-8 the whole-order staff refund returns only what is left (550.00): every kobo back exactly once, Mingla''s fee reversed exactly once');
+SELECT public.t5f_ok((SELECT (public.pg_venue_order_mint_refund(public.t5f_id('guest_a'), 'venue_order_guest_cancel', 'guest', NULL, 'x'))->>'reason')
+    = 'already_requested',
+  'F3-9 a second whole-order refund while it is in flight answers the first (no double)');
+
+-- Order B: a whole-order refund already in flight takes everything left; a
+-- line refund beside it is refused and changes nothing.
+SELECT public.t5f_set(public.t5f_id('asun'), 0);
+SELECT public.t5f_guest(public.t5f_id('v1'), 'b', jsonb_build_array(jsonb_build_array(public.t5f_id('asun'), 1),
+  jsonb_build_array(public.t5f_id('water'), 1)));
+SELECT public.t5f_pay(public.t5f_id('guest_b'));
+SELECT public.pg_venue_order_mint_refund(public.t5f_id('guest_b'), 'venue_order_venue_approved', 'brand_staff', public.t5f_id('owner'), 'Closing early');
+SELECT public.t5f_expect(format($$SELECT public.t5f_resolve(%L, ARRAY[%L]::uuid[], 'refund', NULL, %L, 'f5f-b-asun')$$,
+  public.t5f_id('guest_b'), public.t5f_line(public.t5f_id('guest_b'), public.t5f_id('asun')), public.t5f_id('owner')),
+  'PT409', 'already_refunded', 'F3-10 with a whole-order refund in flight, a line refund is refused (the money is already on its way back)');
+SELECT public.t5f_ok((SELECT n = 1 AND requested = (SELECT total_cents FROM public.venue_orders WHERE id = public.t5f_id('guest_b'))
+    FROM public.t5f_refunds(public.t5f_id('guest_b')))
+  AND (SELECT sold_out_resolution IS NULL FROM public.venue_order_items WHERE id = public.t5f_line(public.t5f_id('guest_b'), public.t5f_id('asun'))),
+  'F3-11 order B: one refund of the whole order; the line stays as it was');
+
+-- Order C: a discounted order (list 10,000, 1,000 off, service 900; total
+-- 9,900) with three sold-out lines refunded one by one. Order D: the same, in ONE call.
+SELECT public.t5f_set(public.t5f_id('rice'), 0);
+SELECT public.t5f_set(public.t5f_id('beans'), 0);
+SELECT public.t5f_set(public.t5f_id('chapman'), 0);
+SELECT public.t5f_guest(public.t5f_id('v1'), 'c', jsonb_build_array(jsonb_build_array(public.t5f_id('rice'), 1),
+  jsonb_build_array(public.t5f_id('chapman'), 1), jsonb_build_array(public.t5f_id('beans'), 1)), 100000);
+SELECT public.t5f_pay(public.t5f_id('guest_c'));
+SELECT public.t5f_guest(public.t5f_id('v1'), 'd', jsonb_build_array(jsonb_build_array(public.t5f_id('rice'), 1),
+  jsonb_build_array(public.t5f_id('chapman'), 1), jsonb_build_array(public.t5f_id('beans'), 1)), 100000);
+SELECT public.t5f_pay(public.t5f_id('guest_d'));
+SELECT public.t5f_resolve(public.t5f_id('guest_c'), ARRAY[public.t5f_line(public.t5f_id('guest_c'), public.t5f_id('beans'))],
+  'refund', NULL, public.t5f_id('evm'), 'f5f-c-beans');
+SELECT public.t5f_resolve(public.t5f_id('guest_c'), ARRAY[public.t5f_line(public.t5f_id('guest_c'), public.t5f_id('rice'))],
+  'refund', NULL, public.t5f_id('evm'), 'f5f-c-rice');
+SELECT public.t5f_resolve(public.t5f_id('guest_c'), ARRAY[public.t5f_line(public.t5f_id('guest_c'), public.t5f_id('chapman'))],
+  'refund', NULL, public.t5f_id('evm'), 'f5f-c-chapman');
+SELECT public.t5f_resolve(public.t5f_id('guest_d'), ARRAY[public.t5f_line(public.t5f_id('guest_d'), public.t5f_id('rice')),
+  public.t5f_line(public.t5f_id('guest_d'), public.t5f_id('chapman')), public.t5f_line(public.t5f_id('guest_d'), public.t5f_id('beans'))],
+  'refund', NULL, public.t5f_id('evm'), 'f5f-d-all');
+SELECT public.t5f_ok((SELECT n = 3 AND requested = 990000 FROM public.t5f_refunds(public.t5f_id('guest_c')))
+  AND (SELECT n = 1 AND requested = 990000 FROM public.t5f_refunds(public.t5f_id('guest_d')))
+  AND (SELECT sum(sold_out_refund_minor) FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('guest_c')) = 990000
+  AND (SELECT sum(sold_out_refund_minor) FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('guest_d')) = 990000,
+  'F3-12 a discounted order: three lines refunded one by one, or all three in one call, both return exactly 9,900.00 (what was paid), never more');
+
+-- Order E: a line refund that has SETTLED, then the whole-order refund.
+SELECT public.t5f_set(public.t5f_id('jollof'), 0);
+SELECT public.t5f_guest(public.t5f_id('v1'), 'e', jsonb_build_array(jsonb_build_array(public.t5f_id('jollof'), 1),
+  jsonb_build_array(public.t5f_id('water'), 2)));
+SELECT public.t5f_pay(public.t5f_id('guest_e'));
+INSERT INTO t5f_r VALUES ('e_jollof', public.t5f_resolve(public.t5f_id('guest_e'),
+  ARRAY[public.t5f_line(public.t5f_id('guest_e'), public.t5f_id('jollof'))], 'refund', NULL, public.t5f_id('owner'), 'f5f-e-jollof'));
+SELECT public.t5f_settle((public.t5f_rv('e_jollof')->>'refundId')::uuid);
+INSERT INTO t5f_r VALUES ('e_whole', public.pg_venue_order_mint_refund(public.t5f_id('guest_e'), 'venue_order_venue_approved',
+  'brand_staff', public.t5f_id('owner'), 'Rest of it'));
+SELECT public.t5f_ok((public.t5f_rv('e_whole')->>'amountCents')::bigint = 110000
+  AND (SELECT requested = 660000 AND fee = (SELECT mingla_fee_cents FROM public.venue_orders WHERE id = public.t5f_id('guest_e'))
+       FROM public.t5f_refunds(public.t5f_id('guest_e')))
+  AND (SELECT payment_status = 'partial_refund' AND refunded_amount_cents = 550000 FROM public.venue_orders WHERE id = public.t5f_id('guest_e')),
+  'F3-13 after a settled line refund (5,500.00) the whole-order refund returns the rest (1,100.00); fee reversed once in all');
+SELECT public.t5f_reset();
+
+ROLLBACK;
+\echo 'issue #4490 08-O5 fix 1: all cases passed'
