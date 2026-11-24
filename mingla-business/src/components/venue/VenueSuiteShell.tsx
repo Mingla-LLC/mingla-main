@@ -1204,6 +1204,7 @@ export function VenueSuiteShell({
           brandId={brandId}
           venueId={venueId}
           scrollBottomPad={scrollBottomPad}
+          floorPlanOn={featuresQuery.data?.features.floor_plan.enabled === true}
           onEditFloor={
             visibleModules.includes("spaces")
               ? (spaceId) => {

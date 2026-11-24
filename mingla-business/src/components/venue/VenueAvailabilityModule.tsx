@@ -68,7 +68,7 @@ const LazyConfirmDialog = React.lazy(async () => {
   return { default: mod.ConfirmDialog };
 });
 import { Input } from "../ui/Input";
-import { Chip } from "../ui/Pill";
+import { Chip } from "../ui/Chip";
 import { durationLabel } from "../ui/fieldModels";
 import { Skeleton } from "../ui/Skeleton";
 import { Toast, type ToastKind } from "../ui/Toast";

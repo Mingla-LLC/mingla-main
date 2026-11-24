@@ -21870,6 +21870,8 @@
         "supabase/migrations/__tests__/issue_4490_o5.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_o5_fix3.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_o5_fix3.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4490_o5_fix4.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4490_o5_fix4.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_ops_close.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_ops_close.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_ops_o1_fix1.implementor.pg17.test.sql",
@@ -21918,6 +21920,8 @@
         "supabase/migrations/__tests__/issue_4490_p1_experience_fixes.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_p1_features.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_p1_features.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4490_p1_fix4.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4490_p1_fix4.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_p1_hours.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_p1_hours.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_p1_public_venue_page.implementor.pg17.test.sql",
@@ -27824,6 +27828,8 @@
         "supabase/migrations/__tests__/issue_4490_o5.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_o5_fix3.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_o5_fix3.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4490_o5_fix4.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4490_o5_fix4.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_ops_close.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_ops_close.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_ops_o1_fix1.implementor.pg17.test.sql",
@@ -27872,6 +27878,8 @@
         "supabase/migrations/__tests__/issue_4490_p1_experience_fixes.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_p1_features.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_p1_features.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4490_p1_fix4.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4490_p1_fix4.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_p1_hours.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_p1_hours.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_p1_public_venue_page.implementor.pg17.test.sql",
@@ -55300,5 +55308,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "6c757670cad77fcec8592d4d08ed1de5b301aa159d1d7547934b7e12971dd12c"
+  "phase3eContractSha256": "70823de36672c82fa0931813ad3e1fdd27692999597edec860758aa9eff6c023"
 }

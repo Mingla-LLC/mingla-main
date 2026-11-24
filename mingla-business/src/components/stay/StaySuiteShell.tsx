@@ -2003,6 +2003,7 @@ export function StaySuiteShell({
             // scroll owner. Desktop keeps the ordinary layout.
             chromeScrollsWithList={!isWideDesktop}
             scrollBottomPad={STAY_PAGE_BOTTOM_PAD}
+            floorPlanOn={featuresQuery.data?.features.floor_plan.enabled === true}
             onEditFloor={
               visibleModules.some((module) => module.id === "spaces")
                 ? (spaceId) => {

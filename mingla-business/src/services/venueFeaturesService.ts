@@ -6,7 +6,6 @@
  * host copy by `venueFeatureErrorCopy`; a raw code never reaches the screen.
  */
 
-import { supabase } from "./supabase";
 import { randomId } from "../utils/randomId";
 import type { OtherVenueLayout } from "@mingla/brand-rendering/venueOffers/layoutModel";
 import {
@@ -18,6 +17,13 @@ import {
   type VenueFeatureState,
   type VenueTypeKey,
 } from "../types/venueFeatures";
+
+// The Supabase client loads on first use, not at module scope: screens that
+// only import a type or a copy helper from here (the event wizard, the venue
+// shells) must not create the client just by being imported (#4490; same
+// load-on-use rule as brandFormsService / publicEnquiryService).
+const getSupabase = async (): Promise<typeof import("./supabase").supabase> =>
+  (await import("./supabase")).supabase;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -102,7 +108,7 @@ export function mapVenueFeatureState(json: unknown): VenueFeatureState {
 }
 
 export async function fetchVenueFeatures(venueId: string): Promise<VenueFeatureState> {
-  const { data, error } = await supabase.rpc("issue_4490_get_venue_features", {
+  const { data, error } = await (await getSupabase()).rpc("issue_4490_get_venue_features", {
     p_venue_id: venueId,
   });
   if (error !== null) throw toVenueFeatureError(error);
@@ -126,7 +132,7 @@ export interface SetVenueFeatureResult {
 }
 
 export async function setVenueFeature(input: SetVenueFeatureInput): Promise<SetVenueFeatureResult> {
-  const { data, error } = await supabase.rpc("issue_4490_set_venue_feature", {
+  const { data, error } = await (await getSupabase()).rpc("issue_4490_set_venue_feature", {
     p_venue_id: input.venueId,
     p_key: input.key,
     p_enabled: input.enabled,
@@ -154,7 +160,7 @@ export async function applyFeaturePreset(
   venueId: string,
   category: VenueTypeKey,
 ): Promise<ApplyPresetResult> {
-  const { data, error } = await supabase.rpc("issue_4490_apply_feature_preset", {
+  const { data, error } = await (await getSupabase()).rpc("issue_4490_apply_feature_preset", {
     p_venue_id: venueId,
     p_category: category,
     p_idempotency_key: `preset-${randomId()}`,
@@ -209,7 +215,7 @@ export async function applyStartingFeaturesReport(
   // #4490 fix1 (backend B2): one server call applies every chosen feature
   // (parents first), and says what it skipped and what still needs setup.
   // A space-needing feature is now stored on before the first space exists.
-  const { data, error } = await supabase.rpc("issue_4490_apply_starting_features", {
+  const { data, error } = await (await getSupabase()).rpc("issue_4490_apply_starting_features", {
     p_venue_id: venueId,
     p_features: [...chosen],
     p_idempotency_key: `start-${randomId()}`,
@@ -352,7 +358,7 @@ export function mapVenueSpace(json: unknown): VenueSpace {
 }
 
 export async function fetchVenueSpaces(venueId: string): Promise<VenueSpace[]> {
-  const { data, error } = await supabase
+  const { data, error } = await (await getSupabase())
     .from("venue_spaces")
     .select(
       "id, venue_id, name, setting, capacity_standing, capacity_seated, photos, plan_shape, sort_order, can_be_hired, step_free, amenities, version",
@@ -364,7 +370,7 @@ export async function fetchVenueSpaces(venueId: string): Promise<VenueSpace[]> {
   if (error !== null) throw toVenueFeatureError(error);
   const rows = data ?? [];
   if (rows.length === 0) return [];
-  const { data: layoutRows, error: layoutError } = await supabase
+  const { data: layoutRows, error: layoutError } = await (await getSupabase())
     .from("venue_space_layouts")
     .select("space_id, layout, capacity")
     .in("space_id", rows.map((row: { id: string }) => row.id));
@@ -378,7 +384,7 @@ export async function fetchVenueSpaces(venueId: string): Promise<VenueSpace[]> {
 }
 
 export async function fetchVenueSpaceCombinations(venueId: string): Promise<VenueSpaceCombination[]> {
-  const { data, error } = await supabase
+  const { data, error } = await (await getSupabase())
     .from("venue_space_combinations")
     .select("id, venue_id, name, space_ids, version")
     .eq("venue_id", venueId)
@@ -428,7 +434,7 @@ async function manageSpaceRpc(
   payload: Record<string, unknown>,
   expectedVersion: number | null,
 ): Promise<unknown> {
-  const { data, error } = await supabase.rpc("issue_4490_manage_space", {
+  const { data, error } = await (await getSupabase()).rpc("issue_4490_manage_space", {
     p_action: action,
     p_venue_id: venueId,
     p_payload: payload,
@@ -475,7 +481,7 @@ export async function manageSpaceCombination(
   if (payload.id !== undefined) body.id = payload.id;
   if (payload.name !== undefined) body.name = payload.name.trim();
   if (payload.spaceIds !== undefined) body.space_ids = payload.spaceIds;
-  const { error } = await supabase.rpc("issue_4490_manage_space_combination", {
+  const { error } = await (await getSupabase()).rpc("issue_4490_manage_space_combination", {
     p_action: action,
     p_venue_id: venueId,
     p_payload: body,
@@ -506,7 +512,7 @@ export async function fetchVenueSpecialDays(
   venueId: string,
   fromDate: string,
 ): Promise<VenueSpecialDay[]> {
-  const { data, error } = await supabase
+  const { data, error } = await (await getSupabase())
     .from("venue_special_hours")
     .select("id, local_date, label, is_closed, windows, version")
     .eq("venue_id", venueId)
@@ -534,7 +540,7 @@ export async function setVenueSpecialDay(input: {
   windows: HoursWindow[];
   label: string | null;
 }): Promise<void> {
-  const { error } = await supabase.rpc("issue_4490_set_special_hours", {
+  const { error } = await (await getSupabase()).rpc("issue_4490_set_special_hours", {
     p_venue_id: input.venueId,
     p_local_date: input.localDate,
     p_is_closed: input.isClosed,
@@ -545,7 +551,7 @@ export async function setVenueSpecialDay(input: {
 }
 
 export async function clearVenueSpecialDay(venueId: string, localDate: string): Promise<void> {
-  const { error } = await supabase.rpc("issue_4490_clear_special_hours", {
+  const { error } = await (await getSupabase()).rpc("issue_4490_clear_special_hours", {
     p_venue_id: venueId,
     p_local_date: localDate,
   });
@@ -574,7 +580,7 @@ export async function setEventVenue(input: {
 }): Promise<void> {
   const atVenue = input.venueId !== null;
   const combinationId = atVenue && input.spaceId === null ? input.combinationId ?? null : null;
-  const { error } = await supabase.rpc("issue_4490_set_event_venue", {
+  const { error } = await (await getSupabase()).rpc("issue_4490_set_event_venue", {
     p_event_id: input.eventId,
     p_venue_id: input.venueId,
     p_space_id: atVenue ? input.spaceId : null,
@@ -601,7 +607,7 @@ export interface VenueLocation {
 }
 
 export async function fetchVenueLocation(venueId: string): Promise<VenueLocation | null> {
-  const { data, error } = await supabase
+  const { data, error } = await (await getSupabase())
     .from("venue_listings")
     .select("id, name, address, city, country_code, lat, lng, location_provider_place_id")
     .eq("id", venueId)
@@ -639,7 +645,7 @@ export async function fetchEventVenueLink(
   eventId: string,
   kind: "event" | "experience" = "event",
 ): Promise<EventVenueLink> {
-  const { data, error } = await supabase
+  const { data, error } = await (await getSupabase())
     // orch-strict-grep-allow events-type-filter — #4490: event_type IS filtered with .in(eventVenueLinkTypes(kind)): the event creator's row is "event" or "rsvp", the experience creator's is "experience"; trips never reach the venue picker.
     .from("events")
     .select("venue_id, space_id, combination_id, space_use")

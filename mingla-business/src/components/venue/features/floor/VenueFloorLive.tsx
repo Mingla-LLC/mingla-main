@@ -15,6 +15,7 @@ import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from "
 
 import { color, radius, space, type } from "../../../../constants/designSystem";
 import { useTransitionReservation } from "../../../../hooks/useVenueReservations";
+import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
 import { useTouchFloor } from "../../../../hooks/useTouchFloor";
 import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { useAssignTable, useTableSuggestions, useVenueFloorPlan } from "../../../../hooks/useVenueTables";
@@ -50,7 +51,6 @@ export interface VenueFloorLiveProps {
   dayKey: string;
   isToday: boolean;
   timeZone: string;
-  currency: string | null;
   onOpenReservation: (reservationId: string) => void;
   onEditLayout?: (spaceId: string) => void;
 }
@@ -98,10 +98,13 @@ export function VenueFloorLive({
   dayKey,
   isToday,
   timeZone,
-  currency,
   onOpenReservation,
   onEditLayout,
 }: VenueFloorLiveProps): React.ReactElement {
+  // The brand currency is read here, inside the lazily loaded floor, so the
+  // reservations screen never loads the brand list (and its auth context) at
+  // module scope.
+  const currency = useBrandCurrency(brandId);
   const { width } = useWindowDimensions();
   const wide = width >= WIDE;
   const touch = useTouchFloor();

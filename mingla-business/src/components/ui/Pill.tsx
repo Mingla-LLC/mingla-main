@@ -178,42 +178,9 @@ const styles = StyleSheet.create({
 // #4420 Chip and Segmented
 // ---------------------------------------------------------------------------
 
-export interface ChipProps {
-  label: string;
-  selected?: boolean;
-  disabled?: boolean;
-  error?: boolean;
-  count?: number;
-  onPress?: () => void;
-  testID?: string;
-  style?: StyleProp<ViewStyle>;
-}
-
-/** Filter / tag chip. On = the selected material with its rim. */
-export const Chip: React.FC<ChipProps> = ({ label, selected = false, disabled = false, error = false, count, onPress, testID, style }) => (
-  <Pressable
-    onPress={disabled ? undefined : onPress}
-    disabled={disabled || onPress === undefined}
-    accessibilityRole={onPress !== undefined ? "button" : "text"}
-    accessibilityState={{ selected, disabled }}
-    accessibilityLabel={count !== undefined ? `${label}, ${count}` : label}
-    testID={testID}
-    style={[
-      chipStyles.chip,
-      selected ? chipStyles.on : null,
-      error ? chipStyles.error : null,
-      disabled ? chipStyles.disabled : null,
-      style,
-    ]}
-  >
-    <Text style={[chipStyles.label, selected ? chipStyles.labelOn : null]} numberOfLines={1}>
-      {label}
-    </Text>
-    {count !== undefined ? (
-      <Text style={[chipStyles.count, selected ? chipStyles.countOn : null]}>{count}</Text>
-    ) : null}
-  </Pressable>
-);
+// Chip lives in its own module (no reanimated) so a screen that only needs a
+// chip does not load the animated pill (#4490); re-exported here for callers.
+export { Chip, type ChipProps } from "./Chip";
 
 export interface SegmentedOption<K extends string = string> {
   key: K;
@@ -289,29 +256,9 @@ export function Segmented<K extends string = string>({
 }
 
 const chipStyles = StyleSheet.create({
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[1],
-    minHeight: 36,
-    paddingHorizontal: space[3],
-    borderRadius: radiusTokens.full,
-    backgroundColor: color.fill.tile,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: color.line,
-    alignSelf: "flex-start",
-  },
-  on: {
-    backgroundColor: materials.selected.solidFill,
-    borderColor: materials.selected.rim.edge,
-    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
-  },
-  error: { borderColor: color.errorLine },
   disabled: { opacity: 0.4 },
-  label: { ...type.chip, color: color.text2 },
   labelOn: { color: color.textStrong },
   count: { ...type.caption, color: color.text3 },
-  countOn: { color: color.textSelectedChipMeta },
   segTrack: {
     borderRadius: radiusTokens.full,
     backgroundColor: color.fill.inset,

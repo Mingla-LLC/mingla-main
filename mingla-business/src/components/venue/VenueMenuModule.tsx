@@ -92,12 +92,10 @@ import {
   type MenuTextSaveFailure,
 } from "./menuTextValidation";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
-import { OrderingModeCard } from "./OrderingModeCard";
 // #4490 spec 08 O5 part C — stock counts (shown only while the Till is
 // released; a venue that never sets a count sees nothing new).
 import { useTillReleased } from "../../hooks/useTillReleased";
-import { MenuItemStockSection } from "./stock/MenuItemStockSection";
-import { MenuStockLoader, type MenuStockState } from "./stock/MenuStockLoader";
+import type { MenuStockState } from "./stock/MenuStockLoader";
 import { stockPill } from "./stock/stockModel";
 
 /** "19:58" on this device's clock (no Intl parts; rule 10 is money only). */
@@ -149,6 +147,22 @@ const LazyMenuItemOptionsSection = React.lazy(async () => {
 const LazyVenueSpotsSheet = React.lazy(async () => {
   const mod = await import("./VenueSpotsSheet");
   return { default: mod.VenueSpotsSheet };
+});
+// #4490 — the ordering-mode card and the stock reads load the same way: their
+// hooks reach the auth context and the Supabase client at module scope, and
+// each renders only for a real venue (and stock only while the Till is
+// released), so a menu with no venue never loads them.
+const LazyOrderingModeCard = React.lazy(async () => {
+  const mod = await import("./OrderingModeCard");
+  return { default: mod.OrderingModeCard };
+});
+const LazyMenuStockLoader = React.lazy(async () => {
+  const mod = await import("./stock/MenuStockLoader");
+  return { default: mod.MenuStockLoader };
+});
+const LazyMenuItemStockSection = React.lazy(async () => {
+  const mod = await import("./stock/MenuItemStockSection");
+  return { default: mod.MenuItemStockSection };
 });
 
 export interface VenueMenuModuleProps {
@@ -1038,7 +1052,11 @@ export function VenueMenuModule({
       </Text>
 
       {/* #4490 07-D — how guests get their order (table, counter or both). */}
-      {venueId !== null ? <OrderingModeCard venueId={venueId} canMutate={canMutate} /> : null}
+      {venueId !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyOrderingModeCard venueId={venueId} canMutate={canMutate} />
+        </React.Suspense>
+      ) : null}
 
       {/*
         #1789 (#1767 Phase 1) — the way into the Spots inventory. It lives here
@@ -1419,7 +1437,9 @@ export function VenueMenuModule({
       ) : null}
 
       {tillReleased && venueId !== null ? (
-        <MenuStockLoader brandId={brandId} venueId={venueId} onChange={setStockState} />
+        <React.Suspense fallback={null}>
+          <LazyMenuStockLoader brandId={brandId} venueId={venueId} onChange={setStockState} />
+        </React.Suspense>
       ) : null}
       <MenuItemSheet
         visible={itemSheetOpen}
@@ -1441,16 +1461,18 @@ export function VenueMenuModule({
         stockSection={
           itemSheetOpen && editingItem !== null && venueId !== null &&
           (tillOnHere || stockById?.has(editingItem.id) === true) ? (
-            <MenuItemStockSection
-              brandId={brandId}
-              venueId={venueId}
-              menuItemId={editingItem.id}
-              stockCount={stockById?.get(editingItem.id)?.stockCount ?? null}
-              stockWarnAt={stockById?.get(editingItem.id)?.warnAt ?? null}
-              stockOutAt={stockById?.get(editingItem.id)?.outAt ?? null}
-              canMutate={canMutate}
-              formatTime={clockTime}
-            />
+            <React.Suspense fallback={null}>
+              <LazyMenuItemStockSection
+                brandId={brandId}
+                venueId={venueId}
+                menuItemId={editingItem.id}
+                stockCount={stockById?.get(editingItem.id)?.stockCount ?? null}
+                stockWarnAt={stockById?.get(editingItem.id)?.warnAt ?? null}
+                stockOutAt={stockById?.get(editingItem.id)?.outAt ?? null}
+                canMutate={canMutate}
+                formatTime={clockTime}
+              />
+            </React.Suspense>
           ) : undefined
         }
         optionsSection={

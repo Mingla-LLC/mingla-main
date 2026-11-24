@@ -72,6 +72,13 @@ jest.mock("../../../hooks/useVenueAvailability", () => ({
     isError: false,
   }),
 }));
+// #4490 — the shell derives its nav from venue_features through a React Query
+// hook; this suite renders without a QueryClient (every data hook is stubbed),
+// so the features read is stubbed too: no answer yet = the backfill rule.
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({ data: undefined, isLoading: false, isError: false }),
+  useSetVenueFeature: () => ({ mutate: jest.fn(), isPending: false }),
+}));
 jest.mock("../../../wrappers/SmartScrollView", () => {
   const RN = require("react-native") as typeof import("react-native");
   return { ScrollView: RN.ScrollView, default: RN.ScrollView };

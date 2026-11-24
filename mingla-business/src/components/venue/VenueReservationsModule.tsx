@@ -41,8 +41,6 @@ import {
   useVenueReservations,
 } from "../../hooks/useVenueReservations";
 import { useVenueTables } from "../../hooks/useVenueTables";
-import { useVenueFeatures } from "../../hooks/useVenueFeatures";
-import { useBrandCurrency } from "../../hooks/useBrandCurrency";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -172,6 +170,13 @@ export interface VenueReservationsModuleProps {
    * the ordinary venue shell is unchanged.
    */
   chromeScrollsWithList?: boolean;
+  /**
+   * #4490 P5 — the live floor needs Floor plan on. The suite shell already
+   * owns the venue_features read (one owner per truth) and passes the answer
+   * down, so this module never imports the features hook (and its auth
+   * context) itself. Default false: no Floor view.
+   */
+  floorPlanOn?: boolean;
 }
 
 export function VenueReservationsModule({
@@ -182,6 +187,7 @@ export function VenueReservationsModule({
   onEditFloor,
   title = "Reservations",
   chromeScrollsWithList = false,
+  floorPlanOn = false,
 }: VenueReservationsModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
@@ -206,10 +212,8 @@ export function VenueReservationsModule({
   // #4420 (R8 P15) — List | Tables. Tables shows who holds each table at one
   // time on the selected day; `tableMinute` null = the opening default.
   const [listView, setListView] = useState<"list" | "tables" | "floor">("list");
-  // #4490 P5 — the live floor needs Floor plan on.
-  const featuresQuery = useVenueFeatures(brandId, venueId);
-  const floorOn = featuresQuery.data?.features.floor_plan.enabled === true;
-  const currency = useBrandCurrency(brandId);
+  // #4490 P5 — the live floor needs Floor plan on (read by the shell).
+  const floorOn = floorPlanOn;
   const [tableMinute, setTableMinute] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState<boolean>(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
@@ -859,7 +863,6 @@ export function VenueReservationsModule({
             dayKey={effectiveSelectedDay}
             isToday={effectiveSelectedDay === todayKey}
             timeZone={resolvedZone.timeZone}
-            currency={currency}
             onOpenReservation={(id) => {
               const found = reservations.find((r) => r.id === id);
               if (found !== undefined) selectReservation(found);

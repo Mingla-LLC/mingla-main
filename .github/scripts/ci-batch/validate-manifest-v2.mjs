@@ -741,7 +741,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 merge of origin/main 886723868d: kept both sides\' rows and skips; MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 renumber: #4490 migrations now 20281203004490..20281203754490 (same order, after main); MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 08-O5 fix 4: the fix 3 tester adversarial suite registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "6c757670cad77fcec8592d4d08ed1de5b301aa159d1d7547934b7e12971dd12c";
+// issue #4490 retest P1/P3: the two fix 4 tester adversarial suites registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "70823de36672c82fa0931813ad3e1fdd27692999597edec860758aa9eff6c023";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
