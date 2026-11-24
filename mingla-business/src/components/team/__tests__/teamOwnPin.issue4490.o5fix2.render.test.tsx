@@ -100,7 +100,9 @@ jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: { id: "00000000-4490-4000-8000-0000000005c2", email: "owner@harmattan.test" }, isAuthReady: true }),
 }));
 jest.mock("../../../hooks/useSwitchAccount", () => ({ useSwitchAccount: () => ({ signedInEmail: "owner@harmattan.test", onSwitchAccount: jest.fn() }) }));
-const mockRole = { role: "brand_owner" as string, rank: 60 };
+// TEST-MOD-APPROVED #4490: 08-O5 fix 6 — the Team page waits for the role
+// (isLoading / isAuthReady, as the real hook returns them) before it shows.
+const mockRole = { role: "brand_owner" as string, rank: 60, isLoading: false, isAuthReady: true };
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({ useCurrentBrandRole: () => mockRole }));
 // TEST-MOD-APPROVED #4490: 08-O5 fix 5 adds `pending` (the members query still loading).
 const mockMembers: { rows: unknown[]; pending?: boolean } = { rows: [] };

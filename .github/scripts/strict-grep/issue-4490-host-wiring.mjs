@@ -539,7 +539,14 @@ const PINS = [
   {
     id: "till-step-up-inside-its-sheet",
     file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
-    contains: ['import { TillStepUpHost, useStepUpSheetSnap } from "./TillStepUp";'],
+    contains: [
+      'import { TillStepUpHost, useStepUpSheet } from "./TillStepUp";',
+      // 08-O5 fix 6: while the pad shows, swipe, back and Close cancel it like
+      // Cancel (the waiting refund never locks the sheet).
+      '<Sheet visible={payment !== null} onClose={onClose} {...stepUpSheet.sheet} testID="till-refund">',
+      '<Sheet visible={row !== null} onClose={onClose} {...stepUpSheet.sheet} testID="till-void">',
+      '<Sheet visible={row !== null} onClose={onClose} {...stepUpSheet.sheet} testID="till-line-refund">',
+    ],
     matches: [
       /testID="till-void">[\s\S]{0,400}<TillStepUpHost venueId=\{stepUp\.venueId\} approvers=\{stepUp\.approvers\}>\s*<SheetScrollLayout/,
       /testID="till-line-refund">[\s\S]{0,400}<TillStepUpHost venueId=\{stepUp\.venueId\} approvers=\{stepUp\.approvers\}>\s*<SheetScrollLayout/,
