@@ -25,7 +25,7 @@
       "noMatch": "Không có quốc gia ngân hàng nào khớp với '{{query}}'.",
       "cantPayOut": "Mingla chưa thể chuyển tiền đến đó",
       "locked": "Khoản thanh toán đã được thiết lập cho ngân hàng tại {{country}}. Để dùng quốc gia khác, hãy ngắt kết nối thanh toán trước.",
-      "forbidden": "Chỉ chủ thương hiệu hoặc quản trị viên mới đổi được quốc gia ngân hàng.",
+      "forbidden": "Chỉ chủ thương hiệu mới đổi được cài đặt nhận tiền.",
       "conflict": "Mục này đã được đổi trên thiết bị khác thành {{country}}.",
       "keep": "Giữ",
       "change": "Đổi",
@@ -278,11 +278,9 @@
       "payments": "Thông tin thanh toán"
     },
     "a1": {
-      "headlineNamed": "Chào {{first}}. Hãy chuẩn bị tài khoản để nhận đặt chỗ.",
-      "headline": "Chào bạn. Hãy chuẩn bị tài khoản để nhận đặt chỗ.",
-      "body": "Mất khoảng 3 phút: tên thương hiệu, quốc gia ngân hàng, rồi đến thanh toán. Tôi sẽ hướng dẫn bạn.",
       "cardTitle": "Thiết lập thương hiệu",
       "minutes": "Khoảng 3 phút",
+      "eyebrowStep": "Bước {{current}}/{{total}}",
       "setUp": "Thiết lập thương hiệu của tôi",
       "withAri": "Làm cùng Ari",
       "withAriMessage": "Giúp tôi thiết lập thương hiệu",

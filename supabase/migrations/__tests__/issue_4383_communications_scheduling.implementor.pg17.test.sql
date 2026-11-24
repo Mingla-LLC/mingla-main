@@ -58,6 +58,9 @@ insert into t4383_people (who, id, email) values
   ('exp2',   '43830000-0000-4000-a000-000000000007', 'eli.c4383@test.local');
 insert into auth.users (id, email) select id, email from t4383_people;
 insert into public.admin_users (email, role, status, accepted_at) values ('ada.c4383@test.local', 'owner', 'active', now());
+-- #4579: an active Mingla admin is added to every brand as a brand admin with
+-- full parity, so Ada is the brand's third accepted member and a host in every
+-- host audience below (3 hosts; 6 people in "both", since Ada has no profile).
 insert into public.admin_team_members (email, role, status, accepted_at) values ('gus.c4383@test.local', 'growth', 'active', now());
 -- Explorer accounts: both hosts, the removed host and two explorers.
 insert into public.profiles (id, display_name)
@@ -130,8 +133,8 @@ begin
   v := public.issue_4383_push_save(v_id, 'Weekend in Lagos!', 'See what is on.', 'both', 'discover', 'home', null, 'Africa/Lagos', 2);
   perform pg_temp.chk('save', 'no time makes it a draft again', v->>'status' = 'draft', v::text);
   v := public.issue_4383_push_preview();
-  perform pg_temp.chk('save', 'preview counts: 2 hosts (removed one excluded), 5 explorers, 5 people',
-    (v->>'hosts')::int = 2 and (v->>'explorers')::int = 5 and (v->>'both')::int = 5, v::text);
+  perform pg_temp.chk('save', 'preview counts: 3 hosts (removed one excluded, Mingla admin included), 5 explorers, 6 people',
+    (v->>'hosts')::int = 3 and (v->>'explorers')::int = 5 and (v->>'both')::int = 6, v::text);
   reset role;
 end;
 $t$;
@@ -199,11 +202,11 @@ begin
   perform pg_temp.chk('T10', 'runner summary: one sent, one failed', (v->>'pushes_sent')::int = 1 and (v->>'pushes_failed')::int = 1, v::text);
 
   select * into p from public.admin_push_campaigns where id = '43830000-0000-4000-c000-000000000001';
-  perform pg_temp.chk('T10', 'due push is sent with a campaign and a count', p.status = 'sent' and p.campaign_id is not null and p.audience_count = 7 and p.fired_at is not null, row_to_json(p)::text);
+  perform pg_temp.chk('T10', 'due push is sent with a campaign and a count', p.status = 'sent' and p.campaign_id is not null and p.audience_count = 8 and p.fired_at is not null, row_to_json(p)::text);
   perform pg_temp.chk('T10', 'campaign kind admin_push, request key = push id',
     exists (select 1 from public.community_notification_campaigns c where c.id = p.campaign_id and c.kind = 'admin_push' and c.request_key = p.id and c.source_id = p.id), null);
   select count(*) into v_n from public.notification_outbox where payload->>'push_id' = p.id::text and category_key = 'business.mingla_update';
-  perform pg_temp.chk('T10', 'two host rows (the removed host is left out)', v_n = 2, v_n::text);
+  perform pg_temp.chk('T10', 'three host rows (the removed host is left out, the Mingla admin is in)', v_n = 3, v_n::text);
   select count(*) into v_n from public.notification_outbox where payload->>'push_id' = p.id::text and category_key = 'mingla_updates';
   perform pg_temp.chk('T10', 'five explorer rows', v_n = 5, v_n::text);
   select string_agg(distinct category_key || '=' || (payload->>'deep_link'), ',' order by category_key || '=' || (payload->>'deep_link')) into v_links
@@ -220,7 +223,7 @@ begin
     not exists (select 1 from public.notification_outbox o where o.payload->>'push_id' = p.id::text and o.status <> 'retry_wait'), null);
   select count(*) into v_paced from public.notification_outbox o
   where o.payload->>'push_id' = p.id::text and o.next_attempt_at = now();
-  perform pg_temp.chk('T10', 'the first 12 rows (all 7 here) are claimable now', v_paced = 7, v_paced::text);
+  perform pg_temp.chk('T10', 'the first 12 rows (all 8 here) are claimable now', v_paced = 8, v_paced::text);
 
   select * into p from public.admin_push_campaigns where id = '43830000-0000-4000-c000-000000000002';
   perform pg_temp.chk('T11', 'a push due in five minutes is untouched', p.status = 'scheduled' and p.campaign_id is null, p.status);
@@ -241,7 +244,7 @@ begin
   v2 := public.issue_4383_fire_push_internal('43830000-0000-4000-c000-000000000001');
   perform pg_temp.chk('T12', 'the fan-out is idempotent', (v2->>'duplicate')::boolean, v2::text);
   select count(*) into v_n from public.notification_outbox where payload->>'push_id' = '43830000-0000-4000-c000-000000000001';
-  perform pg_temp.chk('T12', 'still exactly 7 rows and one campaign', v_n = 7
+  perform pg_temp.chk('T12', 'still exactly 8 rows and one campaign', v_n = 8
     and (select count(*) from public.community_notification_campaigns where kind = 'admin_push' and request_key = '43830000-0000-4000-c000-000000000001') = 1, v_n::text);
 end;
 $t$;
@@ -259,9 +262,9 @@ begin
   select string_agg(m || ':' || c, ',' order by m) into v_minutes from (
     select extract(epoch from (next_attempt_at - now()))::int / 60 as m, count(*) as c
     from public.notification_outbox where payload->>'push_id' = '43830000-0000-4000-c000-000000000004' group by 1) x;
-  -- The first push's 7 rows still wait in minute 0, so this push fills that
+  -- The first push's 8 rows still wait in minute 0, so this push fills that
   -- minute to 12 and goes on: one shared pace (tester P2-1).
-  perform pg_temp.chk('T10', '30 rows paced 12 a minute after the 7 already queued', v_minutes = '0:5,1:12,2:12,3:1', v_minutes);
+  perform pg_temp.chk('T10', '30 rows paced 12 a minute after the 8 already queued', v_minutes = '0:4,1:12,2:12,3:2', v_minutes);
 end;
 $t$;
 
@@ -302,7 +305,7 @@ begin
   v_e := pg_temp.err(format($$select public.issue_4383_push_send_now(%L, 9)$$, v_id));
   perform pg_temp.chk('send', 'send now with a stale revision is PT409', v_e like 'PT409 stale_revision%', v_e);
   v := public.issue_4383_push_send_now(v_id, 1);
-  perform pg_temp.chk('send', 'send now fires: sent, 32 rows (2 hosts + 30 explorers)', v->>'status' = 'sent' and (v->>'audience_count')::int = 2 + 30, v::text);
+  perform pg_temp.chk('send', 'send now fires: sent, 33 rows (3 hosts + 30 explorers)', v->>'status' = 'sent' and (v->>'audience_count')::int = 3 + 30, v::text);
   v := public.issue_4383_push_list();
   perform pg_temp.chk('list', 'the list carries each sent push''s delivery state',
     exists (select 1 from jsonb_array_elements(v) e where e->>'id' = v_id::text and e->'delivery'->>'state' = 'queued'), left(v::text, 400));
@@ -321,7 +324,7 @@ begin
   perform pg_temp.act('admin');
   set local role authenticated;
   v := public.community_get_announcement_notification_status(v_campaign);
-  perform pg_temp.chk('T23', 'a push campaign reads by id', v->>'campaign_id' = v_campaign::text and (v->'outbox'->>'pending')::int = 7, v::text);
+  perform pg_temp.chk('T23', 'a push campaign reads by id', v->>'campaign_id' = v_campaign::text and (v->'outbox'->>'pending')::int = 8, v::text);
   v := public.community_get_announcement_notification_status(null);
   perform pg_temp.chk('T23', 'no id is still the latest announcement', v->>'source_id' = '43830000-0000-4000-e000-000000000099', v::text);
   reset role;
@@ -358,7 +361,7 @@ begin
   perform pg_temp.chk('T15', 'published, scheduled_at cleared',
     (select status = 'published' and published_at is not null and scheduled_at is null from public.community_announcements where id = v_id), null);
   perform pg_temp.chk('T15', 'the Publish-now audience: one business.community_announcement row per accepted host',
-    (select count(*) from public.notification_outbox where category_key = 'business.community_announcement' and payload->>'announcement_id' = v_id::text) = 2, null);
+    (select count(*) from public.notification_outbox where category_key = 'business.community_announcement' and payload->>'announcement_id' = v_id::text) = 3, null);
   perform pg_temp.chk('T15', 'the campaign is credited to whoever scheduled it',
     (select actor_user_id from public.community_notification_campaigns where kind = 'announcement' and source_id = v_id) = pg_temp.uid('admin'), null);
   v := public.issue_4383_fire_due_communications();

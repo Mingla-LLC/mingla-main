@@ -4,11 +4,12 @@
  * Mounts the REAL AriChatScreen (react-test-renderer, RN preset, the #1890
  * harness config) under the first-run stage the (tabs) layout provides, and
  * reads the mounted tree:
- *   1. State A (no brand): the app-written greeting with the host's first
- *      name and all six chips; the generic hero is not drawn; the Home top bar
- *      is on Ari with no "+ Create".
- *   2. A chip is sent as the host's own words WITH the first-run context, and
- *      a kind ("I host events") is remembered for State B.
+ *   1. State A (no brand): the setup card is the ONLY content (#4572 item 16:
+ *      no headline, paragraph or pills); the generic hero is not drawn; the
+ *      Home top bar is on Ari with no "+ Create".
+ *   2. What the host types is sent as their own words WITH the first-run
+ *      context, and the opening words are remembered for State B (the pills
+ *      that used to feed this are gone).
  *   3. State B (brand, nothing made): the brand greeting, the remembered kind
  *      promoted to the primary chip, "+ Create" on the top bar, and a chip sent
  *      with the empty_brand context.
@@ -17,7 +18,7 @@
  * NO JSX (babel-preset-expo compiles .ts with isTSX false): React.createElement.
  *
  * Run: npx jest --config jest.issue1890.render.cjs --runInBand issue_4304
- * fails-on-revert: delete the `noMessages && firstRunCopy !== null` branch in
+ * fails-on-revert: delete the `noMessages && emptyBrandCopy !== null` branch in
  * AriChatScreen (or the `{ firstRun: hint }` argument) and 1-3 go red.
  */
 
@@ -40,6 +41,9 @@ jest.mock("../../../wrappers/useKeyboardHeight", () => ({
   useKeyboardHeight: () => 0,
 }));
 jest.mock("react-native-keyboard-controller", () => ({
+  // [TEST-MOD-APPROVED #4572] mock-surface widening only: the composer now
+  // sits in the library's KeyboardAvoidingView.
+  KeyboardAvoidingView: "KeyboardAvoidingView@library",
   KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
   KeyboardToolbar: "KeyboardToolbar@library",
   KeyboardProvider: ({ children }: { children?: React.ReactNode }) => children,
@@ -229,8 +233,12 @@ jest.mock("../../../components/ari/InputBar", () => {
   const RN = jest.requireActual("react-native");
   const R = jest.requireActual("react") as typeof React;
   return {
-    InputBar: (props: { placeholder?: string }) =>
-      R.createElement(RN.View, { testID: "ari-input-bar", accessibilityLabel: props.placeholder }),
+    InputBar: (props: { placeholder?: string; onSend?: (t: string) => void }) =>
+      R.createElement(RN.View, {
+        testID: "ari-input-bar",
+        accessibilityLabel: props.placeholder,
+        onSend: props.onSend,
+      }),
   };
 });
 
@@ -318,16 +326,23 @@ beforeEach(() => {
 });
 
 describe("#4304 First Home with Ari — Ari screen by stage", () => {
-  it("State A: greets by first name, shows all six chips, hides the generic hero, keeps the top bar", async () => {
+  // [TEST-MOD-APPROVED #4572] Replaces "State A: greets by first name, shows
+  // all six chips ..." (it asserted the headline, paragraph and six pills that
+  // item 16 removed). It now asserts the opposite for State A and keeps every
+  // top-bar assertion.
+  it("State A: the setup card is the only content (no chips, headline or paragraph), keeps the top bar", async () => {
     const tree = await mount("no_brand");
     const text = textOf(tree.root);
-    expect(text).toContain("Hi Tobi. Let's get your account ready to take bookings.");
-    expect(text).toContain("It takes about 3 minutes: your brand name, your bank country, then payments.");
-    // #4389 A1 — the setup card shows with no AI call.
-    expect(byTestId(tree.root, "ari-setup-card")).toBeDefined();
+    expect(text).not.toContain("Let's get your account ready to take bookings");
+    expect(text).not.toContain("It takes about 3 minutes: your brand name");
     for (const id of ["brand", "events", "experiences", "trips", "venue", "about"]) {
-      expect(byTestId(tree.root, `ari-first-run-chip-${id}`)).toBeDefined();
+      expect(byTestId(tree.root, `ari-first-run-chip-${id}`)).toBeUndefined();
     }
+    expect(byTestId(tree.root, "ari-first-run-chips")).toBeUndefined();
+    expect(byTestId(tree.root, "ari-first-run-greeting")).toBeUndefined();
+    // #4389 A1 — the setup card shows with no AI call, as the page's content.
+    expect(byTestId(tree.root, "ari-setup-card")).toBeDefined();
+    expect(byTestId(tree.root, "ari-first-run-setup-stage")).toBeDefined();
     expect(text).not.toContain("What should we tackle?");
     // #4389 AB — one Ari bar: brand chip, then Messages + bell (first run),
     // Chats and Settings. No brand TopBar is mounted on Ari any more.
@@ -344,18 +359,22 @@ describe("#4304 First Home with Ari — Ari screen by stage", () => {
     tree.unmount();
   });
 
-  it("State A: a chip is sent as the host's words with the no_brand context, and the kind is remembered", async () => {
+  // [TEST-MOD-APPROVED #4572] Replaces "State A: a chip is sent as the host's
+  // words ... and the kind is remembered". The pills are gone; the remembered
+  // "what I run" signal now comes from the composer's own text only.
+  it("State A: the host's typed words go to Ari with the no_brand context and are remembered", async () => {
     const tree = await mount("no_brand");
-    const press = pressOf(tree.root, "ari-first-run-chip-events");
+    const composer = byTestId(tree.root, "ari-input-bar");
+    const send = composer?.props.onSend as (t: string) => void;
     await TR.act(async () => {
-      press();
+      send("I run rooftop parties");
     });
-    expect(STATE.sendMessage).toHaveBeenCalledWith("I host events", [], {
-      firstRun: { stage: "no_brand", intent: "events" },
+    expect(STATE.sendMessage).toHaveBeenCalledWith("I run rooftop parties", [], {
+      firstRun: { stage: "no_brand", intent: null },
     });
     expect(useFirstRunStore.getState().intents["user-4304"]).toEqual({
-      intent: "events",
-      text: null,
+      intent: null,
+      text: "I run rooftop parties",
     });
     tree.unmount();
   });

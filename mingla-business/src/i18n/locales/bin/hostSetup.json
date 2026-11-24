@@ -25,7 +25,7 @@
       "noMatch": "Ẹvbo banki rhọkpa i khian ye '{{query}}'.",
       "cantPayOut": "Mingla ma ghi sẹtin ha igho ye ehe na",
       "locked": "A ru igho ne a gha ha ladian ne banki vbe {{country}}. Ne u ya ẹvbo ọvbehe, fi ẹkpẹ igho ne a gha ha fiẹ.",
-      "forbidden": "Ọnọ nọ ye brand ra ọnọ nọ kao ẹre ọkpa ọ sẹtin rhie ẹvbo banki wẹẹ.",
+      "forbidden": "Ọnọ nọ ye brand ọkpa ọ sẹtin rhie ẹvbo banki wẹẹ.",
       "conflict": "A rhie ẹre wẹẹ vbe ẹkpẹ ọvbehe ye {{country}}.",
       "keep": "Sẹ ẹre",
       "change": "Rhie wẹẹ",
@@ -278,11 +278,9 @@
       "payments": "Ẹmwẹ igho"
     },
     "a1": {
-      "headlineNamed": "Kóyo {{first}}. Gia ru akaunti ruẹ ladian ne ọ miẹ emwi.",
-      "headline": "Kóyo. Gia ru akaunti ruẹ ladian ne ọ miẹ emwi.",
-      "body": "Ọ khọ minit 3: ẹvbo brand ruẹ, ẹvbo banki ruẹ, vbe igho. I gha rhie ọbọ ye ruẹ.",
       "cardTitle": "Ru brand ruẹ ladian",
       "minutes": "Minit 3 ra",
+      "eyebrowStep": "Ẹkpẹ {{current}} vbe {{total}}",
       "setUp": "Ru brand mẹ ladian",
       "withAri": "Ru ẹre vbe Ari",
       "withAriMessage": "Rhie ọbọ ye mẹ ne I ru brand mẹ ladian",

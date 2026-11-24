@@ -25,7 +25,7 @@
       "noMatch": "Kò sí orílẹ̀-èdè báǹkì tó bá '{{query}}' mu.",
       "cantPayOut": "Mingla kò tíì lè sanwó sí ibẹ̀",
       "locked": "A ti ṣètò ìsanwó fún báǹkì kan ní {{country}}. Láti lo orílẹ̀-èdè mìíràn, kọ́kọ́ ge ìsopọ̀ ìsanwó.",
-      "forbidden": "Ẹni tó ni àmì-ìdámọ̀ tàbí alábòójútó nìkan ló lè yí orílẹ̀-èdè báǹkì padà.",
+      "forbidden": "Ẹni tó ni àmì-ìdámọ̀ nìkan ló lè yí ètò ìsanwó padà.",
       "conflict": "Wọ́n yí èyí padà sí {{country}} lórí ẹ̀rọ mìíràn.",
       "keep": "Fi sílẹ̀",
       "change": "Yí padà",
@@ -278,11 +278,9 @@
       "payments": "Àlàyé ìsanwó"
     },
     "a1": {
-      "headlineNamed": "Ẹ n lẹ́ {{first}}. Jẹ́ ká ṣètò àkọọ́lẹ̀ rẹ láti gba ìforúkọsílẹ̀.",
-      "headline": "Ẹ n lẹ́. Jẹ́ ká ṣètò àkọọ́lẹ̀ rẹ láti gba ìforúkọsílẹ̀.",
-      "body": "Ó máa gba bí ìṣẹ́jú 3: orúkọ àmì-ìdámọ̀ rẹ, orílẹ̀-èdè báǹkì rẹ, lẹ́yìn náà ìsanwó. Màá tọ́ ọ sọ́nà.",
       "cardTitle": "Ṣètò àmì-ìdámọ̀ rẹ",
       "minutes": "Bí ìṣẹ́jú 3",
+      "eyebrowStep": "Ìgbésẹ̀ {{current}} nínú {{total}}",
       "setUp": "Ṣètò àmì-ìdámọ̀ mi",
       "withAri": "Ṣe é pẹ̀lú Ari",
       "withAriMessage": "Ràn mí lọ́wọ́ láti ṣètò àmì-ìdámọ̀ mi",

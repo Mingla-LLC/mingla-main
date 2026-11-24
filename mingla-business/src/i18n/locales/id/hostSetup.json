@@ -25,7 +25,7 @@
       "noMatch": "Tidak ada negara bank yang cocok dengan '{{query}}'.",
       "cantPayOut": "Mingla belum bisa mencairkan dana ke sana",
       "locked": "Pencairan sudah diatur untuk bank di {{country}}. Untuk memakai negara lain, putuskan pembayaran dulu.",
-      "forbidden": "Hanya pemilik brand atau admin yang bisa mengubah negara bank.",
+      "forbidden": "Hanya pemilik brand yang bisa mengubah pengaturan pembayaran.",
       "conflict": "Ini diubah di perangkat lain menjadi {{country}}.",
       "keep": "Pertahankan",
       "change": "Ubah",
@@ -278,11 +278,9 @@
       "payments": "Detail pembayaran"
     },
     "a1": {
-      "headlineNamed": "Hai {{first}}. Ayo siapkan akunmu untuk menerima pemesanan.",
-      "headline": "Hai. Ayo siapkan akunmu untuk menerima pemesanan.",
-      "body": "Butuh sekitar 3 menit: nama brand, negara bank, lalu pembayaran. Aku akan memandu.",
       "cardTitle": "Atur brand kamu",
       "minutes": "Sekitar 3 menit",
+      "eyebrowStep": "Langkah {{current}} dari {{total}}",
       "setUp": "Atur brand saya",
       "withAri": "Lakukan dengan Ari",
       "withAriMessage": "Bantu saya mengatur brand",

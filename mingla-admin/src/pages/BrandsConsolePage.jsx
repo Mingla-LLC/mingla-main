@@ -19,7 +19,7 @@ import { EntityEditModal } from "../components/entity/EntityEditModal";
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { listBrands, getBrandDetail, listAccounts } from "../services/identityReadService";
+import { listBrands, getBrandDetail, listAccounts, minglaRemovalLabel } from "../services/identityReadService";
 import {
   updateBrand,
   reassignBrandOwner,
@@ -280,6 +280,7 @@ function buildBrandSections(detail, callbacks) {
   const invites = detail.invites || [];
   const partnerLinks = detail.partnerLinks || [];
   const tickets = detail.tickets || [];
+  const minglaTeam = detail.minglaTeam || null;
 
   const sections = [
     {
@@ -361,6 +362,33 @@ function buildBrandSections(detail, callbacks) {
     sections.push({ label: "Owner", fields: [noneField()] });
   }
 
+  // #4579: Mingla Team (read-only): on, or removed by the brand (when, by whom).
+  if (minglaTeam) {
+    sections.push({
+      label: "Mingla Team",
+      fields: [
+        field(
+          "Status",
+          minglaTeam,
+          (mt) =>
+            mt.status === "removed" ? (
+              <span className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="warning">Removed by the brand</Badge>
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  {formatDate(mt.removedAt)}
+                  {mt.removedByName || mt.removedBy ? ` · by ${mt.removedByName || mt.removedBy}` : ""}
+                </span>
+              </span>
+            ) : mt.status === "active" ? (
+              <Badge variant="success">On ({mt.activeCount} Mingla admins)</Badge>
+            ) : (
+              <span className="text-[var(--color-text-muted)]">Not on this brand</span>
+            ),
+        ),
+      ],
+    });
+  }
+
   // Team
   sections.push({
     label: `Team (${team.length})`,
@@ -376,6 +404,11 @@ function buildBrandSections(detail, callbacks) {
                   <span className="text-xs text-[var(--color-text-tertiary)]">joined {formatDate(mem.accepted_at)}</span>
                 )}
                 {mem.removed_at && <Badge variant="error">removed</Badge>}
+                {/* #4579: hosts see these rows only as one "Mingla Team" entry. */}
+                {mem.granted_via === "mingla_admin" && <Badge variant="info">Auto (Mingla Team)</Badge>}
+                {mem.removed_at && mem.removal_reason && (
+                  <span className="text-xs text-[var(--color-text-tertiary)]">{minglaRemovalLabel(mem.removal_reason)}</span>
+                )}
                 {!mem.removed_at && onEditRole && (
                   <button
                     type="button"

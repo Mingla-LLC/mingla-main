@@ -209,7 +209,8 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
     "src/components/groupChat/GroupChatPanel.tsx",
     "src/components/support/SupportThread.native.tsx",
     "src/components/brand/BrandPaystackOnboardView.tsx",
-    "src/screens/ari/AriChatScreen.tsx",
+    // [TEST-MOD-APPROVED #4572] AriChatScreen left the derived cohort: its
+    // composer is flush on the keyboard (no Done-bar budget), pinned by rule (E).
     "app/(tabs)/marketing/campaigns/compose.tsx",
   ];
   const MOUNT = ["app/_layout.tsx", "src/components/ui/SheetMobile.tsx", "src/components/ui/Modal.tsx"];
@@ -223,27 +224,18 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
 
   const load = () => {
     const files = new Map();
-    for (const rel of new Set([...MOUNT, ...KEYED.map(([r]) => r), ...NESTED, ...DERIVED])) {
+    for (const rel of new Set([...MOUNT, ...KEYED.map(([r]) => r), ...NESTED, ...DERIVED, keyboard.ARI_COMPOSER_FLUSH.rel])) {
       files.set(rel, fs.readFileSync(path.join(BIZ, rel), "utf8"));
     }
     return files;
   };
-  // [TEST-MOD-APPROVED #1890] rule (E) was INVERTED. It used to require Ari's
-  // lift to keep ADDING the composer's measured height; that is the double count
-  // #1890 measured on glass (61.0pt of dead gap on an iPhone SE3, 71.8dp on a
-  // physical Samsung, against a 12pt contract). It now requires the lift to be
-  // EXACTLY the occluder budget and nothing else.
-  const MEASURED = [
-    {
-      rel: "src/screens/ari/AriChatScreen.tsx",
-      lift: /keyboardHeight\s*>\s*0\s*\?([^:]*)/,
-      terms: ["keyboardHeight", "DONE_BAR_OCCUPIED", "MIN_VISIBLE_CLEARANCE"],
-      banned: [
-        [/onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on a composer wrapper"],
-        [/setComposerHeight\s*\(/, "a setComposerHeight(…) call"],
-      ],
-    },
-  ];
+  // [TEST-MOD-APPROVED #4572] rule (E) was REPLACED. It required Ari's lift to
+  // be EXACTLY `keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE`
+  // (#1890; before that, the opposite). Item 16 put the composer flush on the
+  // keyboard inside a KeyboardAvoidingView, so the rule now pins that wrapper
+  // and bans the old lift, the Done-bar and clearance terms and the pill-
+  // measuring plumbing. The spec is the gate's own export, not a restatement.
+  const MEASURED = [keyboard.ARI_COMPOSER_FLUSH];
   const base = () => ({
     files: load(),
     mountHosts: MOUNT,
@@ -262,13 +254,13 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
   // silently stopped mutating the moment a surface's expression changed at all —
   // and a revert-proof that no longer reverts anything proves nothing. It now
   // replaces WHATEVER expression the attribute holds, and rewrites Ari's derived
-  // bar term (Ari has no KeyboardAvoidingView; its clearance lives in the lift).
+  // bar term. [TEST-MOD-APPROVED #4572] the Ari-specific rewrite of
+  // `keyboardHeight + DONE_BAR_OCCUPIED` was deleted with the lift itself.
   for (const rel of DERIVED) {
     const m = base();
     const reverted = m.files
       .get(rel)
-      .replace(/keyboardVerticalOffset=\{[^}]*\}/g, "keyboardVerticalOffset={42}")
-      .replace(/keyboardHeight \+ DONE_BAR_OCCUPIED/g, "keyboardHeight + 42");
+      .replace(/keyboardVerticalOffset=\{[^}]*\}/g, "keyboardVerticalOffset={42}");
     assert.notEqual(reverted, m.files.get(rel), `fixture did not revert ${rel}`);
     m.files.set(rel, reverted);
     const r = keyboard.run(m);
@@ -278,6 +270,24 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
       `${rel}: the failure must name the file it is about`,
     );
   }
+
+  // [TEST-MOD-APPROVED #4572] Ari's composer, rule (E): taking the wrapper out
+  // (back to a React-state lift) and putting the old lift back must each fail.
+  const ariRel = keyboard.ARI_COMPOSER_FLUSH.rel;
+  const wrapperGone = base();
+  wrapperGone.files.set(
+    ariRel,
+    wrapperGone.files.get(ariRel).replace(/<KeyboardAvoidingView\b[^>]*>/g, "<View>").replace(/<\/KeyboardAvoidingView>/g, "</View>"),
+  );
+  assert.notEqual(wrapperGone.files.get(ariRel), base().files.get(ariRel), "fixture did not remove the wrapper");
+  const r1 = keyboard.run(wrapperGone);
+  assert.equal(r1.code, 1, "removing Ari's KeyboardAvoidingView must fail rule (E)");
+  assert.ok(r1.failures.some((f) => f.includes(ariRel)));
+  const liftBack = base();
+  liftBack.files.set(ariRel, `${liftBack.files.get(ariRel)}\nconst lift = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;`);
+  const r2 = keyboard.run(liftBack);
+  assert.equal(r2.code, 1, "putting the old Done-bar lift back must fail rule (E)");
+  assert.ok(r2.failures.some((f) => f.includes("DONE_BAR_OCCUPIED")));
 });
 
 // ── T-6 ────────────────────────────────────────────────────────────────────
@@ -288,7 +298,6 @@ test("T-6 the keyboard gate goes RED when the ORCH-1170 toolbar is un-nested", (
     "src/components/groupChat/GroupChatPanel.tsx",
     "src/components/support/SupportThread.native.tsx",
     "src/components/brand/BrandPaystackOnboardView.tsx",
-    "src/screens/ari/AriChatScreen.tsx",
   ];
   const KEYED = [
     ["src/components/auth/BusinessWelcomeScreen.tsx", /keyboardPad\s*>\s*0\s*\?\s*keyboardPad\s*\+\s*42/],
@@ -298,25 +307,16 @@ test("T-6 the keyboard gate goes RED when the ORCH-1170 toolbar is un-nested", (
       /keyboardHeight\s*>\s*0\s*\?\s*keyboardHeight\s*\+\s*42/,
     ],
   ];
-  // [TEST-MOD-APPROVED #1890] rule (E) was INVERTED. It used to require Ari's
-  // lift to keep ADDING the composer's measured height; that is the double count
-  // #1890 measured on glass (61.0pt of dead gap on an iPhone SE3, 71.8dp on a
-  // physical Samsung, against a 12pt contract). It now requires the lift to be
-  // EXACTLY the occluder budget and nothing else.
-  const MEASURED = [
-    {
-      rel: "src/screens/ari/AriChatScreen.tsx",
-      lift: /keyboardHeight\s*>\s*0\s*\?([^:]*)/,
-      terms: ["keyboardHeight", "DONE_BAR_OCCUPIED", "MIN_VISIBLE_CLEARANCE"],
-      banned: [
-        [/onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on a composer wrapper"],
-        [/setComposerHeight\s*\(/, "a setComposerHeight(…) call"],
-      ],
-    },
-  ];
+  // [TEST-MOD-APPROVED #4572] rule (E) was REPLACED. It required Ari's lift to
+  // be EXACTLY `keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE`
+  // (#1890; before that, the opposite). Item 16 put the composer flush on the
+  // keyboard inside a KeyboardAvoidingView, so the rule now pins that wrapper
+  // and bans the old lift, the Done-bar and clearance terms and the pill-
+  // measuring plumbing. The spec is the gate's own export, not a restatement.
+  const MEASURED = [keyboard.ARI_COMPOSER_FLUSH];
   for (const rel of NESTED) {
     const files = new Map();
-    for (const r of new Set([...MOUNT, ...KEYED.map(([x]) => x), ...NESTED, ...DERIVED])) {
+    for (const r of new Set([...MOUNT, ...KEYED.map(([x]) => x), ...NESTED, ...DERIVED, keyboard.ARI_COMPOSER_FLUSH.rel])) {
       files.set(r, fs.readFileSync(path.join(BIZ, r), "utf8"));
     }
     // Move the toolbar OUT of the provider: rule (A) still passes, (C) must not.

@@ -25,7 +25,7 @@
       "noMatch": "Geen bankland komt overeen met '{{query}}'.",
       "cantPayOut": "Mingla kan daar nog niet uitbetalen",
       "locked": "Uitbetalingen zijn al ingesteld voor een bank in {{country}}. Ontkoppel eerst betalingen om een ander land te gebruiken.",
-      "forbidden": "Alleen de merkeigenaar of een admin kan het bankland wijzigen.",
+      "forbidden": "Alleen de merkeigenaar kan de uitbetalingsinstellingen wijzigen.",
       "conflict": "Dit is op een ander apparaat gewijzigd naar {{country}}.",
       "keep": "Houden",
       "change": "Wijzigen",
@@ -278,11 +278,9 @@
       "payments": "Betaalgegevens"
     },
     "a1": {
-      "headlineNamed": "Hoi {{first}}. Laten we je account klaarmaken voor boekingen.",
-      "headline": "Hoi. Laten we je account klaarmaken voor boekingen.",
-      "body": "Het duurt ongeveer 3 minuten: je merknaam, je bankland en dan betalingen. Ik help je.",
       "cardTitle": "Stel je merk in",
       "minutes": "Ongeveer 3 minuten",
+      "eyebrowStep": "Stap {{current}} van {{total}}",
       "setUp": "Mijn merk instellen",
       "withAri": "Doe het met Ari",
       "withAriMessage": "Help me mijn merk in te stellen",

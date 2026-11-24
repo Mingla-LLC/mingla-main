@@ -30,6 +30,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { BrandGroupBubbleGestures } from "./BrandGroupBubbleGestures";
 import { BrandGroupPersonAvatar } from "./BrandGroupTile";
+import { BRAND_GROUP_MINGLA_TEAM_NAME, BrandGroupMinglaMark, WithBrandGroupMinglaBadge } from "./BrandGroupMinglaMark";
 import { linkifyMessageText } from "../../utils/messageLinks";
 import { useBusinessMediaTranslation } from "../../i18n";
 
@@ -103,6 +104,46 @@ export function BrandGroupMessageText({
   );
 }
 
+/**
+ * #4579 — a Mingla admin added to the brand: the avatar carries the Mingla
+ * badge (or is the mark itself for the "Mingla Team" fallback name), and the
+ * sender line reads "{name} [mark] · Admin". Exported for tests.
+ */
+export function brandGroupSenderParts(message: BrandGroupMessage, senderLabel: string): {
+  mingla: boolean;
+  name: string;
+  rest: string;
+  accessibilityLabel: string;
+} {
+  const mingla = message.sender_is_mingla_team === true;
+  const name = message.sender_display_name;
+  const rest = senderLabel.startsWith(name) ? senderLabel.slice(name.length) : "";
+  const role = rest.replace(/^\s*·\s*/, "");
+  return {
+    mingla,
+    name: mingla ? name : senderLabel,
+    rest: mingla ? rest : "",
+    accessibilityLabel: mingla ? [name, "from Mingla", role].filter((part) => part.length > 0).join(", ") : senderLabel,
+  };
+}
+
+/**
+ * #4579 retest P3-3 — the sender line under a bubble: "{name} · {role}". A
+ * Mingla admin added automatically is not in the roster the screen maps roles
+ * from, so with no server role and no roster role their line fell back to the
+ * bare name; per the design it reads "{name} [mark] · Admin", the role every
+ * auto-added Mingla admin holds (brand_admin, `memberRoleLabel` "Admin").
+ */
+export const BRAND_GROUP_MINGLA_TEAM_ROLE_LABEL = "Admin";
+export function brandGroupSenderLabel(message: BrandGroupMessage, rosterRoleLabel: string | null): string {
+  const supportIdentity = message.sender_role === "Mingla Support";
+  const role =
+    message.sender_role ??
+    rosterRoleLabel ??
+    (message.sender_is_mingla_team === true ? BRAND_GROUP_MINGLA_TEAM_ROLE_LABEL : null);
+  return `${message.sender_display_name}${role ? ` · ${supportIdentity ? "Mingla Support" : role}` : ""}`;
+}
+
 export function BrandGroupMessageRow({
   message,
   mine,
@@ -144,6 +185,7 @@ export function BrandGroupMessageRow({
   const web = Platform.OS === "web";
   const corners = brandGroupBubbleCorners(position, mine);
   const endsCluster = position === "solo" || position === "last";
+  const sender = brandGroupSenderParts(message, senderLabel);
 
   const openFromContextMenu = (event: GestureResponderEvent): void => {
     (event as unknown as { preventDefault?: () => void }).preventDefault?.();
@@ -183,11 +225,29 @@ export function BrandGroupMessageRow({
     <View style={[styles.row, mine ? styles.rowMine : styles.rowOther, endsCluster ? styles.rowClusterEnd : styles.rowClusterJoined]}>
       {!mine ? (
         <View style={styles.avatarSlot}>
-          {showAvatar ? <BrandGroupPersonAvatar name={message.sender_display_name} seed={message.sender_id ?? message.sender_display_name} size={AVATAR} /> : null}
+          {showAvatar ? (
+            sender.mingla ? (
+              message.sender_display_name === BRAND_GROUP_MINGLA_TEAM_NAME
+                ? <BrandGroupMinglaMark size={AVATAR} />
+                : (
+                  <WithBrandGroupMinglaBadge avatarSize={AVATAR}>
+                    <BrandGroupPersonAvatar name={message.sender_display_name} seed={message.sender_id ?? message.sender_display_name} size={AVATAR} />
+                  </WithBrandGroupMinglaBadge>
+                )
+            ) : <BrandGroupPersonAvatar name={message.sender_display_name} seed={message.sender_id ?? message.sender_display_name} size={AVATAR} />
+          ) : null}
         </View>
       ) : null}
       <View style={[styles.column, mine ? styles.columnMine : styles.columnOther]}>
-        {showSender ? <Text style={styles.sender} numberOfLines={1}>{senderLabel}</Text> : null}
+        {showSender ? (
+          sender.mingla ? (
+            <View style={styles.senderRow} accessible accessibilityLabel={sender.accessibilityLabel} testID={`brand-group-sender-mingla-${message.id}`}>
+              <Text style={styles.senderInRow} numberOfLines={1}>{sender.name}</Text>
+              <BrandGroupMinglaMark size={14} testID="brand-group-sender-mark" />
+              {sender.rest.length > 0 ? <Text style={styles.senderInRow} numberOfLines={1}>{sender.rest}</Text> : null}
+            </View>
+          ) : <Text style={styles.sender} numberOfLines={1}>{senderLabel}</Text>
+        ) : null}
         <View style={[styles.bubbleLine, mine && styles.bubbleLineMine]}>
           <BrandGroupBubbleGestures onReply={onReply} onDoubleTap={onHeart} enabled={!web}>
             {bubble}
@@ -256,6 +316,8 @@ const styles = StyleSheet.create({
   columnMine: { alignItems: "flex-end" },
   columnOther: { alignItems: "flex-start" },
   sender: { color: brandGroupChat.senderName, fontSize: 12, fontWeight: "700", marginLeft: 12, marginBottom: 3 },
+  senderRow: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: 12, marginBottom: 3, maxWidth: "100%" },
+  senderInRow: { color: brandGroupChat.senderName, fontSize: 12, fontWeight: "700", flexShrink: 1 },
   // #4304 — the line may never be wider than its column, and the bubble is the
   // part that gives way: React Native row items do not shrink by default, so a
   // long message otherwise grows past the 78% column and is cut off.

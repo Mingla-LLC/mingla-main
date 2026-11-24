@@ -740,6 +740,9 @@ export function phase3dContractDigest(manifest) {
 // #4580 release sync timeouts: registered migrations 20281202004580 and 20281202014580 in the #1857, #1931 and #2117 inventories after 20281201003969 and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 tester adversarial suite: registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
+// #4579 Mingla admin brand access: registered 20281202024579 after 20281201003969 in the #1857, #1931 and #2117 inventories and its implementor and tester adversarial pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 merge of main after #4571, #4572 and #3969 step 2: re-applied only the #4579 rows and skips onto main's manifest; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 merge of origin/main 886723868d: kept both sides\' rows and skips; MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 renumber: #4490 migrations now 20281203004490..20281203754490 (same order, after main); MANIFEST.json phase3eContractSha256 re-sealed.
@@ -747,7 +750,9 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 retest P1/P3: the two fix 4 tester adversarial suites registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
 // issue #4490 merge of origin/main 68a54f2f30 (#4580, #4592): kept both sides' rows (filename order; main's two #4580 migrations before the #4490 block); re-sealed.
 // issue #4490 08-O5 fix 4: migration 20281203764490 (one refund rule: the sold-out refund, the money-returning swap and canRefund ask issue_4490_can_manage_money; late payments name who took them) + the fix 4 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "02780c2c2f6a8af43540a32f069ecf455d6e143f3ab413f3f8a4b55dc12bdafe";
+// #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
+// issue #4490 merge of origin/main d3527e3b93 (#4579): kept both sides' rows (main's 20281202024579 and its two #4579 pg17 suites before the #4490 block, filename order; the #4579 exact-filename skips in the #1931 baseline and #2117 phase-1 lanes); re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c5ca02fc01070816865061e0bd559d0c153f73faa712226c7cf86cecfd5f2fd6";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -20,6 +20,13 @@
 -- Drop issue_3720_support_operator_required from _ready -> T-8a. Drop the replay guard -> T-8g.
 
 BEGIN;
+-- #4579: this fixture predates automatic Mingla admin brand access (an active Mingla
+-- admin now joins every brand as Brand admin; proven by
+-- issue_4579_mingla_admin_brand_access.implementor.pg17.test.sql). Keep the fixture's
+-- brands free of auto-added admins (also any a previous suite left behind) so the
+-- checks below keep their meaning. Rolled back with the transaction.
+ALTER TABLE public.brands DISABLE TRIGGER issue_4579_brand_auto_admins;
+ALTER TABLE public.admin_users DISABLE TRIGGER issue_4579_admin_status_sync;
 
 CREATE OR REPLACE FUNCTION pg_temp.p_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $a$
