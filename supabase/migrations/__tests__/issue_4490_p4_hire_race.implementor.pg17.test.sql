@@ -3,7 +3,7 @@
 -- no day-limit pool, so nothing but the space-claim exclusion constraint stands between them. Exactly one
 -- wins; the other gets PT409 offer_space_taken. COMMITS its fixtures (suite-owned database).
 --
--- MINGLA-INVARIANT: I-4490-NO-DOUBLE-HIRE | issue #4490 | concurrent approvals of overlapping spaces cannot both hold the space: the exclusion constraint on venue_space_claims decides, never a read-then-write check.
+-- MINGLA-INVARIANT: I-4490-NO-DOUBLE-HIRE-RACE | issue #4490 | concurrent approvals of overlapping spaces cannot both hold the space: the exclusion constraint on venue_space_claims decides, never a read-then-write check.
 --
 -- FAILS-ON-REVERT (seen): drop venue_space_claims_no_overlap -> R-2a (the second approval no longer waits; both win).
 \set ON_ERROR_STOP on

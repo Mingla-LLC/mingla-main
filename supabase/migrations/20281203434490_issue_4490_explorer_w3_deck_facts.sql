@@ -40,7 +40,7 @@
 --    worked out once per venue. Service-internal.
 -- 6. pg_deck_venue_facts(place ids): anon/authenticated batch read for the
 --    deck: one row per claimed place of a verified venue of a live,
---    non-internal brand (I-4174), at most 100 ids. One venue whose facts fail
+--    non-internal brand (#4174), at most 100 ids. One venue whose facts fail
 --    keeps its identity row (no chips) instead of failing the batch. No
 --    contact, owner or buyer data.
 -- Static SQL. Local stack only until Seth approves a production migration.

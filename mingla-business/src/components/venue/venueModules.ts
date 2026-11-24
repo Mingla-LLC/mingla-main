@@ -331,7 +331,7 @@ export function shouldLeaveBookingModule(input: {
 // ---------------------------------------------------------------------------
 // #4490 — feature-driven navigation.
 //
-// MINGLA-INVARIANT: I-4490-VENUE-FEATURES-GATE-SUITE
+// Invariant I-4490-VENUE-FEATURES-GATE-SUITE (declared in the derivation test below):
 // The venue workspace's modules are derived ONLY from `venue_features` (plus
 // whether the venue has spaces). `venue_category` never appears in this file:
 // a venue type is a label and a starting preset, it does not decide tabs.

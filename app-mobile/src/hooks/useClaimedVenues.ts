@@ -15,13 +15,13 @@ import { supabase } from "../services/supabase";
  *
  * THE SIGNAL. `pg_deck_venue_facts` (SECURITY DEFINER, granted to anon and
  * authenticated, at most 100 ids) answers one row per claimed place of a
- * VERIFIED venue of a live, non-internal brand (I-4174), carrying the card
+ * VERIFIED venue of a live, non-internal brand (I-4174-EXPLORER-EXCLUDES-INTERNAL-BRANDS), carrying the card
  * facts from the single server owner `issue_4490_venue_card_facts`: the slugs
  * and names the `/b/{brandSlug}/v/{venueSlug}` route needs, the switched-on
  * features, whether anything is bookable, the live "from" price per feature
  * and whether something is on today. It replaced the `venue_public_view` read
  * (rule 8: replaced, not duplicated). A venue of an internal brand stops
- * showing as claimed on the deck (intended, I-4174).
+ * showing as claimed on the deck (intended, #4174).
  *
  * NOT N+1. The deck's place ids are read in fixed chunks of `CHUNK` with one
  * RPC per chunk, keyed by the chunk's ids. The chunks only change when the

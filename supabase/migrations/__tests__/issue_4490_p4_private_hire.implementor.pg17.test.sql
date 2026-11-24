@@ -1,8 +1,8 @@
 -- #4490 P4-1 (private hire, requests, holds, space claims, calendar; 20281203154490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
--- MINGLA-INVARIANT: I-4490-NO-DOUBLE-HIRE | issue #4490 | venue_space_claims refuses overlapping active claims on one space (exclusion constraint over the claim range incl. setup and cleanup); a combination claims every part, so a combination blocks its parts and a part blocks the combination.
+-- MINGLA-INVARIANT: I-4490-NO-DOUBLE-HIRE | issue #4490 | venue_space_claims refuses overlapping live claims on one space (exclusion constraint over the claim range incl. setup and cleanup); a combination claims every part, so a combination blocks its parts and a part blocks the combination.
 -- MINGLA-INVARIANT: I-4490-REQUEST-HOLDS-NOTHING | issue #4490 | a hire request (request_pending) has a timer-only hold: no hold slices, no space claims, no capacity; only approval takes the space and the day's capacity.
--- MINGLA-INVARIANT: I-4490-HIRE-CUT | issue #4490 | an active private hire lowers that day's entry / package limit by the hired spaces' capacity (the whole venue hired closes entry); approval is refused when entry already sold more than the cut limit.
+-- MINGLA-INVARIANT: I-4490-HIRE-CUT | issue #4490 | an approved private hire lowers that day's entry / package limit by the hired spaces' capacity (the whole venue hired closes entry); approval is refused when entry already sold more than the cut limit.
 --
 -- H-1 authoring: private hire built; spaces + combinations; price rows bounded by capacity; sessions; terms; request mode by default; publish.
 -- H-2 D P4-3 numbers: The Lounge Side x120, N7,000,000 + VAT N525,000 = N7,525,000; deposit 50% = N3,762,500.

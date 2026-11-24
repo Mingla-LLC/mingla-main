@@ -1,6 +1,9 @@
 -- #4490 spec 07 I: executable PostgreSQL 17 proof for venue guest lists.
 -- The suite owns its fixture and rolls every row back.
 --
+-- MINGLA-INVARIANT: I-4490-GUEST-LIST-BOUNDARY | issue #4490 | list rows are private RPC-only data; promoter tokens scope every signed-out read and write to one promoter and one venue.
+-- MINGLA-INVARIANT: I-4490-GUEST-LIST-PRICE | issue #4490 | free arrivals consume ordinary Entry capacity but never the kept-for-walk-ins reserve; paid arrivals are ordinary Entry gate sales.
+--
 -- FAILS-ON-REVERT: without 20281203394490 the fixture helper/first feature
 -- assertion fails because guest_list and its private RPCs do not exist.
 \set ON_ERROR_STOP on
@@ -115,7 +118,7 @@ DECLARE
   v_version bigint;
 BEGIN
   PERFORM public.t4490i_ok('guest_list' = ANY(public.issue_4490_built_features()),
-    'I-DB1 guest_list is a shipped feature');
+    'GL-DB1 guest_list is a shipped feature');
   PERFORM public.issue_4490_set_venue_feature(
     '4490a100-0000-4000-9000-0000000000a1','entry',true,NULL,NULL,NULL,'i-entry-on');
   PERFORM public.issue_4490_set_venue_feature(
@@ -169,7 +172,7 @@ BEGIN
       'plusOnesMax',3,'closesMinutesBefore',0),NULL,'i-terms-free');
   PERFORM public.t4490i_ok((v#>>'{terms,freeUntil}')='00:00'
       AND public.t4490i_cutoff('00:00') > (v#>>'{terms,opensAt}')::timestamptz,
-    'I-DB2 00:00 is after a 23:59 opening on the same service day');
+    'GL-DB2 00:00 is after a 23:59 opening on the same service day');
   v := public.issue_4490_manage_guest_list('add_entry','4490a100-0000-4000-9000-0000000000a1',
     jsonb_build_object('localDate',v_date,'guestName','Ada List','plusOnes',2),NULL,'i-add-ada');
   INSERT INTO t4490i_ids VALUES ('ada',(v#>>'{entry,id}')::uuid);
@@ -179,12 +182,12 @@ SELECT public.t4490i_expect(
   format($q$SELECT public.issue_4490_manage_guest_list('add_entry','4490a100-0000-4000-9000-0000000000a1',
     jsonb_build_object('localDate',public.t4490i_date(),
       'guestName','  ADA LIST  ','plusOnes',0),NULL,'i-add-duplicate')$q$),
-  'PT409','already_on_list','I-DB3 active names are unique after trim and case-fold');
+  'PT409','already_on_list','GL-DB3 active names are unique after trim and case-fold');
 SELECT public.t4490i_expect(
   format($q$SELECT public.issue_4490_manage_guest_list('add_entry','4490a100-0000-4000-9000-0000000000a1',
     jsonb_build_object('localDate',public.t4490i_date(),
       'guestName','Too Many','plusOnes',4),NULL,'i-add-too-many')$q$),
-  '22023','guest_list_invalid_payload','I-DB4 plus-ones cannot exceed the venue terms');
+  '22023','guest_list_invalid_payload','GL-DB4 plus-ones cannot exceed the venue terms');
 SELECT public.t4490i_reset();
 
 -- -------------------------------------------------------------------------
@@ -203,7 +206,7 @@ BEGIN
     public.t4490i_date());
   PERFORM public.t4490i_ok(v->>'result'='admitted' AND (v->>'admitted')::int=2
       AND v_usage.used_online=2 AND v_usage.used_gate=0 AND v_usage.kept_left=3,
-    'I-DB5 free arrivals use online Entry capacity and leave kept walk-ins intact');
+    'GL-DB5 free arrivals use online Entry capacity and leave kept walk-ins intact');
   v_undo := public.issue_4490_check_in_undo('4490a100-0000-4000-9000-0000000000a1',
     (v->>'logId')::uuid,'4490a100-0000-4000-8000-000000000001');
   SELECT * INTO v_usage FROM public.issue_4490_pool_day_usage(public.t4490i_id('pool'),
@@ -211,7 +214,7 @@ BEGIN
   PERFORM public.t4490i_ok(v_undo->>'result'='undone'
       AND (SELECT arrived=0 FROM public.venue_guest_list_entries WHERE id=public.t4490i_id('ada'))
       AND v_usage.used_online=0,
-    'I-DB6 a free list admission has the ordinary ten-minute Undo');
+    'GL-DB6 a free list admission has the ordinary ten-minute Undo');
 END
 $free$;
 SELECT public.t4490i_reset();
@@ -234,7 +237,7 @@ BEGIN
     public.t4490i_id('ada'),1,'4490a100-0000-4000-8000-000000000001');
   PERFORM public.t4490i_ok(v->>'result'='sell' AND (v->>'priceOptionId')::uuid=public.t4490i_id('option')
       AND (v->>'count')::int=1,
-    'I-DB7 the reduced window returns the configured live Entry price and count');
+    'GL-DB7 the reduced window returns the configured live Entry price and count');
   v_sale := public.issue_4490_guest_list_gate_sale('4490a100-0000-4000-9000-0000000000a1',
     public.t4490i_id('ada'),1,'cash','{"name":"Ada List"}'::jsonb,'i-reduced-cash',
     '4490a100-0000-4000-8000-000000000001');
@@ -245,7 +248,7 @@ BEGIN
       AND v_again->>'replayed'='true'
       AND (SELECT arrived=1 FROM public.venue_guest_list_entries WHERE id=public.t4490i_id('ada'))
       AND (SELECT count(*)=1 FROM public.venue_guest_list_sales WHERE entry_id=public.t4490i_id('ada') AND applied_at IS NOT NULL),
-    'I-DB8 a reduced Entry sale marks the list arrival exactly once across replay');
+    'GL-DB8 a reduced Entry sale marks the list arrival exactly once across replay');
 END
 $reduced$;
 SELECT public.t4490i_reset();
@@ -262,7 +265,7 @@ BEGIN
   v := public.issue_4490_admit_guest_list('4490a100-0000-4000-9000-0000000000a1',
     public.t4490i_id('ada'),1,'4490a100-0000-4000-8000-000000000001');
   PERFORM public.t4490i_ok(v->>'result'='list_closed_for_price',
-    'I-DB9 after both cutoffs the door falls back to normal Entry sale');
+    'GL-DB9 after both cutoffs the door falls back to normal Entry sale');
 END
 $closed_price$;
 SELECT public.t4490i_reset();
@@ -278,7 +281,7 @@ SELECT public.t4490i_expect(format($q$SELECT public.issue_4490_manage_guest_list
       'reducedPriceOptionId',%L::uuid,'plusOnesMax',3,'closesMinutesBefore',0),
     NULL,'i-terms-invalid-price')$q$,public.t4490i_id('option')),
   '22023','guest_list_reduced_price_invalid',
-  'I-DB9b a reduced window refuses an archived or non-live Entry price');
+  'GL-DB9b a reduced window refuses an archived or non-live Entry price');
 SELECT public.t4490i_reset();
 
 -- -------------------------------------------------------------------------
@@ -298,7 +301,7 @@ BEGIN
     '{"name":"Tunde","namesPerNight":2}'::jsonb,NULL,'i-promoter-tunde');
   PERFORM public.t4490i_ok(NOT (v_replay ? 'token')
       AND v_replay#>>'{promoter,id}'=public.t4490i_id('tunde')::text,
-    'I-DB10a a promoter link secret is returned by its creating call only');
+    'GL-DB10a a promoter link secret is returned by its creating call only');
   v := public.issue_4490_manage_guest_list('add_promoter','4490a100-0000-4000-9000-0000000000a1',
     '{"name":"Bisi"}'::jsonb,NULL,'i-promoter-bisi');
   INSERT INTO t4490i_ids VALUES ('bisi',(v#>>'{promoter,id}')::uuid);
@@ -327,12 +330,12 @@ BEGIN
   PERFORM public.t4490i_ok(v_get#>>'{promoter,name}'='Tunde'
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_get->'nights') night,
         jsonb_array_elements(night->'entries') entry_row WHERE entry_row->>'id'=v_id::text),
-    'I-DB10 a promoter link reads only its own eight-night list');
+    'GL-DB10 a promoter link reads only its own eight-night list');
   PERFORM public.t4490i_expect(format($q$SELECT public.issue_4490_guest_list_promoter_write(
       decode(%L,'hex'),'remove',jsonb_build_object('localDate',%L::date,'entryId',%L::uuid))$q$,
       encode(v_bisi,'hex'),v_date,v_id),
     'P0002','guest_list_entry_not_found',
-    'I-DB11 one promoter cannot remove another promoter''s name');
+    'GL-DB11 one promoter cannot remove another promoter''s name');
 END
 $promoter_write$;
 SELECT public.t4490i_reset();
@@ -353,7 +356,7 @@ SELECT public.t4490i_expect(format($q$SELECT public.issue_4490_guest_list_promot
     decode(%L,'hex'),'add',jsonb_build_object('localDate',public.t4490i_date(),
       'guestName','Rate 61','plusOnes',0))$q$,
     encode(sha256(convert_to(current_setting('t4490i.bisi_token'),'UTF8')),'hex')),
-  'PT429','guest_list_rate_limited','I-DB12 removed or active rows both count toward the 60-per-hour cap');
+  'PT429','guest_list_rate_limited','GL-DB12 removed or active rows both count toward the 60-per-hour cap');
 SELECT public.t4490i_reset();
 
 SELECT public.t4490i_as('4490a100-0000-4000-8000-000000000001');
@@ -366,14 +369,14 @@ SELECT public.t4490i_expect(format($q$SELECT public.issue_4490_guest_list_promot
     decode(%L,'hex'),'add',jsonb_build_object('localDate',public.t4490i_date(),
       'guestName','Too Late','plusOnes',0))$q$,
     encode(sha256(convert_to(current_setting('t4490i.tunde_token'),'UTF8')),'hex')),
-  'PT409','guest_list_closed','I-DB13 promoter writes stop at the configured pre-opening close');
+  'PT409','guest_list_closed','GL-DB13 promoter writes stop at the configured pre-opening close');
 
 -- -------------------------------------------------------------------------
 -- Raw-table isolation and scoped projections.
 -- -------------------------------------------------------------------------
 SELECT public.t4490i_as('4490a100-0000-4000-8000-000000000002');
 SELECT public.t4490i_expect('SELECT count(*) FROM public.venue_guest_list_entries',
-  '42501',NULL,'I-DB14 authenticated callers have no raw guest-list table access');
+  '42501',NULL,'GL-DB14 authenticated callers have no raw guest-list table access');
 SELECT public.t4490i_reset();
 
 SELECT public.t4490i_service();
@@ -384,7 +387,7 @@ BEGIN
     '4490a100-0000-4000-8000-000000000001');
   PERFORM public.t4490i_ok(EXISTS (SELECT 1 FROM jsonb_array_elements(v->'guestList') row
       WHERE row->>'guestName'='Ada List' AND row->>'kind'='guest_list'),
-    'I-DB15 the door list and search projection include guest-list names');
+    'GL-DB15 the door list and search projection include guest-list names');
 END
 $door_list$;
 

@@ -1,6 +1,6 @@
 /**
  * #4490 W3 fix 1 — an event block on the venue Calendar opens the screen for
- * that event's type (the canonical events-table route, I-PROPOSED-TR2), from
+ * that event's type (the canonical events-table route, I-PROPOSED-TR2-EVENTS-TYPE-FILTER), from
  * the calendar's own event row.
  *
  * Fails-on-revert: hard-coding `/event/${id}` again sends the trip, experience

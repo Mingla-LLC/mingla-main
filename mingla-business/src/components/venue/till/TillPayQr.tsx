@@ -2,7 +2,7 @@
  * #4490 spec 08 O2 — the Till's Scan to pay QR. Encodes a `/pay/till/<code>`
  * link ONLY (toTillPayUrl), never a ticket or pass credential: the guest scans
  * it with their phone camera and pays there. Reviewed exception beside
- * DoorPayQr and VenuePayQr in the I-2216 pay-link allowlist.
+ * DoorPayQr and VenuePayQr in the #2216 pay-link allowlist.
  */
 import React from "react";
 import { StyleSheet, View } from "react-native";

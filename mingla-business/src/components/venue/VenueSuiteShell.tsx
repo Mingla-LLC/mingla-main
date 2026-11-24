@@ -296,8 +296,8 @@ export function VenueSuiteShell({
   // #4490 P2 — a brand scanner reads as scoped with venue.check_in (useMyVenueAccess).
   const venueAccess = venueAccessQuery.data ?? PENDING_VENUE_ACCESS;
 
-  // #4490 — the nav derives from venue_features (I-4490-VENUE-FEATURES-GATE-
-  // SUITE). Until the features read answers, the venue reads as its backfill
+  // #4490 — the nav derives from venue_features
+  // (I-4490-VENUE-FEATURES-GATE-SUITE). Until the features read answers, the venue reads as its backfill
   // (the old reservations switch), so the loading frame shows today's list and
   // never flashes a different workspace.
   const featuresQuery = useVenueFeatures(brandId, venueId);

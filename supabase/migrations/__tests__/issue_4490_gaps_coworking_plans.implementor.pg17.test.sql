@@ -2,7 +2,7 @@
 -- and dedicated desks. The suite owns its fixture and rolls every row back.
 --
 -- MINGLA-INVARIANT: I-4490-MEMBER-REQUEST-NO-MONEY | issue #4490 | asking to join creates no payment and consumes no member place; only Host approval opens a three-day first-period payment.
--- MINGLA-INVARIANT: I-4490-MEMBER-DESK-CLAIM | issue #4490 | one current member desk is one venue-space claim; an existing booking wins, and leaving the active/grace states releases the claim.
+-- MINGLA-INVARIANT: I-4490-MEMBER-DESK-CLAIM | issue #4490 | one current member desk is one venue-space claim; an existing booking wins, and leaving the paid-up and grace states releases the claim.
 --
 -- FAILS-ON-REVERT: remove the request branch from issue_4490_membership_join
 -- and G-3 fails because a payment period exists before Host approval.

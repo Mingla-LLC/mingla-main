@@ -1,6 +1,7 @@
+// MINGLA-INVARIANT: I-4490-VENUE-FEATURES-GATE-SUITE | issue #4490 | the venue workspace modules derive only from venue_features (plus whether the venue has spaces); venue_category never decides tabs, and the classic list is reproduced exactly for every backfilled venue.
 /**
  * #4490 P1-6 — feature-driven venue navigation.
- * MINGLA-INVARIANT: I-4490-VENUE-FEATURES-GATE-SUITE (declared in venueModules.ts).
+ * Invariant I-4490-VENUE-FEATURES-GATE-SUITE is declared at the top of this file.
  */
 import {
   BUILT_FEATURES,

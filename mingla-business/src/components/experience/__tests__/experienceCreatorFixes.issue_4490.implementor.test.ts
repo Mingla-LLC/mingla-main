@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4490-EXPERIENCE-NO-FORCED-STANDARD | issue #4490 | no Host code path names a price option "Standard" on the host's behalf; the host names every price, and the server refuses a blank name.
 /**
  * #4490 P1-4 — experience creator fixes (Host side).
  *
@@ -10,9 +11,7 @@
  * (Wizard wiring — name field on every price, cover adoption, error copy — is
  *  exercised by the existing experience wizard render suites.)
  *
- * MINGLA-INVARIANT: I-4490-EXPERIENCE-NO-FORCED-STANDARD | issue #4490 | no Host
- * code path names a price option "Standard" on the host's behalf; the host names
- * every price, and the server refuses a blank name.
+ * Invariant I-4490-EXPERIENCE-NO-FORCED-STANDARD is declared at the top of this file.
  */
 
 import {

@@ -11,7 +11,7 @@
 // Pure helpers live here so the Deno suite can pin them; the handler wiring is in
 // index.ts. With the flag off none of these run and the response is today's.
 //
-// MINGLA-INVARIANT: I-DECK-HOSTED-VENUES-LEAD-EACH-CATEGORY | issue #4490 | with VENUE_DECK_HOSTED_FIRST on, inside every solo deck category the hosted venues (at most 6, score DESC, review_count DESC NULLS LAST, place id ASC) come before that category's organic places, and organic places keep today's relative order; pinned by supabase/functions/discover-cards/__tests__/issue_4490_hosted_lead.test.ts.
+// Invariant I-DECK-HOSTED-VENUES-LEAD-EACH-CATEGORY (declared in __tests__/issue_4490_hosted_lead.test.ts): with VENUE_DECK_HOSTED_FIRST on, inside every solo deck category the hosted venues (at most 6, score DESC, review_count DESC NULLS LAST, place id ASC) come before that category's organic places, and organic places keep today's relative order; pinned by supabase/functions/discover-cards/__tests__/issue_4490_hosted_lead.test.ts.
 
 export const HOSTED_PER_CATEGORY_CAP = 6;
 /**

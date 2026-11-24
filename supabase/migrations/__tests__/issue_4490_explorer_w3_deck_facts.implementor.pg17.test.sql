@@ -260,7 +260,7 @@ SELECT public.t4490w3_ok(pg_temp.t4490w3_f(1) IS NOT NULL AND pg_temp.t4490w3_f(
   AND pg_temp.t4490w3_f(1)->>'brandSlug' = 'gameland-w3-4490',
   'F-1 a verified venue of a live brand answers as anon with its slugs');
 SELECT public.t4490w3_ok(pg_temp.t4490w3_f(4) IS NULL, 'F-2 an unverified venue is absent');
-SELECT public.t4490w3_ok(pg_temp.t4490w3_f(5) IS NULL, 'F-3 a venue of an internal brand is absent (I-4174)');
+SELECT public.t4490w3_ok(pg_temp.t4490w3_f(5) IS NULL, 'F-3 a venue of an internal brand is absent (#4174)');
 SELECT public.t4490w3_ok(pg_temp.t4490w3_f(6) IS NULL, 'F-4 a venue of a deleted brand is absent');
 SELECT public.t4490w3_ok(pg_temp.t4490w3_f(14) IS NULL, 'F-5 a place with no venue is absent');
 SELECT public.t4490w3_ok((SELECT count(*) FROM t4490w3_facts) = 10, 'F-6 exactly one row per answering place');

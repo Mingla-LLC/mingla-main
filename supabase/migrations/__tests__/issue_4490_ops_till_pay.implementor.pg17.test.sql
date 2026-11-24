@@ -2,9 +2,9 @@
 -- 20281203564490 (tap to pay on Till sales, scan to pay, a bank transfer that
 -- confirms itself). The suite owns its fixture and rolls back.
 --
--- MINGLA-INVARIANT: I-4490-TILL-ONE-PRICE | issue #4490 | a Till card or scan payment is always what is left on the check (issue_4490_till_card_start refuses a priced carrier whose base, service charge, tip or currency differ from the check); the body never carries an amount.
--- MINGLA-INVARIANT: I-4490-TILL-TIP-NOT-FEED | issue #4490 | a Till carrier's fee_basis_cents never contains the tip (venue_orders_fee_from_basis; the tip rides on top of the total).
--- MINGLA-INVARIANT: I-4490-TILL-LATE-MONEY-NEVER-DROPPED | issue #4490 | a carrier paid after its payment was cancelled or its code expired is finalized once, marked paid_late and lands in overpaid_minor; "Keep it as payment" moves it onto what is still due, never more.
+-- MINGLA-INVARIANT: I-4490-TILL-ONE-PRICE-PAY | issue #4490 | a Till card or scan payment is always what is left on the check (issue_4490_till_card_start refuses a priced carrier whose base, service charge, tip or currency differ from the check); the body never carries an amount.
+-- MINGLA-INVARIANT: I-4490-TILL-TIP-NOT-FEED-PAY | issue #4490 | a Till carrier's fee_basis_cents never contains the tip (venue_orders_fee_from_basis; the tip rides on top of the total).
+-- MINGLA-INVARIANT: I-4490-TILL-LATE-MONEY-NEVER-DROPPED-PAY | issue #4490 | a carrier paid after its payment was cancelled or its code expired is finalized once, marked paid_late and lands in overpaid_minor; "Keep it as payment" moves it onto what is still due, never more.
 -- MINGLA-INVARIANT: I-4490-TILL-ONE-LIVE-CODE | issue #4490 | a Till payment has at most one pay code (venue_till_pay_codes.payment_id UNIQUE) and a check has at most one pending payment; a new code needs the old one cancelled or expired.
 -- MINGLA-INVARIANT: I-4490-TILL-TAP-ONE-INTENT | issue #4490 | door_tap_intents holds an event tap or a Till tap, never both; one Till intent per client request and per payment; event rows keep UNIQUE(event_id, client_request_id).
 --

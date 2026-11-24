@@ -2,8 +2,8 @@
 -- (19:00 and 19:30) through the guest reservation writer, (2) hold the only bowling lane for the same hour.
 -- Exactly one wins each time. COMMITS its fixtures (suite-owned database).
 --
--- MINGLA-INVARIANT: I-4490-ONE-TABLE-ONE-PARTY | issue #4490 | concurrent table picks are serialised by the venue's table lock in pg_create_guest_reservation; the second sees the first and gets table_taken.
--- MINGLA-INVARIANT: I-4490-NO-DOUBLE-HOUR | issue #4490 | concurrent holds of one by-the-hour unit cannot both hold it: the exclusion constraint on venue_space_claims decides.
+-- MINGLA-INVARIANT: I-4490-ONE-TABLE-ONE-PARTY-RACE | issue #4490 | concurrent table picks are serialised by the venue's table lock in pg_create_guest_reservation; the second sees the first and gets table_taken.
+-- MINGLA-INVARIANT: I-4490-NO-DOUBLE-HOUR-RACE | issue #4490 | concurrent holds of one by-the-hour unit cannot both hold it: the exclusion constraint on venue_space_claims decides.
 --
 -- FAILS-ON-REVERT (seen): without the venue table lock the 19:30 pick no longer waits (R-1a).
 \set ON_ERROR_STOP on

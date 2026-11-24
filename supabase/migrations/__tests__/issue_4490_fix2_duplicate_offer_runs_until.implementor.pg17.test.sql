@@ -1,6 +1,6 @@
 -- #4490 fix round 2 (20281203234490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
--- MINGLA-INVARIANT: I-4490-OFFER-COPY-IS-A-DRAFT | issue #4490 | issue_4490_duplicate_offer copies an offer of the venue (prices, rules, schedule, spaces, pool) as a new draft that sells nothing until published; never an offer of another venue, never for someone without venue.manage_offers.
+-- MINGLA-INVARIANT: I-4490-OFFER-COPY-IS-A-DRAFT | issue #4490 | issue_4490_duplicate_offer copies an offer of the venue (prices, rules, schedule, spaces, pool) as a new unpublished copy that sells nothing until published; never an offer of another venue, never for someone without venue.manage_offers.
 -- MINGLA-INVARIANT: I-4490-SCHEDULE-SAVE-KEEPS-SELLING | issue #4490 | saving a live offer's schedule keeps every session the new rule makes again on sale; only sessions the rule no longer makes stop.
 -- MINGLA-INVARIANT: I-4490-RUNS-UNTIL | issue #4490 | an offer's schedule end date ("Runs until") is enforced by the window maker: nothing is on sale after it, and an end before the start is refused (schedule_end_before_start).
 --

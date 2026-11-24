@@ -68,7 +68,7 @@ export function VenueLinkScreen({
   webPath: string;
 }): React.ReactElement {
   const router = useRouter();
-  // I-4261: a web page opens in Mingla's own in-app browser (the provider's
+  // I-4261-LINKS-OPEN-IN-MINGLA: a web page opens in Mingla's own in-app browser (the provider's
   // overlay stays above the Purchases screen this route moves to).
   const { open: openInMingla } = useOpenInMingla();
   const url = Linking.useURL();

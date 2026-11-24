@@ -2,7 +2,7 @@
 // `admin_venue_features` definer RPC (admin only, STABLE, no writes).
 //
 // A SEPARATE file from `venuesService.js` on purpose: that file is held
-// read-only by the Offerings console gate (I-PROPOSED-1273) and names only its
+// read-only by the Offerings console gate (I-PROPOSED-1273-OFFERINGS-READ-ONLY) and names only its
 // own RPC list. This read adds no write path anywhere.
 import { supabase } from "../lib/supabase";
 

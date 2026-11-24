@@ -1,6 +1,6 @@
 -- #4490 gap list 07-D (20281203264490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
--- MINGLA-INVARIANT: I-4490-ORDER-MODE-DERIVED | issue #4490 | a venue's ordering mode is derived from venue_ordering_settings.table_service_enabled and counter_pickup_enabled (table | counter | both) and at least one of them is always on; only managers of the venue's brand (event manager and up, finance managers, venue.manage_offers staff) may change it.
+-- MINGLA-INVARIANT: I-4490-ORDER-MODE-DERIVED | issue #4490 | a venue's ordering mode is derived from venue_ordering_settings.table_service_enabled and counter_pickup_enabled (table, counter or both) and at least one of them is always on; only managers of the venue's brand (event manager and up, finance managers, venue.manage_offers staff) may change it.
 --
 -- D-1 the CHECK refuses both switches off.  D-2 set_mode writes both switches.
 -- D-3 an outsider and anon are refused.  D-4 the public state returns table_service_enabled + order_mode.

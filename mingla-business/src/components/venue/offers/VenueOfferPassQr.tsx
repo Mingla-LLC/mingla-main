@@ -5,7 +5,7 @@
  * `mingla:v1:vpass:<passId>:sig:<64 hex>` (reconciliation ruling 15: one QR for
  * the party; buying and the pass never need an account on web, ruling 3).
  * Anything else is refused before rendering. Reviewed exception beside
- * VenuePayQr in the I-4063 / i-2216 gate: this is not an event-ticket
+ * VenuePayQr in the #4063 / #2216 gate: this is not an event-ticket
  * credential, and the page that shows it is opened only with the booking's
  * own token.
  */

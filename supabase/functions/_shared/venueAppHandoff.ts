@@ -1,6 +1,6 @@
 // Issue #4490, Explorer W1: the handoff to the Mingla app for venue bookings.
 //
-// MINGLA-INVARIANT: I-VENUE-PASS-SERVER-WITHHELD-ON-WEB | issue #4490 | with VENUE_PASS_APP_ONLY on, the pass QR pepper reaches the SQL projections only for a signed-in owner reading without a booking or member token; every token read (buyer web) gets no QR. The page never decides.
+// Invariant I-VENUE-PASS-SERVER-WITHHELD-ON-WEB (declared in venue-offers/index.issue4490.w1.implementor.test.ts): with VENUE_PASS_APP_ONLY on, the pass QR pepper reaches the SQL projections only for a signed-in owner reading without a booking or member token; every token read (buyer web) gets no QR. The page never decides.
 //
 // One rule for every pepper site except staff check-in (venue-offers get,
 // confirm_return, membership_get; venue-membership-pay-link get).

@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-NATIVE-OFFER-CHECKOUT-NO-CLIENT-PRICE | issue #4490 | the native venue-offer checkout sends only the choice (ids, counts, answers), never an amount; Review rows and the Pay total come from the server quote only.
 /**
  * #4490 Explorer W4 — the checkout sheet's pure model and the seam.
  *

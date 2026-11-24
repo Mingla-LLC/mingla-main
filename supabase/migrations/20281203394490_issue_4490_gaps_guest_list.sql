@@ -4,8 +4,8 @@
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 
--- MINGLA-INVARIANT: I-4490-GUEST-LIST-BOUNDARY | issue #4490 | list rows are private RPC-only data; promoter tokens scope every signed-out read and write to one promoter and one venue.
--- MINGLA-INVARIANT: I-4490-GUEST-LIST-PRICE | issue #4490 | free arrivals consume ordinary Entry capacity but never the kept-for-walk-ins reserve; paid arrivals are ordinary Entry gate sales.
+-- Invariants I-4490-GUEST-LIST-BOUNDARY and I-4490-GUEST-LIST-PRICE are declared in
+-- __tests__/issue_4490_gaps_guest_list.implementor.pg17.test.sql, which proves them.
 
 CREATE TABLE public.venue_guest_list_terms (
   venue_id uuid PRIMARY KEY REFERENCES public.venue_listings(id) ON DELETE CASCADE,

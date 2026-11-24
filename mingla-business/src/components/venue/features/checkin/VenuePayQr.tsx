@@ -2,7 +2,7 @@
  * #4490 P2-5 — the gate pay-by-code QR. Encodes a `/visit/<groupId>#t=…` pay
  * link ONLY (see venuePayLink.ts), never a pass credential: the guest scans
  * it with their phone camera and pays there. Reviewed exception beside
- * DoorPayQr in the I-4063 gate allowlist.
+ * DoorPayQr in the #4063 gate allowlist (I-4063-NO-TICKET-QR-OFF-EXPLORER).
  */
 import React from "react";
 import { StyleSheet, View } from "react-native";

@@ -1,6 +1,6 @@
 -- #4490 fix round 3 (20281203244490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
--- MINGLA-INVARIANT: I-4490-EVENT-TAKES-ITS-PLACE | issue #4490 | a scheduled or live event saved as "takes the space" holds every space it sits in (one space, each part of a combination, or every active space of the venue) for each active date, so hires, by-the-hour bookings and blocks over it are refused, and it cannot go live over a committed hire or block (event_space_taken).
+-- MINGLA-INVARIANT: I-4490-EVENT-TAKES-ITS-PLACE | issue #4490 | a scheduled or live event saved as "takes the space" holds every space it sits in (one space, each part of a combination, or every open space of the venue) for each of its dates, so hires, by-the-hour bookings and blocks over it are refused, and it cannot go live over a committed hire or block (event_space_taken).
 -- MINGLA-INVARIANT: I-4490-WAITLIST-SPACE-OF-ITS-VENUE | issue #4490 | a waitlist row's preferred space is a space of that row's venue.
 -- MINGLA-INVARIANT: I-4490-EVENT-ONE-PLACE | issue #4490 | an event sits in one space OR one combination of its own venue OR the whole venue, never two.
 --

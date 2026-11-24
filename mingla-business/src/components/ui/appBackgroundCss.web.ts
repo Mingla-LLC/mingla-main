@@ -6,7 +6,7 @@
  * browser's white. The app's canvas colour now sits on html and body too.
  * Public pages that paint their own look draw over it, so they are unchanged.
  *
- * MINGLA-INVARIANT: I-4490-WEB-ROOT-PAINTS-APP-CANVAS — html and body carry
+ * Invariant I-4490-WEB-ROOT-PAINTS-APP-CANVAS: html and body carry
  * the app canvas colour on web. Enforced by
  * appBackgroundCss.issue4490.implementor.test.ts.
  */

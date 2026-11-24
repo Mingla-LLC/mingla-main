@@ -1,7 +1,8 @@
+// MINGLA-INVARIANT: I-4490-WEB-ROOT-PAINTS-APP-CANVAS | issue #4490 | on web, html and body carry the app canvas colour so no browser white ever shows behind the Host app; public pages that paint their own look draw over it.
 /**
  * #4490 click-test D29 — html and body paint the app canvas on web, so no
  * browser white can ever show behind the Host app.
- * MINGLA-INVARIANT: I-4490-WEB-ROOT-PAINTS-APP-CANVAS (declared in appBackgroundCss.web.ts).
+ * Invariant I-4490-WEB-ROOT-PAINTS-APP-CANVAS is declared at the top of this file.
  */
 import { describe, expect, it } from "@jest/globals";
 
