@@ -37,6 +37,11 @@
 --   authorize_stripe_payout_execution (20280422003645) and
 --   authorize_paystack_payout_execution (20280602003645) — section 8: a
 --     payout never pays the host money that went back to a traveler.
+--   biz_refund_order_commit and admin_refund_order_commit (20280301003281) —
+--     seventh pass (H-7): a second-provider refund commits with its zero
+--     fee recorded as not applicable (the bare zero broke
+--     refunds_application_fee_amount_truth_check, so a host or Admin refund
+--     of a second-provider order never settled after the provider refunded).
 --   issue_2097_finalize_refund_attempt (20280305003281) and
 --   biz_cancel_trip_booking_commit (20260612000000) — pass 6 (S9-1): a plan
 --     order's charges are separate money: the order row holds the deposit
@@ -66,7 +71,9 @@ BEGIN
     ('public.biz_cancel_trip_booking_commit(uuid,text[],integer,timestamptz)','1c72d9102f9b3af8ca61ce8bb544510d'),
     ('public.issue_3645_release_projected_totals(uuid)','74819965113d92d5f27dbe71e31ea99a'),
     ('public.authorize_stripe_payout_execution(uuid,uuid,integer,timestamptz)','02024b64f8ac98326be5703410241645'),
-    ('public.authorize_paystack_payout_execution(uuid,uuid,timestamptz)','d8c549c1a96ce54133cd8055c5e8219a')
+    ('public.authorize_paystack_payout_execution(uuid,uuid,timestamptz)','d8c549c1a96ce54133cd8055c5e8219a'),
+    ('public.biz_refund_order_commit(uuid,text,integer,text,text)','69518ee8cfca51fb439df4bd90e93ca2'),
+    ('public.admin_refund_order_commit(uuid,text,integer,text,text)','d5408a9eacd02fd8ebbb9bdb5b6e23be')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -1015,6 +1022,216 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.biz_cancel_trip_booking_commit(uuid, text[], int, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_cancel_trip_booking_commit(uuid, text[], int, timestamptz) TO service_role;
+
+-- Seventh pass (H-7): bodies as 20280301003281 except the marked fee-status
+-- line. The second provider keeps no fee on a refund: the commit records the
+-- zero as not applicable, as biz_cancel_trip_booking_commit does above.
+CREATE OR REPLACE FUNCTION public.biz_refund_order_commit(p_refund_id uuid, p_stripe_refund_id text, p_application_fee_refunded_cents integer, p_status text, p_stripe_tax_transaction_id text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_refund public.refunds%ROWTYPE;
+  v_order public.orders%ROWTYPE;
+  v_caller uuid := auth.uid();
+  v_brand_id uuid;
+  v_line_item record;
+  v_new_payment_status text;
+  v_total_refunded_cents int;
+BEGIN
+  SELECT * INTO v_refund FROM public.refunds WHERE id = p_refund_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'refund_not_found' USING ERRCODE = 'P0010';
+  END IF;
+  IF v_refund.status <> 'pending' THEN
+    SELECT * INTO v_order FROM public.orders WHERE id = v_refund.order_id;
+    RETURN jsonb_build_object(
+      'refund_id', p_refund_id,
+      'status', v_refund.status,
+      'new_payment_status', v_order.payment_status,
+      'total_refunded_cents', v_order.refunded_amount_cents,
+      'idempotent_replay', true
+    );
+  END IF;
+  IF p_status NOT IN ('succeeded', 'failed') THEN
+    RAISE EXCEPTION 'invalid_commit_status' USING ERRCODE = 'P0012';
+  END IF;
+
+  SELECT * INTO v_order FROM public.orders WHERE id = v_refund.order_id;
+  SELECT brand_id INTO v_brand_id FROM public.events WHERE id = v_order.event_id;
+  IF NOT public.biz_can_manage_payments_for_brand(v_brand_id, v_caller) THEN
+    RAISE EXCEPTION 'permission_denied' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_status = 'failed' THEN
+    UPDATE public.refunds
+    SET status = 'failed',
+        stripe_tax_transaction_id = COALESCE(p_stripe_tax_transaction_id, stripe_tax_transaction_id),
+        processed_at = now()
+    WHERE id = p_refund_id;
+    RETURN jsonb_build_object('refund_id', p_refund_id, 'status', 'failed', 'idempotent_replay', false);
+  END IF;
+
+  UPDATE public.refunds
+  SET status = 'succeeded',
+      stripe_refund_id = p_stripe_refund_id,
+      stripe_tax_transaction_id = p_stripe_tax_transaction_id,
+      application_fee_refunded_cents = COALESCE(p_application_fee_refunded_cents, 0),
+      -- issue #4522 seventh pass (H-7): a zero fee is recorded with its status.
+      application_fee_refund_status = CASE WHEN COALESCE(p_application_fee_refunded_cents, 0) = 0
+        THEN 'not_applicable' ELSE application_fee_refund_status END,
+      processed_at = now()
+  WHERE id = p_refund_id;
+
+  -- issue #3281 — two refunds settling together must see each other's result.
+  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
+  PERFORM 1 FROM public.orders WHERE id = v_order.id FOR NO KEY UPDATE;
+  SELECT COALESCE(SUM(amount_cents), 0) INTO v_total_refunded_cents
+  FROM public.refunds
+  WHERE order_id = v_order.id AND status = 'succeeded';
+
+  v_new_payment_status := public.issue_3281_settled_payment_status(v_order.id);
+
+  UPDATE public.orders
+  SET payment_status = v_new_payment_status,
+      refunded_amount_cents = v_total_refunded_cents,
+      updated_at = now()
+  WHERE id = v_order.id;
+
+  FOR v_line_item IN
+    SELECT rli.ticket_type_id, rli.quantity
+    FROM public.refund_line_items rli
+    WHERE rli.refund_id = p_refund_id
+  LOOP
+    UPDATE public.tickets t
+    SET status = 'refunded'
+    WHERE t.id IN (
+      SELECT t2.id
+      FROM public.tickets t2
+      WHERE t2.order_id = v_order.id
+        AND t2.ticket_type_id = v_line_item.ticket_type_id
+        AND t2.status = 'valid'
+      ORDER BY t2.created_at ASC
+      LIMIT v_line_item.quantity
+    );
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'refund_id', p_refund_id,
+    'status', 'succeeded',
+    'new_payment_status', v_new_payment_status,
+    'total_refunded_cents', v_total_refunded_cents,
+    'stripe_tax_transaction_id', p_stripe_tax_transaction_id,
+    'idempotent_replay', false
+  );
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.admin_refund_order_commit(p_refund_id uuid, p_stripe_refund_id text, p_application_fee_refunded_cents integer, p_status text, p_stripe_tax_transaction_id text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_refund public.refunds%ROWTYPE;
+  v_order public.orders%ROWTYPE;
+  v_line_item record;
+  v_new_payment_status text;
+  v_total_refunded_cents int;
+BEGIN
+  -- TWIN GUARD (first executable statement) — see admin_refund_order.
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+
+  SELECT * INTO v_refund FROM public.refunds WHERE id = p_refund_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'refund_not_found' USING ERRCODE = 'P0010';
+  END IF;
+  IF v_refund.status <> 'pending' THEN
+    SELECT * INTO v_order FROM public.orders WHERE id = v_refund.order_id;
+    RETURN jsonb_build_object(
+      'refund_id', p_refund_id,
+      'status', v_refund.status,
+      'new_payment_status', v_order.payment_status,
+      'total_refunded_cents', v_order.refunded_amount_cents,
+      'idempotent_replay', true
+    );
+  END IF;
+  IF p_status NOT IN ('succeeded', 'failed') THEN
+    RAISE EXCEPTION 'invalid_commit_status' USING ERRCODE = 'P0012';
+  END IF;
+
+  SELECT * INTO v_order FROM public.orders WHERE id = v_refund.order_id;
+  -- Brand permission gate REMOVED (admin twin; gate is the edge fn + service_role grant).
+
+  IF p_status = 'failed' THEN
+    UPDATE public.refunds
+    SET status = 'failed',
+        stripe_tax_transaction_id = COALESCE(p_stripe_tax_transaction_id, stripe_tax_transaction_id),
+        processed_at = now()
+    WHERE id = p_refund_id;
+    RETURN jsonb_build_object('refund_id', p_refund_id, 'status', 'failed', 'idempotent_replay', false);
+  END IF;
+
+  UPDATE public.refunds
+  SET status = 'succeeded',
+      stripe_refund_id = p_stripe_refund_id,
+      stripe_tax_transaction_id = p_stripe_tax_transaction_id,
+      application_fee_refunded_cents = COALESCE(p_application_fee_refunded_cents, 0),
+      -- issue #4522 seventh pass (H-7): a zero fee is recorded with its status.
+      application_fee_refund_status = CASE WHEN COALESCE(p_application_fee_refunded_cents, 0) = 0
+        THEN 'not_applicable' ELSE application_fee_refund_status END,
+      processed_at = now()
+  WHERE id = p_refund_id;
+
+  -- issue #3281 — two refunds settling together must see each other's result.
+  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
+  PERFORM 1 FROM public.orders WHERE id = v_order.id FOR NO KEY UPDATE;
+  SELECT COALESCE(SUM(amount_cents), 0) INTO v_total_refunded_cents
+  FROM public.refunds
+  WHERE order_id = v_order.id AND status = 'succeeded'
+    AND order_installment_id IS NULL;  -- issue #3645: instalment refunds are not deposit refunds
+
+  v_new_payment_status := public.issue_3281_settled_payment_status(v_order.id);
+
+  UPDATE public.orders
+  SET payment_status = v_new_payment_status,
+      refunded_amount_cents = v_total_refunded_cents,
+      updated_at = now()
+  WHERE id = v_order.id;
+
+  FOR v_line_item IN
+    SELECT rli.ticket_type_id, rli.quantity
+    FROM public.refund_line_items rli
+    WHERE rli.refund_id = p_refund_id
+  LOOP
+    UPDATE public.tickets t
+    SET status = 'refunded'
+    WHERE t.id IN (
+      SELECT t2.id
+      FROM public.tickets t2
+      WHERE t2.order_id = v_order.id
+        AND t2.ticket_type_id = v_line_item.ticket_type_id
+        AND t2.status = 'valid'
+      ORDER BY t2.created_at ASC
+      LIMIT v_line_item.quantity
+    );
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'refund_id', p_refund_id,
+    'status', 'succeeded',
+    'new_payment_status', v_new_payment_status,
+    'total_refunded_cents', v_total_refunded_cents,
+    'stripe_tax_transaction_id', p_stripe_tax_transaction_id,
+    'idempotent_replay', false
+  );
+END;
+$function$;
 
 -- ---------------------------------------------------------------------------
 -- 6b. G-3 / G-4: one trip cancel is one refund operation, always completable.

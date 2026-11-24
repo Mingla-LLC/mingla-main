@@ -54,9 +54,11 @@ import {
   isPaystackRefundBelowMinimumError,
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
+  paystackExpectedTransactionId,
   paystackRefundTransaction,
   persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -341,7 +343,9 @@ serve(async (req: Request): Promise<Response> => {
   // Issue #4271: did this request reach refunds.create?
   const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
-    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
+    // Seventh pass (H-7): by reference only with the #4522 schema (its commit records the refund).
+    const byReference = await planV2SchemaAvailable(supabase);
+    const transaction = paystackRefundTransaction(paymentIntentId, chargeId, byReference);
     if (!transaction) {
       return json({
         error: "missing_payment_intent",
@@ -351,6 +355,7 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const paystackRefund = await createPaystackRefund({
         transaction,
+        ...paystackExpectedTransactionId(paymentIntentId, chargeId, byReference),
         merchantNote: `mingla_admin_refund:${refundId}`,
         amountSubunits: pending.is_full_refund === true
           ? undefined

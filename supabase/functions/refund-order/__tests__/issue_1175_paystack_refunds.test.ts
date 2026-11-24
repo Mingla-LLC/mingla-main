@@ -290,3 +290,69 @@ Deno.test("issue #1175: webhook routes processed and failed refunds through one 
     "webhook router bypasses the idempotent refund RPC",
   );
 });
+
+// Seventh pass (H-7): a host refund of a second-provider order names the
+// transaction by its REFERENCE (the provider's verify takes a reference); the
+// numeric transaction id the order keeps in stripe_charge_id is only the
+// identity check. Driven through the real paystackRefundTransaction /
+// paystackExpectedTransactionId and the real createPaystackRefund, with the
+// provider answering the documented shapes encoded above (verify by
+// reference only). FAILS ON REVERT: the numeric id went to
+// /transaction/verify and every such refund failed "Paystack transaction
+// identity verification failed" (same on main).
+import {
+  paystackExpectedTransactionId,
+  paystackRefundTransaction,
+} from "../../_shared/paystackRefunds.ts";
+Deno.test("H-7: an order refund verifies by reference, checks the numeric id, and refunds once", async () => {
+  Deno.env.set("PAYSTACK_MODE", "test");
+  Deno.env.set("PAYSTACK_SECRET_KEY_TEST", "sk_test_issue4522h7");
+  const REF = "mingla_3e59ef96-0dd2-42eb-bb2e-8f5bf2b19555";
+  const ID = 4522500001;
+  const calls: string[] = [];
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    if (url.includes("/transaction/verify/")) {
+      const ref = decodeURIComponent(url.split("/transaction/verify/")[1]);
+      return Promise.resolve(ref === REF
+        ? verifiedTransaction(REF, ID, 50000000)
+        : response({ status: false, message: "Transaction reference not found" }, 400));
+    }
+    if (url.includes("/refund?")) return Promise.resolve(response({ status: true, data: [] }));
+    if (url.endsWith("/refund") && init?.method === "POST") {
+      return Promise.resolve(response({ status: true, data: { id: 9101, amount: 50000000, status: "pending",
+        currency: "NGN", transaction: { id: ID, reference: REF } } }));
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+  try {
+    // the order row keeps the reference and, in stripe_charge_id, the numeric id
+    const transaction = paystackRefundTransaction(REF, String(ID), true);
+    assert(transaction === REF, `the reference is named, got ${transaction}`);
+    const refund = await createPaystackRefund({
+      transaction: transaction!,
+      ...paystackExpectedTransactionId(REF, String(ID), true),
+      merchantNote: "mingla_refund:4522h7",
+      currency: "NGN",
+    });
+    assert(refund.id === "9101", "the refund is made");
+    assert(calls.filter((c) => c.startsWith("POST")).length === 1, `one POST: ${calls.join(" | ")}`);
+    assert(!calls.some((c) => c.includes(`/transaction/verify/${ID}`)), "never verified by the numeric id");
+    // a wrong stored id is refused before any money moves
+    let refused = false;
+    try {
+      await createPaystackRefund({ transaction: REF, ...paystackExpectedTransactionId(REF, "999", true),
+        merchantNote: "mingla_refund:4522h7b", currency: "NGN" });
+    } catch { refused = true; }
+    assert(refused, "an identity mismatch refuses the refund");
+    // no reference stored: the id is still sent, exactly as before
+    assert(paystackRefundTransaction(null, String(ID), true) === String(ID), "fallback unchanged");
+    assert(Object.keys(paystackExpectedTransactionId(null, String(ID), true)).length === 0, "no identity check without a reference");
+    // main's database (no #4522 schema): exactly main's lookup
+    assert(paystackRefundTransaction(REF, String(ID)) === String(ID), "main's database keeps main's lookup");
+    assert(Object.keys(paystackExpectedTransactionId(REF, String(ID))).length === 0, "and no identity check there");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

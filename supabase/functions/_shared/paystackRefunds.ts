@@ -593,13 +593,43 @@ export async function persistPaystackRefundOutcome(
   }
 }
 
+/**
+ * Seventh pass (H-7): the transaction a refund names. The refund helper
+ * verifies it first, and Paystack's verify takes the transaction REFERENCE
+ * (GET /transaction/verify/:reference), so with referenceFirst the reference
+ * comes first and the numeric transaction id (kept in stripe_charge_id) is
+ * only the identity check (paystackExpectedTransactionId), as the
+ * source-refund lane and the duplicate-payment refund (F-3) do. Before, the
+ * numeric id went first and every host or Admin refund of a second-provider
+ * order was refused at verify (same on main). Callers pass referenceFirst
+ * only with the #4522 schema (planV2SchemaAvailable): on main's database
+ * the refund commit cannot yet record a second-provider refund, so there the
+ * lookup stays exactly as before (refused before any money moves).
+ */
 export function paystackRefundTransaction(
   primaryReference: string | null,
   chargeId: string | null,
+  referenceFirst = false,
 ): string | null {
+  if (referenceFirst && primaryReference && primaryReference.length > 0) {
+    return primaryReference;
+  }
   if (chargeId && chargeId.length > 0) return chargeId;
   if (primaryReference && primaryReference.length > 0) return primaryReference;
   return null;
+}
+
+/** Seventh pass (H-7): the numeric transaction id as the identity check, when the reference is named. */
+export function paystackExpectedTransactionId(
+  primaryReference: string | null,
+  chargeId: string | null,
+  referenceFirst = false,
+): { expectedTransactionId?: number } {
+  if (!referenceFirst || !primaryReference || primaryReference.length === 0) return {};
+  const id = Number(chargeId ?? NaN);
+  return Number.isSafeInteger(id) && id > 0 && String(id) === chargeId
+    ? { expectedTransactionId: id }
+    : {};
 }
 
 export function isRetryablePaystackRefundError(error: unknown): boolean {

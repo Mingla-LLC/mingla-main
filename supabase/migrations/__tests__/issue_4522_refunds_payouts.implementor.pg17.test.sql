@@ -1333,6 +1333,42 @@ BEGIN
   END IF;
 END $$;
 
+-- J8. Seventh pass (H-7): a host or Admin refund of a second-provider order
+--     commits with its zero fee recorded as not applicable, so the refund
+--     settles and the order shows it. A pay-in-full second-provider order
+--     shaped like a real one. FAILS ON REVERT: the commit broke
+--     refunds_application_fee_amount_truth_check after the provider had
+--     refunded, and the refund stayed pending (order ₦0 refunded).
+INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
+  currency, payment_method, payment_status, source, installment_plan_root, stripe_payment_intent_id, stripe_charge_id)
+VALUES ('45220008-0000-4000-8000-0000000004f9', '45220008-0000-4000-8000-000000000020', 'ng-full@example.test',
+  'NG Full', '+2348000000009', 50000000, 'NGN', 'online_card', 'paid', 'online_checkout', false,
+  'mingla_j8_reference', '4522500001'),
+  ('45220008-0000-4000-8000-0000000004fa', '45220008-0000-4000-8000-000000000020', 'ng-full2@example.test',
+  'NG Full Two', '+2348000000010', 50000000, 'NGN', 'online_card', 'paid', 'online_checkout', false,
+  'mingla_j8_reference2', '4522500002');
+INSERT INTO public.refunds(id, order_id, amount_cents, currency, status, reason)
+VALUES ('45220008-0000-4000-8000-0000000004fb', '45220008-0000-4000-8000-0000000004f9', 20000000, 'NGN', 'pending', 'Host refund'),
+       ('45220008-0000-4000-8000-0000000004fc', '45220008-0000-4000-8000-0000000004fa', 50000000, 'NGN', 'pending', 'Admin refund');
+DO $$
+DECLARE v jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claims', '{"sub":"45220008-0000-4000-8000-000000000001","role":"authenticated"}', true);
+  v := public.biz_refund_order_commit('45220008-0000-4000-8000-0000000004fb', '4522j81', 0, 'succeeded');
+  PERFORM set_config('request.jwt.claims', '', true);
+  IF (SELECT status || '/' || application_fee_refund_status FROM public.refunds WHERE id = '45220008-0000-4000-8000-0000000004fb')
+       <> 'succeeded/not_applicable'
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000004f9') <> 20000000 THEN
+    RAISE EXCEPTION 'J8-0 a host refund of a second-provider order settles and is recorded: %', v;
+  END IF;
+  v := public.admin_refund_order_commit('45220008-0000-4000-8000-0000000004fc', '4522j82', 0, 'succeeded');
+  IF (SELECT status || '/' || application_fee_refund_status FROM public.refunds WHERE id = '45220008-0000-4000-8000-0000000004fc')
+       <> 'succeeded/not_applicable'
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000004fa') <> 50000000 THEN
+    RAISE EXCEPTION 'J8-1 an Admin refund of a second-provider order settles and is recorded: %', v;
+  END IF;
+END $$;
+
 -- K. G-6: refund tiers count CALENDAR days in the trip's zone. Trips as the
 --    builder stores them (each date at UTC midnight, #4420): departure
 --    20 Mar 2027 in New York (DST starts 14 Mar), Lagos and Tokyo; 100% from

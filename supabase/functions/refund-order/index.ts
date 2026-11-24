@@ -53,9 +53,11 @@ import {
   isPaystackRefundBelowMinimumError,
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
+  paystackExpectedTransactionId,
   paystackRefundTransaction,
   persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
   refundEverPermittedProviderCall,
@@ -369,7 +371,9 @@ serve(async (req: Request): Promise<Response> => {
   // Issue #4271: did this request reach refunds.create?
   const refundCreate = trackRefundCreate();
   if (paymentProvider === "paystack") {
-    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
+    // Seventh pass (H-7): by reference only with the #4522 schema (its commit records the refund).
+    const byReference = await planV2SchemaAvailable(supabase);
+    const transaction = paystackRefundTransaction(paymentIntentId, chargeId, byReference);
     if (!transaction) {
       return jsonResponse(
         {
@@ -382,6 +386,7 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const paystackRefund = await createPaystackRefund({
         transaction,
+        ...paystackExpectedTransactionId(paymentIntentId, chargeId, byReference),
         merchantNote: `mingla_refund:${refundId}`,
         amountSubunits: pending.is_full_refund === true
           ? undefined
