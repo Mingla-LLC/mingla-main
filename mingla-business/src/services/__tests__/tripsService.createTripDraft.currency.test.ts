@@ -237,6 +237,9 @@ describe("#4523 S-9 a new trip's time zone", () => {
 
   test("the trip route passes the brand's zone, falling back to the device's", () => {
     const route = readFileSync(join(__dirname, "..", "..", "..", "app", "trip", "[id]", "edit.tsx"), "utf8");
-    expect(route).toMatch(/timezone: defaultTimezoneForBrand\(\{\s*payoutCountry: currentBrand\.payoutCountry \?\? currentBrand\.paymentCountry \?\? null,\s*currency: currentBrand\.defaultCurrency \?\? null,\s*deviceZone: detectDeviceTimezone\(\),/);
+    // [TEST-MOD-APPROVED #4522] G-5 made a new trip read the brand's own time zone first
+    // (brandZone), then the payout country, the currency, and last the device's zone, so the
+    // call now carries a brandZone line before payoutCountry that the old pattern did not allow.
+    expect(route).toMatch(/timezone: defaultTimezoneForBrand\(\{\s*brandZone: currentBrand\.defaultTimezone \?\? null,\s*payoutCountry: currentBrand\.payoutCountry \?\? currentBrand\.paymentCountry \?\? null,\s*currency: currentBrand\.defaultCurrency \?\? null,\s*deviceZone: detectDeviceTimezone\(\),/);
   });
 });
