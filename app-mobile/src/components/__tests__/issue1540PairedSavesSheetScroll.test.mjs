@@ -339,7 +339,8 @@ test("T-10 savedCardToExpandedCardData converts a realistic saved_card.card_data
   // is transpiled here and the REAL product function is executed. If the
   // transpiler is missing this test FAILS; it never silently skips.
   //
-  // The converter's runtime graph: itself, priceTiers (no imports), and
+  // The converter's runtime graph: itself, priceTiers (whose one import is the
+  // shared currency glyph rule, #4490, itself import-free), and
   // isBrandExperiencePayload (#3281 1d; no imports). Type-only imports erase.
   const ts = await import("typescript");
   const transpile = (code) =>
@@ -353,7 +354,15 @@ test("T-10 savedCardToExpandedCardData converts a realistic saved_card.card_data
   const toModuleUrl = (code) =>
     `data:text/javascript;base64,${Buffer.from(code, "utf8").toString("base64")}`;
 
-  const priceTiersUrl = toModuleUrl(transpile(read("src/utils/priceTiers.ts")));
+  const currencyGlyphUrl = toModuleUrl(
+    transpile(read("../packages/offering-rendering/currencyGlyph.ts")),
+  );
+  const priceTiersUrl = toModuleUrl(
+    transpile(read("src/utils/priceTiers.ts")).replace(
+      /(["'])@mingla\/offering-rendering\/currencyGlyph\1/,
+      JSON.stringify(currencyGlyphUrl),
+    ),
+  );
   const brandExpUrl = toModuleUrl(
     transpile(read("src/utils/isBrandExperiencePayload.ts")),
   );

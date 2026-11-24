@@ -202,6 +202,12 @@ jest.mock("@mingla/offering-rendering", () => {
 jest.mock("../../../../../app-mobile/src/hooks/usePublicVenueFeatures", () => ({
   usePublicVenueFeatures: () => ({ data: null, isLoading: false, isError: false }),
 }));
+// #4490: the consumer venue route returns to the start screen on sign-out
+// through the app store (zustand + AsyncStorage), which this lane does not
+// install; the page under test never signs out.
+jest.mock("../../../../../app-mobile/src/hooks/useReturnToStartOnSignOut", () => ({
+  useReturnToStartOnSignOut: () => undefined,
+}));
 jest.mock("../../../../../app-mobile/src/hooks/usePublicVenue", () => ({
   __esModule: true,
   usePublicVenue: () => ({

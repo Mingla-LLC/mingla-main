@@ -35,6 +35,14 @@ jest.mock("@mingla/offering-rendering", () => ({ EventCoverMedia: () => null }))
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: () => null }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 const mockI18n = { lang: "en" as "en" | "fr" };
+// The app's i18n bootstrap (src/i18n/index.ts) imports i18next, which the
+// #2774 render lane (mingla-business modules only) does not install; the card
+// reads only the current language from it (localeUtils). Same stand-in as the
+// #1605 resolver hooks use.
+jest.mock("../../../i18n", () => ({
+  __esModule: true,
+  default: { language: "en", t: (key: string) => key, changeLanguage: () => undefined },
+}));
 jest.mock("react-i18next", () => {
   const nodePath = require("node:path");
   const load = (lang: string, ns: string) => require(nodePath.resolve(__dirname, `../../../i18n/locales/${lang}/${ns}.json`));
