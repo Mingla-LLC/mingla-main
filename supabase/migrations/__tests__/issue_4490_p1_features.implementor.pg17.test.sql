@@ -153,9 +153,10 @@ SELECT public.t4490_ok(count(*) = 1, 'T-1g btree_gist installed')
 FROM pg_extension WHERE extname = 'btree_gist';
 
 -- T-2 derived rows ------------------------------------------------------------
+-- TEST-MOD-APPROVED #4490: the Till migration (ops_till_core) added the `till` and `kitchen_screens` feature keys; both read off until written.
 SELECT public.t4490_ok(
   (SELECT jsonb_object_agg(feature_key, enabled) FROM public.issue_4490_venue_feature_rows('44900000-0000-4000-9000-0000000000a1'))
-  = '{"entry":false,"group_packages":false,"private_hire":false,"by_the_hour":false,"table_reservations":true,"floor_plan":false,"pick_a_table":false,"menu":true,"table_ordering":false,"min_spend_tables":false,"guest_list":false,"memberships":false,"stays":false,"events_here":false,"waitlist":true}'::jsonb,
+  = '{"entry":false,"group_packages":false,"private_hire":false,"by_the_hour":false,"table_reservations":true,"floor_plan":false,"pick_a_table":false,"menu":true,"table_ordering":false,"min_spend_tables":false,"guest_list":false,"memberships":false,"stays":false,"events_here":false,"waitlist":true,"till":false,"kitchen_screens":false}'::jsonb,
   'T-2a restaurant with reservations on: tables, waitlist and menu on; nothing else');
 SELECT public.t4490_ok(
   (SELECT jsonb_object_agg(feature_key, enabled) FILTER (WHERE enabled) FROM public.issue_4490_venue_feature_rows('44900000-0000-4000-9000-0000000000c1'))
@@ -336,13 +337,15 @@ SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('4490000
 SELECT public.t4490_reset();
 
 -- T-5 presets ---------------------------------------------------------------------
+-- [TEST-MOD-APPROVED #4490] the Till migration (ops_till_core) added `till` (club) and `till` + `kitchen_screens` (restaurant) to the presets.
 -- [TEST-MOD-APPROVED #4490] fix round 1 (B3): the server presets follow the client table (club adds Menu and Table ordering).
-SELECT public.t4490_ok(public.issue_4490_feature_preset('club') = ARRAY['entry','table_reservations','min_spend_tables','menu','table_ordering','events_here']
+SELECT public.t4490_ok(public.issue_4490_feature_preset('club') = ARRAY['entry','table_reservations','min_spend_tables','menu','table_ordering','events_here','till']
   AND public.issue_4490_feature_preset('stay') = ARRAY['stays']
-  AND public.issue_4490_feature_preset('restaurant') = ARRAY['table_reservations','waitlist','menu','table_ordering']
+  AND public.issue_4490_feature_preset('restaurant') = ARRAY['table_reservations','waitlist','menu','table_ordering','till','kitchen_screens']
   AND public.issue_4490_feature_preset('nightclub') IS NULL,
   'T-5a presets: club has no guest list, stay is stays only');
 SELECT public.t4490_as('44900000-0000-4000-8000-000000000001');
+-- [TEST-MOD-APPROVED #4490] the Till migration (ops_till_core) put `till` and `kitchen_screens` in the restaurant preset; both are skipped as not_available_yet until the Till flag is on.
 DO $t5$
 DECLARE
   v1 jsonb;
@@ -352,7 +355,7 @@ BEGIN
   PERFORM public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000b1', 'events_here', true, NULL, NULL, NULL, 't5-ev-b-1');
   v1 := public.issue_4490_apply_feature_preset('44900000-0000-4000-9000-0000000000b1', 'restaurant', 't5-preset-1');
   PERFORM public.t4490_ok(v1->'applied' = '["table_reservations"]'::jsonb
-    AND v1->'skipped' = '[{"key":"waitlist","reason":"already_on"},{"key":"menu","reason":"already_on"},{"key":"table_ordering","reason":"venue_not_orderable"}]'::jsonb,
+    AND v1->'skipped' = '[{"key":"waitlist","reason":"already_on"},{"key":"menu","reason":"already_on"},{"key":"table_ordering","reason":"venue_not_orderable"},{"key":"till","reason":"not_available_yet"},{"key":"kitchen_screens","reason":"not_available_yet"}]'::jsonb,
     'T-5b restaurant preset on an unverified venue: tables on, ordering held back');
   v2 := public.issue_4490_apply_feature_preset('44900000-0000-4000-9000-0000000000b1', 'restaurant', 't5-preset-1');
   PERFORM public.t4490_ok((v2->>'replayed')::boolean AND v2->'applied' = v1->'applied', 'T-5c same key replays the first result');

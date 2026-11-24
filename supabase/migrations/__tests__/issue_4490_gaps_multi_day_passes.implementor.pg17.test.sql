@@ -286,10 +286,16 @@ BEGIN
     'F-1c confirmation snapshots 10-in-60');
   INSERT INTO public.brand_hours (brand_id, venue_id, weekday, open_time, close_time, is_closed, window_ordinal)
   VALUES ('4490f000-0000-4000-9000-000000000010', '4490f000-0000-4000-9000-0000000000a1',
-    extract(isodow FROM v_today - 1)::integer - 1, '18:00', '02:00', false, 1);
+    extract(isodow FROM v_today)::integer - 1, '18:00', '02:00', false, 1);
+  -- TEST-MOD-APPROVED #4490: the O5 hours-history rule (ops_o5_fix1) reads any
+  -- moment before the venue's latest hours change with the hours then in force,
+  -- and this suite has just inserted the hours (change time = now). A moment
+  -- earlier today therefore never used the new hours, so the result depended on
+  -- the hour the suite ran. Ask about 01:00 tomorrow instead: always after the
+  -- change, so the night-before rule is what is tested, on any run date.
   PERFORM public.t4490f_ok(
     public.issue_4490_venue_service_date('4490f000-0000-4000-9000-0000000000a1',
-      (v_today::timestamp + time '01:00') AT TIME ZONE 'Africa/Lagos') = v_today - 1,
+      ((v_today + 1)::timestamp + time '01:00') AT TIME ZONE 'Africa/Lagos') = v_today,
     'F-1d 01:00 belongs to the night-before service day');
   SELECT * INTO v_venue FROM public.venue_listings
   WHERE id = '4490f000-0000-4000-9000-0000000000a1';
@@ -359,6 +365,13 @@ BEGIN
   INSERT INTO public.brand_hours (brand_id, venue_id, weekday, open_time, close_time, is_closed, window_ordinal)
   VALUES ('4490f000-0000-4000-9000-000000000010', '4490f000-0000-4000-9000-0000000000a1',
     extract(isodow FROM v_wall_date - 1)::integer - 1, '18:00', '02:00', false, 1);
+  -- TEST-MOD-APPROVED #4490: the O5 hours-history capture stamps a change with
+  -- statement_timestamp(), later than this transaction's now(), so the scan and
+  -- the service-date read below (both at now()) would use the hours from before
+  -- the insert. Backdate the versions just captured by a day (keeping their order) so the hours just inserted
+  -- are the ones in force at now(), whatever time the suite runs.
+  UPDATE public.venue_hours_history SET valid_from = valid_from - interval '1 day'
+  WHERE venue_id = '4490f000-0000-4000-9000-0000000000a1' AND valid_from > now();
   v_service_date := public.issue_4490_venue_service_date(
     '4490f000-0000-4000-9000-0000000000a1', now());
   UPDATE public.venue_passes SET valid_local_date = v_service_date,

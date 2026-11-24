@@ -279,13 +279,14 @@ SELECT public.t4490_reset();
 -- ===========================================================================
 -- X-2 Presets (client table).
 -- ===========================================================================
+-- TEST-MOD-APPROVED #4490: the Till migration (ops_till_core) added `till` and `kitchen_screens` to the club, cafe and bar presets.
 DO $x2$
 BEGIN
   PERFORM public.t4490_ok(public.issue_4490_feature_preset('creative_and_arts') = ARRAY['entry', 'by_the_hour', 'private_hire', 'memberships', 'events_here']
-    AND public.issue_4490_feature_preset('club') = ARRAY['entry', 'table_reservations', 'min_spend_tables', 'menu', 'table_ordering', 'events_here']
-    AND public.issue_4490_feature_preset('cafe') = ARRAY['entry', 'by_the_hour', 'menu', 'table_ordering', 'events_here']
+    AND public.issue_4490_feature_preset('club') = ARRAY['entry', 'table_reservations', 'min_spend_tables', 'menu', 'table_ordering', 'events_here', 'till']
+    AND public.issue_4490_feature_preset('cafe') = ARRAY['entry', 'by_the_hour', 'menu', 'table_ordering', 'events_here', 'till', 'kitchen_screens']
     AND public.issue_4490_feature_preset('play') = ARRAY['entry', 'group_packages', 'private_hire', 'menu', 'table_ordering', 'events_here']
-    AND public.issue_4490_feature_preset('bar_lounge') = ARRAY['table_reservations', 'min_spend_tables', 'private_hire', 'menu', 'table_ordering', 'events_here']
+    AND public.issue_4490_feature_preset('bar_lounge') = ARRAY['table_reservations', 'min_spend_tables', 'private_hire', 'menu', 'table_ordering', 'events_here', 'till']
     AND public.issue_4490_feature_preset('event_space') = ARRAY['private_hire', 'events_here'],
     'X-2a the server presets match the add-venue table');
 END
