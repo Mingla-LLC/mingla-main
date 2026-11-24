@@ -33,7 +33,7 @@ export {
   contactCodeHash,
   generateContactCode,
 } from "../_shared/contactCode.ts";
-import { isLocalSupabaseUrl } from "../_shared/venueOfferVisitLink.ts";
+import { isLocalSupabaseUrl } from "../_shared/localSupabaseUrl.ts";
 
 const CODE = /^[0-9A-Za-z]{10}$/;
 const UUID =

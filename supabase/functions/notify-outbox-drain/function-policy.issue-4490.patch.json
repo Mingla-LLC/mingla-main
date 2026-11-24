@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4490",
+  "target": {
+    "kind": "function",
+    "name": "notify-outbox-drain"
+  },
+  "basePolicySha256": "541a89cc7d7aaf6c565f25613d40a447c8cb2965a154e24350e72a18f90144d5",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUSINESS_WEB_ORIGIN",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "f2a54a21c0b991660062c637b0936decbf541e810d66edb265bf86bb9d645d0e",
+  "reason": "#4490 venue guest links: the drain builds visit links at send time; BUSINESS_WEB_ORIGIN is optional because the production-origin fallback remains."
+}

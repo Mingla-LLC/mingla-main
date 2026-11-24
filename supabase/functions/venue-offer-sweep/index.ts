@@ -72,8 +72,23 @@ export type VenueOfferSweepDeps = {
   client?: () => SweepClient;
 };
 
+/**
+ * The only environment names this function reads, each read literally so the
+ * function secret contract can attribute them (#2241). Tests inject `deps.env`.
+ */
+function runtimeEnv(name: string): string | undefined {
+  switch (name) {
+    case "SUPABASE_SERVICE_ROLE_KEY":
+      return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
 export function createVenueOfferSweepHandler(deps: VenueOfferSweepDeps = {}) {
-  const env = deps.env ?? ((name: string) => Deno.env.get(name));
+  const env = deps.env ?? runtimeEnv;
   return async function handle(req: Request): Promise<Response> {
     if (req.method !== "POST") {
       return Response.json({ error: "method_not_allowed" }, { status: 405 });

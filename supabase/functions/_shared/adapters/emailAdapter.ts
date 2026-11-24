@@ -48,7 +48,7 @@ const RESEND_EMAILS_URL = "https://api.resend.com/emails";
  * stack's mail catcher. Anywhere else the override is ignored.
  */
 export function resendEmailsUrl(
-  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  env: (name: string) => string | undefined,
 ): string {
   const override = (env("LOCAL_RESEND_API_URL") ?? "").trim().replace(
     /\/+$/,
@@ -68,6 +68,19 @@ export function resendEmailsUrl(
   return local(supabaseHost) && local(overrideHost)
     ? `${override}/emails`
     : RESEND_EMAILS_URL;
+}
+
+// The two names resendEmailsUrl reads. resendEnv is this module's one
+// dynamic getter; supabase/functions/_shared/adapters/emailAdapter.ts.function-policy.json
+// declares it and allows only these literal names (function secret contract).
+const resendEnv = (name: string): string | undefined => Deno.env.get(name);
+
+function localResendEnv(): (name: string) => string | undefined {
+  const values: Record<string, string | undefined> = {
+    LOCAL_RESEND_API_URL: resendEnv("LOCAL_RESEND_API_URL"),
+    SUPABASE_URL: resendEnv("SUPABASE_URL"),
+  };
+  return (name) => values[name];
 }
 
 export const emailAdapter = {
@@ -116,7 +129,7 @@ export const emailAdapter = {
 
     try {
       await input.beforeProviderIo?.();
-      const res = await fetch(resendEmailsUrl(), {
+      const res = await fetch(resendEmailsUrl(localResendEnv()), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,

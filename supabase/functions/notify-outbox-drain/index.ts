@@ -77,6 +77,19 @@ import {
 } from "../_shared/venueTillReceiptToken.ts";
 import { TILL_RECEIPT_CATEGORY } from "../_shared/email/tillReceiptEmail.ts";
 
+/** The names the visit-link origin reads, each read literally (function secret contract, #2241). */
+function visitOriginEnv(name: string): string | undefined {
+  switch (name) {
+    case "BUSINESS_WEB_ORIGIN":
+      return Deno.env.get("BUSINESS_WEB_ORIGIN");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -315,7 +328,7 @@ export async function resolveVenueBookingDispatch(
   // deno-lint-ignore no-explicit-any
   admin: any,
   row: Record<string, unknown>,
-  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  env: (name: string) => string | undefined = visitOriginEnv,
   ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
 ): Promise<{ facts: Record<string, unknown>; visitUrl: string | null }> {
   const payload = (row.payload as Record<string, unknown> | null) ?? {};
@@ -422,7 +435,7 @@ export async function resolveVenueMemberDispatch(
   // deno-lint-ignore no-explicit-any
   admin: any,
   row: Record<string, unknown>,
-  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  env: (name: string) => string | undefined = visitOriginEnv,
   ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
 ): Promise<string | null> {
   const payload = (row.payload as Record<string, unknown> | null) ?? {};
@@ -473,7 +486,7 @@ export async function resolveTillReceiptDispatch(
   // deno-lint-ignore no-explicit-any
   admin: any,
   row: Record<string, unknown>,
-  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  env: (name: string) => string | undefined = visitOriginEnv,
   ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
 ): Promise<{ receipt: Record<string, unknown> | null; url: string | null }> {
   const payload = (row.payload as Record<string, unknown> | null) ?? {};

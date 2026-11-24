@@ -128,6 +128,19 @@ import {
   resolveBuyerPhone,
 } from "../_shared/buyerPhone.ts";
 
+/** The names the visit-link origin reads, each read literally (function secret contract, #2241). */
+function visitOriginEnv(name: string): string | undefined {
+  switch (name) {
+    case "BUSINESS_WEB_ORIGIN":
+      return Deno.env.get("BUSINESS_WEB_ORIGIN");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
@@ -970,7 +983,7 @@ async function billToPhone(
   if (routing.provider === "paystack") {
     // #4490 spec 08 O2: the return origin comes from env (loopback on the
     // local stack), never the hard-coded production origin (ruling 8).
-    const callbackOrigin = resolveVenueVisitOrigin((name) => Deno.env.get(name));
+    const callbackOrigin = resolveVenueVisitOrigin(visitOriginEnv);
     const reference = venueOrderPaystackReference(input.orderId);
     await supabase.from("venue_orders").update({
       paystack_reference: reference,

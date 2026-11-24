@@ -567,8 +567,25 @@ function parseMenuLines(raw: unknown): RequestedLine[] | null {
   return out;
 }
 
+/**
+ * The only environment names this function reads, each read literally so the
+ * function secret contract can attribute them (#2241). Tests inject `deps.env`.
+ */
+function runtimeEnv(name: string): string | undefined {
+  switch (name) {
+    case "BUSINESS_WEB_ORIGIN":
+      return Deno.env.get("BUSINESS_WEB_ORIGIN");
+    case "SUPABASE_SERVICE_ROLE_KEY":
+      return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
 export function createVenueTillHandler(deps: VenueTillDeps = {}) {
-  const env = deps.env ?? ((name: string) => Deno.env.get(name));
+  const env = deps.env ?? runtimeEnv;
   const notifyPlaced = deps.notifyPlaced ?? fireVenueOrderPlacedForOrder;
   const receiptTokenHash = deps.receiptTokenHash ??
     (async (paymentId: string) =>

@@ -80,8 +80,23 @@ function failure(error: RpcError): Response {
   });
 }
 
+/**
+ * The only environment names this function reads, each read literally so the
+ * function secret contract can attribute them (#2241). Tests inject `deps.env`.
+ */
+function runtimeEnv(name: string): string | undefined {
+  switch (name) {
+    case "SUPABASE_SERVICE_ROLE_KEY":
+      return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
 export function createVenueGuestListHandler(deps: VenueGuestListDeps = {}) {
-  const env = deps.env ?? Deno.env.get;
+  const env = deps.env ?? runtimeEnv;
   return async (req: Request): Promise<Response> => {
     if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
     if (req.method !== "POST") return json(405, { code: "method_not_allowed" });

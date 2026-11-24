@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "shared-module-policy",
+  "module_path": "supabase/functions/_shared/adapters/emailAdapter.ts",
+  "env": {
+    "allowed_bundle_fields": {},
+    "allowed_top_level": [
+      "LOCAL_RESEND_API_URL",
+      "SUPABASE_URL"
+    ],
+    "closure_call_identifiers": [],
+    "dynamic_getters": [
+      "name"
+    ],
+    "local_call_identifiers": [
+      "resendEnv"
+    ]
+  }
+}

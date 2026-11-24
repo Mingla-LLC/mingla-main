@@ -17,6 +17,7 @@
 // on a local stack) a loopback origin: the same rule as the payment return.
 // ===========================================================================
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "./businessWebOrigin.ts";
+import { isLocalSupabaseUrl } from "./localSupabaseUrl.ts";
 import { APP_CTA_LABEL, resolveAppCtaUrl } from "./email/appLink.ts";
 import { venueMemberUrlSubscriptionId } from "./venueMembershipToken.ts";
 import {
@@ -53,15 +54,7 @@ export const VENUE_VISIT_CATEGORIES = new Set([
   "venue_visit_reminder",
 ]);
 
-export function isLocalSupabaseUrl(url: string): boolean {
-  try {
-    return ["kong", "localhost", "127.0.0.1", "host.docker.internal"].includes(
-      new URL(url).hostname,
-    );
-  } catch {
-    return false;
-  }
-}
+export { isLocalSupabaseUrl };
 
 /** The public web origin guest links use. */
 export function resolveVenueVisitOrigin(

@@ -60,6 +60,19 @@ import {
   nextQuietHoursEnd,
 } from "../_shared/quietHours.ts";
 
+/** The names the visit-link origin reads, each read literally (function secret contract, #2241). */
+function visitOriginEnv(name: string): string | undefined {
+  switch (name) {
+    case "BUSINESS_WEB_ORIGIN":
+      return Deno.env.get("BUSINESS_WEB_ORIGIN");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
+
 // Phase-A compatibility reader for NOTIFICATION_RECIPIENT_HMAC_SECRET is
 // owned by resolveNotificationRecipientHmacSecret; the direct name remains
 // present in the manifest until #1436 completes the private bundle rollout.
@@ -686,7 +699,7 @@ serve(async (req) => {
         categoryKey: payload.category_key,
         payload: (payload.payload ?? {}) as Record<string, unknown>,
         receiptUrl: payload.till_receipt_url,
-        origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
+        origin: resolveVenueVisitOrigin(visitOriginEnv),
       });
       const v2Input: DispatchV2Input = {
         user_id: payload.user_id ?? payload.userId ?? null,
@@ -719,7 +732,7 @@ serve(async (req) => {
             categoryKey: payload.category_key,
             payload: (payload.payload ?? {}) as Record<string, unknown>,
             visitUrl: payload.venue_visit_url,
-            origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
+            origin: resolveVenueVisitOrigin(visitOriginEnv),
             // #4490 Explorer W1: "Open in Mingla" leads when a claim link came.
             appUrl: payload.venue_app_url,
           }) ??
@@ -734,7 +747,7 @@ serve(async (req) => {
           categoryKey: payload.category_key,
           payload: (payload.payload ?? {}) as Record<string, unknown>,
           visitUrl: payload.venue_visit_url,
-          origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
+          origin: resolveVenueVisitOrigin(visitOriginEnv),
         }),
         till_receipt_url: tillReceiptUrl,
       };
