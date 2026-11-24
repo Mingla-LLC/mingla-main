@@ -7,11 +7,24 @@
  */
 import React from "react";
 
+/** Same values as the native twin (the web shim must export what it exports). */
+export const GUEST_PAY_WORDMARK = {
+  label: "Mingla",
+  webSrc: "/brand/mingla-wordmark.png",
+  height: 30,
+  width: Math.round((30 * 1356) / 480),
+} as const;
+
 export function GuestPayWordmark(): React.ReactElement {
   return React.createElement("img", {
-    src: "/brand/mingla-wordmark.png",
-    alt: "Mingla",
+    src: GUEST_PAY_WORDMARK.webSrc,
+    alt: GUEST_PAY_WORDMARK.label,
     "data-testid": "guest-pay-wordmark",
-    style: { width: 85, height: 30, objectFit: "contain", display: "block" },
+    style: {
+      width: GUEST_PAY_WORDMARK.width,
+      height: GUEST_PAY_WORDMARK.height,
+      objectFit: "contain",
+      display: "block",
+    },
   });
 }
