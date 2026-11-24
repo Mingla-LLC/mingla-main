@@ -49,7 +49,6 @@ import { Button } from "../../ui/Button";
 import { CenteredState } from "../../ui/CenteredState";
 import { GlassCard } from "../../ui/GlassCard";
 import { Skeleton } from "../../ui/Skeleton";
-import { BrandHoursEditor } from "../BrandHoursEditor";
 import {
   VenueAvailabilityModule,
   type VenueAvailabilityLeaveHandle,
@@ -58,6 +57,13 @@ import { shortDateLabel, windowsSummary } from "./hoursModel";
 import { SpecialDaySheet, type SpecialDayDraft } from "./SpecialDaySheet";
 import { venueWriteErrorCopy } from "./venueFeaturesCopy";
 import { shortBookingReference } from "../../../utils/venueBookingReference";
+
+// #4490 — the hours editor is its own on-intent chunk (Settings, the add-venue
+// hours step and the claim flow load it the same way), so it is never in two
+// chunks at once (which would hoist it into the eager web __common chunk).
+const BrandHoursEditor = React.lazy(() =>
+  import("../BrandHoursEditor").then((module) => ({ default: module.BrandHoursEditor })),
+);
 
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../../ui/ConfirmDialog");
@@ -308,6 +314,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
       ) : (
         <>
           <View pointerEvents={canEditWeekly && !upsertHours.isPending ? "auto" : "none"} style={!canEditWeekly ? styles.locked : null}>
+            <React.Suspense fallback={<Skeleton height={56} radius="md" />}>
             <BrandHoursEditor
               hours={draft}
               onChange={(next) => {
@@ -319,6 +326,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
               disabled={!canEditWeekly || upsertHours.isPending}
               allowWindows
             />
+            </React.Suspense>
           </View>
           {!canEditWeekly ? (
             <Text style={styles.note}>Only brand owners and admins can change opening hours.</Text>

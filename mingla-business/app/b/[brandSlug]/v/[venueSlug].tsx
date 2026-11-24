@@ -99,7 +99,7 @@ import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenu
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
 import { loadVenueGuestScreens } from "../../../../src/components/venue/guest/venueGuestOwner";
-import { tablesBlockChangesFlow } from "../../../../src/components/venue/offers/tablePickModel";
+import { tablesBlockChangesFlow } from "../../../../src/components/venue/offers/tablesFlow";
 import { ShareModal } from "../../../../src/components/ui/ShareModal";
 import { useThemeFont } from "../../../../src/theme/useThemeFont";
 import { OptionalFeatureBoundary } from "../../../../src/components/brandContact/OptionalFeatureBoundary";
@@ -1034,3 +1034,12 @@ export default function PublicVenueRoute(): React.ReactElement {
     </PublicGlassProvider>
   );
 }
+
+/**
+ * #4490 — the Host's preview (`app/venue/[venueId]/preview.tsx`) mounts the
+ * SAME shared screen and takes it from this route's chunk (a lazy import of
+ * this module), so the public venue page is never bundled into a second chunk
+ * (which would hoist it into the eager web `__common` chunk). Not a route
+ * export: Expo Router reads only the default.
+ */
+export { PublicVenueScreen };

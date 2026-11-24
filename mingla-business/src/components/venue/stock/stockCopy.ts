@@ -5,6 +5,8 @@
  * unknown code reads STOCK_ERROR_COPY.stock_failed.
  */
 
+import { GUEST_SOLD_OUT_COPY } from "./guestSoldOut";
+
 export const STOCK_COPY = {
   // Menu › item › Stock (spec §2 screen 19).
   section: "Stock",
@@ -64,15 +66,8 @@ export const STOCK_COPY = {
   refunded: (amount: string): string => `Refunded ${amount}`,
   waitingCount: (n: number): string =>
     n === 1 ? "1 guest order needs a swap or refund" : `${n} guest orders need a swap or refund`,
-  // The guest's order page.
-  guestSwappedTitle: (item: string, swap: string): string => `${item} sold out, so the kitchen swapped it for ${swap}`,
-  guestSwappedSame: "Same price, so nothing changes on your bill. We've texted and emailed you too.",
-  guestSwappedBack: (amount: string): string =>
-    `${amount} is on its way back to your card. Banks can take 5 to 10 working days.`,
-  guestRefundTitle: (item: string): string => `${item} sold out after you paid`,
-  guestRefundBody: (amount: string): string =>
-    `${amount} is on its way back to your card. Banks can take 5 to 10 working days.`,
-  guestWaitingBody: "The venue is choosing a swap or a refund. You won't pay for anything you don't get.",
+  // The guest's order page (guestSoldOut.ts; the order page loads only that).
+  ...GUEST_SOLD_OUT_COPY,
   // Till refusals (item_sold_out).
   soldOutBeforePaying: (item: string): string => `${item} sold out. Take it off before paying.`,
   soldOutBeforeSending: (item: string): string => `${item} sold out. Take it off before sending.`,

@@ -14,7 +14,7 @@
  * non-member. States: loading, error with retry, nothing to preview, page.
  */
 // orch-strict-grep-allow safearea-on-fullscreen-routes — the banner applies insets.top; the screen below gets top 0 so the cover never double-pads
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -26,8 +26,9 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-// DEEP specifier, never the barrel (i-1047-biz-bundle-budget-deferral).
-import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+// DEEP specifier, never the barrel (i-1047-biz-bundle-budget-deferral). Type
+// only: the screen itself comes from the public venue page's chunk (below).
+import type { PublicVenueScreenProps } from "@mingla/brand-rendering/PublicVenueScreen";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import type {
   MapsAppId,
@@ -46,6 +47,18 @@ import { usePublicMenus } from "../../../src/hooks/useMenus";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { copyAddressText } from "../../../src/utils/copyAddressText";
 import { openMapsTarget } from "../../../src/utils/openMapsTarget";
+
+/**
+ * #4490 — the SAME shared screen the buyer web renders, taken from the public
+ * venue route's own chunk (`app/b/[brandSlug]/v/[venueSlug].tsx` re-exports
+ * it). Importing it here as well put the whole public venue page in two lazy
+ * chunks, which web export hoists into the eager `__common` chunk every
+ * visitor downloads. A Host opening a preview loads the guest page's chunk;
+ * a guest never loads this route.
+ */
+const PublicVenueScreen = React.lazy(async (): Promise<{ default: React.ComponentType<PublicVenueScreenProps> }> => ({
+  default: (await import("../../b/[brandSlug]/v/[venueSlug]")).PublicVenueScreen,
+}));
 
 /** The one reason every disabled button gives. */
 export const VENUE_PREVIEW_NOTE = "Preview: guests can't book yet";
@@ -229,6 +242,13 @@ export default function VenuePreviewRoute(): React.ReactElement {
       <View style={styles.root} testID="venue-preview">
         <PreviewBanner onBack={goBack} topInset={insets.top} />
         <View style={styles.screen}>
+          <Suspense
+            fallback={
+              <View style={styles.stateWrap} testID="venue-preview-screen-loading">
+                <ActivityIndicator />
+              </View>
+            }
+          >
           <PublicVenueScreen
             venue={viewModel}
             discoveryPrice={null}
@@ -265,6 +285,7 @@ export default function VenuePreviewRoute(): React.ReactElement {
               />
             }
           />
+          </Suspense>
         </View>
       </View>
     </PublicGlassProvider>

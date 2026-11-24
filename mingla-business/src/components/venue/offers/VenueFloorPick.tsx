@@ -12,7 +12,7 @@ import type { ThemePalette } from "@mingla/offering-rendering";
 import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
-import { defaultTableSize, LANDMARK_LABEL, parseRoom, PLAN_WIDTH, roomHeight, type TableShape } from "../features/floor/floorModel";
+import { defaultTableSize, LANDMARK_LABEL, parseRoom, PLAN_WIDTH, roomHeight, type TableShape } from "../features/floor/floorRoom";
 import type { GuestTableOption } from "../../../services/venueTableGuestService";
 import { optionTitle, tableA11y, tableWord } from "./tablePickModel";
 

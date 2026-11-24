@@ -13,7 +13,7 @@
  * `biz_preview_venue_page(venue_id)` returns the same shape for a brand member
  * on a venue that is not public yet (the Host preview).
  */
-import { parsePublicVenueFeatures, type PublicVenueFeaturesView } from "@mingla/brand-rendering/venueFeaturePage";
+import { parsePublicVenueFeatures, type PublicVenueFeaturesView } from "@mingla/brand-rendering/venueFeatureRead";
 
 import { supabase } from "./supabase";
 import {

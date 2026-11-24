@@ -20,7 +20,6 @@ import { color, radius, space, type } from "../../../constants/designSystem";
 import { mintClaimLinkHandoff } from "../../../services/claimLinkService";
 import { BuyerClaimCard } from "../../offering/LazyPublicParts";
 import { Icon } from "../../ui/Icon";
-import { entryStyles } from "./EntryUi";
 import { Button } from "../../ui/Button";
 import { VenueOfferGuestError, textClaimLink } from "../../../services/venueOfferGuestInvoke";
 
@@ -75,7 +74,7 @@ export function VenuePassInAppBlock({
 }): React.ReactElement {
   return (
     <View
-      style={[entryStyles.card, styles.block, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
+      style={[styles.card, styles.block, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
       accessibilityRole="summary"
       testID="issue-4490-pass-in-app"
     >
@@ -199,6 +198,14 @@ export function VenueClaimCard({
 }
 
 const styles = StyleSheet.create({
+  // The Entry card shape (EntryUi entryStyles.card), kept here so the Stay
+  // booking page can show this card without loading the Entry UI (#4490).
+  card: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    padding: space[5],
+    gap: space[3],
+  },
   block: { flexDirection: "row", alignItems: "flex-start", gap: space[3] },
   icon: { width: 40, height: 40, borderRadius: radius.lg, alignItems: "center", justifyContent: "center" },
   copy: { flex: 1, gap: space[1] },

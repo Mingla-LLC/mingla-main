@@ -8,8 +8,9 @@
  */
 import type { GuestTableOption, GuestWaitlistEntry } from "../../../services/venueTableGuestService";
 
-/** The guest party can't be capped at 12 any more (C §3.4): the venue's own limit. */
-export const DEFAULT_PARTY_MAX = 12;
+import { DEFAULT_PARTY_MAX } from "./tablesFlow";
+
+export { DEFAULT_PARTY_MAX };
 export const ABSOLUTE_PARTY_MAX = 100;
 
 export interface PartyRange {
@@ -191,31 +192,7 @@ export function windowChoices(slotLabels: readonly string[]): string[] {
   return [...set].sort();
 }
 
-/**
- * True when the venue's tables block changes the table flow (a cap other than
- * 12, pick a table, seating areas, big-party requests, the guest waitlist).
- * Otherwise the page passes nothing new and renders exactly as before.
- */
-export function tablesBlockChangesFlow(
-  t: {
-    partyMax: number | null;
-    pickATable: boolean | null;
-    largePartyRequest: boolean | null;
-    guestWaitlist: boolean | null;
-    notifyMe?: boolean | null;
-    seatingAreas?: ReadonlyArray<unknown>;
-  } | null | undefined,
-): boolean {
-  if (t == null) return false;
-  return (
-    (t.partyMax !== null && t.partyMax !== DEFAULT_PARTY_MAX) ||
-    t.pickATable === true ||
-    t.largePartyRequest === true ||
-    t.guestWaitlist === true ||
-    t.notifyMe === true ||
-    (t.seatingAreas?.length ?? 0) > 1
-  );
-}
+export { tablesBlockChangesFlow } from "./tablesFlow";
 
 const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

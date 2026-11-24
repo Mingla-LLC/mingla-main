@@ -5,7 +5,7 @@
  * their contact.
  */
 import { supabase } from "./supabase";
-import { mapTillPayView, type TillPayView } from "../components/venue/till/tillPayModel";
+import { mapTillPayView, type TillPayView } from "../components/venue/till/tillGuestPayModel";
 
 export class TillPayCodeError extends Error {
   readonly code: string;

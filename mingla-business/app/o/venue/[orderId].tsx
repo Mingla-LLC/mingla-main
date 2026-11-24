@@ -45,8 +45,7 @@ import {
 import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering";
 import { venueOrderStatusPollDelay } from "@mingla/brand-rendering/venueOrdering/venueOrderingPoll";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
-import { STOCK_COPY } from "../../../src/components/venue/stock/stockCopy";
-import { guestSoldOutOf, type GuestSoldOutLine } from "../../../src/components/venue/stock/guestSoldOut";
+import { GUEST_SOLD_OUT_COPY as STOCK_COPY, guestSoldOutOf, type GuestSoldOutLine } from "../../../src/components/venue/stock/guestSoldOut";
 import { formatCurrency } from "../../../src/utils/currency";
 import { venuePublicPath } from "../../../src/constants/publicUrls";
 import { useSignedInHostViewer } from "../../../src/components/venue/guestViewHostSession";

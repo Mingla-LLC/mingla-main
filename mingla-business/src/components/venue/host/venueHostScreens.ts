@@ -18,6 +18,10 @@
  *  - Guest code never imports this owner (the guest owner is
  *    `../guest/venueGuestScreens.ts`).
  */
+// The two workspaces themselves (LazyVenueSuites.tsx), so the classic modules
+// they import statically share this chunk with the feature modules.
+export { VenueSuiteShell } from "../VenueSuiteShell";
+export { StaySuiteShell } from "../../stay/StaySuiteShell";
 export { VenueSpacesModule } from "../features/VenueSpacesModule";
 export { VenueAvailabilityPricingModule } from "../features/VenueAvailabilityPricingModule";
 export { VenueOffersModule } from "../features/offers/VenueOffersModule";
@@ -44,3 +48,5 @@ export {
   VenueTillRouteScreen,
   VenueTillSettingsRouteScreen,
 } from "./venueHostRoutes";
+// The Stay venue header reads the same inventory the Stay suite shows.
+export { getStayInventory } from "../../../services/stayInventoryService";

@@ -44,7 +44,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { VenueClaimFeedbackSheet } from "../../../src/components/brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
-import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
 import {
@@ -56,7 +55,10 @@ import {
 // graph. TypeScript is served by the sibling `.d.ts` (the same shape
 // `useShareNetworkState.{web,native,d}.ts` already relies on).
 import PendingVenueIdentityCorrectionLauncher from "../../../src/components/venue/PendingVenueIdentityCorrectionLauncher";
-import { VenueSuiteShell } from "../../../src/components/venue/VenueSuiteShell";
+// #4490 — both workspaces load from the one Host venue owner (same names and
+// props as the shells; see LazyVenueSuites.tsx).
+import { StaySuiteShell, VenueSuiteShell } from "../../../src/components/venue/host/LazyVenueSuites";
+import { loadVenueHostScreens } from "../../../src/components/venue/host/venueHostOwner";
 import { Button } from "../../../src/components/ui/Button";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
@@ -170,7 +172,9 @@ export default function VenueManagementPage(): React.ReactElement {
       return undefined;
     }
     let cancelled = false;
-    void import("../../../src/services/stayInventoryService")
+    // #4490 — from the Host venue owner the suites load from anyway (a
+    // separate import() of this service put it in two chunks, i.e. __common).
+    void loadVenueHostScreens()
       .then(({ getStayInventory }) =>
         routeQueryClient.fetchQuery({
           queryKey: ["stay-inventory", venueId],
