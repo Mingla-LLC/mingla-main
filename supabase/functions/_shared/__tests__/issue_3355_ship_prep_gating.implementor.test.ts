@@ -78,8 +78,14 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // paths and types the experience stop, price option and create stop schemas;
 // the digest is recomputed the same way. The off path's prompt digests and
 // per-message selections are unchanged.
+// [TEST-MOD-APPROVED #4572] item 6: the shared event-type list grows to 26
+// values (RSVP_PARTY_TYPES), the "Party type" wording becomes "Event type" in
+// agentTools.ts, and the site menu tool text changes in agentSiteTools.ts. The
+// switch-OFF path is meant to gain the new types too (SC-6.5), so the tool
+// count stays 190 and the digest is recomputed the same way. The off path's
+// prompt digests and per-message selections are unchanged.
 const MAIN_DECLARATIONS_DIGEST =
-  "4b8e1dd5fff12858ba2d72f8b3f04eb7a7ad52a006257daa268bf62e7674b00f";
+  "ba14adf52c471c636231505a5e65c520307228138be4bf058bd09394cdaeca76";
 const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {

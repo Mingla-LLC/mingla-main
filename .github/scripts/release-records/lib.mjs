@@ -317,7 +317,8 @@ export const PACKAGE_CONSUMERS = {
   "sharing": ["mingla-business"],
   // #2829 — the Sites contracts: mingla-business imports them by relative path;
   // the runtime and Studio carry checked-in generated copies (site-contracts sync).
-  "site-contracts": ["mingla-business"],
+  // #4572 — Studio's caption gate test reads packages/site-contracts/src/blocks.ts.
+  "site-contracts": ["mingla-business", "mingla-site-cms"],
   "theme-animations": ["mingla-business"],
   "video-upload": ["mingla-admin", "mingla-business"],
 };

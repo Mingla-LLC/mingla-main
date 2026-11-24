@@ -121,7 +121,6 @@ import {
   useBusinessRsvpPhoneField,
 } from "./useBusinessRsvpPhoneField";
 import { SHOW_PRE_PURCHASE_APP_BOX } from "./prePurchaseAppBox";
-import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3) + its entity payload type; analytics ride the buyer-web PostHog facade
 // (captureWeb — postHogService is a deliberate no-op stub on web, I-1187).
@@ -1532,9 +1531,6 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       },
       onJoinWaitlist: (ticketId: string) => {
         setWaitlistTicketId(ticketId);
-      },
-      onRequestApproval: (_ticketId: string) => {
-        showToast(BUYER_CLAIM_COPY.approvalToast);
       },
       onOpenBrand: (brandSlug: string) => {
         recordShareDestination("view_brand");

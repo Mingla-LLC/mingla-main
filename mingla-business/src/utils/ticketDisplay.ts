@@ -148,7 +148,8 @@ export const formatTicketBadges = (t: TicketStub): TicketBadge[] => {
  */
 export const formatTicketButtonLabel = (t: TicketStub): string => {
   if (t.visibility === "disabled") return "Sales paused";
-  if (t.approvalRequired) return "Request access";
+  // #4572 7c (D7): no request-access label — approval is not enforced yet, so the
+  // preview shows the same free / buy label guests actually get.
   if (t.passwordProtected) return "Enter password to unlock";
   if (t.isFree) return "Get free ticket";
   return "Buy ticket";

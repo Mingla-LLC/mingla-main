@@ -7,6 +7,11 @@ import type { OfferingDetailView } from "./offeringDetail";
 import type { LiveOfferings } from "./offeringCards";
 import { navigablePages, type ArtifactPage } from "./pageRouting";
 import { canonicalUrl, pageDescription, socialImage } from "./seo";
+
+/** #4572 item 7a — a summary keeps its line breaks on the page; JSON-LD reads it as one line. */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
 import type { CollectionEntry } from "./siteCollections";
 
 /*
@@ -194,7 +199,7 @@ function events(artifact: ArtifactV2, page: ArtifactPage, live: LiveOfferings | 
         eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
         ...((location) => (location ? { location } : {}))(eventLocation(artifact, offering)),
         ...(image ? { image: [image] } : {}),
-        ...(offering.summary ? { description: offering.summary } : {}),
+        ...(offering.summary ? { description: oneLine(offering.summary) } : {}),
         url: offering.public_url,
         organizer: { "@type": "Organization", name: artifact.brand.display_name, url: `${origin}/` },
         offers: offer(offering, state.soldOut),
@@ -221,7 +226,7 @@ export function detailItem(artifact: ArtifactV2, detail: OfferingDetailView, ori
     name: offering.title,
     url,
     ...(image ? { image: [image] } : {}),
-    ...(offering.summary ? { description: offering.summary } : {}),
+    ...(offering.summary ? { description: oneLine(offering.summary) } : {}),
   };
   const offers = offer(offering, card.state.soldOut);
   const organizer = { "@type": "Organization", name: artifact.brand.display_name, url: `${origin}/` };

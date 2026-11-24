@@ -6,6 +6,7 @@ import {
   signSitesEnvelope,
   SITES_PROVISION_RENDERER_KEY,
   SITES_SAFE_CUSTOMER_CODES,
+  sitesAuthorizeRefusal,
   sitesFailure,
   sitesJson,
   sitesOwnerFixableRefusal,
@@ -342,6 +343,13 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         return { data, error: error ? { message: error.message } : null };
       },
       callCms: (args) => callCms(db.service, args),
+      // #4572 item 3 — the brand's picture fields for "Bring in my brand photos" (rank checked first by the route).
+      brandPictures: async (brandId) => {
+        const { data, error } = await db.service.from("brands")
+          .select("name,profile_photo_url,cover_media_url,cover_media_type,cover_media_poster_url")
+          .eq("id", brandId).is("deleted_at", null).maybeSingle();
+        return error || !data ? null : data as Record<string, unknown>;
+      },
     });
     if (planResponse) return planResponse;
 
@@ -784,15 +792,8 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         },
       );
       if (error) {
-        return sitesFailure(
-          error.message.includes("idempotency")
-            ? "IDEMPOTENCY_CONFLICT"
-            : error.message.includes("forbidden")
-            ? "FORBIDDEN"
-            : "INVALID_STATE",
-          error.message.includes("forbidden") ? 403 : 409,
-          operationId,
-        );
+        // #4572 item 15 — name the refusal (the publishing pause, a bad request), never a bare INVALID_STATE.
+        return sitesAuthorizeRefusal(error.message, operationId);
       }
       const cmsPath = action === "publications"
         ? "/api/internal/publications"

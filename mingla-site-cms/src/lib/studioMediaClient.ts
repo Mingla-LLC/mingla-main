@@ -109,6 +109,9 @@ export interface StudioMediaLibraryItem {
 
 export interface StudioMediaLibraryTarget {
   id: string;
+  /** #4572 item 16 — "site_settings" for the logo and social image. */
+  scope?: "site_settings";
+  settingsField?: "logo" | "social_image";
   pageId: string;
   pageTitle: string;
   pageRole: string;
@@ -223,7 +226,12 @@ export async function attachStudioMedia(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(target.scope === "site_settings" ? {
+          scope: "site_settings",
+          page_id: target.pageId,
+          expected_revision: target.expectedRevision,
+          field: target.settingsField,
+        } : {
           page_id: target.pageId,
           expected_revision: target.expectedRevision,
           block_index: target.blockIndex,
@@ -235,8 +243,9 @@ export async function attachStudioMedia(
       },
     ),
   );
-  const expectedReturn =
-    `/admin/collections/pages/${encodeURIComponent(target.pageId)}`;
+  const expectedReturn = target.scope === "site_settings"
+    ? `/admin/collections/site-settings/${encodeURIComponent(target.pageId)}`
+    : `/admin/collections/pages/${encodeURIComponent(target.pageId)}`;
   if (
     attachment.page_id !== target.pageId ||
     attachment.media_id !== mediaId ||

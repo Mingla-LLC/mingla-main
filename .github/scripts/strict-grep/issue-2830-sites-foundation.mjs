@@ -1058,9 +1058,35 @@ export function violations(files) {
   )?.length ?? 0;
   // #2829 W6 — duration_ms, kind, stream_video_id, stream_url and
   // stream_host are system fields too (14 -> 19); none is owner-writable.
-  if (protectedMediaFieldCount !== 19) {
+  // #4572 item 16 — exactly three of those 19 (state, kind, detected_mime)
+  // moved to pickerFieldAccess: a site member may READ them so Studio's
+  // pickers can filter, but only Mingla's system creates or updates them.
+  // 16 stay fully system-only.
+  if (protectedMediaFieldCount !== 16) {
     failures.push(
-      `custom media pipeline boundary: expected 19 read-protected system fields, found ${protectedMediaFieldCount}`,
+      `custom media pipeline boundary: expected 16 read-protected system fields, found ${protectedMediaFieldCount}`,
+    );
+  }
+  const mediaSource = files.cmsMediaCollection ?? "";
+  const pickerFieldNames = [];
+  for (const match of mediaSource.matchAll(/access: pickerFieldAccess/g)) {
+    const before = mediaSource.slice(0, match.index);
+    const names = [...before.matchAll(/name: "([a-z_]+)"/g)];
+    pickerFieldNames.push(names.length ? names[names.length - 1][1] : "?");
+  }
+  const pickerFieldList = pickerFieldNames.slice().sort().join(",");
+  if (pickerFieldList !== "detected_mime,kind,state") {
+    failures.push(
+      `custom media pipeline boundary: expected exactly the picker-readable fields detected_mime,kind,state, found ${pickerFieldList || "none"}`,
+    );
+  }
+  const pickerAccessBlock = mediaSource.match(/const pickerFieldAccess = \{([\s\S]*?)\n\};/)?.[1] ?? "";
+  if (
+    !/\bcreate: systemMediaField,/.test(pickerAccessBlock) ||
+    !/\bupdate: systemMediaField,/.test(pickerAccessBlock)
+  ) {
+    failures.push(
+      "custom media pipeline boundary: pickerFieldAccess must keep create and update on systemMediaField",
     );
   }
   for (const token of [

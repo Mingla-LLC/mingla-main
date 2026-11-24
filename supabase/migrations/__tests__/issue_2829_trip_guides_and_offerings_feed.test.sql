@@ -111,7 +111,7 @@ BEGIN
   SELECT o INTO v_row FROM jsonb_array_elements(v_feed->'offerings') o WHERE o->>'slug' = 'upcoming-trip';
   IF v_row->>'kind' <> 'trip' OR v_row->>'timezone' <> 'Asia/Makassar' OR v_row->>'status' <> 'scheduled'
      OR v_row->>'public_url' <> 'https://host.usemingla.com/t/w4-brand-a/upcoming-trip'
-     OR v_row->>'summary' <> 'Seven days on the coast.'
+     OR v_row->>'summary' <> E'Seven days\non the coast.'  -- #4572: line breaks are kept, runs of spaces collapse
      OR v_row->'cover' <> '{"path":"event_covers/a/cover.jpg","type":"image"}'::jsonb THEN
     RAISE EXCEPTION 'upcoming row wrong: %', v_row;
   END IF;

@@ -350,6 +350,8 @@ describe("#4453 move, remove and add a section", () => {
   it("refuses a type that cannot be added, an unknown place, and a full page", async () => {
     const add = (args: Doc) => call(site, "add_section", { page_id: site.aboutId, expected_revision: "1", after_section_id: null, ...args });
     for (const type of ["availability", "nonsense", 7]) expect((await add({ type })).error.code, String(type)).toBe("SECTION_TYPE_NOT_AVAILABLE");
+    // #4572 item 8 follows #4575: a cover is not refused off Home; it only needs its photo.
+    expect((await add({ type: "hero" })).error.code).toBe("MEDIA_REQUIRED");
     expect((await add({ type: "faq", after_section_id: "nope" })).error.code).toBe("SECTION_NOT_FOUND");
     pageOf(site, site.aboutId).blocks = Array.from({ length: 60 }, () => ({ id: crypto.randomUUID().slice(0, 24), blockType: "divider", variant: "neutral" }));
     expect((await add({ type: "faq" })).error).toMatchObject({ code: "SECTION_LIMIT_REACHED", max: 60 });

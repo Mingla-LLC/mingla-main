@@ -657,11 +657,17 @@ export function phase3dContractDigest(manifest) {
 // #4574 Sites backup budget: listed migration 20281128004574 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4572 one PR: merged the events and website halves (both lanes' rows kept, filename order); re-sealed.
+// #4572 tester: registered issue_4572_one_pr.tester.adversarial.pg17 (and its sidecar) in the #1931 and #2117 inventories; re-sealed.
+// #3969 step 2 profile access: listed migration 20281201003969 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4572 rework after QA: merged main after #3969 step 2 (kept main's 20281201003969 rows after the #4572 migrations, filename order) and skipped 20281129004572 by exact filename on the #1931 and #2117 filtered replays; re-sealed.
 // #4571 merge of main after #4573 and #4574: renumbered the twelve #4571 migrations to 20281130014571 to 20281130124571 (same order), listed after 20281128004574 in the #1857, #1931 and #2117 lanes; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 pre-#1931 replay fix: skipped 20281130044571 (W4) and the seven later #4571 migrations after W5 (20281130064571 to 20281130124571) by exact filename in the #1931 SC-47 filtered replay; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3969 step 2 profile access: listed migration 20281201003969 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed;
 // MANIFEST.json phase3eContractSha256 matches.
@@ -684,7 +690,8 @@ export function phase3dContractDigest(manifest) {
 // #4522 renumbering after #4549: moved the branch's 14 migrations (20281123013281..20281123143281) to 20281125013281..20281125143281 above main's 20281124004549, same relative order and slugs; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes (main's rows first) and the filtered #1931/#2117 exact-filename skips renamed; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4573 form request safeupdate and #4574 Sites backup budget: kept main's 20281127004573 and 20281128004574 rows, their pg17 suites and filtered-replay skips beside the #3281/#4522 rows and skips; moved the branch's 14 migrations (20281125013281..20281125143281) to 20281129013281..20281129143281 above main's 20281128004574, same relative order and slugs; expectedFiles re-sorted; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4571 Work cards, #3969 account access and #4575 Grid cover: kept main's twelve #4571 migrations (20281130014571 to 20281130124571), 20281201003969, their pg17 suites and the pre-#1931 #4571 skips beside the #3281/#4522 rows and skips; moved the branch's 14 migrations (20281129013281..20281129143281) to 20281202013281..20281202143281 above main's 20281201003969, same relative order and slugs; expectedFiles re-sorted; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "0dc17c5d80b1a46eb11d143a1b53a6aadeb17e06781eec0747b6d774878adea8";
+// #4522 merge of main after #4572 Sites feed poster and event types (6093e949c4): kept main's five #4572 migrations (20281129004572..20281129704572), their pg17 suites and filtered-replay skips beside the #3281/#4522 rows and skips; the branch's 14 migrations stay at 20281202013281..20281202143281 above them; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e04e4c906a83498fc693a47460f20db4eddd2662c794f9501a85495e63232482";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

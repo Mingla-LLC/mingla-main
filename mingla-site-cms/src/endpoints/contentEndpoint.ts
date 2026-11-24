@@ -864,9 +864,27 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
       const home = (pages as AnyDoc[]).find((page) => !page.parent && (page.slug ?? "") === "");
       const blocks = Array.isArray(home?.blocks) ? home!.blocks as AnyDoc[] : [];
       const heroIndex = blocks.findIndex((block) => block.blockType === "hero");
-      if (!home || heroIndex < 0) {
-        if (action === "cover") return { available: false, revision: null, photo: null, video: null };
+      if (!home) {
+        if (action === "cover") return { available: false, reason: "colour_panel", revision: null, photo: null, video: null };
         fail("NOT_FOUND");
+      }
+      if (heroIndex < 0) {
+        // #4572 item 8 (D4) — Home opens with a colour panel: say so, with its
+        // revision, so Design → Cover can add a cover (a photo first).
+        if (action === "cover") return { available: false, reason: "colour_panel", revision: String(home.revision ?? ""), photo: null, video: null };
+        if (String(home.revision ?? "") !== expected(args)) conflict({ updatedAt: home.revision, updated_by: home.updated_by });
+        const photo = has(args, "photo_media_id") ? mediaIdOf(args.photo_media_id) : null;
+        if (!photo) fail("VALIDATION_FAILED"); // a cover always starts with its picture
+        const sections = await import("../lib/sectionActions");
+        const write = { req: ctx.req, scoped: ctx.scoped, tenantId: ctx.tenantId, userId: ctx.request.userId, actor: "user" as const, group: (await import("../lib/draftHistory")).parseChangeGroup(args) };
+        const done = await sections.addSection(write, {
+          page_id: String(home.id),
+          expected_revision: String(home.revision ?? ""),
+          type: "hero",
+          media_id: photo,
+          after_section_id: null,
+        });
+        return { saved: true, page_revision: done.pageRevision, audit: { action: "content.updated", collection: "pages", entry: String(home.id) } };
       }
       const hero = blocks[heroIndex]!;
       if (action === "set_cover") {
@@ -1256,7 +1274,8 @@ async function runWorkspaceAction(ctx: Ctx): Promise<Record<string, unknown>> {
     case "page_sections":
       return sections.readPageSections(write, args.page_id, (ids) => thumbsFor(ctx, ids));
     case "section_catalog":
-      return { types: sections.sectionCatalog(siteDesign(await currentSettings(base)), "user") };
+      // #4572 item 8 — with page_id, Cover is listed only where the server accepts it (Home with no cover).
+      return sections.readPageSectionCatalog(write, siteDesign(await currentSettings(base)), args.page_id);
     case "edit_section":
       return saved(await sections.editSection(write, { ...args, expected_revision: expected(args) }));
     case "move_section":

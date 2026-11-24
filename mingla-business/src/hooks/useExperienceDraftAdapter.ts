@@ -58,7 +58,7 @@ export interface ExperiencePayloadWhen {
 
 /** Brand hints used only when seeding a NEW experience's timezone. */
 export interface ExperienceBrandTimezoneHints {
-  /** issue #4522 G-5 — the brand's own zone, read first. */
+  /** #4572 7e — the brand's saved zone wins (D9); issue #4522 G-5 reads it first. */
   brandZone?: string | null;
   payoutCountry?: string | null;
   currency?: string | null;

@@ -246,7 +246,8 @@ describe("#3645 sites that cannot be mounted use the shared rule", () => {
 
   test.each([
     ["packages/offering-rendering/PublicEventPage.tsx", "price"],
-    ["packages/offering-rendering/EventOfferingBody.tsx", "amount"],
+    // #4572 7b: the event page's formatMoney moved into the one price-label owner.
+    ["packages/offering-rendering/priceFromLabel.ts", "amount"],
     ["packages/offering-rendering/offeringCta.ts", "price"],
     ["packages/offering-rendering/useTripOfferingState.ts", "priceCents / 100"],
     ["mingla-business/app/t/[brandSlug]/[tripSlug].tsx", "priceCents / 100"],

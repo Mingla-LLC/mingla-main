@@ -80,7 +80,9 @@ export function BrandGroupPeoplePanel({
             <View style={styles.avatar}><Text style={styles.avatarText}>{initials(member.display_name)}</Text></View>
             <View style={styles.memberCopy}>
               <Text style={styles.memberName} numberOfLines={1}>{member.display_name}</Text>
-              <Text style={styles.memberEmail} numberOfLines={2}>{member.email}</Text>
+              {typeof member.email === "string" && member.email.trim().length > 0 ? (
+                <Text style={styles.memberEmail} numberOfLines={2}>{member.email}</Text>
+              ) : null}
             </View>
             <Text style={styles.role}>{memberRoleLabel(member.role)}</Text>
           </View>

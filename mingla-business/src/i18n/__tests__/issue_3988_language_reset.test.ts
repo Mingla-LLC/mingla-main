@@ -4,7 +4,7 @@ const mockReadProfile = jest.fn();
 
 jest.mock("../../services/supabase", () => ({
   supabase: {
-    from: () => ({
+    rpc: () => ({
       select: () => ({
         eq: (_field: string, userId: string) => ({
           maybeSingle: () => mockReadProfile(userId),

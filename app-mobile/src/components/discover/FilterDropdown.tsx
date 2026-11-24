@@ -5,6 +5,8 @@ import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import type { DiscoverFacetGroup, DiscoverFiltersV2, DiscoverPriceBands } from "../../types/discoverFeed";
 import { formatPriceBandLabel } from "../../utils/discoverPriceBandLabel";
 import { setDiscoverGuests, updateDiscoverFilter } from "./discoverFilterState";
+import { PARTY_TYPES } from "../../constants/eventTaxonomy";
+import { discoverOptionLabel, groupEventTypeOptions, visibleEventTypeOptions, type EventTypeGroupId } from "./eventTypeGroups";
 
 interface Props {
   visible: boolean;
@@ -20,6 +22,8 @@ interface Props {
 
 export function FilterDropdown({ visible, groups, filters, resultCount, priceBands, onDraftChange, onApply, onClose, t }: Props): React.ReactElement {
   const [draft, setDraft] = useState(filters);
+  // #4572 item 6 — which Event type group shows all its chips.
+  const [expandedEventTypes, setExpandedEventTypes] = useState<Record<EventTypeGroupId, boolean>>({ party: false, culture: false });
   useEffect(() => { if (visible) setDraft(filters); }, [visible, filters]);
   const guests = draft.kind === "stays" ? draft.f.guests ?? 2 : 2;
   const content = useMemo(() => groups.filter((group) => group.id !== "price" || priceBands), [groups, priceBands]);
@@ -39,6 +43,30 @@ export function FilterDropdown({ visible, groups, filters, resultCount, priceBan
     if (group.id === "checkIn") return id === "tonight" ? "checkin.tonight" : `when.${id}`;
     if (group.id === "propertyKind") return `property.${id}`;
     return null;
+  };
+  const renderOption = (group: DiscoverFacetGroup, option: DiscoverFacetGroup["options"][number], index: number): React.ReactElement => {
+    const field = ({ when: "when", price: "price", partyType: "partyTypes", vibe: "vibeTags", music: "musicGenres", goodFor: "goodFor", destination: "destination", leavingFrom: "leavingFrom", checkIn: "checkIn", propertyKind: "propertyKinds" } as Record<string, string>)[group.id];
+    const value = (draft.f as Record<string, unknown>)[field];
+    const selected = value === option.id || (Array.isArray(value) && value.includes(option.id));
+    const disabled = option.count === 0 && !selected;
+    const key = optionKey(group, option.id);
+    let label = option.label ?? discoverOptionLabel(t, key, option.id);
+    if (group.id === "price" && option.id.startsWith("band_") && priceBands) {
+      label = formatPriceBandLabel(Number(option.id.slice(-1)) - 1, priceBands, (key, values) => t(key, values));
+    }
+    return (
+      <Pressable
+        key={option.id}
+        disabled={disabled}
+        accessibilityRole={group.multi ? "checkbox" : "radio"}
+        accessibilityState={{ checked: selected, disabled }}
+        onPress={() => set(updateDiscoverFilter(draft, group, option.id))}
+        style={[group.multi ? styles.chip : styles.segmentOption, !group.multi && index === 0 && styles.segmentFirst, selected && styles.selected, disabled && styles.disabled]}
+      >
+        <Text style={[styles.optionText, selected && styles.selectedText]}>{label}</Text>
+        {group.multi ? <Text style={styles.count}>{option.count}</Text> : null}
+      </Pressable>
+    );
   };
   return (
     <BaseBottomSheet
@@ -70,32 +98,33 @@ export function FilterDropdown({ visible, groups, filters, resultCount, priceBan
                 <Pressable onPress={() => set(setDiscoverGuests(draft, guests + 1))} disabled={guests >= 8} style={styles.step}><Icon name="add" size={16} color="#fff" /></Pressable>
               </View>
             </View>
+          ) : group.id === "partyType" ? (
+            // #4572 item 6 — Event type in the Host wizard's two groups.
+            groupEventTypeOptions(group.options, PARTY_TYPES).map((sub) => {
+              const expanded = expandedEventTypes[sub.id];
+              const picked = (draft.f as Record<string, unknown>).partyTypes;
+              const shown = visibleEventTypeOptions(sub, expanded, Array.isArray(picked) ? (picked as string[]) : []);
+              return (
+                <View key={sub.id}>
+                  <Text style={styles.subheading}>{t(sub.id === "party" ? "group.event_type_parties" : "group.event_type_culture")}</Text>
+                  <View style={styles.chips}>
+                    {shown.map((option, index) => renderOption(group, option, index))}
+                  </View>
+                  {sub.options.length > shown.length || expanded ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setExpandedEventTypes((prev) => ({ ...prev, [sub.id]: !prev[sub.id] }))}
+                      style={styles.more}
+                    >
+                      <Text style={styles.moreText}>{expanded ? t("group.show_fewer") : t("group.show_all", { count: sub.options.length })}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            })
           ) : (
             <View style={group.multi ? styles.chips : styles.segment}>
-              {group.options.map((option, index) => {
-                const field = ({ when: "when", price: "price", partyType: "partyTypes", vibe: "vibeTags", music: "musicGenres", goodFor: "goodFor", destination: "destination", leavingFrom: "leavingFrom", checkIn: "checkIn", propertyKind: "propertyKinds" } as Record<string, string>)[group.id];
-                const value = (draft.f as Record<string, unknown>)[field];
-                const selected = value === option.id || (Array.isArray(value) && value.includes(option.id));
-                const disabled = option.count === 0 && !selected;
-                const key = optionKey(group, option.id);
-                let label = option.label ?? (key ? t(key) : option.id);
-                if (group.id === "price" && option.id.startsWith("band_") && priceBands) {
-                  label = formatPriceBandLabel(Number(option.id.slice(-1)) - 1, priceBands, (key, values) => t(key, values));
-                }
-                return (
-                  <Pressable
-                    key={option.id}
-                    disabled={disabled}
-                    accessibilityRole={group.multi ? "checkbox" : "radio"}
-                    accessibilityState={{ checked: selected, disabled }}
-                    onPress={() => set(updateDiscoverFilter(draft, group, option.id))}
-                    style={[group.multi ? styles.chip : styles.segmentOption, !group.multi && index === 0 && styles.segmentFirst, selected && styles.selected, disabled && styles.disabled]}
-                  >
-                    <Text style={[styles.optionText, selected && styles.selectedText]}>{label}</Text>
-                    {group.multi ? <Text style={styles.count}>{option.count}</Text> : null}
-                  </Pressable>
-                );
-              })}
+              {group.options.map((option, index) => renderOption(group, option, index))}
             </View>
           )}
         </View>
@@ -108,6 +137,9 @@ const styles = StyleSheet.create({
   header: { minHeight: 48, paddingHorizontal: 16, justifyContent: "center" },
   title: { color: "#fff", fontSize: 18, fontWeight: "700" },
   scrollContent: { paddingHorizontal: 4, paddingVertical: 6, paddingBottom: 20 },
+  subheading: { marginHorizontal: 12, marginTop: 4, marginBottom: 6, color: "rgba(255,255,255,.7)", fontSize: 12, fontWeight: "600" },
+  more: { alignSelf: "flex-start", minHeight: 32, justifyContent: "center", paddingHorizontal: 12, marginBottom: 4 },
+  moreText: { color: "#f39a55", fontSize: 12.5, fontWeight: "600" },
   heading: { marginHorizontal: 12, marginTop: 8, marginBottom: 4, color: "rgba(255,255,255,.45)", fontSize: 11, fontWeight: "700", letterSpacing: .6 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 10, paddingBottom: 6 },
   chip: { height: 32, borderRadius: 16, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(255,255,255,.06)" },

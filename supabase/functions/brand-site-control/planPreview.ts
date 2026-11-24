@@ -23,7 +23,7 @@ import {
   planPreviewStyles,
   PLAN_PREVIEW_RATE_LIMITED,
 } from "../_shared/siteContracts/planPreview.ts";
-import { primaryFormat, type FormatKey } from "../_shared/siteContracts/formats.ts";
+import { primaryFormat, styleFormat, type FormatKey } from "../_shared/siteContracts/formats.ts";
 import { composeFacts, liveFingerprints, type ServiceRpc } from "./designPass.ts";
 import { planFailure, planFailureFromRpc, type SitePlanContext } from "./sitePlan.ts";
 
@@ -77,13 +77,17 @@ export async function handlePlanPreviewRoute(
   const mainAction = typeof story?.main_action === "string" ? story.main_action : null;
   const format: FormatKey | null = primaryFormat({ offerings_selected: offerings, main_action_page: mainActionPage(mainAction, offerings) });
   if (!format) return planFailure("PLAN_NOT_READY", 409);
+  // #4572 item 6 — styles (picks, fingerprints, the skipped line) are judged by
+  // the style format; Studio still composes the pages by the primary format.
+  const styleKey: FormatKey = styleFormat({ offerings_selected: offerings, main_action_page: mainActionPage(mainAction, offerings) }) ?? format;
 
-  const live = await liveFingerprints(ctx.serviceRpc, format, brandId);
+  const live = await liveFingerprints(ctx.serviceRpc, styleKey, brandId);
   const taken = live.flatMap((row) => row && typeof row === "object" && typeof (row as JsonObject).design === "string" ? [(row as JsonObject).design as string] : []);
   const signals = { venue_descriptor: typeof inputs.venue_descriptor === "string" ? inputs.venue_descriptor : null, taken: taken as never };
-  const styles = planPreviewStyles(format, input.styles, signals);
+  const styles = planPreviewStyles(styleKey, input.styles, signals);
   // A ✕ style, an unknown key or more than three are refused (never composed).
-  if (!styles) return planFailure("VALIDATION_FAILED", 400);
+  // Studio checks the styles against the primary format too, so both must pass.
+  if (!styles || planPreviewStyles(format, styles, signals) === null) return planFailure("VALIDATION_FAILED", 400);
 
   const take = await ctx.serviceRpc("brand_site_plan_preview_take", { p_brand_id: brandId });
   if (take.error) return planFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503);
@@ -98,7 +102,7 @@ export async function handlePlanPreviewRoute(
   const facts = await composeFacts(ctx.serviceRpc, siteId ?? { brandId }, rows as JsonObject[]);
   const brand = (inputs.brand ?? {}) as JsonObject;
   const words = splitBrandDescription(typeof brand.description === "string" ? brand.description : null);
-  const picks = planPreviewPicks(format, signals);
+  const picks = planPreviewPicks(styleKey, signals);
   const operationId = crypto.randomUUID();
 
   const cms = await ctx.callCms({
@@ -140,7 +144,7 @@ export async function handlePlanPreviewRoute(
     data: {
       format,
       picks,
-      skipped_line: planPreviewSkippedLine(format),
+      skipped_line: planPreviewSkippedLine(styleKey),
       previews: previews.flatMap((row) => typeof row?.key === "string" && typeof row?.style === "string" ? [row] : []),
       preview_origin: typeof studio.preview_origin === "string" ? studio.preview_origin : null,
       has_samples: studio.has_samples === true,

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Trash2, Edit3, Sun, Moon, Monitor, RotateCcw } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { fetchAdminProfileContacts } from "../services/adminProfileContactsService";
+import { pickSingleContactByEmail } from "../lib/profileContactsPure";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Toggle, Textarea } from "../components/ui/Input";
@@ -247,11 +249,20 @@ function DangerZone() {
     setResettingSingle(true);
     try {
       // First verify user exists
-      const { data: user, error: findError } = await supabase
-        .from("profiles")
-        .select("id, coach_mark_step")
-        .eq("email", userEmail.trim())
-        .maybeSingle();
+      // #3969 — find the person through the admin contacts read.
+      let user = null;
+      let findError = null;
+      try {
+        const rows = await fetchAdminProfileContacts({ email: userEmail.trim() });
+        const picked = pickSingleContactByEmail(rows, userEmail);
+        if (picked.error === "ambiguous") {
+          findError = new Error(`More than one account matches "${userEmail.trim()}". Reset it by user id instead.`);
+        } else {
+          user = picked.user || null;
+        }
+      } catch (e) {
+        findError = e;
+      }
 
       if (findError) {
         console.error("[CoachMarkReset] Find error:", findError);

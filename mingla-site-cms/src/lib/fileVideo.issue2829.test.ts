@@ -161,6 +161,8 @@ function uploadRequest(declared: string, bytes: number) {
     context: {},
     user: { id: "u1", tenantId: TENANT, siteId: SITE },
     payload: {
+      // #4572 item 12 — no READY copy of this file yet (the repeat-upload check).
+      find: async () => ({ docs: [] }),
       findByID: async () => row,
       create: async (input: { data: Record<string, unknown> }) => ({ id: MEDIA, ...input.data }),
       update: async (input: { data: Record<string, unknown> }) => {

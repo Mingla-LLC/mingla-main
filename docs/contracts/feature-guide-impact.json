@@ -57,7 +57,10 @@
         "app-mobile/src/utils/explorerProfileAuthRest.ts",
         "app-mobile/src/utils/explorerReactivation.ts",
         "app-mobile/src/utils/authCleanup.ts",
-        "app-mobile/src/utils/signedOutProfileError.ts"
+        "app-mobile/src/utils/signedOutProfileError.ts",
+        "app-mobile/src/constants/profileColumns.ts",
+        "app-mobile/src/services/profileAccessService.ts",
+        "app-mobile/src/services/authService.ts"
       ]
     },
     {
@@ -839,7 +842,9 @@
         "app-mobile/src/services/reportService.ts",
         "supabase/functions/open-view-once/handler.ts",
         "supabase/functions/open-view-once/index.ts",
-        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql"
+        "supabase/migrations/20280721004456_issue_4456_unsend_and_delete_for_me.sql",
+        "app-mobile/src/services/boardService.ts",
+        "app-mobile/src/services/sessionMembershipService.ts"
       ]
     },
     {
@@ -905,7 +910,10 @@
         "app-mobile/src/components/connections/friendsSheetModel.ts",
         "app-mobile/src/components/profile/circle/CircleAvatarTile.tsx",
         "app-mobile/src/services/circleService.ts",
-        "app-mobile/src/types/circle.ts"
+        "app-mobile/src/types/circle.ts",
+        "app-mobile/src/hooks/useFriendProfile.ts",
+        "app-mobile/src/hooks/useFriends.ts",
+        "app-mobile/src/services/friendsService.ts"
       ]
     },
     {
@@ -955,7 +963,39 @@
         "packages/offering-rendering/normalizeCityCountry.ts",
         "supabase/migrations/20280625003281_issue_3281_dates_never_orphan.sql",
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
-        "supabase/migrations/20280723004420_issue_4420_discovery_coarse_points.sql"
+        "supabase/migrations/20280723004420_issue_4420_discovery_coarse_points.sql",
+        "app-mobile/src/components/discover/FilterDropdown.tsx",
+        "app-mobile/src/components/discover/eventTypeGroups.ts",
+        "app-mobile/src/constants/eventTaxonomy.ts",
+        "app-mobile/src/i18n/locales/ar/discover.json",
+        "app-mobile/src/i18n/locales/bin/discover.json",
+        "app-mobile/src/i18n/locales/bn/discover.json",
+        "app-mobile/src/i18n/locales/de/discover.json",
+        "app-mobile/src/i18n/locales/el/discover.json",
+        "app-mobile/src/i18n/locales/en/discover.json",
+        "app-mobile/src/i18n/locales/es/discover.json",
+        "app-mobile/src/i18n/locales/fr/discover.json",
+        "app-mobile/src/i18n/locales/ha/discover.json",
+        "app-mobile/src/i18n/locales/he/discover.json",
+        "app-mobile/src/i18n/locales/hi/discover.json",
+        "app-mobile/src/i18n/locales/id/discover.json",
+        "app-mobile/src/i18n/locales/ig/discover.json",
+        "app-mobile/src/i18n/locales/it/discover.json",
+        "app-mobile/src/i18n/locales/ja/discover.json",
+        "app-mobile/src/i18n/locales/ko/discover.json",
+        "app-mobile/src/i18n/locales/ms/discover.json",
+        "app-mobile/src/i18n/locales/nl/discover.json",
+        "app-mobile/src/i18n/locales/pl/discover.json",
+        "app-mobile/src/i18n/locales/pt/discover.json",
+        "app-mobile/src/i18n/locales/ro/discover.json",
+        "app-mobile/src/i18n/locales/ru/discover.json",
+        "app-mobile/src/i18n/locales/sv/discover.json",
+        "app-mobile/src/i18n/locales/th/discover.json",
+        "app-mobile/src/i18n/locales/tr/discover.json",
+        "app-mobile/src/i18n/locales/uk/discover.json",
+        "app-mobile/src/i18n/locales/vi/discover.json",
+        "app-mobile/src/i18n/locales/yo/discover.json",
+        "app-mobile/src/i18n/locales/zh/discover.json"
       ]
     },
     {
@@ -1558,6 +1598,7 @@
         "mingla-sites/e2e/goldens/baseline/voyage/story-390.png",
         "mingla-sites/e2e/goldens/baseline/voyage/trips-1440.png",
         "mingla-sites/e2e/goldens/baseline/voyage/trips-390.png",
+        "mingla-sites/e2e/goldens/baseline/voyage/destination-390.png",
         "mingla-sites/package.json",
         "mingla-site-cms/tsconfig.json",
         "mingla-sites/src/lib/previewPublication.ts",
@@ -1645,7 +1686,29 @@
         "mingla-sites/next.config.ts",
         "mingla-sites/src/components/v2/SiteDateInput.tsx",
         "mingla-sites/tsconfig.json",
-        "mingla-sites/vitest.config.ts"
+        "mingla-sites/vitest.config.ts",
+        "mingla-site-cms/src/app/(frontend)/preview/page.tsx",
+        "mingla-site-cms/src/components/PreviewChrome.tsx",
+        "mingla-site-cms/src/endpoints/sitesEndpoints.ts",
+        "mingla-site-cms/src/lib/brandLibrary.ts",
+        "mingla-site-cms/src/lib/mediaPipeline.ts",
+        "mingla-site-cms/src/lib/previewRefusal.ts",
+        "mingla-sites/src/designs/shared/Lines.tsx",
+        "mingla-sites/src/lib/offeringMedia.ts",
+        "supabase/functions/_shared/sitesContracts.ts",
+        "supabase/functions/brand-site-control/index.ts",
+        "supabase/migrations/20281129004572_issue_4572_sites_feed_poster_and_breaks.sql",
+        "supabase/migrations/20281129104572_issue_4572_first_publish_ready.sql",
+        "mingla-business/src/sites/setupFields.ts",
+        "mingla-business/src/sites/websiteJourney.ts",
+        "mingla-site-cms/src/collections/Media.ts",
+        "mingla-site-cms/src/components/StudioMediaManager.tsx",
+        "mingla-site-cms/src/lib/studioMediaClient.ts",
+        "mingla-site-cms/src/lib/studioMediaSelection.ts",
+        "mingla-business/src/sites/previewRefresh.ts",
+        "mingla-business/src/sites/previewRefusalListener.ts",
+        "mingla-business/src/sites/usePublishingPaused.ts",
+        "mingla-business/src/sites/brandLibraryApi.ts"
       ]
     },
     {
@@ -1772,7 +1835,8 @@
         "mingla-business/src/utils/paidPublishGuards.ts",
         "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx",
         "mingla-business/src/utils/saleWindowFields.ts",
-        "mingla-business/src/utils/androidDateTimeStep.ts"
+        "mingla-business/src/utils/androidDateTimeStep.ts",
+        "mingla-business/src/utils/ticketDisplay.ts"
       ]
     },
     {
@@ -1791,7 +1855,8 @@
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
         "mingla-business/src/components/event/EditAfterPublishBanner.tsx",
         "mingla-business/src/components/event/LazyChangeSummaryModal.tsx",
-        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx"
+        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx",
+        "supabase/migrations/20281129604572_issue_4572_repair_joined_venue_names.sql"
       ]
     },
     {
@@ -1807,7 +1872,10 @@
         "mingla-admin/src/pages/PeopleConsolePage.jsx",
         "supabase/functions/admin-person-activity/function-policy.json",
         "supabase/functions/admin-person-activity/index.ts",
-        "supabase/migrations/20281118024226_issue_4226_people_journey.sql"
+        "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
+        "mingla-admin/src/components/CommandPalette.jsx",
+        "mingla-admin/src/services/adminProfileContactsService.js",
+        "mingla-admin/src/lib/profileContactsPure.js"
       ]
     },
     {
@@ -2082,7 +2150,8 @@
         "mingla-business/src/services/postHogService.web.ts",
         "mingla-business/src/services/screenTracking.ts",
         "mingla-business/src/components/brandContact/PinnedBottomBar.tsx",
-        "mingla-business/src/components/brandContact/PinnedBottomBar.web.tsx"
+        "mingla-business/src/components/brandContact/PinnedBottomBar.web.tsx",
+        "packages/offering-rendering/priceFromLabel.ts"
       ]
     },
     {
@@ -3171,7 +3240,12 @@
         "mingla-business/src/utils/unsavedChangesGuard.ts",
         "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
         "mingla-business/src/wrappers/SmartScrollView.native.tsx",
-        "supabase/migrations/20280724004420_issue_4420_event_location_follows_address_rule.sql"
+        "supabase/migrations/20280724004420_issue_4420_event_location_follows_address_rule.sql",
+        "mingla-business/src/constants/eventTaxonomy.ts",
+        "supabase/functions/_shared/eventTaxonomy.ts",
+        "packages/offering-rendering/taxonomyLabels.ts",
+        "supabase/migrations/20281129504572_issue_4572_draft_payload_keeps_venue.sql",
+        "supabase/migrations/20281129704572_issue_4572_event_types.sql"
       ]
     },
     {
@@ -3196,7 +3270,8 @@
         "supabase/migrations/20280801003645_issue_3645_per_stop_paid_price.sql",
         "supabase/migrations/20280806003645_issue_3645_paid_free_choice.sql",
         "mingla-business/src/components/experience/experienceOfferingAdapter.ts",
-        "packages/offering-rendering/experienceOfferingTypes.ts"
+        "packages/offering-rendering/experienceOfferingTypes.ts",
+        "mingla-business/src/hooks/useExperienceDraftAdapter.ts"
       ]
     },
     {
@@ -3528,7 +3603,8 @@
         "mingla-business/src/utils/messageLinks.ts",
         "mingla-business/src/utils/threadRailPreference.ts",
         "mingla-business/src/utils/webDocumentCss.ts",
-        "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql"
+        "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
+        "mingla-business/src/services/brandGroupRosterService.ts"
       ]
     },
     {
@@ -3801,6 +3877,7 @@
         "mingla-business/app/event/[id]/preview.tsx",
         "mingla-business/src/components/event/ActionTile.tsx",
         "mingla-business/src/components/event/CreatorStep1Basics.tsx",
+        "mingla-business/src/components/event/LazyCreatorStep1Basics.tsx",
         "mingla-business/src/components/event/CreatorStep2WhenRepeatPickerSheet.tsx",
         "mingla-business/src/components/event/EndSalesSheet.tsx",
         "mingla-business/src/components/event/EventDetailActivityRow.tsx",
@@ -5346,7 +5423,8 @@
         "mingla-business/app/auth/callback.tsx",
         "mingla-business/src/components/auth/SignedInNotFoundNotice.tsx",
         "mingla-business/app/auth/index.tsx",
-        "mingla-business/src/context/AuthContext.tsx"
+        "mingla-business/src/context/AuthContext.tsx",
+        "mingla-business/src/hooks/useOwnProfilePhoneOnFile.ts"
       ]
     },
     {

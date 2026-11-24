@@ -21,6 +21,7 @@ import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { queryClient } from "../config/queryClient";
 // #4445 [signed-out-profile-read] — sign-out race guard helper.
 import { isSignedOutProfileError } from "../utils/signedOutProfileError";
+import { readMyProfile } from "../services/profileAccessService";
 // ORCH-0640 ch09: experiencesService DELETED. getUserPreferences retained on preferencesService.
 import { PreferencesService } from "../services/preferencesService";
 import { performPrivateAuthCleanup, signOutWithPrivateCleanup, signOutWithoutPrivateCleanup } from "../utils/authCleanup";
@@ -348,11 +349,9 @@ export const useAuthSimple = () => {
 
           // Load profile (non-blocking — user sees home while this completes)
           try {
-            const { data: profile, error: profileError } = await supabase
-              .from("profiles")
-              .select("*")
+            const { data: profile, error: profileError } = await readMyProfile()
               .eq("id", session.user.id)
-              .single();
+              .single<User & { explorer_deleted_at?: string | null }>();
 
             if (profileError) {
               // #4445 [signed-out-profile-read] — begin sign-out race guard.
@@ -406,37 +405,32 @@ export const useAuthSimple = () => {
                   // failed) and no username: usernames are unique, and the
                   // signup trigger (handle_new_user) owns them, with a suffix
                   // on a collision.
-                  const { data: newProfile, error: createError } =
-                    await supabase
-                      .from("profiles")
-                      .insert({
-                        id: session.user.id,
-                        email: session.user.email,
-                        display_name: emailName,
-                        first_name: emailName,
-                        last_name: "",
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                      })
-                      .select()
-                      .single();
+                  // Issue #3969: write without reading back; the own-profile
+                  // read returns the stored row (a 23505 means the signup
+                  // trigger created it meanwhile, and the same read returns it).
+                  const { error: createError } = await supabase
+                    .from("profiles")
+                    .insert({
+                      id: session.user.id,
+                      email: session.user.email,
+                      display_name: emailName,
+                      first_name: emailName,
+                      last_name: "",
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    });
 
-                  if (createError?.code === "23505") {
-                    // The signup trigger created it meanwhile: read that one.
-                    const { data: existing, error: rereadError } = await supabase
-                      .from("profiles")
-                      .select("*")
+                  if (!createError || createError?.code === "23505") {
+                    const { data: stored, error: rereadError } = await readMyProfile()
                       .eq("id", session.user.id)
-                      .maybeSingle();
-                    if (rereadError || !existing) {
-                      console.error("Error reading the profile after a create conflict:", rereadError);
+                      .maybeSingle<User>();
+                    if (rereadError || !stored) {
+                      console.error("Error reading the profile after creating it:", rereadError);
                     } else if (mounted) {
-                      setProfile(existing);
+                      setProfile(stored);
                     }
-                  } else if (createError) {
-                    console.error("Error creating profile:", createError);
                   } else {
-                    if (mounted) setProfile(newProfile);
+                    console.error("Error creating profile:", createError);
                   }
                   // #4456 [profile-fallback] — end real-columns insert.
                 } catch (createError) {
@@ -704,17 +698,27 @@ export const useAuthSimple = () => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { error: updateError } = await supabase
         .from("profiles")
         .update(updates)
-        .eq("id", user.id)
-        .select()
-        .single();
+        .eq("id", user.id);
 
+      if (updateError) {
+        Alert.alert(
+          "Update Failed",
+          updateError.message || "Failed to update profile. Please try again."
+        );
+        throw updateError;
+      }
+
+      // Issue #3969: the saved row comes back through the own-profile read.
+      const { data, error } = await readMyProfile()
+        .eq("id", user.id)
+        .single<User>();
       if (error) {
         Alert.alert(
           "Update Failed",
-          error.message || "Failed to update profile. Please try again."
+          error.message || "Your changes were saved but could not be reloaded. Please try again."
         );
         throw error;
       }
@@ -824,38 +828,6 @@ export const useAuthSimple = () => {
         throw new Error("Failed to get ID token from Google");
       }
 
-      // Get user email from Google user data
-      // The structure might be googleUser.data.user.email or googleUser.user.email
-      let googleEmail: string | undefined;
-      try {
-        if (googleUser?.data?.user?.email) {
-          googleEmail = googleUser.data.user.email.toLowerCase().trim();
-        } else if ((googleUser as unknown as { user?: { email?: string } })?.user?.email) {
-          googleEmail = (googleUser as unknown as { user: { email: string } }).user.email.toLowerCase().trim();
-        }
-      } catch (e) {
-        console.warn(
-          "Could not extract email from Google sign-in response:",
-          e
-        );
-      }
-
-      // If we couldn't get email from the response, we'll check after Supabase sign-in
-
-      // Check if user with this email already exists in profiles
-      let existingUser = null;
-      if (googleEmail) {
-        const { data: existingProfile } = await supabase
-          .from("profiles")
-          .select("id, email")
-          .ilike("email", googleEmail)
-          .maybeSingle();
-
-        if (existingProfile) {
-          existingUser = existingProfile;
-        }
-      }
-
       // Sign in to Supabase with the ID token
       // Supabase should automatically sign in existing users if email matches
       let { data, error } = await supabase.auth.signInWithIdToken({
@@ -919,8 +891,7 @@ export const useAuthSimple = () => {
           error.message?.includes("already exists") ||
           error.message?.includes("Database error saving new user") ||
           error.message?.includes("duplicate key") ||
-          error.message?.includes("violates") ||
-          !!(existingUser && error.message?.includes("user"));
+          error.message?.includes("violates");
 
         if (isExistingUserError) {
           console.log("User already exists, checking for session...");

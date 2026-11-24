@@ -565,10 +565,10 @@ const renderPublicEventPage = (
       // RSVP add-on read and picker never load in this close-callback contract.
       case "../addOns/publicAddOnsSlot":
         return { publicAddOnsSlot: null };
-      // [TEST-MOD-APPROVED #4063] Harness registration only — the shared
-      // approval toast copy does not participate in the close contract.
+      // #4572 7c: the page no longer imports buyerClaimCopy (the approval
+      // toast is gone); the registration stays harmless for older trees.
       case "../../constants/buyerClaimCopy":
-        return { BUYER_CLAIM_COPY: { approvalToast: "Approved" } };
+        return { BUYER_CLAIM_COPY: {} };
       // [TEST-MOD-APPROVED #4063] Harness registration only — app-download
       // targeting is outside this close-callback contract.
       case "../../services/guestFunnelLink":

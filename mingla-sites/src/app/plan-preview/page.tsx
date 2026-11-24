@@ -8,6 +8,7 @@ import { SAMPLE_STRIP } from "../../contracts/generated/planPreview.ts";
 import { resolveSitePath } from "../../lib/pageRouting";
 import { requestHost } from "../../lib/publication";
 import { businessPreviewFrameAncestor } from "../../lib/origins";
+import { PREVIEW_BANNER_STYLE, PREVIEW_STRIP_CSS } from "../../lib/sharedBanner";
 import { loadPlanPreviewArtifact, sampleOfferings } from "../../lib/planPreviewArtifact";
 import { offeringCard, offeringFilters, type LiveOfferings, type OfferingCard } from "../../lib/offeringCards";
 import type { SiteOffering } from "../../contracts/generated/offerings.ts";
@@ -86,7 +87,8 @@ export default async function PlanPreviewPage({
   const forms = { renderedAt: now.getTime(), signature: "plan-preview", enquiries: "unknown" as const, notice: null, preview: true };
   return (
     <div data-preview="plan" data-page={resolved.page.key} data-design={artifact.design.key}>
-      <p className="preview-banner" role="status">Preview · nothing built yet</p>
+      <style nonce={incoming.get("x-nonce") ?? undefined}>{PREVIEW_STRIP_CSS}</style>
+      <p className="preview-banner" role="status" style={PREVIEW_BANNER_STYLE}>Preview · nothing built yet</p>
       {samples ? <p className="preview-banner preview-sample-strip" role="note" data-sample-strip="1">{SAMPLE_STRIP}</p> : null}
       <PreviewLinkScope scope={scope}>
         <SitePageView artifact={artifact} page={resolved.page} previewKey={key.key} live={live} forms={forms} entry={resolved.kind === "entry" ? resolved.entry : undefined} nonce={incoming.get("x-nonce") ?? undefined} />

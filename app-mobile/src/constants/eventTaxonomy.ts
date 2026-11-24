@@ -10,20 +10,29 @@
  * and MUSIC_GENRES exports. CI strict-grep gate enforces this (see
  * .github/workflows/strict-grep-mingla-business.yml step "ORCH-0824 taxonomy parity").
  *
- * Adding or removing a slug requires:
+ * Adding or removing a party / event type slug requires (#4572 item 6 did all):
  *   1. Update all three modules byte-equivalently.
- *   2. Update the SQL CHECK constraint in
- *      supabase/migrations/20260604000000_orch_0824_event_taxonomy_columns.sql.
- *   3. Update the SQL canonical list inside business_publish_event_draft RPC in
- *      supabase/migrations/20260604000001_orch_0824_publish_rpc.sql.
- *   4. Re-run CI to verify parity.
+ *   2. Update packages/offering-rendering/taxonomyLabels.ts (ORCH-1292 gate).
+ *   3. A migration re-emitting the events_party_types_canonical CHECK and the
+ *      six SQL copies (the four publish / patch gates, ari_execute_event_operation,
+ *      discover_v2_facets_exact): see 20281129704572_issue_4572_event_types.sql.
+ *   4. The 29 consumer locale files (discover.json taxonomy.party.*).
+ *   5. Re-run CI to verify parity.
  *
  * See: Mingla_Artifacts/specs/SPEC_ORCH-0824_BUSINESS_EVENTS_IN_CONSUMER_DISCOVER.md §3.4
  */
 
+export type PartyTypeGroup = "party" | "culture";
+
 export interface PartyTypeOption {
   readonly slug: string;
   readonly label: string;
+  /**
+   * #4572 item 6 (D6) — the field is "Event type" in host and guest copy.
+   * Hosts and guests see the list in two groups, in this array's order:
+   * "Parties" and "Culture & learning".
+   */
+  readonly group: PartyTypeGroup;
 }
 
 export interface VibeTagOption {
@@ -44,21 +53,38 @@ export interface MusicGenreOption {
 }
 
 export const PARTY_TYPES: readonly PartyTypeOption[] = [
-  { slug: "birthday-party",    label: "Birthday Party" },
-  { slug: "rooftop-party",     label: "Rooftop Party" },
-  { slug: "club-night",        label: "Club Night" },
-  { slug: "house-party",       label: "House Party" },
-  { slug: "warehouse-party",   label: "Warehouse Party" },
-  { slug: "beach-party",       label: "Beach Party" },
-  { slug: "pool-party",        label: "Pool Party" },
-  { slug: "boat-party",        label: "Boat Party" },
-  { slug: "themed-party",      label: "Themed Party" },
-  { slug: "corporate-event",   label: "Corporate Event" },
-  { slug: "graduation-party",  label: "Graduation Party" },
-  { slug: "holiday-party",     label: "Holiday Party" },
-  { slug: "networking-event",  label: "Networking Event" },
-  { slug: "rave",              label: "Rave" },
-  { slug: "festival",          label: "Festival" },
+  { slug: "birthday-party",    label: "Birthday Party",     group: "party" },
+  { slug: "club-night",        label: "Club Night",         group: "party" },
+  { slug: "house-party",       label: "House Party",        group: "party" },
+  { slug: "rooftop-party",     label: "Rooftop Party",      group: "party" },
+  { slug: "themed-party",      label: "Themed Party",       group: "party" },
+  { slug: "festival",          label: "Festival",           group: "party" },
+  { slug: "warehouse-party",   label: "Warehouse Party",    group: "party" },
+  { slug: "beach-party",       label: "Beach Party",        group: "party" },
+  { slug: "pool-party",        label: "Pool Party",         group: "party" },
+  { slug: "boat-party",        label: "Boat Party",         group: "party" },
+  { slug: "graduation-party",  label: "Graduation Party",   group: "party" },
+  { slug: "holiday-party",     label: "Holiday Party",      group: "party" },
+  { slug: "rave",              label: "Rave",               group: "party" },
+  { slug: "exhibition",        label: "Exhibition",         group: "culture" },
+  { slug: "opening",           label: "Opening / launch",   group: "culture" },
+  { slug: "talk",              label: "Talk",               group: "culture" },
+  { slug: "workshop",          label: "Workshop",           group: "culture" },
+  { slug: "screening",         label: "Screening",          group: "culture" },
+  { slug: "kids-family",       label: "Kids & family",      group: "culture" },
+  { slug: "class",             label: "Class",              group: "culture" },
+  { slug: "market",            label: "Market",             group: "culture" },
+  { slug: "tour",              label: "Tour",               group: "culture" },
+  { slug: "performance",       label: "Performance",        group: "culture" },
+  { slug: "tasting",           label: "Tasting",            group: "culture" },
+  { slug: "networking-event",  label: "Networking Event",   group: "culture" },
+  { slug: "corporate-event",   label: "Corporate Event",    group: "culture" },
+] as const;
+
+/** #4572 item 6 — the two headed groups of the Event type list (host copy). */
+export const PARTY_TYPE_GROUPS: readonly { readonly id: PartyTypeGroup; readonly label: string }[] = [
+  { id: "party",   label: "Parties" },
+  { id: "culture", label: "Culture & learning" },
 ] as const;
 
 export const VIBE_TAGS: readonly VibeTagOption[] = [

@@ -6,7 +6,7 @@ import {
   space,
 } from "../../constants/designSystem";
 import type { PublicUpcomingRow } from "../../services/publicEventsService";
-import { formatCurrencyRound } from "../../utils/currency";
+import { priceFromLabel } from "@mingla/offering-rendering/priceFromLabel";
 
 interface NextEventTeaserProps {
   item: PublicUpcomingRow;
@@ -27,11 +27,16 @@ export const NextEventTeaser: React.FC<NextEventTeaserProps> = ({
   label = "NEXT",
 }) => {
   const when = formatStartsAt(item.startsAt);
-  const price =
-    item.isFree || item.priceFromMinorUnits === null
-      ? "Free"
-      : `From ${formatCurrencyRound(item.priceFromMinorUnits / 100, item.currency)}`;
-  const bodyText = `${TYPE_LABEL[item.offeringType]} · ${when} · ${item.name} · ${price}`;
+  // #4572 7b — the one shared label: free first; nothing when the price is
+  // unknown (never a fabricated "Free").
+  const price = priceFromLabel({
+    isFree: item.isFree,
+    minorUnits: item.priceFromMinorUnits,
+    currency: item.currency,
+  });
+  const bodyText = [TYPE_LABEL[item.offeringType], when, item.name, price]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
 
   return (
     <Pressable
