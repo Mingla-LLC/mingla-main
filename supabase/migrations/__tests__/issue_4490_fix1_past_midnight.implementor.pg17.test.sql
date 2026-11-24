@@ -1,4 +1,4 @@
--- #4490 fix round 1 (N52; 20280809224490): service windows that close at 00:00 or after midnight.
+-- #4490 fix round 1 (N52; 20281203214490): service windows that close at 00:00 or after midnight.
 -- Executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-PAST-MIDNIGHT-SERVICE-DAY | issue #4490 | a table service period or an opening window whose close is at or before its open runs past midnight: its slots are listed on the day it starts (last seating = close - turn - buffer), never repeated on the next day; the guest writer, the waitlist and the door ("today", gate sale) bucket a past-midnight time to that service day.

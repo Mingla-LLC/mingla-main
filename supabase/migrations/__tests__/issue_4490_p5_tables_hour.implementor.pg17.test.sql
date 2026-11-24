@@ -1,5 +1,5 @@
 -- #4490 P5-1 (tables under spaces, floor plan, pick a table, minimum spend, joined tables, guest waitlist, by the hour;
--- 20280809174490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- 20281203164490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-ONE-TABLE-ONE-PARTY | issue #4490 | a guest table pick is checked under the venue's table lock against the one occupancy helper (table, joined tables, table-less reservations); two reservations never sit on one table at overlapping times through the guest writer.
 -- MINGLA-INVARIANT: I-4490-SLOTS-MATCH-MAP | issue #4490 | pg_venue_available_slots and pg_venue_available_tables read issue_4490_table_slot_occupancy, so a time is offered exactly when the map shows a free option; with no joins the slot count equals the pre-P5 count.

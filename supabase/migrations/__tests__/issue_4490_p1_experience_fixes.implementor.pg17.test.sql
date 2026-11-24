@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4490 P1-4: executable PostgreSQL 17 proof of the experience creator fixes
--- (20280809034490, spec 01 §6). BEGIN ... ROLLBACK.
+-- (20281203034490, spec 01 §6). BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-EXPERIENCE-SHARED-SPOTS | issue #4490 | when an experience shares spots, every price option counts against the same spots (per day for per_day experiences); experiences saved before #4490 keep per-option counting (backfilled false), new ones share (column default true).
 --

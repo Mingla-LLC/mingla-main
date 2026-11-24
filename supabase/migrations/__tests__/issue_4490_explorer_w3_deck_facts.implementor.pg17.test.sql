@@ -1,4 +1,4 @@
--- #4490 Explorer W3 (20280809454490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 Explorer W3 (20281203434490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-DECK-FACTS-PUBLIC-ONLY | issue #4490 | pg_deck_venue_facts answers only for claimed places of verified venues of live, non-internal brands, refuses more than 100 ids, and carries no contact, owner or buyer field; the facts functions behind it are not callable by anon or authenticated.
 -- MINGLA-INVARIANT: I-4490-VENUE-BOOKABLE-BY-FEATURE | issue #4490 | a venue is bookable only through a live offer of a switched-on kind (entry, group packages, private hire, by the hour), a live plan with Memberships on, or reservable tables with Table reservations on; rooms alone never count, and a venue offer on a Stay venue counts like any other.
@@ -10,7 +10,7 @@
 -- N W3 fix round 1: N-3 yearly-only plans, N-4 plan period and joinable, N-5 event end times,
 -- N-7 busy-time prices, N-8 no guessed zone, N-10 one failing venue keeps its row.
 --
--- FAILS-ON-REVERT: without 20280809454490 every block fails (the functions do not exist).
+-- FAILS-ON-REVERT: without 20281203434490 every block fails (the functions do not exist).
 -- Fix round 1: the 454490 body before the fix fails N-3a (no yearly plan price), N-4a (the
 -- monthly plan priced a cheaper yearly one), N-5a (no end time), N-7a (base price only),
 -- N-8a (UTC claimed) and N-10a (the whole batch raised).

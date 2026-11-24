@@ -1,4 +1,4 @@
--- #4490 Explorer W6b (20280809462490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 Explorer W6b (20281203474490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-DECK-VENUE-TYPE-ONLY-WITH-SUPPLY | issue #4490 | a deck venue-type chip is offered only for a chip type with a bookable hosted venue (the Discover rule) whose place is inside the deck radius and passes the base servable place rule; its rows obey that same place rule, the radius or every circle, and exclusions, in a fixed order; with VENUE_DISCOVER off there are no types and no rows.
 -- MINGLA-INVARIANT: I-4490-SERVABLE-PLACE-RULE-ONE-OWNER | issue #4490 | the solo base servable RPC and every #4490 venue read take the place-quality rule from issue_4490_place_is_servable, which answers exactly as the inline predicate it replaced (truth table pinned here), with ORDER BY and LIMIT unchanged.
@@ -6,7 +6,7 @@
 --
 -- P place rule. T types near. S solo rows. I intersection rows. X flag off. A authority.
 --
--- FAILS-ON-REVERT: without 20280809462490 every block fails (functions absent). P-3b fails if the
+-- FAILS-ON-REVERT: without 20281203474490 every block fails (functions absent). P-3b fails if the
 -- shared-deck base RPC is patched again (fix round 1, W6-N1).
 -- TEST-MOD-APPROVED #4490 (06-W6 fix 1): P-3 now pins the solo base RPC only; P-3b pins the
 -- shared-deck base RPC as untouched.

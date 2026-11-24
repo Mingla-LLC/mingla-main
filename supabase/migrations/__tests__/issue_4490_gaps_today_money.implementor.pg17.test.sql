@@ -1,4 +1,4 @@
--- #4490 gap list 07-E (20280809284490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 gap list 07-E (20281203274490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-TODAY-MONEY-IS-MONEY | issue #4490 | Today's money is computed only in SQL (issue_4490_venue_money_day): "Paid in today" is money received that service day for any date (online + at the venue + members paid at the venue + table deposits - refunds raised that day) and never counts an unpaid pay-at-venue booking or a deposit again on a later day; "For today's bookings" is the money paid so far for entry, package, hire and by-the-hour bookings and table reservations dated that day, net of their refunds.
 --
@@ -7,7 +7,7 @@
 -- E-1 every part of "Paid in today".  E-2 every part of "For today's bookings".  E-3 venue_day carries it and
 -- collected_on is gone.  E-4 a stranger and anon cannot call it.  E-5 another venue's money is not counted.
 --
--- FAILS-ON-REVERT (seen 20 Nov): without 20280809284490 issue_4490_venue_money_day does not exist (E-1 fails)
+-- FAILS-ON-REVERT (seen 20 Nov): without 20281203274490 issue_4490_venue_money_day does not exist (E-1 fails)
 -- and venue_day still returns collectedToday (E-3 fails). N127 E-6 (seen 20 Nov): with paid_on as a calendar day,
 -- 01:00 cash after a 02:00 close lands on tomorrow and E-6 fails.
 \set ON_ERROR_STOP on

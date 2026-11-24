@@ -11,7 +11,7 @@
 // #4490 spec 08 O3: the same run deletes floor PDFs (kitchen tickets,
 // receipts) older than 24 hours from the private venue-floor-pdfs bucket
 // (issue_4490_floor_pdf_due -> storage remove -> issue_4490_floor_pdf_forget).
-// Before migration 20280809601490 the ledger does not exist: that step then
+// Before migration 20281203584490 the ledger does not exist: that step then
 // has nothing to delete (deploy-order tolerance), any other failure counts.
 //
 // Only the platform's own scheduler calls this: the bearer must be the
@@ -35,7 +35,7 @@ type SweepClient = {
 export const FLOOR_PDF_SWEEP_BUCKET = "venue-floor-pdfs";
 
 // [TRANSITIONAL] #4490 O3 deploy order: the ledger RPC is missing until
-// migration 20280809601490 is applied; exit: that migration applied in
+// migration 20281203584490 is applied; exit: that migration applied in
 // production, then delete this check.
 function missingFunction(error: { code?: string; message?: string }): boolean {
   return error.code === "PGRST202" || error.code === "42883";

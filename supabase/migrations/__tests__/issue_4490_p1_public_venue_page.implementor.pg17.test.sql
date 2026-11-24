@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4490 P1-5: executable PostgreSQL 17 proof of the feature-driven public
--- venue page (20280809044490). BEGIN ... ROLLBACK.
+-- venue page (20281203044490). BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-PUBLIC-PAGE-FEATURES-NOT-CATEGORY | issue #4490 | the public venue page lists only features that are on, have every dependency met and have shipped; venue_category never adds a way in (a play venue with tables but table reservations off offers no table booking).
 --
@@ -100,7 +100,7 @@ INSERT INTO public.venue_spaces (id, venue_id, brand_id, name, setting, capacity
 INSERT INTO public.venue_spaces (venue_id, brand_id, name, capacity_standing, is_active, archived_at) VALUES
   ('44904000-0000-4000-9000-0000000000a1', '44904000-0000-4000-9000-000000000010', 'Old Shed', 10, false, now());
 
--- [TEST-MOD-APPROVED #4490] W2 fix 1: guest list shipped too (20280809414490), so
+-- [TEST-MOD-APPROVED #4490] W2 fix 1: guest list shipped too (20281203394490), so
 -- every feature is built and none is left to be P-5a's unbuilt example. The
 -- filter is still proven: for this transaction the built list is every feature
 -- except guest list (a stand-in for a phase that has not shipped). It is set

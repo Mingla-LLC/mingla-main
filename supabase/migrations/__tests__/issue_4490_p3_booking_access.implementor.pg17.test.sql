@@ -1,4 +1,4 @@
--- #4490 P3 booking access (20280809124490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P3 booking access (20281203124490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-BOOKING-ACCESS | issue #4490 | a venue booking is read, paid or cancelled by the guest only with its booking token or as its own signed-in user (user_id / booked_by_user_id); any other user id is refused (offer_booking_not_found), never let through by a NULL comparison.
 --
@@ -9,7 +9,7 @@
 -- A-5 a signed-in buyer's own booking opens with their user id and not with another's.
 -- A-6 the helper never answers NULL.
 --
--- FAILS-ON-REVERT: restore issue_4490_booking_actor_ok from 20280809084490 -> A-1a, A-2a, A-6.
+-- FAILS-ON-REVERT: restore issue_4490_booking_actor_ok from 20281203084490 -> A-1a, A-2a, A-6.
 \set ON_ERROR_STOP on
 BEGIN;
 -- (shared #4490 P2 suite fixture; copied into each suite)

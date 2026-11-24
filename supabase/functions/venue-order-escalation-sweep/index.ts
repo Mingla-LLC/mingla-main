@@ -161,7 +161,7 @@ serve(wrapEdgeHandler("venue-order-escalation-sweep", async (req) => {
   // #4490 spec 08 O5 (T16): guest orders that sold out after payment and are
   // still not swapped or refunded after 10 minutes reach rung 1 once (their
   // own scan; it never refunds and never pauses). Before migration
-  // 20280809615490 the scan does not exist: nothing to do.
+  // 20281203724490 the scan does not exist: nothing to do.
   let soldOutScanned = 0;
   const soldOut = await supabase.rpc("issue_4490_sold_out_escalation_scan", {
     p_now: new Date().toISOString(),

@@ -331,7 +331,7 @@ export interface MenuItemRow {
   discounts_allowed?: boolean;
   /**
    * #4490 spec 08 O5: units left; NULL (or absent, before migration
-   * 20280809615490) = not tracked.
+   * 20281203724490) = not tracked.
    */
   stock_count?: number | null;
 }

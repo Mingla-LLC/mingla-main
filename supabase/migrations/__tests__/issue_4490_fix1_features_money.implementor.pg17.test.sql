@@ -1,4 +1,4 @@
--- #4490 fix round 1 (B2-B8; 20280809234490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 fix round 1 (B2-B8; 20281203224490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-STARTING-FEATURES-ALL-OR-SAY-WHY | issue #4490 | issue_4490_apply_starting_features applies every requested feature whose parents are requested or on, parents first, even before a space or table exists (the read lists what each still `needs`), and returns every key it did not apply with a reason; nothing is dropped silently.
 -- MINGLA-INVARIANT: I-4490-FEATURE-PAUSE-RESTORE | issue #4490 | switching a feature off pauses its live offers and records them; switching it on puts exactly those still paused back on sale, never an offer paused for another reason.
@@ -9,7 +9,7 @@
 -- X-4 member payments (paid months) for the member only. X-5 offers outside opening hours.
 -- X-6 money collected today beside taken today. X-7 hire rows Mon-Thu vs Fri-Sat and a day no row covers.
 --
--- FAILS-ON-REVERT (seen): without 20280809234490 X-1a fails ("a new event space reads with nothing on":
+-- FAILS-ON-REVERT (seen): without 20281203224490 X-1a fails ("a new event space reads with nothing on":
 -- Menu read as on for every non-stay type).
 \set ON_ERROR_STOP on
 BEGIN;

@@ -1,10 +1,10 @@
--- #4490 spec 08 O4: executable PostgreSQL 17 proof for migration 20280809606490
+-- #4490 spec 08 O4: executable PostgreSQL 17 proof for migration 20281203634490
 -- (split bill: by item and evenly; every share paid through the existing paths).
 -- The suite owns its fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-SPLIT-SUM-EQUALS-REMAINING | issue #4490 | the unpaid and paying shares of a Till check always add up to what is left on the check to the minor unit (issue_4490_till_set_split computes every share on the server, by item or evenly, remainder minor units to the first shares; issue_4490_till_shares_follow_sale drops the unpaid shares whenever what is left changes for any other reason), and a share is paid with exactly its amount and its service charge through issue_4490_till_take_payment / issue_4490_till_card_start (via the share wrappers).
 --
--- FAILS-ON-REVERT: without 20280809606490 every block fails at once
+-- FAILS-ON-REVERT: without 20281203634490 every block fails at once
 -- (issue_4490_till_set_split does not exist). With the even remainder rule
 -- reverted to plain floor division, S-1 fails (the shares add up to less
 -- than what is left); with the by-item service charge remainder removed,

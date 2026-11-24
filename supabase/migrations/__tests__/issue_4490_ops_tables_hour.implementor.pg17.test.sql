@@ -1,4 +1,4 @@
--- #4490 spec 08 O4: executable PostgreSQL 17 proof for migration 20280809607490
+-- #4490 spec 08 O4: executable PostgreSQL 17 proof for migration 20281203644490
 -- (by the hour started by staff, "Add 30 min", tables, the table-deposit
 -- credit and its refund guard). The suite owns its fixture and rolls back.
 -- The venue's time zone is chosen so that it is about noon there whenever
@@ -7,7 +7,7 @@
 -- MINGLA-INVARIANT: I-4490-DEPOSIT-USED-ONCE | issue #4490 | a booking's paid table deposit is on at most one live Till check (partial UNIQUE venue_till_lines(reservation_id) WHERE kind = 'deposit_credit' AND state <> 'voided'; PT409 deposit_already_used), comes off that check's bill (total_due = subtotal + service charge - deposit, floor 0), and while it is applied no refund obligation for the booking can be written (BEFORE INSERT on source_refunds: reservation_deposit_used).
 -- MINGLA-INVARIANT: I-4490-TILL-SESSION-CLAIMS-ITS-TIME | issue #4490 | a by-the-hour session started or extended at the Till claims its unit for exactly the time on the check (issue_4490_claim_hour_unit / issue_4490_claim_spaces; a taken unit is PT409 offer_space_taken and moves nothing), and voiding the session's line releases the claim.
 --
--- FAILS-ON-REVERT: without 20280809607490 every block fails at once. With
+-- FAILS-ON-REVERT: without 20281203644490 every block fails at once. With
 -- the reprice credit patch reverted D-1 fails (the deposit does not come off);
 -- with the deposit_once index dropped D-3 fails; with the source_refunds
 -- guard dropped D-4 fails; with the session claim skipped when the unit is

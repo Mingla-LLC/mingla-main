@@ -1,4 +1,4 @@
--- #4490 gap list 07-A (20280809264490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 gap list 07-A (20281203254490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-PARTY-TYPE-OPTIONAL-AT-VENUE | issue #4490 | an event linked to a venue (events.venue_id) may publish and be live-edited with no party type; an event with no venue still needs one, a non-empty list must still be canonical, and a non-draft event with no party type cannot be moved away from its venue (party_types_required).
 --

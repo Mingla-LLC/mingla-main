@@ -1,5 +1,5 @@
 -- #4490 spec 08 O1 receipts: executable PostgreSQL 17 proof for migration
--- 20280809474490 (receipt numbers and snapshots, sending through the outbox,
+-- 20281203514490 (receipt numbers and snapshots, sending through the outbox,
 -- the anonymous receipt page by token, the venue_till_sale claim subject).
 -- The suite owns its fixture and rolls back.
 --
@@ -9,12 +9,12 @@
 -- 1529: issue_4490_till_receipt_send is a POPULATING producer: the text row
 -- carries mingla_e164_country(phone) (asserted RC-S2), the email row NULL.
 --
--- FAILS-ON-REVERT: without 20280809474490 the first assertion fails (no
+-- FAILS-ON-REVERT: without 20281203514490 the first assertion fails (no
 -- venue_till_receipts row is written when a payment is paid).
 --
 -- TEST-MOD-APPROVED #4490 (08-O1 fix 1, O1-N5): the two payments of RC-3 are
 -- taken in one statement block, so they share one paid_at; "paid before" now
--- breaks that tie on the payment sequence (20280809594490), and RC-3b pins it.
+-- breaks that tie on the payment sequence (20281203554490), and RC-3b pins it.
 -- Before, the tie fell to random uuid order and RC-3 failed about half the runs.
 \set ON_ERROR_STOP on
 BEGIN;

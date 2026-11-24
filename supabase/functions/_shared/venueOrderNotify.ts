@@ -85,7 +85,7 @@ export const FLOOR_ORDER_CAPS = ["venue.kitchen", "restaurant.manage_orders"] as
 
 /**
  * `issue_4490_venue_floor_user_ids` (service role). Never throws: a failed or
- * missing read (before migration 20280809603490 is applied — [TRANSITIONAL],
+ * missing read (before migration 20281203604490 is applied — [TRANSITIONAL],
  * exits when that migration is in production) answers [] so the brand roles
  * are still told exactly as before.
  */
@@ -655,7 +655,7 @@ export async function tillRoundSenders(
       .select("id, source, money_path, sent_at, taken_by_user_id")
       .in("id", orderIds);
     if (error) {
-      // Before migration 20280809464490 there is no sent_at: no Till rounds.
+      // Before migration 20281203504490 there is no sent_at: no Till rounds.
       console.warn("[venue-order-escalation-sweep] till round read failed", error.code ?? "unknown");
       return out;
     }

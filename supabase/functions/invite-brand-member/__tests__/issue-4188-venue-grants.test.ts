@@ -104,7 +104,7 @@ Deno.test("venue grants must match the operational venue category", () => {
   );
 });
 
-// #4490 — venue.* capabilities and every non-stay venue type (20280809064490).
+// #4490 — venue.* capabilities and every non-stay venue type (20281203064490).
 Deno.test("#4490 venue capabilities validate and match every non-stay venue type", () => {
   const result = validateInvite({
     ...base,

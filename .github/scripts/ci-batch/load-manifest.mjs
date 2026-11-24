@@ -364,19 +364,19 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4508 tester retest: register issue_4508_one_place.tester.retest.pg17.test.sql (and its .ci-suite.json) beside the other #4508 proofs in #1931 and #2117; re-sealed.
 // #4508 merge of main after #4226: listed the two #4508 migrations after main's 20281118024226 row and kept both lanes' skip lines; re-sealed.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows in the #1857, #1931 and #2117 lanes; re-sealed.
-// #4490 P1-1 implementor: listed migrations 20280809004490 (venue spaces + features) and 20280809054490 (#2099 pin owner) after 20280808004389 in the #1857, #1931 and #2117 lanes, registered the P1 features pg17 suite (with sidecar) in the #1931 and #2117 inventories, skipped the pin owner on the filtered #1931 template replay, and added both migrations to the #2099 provider path scope; re-sealed.
-// #4490 P1-2 implementor: listed migration 20280809014490 (hours: windows, special days) between 20280809004490 and the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 hours pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
-// #4490 P1-3 implementor: listed migration 20280809024490 (events.venue_id/space_id/space_use + issue_4490_set_event_venue) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 event-venue pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
-// #4490 P1-4 implementor: listed migration 20280809034490 (experience creator fixes) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed.
-// #4490 P1-5 implementor: listed migration 20280809044490 (pg_public_venue_page, Host preview, admin read) before the #2099 pin owner in the #1857, #1931 and #2117 lanes and registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
-// #4490 P1 venue grants implementor: listed migration 20280809064490 (issue_4188_set_member_venue_grants widened to venue.* capabilities and every non-stay venue type) and registered its pg17 suite (with sidecar); re-sealed.
-// #4490 P2-1 implementor: listed migration 20280809074490 (venue offer engine: offer kinds on stay_offerings, pools, price options, booking settings, Stays isolation guards) and registered its pg17 suite (with sidecar); re-sealed.
-// #4490 P2-2/P2-3 implementor: listed migrations 20280809084490 (venue offer checkout and cancel), 20280809094490 (check-in) and the #2099 pin owner 20280809104490 (skipped by exact filename on the filtered #1931 replay, like the P1 pin owner), registered their pg17 suites (with sidecars) and added them to the #2099 provider path scope; re-sealed.
+// #4490 P1-1 implementor: listed migrations 20281203004490 (venue spaces + features) and 20281203054490 (#2099 pin owner) after 20280808004389 in the #1857, #1931 and #2117 lanes, registered the P1 features pg17 suite (with sidecar) in the #1931 and #2117 inventories, skipped the pin owner on the filtered #1931 template replay, and added both migrations to the #2099 provider path scope; re-sealed.
+// #4490 P1-2 implementor: listed migration 20281203014490 (hours: windows, special days) between 20281203004490 and the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 hours pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
+// #4490 P1-3 implementor: listed migration 20281203024490 (events.venue_id/space_id/space_use + issue_4490_set_event_venue) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 event-venue pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; re-sealed.
+// #4490 P1-4 implementor: listed migration 20281203034490 (experience creator fixes) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays; re-sealed.
+// #4490 P1-5 implementor: listed migration 20281203044490 (pg_public_venue_page, Host preview, admin read) before the #2099 pin owner in the #1857, #1931 and #2117 lanes and registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
+// #4490 P1 venue grants implementor: listed migration 20281203064490 (issue_4188_set_member_venue_grants widened to venue.* capabilities and every non-stay venue type) and registered its pg17 suite (with sidecar); re-sealed.
+// #4490 P2-1 implementor: listed migration 20281203074490 (venue offer engine: offer kinds on stay_offerings, pools, price options, booking settings, Stays isolation guards) and registered its pg17 suite (with sidecar); re-sealed.
+// #4490 P2-2/P2-3 implementor: listed migrations 20281203084490 (venue offer checkout and cancel), 20281203094490 (check-in) and the #2099 pin owner 20281203104490 (skipped by exact filename on the filtered #1931 replay, like the P1 pin owner), registered their pg17 suites (with sidecars) and added them to the #2099 provider path scope; re-sealed.
 // #4490 P2 implementor: skipped the P2 venue offer migrations (and, on the #2117 lane, the P2 pin owner) by exact filename on the filtered #1931 and #2117 template replays (issue-2492 C-1 closure); re-sealed.
-// #4490 P2-7 implementor: listed migration 20280809114490 (admin_list_venue_offers, Admin venue offer list) after the P2 pin owner in the same lanes and registered its pg17 suite (with sidecar); re-sealed.
-// issue #4490 P3 booking access: migration 20280809124490 and its pg17 suite registered; re-sealed.
-// issue #4490 P3 collect online: migration 20280809134490 and its pg17 suite registered; re-sealed.
-// issue #4490 P3-1 packages and deposits: migration 20280809144490 and its pg17 suite registered; re-sealed.
+// #4490 P2-7 implementor: listed migration 20281203114490 (admin_list_venue_offers, Admin venue offer list) after the P2 pin owner in the same lanes and registered its pg17 suite (with sidecar); re-sealed.
+// issue #4490 P3 booking access: migration 20281203124490 and its pg17 suite registered; re-sealed.
+// issue #4490 P3 collect online: migration 20281203134490 and its pg17 suite registered; re-sealed.
+// issue #4490 P3-1 packages and deposits: migration 20281203144490 and its pg17 suite registered; re-sealed.
 // #4490 P4-1 private hire registered; re-sealed.
 // issue #4490 P5-1 tables, floor plan, waitlist, by the hour; re-sealed.
 // issue #4490 P4 follow-up: hours you set, hire changes, damage deposit; re-sealed.
@@ -404,36 +404,36 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // toward #4490 Stay venue features and filtered-lane registration; re-sealed.
 // toward #4490 Stay venue features expectedFiles registration; re-sealed.
 // issue #4490 explorer W2: purchases sweep, reads and visit reminders; re-sealed.
-// issue #4490 W2 fix 1: guest list pin owner 20280809444490 registered; re-sealed.
-// issue #4490 explorer W3: registered migration 20280809454490 (deck card facts) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 W3 fix 1: registered migration 20280809459490 (one grant decision per venue function) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 W2 fix 1: guest list pin owner 20281203424490 registered; re-sealed.
+// issue #4490 explorer W3: registered migration 20281203434490 (deck card facts) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 W3 fix 1: registered migration 20281203444490 (one grant decision per venue function) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 explorer W5: hosted deck wrappers migration + suite registered; re-sealed.
 // issue #4490 explorer W6a: Discover venues migration + suite registered; re-sealed.
 // issue #4490 explorer W6b: deck venue-type chips migration + suite registered; re-sealed.
-// issue #4490 06-W4 fix 1: 20280809462590 (plan charges, one live payment page) + its pg17 suite registered; re-sealed.
-// issue #4490 06-W4 fix 2: 20280809462690 (why everything is due now) + its pg17 suite registered; re-sealed.
+// issue #4490 06-W4 fix 1: 20281203484490 (plan charges, one live payment page) + its pg17 suite registered; re-sealed.
+// issue #4490 06-W4 fix 2: 20281203494490 (why everything is due now) + its pg17 suite registered; re-sealed.
 // issue #4490 ops O1: Till core migration and suite registered; re-sealed.
 // issue #4490 ops O1: #2099 repin over the Till lanes registered; re-sealed.
 // issue #4490 ops O1 part 2: Till receipts and the held-round sweep / card refund migrations + suites registered; re-sealed.
-// issue #4490 ops O1 fix 1: one-bill migration 20280809594490 + its pg17 suite registered; re-sealed.
-// issue #4490 ops O1 fix 2: money-and-door migration 20280809589490 + its pg17 suite registered; re-sealed.
-// issue #4490 ops O2: till-pay migration 20280809599490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O2 fix 1: o2-fix1 migration 20280809600490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O3 part A: stations migration 20280809601490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O3 part A: #2099 repin 20280809602490 (pin owner) registered, the 1931 baseline skips it by exact filename, the #2099 path scope lists 600490 and 602490; re-sealed.
-// issue #4490 ops O3 part A: the #2117 phase-1 lane skips the #2099 repin 20280809602490 by exact filename; re-sealed.
-// issue #4490 ops O3 part A2: floor-alerts migration 20280809603490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O3 fix 1: migration 20280809604490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O3 fix 5: migration 20280809605490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O4: split 20280809606490 + tables/hour 20280809607490 and their pg17 suites registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O4 fix 1: migration 20280809608490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O4 fix 2: migration 20280809609490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O4 fix 3: migration 20280809610490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O5 part A: PIN migration 20280809611490 + #2099 repin 20280809612490 + the PIN pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O5 part B: daily close migration 20280809613490 + #2099 repin 20280809614490 + the close pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O5 part C: stock migration 20280809615490 + the stock pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
-// issue #4490 ops O5 fix 1: migration 20280809616490 (O5-T3 sold-out lines; O5-T1 a day decided once; O5-T4 the no-screen void restock) + #2099 repin 20280809617490 (pin owner) + the fix 1 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; re-sealed.
-// issue #4490 ops O5 fix 3: migration 20280809618490 + the fix 3 pg17 suite and the O5 tester adversarial suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O1 fix 1: one-bill migration 20281203554490 + its pg17 suite registered; re-sealed.
+// issue #4490 ops O1 fix 2: money-and-door migration 20281203544490 + its pg17 suite registered; re-sealed.
+// issue #4490 ops O2: till-pay migration 20281203564490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O2 fix 1: o2-fix1 migration 20281203574490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O3 part A: stations migration 20281203584490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O3 part A: #2099 repin 20281203594490 (pin owner) registered, the 1931 baseline skips it by exact filename, the #2099 path scope lists 600490 and 602490; re-sealed.
+// issue #4490 ops O3 part A: the #2117 phase-1 lane skips the #2099 repin 20281203594490 by exact filename; re-sealed.
+// issue #4490 ops O3 part A2: floor-alerts migration 20281203604490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O3 fix 1: migration 20281203614490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O3 fix 5: migration 20281203624490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O4: split 20281203634490 + tables/hour 20281203644490 and their pg17 suites registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O4 fix 1: migration 20281203654490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O4 fix 2: migration 20281203664490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O4 fix 3: migration 20281203674490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O5 part A: PIN migration 20281203684490 + #2099 repin 20281203694490 + the PIN pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O5 part B: daily close migration 20281203704490 + #2099 repin 20281203714490 + the close pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O5 part C: stock migration 20281203724490 + the stock pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+// issue #4490 ops O5 fix 1: migration 20281203734490 (O5-T3 sold-out lines; O5-T1 a day decided once; O5-T4 the no-screen void restock) + #2099 repin 20281203744490 (pin owner) + the fix 1 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; re-sealed.
+// issue #4490 ops O5 fix 3: migration 20281203754490 + the fix 3 pg17 suite and the O5 tester adversarial suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
 // #4508 merge of main after #3645 2e-1 and #4453: listed the #3645, #4453 and #4508 migrations in filename order in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order) in the #1857, #1931 and #2117 lanes; re-sealed.
@@ -482,7 +482,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
 // #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
 // issue #4490 merge of origin/main 886723868d: kept both sides\' inventory rows (filename order) and both sides\' exact-filename skips in the #1931 baseline and #2117 phase-1 lanes (main\'s duplicate "run" key in the #1931 baseline replay collapsed to its effective, later value); re-sealed.
-export const BOOTSTRAP_SHA256 = "652e07332a6fd2e7329375f677a7d4db24456cd1337e64bc3af91671e75c157d";
+// issue #4490 renumber: the 76 #4490 migrations moved from 20280809004490..20280809618490 to 20281203004490..20281203754490 (same relative order, after every main migration); every lane row, exact-filename skip and suite reference follows; the three sorted expectedFiles inventories re-sorted; re-sealed.
+export const BOOTSTRAP_SHA256 = "ac9b1927ae18c758b6352ae95e3379ed97bc04bd339632a1c169e15406d5d4bc";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

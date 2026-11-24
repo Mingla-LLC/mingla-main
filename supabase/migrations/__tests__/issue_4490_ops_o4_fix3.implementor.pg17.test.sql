@@ -1,5 +1,5 @@
 -- #4490 spec 08 O4 fix round 3 (spec 08 §15): executable PostgreSQL 17 proof
--- for migration 20280809610490. The suite owns its fixture (the O4 tables/hour
+-- for migration 20281203674490. The suite owns its fixture (the O4 tables/hour
 -- fixture, its own ids) and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-DEPOSIT-EXCESS-REFUNDED-ONCE | issue #4490 | a paid table deposit larger than the check it is credited on is used only up to the bill; when the check is finished (paid or Close check) the excess goes back to the guest on the booking-refund rail (source_refunds venue_reservation, refund_kind venue_deposit_excess, the deposit's original payment) exactly once; the booking is completed and no other refund of that deposit can be written.

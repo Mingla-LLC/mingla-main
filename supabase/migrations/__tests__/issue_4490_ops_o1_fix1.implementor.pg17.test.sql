@@ -1,5 +1,5 @@
 -- #4490 spec 08 O1 fix round 1: executable PostgreSQL 17 proof for migration
--- 20280809594490 (one bill: the old order pad and the Till; voids on a
+-- 20281203554490 (one bill: the old order pad and the Till; voids on a
 -- part-paid check; refunding an offer line cancels its booking; one
 -- guest-list arrival per open check; payment order for receipts).
 -- The suite owns its fixture and rolls back.
@@ -8,7 +8,7 @@
 -- MINGLA-INVARIANT: I-4490-TILL-OFFER-REFUND-CANCELS | issue #4490 | refunding an offer line sold in the Till (or every payment of its check) cancels its booking through issue_4490_cancel, marks its pass refunded and counts the refund once in issue_4490_venue_money_day on the refund's service day.
 -- MINGLA-INVARIANT: I-4490-TILL-PART-PAID-VOIDABLE | issue #4490 | until a Till check is fully paid every line is unpaid and may be voided by the usual rights; a void that leaves the money taken covering the rest closes the check as paid with any excess in overpaid_minor.
 --
--- FAILS-ON-REVERT: without 20280809594490 the first assertion fails (the old
+-- FAILS-ON-REVERT: without 20281203554490 the first assertion fails (the old
 -- pad's tab close leaves its Till check open).
 \set ON_ERROR_STOP on
 BEGIN;

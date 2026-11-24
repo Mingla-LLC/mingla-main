@@ -1,4 +1,4 @@
--- #4490 P3 follow-up (20280809194490): money fixes. BEGIN ... ROLLBACK.
+-- #4490 P3 follow-up (20281203184490): money fixes. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-GATE-PAID | issue #4490 | a gate sale paid in cash or by transfer (payment_collection 'property') owes nothing: issue_4490_booking_money counts it as paid at the venue.
 --

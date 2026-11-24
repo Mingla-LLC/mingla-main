@@ -227,7 +227,7 @@ export async function resolveOrderContext(
 /**
  * #4490 spec 08 O5 (rule 13): THE orderable rule, the same expression as
  * public.issue_4490_menu_item_orderable(is_available, stock_count) in
- * migration 20280809615490: on, and not sold out. A NULL count means the item
+ * migration 20281203724490: on, and not sold out. A NULL count means the item
  * is not tracked and changes nothing; sold out never flips is_available.
  */
 export function menuItemOrderable(
@@ -240,7 +240,7 @@ export function menuItemOrderable(
 
 /**
  * [TRANSITIONAL] #4490 spec 08 O5: merging deploys the functions before the
- * migration that adds menu_items.stock_count (20280809615490) may be applied.
+ * migration that adds menu_items.stock_count (20281203724490) may be applied.
  * Until it is, PostgREST answers 42703 for a select naming the column; the
  * snapshot then reads without it (every item untracked, today's rule). Any
  * other error is unchanged. Exit: the migration applied in production; then

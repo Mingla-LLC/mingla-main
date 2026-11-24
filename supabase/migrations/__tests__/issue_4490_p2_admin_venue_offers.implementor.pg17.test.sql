@@ -1,4 +1,4 @@
--- #4490 P2-7 (Admin venue offers, 20280809114490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P2-7 (Admin venue offers, 20281203114490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-ADMIN-OFFER-MODERATION | issue #4490 | only Mingla admins list venue offers across venues, and every admin pause or resume of a venue offer is written to admin_audit_log with its required reason.
 --

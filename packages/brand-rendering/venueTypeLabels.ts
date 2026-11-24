@@ -1,6 +1,6 @@
 /**
  * #4490 Explorer W6 — the venue type labels, one owner for Host and the Explorer
- * (`venue_listings.venue_category`, CHECK in 20280809004490). Host's
+ * (`venue_listings.venue_category`, CHECK in 20281203004490). Host's
  * `VENUE_TYPES` reads its labels from here, so Discover's "Type of place" chips,
  * the deck's "Places on Mingla" chips and Host say the same words.
  *

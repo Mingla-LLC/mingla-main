@@ -1,10 +1,10 @@
--- #4490 Explorer W6a (20280809461490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 Explorer W6a (20281203464490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-DISCOVER-VENUE-TYPE-ONLY-WITH-SUPPLY | issue #4490 | the Discover Venues kind lists only bookable hosted venues (verified, live non-internal brand, a live switched-on offer, plan or reservable tables; a Stay with live rooms only under Stays) in the city or within 50 km, and a venue-type chip exists only when its unfiltered count in the city is above zero; with VENUE_DISCOVER off the kind is empty, its chips are absent and the facets answer has no 'venues' key.
 --
 -- K kind and listing. F facets (chips). O order. C city context / nearest city. X flag off. A authority.
 --
--- FAILS-ON-REVERT: without 20280809461490 every block fails (invalid_kind / functions absent).
+-- FAILS-ON-REVERT: without 20281203464490 every block fails (invalid_kind / functions absent).
 -- Fix round 1: K-9 / K-10 fail if a stay venue is dropped from Venues on "has a live room"
 -- instead of "the Stays kind lists it" (W6-N3); F-5 fails if a Venues count builds the items
 -- page again or a chip count drifts from the list (W6-N6).

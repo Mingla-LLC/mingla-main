@@ -63,8 +63,8 @@ SELECT pg_temp.p_assert(public.brand_site_booking_blocks_enabled(), 'T-2b the fl
 -- The slot engine is CALLED, never changed by the migration. For this proof
 -- only (rolled back), a stand-in with the engine's exact signature returns a
 -- known day: 18:00 six left, 18:30 two left, 19:00 full, all Lagos time.
--- [TEST-MOD-APPROVED #4490] #4490 (20280809174490, carried by
--- 20280809224490) added a fifth parameter, p_space_id uuid DEFAULT NULL, to
+-- [TEST-MOD-APPROVED #4490] #4490 (20281203164490, carried by
+-- 20281203214490) added a fifth parameter, p_space_id uuid DEFAULT NULL, to
 -- the engine (a floor/space filter for table slots). The stand-in keeps the
 -- engine's exact signature, so it replaces the engine instead of adding a
 -- second overload that makes named calls ambiguous.

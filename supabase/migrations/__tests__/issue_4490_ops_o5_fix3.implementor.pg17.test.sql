@@ -1,5 +1,5 @@
 -- #4490 spec 08 O5 fix round 3: executable PostgreSQL 17 proof for migration
--- 20280809618490 (step-up approvals bound to a purpose and a target and used
+-- 20281203754490 (step-up approvals bound to a purpose and a target and used
 -- once, in the database; money-returning swaps are refunds; a close request
 -- from before a reopen is stale; a sold-out key reused for other lines is
 -- refused; a payment replay after a refund changes nothing; the guest refund

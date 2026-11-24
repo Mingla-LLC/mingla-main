@@ -1,4 +1,4 @@
--- #4490 P5 follow-ups (20280809214490): by-the-hour price rule stated in the offer read, and a by-the-hour booking
+-- #4490 P5 follow-ups (20281203204490): by-the-hour price rule stated in the offer read, and a by-the-hour booking
 -- moved to another day. Executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-HOUR-PRO-RATA | issue #4490 | a by-the-hour booking costs hour price x minutes / 60 (half up), in the offer's length steps; the offer read states the rule (hour.pricing).

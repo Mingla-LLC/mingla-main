@@ -1,4 +1,4 @@
--- #4490 P2-2 race (20280809084490): two real sessions (dblink) hold the last 10 guests of one pool
+-- #4490 P2-2 race (20281203084490): two real sessions (dblink) hold the last 10 guests of one pool
 -- through two different offers; exactly one wins. COMMITS its fixtures (suite-owned database).
 --
 -- MINGLA-INVARIANT: I-4490-POOL-LOCK | issue #4490 | every hold locks the shared pool row, so offers sharing a day limit cannot oversell it together.

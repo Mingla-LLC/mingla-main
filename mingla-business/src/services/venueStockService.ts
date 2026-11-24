@@ -305,7 +305,7 @@ export interface MenuStockRow {
 /**
  * The builder's count read (Menu list pills and the item's Stock section),
  * kept apart from the menu read so a database without the stock columns
- * (the app deployed before migration 20280809615490: [TRANSITIONAL], exit
+ * (the app deployed before migration 20281203724490: [TRANSITIONAL], exit
  * the migration applied in production) still shows the menu: 42703 reads as
  * "nothing tracked".
  */

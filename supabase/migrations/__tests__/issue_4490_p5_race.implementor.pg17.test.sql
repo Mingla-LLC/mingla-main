@@ -1,4 +1,4 @@
--- #4490 P5-1 race (20280809174490): two real sessions (dblink) (1) pick the same table for overlapping times
+-- #4490 P5-1 race (20281203164490): two real sessions (dblink) (1) pick the same table for overlapping times
 -- (19:00 and 19:30) through the guest reservation writer, (2) hold the only bowling lane for the same hour.
 -- Exactly one wins each time. COMMITS its fixtures (suite-owned database).
 --

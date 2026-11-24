@@ -53,7 +53,7 @@ export type VenueCategory =
   | "creative_and_arts"
   | "stay"
   // #4490 — five more venue types (a label and a starting preset only;
-  // features decide what a venue shows). Server CHECK: 20280809004490.
+  // features decide what a venue shows). Server CHECK: 20281203004490.
   | "bar_lounge"
   | "club"
   | "cafe"

@@ -265,7 +265,7 @@ type PadGuardVerdict =
  * by the database (issue_4490_pad_guard). Fails CLOSED: a broken read is a
  * refusal, never a pass. One exception keeps deploy order safe: while the
  * guard does not exist yet (this function deployed before migration
- * 20280809594490), no Till check can exist either, so main's rule applies
+ * 20281203554490), no Till check can exist either, so main's rule applies
  * (an accepted brand member).
  */
 async function padGuard(

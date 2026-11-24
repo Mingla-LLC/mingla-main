@@ -1,4 +1,4 @@
--- #4490 spec 06 W4 fix 2 (20280809462690): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 spec 06 W4 fix 2 (20281203494490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-FULL-NOW-HAS-A-REASON | issue #4490 | a booking waiting for its first payment whose offer takes a deposit but which is offered only "full" carries the server's reason in its read (fullNowReason: balance_due_passed when the balance date, session start minus balance_due_days_before, is now or past; deposit_covers_total when the deposit is the whole amount); a booking still offered a deposit, an offer without a deposit, and a paid booking carry none; no amount, state or pay mode changes.
 --
@@ -10,7 +10,7 @@
 -- R-5 an entry offer (no deposit): no reason. R-6 paid in full: no reason.
 -- R-7 the reason is internal: anon and signed-in cannot call it; the service role can.
 --
--- FAILS-ON-REVERT: without 20280809462690 the booking read has no fullNowReason (R-2c, R-3, R-4 fail)
+-- FAILS-ON-REVERT: without 20281203494490 the booking read has no fullNowReason (R-2c, R-3, R-4 fail)
 -- and issue_4490_full_now_reason does not exist (R-7 fails).
 \set ON_ERROR_STOP on
 BEGIN;

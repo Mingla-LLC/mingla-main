@@ -196,7 +196,7 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
   // #4490 spec 08 O5 (T16): a line that sold out after the guest paid, and
   // what the venue did about it (swapped, refunded, or still deciding). Read
   // only for a flagged order (the flag exists only once migration
-  // 20280809615490 is in, so an older database never sees this read).
+  // 20281203724490 is in, so an older database never sees this read).
   const orderMeta = (order.metadata !== null && typeof order.metadata === "object"
     ? order.metadata
     : {}) as Record<string, unknown>;

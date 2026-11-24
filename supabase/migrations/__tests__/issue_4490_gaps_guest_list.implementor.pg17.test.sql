@@ -1,7 +1,7 @@
 -- #4490 spec 07 I: executable PostgreSQL 17 proof for venue guest lists.
 -- The suite owns its fixture and rolls every row back.
 --
--- FAILS-ON-REVERT: without 20280809414490 the fixture helper/first feature
+-- FAILS-ON-REVERT: without 20281203394490 the fixture helper/first feature
 -- assertion fails because guest_list and its private RPCs do not exist.
 \set ON_ERROR_STOP on
 BEGIN;

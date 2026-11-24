@@ -14,12 +14,12 @@ const read = (p: string) => Deno.readTextFileSync(new URL(p, root));
 const quoted = (text: string) => [...text.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
 
 Deno.test("I-VENUE-TYPE-KEY-PARITY: SQL CHECK, SQL chips, edge, shared labels", () => {
-  const p1 = read("supabase/migrations/20280809004490_issue_4490_p1_spaces_features.sql");
+  const p1 = read("supabase/migrations/20281203004490_issue_4490_p1_spaces_features.sql");
   const at = p1.indexOf("ADD CONSTRAINT venue_listings_venue_category_check");
   const check = quoted(p1.slice(at, p1.indexOf("));", at)));
   assertEquals(check.length, 9, "nine venue types in the CHECK");
 
-  const w6a = read("supabase/migrations/20280809461490_issue_4490_explorer_w6a_discover_venues.sql");
+  const w6a = read("supabase/migrations/20281203464490_issue_4490_explorer_w6a_discover_venues.sql");
   const fnAt = w6a.indexOf("FUNCTION public.issue_4490_venue_type_chip_keys()");
   const sqlChips = quoted(w6a.slice(w6a.indexOf("SELECT ARRAY[", fnAt), w6a.indexOf("]::text[]", fnAt)));
 

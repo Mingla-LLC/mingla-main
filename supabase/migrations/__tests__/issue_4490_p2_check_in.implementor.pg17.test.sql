@@ -1,4 +1,4 @@
--- #4490 P2-3 (check-in, 20280809094490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P2-3 (check-in, 20281203094490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-CHECK-IN | issue #4490 | a pass admits at most its guests, only on its day, at its venue, after the ID check when its options need one; undo is for 10 minutes and once; the log is append-only; event tickets at the venue are delegated to biz_ticket_scan.
 --

@@ -64,7 +64,7 @@ const VENUE_ACCESS_PROFILES = new Set([
   "front_desk",
   "restaurant_manager",
   "kitchen_bar",
-  // #4490 spec 08 O1 — server: 20280809464490.
+  // #4490 spec 08 O1 — server: 20281203504490.
   "till_device",
   "custom",
 ]);
@@ -78,15 +78,15 @@ const VENUE_CAPABILITIES = new Set([
   "restaurant.manage_menu",
   "restaurant.manage_qr",
   "restaurant.manage_reservations",
-  // #4490 — venue capabilities (server: 20280809064490).
+  // #4490 — venue capabilities (server: 20281203064490).
   "venue.manage_offers",
   "venue.manage_bookings",
   "venue.view_bookings",
   "venue.check_in",
   "venue.manage_money",
-  // #4490 P6 — members (server: 20280809204490).
+  // #4490 P6 — members (server: 20281203194490).
   "venue.manage_members",
-  // #4490 spec 08 O1 — the Till (server: 20280809464490).
+  // #4490 spec 08 O1 — the Till (server: 20281203504490).
   "venue.sell",
   "venue.kitchen",
   "venue.till_device",

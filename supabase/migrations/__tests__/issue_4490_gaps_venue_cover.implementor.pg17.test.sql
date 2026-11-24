@@ -1,4 +1,4 @@
--- #4490 gap list 07-L (20280809294490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 gap list 07-L (20281203284490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-EVENT-USES-VENUE-COVER | issue #4490 | an event cover with provider 'upload' and type video is accepted only when it is the event's own ready video job, or the CURRENT video cover of the venue the event is linked to (events.venue_id), produced by a ready venue or venue_draft job of the same brand; a foreign venue's or a replaced venue video is refused, and no new provider value exists.
 --

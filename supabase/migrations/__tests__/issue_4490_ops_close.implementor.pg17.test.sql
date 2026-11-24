@@ -1,5 +1,5 @@
 -- #4490 spec 08 O5 part B: executable PostgreSQL 17 proof for migration
--- 20280809613490 (the daily close, the drawer, Move to tomorrow, export, the
+-- 20281203704490 (the daily close, the drawer, Move to tomorrow, export, the
 -- one business day). The suite owns its fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-CLOSE-SNAPSHOT-IMMUTABLE | issue #4490 | a closed day's venue_day_closes.totals is written once by issue_4490_day_close and never changes while the day is closed (any other UPDATE or a DELETE raises day_close_immutable; history only grows); money that lands later for that day is listed as late from the snapshot's own payment ids, never added to the snapshot.
@@ -112,7 +112,7 @@ INSERT INTO public.venue_listings (id, brand_id, slug, name, lat, lng, venue_cat
 INSERT INTO public.brand_hours (brand_id, venue_id, weekday, open_time, close_time, is_closed)
 SELECT '44900613-0000-4000-9000-000000000010', '44900613-0000-4000-9000-0000000000a1', d, '10:00', '03:00', false
 FROM generate_series(0, 6) d;
--- TEST-MOD-APPROVED #4490 (08-O5 fix 1): since 20280809616490 a moment's day uses the hours in force
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): since 20281203734490 a moment's day uses the hours in force
 -- AT that moment (venue_hours_history). This fixture writes its hours now and then places money in the
 -- past, so it states that these hours were always the venue's: no history, the live hours for every moment.
 DELETE FROM public.venue_hours_history WHERE venue_id = '44900613-0000-4000-9000-0000000000a1';

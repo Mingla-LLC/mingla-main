@@ -1,5 +1,5 @@
 -- #4490 spec 08 O4 fix round 2: executable PostgreSQL 17 proof for migration
--- 20280809609490 (and the server side of the browser-pass fixes). The suite
+-- 20281203664490 (and the server side of the browser-pass fixes). The suite
 -- owns its fixture (the O4 tables/hour fixture, its own ids) and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-DEPOSIT-VOID-UNSEATS | issue #4490 | voiding a booking's table-deposit credit on an open Till check puts the booking back to the status it had before the Till seated it (audited) and the check lets go of it, so the booking's own refund rules apply: the Host's cancel refunds the deposit exactly once; while the credit is live a seated booking is never refunded.

@@ -1,12 +1,12 @@
 -- #4490 spec 08 O3 part A2: executable PostgreSQL 17 proof for floor alerts
--- (migration 20280809603490): T4 floor staff at one venue, the Till's round state
+-- (migration 20281203604490): T4 floor staff at one venue, the Till's round state
 -- (sent, accepted, station tickets), T7 escalation of a sent Till round nobody
 -- accepted (the Mingla-money arm returns exactly the rows it returned before),
 -- and a seller printing a Till round's ticket. The suite owns its fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-TILL-ROUND-ESCALATES-ONLY-WHEN-SENT | issue #4490 | pg_venue_order_escalation_scan pages about a venue-collected staff round only once it was sent from the Till and nobody accepted it; a held round, a delivered (no-screen) round and an order-pad round (no sent_at) never escalate, and the Mingla-money arm is unchanged.
 --
--- FAILS-ON-REVERT: without 20280809603490 the first call fails (no issue_4490_venue_floor_user_ids).
+-- FAILS-ON-REVERT: without 20281203604490 the first call fails (no issue_4490_venue_floor_user_ids).
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;

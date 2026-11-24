@@ -1,4 +1,4 @@
--- #4490 P4-1 (private hire, requests, holds, space claims, calendar; 20280809164490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P4-1 (private hire, requests, holds, space claims, calendar; 20281203154490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-NO-DOUBLE-HIRE | issue #4490 | venue_space_claims refuses overlapping active claims on one space (exclusion constraint over the claim range incl. setup and cleanup); a combination claims every part, so a combination blocks its parts and a part blocks the combination.
 -- MINGLA-INVARIANT: I-4490-REQUEST-HOLDS-NOTHING | issue #4490 | a hire request (request_pending) has a timer-only hold: no hold slices, no space claims, no capacity; only approval takes the space and the day's capacity.
@@ -1119,7 +1119,7 @@ $h21$;
 SELECT public.t4490_reset();
 SELECT set_config('t4490.ver', (SELECT version::text FROM public.stay_reservation_groups WHERE id = public.t4490_id('g_b')), false);
 SELECT public.t4490_as('44907000-0000-4000-8000-000000000001');
--- [TEST-MOD-APPROVED #4490] The P4 follow-up (20280809184490) lets staff change a hire's
+-- [TEST-MOD-APPROVED #4490] The P4 follow-up (20281203174490) lets staff change a hire's
 -- party (claims and prices follow; proven in issue_4490_p4_hire_followups K-3/K-4), so
 -- the change is no longer refused as "not allowed".
 DO $h21b$

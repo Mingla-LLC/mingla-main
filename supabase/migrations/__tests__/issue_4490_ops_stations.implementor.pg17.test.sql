@@ -1,12 +1,12 @@
 -- #4490 spec 08 O3 part A: executable PostgreSQL 17 proof for kitchen and bar
--- stations and floor PDFs (migration 20280809601490). The suite owns its
+-- stations and floor PDFs (migration 20281203584490). The suite owns its
 -- fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-STATION-ACK-IS-A-PERSON | issue #4490 | the first station accept is the order's acknowledgement and records the accepting person (acknowledged_by_user_id = actor); no station path acknowledges without a person.
 -- MINGLA-INVARIANT: I-4490-STATION-NEVER-SEES-UNSENT | issue #4490 | a held Till round, a Till payment carrier, a tab settlement and an unpaid guest checkout never reach a station board, and no station action accepts them.
 -- MINGLA-INVARIANT: I-4490-FLOOR-PDF-PRIVATE | issue #4490 | floor PDFs live only in the private venue-floor-pdfs bucket; what a PDF prints is read only after the venue gate and the person's rights at that venue are checked, and every object is listed for deletion after 24 hours.
 --
--- FAILS-ON-REVERT: without 20280809601490 the first helper call fails (no issue_4490_station_board).
+-- FAILS-ON-REVERT: without 20281203584490 the first helper call fails (no issue_4490_station_board).
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;

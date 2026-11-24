@@ -1,5 +1,5 @@
 -- #4490 spec 08 O5 part C: executable PostgreSQL 17 proof for migration
--- 20280809615490 (stock counts, the one orderable rule, stock taken on send
+-- 20281203724490 (stock counts, the one orderable rule, stock taken on send
 -- and on paid, sold out after payment and its way out, kitchen sold out).
 -- The suite owns its fixture and rolls back.
 --

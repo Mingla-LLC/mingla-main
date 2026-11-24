@@ -1,4 +1,4 @@
--- #4490 07-E (20280809284490): tester adversarial proof for issue_4490_venue_money_day. BEGIN ... ROLLBACK.
+-- #4490 07-E (20281203274490): tester adversarial proof for issue_4490_venue_money_day. BEGIN ... ROLLBACK.
 --
 -- Attacks angles the implementor suite does not cover:
 --   T-1 a table deposit paid yesterday and refunded in full today, with the rows shaped the way production

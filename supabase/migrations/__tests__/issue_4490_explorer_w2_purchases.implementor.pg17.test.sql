@@ -1,4 +1,4 @@
--- #4490 Explorer W2 (20280809434490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 Explorer W2 (20281203414490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-SWEEP-VENUE-KINDS | issue #4490 | the verified-identity sweep attaches venue bookings, plans and open waitlist places once each, labelled with kinds, route kinds, offering type and nouns the Explorer app already accepts (venue_booking/pass, venue_membership/pass only for a plan that carries a pass (active, payment_due, grace) and venue_membership/booking for a payable or requested plan, venue_waitlist/booking; offering type venue), never as stay_group, and never attaches a declined, cancelled or expired never-paid plan.
 -- MINGLA-INVARIANT: I-4490-VISIT-REMINDER-ONCE | issue #4490 | a live venue booking (confirmed, or partly cancelled with guests still confirmed) gets at most one day-before and one two-hours-before reminder per booking time (a moved booking is reminded for its new time), never when VENUE_VISIT_REMINDERS is off, never for a booking that is not live, never late (counted from when it was made, confirmed or last moved), never a day-before reminder for a visit on the venue's own today, and no booking is starved by the per-run limit.
@@ -21,7 +21,7 @@
 --
 -- S sweep. H sharing. L Purchases reads. R reminders. C categories. A authority.
 --
--- FAILS-ON-REVERT: without 20280809434490, S-1 fails (the booking is reported as stay_group),
+-- FAILS-ON-REVERT: without 20281203414490, S-1 fails (the booking is reported as stay_group),
 -- S-3/S-4 fail (memberships and waitlist places are not attached), L-1 fails
 -- (issue_4490_my_waitlist_entries does not exist) and R-2 fails (no reminder).
 \set ON_ERROR_STOP on

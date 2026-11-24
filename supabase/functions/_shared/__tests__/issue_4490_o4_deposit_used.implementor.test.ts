@@ -1,6 +1,6 @@
 // #4490 spec 08 §11 T12 — a booking whose paid table deposit is on a Till
 // check refuses a refund of it: the database raises reservation_deposit_used
-// (BEFORE INSERT on source_refunds, migration 20280809607490) and the host
+// (BEFORE INSERT on source_refunds, migration 20281203644490) and the host
 // cancel answers 409 with that code (the Host shows "This deposit was used on
 // the bill at the venue."). Nothing is leased or run.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";

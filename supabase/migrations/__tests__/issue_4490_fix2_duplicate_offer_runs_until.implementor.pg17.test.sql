@@ -1,4 +1,4 @@
--- #4490 fix round 2 (20280809244490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 fix round 2 (20281203234490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-OFFER-COPY-IS-A-DRAFT | issue #4490 | issue_4490_duplicate_offer copies an offer of the venue (prices, rules, schedule, spaces, pool) as a new draft that sells nothing until published; never an offer of another venue, never for someone without venue.manage_offers.
 -- MINGLA-INVARIANT: I-4490-SCHEDULE-SAVE-KEEPS-SELLING | issue #4490 | saving a live offer's schedule keeps every session the new rule makes again on sale; only sessions the rule no longer makes stop.
@@ -6,7 +6,7 @@
 --
 -- D copy an offer (N5). R runs until (N82).
 --
--- FAILS-ON-REVERT (seen): without 20280809244490 D-1a fails (function issue_4490_duplicate_offer does not exist)
+-- FAILS-ON-REVERT (seen): without 20281203234490 D-1a fails (function issue_4490_duplicate_offer does not exist)
 -- and R-2 fails (an end date in the past is stored); without the reopen trigger R-0 fails (0 of 16 on sale).
 \set ON_ERROR_STOP on
 BEGIN;

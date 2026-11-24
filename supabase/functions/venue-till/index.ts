@@ -356,7 +356,7 @@ async function handlePinDevice(
       p_device_user: userId,
     });
     if (error) {
-      // [TRANSITIONAL] before migration 20280809611490 nobody is gated, but
+      // [TRANSITIONAL] before migration 20281203684490 nobody is gated, but
       // a Till device login never acts as itself (#4490 08-O5 fix 3: fail
       // closed when its grant says Till device or cannot be read).
       if (isMissingPinFunction(error)) {

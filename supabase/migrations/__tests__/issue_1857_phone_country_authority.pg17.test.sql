@@ -107,10 +107,10 @@ BEGIN
     -- [TEST-MOD-APPROVED #4490] #4490 P5 last-writes both: the guest writer takes
     -- an optional table pick / seating area (two trailing defaulted args) under a
     -- venue table lock; the phone-country validation and grants are unchanged.
-    -- [TEST-MOD-APPROVED #4490] fix round 1 (20280809224490) last-writes the guest
+    -- [TEST-MOD-APPROVED #4490] fix round 1 (20281203214490) last-writes the guest
     -- writer: the slot is checked on its service day (a past-midnight time belongs
     -- to the evening before); phone-country validation and grants are unchanged.
-    -- [TEST-MOD-APPROVED #4490] spec 07 B (20280809314490) last-writes the same
+    -- [TEST-MOD-APPROVED #4490] spec 07 B (20281203304490) last-writes the same
     -- signature so every positive table hold (not only per-guest holds) requires
     -- payment. Phone-country validation, SECURITY DEFINER and grants are unchanged.
     ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)', '2ee2090a42f7c9787b15c403be591484'),

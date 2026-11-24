@@ -1,5 +1,5 @@
 // #4490 spec 08 O1 — the Team invite carries the Till capabilities and the
-// "Till device" profile (server: 20280809464490 grant CHECKs and validator).
+// "Till device" profile (server: 20281203504490 grant CHECKs and validator).
 import { assert, assertEquals, assertFalse } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { validateInvite, venueGrantMatchesCategory } from "../index.ts";
 

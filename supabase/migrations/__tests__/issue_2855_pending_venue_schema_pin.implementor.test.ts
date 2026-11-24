@@ -29,21 +29,21 @@ const ORIGINAL_PATH =
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
 const CURRENT_PIN_PATH =
-  "supabase/migrations/20280809617490_issue_4490_ops_o5_fix1_pending_venue_repin.sql";
+  "supabase/migrations/20281203744490_issue_4490_ops_o5_fix1_pending_venue_repin.sql";
 // [TEST-MOD-APPROVED #4490] 08-O5 fix 1: the current pin owner is the O5 fix 1 repin
-// (20280809617490), which advances the pin over the opening hours history added by
-// 20280809616490; it stays disallowed. It carries the P1 owner's rewrites.
+// (20281203744490), which advances the pin over the opening hours history added by
+// 20281203734490; it stays disallowed. It carries the P1 owner's rewrites.
 // [TEST-MOD-APPROVED #4490] 08-O5 part B: the current pin owner is the O5 part B repin
-// (20280809614490), which advances the pin over the daily close lanes added by
-// 20280809613490 (closes, cash movements); they stay disallowed. It carries the
+// (20281203714490), which advances the pin over the daily close lanes added by
+// 20281203704490 (closes, cash movements); they stay disallowed. It carries the
 // P1 owner's rewrites.
 // [TEST-MOD-APPROVED #4490] 08-O5 part A: the current pin owner is the O5 part A repin
-// (20280809612490), which advances the pin over the PIN lanes added by
-// 20280809611490 (sessions, attempts, approvals); they stay disallowed. It carries
+// (20281203694490), which advances the pin over the PIN lanes added by
+// 20281203684490 (sessions, attempts, approvals); they stay disallowed. It carries
 // the P1 owner's rewrites.
 // [TEST-MOD-APPROVED #4490] 08-O3 part A: the current pin owner is the O3 repin
-// (20280809602490), which advances the pin over the Till pay-link texts lane added
-// by 20280809600490; it stays disallowed. It carries the P1 owner's rewrites.
+// (20281203594490), which advances the pin over the Till pay-link texts lane added
+// by 20281203574490; it stays disallowed. It carries the P1 owner's rewrites.
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -72,16 +72,16 @@ const NEW_PIN =
 // disallowed, and reads one value on the Supabase CLI stack and the bare PG17
 // batch image.
 // [TEST-MOD-APPROVED #4490] P2: the current pin owner is the P2 repin
-// (20280809104490), which advances the pin over the venue offer lanes
+// (20281203104490), which advances the pin over the venue offer lanes
 // (booking settings, pools, overrides, price options, offer spaces, passes,
 // check-in log); they stay disallowed. It carries the P1 owner's rewrites.
 // [TEST-MOD-APPROVED #4490] guest list: the current pin owner is the guest
-// list repin (20280809444490), which advances the pin over the guest list
-// lanes added by 20280809414490 (terms, promoters, entries); they stay
+// list repin (20281203424490), which advances the pin over the guest list
+// lanes added by 20281203394490 (terms, promoters, entries); they stay
 // disallowed. It carries the P1 owner's rewrites like the P2 owner did.
 // [TEST-MOD-APPROVED #4490] 08-O1: the current pin owner is the O1 repin
-// (20280809554490), which advances the pin over the Till lanes added by
-// 20280809464490; they stay disallowed. It carries the P1 owner's rewrites.
+// (20281203524490), which advances the pin over the Till lanes added by
+// 20281203504490; they stay disallowed. It carries the P1 owner's rewrites.
 const CURRENT_HASHES = [
   "ddb56bf5b2b14f26485be131f6ab0c614d03df9dd493d2332069f16851664464",
 ] as const;
@@ -469,7 +469,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
-  const currentPinName = "20280809617490_issue_4490_ops_o5_fix1_pending_venue_repin.sql";
+  const currentPinName = "20281203744490_issue_4490_ops_o5_fix1_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),

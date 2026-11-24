@@ -1,5 +1,5 @@
 -- #4490 spec 08 O2: executable PostgreSQL 17 proof for migration
--- 20280809599490 (tap to pay on Till sales, scan to pay, a bank transfer that
+-- 20281203564490 (tap to pay on Till sales, scan to pay, a bank transfer that
 -- confirms itself). The suite owns its fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-TILL-ONE-PRICE | issue #4490 | a Till card or scan payment is always what is left on the check (issue_4490_till_card_start refuses a priced carrier whose base, service charge, tip or currency differ from the check); the body never carries an amount.
@@ -8,7 +8,7 @@
 -- MINGLA-INVARIANT: I-4490-TILL-ONE-LIVE-CODE | issue #4490 | a Till payment has at most one pay code (venue_till_pay_codes.payment_id UNIQUE) and a check has at most one pending payment; a new code needs the old one cancelled or expired.
 -- MINGLA-INVARIANT: I-4490-TILL-TAP-ONE-INTENT | issue #4490 | door_tap_intents holds an event tap or a Till tap, never both; one Till intent per client request and per payment; event rows keep UNIQUE(event_id, client_request_id).
 --
--- FAILS-ON-REVERT: without 20280809599490 the first card helper call fails
+-- FAILS-ON-REVERT: without 20281203564490 the first card helper call fails
 -- (no issue_4490_till_card_prepare).
 \set ON_ERROR_STOP on
 BEGIN;

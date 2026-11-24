@@ -1,4 +1,4 @@
--- #4490 P2-2 (checkout and cancel, 20280809084490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P2-2 (checkout and cancel, 20281203084490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-POOL-CAPACITY | issue #4490 | online sales never use the kept-for-walk-ins seats; the gate can sell up to the day limit; every hold re-checks the pool under its row lock.
 -- MINGLA-INVARIANT: I-4490-PAYMENT-CAP | issue #4490 | a single payment above 2,147,483,647 minor units is refused with offer_amount_too_large before anything is held or charged.

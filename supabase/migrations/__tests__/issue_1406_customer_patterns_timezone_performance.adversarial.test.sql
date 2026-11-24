@@ -941,7 +941,7 @@ BEGIN
   -- measured on a PG17 full replay of dc553ef4d4 (matches main's CI batch);
   -- dropping exactly those two indexes measures 88 / 3158b5e3ff37207ce334bd6bb4caa0d7
   -- again. The seven fingerprinted functions are unchanged by #4473.
-  -- [TEST-MOD-APPROVED #4490] 20280809024490_issue_4490_p1_event_venue adds
+  -- [TEST-MOD-APPROVED #4490] 20281203024490_issue_4490_p1_event_venue adds
   -- the partial lookup index events_venue_id_idx (events.venue_id, for the
   -- event/experience venue link). Count 90 -> 91,
   -- hash 0c4a5b0bc6ad79ab0337f55fcf540fe8 -> e818c32c02d7e77cab2fe0be62bff3c8,

@@ -1,12 +1,12 @@
 -- #4490 spec 08 O5 part A: executable PostgreSQL 17 proof for staff PINs on a
--- shared Till device (migration 20280809611490). The suite owns its fixture
+-- shared Till device (migration 20281203684490). The suite owns its fixture
 -- and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-PIN-NEVER-SIGNS-IN | issue #4490 | a PIN only switches the person acting on an already signed-in Till device login: issue_4490_pin_unlock refuses any account that is not a Till device at that venue, a Till device never holds a PIN, and a PIN session is honoured only for that device account, that venue and that device's auth session.
 -- MINGLA-INVARIANT: I-4490-PIN-HASH-UNREADABLE | issue #4490 | brand_member_pins, venue_staff_switch_sessions, venue_pin_attempts and venue_pin_approvals have RLS on and no anon/authenticated grants; only bcrypt PIN hashes and sha256 token hashes are stored; every PIN function is service role only.
 -- MINGLA-INVARIANT: I-4490-TILL-DEVICE-NEVER-ACTS-ALONE | issue #4490 | a Till device login is never the actor of a Till payment or refund row, and a row recorded for a device needs a live PIN session (or a fresh approval) for its actor, checked in the same transaction.
 --
--- FAILS-ON-REVERT: without 20280809611490 the first PIN call fails (no issue_4490_pin_set).
+-- FAILS-ON-REVERT: without 20281203684490 the first PIN call fails (no issue_4490_pin_set).
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;

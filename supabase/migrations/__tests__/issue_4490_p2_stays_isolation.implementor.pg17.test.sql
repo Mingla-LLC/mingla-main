@@ -1,4 +1,4 @@
--- #4490 P2-1 (offer engine, 20280809074490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P2-1 (offer engine, 20281203074490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-STAYS-ISOLATION | issue #4490 | venue offers are Stays offerings of new kinds on non-stay venues; the Stays quote, prepare, cancel and guest list never see or charge a venue booking, and only the #4490 offer RPCs may write a venue booking's payment or cancel rows.
 -- MINGLA-INVARIANT: I-4490-OFFER-AUTHORING | issue #4490 | price options are always named by the host, a live offer has its feature on, a policy, a schedule and (entry) a day limit at least its largest option, and turning a feature off pauses its live offers.

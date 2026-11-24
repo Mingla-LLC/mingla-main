@@ -1,4 +1,4 @@
--- #4490 spec 06 W4 fix 1 (20280809462590): executable PostgreSQL 17 proof. COMMITS its fixtures
+-- #4490 spec 06 W4 fix 1 (20281203484490): executable PostgreSQL 17 proof. COMMITS its fixtures
 -- (suite-owned database): N3-f runs two real sessions (dblink) on one booking.
 --
 -- MINGLA-INVARIANT: I-4490-ROW-PRICE-IS-THE-QUOTE | issue #4490 | the price an entry option shows for a chosen window (its own availability row, pg_venue_offer_availability with the option) is exactly the unit price the quote charges for that option and window (busy-time rules, weekday-only options and free options included), and an option the row refuses is refused by the quote.
@@ -7,7 +7,7 @@
 --
 -- N1 row price = quote. N2 plan charges. N3 one live payment page.
 --
--- FAILS-ON-REVERT: without 20280809462590, N2-b fails (paymentDue.amountMinor is the plan price
+-- FAILS-ON-REVERT: without 20281203484490, N2-b fails (paymentDue.amountMinor is the plan price
 -- 5,000,000, the page charges 5,375,000), N2-a fails (no plans[].charge), N3-a fails (a second
 -- attempt is created), N3-f fails (two attempts), N3-g fails (the paid booking moves to
 -- reconciliation_required).

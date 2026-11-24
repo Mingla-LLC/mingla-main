@@ -1,4 +1,4 @@
--- #4490 fix round 3 (20280809254490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 fix round 3 (20281203244490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-EVENT-TAKES-ITS-PLACE | issue #4490 | a scheduled or live event saved as "takes the space" holds every space it sits in (one space, each part of a combination, or every active space of the venue) for each active date, so hires, by-the-hour bookings and blocks over it are refused, and it cannot go live over a committed hire or block (event_space_taken).
 -- MINGLA-INVARIANT: I-4490-WAITLIST-SPACE-OF-ITS-VENUE | issue #4490 | a waitlist row's preferred space is a space of that row's venue.
@@ -6,7 +6,7 @@
 --
 -- S one space (N101). C combination (N106). W whole venue. B refusal. K calendar (N102). Q waitlist space (N112). A authority.
 --
--- FAILS-ON-REVERT (seen): without 20280809254490 S-1b fails (event_space_taken: the duplicated date clashes with
+-- FAILS-ON-REVERT (seen): without 20281203244490 S-1b fails (event_space_taken: the duplicated date clashes with
 -- itself), C-1a fails (no p_combination_id) and W-1 claims nothing.
 \set ON_ERROR_STOP on
 BEGIN;

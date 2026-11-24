@@ -1,5 +1,5 @@
 -- #4490 spec 08 O2 fix round 1: executable PostgreSQL 17 proof for migration
--- 20280809600490 (the money test's O2-T1, T2, T3, T4). The suite owns its
+-- 20281203574490 (the money test's O2-T1, T2, T3, T4). The suite owns its
 -- fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-TILL-STALE-PAYMENT-LETS-GO | issue #4490 | a pay code past its expires_at, or a pending tap payment with no PaymentIntent older than the 15-minute tap window, never stops cash, own machine, adding to the check or a new card payment (issue_4490_till_release_stale runs first); a live code and a tap with a PaymentIntent are never released; money that lands on a released code is late money, recorded once.
@@ -7,7 +7,7 @@
 -- MINGLA-INVARIANT: I-4490-TILL-TEXT-WINDOWS | issue #4490 | at most issue_4490_till_text_limits() pay-link texts to one number per venue and per seller in any rolling hour (default 6 and 30), on top of three per code; a refusal writes nothing.
 -- MINGLA-INVARIANT: I-4490-TILL-GUESS-BUDGET | issue #4490 | unknown pay-code answers share one global per-minute budget keyed on nothing a caller sends.
 --
--- FAILS-ON-REVERT: without 20280809600490 the first check fails (cash on a
+-- FAILS-ON-REVERT: without 20281203574490 the first check fails (cash on a
 -- check whose code expired unwatched answers till_payment_in_progress).
 \set ON_ERROR_STOP on
 BEGIN;

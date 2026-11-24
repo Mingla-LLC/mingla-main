@@ -1,4 +1,4 @@
--- #4490 Explorer W1 (20280809364490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 Explorer W1 (20281203334490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-VENUE-CLAIM-NOUNS-KNOWN | issue #4490 | every venue claim subject resolves with a noun the Explorer app already knows (pass, pass, booking, receipt), and a stay_group link never resolves a venue offer booking.
 -- MINGLA-INVARIANT: I-4490-PASS-IN-APP-FOLLOWS-FLAG | issue #4490 | the booking and member projections report passInApp from VENUE_PASS_APP_ONLY and never produce a QR without a pepper.
@@ -6,7 +6,7 @@
 --
 -- K claim kinds. S subjects. P projections. A authority.
 --
--- FAILS-ON-REVERT: without 20280809364490 K-1 fails (claim_links_subject_kind_check / claim_kind_invalid),
+-- FAILS-ON-REVERT: without 20281203334490 K-1 fails (claim_links_subject_kind_check / claim_kind_invalid),
 -- S-4 fails (stay_group resolves the offer booking) and P-1 fails (no passInApp).
 \set ON_ERROR_STOP on
 BEGIN;
@@ -350,7 +350,7 @@ BEGIN
       AND EXISTS (
         SELECT 1
           FROM jsonb_array_elements(v_result->'claimed') item
-         -- [TEST-MOD-APPROVED #4490] Explorer W2 (20280809434490): a venue
+         -- [TEST-MOD-APPROVED #4490] Explorer W2 (20281203414490): a venue
          -- offer booking is now reported as venue_booking, not stay_group.
          WHERE item->>'kind' = 'venue_booking'
            AND (item->>'id')::uuid = public.t4490_id('booking')

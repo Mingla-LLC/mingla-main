@@ -1,4 +1,4 @@
--- #4490 W3 fix round 1 (20280809459490): who may call every venue function. BEGIN ... ROLLBACK.
+-- #4490 W3 fix round 1 (20281203444490): who may call every venue function. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-EVERY-FUNCTION-HAS-A-GRANT-DECISION | issue #4490 | every function a #4490 migration creates or re-emits is listed here in exactly one class (public read, signed-in, internal, invoker helper) and its anon and authenticated EXECUTE match that class; a new issue_4490_* function, or a new overload of a listed name, without a line here fails this suite.
 --
@@ -10,79 +10,79 @@
 -- issue_4490_offer_from, its slot read, the live-offers owner and the card's lean price read are internal, the three lifted price helpers are
 -- invoker helpers.
 --
--- TEST-MOD-APPROVED #4490 (06-W5): the two hosted deck wrappers (20280809460490) are internal
+-- TEST-MOD-APPROVED #4490 (06-W5): the two hosted deck wrappers (20281203454490) are internal
 -- (service role only).
--- TEST-MOD-APPROVED #4490 (06-W6a): the Discover venue helpers (20280809461490) are internal, and
+-- TEST-MOD-APPROVED #4490 (06-W6a): the Discover venue helpers (20281203464490) are internal, and
 -- the four Discover v2 readers that migration patches are listed (internal, as #4073 made them).
--- TEST-MOD-APPROVED #4490 (06-W6b): the deck venue-type reads (20280809462490) are internal, the lifted
+-- TEST-MOD-APPROVED #4490 (06-W6b): the deck venue-type reads (20281203474490) are internal, the lifted
 -- place rule is an invoker helper, and the two base servable RPCs it re-emits keep their classes
 -- (solo internal; the shared-deck intersection callable by signed-in and signed-out, as before).
--- TEST-MOD-APPROVED #4490 (06-W4 fix 2): the full-now reason (20280809462690) is internal (service role only);
+-- TEST-MOD-APPROVED #4490 (06-W4 fix 2): the full-now reason (20281203494490) is internal (service role only);
 -- the booking read it patches keeps its class.
 -- TEST-MOD-APPROVED #4490 (06-W4 fix 1): the plan charge owner and its fee lines and period read, and the
--- remembered-payment-page writer (20280809462590) are internal (service role only); the eight functions that
+-- remembered-payment-page writer (20281203484490) are internal (service role only); the eight functions that
 -- migration re-emits keep their classes.
 -- TEST-MOD-APPROVED #4490 (06-W5/W6 fix 1): the hosted wrappers take every signal of a request
 -- at once (new signatures, still internal); the shared-deck base RPC is no longer re-emitted by
 -- #4490 (W6-N1), so its line is gone; the two new Discover Venues helpers (the Stays-listed read
 -- and the filtered candidates, W6-N3 / W6-N6) are internal.
 --
--- TEST-MOD-APPROVED #4490 (08-O1): the Till core (20280809464490) adds 26 functions, all internal
+-- TEST-MOD-APPROVED #4490 (08-O1): the Till core (20281203504490) adds 26 functions, all internal
 -- (service role only; the venue-till edge passes the verified user), and patches the #1795 rollup,
 -- which keeps its class (signed-in).
--- TEST-MOD-APPROVED #4490 (08-O1 part 2): receipts (20280809474490) add eight functions and the
--- sweep / card refund (20280809584490) two, all internal; the patched issue_4063_claim_subject keeps
+-- TEST-MOD-APPROVED #4490 (08-O1 part 2): receipts (20281203514490) add eight functions and the
+-- sweep / card refund (20281203534490) two, all internal; the patched issue_4063_claim_subject keeps
 -- its existing class.
--- TEST-MOD-APPROVED #4490 (08-O1 fix 1): 20280809594490 adds nine functions, all internal (service role
+-- TEST-MOD-APPROVED #4490 (08-O1 fix 1): 20281203554490 adds nine functions, all internal (service role
 -- only); the legacy order-pad RPCs it patches (tab open / close, the queue's transition, the refund
 -- decision) keep their signed-in class.
--- TEST-MOD-APPROVED #4490 (08-O1 fix 2): 20280809589490 adds the overpaid derivation and its refund
+-- TEST-MOD-APPROVED #4490 (08-O1 fix 2): 20281203544490 adds the overpaid derivation and its refund
 -- trigger function, both internal (service role only); the day's money and the guest-list gate sale it
 -- patches keep their internal class.
--- TEST-MOD-APPROVED #4490 (08-O2): 20280809599490 adds eleven functions (card prepare/start/cancel/close,
+-- TEST-MOD-APPROVED #4490 (08-O2): 20281203564490 adds eleven functions (card prepare/start/cancel/close,
 -- code expiry, tap record, pay-code view/buyer/status/text, keep late payment), all internal (service role
 -- only: the anonymous pay page reaches view/buyer through venue-till); the finalizer it re-emits keeps
 -- its service-role-only grant.
--- TEST-MOD-APPROVED #4490 (08-O2 fix 1): 20280809600490 adds four functions (stale payment release, the
+-- TEST-MOD-APPROVED #4490 (08-O2 fix 1): 20281203574490 adds four functions (stale payment release, the
 -- pay-code lookup without the switch, the pay-link text limits, the unknown-code guess budget) and
 -- re-emits the pay-code status and text reads, all internal (service role only).
--- TEST-MOD-APPROVED #4490 (08-O3 part A): 20280809601490 adds nineteen functions (the station gate,
+-- TEST-MOD-APPROVED #4490 (08-O3 part A): 20281203584490 adds nineteen functions (the station gate,
 -- board, ticket actions, the station trigger and the floor PDF source and ledger) and re-emits the
 -- Till's send, all internal (service role only).
--- TEST-MOD-APPROVED #4490 (08-O3 part A2): 20280809603490 adds the floor staff list and re-emits
+-- TEST-MOD-APPROVED #4490 (08-O3 part A2): 20281203604490 adds the floor staff list and re-emits
 -- pg_venue_order_escalation_scan (still service role only), both internal.
--- TEST-MOD-APPROVED #4490 (08-O3 fix 1): 20280809604490 adds the station screen check
+-- TEST-MOD-APPROVED #4490 (08-O3 fix 1): 20281203614490 adds the station screen check
 -- issue_4490_station_screened (internal) and re-emits seven functions, each keeping its class.
--- TEST-MOD-APPROVED #4490 (08-O4): the split (20280809606490) adds eleven functions (the share context,
+-- TEST-MOD-APPROVED #4490 (08-O4): the split (20281203634490) adds eleven functions (the share context,
 -- the service charge left, the share state, the shares-follow-the-check and paid-share line triggers,
 -- set split, the three share wrappers, the sale extras) and re-emits take_payment, card_prepare and
--- card_start (same signatures); tables and by the hour (20280809607490) add nine (the deposit refund
+-- card_start (same signatures); tables and by the hour (20281203644490) add nine (the deposit refund
 -- guard, the line-voided trigger, session book / span / start / extend, seat, the catalog extras) and
 -- re-emit the service charge left and the sale extras; all internal (service role only).
--- TEST-MOD-APPROVED #4490 (08-O4 fix 1): 20280809608490 adds five functions (the reservation deposit
+-- TEST-MOD-APPROVED #4490 (08-O4 fix 1): 20281203654490 adds five functions (the reservation deposit
 -- owner trigger, the deposit's part on a booking, a check's line funding, the offer part of a payment
 -- refund, the covered-check close) and re-emits the refund guard, finalize, the Till offer payment
 -- record, the money day and start session (same signatures); all internal (service role only).
--- TEST-MOD-APPROVED #4490 (08-O4 fix 3): 20280809610490 adds the deposit excess refund (internal) and
+-- TEST-MOD-APPROVED #4490 (08-O4 fix 3): 20281203674490 adds the deposit excess refund (internal) and
 -- re-emits the refund guard, finalize and the sale extras (same signatures).
--- TEST-MOD-APPROVED #4490 (08-O5 part A): 20280809611490 adds the PIN functions, the floor audit
+-- TEST-MOD-APPROVED #4490 (08-O5 part A): 20281203684490 adds the PIN functions, the floor audit
 -- helper, the device void and four trigger functions; all internal (service role only).
--- TEST-MOD-APPROVED #4490 (08-O5 part C): 20280809615490 adds the stock functions (13 internal, service
+-- TEST-MOD-APPROVED #4490 (08-O5 part C): 20281203724490 adds the stock functions (13 internal, service
 -- role only), the orderable rule and the stock guard trigger (invoker helpers); the functions it
 -- re-emits or patches (till send, till void, the finalizer, the floor audit, the day summary) keep
 -- their classes.
--- TEST-MOD-APPROVED #4490 (08-O5 fix 3): 20280809618490 adds issue_4490_pin_step_up_take (internal); the
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 3): 20281203754490 adds issue_4490_pin_step_up_take (internal); the
 -- functions it patches keep their classes.
--- TEST-MOD-APPROVED #4490 (08-O5 fix 1): 20280809616490 adds the line refund kind rule and the
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): 20281203734490 adds the line refund kind rule and the
 -- sold-out refund formula (pure invoker helpers), the resolved-basis read, the hours history state
 -- and its two trigger functions and the station screen rule (internal, service role only); the
 -- functions it re-emits or patches keep their classes.
--- TEST-MOD-APPROVED #4490 (08-O5 part B): 20280809613490 adds the daily close (summary, close, reopen,
+-- TEST-MOD-APPROVED #4490 (08-O5 part B): 20281203704490 adds the daily close (summary, close, reopen,
 -- carry over, the drawer, export and their helpers) and its two guard trigger functions, all internal
 -- (service role only); it re-emits the floor audit helper and the Till business date (same signatures,
 -- still internal).
 --
--- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
+-- FAILS-ON-REVERT: without 20281203444490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
 \set ON_ERROR_STOP on
 BEGIN;
@@ -560,15 +560,15 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_extend_session(uuid,uuid,integer,uuid,text,integer)', 'internal'),
   ('issue_4490_till_seat(uuid,uuid,uuid,integer,uuid,text,uuid,text)', 'internal'),
   ('issue_4490_till_catalog_extras(uuid)', 'internal'),
-  -- 08-O4 fix 1 (20280809608490): all internal (service role only).
+  -- 08-O4 fix 1 (20281203654490): all internal (service role only).
   ('issue_4490_reservation_deposit_owned()', 'internal'),
   ('issue_4490_record_till_credit(uuid,bigint,uuid,uuid,text)', 'internal'),
   ('issue_4490_till_line_funding(uuid)', 'internal'),
   ('issue_4490_till_refund_offer_parts(uuid)', 'internal'),
   ('issue_4490_till_close_covered(uuid,uuid,integer)', 'internal'),
-  -- 08-O4 fix 3 (20280809610490): the deposit excess refund, internal.
+  -- 08-O4 fix 3 (20281203674490): the deposit excess refund, internal.
   ('issue_4490_till_refund_deposit_excess(uuid,uuid)', 'internal'),
-  -- 08-O5 part A (20280809611490): PINs, PIN sessions, step-up, the floor audit, all internal.
+  -- 08-O5 part A (20281203684490): PINs, PIN sessions, step-up, the floor audit, all internal.
   ('issue_4490_pin_gate(uuid,uuid)', 'internal'),
   ('issue_4490_pin_is_weak(text)', 'internal'),
   ('issue_4490_pin_member_is_mingla_admin(uuid)', 'internal'),
@@ -594,7 +594,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_floor_audit_paid()', 'internal'),
   ('issue_4490_floor_audit_refund()', 'internal'),
   ('issue_4490_floor_audit_void()', 'internal'),
-  -- 08-O5 part B (20280809613490): the daily close, all internal (service role only).
+  -- 08-O5 part B (20281203704490): the daily close, all internal (service role only).
   ('issue_4490_day_close_guard()', 'internal'),
   ('issue_4490_cash_movement_guard()', 'internal'),
   ('issue_4490_close_person(uuid,uuid)', 'internal'),
@@ -615,7 +615,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_cash_movement(uuid,date,text,bigint,text,uuid,uuid,uuid)', 'internal'),
   ('issue_4490_day_export(uuid,date,uuid,uuid)', 'internal'),
   ('issue_4490_till_settings_read(uuid,uuid)', 'internal'),
-  -- 08-O5 part C (20280809615490): stock. The orderable rule is a pure invoker helper the two
+  -- 08-O5 part C (20281203724490): stock. The orderable rule is a pure invoker helper the two
   -- anon menu views call; the guard trigger is an invoker on purpose (it must see the caller's
   -- role); everything else is internal (service role only).
   ('issue_4490_menu_item_orderable(boolean,integer)', 'helper'),
@@ -633,7 +633,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_order_sold_out(uuid,uuid)', 'internal'),
   ('issue_4490_sold_out_open(uuid)', 'internal'),
   ('issue_4490_sold_out_escalation_scan(timestamp with time zone,integer)', 'internal'),
-  -- 08-O5 fix 1 (20280809616490): every sold-out line resolvable once; hours as they were; the
+  -- 08-O5 fix 1 (20281203734490): every sold-out line resolvable once; hours as they were; the
   -- no-screen void restock. Two pure invoker rules; everything else internal (service role only).
   ('issue_4490_is_line_refund_kind(text)', 'helper'),
   ('issue_4490_sold_out_refund_for_basis(bigint,bigint,bigint,bigint)', 'helper'),
@@ -641,10 +641,10 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_venue_hours_state(uuid)', 'internal'),
   ('issue_4490_venue_hours_baseline()', 'internal'),
   ('issue_4490_venue_hours_capture()', 'internal'),
-  -- 08-O5 fix 3 (20280809618490): the step-up take (single-use approvals), internal.
+  -- 08-O5 fix 3 (20281203754490): the step-up take (single-use approvals), internal.
   ('issue_4490_pin_step_up_take(uuid,uuid,uuid,text,text,text,boolean)', 'internal'),
   ('issue_4490_station_has_screen(uuid,text)', 'internal'),
-  -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
+  -- 08-O3 part A (20281203584490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),
   ('issue_4490_item_station(uuid,uuid)', 'internal'),
@@ -664,10 +664,10 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_floor_pdf_record(uuid,text,text,uuid)', 'internal'),
   ('issue_4490_floor_pdf_due(integer)', 'internal'),
   ('issue_4490_floor_pdf_forget(text[])', 'internal'),
-  -- 08-O3 part A2 (20280809603490): floor staff list (T4), and the escalation scan it re-emits (T7), both internal.
+  -- 08-O3 part A2 (20281203604490): floor staff list (T4), and the escalation scan it re-emits (T7), both internal.
   ('issue_4490_venue_floor_user_ids(uuid,uuid,text[])', 'internal'),
   ('pg_venue_order_escalation_scan(timestamp with time zone,integer)', 'internal'),
-  -- 08-O3 fix 1 (20280809604490): which stations have a screen (T5), internal.
+  -- 08-O3 fix 1 (20281203614490): which stations have a screen (T5), internal.
   ('issue_4490_station_screened(uuid,text)', 'internal'),
   ('biz_venue_tab_open(uuid)', 'signed_in'),
   ('biz_venue_tab_close(uuid,text)', 'signed_in'),

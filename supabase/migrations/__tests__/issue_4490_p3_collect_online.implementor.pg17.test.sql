@@ -1,4 +1,4 @@
--- #4490 P3 collect online (20280809134490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P3 collect online (20281203134490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-COLLECT-ONLINE-ONE-RULE | issue #4490 | the Host list, the offer projection and the public page answer "can this venue take payments online" with the same rule `pay` uses; when it cannot, the offer carries the warning online_payments_off and publish is not blocked.
 --

@@ -1,4 +1,4 @@
--- #4490 P6-1 (memberships, monthly; 20280809204490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P6-1 (memberships, monthly; 20281203194490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-MEMBER-ACCESS | issue #4490 | a member record (read, pay, leave, pause, member price) opens only with its own member token or for its own signed-in member; staff reads need venue member rights.
 -- MINGLA-INVARIANT: I-4490-MONTH-ONCE | issue #4490 | one row per (member, month start); the billing run is idempotent (one month, one email per step); a paid month owes nothing, so paying one renewal link twice is refused.

@@ -1,12 +1,12 @@
 -- #4490 spec 08 O1 part 2: executable PostgreSQL 17 proof for migration
--- 20280809584490 (the held-round sweep, the reprice no longer adopting a held
+-- 20281203534490 (the held-round sweep, the reprice no longer adopting a held
 -- round, and one card refund per card payment on its carrier).
 -- The suite owns its fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-TILL-HELD-ROUND-SWEEP | issue #4490 | a Till round inserted held that never joined a check (no venue_till_lines row) is cancelled by issue_4490_till_sweep_held_rounds after 10 minutes; a paid, sent, attached or carrier row is never touched, and a held round joins a check only through issue_4490_till_attach_round.
 -- MINGLA-INVARIANT: I-4490-TILL-ONE-CARD-REFUND | issue #4490 | a tap or scan Till payment takes at most one card refund (refund kind venue_till_refund on its carrier, fee reversed pro rata); anything further is paid back in cash and recorded.
 --
--- FAILS-ON-REVERT: without 20280809584490 the first assertion fails (no
+-- FAILS-ON-REVERT: without 20281203534490 the first assertion fails (no
 -- issue_4490_till_sweep_held_rounds).
 \set ON_ERROR_STOP on
 BEGIN;

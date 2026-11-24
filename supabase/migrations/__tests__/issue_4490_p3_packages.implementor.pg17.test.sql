@@ -1,4 +1,4 @@
--- #4490 P3-1 (packages, deposits, balance, changes, sweep; 20280809144490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 P3-1 (packages, deposits, balance, changes, sweep; 20281203144490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-ONE-HOME-FOR-OWED | issue #4490 | what a venue booking owes is computed only by issue_4490_booking_money (booking total + applied changes - online payments - payments taken at the venue + change refunds); every payment stage, check-in and email reads it.
 -- MINGLA-INVARIANT: I-4490-SHARED-DAY-LIMIT | issue #4490 | entry and group packages on one capacity pool count against the same day limit, including guests added or moved by a booking change.

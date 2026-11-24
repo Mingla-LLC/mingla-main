@@ -1,5 +1,5 @@
 -- #4490 spec 08 O1 fix round 2: executable PostgreSQL 17 proof for migration
--- 20280809589490 (overpaid follows every refund; the day's money puts Till
+-- 20281203544490 (overpaid follows every refund; the day's money puts Till
 -- money and its refund on one service day; gate sales with the Till off are
 -- counted once and never become a Till check; one guest-list arrival is sold
 -- once; what the Orders queue lists for Till rounds once the Till is off).
@@ -9,7 +9,7 @@
 -- MINGLA-INVARIANT: I-4490-DAY-MONEY-ONE-DAY-RULE | issue #4490 | issue_4490_venue_money_day puts money taken in the Till and its refund on the venue's service day (issue_4490_venue_service_date of the moment each happened), so a sale and its refund on the same night never split across two days, and a gate sale paid in cash or by transfer counts once on the service day it was taken.
 -- MINGLA-INVARIANT: I-4490-DOOR-SALE-ONE-PATH | issue #4490 | a gate sale made with the Till off is never a Till check (no venue_till_sales or Till line for its booking, before or after the Till is switched on), and a guest-list arrival on an open Till check cannot also be sold at the gate.
 --
--- FAILS-ON-REVERT: without 20280809589490 F2-OP2 fails first (the refunded
+-- FAILS-ON-REVERT: without 20281203544490 F2-OP2 fails first (the refunded
 -- check keeps overpaid 1,000.00).
 \set ON_ERROR_STOP on
 BEGIN;

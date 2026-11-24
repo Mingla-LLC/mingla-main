@@ -1,4 +1,4 @@
--- #4490 P4 follow-up (20280809184490): "Hours you set" with minimum hours and per-hour places, changing a hire's
+-- #4490 P4 follow-up (20281203174490): "Hours you set" with minimum hours and per-hour places, changing a hire's
 -- party and day (claims move), the damage deposit returned after the event. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-HIRE-MOVE-CLAIMS | issue #4490 | moving a hire releases its old space claims and claims the new day in one transaction; the exclusion constraint refuses a day the place is taken.

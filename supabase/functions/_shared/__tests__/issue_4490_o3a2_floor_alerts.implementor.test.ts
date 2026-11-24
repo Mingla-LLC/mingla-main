@@ -5,7 +5,7 @@
 //   T5 the person who sent a Till round (and the check's server) is told when
 //      a station marks it ready; guest orders get no push.
 //   T7 rung 1 for a sent Till round also tells its sender, without guest lines.
-// Deploy order: before migration 20280809603490 the floor read is missing and
+// Deploy order: before migration 20281203604490 the floor read is missing and
 // the brand roles are told exactly as before.
 //
 // FAILS-ON-REVERT: drop the floor recipients from fireVenueOrderPlaced and N1

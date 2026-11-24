@@ -121,7 +121,7 @@ export async function hasTillDeviceGrant(
 /**
  * Who acts for this request at venueId.
  * - [TRANSITIONAL] deploy order (#4490 O5): while issue_4490_pin_gate does not
- *   exist (this function deployed before migration 20280809611490) an account
+ *   exist (this function deployed before migration 20281203684490) an account
  *   that is not a Till device runs exactly as before O5. A Till device login
  *   (or one whose grant cannot be read) is refused: it never acts as itself
  *   (#4490 08-O5 fix 3, fail closed). Any other error fails closed. Exit: the

@@ -43,7 +43,7 @@ type Attempt = {
   page: string | null;
 };
 
-/** An in-memory booking that keeps the SQL rule of 20280809462590. */
+/** An in-memory booking that keeps the SQL rule of 20281203484490. */
 function booking() {
   const attempts: Attempt[] = [];
   const calls: string[] = [];

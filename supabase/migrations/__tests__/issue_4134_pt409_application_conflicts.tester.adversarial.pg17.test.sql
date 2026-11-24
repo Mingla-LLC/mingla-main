@@ -403,12 +403,12 @@ $fn$;
 -- issue_3988_reassign_internal_thread with the staff-thread table; they are
 -- re-created here from section B for the replay and dropped again after T4.
 -- [TEST-MOD-APPROVED #4490] #4490 P3
--- (20280809144490_issue_4490_p3_packages_deposits.sql) re-defines
+-- (20281203144490_issue_4490_p3_packages_deposits.sql) re-defines
 -- issue_1388_guard_state_transition (an active venue-booking commitment may
 -- move window or change guests inside a governed booking change), so it is
 -- put back and restored the same way.
 -- [TEST-MOD-APPROVED #4490] #4490 Round 4J
--- (20280809424490_issue_4490_gaps_stay_features.sql) re-defines
+-- (20281203404490_issue_4490_gaps_stay_features.sql) re-defines
 -- biz_manage_stay_inventory, issue_1388_manage_request, issue_1389_cancel,
 -- issue_1389_cancel_preview and issue_1389_prepare_payment (Stays checks key
 -- on the venue's features, not its type), so they are put back verbatim from

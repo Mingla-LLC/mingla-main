@@ -1,4 +1,4 @@
--- #4490 07 retest 3, N147 (20280809304490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 07 retest 3, N147 (20281203294490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-FINALIZE-OWN-REFERENCE | issue #4490 | pg_venue_order_finalize_payment pays an order only on provider evidence that belongs to it: a Paystack reference equal to the order's paystack_reference (a Stripe payment intent equal to the recorded one); anything else returns reference_mismatch and writes nothing.
 --

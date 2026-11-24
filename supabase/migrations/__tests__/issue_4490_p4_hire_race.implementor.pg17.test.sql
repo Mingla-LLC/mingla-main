@@ -1,4 +1,4 @@
--- #4490 P4-1 race (20280809164490): two real sessions (dblink) approve hire requests for Half Green and
+-- #4490 P4-1 race (20281203154490): two real sessions (dblink) approve hire requests for Half Green and
 -- Whole Green (a combination containing Half Green) on the same evening at the same moment; the venue has
 -- no day-limit pool, so nothing but the space-claim exclusion constraint stands between them. Exactly one
 -- wins; the other gets PT409 offer_space_taken. COMMITS its fixtures (suite-owned database).

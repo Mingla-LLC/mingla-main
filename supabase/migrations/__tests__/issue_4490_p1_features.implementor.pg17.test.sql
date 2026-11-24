@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 -- #4490 P1-1: executable PostgreSQL 17 proof of venue spaces, features, the
--- nine venue types and the venue capabilities (20280809004490), and of the
--- #2099 pin owner (20280809054490). BEGIN ... ROLLBACK: every fixture rolls back.
+-- nine venue types and the venue capabilities (20281203004490), and of the
+-- #2099 pin owner (20281203054490). BEGIN ... ROLLBACK: every fixture rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-FEATURE-SINGLE-HOME | issue #4490 | venue_features is the one home of whether a venue feature is on; reservations_enabled and ordering_enabled mirror it both ways (set_venue_feature writes the legacy switch, a direct legacy write moves the feature) and the feature set never holds a child without its parent.
 -- MINGLA-INVARIANT: I-4490-VENUE-TABLES-NO-CLIENT-WRITES | issue #4490 | venue_spaces, venue_space_combinations and venue_features are read by brand members, Mingla admins and venue.* staff of that venue only; anon has no grant and every write goes through a SECURITY DEFINER RPC.
@@ -25,7 +25,7 @@
 -- T-11 #2099 pin owner: the live dependency-schema fingerprint equals the pin both RPCs carry, and the
 --      correction accepts the new categories.
 --
--- FAILS-ON-REVERT: drop 20280809004490 -> T-1 (tables missing); drop the mirror trigger -> T-4c;
+-- FAILS-ON-REVERT: drop 20281203004490 -> T-1 (tables missing); drop the mirror trigger -> T-4c;
 -- drop the dependency check -> T-3a; drop the RLS policy predicate -> T-7c.
 
 BEGIN;
@@ -200,7 +200,7 @@ SELECT public.t4490_reset();
 SELECT public.t4490_ok(NOT ordering_enabled, 'T-3f cascade off wrote ordering_enabled = false')
 FROM public.venue_ordering_settings WHERE venue_id = '44900000-0000-4000-9000-0000000000a1';
 -- [TEST-MOD-APPROVED #4490] memberships shipped in P6; guest list (ruled out of the first build) is the unbuilt example now.
--- [TEST-MOD-APPROVED #4490] W2 fix 1: guest list shipped too (20280809414490), so
+-- [TEST-MOD-APPROVED #4490] W2 fix 1: guest list shipped too (20281203394490), so
 -- every feature is built and none is left to be the unbuilt example. The guard
 -- is still proven: for this transaction the built list is every feature except
 -- guest list (a stand-in for a phase that has not shipped), as the P-3+ block

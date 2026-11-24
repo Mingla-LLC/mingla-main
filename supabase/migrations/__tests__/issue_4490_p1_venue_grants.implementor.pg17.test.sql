@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4490 P1 (venue grants): executable PostgreSQL 17 proof of
--- 20280809064490 — venue.* capabilities can be granted, for every venue type.
+-- 20281203064490 — venue.* capabilities can be granted, for every venue type.
 -- BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-VENUE-GRANTS-EVERY-TYPE | issue #4490 | a brand admin can give scoped staff venue.* and restaurant.* capabilities on every venue type; a Stay may combine them with stay.*; unknown capabilities are refused.

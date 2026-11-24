@@ -165,7 +165,7 @@ BEGIN
   -- hash 3158b5e3ff37207ce334bd6bb4caa0d7 -> 0c4a5b0bc6ad79ab0337f55fcf540fe8,
   -- measured on a PG17 full replay of dc553ef4d4; dropping exactly those two
   -- indexes measures 88 / 3158b5e3ff37207ce334bd6bb4caa0d7 again.
-  -- [TEST-MOD-APPROVED #4490] 20280809024490_issue_4490_p1_event_venue adds
+  -- [TEST-MOD-APPROVED #4490] 20281203024490_issue_4490_p1_event_venue adds
   -- events_venue_id_idx (partial, venue_id IS NOT NULL; the venue's events
   -- lookup). Count 90 -> 91,
   -- hash 0c4a5b0bc6ad79ab0337f55fcf540fe8 -> e818c32c02d7e77cab2fe0be62bff3c8,

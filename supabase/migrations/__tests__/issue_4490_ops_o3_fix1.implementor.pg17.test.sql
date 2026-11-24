@@ -1,5 +1,5 @@
 -- #4490 spec 08 O3 fix round 1: executable PostgreSQL 17 proof for migration
--- 20280809604490 (the independent test's O3-T1..T5).
+-- 20281203614490 (the independent test's O3-T1..T5).
 --   T2  the floor-staff list behind "New order" / escalation rung 1 is empty
 --       unless the venue's stations are on (VENUE_TILL AND kitchen_screens).
 --   T1  the escalation scan's Mingla-money arm returns exactly the rows the
@@ -16,7 +16,7 @@
 -- MINGLA-INVARIANT: I-4490-TILL-ESCALATION-NEVER-TAKES-GUEST-SLOTS | issue #4490 | pg_venue_order_escalation_scan gives the Mingla-money (guest) arm its full 1846 limit, order and rows whatever the Till backlog; the Till arm has its own limit, never pages a round sent more than 6 hours ago, starts at rung 1, and is empty unless the venue's stations are on.
 -- MINGLA-INVARIANT: I-4490-FLOOR-PUSHES-BEHIND-RELEASE | issue #4490 | issue_4490_venue_floor_user_ids lists nobody unless VENUE_TILL is on and the venue's kitchen_screens feature is on, so guest orders notify exactly the brand roles until the release.
 --
--- FAILS-ON-REVERT: without 20280809604490 F1-T2a fails (the floor list ignores the switch).
+-- FAILS-ON-REVERT: without 20281203614490 F1-T2a fails (the floor list ignores the switch).
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;

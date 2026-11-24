@@ -1,10 +1,10 @@
--- #4490 Explorer W5 (20280809460490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
+-- #4490 Explorer W5 (20281203454490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-DECK-HOSTED-NO-FILTER-EXEMPTION | issue #4490 | the hosted deck wrappers return only rows the base servable RPCs return for the same arguments (same mood floor, radius or circles, exclusions and place checks; no row cap inside), restricted to bookable verified venues of live, non-internal brands, at most 6, ordered signal score DESC, review_count DESC NULLS LAST, place id ASC; they are callable by the service role only.
 --
 -- H hosted solo wrapper. I intersection wrapper. A authority. D determinism.
 --
--- FAILS-ON-REVERT: without 20280809460490 every block fails (the wrappers do not exist).
+-- FAILS-ON-REVERT: without 20281203454490 every block fails (the wrappers do not exist).
 -- TEST-MOD-APPROVED #4490 (06-W5 fix 1): the wrappers take every (signal, floor) of a request in
 -- one call (W5-N2); calls were rewritten to that shape, A-2 checks the place rule instead of a
 -- base call with no row cap, and E / M were added.

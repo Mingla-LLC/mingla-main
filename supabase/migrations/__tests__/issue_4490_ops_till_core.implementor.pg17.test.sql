@@ -1,5 +1,5 @@
 -- #4490 spec 08 O1: executable PostgreSQL 17 proof for the Till core
--- (migration 20280809464490). The suite owns its fixture and rolls back.
+-- (migration 20281203504490). The suite owns its fixture and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-TILL-ONE-PRICE | issue #4490 | a Till check's subtotal, service charge and total are written only by issue_4490_till_reprice from its children (menu rounds and offer/balance lines); no client number is ever stored.
 -- MINGLA-INVARIANT: I-4490-TILL-TIP-NOT-FEED | issue #4490 | a Till tip lives on venue_till_payments.tip_minor and never enters venue_orders.fee_basis_cents.
@@ -15,7 +15,7 @@
 --   fulfillment_status readers that ignore 'held'/'payment_only': escalation scan (placed only),
 --     biz_venue_order_transition (no legal exit from either), Host queue filter (T2, client).
 --
--- FAILS-ON-REVERT: without 20280809464490 the first helper call fails (no issue_4490_till_open).
+-- FAILS-ON-REVERT: without 20281203504490 the first helper call fails (no issue_4490_till_open).
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -459,7 +459,7 @@ BEGIN
   PERFORM public.t4490o1_ok((SELECT pickup_code IS NOT NULL AND buyer_name IS NULL FROM public.venue_orders WHERE id = v_r),
     'O1-DB35 a counter round with no name is allowed for a Till check');
   -- TEST-MOD-APPROVED #4490 (08-O5 part A): a Till device login is never the actor of a payment row
-  -- (I-4490-TILL-DEVICE-NEVER-ACTS-ALONE, 20280809611490), so this hand-written cancelled payment is
+  -- (I-4490-TILL-DEVICE-NEVER-ACTS-ALONE, 20281203684490), so this hand-written cancelled payment is
   -- taken by the seller (02); the late-money rule it proves is unchanged.
   INSERT INTO public.venue_till_payments (sale_id, method, amount_minor, tip_minor, state, taken_by_user_id,
     device_user_id, server_user_id, client_request_id, cash_given_minor)

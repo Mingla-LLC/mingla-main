@@ -3,7 +3,7 @@
 // which has already verified the bearer and resolved who acts (on a Till
 // device: the PIN member, with the device recorded; refused without a live
 // PIN session). Everything is decided by the service-role RPCs of migration
-// 20280809613490 (money rights, the Till released at the venue, the PIN
+// 20281203704490 (money rights, the Till released at the venue, the PIN
 // session re-checked in the same transaction, the day's limits).
 //
 //   day_summary     { date? }                                → summary

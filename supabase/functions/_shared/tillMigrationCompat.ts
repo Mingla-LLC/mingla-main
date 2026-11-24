@@ -1,8 +1,8 @@
 // [TRANSITIONAL] #4490 spec 08 O2 fix 1 (O2-T5) — deploy order.
 //
 // Merging auto-deploys supabase/functions to production, and the #4490
-// migrations (venue_orders.till_payment_id from 20280809464490,
-// door_tap_intents.till_payment_id from 20280809599490) may land after the
+// migrations (venue_orders.till_payment_id from 20281203504490,
+// door_tap_intents.till_payment_id from 20281203564490) may land after the
 // functions. Shared paths that LIVE guest ordering runs (the Paystack
 // venue-order charge, the "new order" push) and the door tap sweep read that
 // column; until it exists PostgREST answers 42703 "column ... does not exist".

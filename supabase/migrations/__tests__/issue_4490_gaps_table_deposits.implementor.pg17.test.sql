@@ -1,4 +1,4 @@
--- #4490 spec 07 B (table deposit modes; 20280809314490): PostgreSQL 17 proof.
+-- #4490 spec 07 B (table deposit modes; 20281203304490): PostgreSQL 17 proof.
 --
 -- MINGLA-INVARIANT: I-4490-TABLE-HOLD-SERVER-TRUTH | issue #4490 | a table hold is computed from the table's one valid deposit mode by database helpers; joined tables take the maximum, never the sum, and an unpaid reservation cannot consume a table with a positive hold.
 --

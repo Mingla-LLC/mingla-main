@@ -170,8 +170,8 @@ SELECT pg_temp.p_assert(bool_and(
 FROM unnest(ARRAY['brand_site_compose_facts', 'brand_site_venue_slots', 'brand_site_offering_dates', 'brand_site_ticket_tiers']) AS site_fn;
 
 -- A stand-in slot engine (rolled back), as in the M5 booking-reads suite.
--- [TEST-MOD-APPROVED #4490] #4490 (20280809174490, carried by
--- 20280809224490) added a fifth parameter, p_space_id uuid DEFAULT NULL, to
+-- [TEST-MOD-APPROVED #4490] #4490 (20281203164490, carried by
+-- 20281203214490) added a fifth parameter, p_space_id uuid DEFAULT NULL, to
 -- the engine. The stand-in keeps the engine's exact signature, so it replaces
 -- the engine instead of adding a second overload that makes named calls
 -- ambiguous (the N152 fix in the booking-reads suites).

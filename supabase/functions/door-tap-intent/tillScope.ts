@@ -539,7 +539,7 @@ export async function sweepTillUnfinished(
     // are applied in production, door_tap_intents has no till_payment_id
     // (42703). The event sweep runs this on every call, so that one answer is
     // "no Till rows" (not a failure); any other error still counts and logs.
-    // Exit: migration 20280809599490 applied in production (see
+    // Exit: migration 20281203564490 applied in production (see
     // _shared/tillMigrationCompat.ts), then delete this branch.
     if (isMissingTillPaymentColumn(error)) return tally;
     console.error("[door-tap-intent] till sweep read failed", error.message);

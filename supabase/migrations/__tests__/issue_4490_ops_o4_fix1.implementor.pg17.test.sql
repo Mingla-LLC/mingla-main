@@ -1,5 +1,5 @@
 -- #4490 spec 08 O4 fix round 1: executable PostgreSQL 17 proof for migration
--- 20280809608490 (the four defects of the independent O4 test). The suite
+-- 20281203654490 (the four defects of the independent O4 test). The suite
 -- owns its fixture (the O4 tables/hour fixture, its own ids) and rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-DEPOSIT-REFUND-READS-LIVE-CREDIT | issue #4490 | while a booking's paid table deposit is live on a Till check (a deposit_credit line that is not voided) no refund obligation for that booking can be written (source_refunds BEFORE INSERT: reservation_deposit_used), whatever reservations.deposit_applied_sale_id says; that stamp is written only by the #4490 Till functions (reservation_deposit_server_owned for anyone else) and the booking cannot leave 'seated' except to 'completed' (reservation_deposit_used).

@@ -1,5 +1,5 @@
 -- #4490 spec 08 O5 fix round 1: executable PostgreSQL 17 proof for migration
--- 20280809616490 (O5-T3 every sold-out line resolvable once each; O5-T1 a
+-- 20281203734490 (O5-T3 every sold-out line resolvable once each; O5-T1 a
 -- moment's business day never moves when opening hours change; O5-T4 a
 -- no-screen void's "Put it back in stock"). The suite owns its fixture and
 -- rolls back.
@@ -9,7 +9,7 @@
 -- MINGLA-INVARIANT: I-4490-VOID-RESTOCK-NO-SCREEN | issue #4490 | a void of a sent line gives its units back exactly when the void's "Put it back in stock" is on and either the line's station has no kitchen screen or the screen never started it; never more than the line took, never twice; every choice on a counted line is audited (stock.set via void).
 --
 -- FAILS-ON-REVERT (verified on a fresh replay; outputs in the fix 1 report):
--- put back 20280809615490's one-refund-per-order mint and F3-2 fails
+-- put back 20281203724490's one-refund-per-order mint and F3-2 fails
 -- (sold_out_refund_once); put back the current-hours service day and F1-3
 -- fails; put back only the derived payment / refund days and F1-12 fails;
 -- put back the fired_at-only void restock and F4-1 fails.

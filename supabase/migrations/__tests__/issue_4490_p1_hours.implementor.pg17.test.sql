@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 -- #4490 P1-2: executable PostgreSQL 17 proof of opening hours with several
--- windows a day and special days (20280809014490). BEGIN ... ROLLBACK.
+-- windows a day and special days (20281203014490). BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-HOURS-ONE-HOME | issue #4490 | opening hours live only in venue-keyed brand_hours (+ venue_special_hours for single dates); venue_public_view.hours keeps the pre-#4490 shape byte-for-byte (window 0 per weekday) and every window reads from hours_windows.
 --
