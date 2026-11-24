@@ -541,10 +541,11 @@ begin
     'W2 proven entry is Live in the Feature Guide (PR #97001). | W2 entry needing a route stays Planned: no route evidence (PR #97001).');
   -- [TEST-MOD-APPROVED #4398] S2: an entry turning Live makes no Work card; the owner and Support are told by
   -- one Admin activity notice each.
+  -- [TEST-MOD-APPROVED #4580] D1: one notice per release pass, naming its entries.
   perform pg_temp.t3980w2_check('B2', 'no Work card; Support teammates and the owner each get one activity notice',
     (select count(*)::text from public.ops_work_cards where auto_key like 'guide\_live:w2-guide-proven:%')
       || '/' || (select string_agg(u.email, ',' order by u.email) from public.team_mentions m join auth.users u on u.id = m.target_user_id
-                  where m.source_kind = 'ops_activity' and m.event_kind = 'guide' and m.body_excerpt = 'Feature Guide: W2 proven entry is Live (PR #97001).'
+                  where m.source_kind = 'ops_activity' and m.event_kind = 'guide' and m.body_excerpt = 'Feature Guide: 1 entry is Live (PR #97001): W2 proven entry.'
                     and u.email not like '%.r4398@test.local'),  -- the #4398 route fixture's two admins are told too
     -- #4255 (D3): the Founding partner (cy) is a full admin, so it is included like di.
     '0/cy.w23980@test.local,di.w23980@test.local,ed.w23980@test.local,sue.w23980@test.local');

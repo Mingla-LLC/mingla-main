@@ -53,6 +53,27 @@ export const VENUE_ORDER_GENERIC_FAILURE: VenueOrderFailure = {
 };
 
 /**
+ * Issue #3645 — `venue-order-create` answers `checkout_review_required` (409,
+ * with the new quote) when the order's price changed between the guest's
+ * preview and the order: a discount ended or ran out, or the order switched
+ * between free and paid. It carries no guest sentence, and "Something went
+ * wrong" is the wrong one: nothing is broken, the price moved.
+ */
+export const VENUE_ORDER_REVIEW_REQUIRED = "checkout_review_required";
+export const VENUE_ORDER_PRICE_CHANGED_MESSAGE =
+  "The price changed while you were ordering. Check the new total, then tap Pay again. Nothing has been charged.";
+
+/**
+ * True when the guest's quote is out of date and the surface must fetch a fresh
+ * preview before the next Pay: re-sending the old quote digest is refused again,
+ * so without a refresh the guest is stuck. The refreshed preview is what the
+ * guest confirms by tapping Pay again.
+ */
+export function venueOrderNeedsFreshQuote(code: string): boolean {
+  return code === VENUE_ORDER_REVIEW_REQUIRED;
+}
+
+/**
  * Read a typed failure body.
  *
  * The rail answers `{ error: <code>, message: <guest copy> }`, and MESSAGE WINS.
@@ -68,9 +89,13 @@ export function parseVenueOrderFailureBody(raw: string): VenueOrderFailure {
       ? body.message.trim()
       : null;
     const code = typeof body.error === "string" ? body.error : "internal_error";
-    return message === null
-      ? { code, message: VENUE_ORDER_GENERIC_FAILURE.message }
-      : { code, message };
+    if (message !== null) return { code, message };
+    return {
+      code,
+      message: venueOrderNeedsFreshQuote(code)
+        ? VENUE_ORDER_PRICE_CHANGED_MESSAGE
+        : VENUE_ORDER_GENERIC_FAILURE.message,
+    };
   } catch {
     return VENUE_ORDER_GENERIC_FAILURE;
   }
