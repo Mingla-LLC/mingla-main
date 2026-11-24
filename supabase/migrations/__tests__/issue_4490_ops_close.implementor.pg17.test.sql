@@ -112,6 +112,10 @@ INSERT INTO public.venue_listings (id, brand_id, slug, name, lat, lng, venue_cat
 INSERT INTO public.brand_hours (brand_id, venue_id, weekday, open_time, close_time, is_closed)
 SELECT '44900613-0000-4000-9000-000000000010', '44900613-0000-4000-9000-0000000000a1', d, '10:00', '03:00', false
 FROM generate_series(0, 6) d;
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): since 20280809616490 a moment's day uses the hours in force
+-- AT that moment (venue_hours_history). This fixture writes its hours now and then places money in the
+-- past, so it states that these hours were always the venue's: no history, the live hours for every moment.
+DELETE FROM public.venue_hours_history WHERE venue_id = '44900613-0000-4000-9000-0000000000a1';
 -- The Mingla admin row (#4579's column is added in this suite only; on the
 -- branch it does not exist yet, so the label is a no-op there).
 ALTER TABLE public.brand_team_members ADD COLUMN IF NOT EXISTS granted_via text NULL;
@@ -372,12 +376,19 @@ GRANT EXECUTE ON FUNCTION public.t5b_round(uuid, integer, uuid), public.t5b_open
 ALTER TABLE public.venue_offline_payments DISABLE TRIGGER USER;
 ALTER TABLE public.source_refunds DISABLE TRIGGER USER;
 ALTER TABLE public.stay_reservation_events DISABLE TRIGGER USER;
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): the close reads the day the Till STORED when the money was
+-- recorded (business_date, opened_business_date), so time travel moves the stored day with the moment,
+-- exactly as the Till would have written it then.
 CREATE FUNCTION public.t5b_move(p_sale uuid, p_at timestamptz) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
 BEGIN
   UPDATE public.venue_till_sales SET created_at = p_at - interval '30 minutes',
+    opened_business_date = public.issue_4490_till_business_date(venue_id, p_at - interval '30 minutes'),
+    business_date = CASE WHEN paid_at IS NULL THEN business_date ELSE public.issue_4490_till_business_date(venue_id, p_at) END,
     paid_at = CASE WHEN paid_at IS NULL THEN NULL ELSE p_at END WHERE id = p_sale;
   UPDATE public.venue_till_payments SET created_at = p_at - interval '1 minute',
+    business_date = CASE WHEN paid_at IS NULL THEN business_date
+                         ELSE public.issue_4490_till_business_date('44900613-0000-4000-9000-0000000000a1', p_at) END,
     paid_at = CASE WHEN paid_at IS NULL THEN NULL ELSE p_at END WHERE sale_id = p_sale;
   UPDATE public.venue_offline_payments SET created_at = p_at
   WHERE till_payment_id IN (SELECT id FROM public.venue_till_payments WHERE sale_id = p_sale);
@@ -394,7 +405,8 @@ $f$;
 CREATE FUNCTION public.t5b_move_refunds(p_sale uuid, p_at timestamptz) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
 BEGIN
-  UPDATE public.venue_till_refunds SET created_at = p_at
+  UPDATE public.venue_till_refunds SET created_at = p_at,
+    business_date = public.issue_4490_till_business_date('44900613-0000-4000-9000-0000000000a1', p_at)
   WHERE payment_id IN (SELECT id FROM public.venue_till_payments WHERE sale_id = p_sale);
   UPDATE public.venue_till_lines SET refunded_at = p_at WHERE sale_id = p_sale AND refunded_at IS NOT NULL;
 END

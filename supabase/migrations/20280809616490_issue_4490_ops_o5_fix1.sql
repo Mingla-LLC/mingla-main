@@ -27,13 +27,29 @@
 -- never refunded twice and nothing is stranded. An order with no line refund
 -- takes exactly the code path it took before this file.
 --
+-- O5-T1 (P2, money reporting). Changing opening hours after a close moved
+-- payments between days (the close recomputed every payment's day from
+-- TODAY's hours). Now a moment's business day is decided by the hours that
+-- were in force AT that moment: venue_hours_history keeps every version of a
+-- venue's weekly and special hours (captured by triggers on brand_hours and
+-- venue_special_hours; the first version is the hours as they were just
+-- before the first change, i.e. the hours as they are now when this file
+-- runs), and issue_4490_venue_service_date reads the version in force at the
+-- moment it is asked about. For the present moment it reads the live tables
+-- exactly as before. On top of that the daily close reads the day the Till
+-- STORED on the row when the money was recorded (venue_till_payments,
+-- venue_till_refunds, venue_till_sales.business_date and opened_business_date)
+-- and never recomputes it. A closed day stays readable, closable and
+-- reopenable when an hours change moves "today" back a day. Payments whose
+-- stored day is missing are backfilled from the hours as they are now.
+--
 -- O5-T2 (formula injection in the day-close CSV) is a client fix
 -- (mingla-business/src/utils/dayCloseCsv.ts); nothing here.
 --
--- pg_venue_order_finalize_payment is NOT touched. No new venue_id column (the
--- #2099 seal is unchanged). Static SQL; conflicts raise PT409. Every new
--- function is SECURITY DEFINER with search_path '' and internal (service
--- role only) unless noted.
+-- pg_venue_order_finalize_payment is NOT touched. The new table has a
+-- venue_id column, so the #2099 pending-venue seal moves (20280809617490).
+-- Static SQL; conflicts raise PT409. Every new function is SECURITY DEFINER
+-- with search_path '' and internal (service role only) unless noted.
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -581,6 +597,308 @@ SELECT pg_temp.issue_4490_o5f1_patch(
 );
 
 -- ===========================================================================
+-- T1.1 Opening hours as they were: every version of a venue's hours.
+-- ===========================================================================
+CREATE TABLE public.venue_hours_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id uuid NOT NULL REFERENCES public.venue_listings(id) ON DELETE CASCADE,
+  -- In force from this moment until the next version (-infinity: the hours
+  -- as they were before the first change this table saw).
+  valid_from timestamptz NOT NULL,
+  -- brand_hours rows of the venue: [{weekday, open_time, close_time, is_closed}]
+  weekly jsonb NOT NULL CHECK (jsonb_typeof(weekly) = 'array'),
+  -- venue_special_hours of the venue: {"YYYY-MM-DD": {is_closed, windows}}
+  specials jsonb NOT NULL CHECK (jsonb_typeof(specials) = 'object'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (venue_id, valid_from)
+);
+COMMENT ON TABLE public.venue_hours_history IS
+  '#4490 08-O5 fix 1 (O5-T1): every version of a venue''s opening hours (weekly + special days), written '
+  'only by triggers on brand_hours and venue_special_hours. issue_4490_venue_service_date reads the version in '
+  'force at a past moment, so an hours change never moves money already recorded. Service role only.';
+ALTER TABLE public.venue_hours_history ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.venue_hours_history FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.venue_hours_history TO service_role;
+
+-- The venue's hours right now, in the shape the history keeps.
+CREATE FUNCTION public.issue_4490_venue_hours_state(p_venue_id uuid, OUT weekly jsonb, OUT specials jsonb)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('weekday', h.weekday, 'open_time', h.open_time,
+                'close_time', h.close_time, 'is_closed', h.is_closed) ORDER BY h.weekday, h.window_ordinal, h.id)
+              FROM public.brand_hours h WHERE h.venue_id = p_venue_id), '[]'::jsonb),
+    COALESCE((SELECT jsonb_object_agg(s.local_date::text, jsonb_build_object('is_closed', s.is_closed, 'windows', s.windows))
+              FROM public.venue_special_hours s WHERE s.venue_id = p_venue_id), '{}'::jsonb);
+$function$;
+
+-- BEFORE a change: the first time a venue's hours change, keep the hours as
+-- they were (-infinity). For a multi-row statement the first row sees the
+-- table as it was before the statement.
+CREATE FUNCTION public.issue_4490_venue_hours_baseline()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_venue uuid;
+BEGIN
+  FOREACH v_venue IN ARRAY ARRAY[
+      CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN NEW.venue_id END,
+      CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN OLD.venue_id END] LOOP
+    CONTINUE WHEN v_venue IS NULL;
+    IF NOT EXISTS (SELECT 1 FROM public.venue_hours_history x WHERE x.venue_id = v_venue)
+       AND EXISTS (SELECT 1 FROM public.venue_listings v WHERE v.id = v_venue) THEN
+      INSERT INTO public.venue_hours_history (venue_id, valid_from, weekly, specials)
+      SELECT v_venue, '-infinity'::timestamptz, st.weekly, st.specials FROM public.issue_4490_venue_hours_state(v_venue) st
+      ON CONFLICT (venue_id, valid_from) DO NOTHING;
+    END IF;
+  END LOOP;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$function$;
+
+-- AFTER a change: the hours from now on (one version per statement).
+CREATE FUNCTION public.issue_4490_venue_hours_capture()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_venue uuid;
+BEGIN
+  FOREACH v_venue IN ARRAY ARRAY[
+      CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN NEW.venue_id END,
+      CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN OLD.venue_id END] LOOP
+    CONTINUE WHEN v_venue IS NULL;
+    -- A venue being deleted keeps no history (its rows cascade away).
+    CONTINUE WHEN NOT EXISTS (SELECT 1 FROM public.venue_listings v WHERE v.id = v_venue);
+    INSERT INTO public.venue_hours_history (venue_id, valid_from, weekly, specials)
+    SELECT v_venue, statement_timestamp(), st.weekly, st.specials FROM public.issue_4490_venue_hours_state(v_venue) st
+    ON CONFLICT (venue_id, valid_from) DO UPDATE SET weekly = EXCLUDED.weekly, specials = EXCLUDED.specials;
+  END LOOP;
+  RETURN NULL;
+END;
+$function$;
+
+CREATE TRIGGER issue_4490_venue_hours_baseline
+  BEFORE INSERT OR UPDATE OR DELETE ON public.brand_hours
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4490_venue_hours_baseline();
+CREATE TRIGGER issue_4490_venue_hours_capture
+  AFTER INSERT OR UPDATE OR DELETE ON public.brand_hours
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4490_venue_hours_capture();
+CREATE TRIGGER issue_4490_venue_hours_baseline
+  BEFORE INSERT OR UPDATE OR DELETE ON public.venue_special_hours
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4490_venue_hours_baseline();
+CREATE TRIGGER issue_4490_venue_hours_capture
+  AFTER INSERT OR UPDATE OR DELETE ON public.venue_special_hours
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4490_venue_hours_capture();
+
+-- ===========================================================================
+-- T1.2 The service day of a moment uses the hours in force AT that moment
+--      (re-emitted whole from 20280809224490; the history branch is new).
+--      With no later version (every call about "now", and every venue whose
+--      hours never changed since this file) it reads the live tables exactly
+--      as before.
+-- ===========================================================================
+CREATE OR REPLACE FUNCTION public.issue_4490_venue_service_date(p_venue_id uuid, p_at timestamptz)
+RETURNS date
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_local timestamp;
+  v_yday date;
+  v_t time;
+  v_special public.venue_special_hours%ROWTYPE;
+  v_hist public.venue_hours_history%ROWTYPE;
+  v_sp jsonb;
+BEGIN
+  IF p_venue_id IS NULL OR p_at IS NULL THEN
+    RETURN NULL;
+  END IF;
+  v_local := p_at AT TIME ZONE public.issue_4490_venue_timezone(p_venue_id);
+  v_yday := v_local::date - 1;
+  v_t := v_local::time;
+  -- #4490 08-O5 fix 1 (O5-T1): a moment before the venue's latest hours
+  -- change is read with the hours that were in force then.
+  IF EXISTS (SELECT 1 FROM public.venue_hours_history x WHERE x.venue_id = p_venue_id AND x.valid_from > p_at) THEN
+    SELECT * INTO v_hist FROM public.venue_hours_history x
+    WHERE x.venue_id = p_venue_id AND x.valid_from <= p_at
+    ORDER BY x.valid_from DESC LIMIT 1;
+    IF FOUND THEN
+      v_sp := v_hist.specials -> v_yday::text;
+      IF v_sp IS NOT NULL THEN
+        IF NOT COALESCE((v_sp->>'is_closed')::boolean, false) AND EXISTS (
+          SELECT 1 FROM jsonb_array_elements(COALESCE(v_sp->'windows', '[]'::jsonb)) w
+          WHERE COALESCE(w->>'open', '') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+            AND COALESCE(w->>'close', '') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+            AND (w->>'close')::time <= (w->>'open')::time
+            AND v_t < (w->>'close')::time
+        ) THEN
+          RETURN v_yday;
+        END IF;
+        RETURN v_local::date;
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM jsonb_array_elements(v_hist.weekly) h
+        WHERE (h->>'weekday')::integer = extract(isodow FROM v_yday)::integer - 1
+          AND NOT COALESCE((h->>'is_closed')::boolean, false)
+          AND h->>'open_time' IS NOT NULL AND h->>'close_time' IS NOT NULL
+          AND (h->>'close_time')::time <= (h->>'open_time')::time
+          AND v_t < (h->>'close_time')::time
+      ) THEN
+        RETURN v_yday;
+      END IF;
+      RETURN v_local::date;
+    END IF;
+  END IF;
+  SELECT * INTO v_special FROM public.venue_special_hours
+  WHERE venue_id = p_venue_id AND local_date = v_yday;
+  IF FOUND THEN
+    IF NOT v_special.is_closed AND EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_special.windows) w
+      WHERE COALESCE(w->>'open', '') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        AND COALESCE(w->>'close', '') ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        AND (w->>'close')::time <= (w->>'open')::time
+        AND v_t < (w->>'close')::time
+    ) THEN
+      RETURN v_yday;
+    END IF;
+    RETURN v_local::date;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.brand_hours h
+    WHERE h.venue_id = p_venue_id
+      AND h.weekday = extract(isodow FROM v_yday)::integer - 1
+      AND NOT h.is_closed AND h.open_time IS NOT NULL AND h.close_time IS NOT NULL
+      AND h.close_time <= h.open_time
+      AND v_t < h.close_time
+  ) THEN
+    RETURN v_yday;
+  END IF;
+  RETURN v_local::date;
+END;
+$function$;
+
+-- ===========================================================================
+-- T1.3 The close reads the day the Till stored when the money was recorded.
+-- ===========================================================================
+-- The Till payments of day D (paid, part refunded or refunded; the venue's
+-- currency): the business_date written when each was paid.
+CREATE OR REPLACE FUNCTION public.issue_4490_day_payment_ids(p_venue_id uuid, p_date date)
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT COALESCE(array_agg(p.id ORDER BY p.paid_at, p.id), '{}'::uuid[])
+  FROM public.venue_till_payments p
+  JOIN public.venue_till_sales s ON s.id = p.sale_id
+  WHERE s.venue_id = p_venue_id
+    AND s.currency = (SELECT upper(b.default_currency) FROM public.venue_listings v JOIN public.brands b ON b.id = v.brand_id
+                      WHERE v.id = p_venue_id)
+    AND p.state IN ('paid', 'partially_refunded', 'refunded')
+    AND p.business_date = p_date;
+$function$;
+
+-- The Till refunds of day D: the business_date written when each was made.
+CREATE OR REPLACE FUNCTION public.issue_4490_day_refund_ids(p_venue_id uuid, p_date date)
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT COALESCE(array_agg(r.id ORDER BY r.created_at, r.id), '{}'::uuid[])
+  FROM public.venue_till_refunds r
+  JOIN public.venue_till_payments p ON p.id = r.payment_id
+  JOIN public.venue_till_sales s ON s.id = p.sale_id
+  WHERE s.venue_id = p_venue_id
+    AND s.currency = (SELECT upper(b.default_currency) FROM public.venue_listings v JOIN public.brands b ON b.id = v.brand_id
+                      WHERE v.id = p_venue_id)
+    AND r.business_date = p_date;
+$function$;
+
+-- Deposits used: the check's stored paid day (checked patch of the live body).
+SELECT pg_temp.issue_4490_o5f1_patch(
+  'public.issue_4490_day_totals(uuid,date)'::regprocedure,
+  $old$    AND s.paid_at >= v_from AND s.paid_at < v_to
+    AND public.issue_4490_venue_service_date(p_venue_id, s.paid_at) = p_date;$old$,
+  $new$    -- #4490 08-O5 fix 1 (O5-T1): the day stored when the check was paid.
+    AND s.business_date = p_date;$new$
+);
+
+-- Open checks: the day each check was opened on (stored), never recomputed.
+SELECT pg_temp.issue_4490_o5f1_patch(
+  'public.issue_4490_day_open_checks(uuid,date)'::regprocedure,
+  $old$    AND public.issue_4490_venue_service_date(p_venue_id, s.created_at) <= p_date$old$,
+  $new$    -- #4490 08-O5 fix 1 (O5-T1): the day stored when the check was opened.
+    AND s.opened_business_date <= p_date$new$
+);
+
+-- The days a close action may name: today's service day and the 7 before it,
+-- and a day after "today" that already holds a close or Till money (after an
+-- hours change moved "today" back, that day must stay readable and closable).
+CREATE OR REPLACE FUNCTION public.issue_4490_day_check_date(p_venue_id uuid, p_date date)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_today date := public.issue_4490_venue_service_date(p_venue_id, now());
+BEGIN
+  IF p_date IS NULL OR p_date < v_today - 7 THEN
+    RAISE EXCEPTION 'day_out_of_range' USING ERRCODE = '22023';
+  END IF;
+  IF p_date > v_today AND NOT (
+    p_date = v_today + 1 AND (
+      EXISTS (SELECT 1 FROM public.venue_day_closes c WHERE c.venue_id = p_venue_id AND c.business_date = p_date)
+      OR EXISTS (SELECT 1 FROM public.venue_till_sales s
+                 WHERE s.venue_id = p_venue_id AND (s.opened_business_date = p_date OR s.business_date = p_date))
+      OR EXISTS (SELECT 1 FROM public.venue_till_payments p JOIN public.venue_till_sales s ON s.id = p.sale_id
+                 WHERE s.venue_id = p_venue_id AND p.business_date = p_date)
+      OR EXISTS (SELECT 1 FROM public.venue_till_refunds r JOIN public.venue_till_payments p ON p.id = r.payment_id
+                 JOIN public.venue_till_sales s ON s.id = p.sale_id
+                 WHERE s.venue_id = p_venue_id AND r.business_date = p_date))) THEN
+    RAISE EXCEPTION 'day_out_of_range' USING ERRCODE = '22023';
+  END IF;
+END;
+$function$;
+
+-- Reopen: the same rule for a day after "today" (it needs a close anyway).
+SELECT pg_temp.issue_4490_o5f1_patch(
+  'public.issue_4490_day_reopen(uuid,date,text,uuid,uuid)'::regprocedure,
+  $old$  IF p_date IS NULL OR p_date > public.issue_4490_venue_service_date(v_venue.id, now()) THEN$old$,
+  $new$  -- #4490 08-O5 fix 1 (O5-T1): an hours change can move "today" back a day;
+  -- a closed day after it can still be reopened (it has a close row).
+  IF p_date IS NULL OR p_date > public.issue_4490_venue_service_date(v_venue.id, now()) + 1 THEN$new$
+);
+
+-- Backfill: a paid Till payment or check without a stored day gets the day
+-- from the hours as they are now (production has no Till rows; this is for
+-- any older local or test data).
+UPDATE public.venue_till_payments p
+SET business_date = public.issue_4490_venue_service_date(s.venue_id, p.paid_at)
+FROM public.venue_till_sales s
+WHERE s.id = p.sale_id AND p.business_date IS NULL AND p.paid_at IS NOT NULL
+  AND p.state IN ('paid', 'partially_refunded', 'refunded');
+UPDATE public.venue_till_sales s
+SET business_date = public.issue_4490_venue_service_date(s.venue_id, s.paid_at)
+WHERE s.business_date IS NULL AND s.paid_at IS NOT NULL
+  AND s.state IN ('paid', 'partially_refunded', 'refunded');
+
+-- ===========================================================================
 -- Grants. The two pure rules are public (they read nothing); everything
 -- else is internal. Trigger functions need no EXECUTE grant to fire.
 -- ===========================================================================
@@ -594,13 +912,25 @@ REVOKE ALL ON FUNCTION
   public.issue_4490_sold_out_basis_done(uuid),
   public.issue_4490_venue_order_mint_partial_refund(uuid, bigint, uuid, text, text),
   public.issue_4490_order_sold_out_resolve(uuid, uuid[], text, uuid, uuid, uuid, text),
-  public.issue_4490_order_sold_out(uuid, uuid)
+  public.issue_4490_order_sold_out(uuid, uuid),
+  public.issue_4490_venue_hours_state(uuid),
+  public.issue_4490_venue_hours_baseline(),
+  public.issue_4490_venue_hours_capture(),
+  public.issue_4490_venue_service_date(uuid, timestamptz),
+  public.issue_4490_day_payment_ids(uuid, date),
+  public.issue_4490_day_refund_ids(uuid, date),
+  public.issue_4490_day_check_date(uuid, date)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.issue_4490_sold_out_basis_done(uuid),
   public.issue_4490_venue_order_mint_partial_refund(uuid, bigint, uuid, text, text),
   public.issue_4490_order_sold_out_resolve(uuid, uuid[], text, uuid, uuid, uuid, text),
-  public.issue_4490_order_sold_out(uuid, uuid)
+  public.issue_4490_order_sold_out(uuid, uuid),
+  public.issue_4490_venue_hours_state(uuid),
+  public.issue_4490_venue_service_date(uuid, timestamptz),
+  public.issue_4490_day_payment_ids(uuid, date),
+  public.issue_4490_day_refund_ids(uuid, date),
+  public.issue_4490_day_check_date(uuid, date)
 TO service_role;
 
 COMMIT;

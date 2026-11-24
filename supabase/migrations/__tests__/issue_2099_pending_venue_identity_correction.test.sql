@@ -3,6 +3,8 @@
 -- texts lane, 20280809600490, has a venue_id column); pin owner 20280809602490.
 -- TEST-MOD-APPROVED #4490 (08-O5 part A): the #2099 pending-venue seal moved to 7523789e… (the PIN lanes,
 -- 20280809611490, have venue_id columns); pin owner 20280809612490.
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): the #2099 pending-venue seal moved to ddb56bf5… (the opening hours
+-- history, 20280809616490, has a venue_id column); pin owner 20280809617490.
 -- TEST-MOD-APPROVED #4490 (08-O5 part B): the #2099 pending-venue seal moved to ea9536d8… (the daily close
 -- lanes, 20280809613490, have venue_id columns); pin owner 20280809614490.
 -- MINGLA-INVARIANT: I-4188-STAY-PENDING-VENUE-FENCE | issue #4188 | Stay operational rows remain disallowed pending-venue dependencies, and only the reviewed empty schema shape advances the correction RPC pin.
@@ -91,7 +93,7 @@ BEGIN
     p->>'schema_fingerprint' IN (
       -- [TEST-MOD-APPROVED #4490] guest list repin (20280809444490): the guest list lanes (20280809414490) advance the reviewed pin.
       -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20280809554490): the Till lanes (20280809464490) advance the reviewed pin.
-      'ea9536d8e1ad3044e650a66e560015fc9e850458a5c0d1a52b4cd971f4220305'
+      'ddb56bf5b2b14f26485be131f6ab0c614d03df9dd493d2332069f16851664464'
     ),
     false
   ) THEN

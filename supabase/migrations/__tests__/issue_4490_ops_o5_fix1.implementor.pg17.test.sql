@@ -5,6 +5,7 @@
 -- rolls back.
 --
 -- MINGLA-INVARIANT: I-4490-SOLD-OUT-EVERY-LINE-ONCE | issue #4490 | every guest line that sold out after payment can be resolved (refund, or swap with the difference refunded) exactly once, in any order and any mix, one call or several; each money resolution is its own source_refunds row on the order; together they return exactly what the guest paid for those lines (discount and service charge share, rounding included) and never more than the order took; the whole-order staff refund then returns only what is left, with Mingla's fee netted, so no money is refunded twice and none is stranded.
+-- MINGLA-INVARIANT: I-4490-DAY-DECIDED-ONCE | issue #4490 | a recorded payment's or refund's business day never moves: the daily close reads the day the Till stored on the row when the money was recorded, and every day derived from a moment uses the opening hours in force at that moment (venue_hours_history); changing opening hours affects only money recorded afterwards, a closed day's snapshot never changes, and no payment is ever counted on two days.
 --
 -- FAILS-ON-REVERT (verified on a fresh replay; outputs in the fix 1 report):
 -- put back 20280809615490's one-refund-per-order mint and F3-2 fails; put
@@ -402,6 +403,151 @@ SELECT public.t5f_ok((public.t5f_rv('e_whole')->>'amountCents')::bigint = 110000
        FROM public.t5f_refunds(public.t5f_id('guest_e')))
   AND (SELECT payment_status = 'partial_refund' AND refunded_amount_cents = 550000 FROM public.venue_orders WHERE id = public.t5f_id('guest_e')),
   'F3-13 after a settled line refund (5,500.00) the whole-order refund returns the rest (1,100.00); fee reversed once in all');
+SELECT public.t5f_reset();
+
+-- ===========================================================================
+-- F1 O5-T1: changing opening hours after a close never moves money.
+-- ===========================================================================
+-- T = the venue's calendar day now.
+CREATE FUNCTION public.t5f_t() RETURNS date LANGUAGE sql STABLE AS $f$
+  SELECT (now() AT TIME ZONE public.issue_4490_venue_timezone('44900616-0000-4000-9000-0000000000a2'))::date
+$f$;
+GRANT EXECUTE ON FUNCTION public.t5f_t() TO PUBLIC;
+SELECT public.t5f_service();
+SELECT public.issue_4490_ensure_booking_settings(public.t5f_id('v2'));
+-- It is between 01:00 and 02:00 at the venue, whenever this runs.
+UPDATE public.venue_booking_settings
+SET timezone = CASE
+  WHEN extract(hour FROM now() AT TIME ZONE 'UTC')::integer <= 1 THEN 'Etc/GMT-' || (1 - extract(hour FROM now() AT TIME ZONE 'UTC')::integer)
+  WHEN extract(hour FROM now() AT TIME ZONE 'UTC')::integer <= 13 THEN 'Etc/GMT+' || (extract(hour FROM now() AT TIME ZONE 'UTC')::integer - 1)
+  ELSE 'Etc/GMT-' || (25 - extract(hour FROM now() AT TIME ZONE 'UTC')::integer) END
+WHERE venue_id = public.t5f_id('v2');
+-- Opening hours 12:00 to 23:59 every day (a night that never passes midnight),
+-- in force since before any money here (no history: the live hours).
+INSERT INTO public.brand_hours (brand_id, venue_id, weekday, open_time, close_time, is_closed)
+SELECT '44900616-0000-4000-9000-000000000010', public.t5f_id('v2'), d, '12:00', '23:59', false FROM generate_series(0, 6) d;
+DELETE FROM public.venue_hours_history WHERE venue_id = public.t5f_id('v2');
+SELECT public.t5f_ok(extract(hour FROM now() AT TIME ZONE public.issue_4490_venue_timezone(public.t5f_id('v2'))) = 1
+  AND public.issue_4490_venue_service_date(public.t5f_id('v2'), now()) = public.t5f_t(),
+  'F1-0 fixture: it is 01:xx at the venue and its service day T is the calendar day (the night closes at 23:59)');
+-- Day T's money, recorded 40 minutes ago (00:2x to 01:1x): two cash sales on
+-- the Till (one part refunded 10 minutes later) and a guest order paid online.
+DO $money$
+DECLARE
+  v_sale uuid;
+  v_pay jsonb;
+  i integer;
+BEGIN
+  FOR i IN 1..2 LOOP
+    v_sale := public.t5f_open(public.t5f_id('v2'), 'night-' || i, public.t5f_id('seller'));
+    PERFORM public.t5f_round(v_sale, public.t5f_id('beer'), i, public.t5f_id('seller'));
+    PERFORM public.issue_4490_till_send(v_sale, public.t5f_id('seller'));
+    v_pay := public.issue_4490_till_take_payment(v_sale, 'cash',
+      (SELECT total_due_minor - paid_minor FROM public.venue_till_sales WHERE id = v_sale), 0, 1000000,
+      public.t5f_id('seller'), NULL, gen_random_uuid(), public.t5f_v(v_sale));
+    INSERT INTO t5f_ids VALUES ('night_' || i, v_sale);
+  END LOOP;
+  PERFORM public.issue_4490_till_refund((SELECT p.id FROM public.venue_till_payments p WHERE p.sale_id = public.t5f_id('night_2')),
+    50000, 0, 'Warm beer', false, public.t5f_id('owner'), NULL, gen_random_uuid());
+END
+$money$;
+SELECT public.t5f_guest(public.t5f_id('v2'), 'night', jsonb_build_array(jsonb_build_array(public.t5f_id('beer'), 3)));
+SELECT public.t5f_pay(public.t5f_id('guest_night'));
+UPDATE public.venue_till_sales SET created_at = created_at - interval '40 minutes', paid_at = paid_at - interval '40 minutes'
+WHERE venue_id = public.t5f_id('v2');
+UPDATE public.venue_till_payments p SET created_at = p.created_at - interval '40 minutes', paid_at = p.paid_at - interval '40 minutes'
+FROM public.venue_till_sales s WHERE s.id = p.sale_id AND s.venue_id = public.t5f_id('v2');
+UPDATE public.venue_till_refunds r SET created_at = r.created_at - interval '30 minutes'
+FROM public.venue_till_payments p JOIN public.venue_till_sales s ON s.id = p.sale_id
+WHERE p.id = r.payment_id AND s.venue_id = public.t5f_id('v2');
+UPDATE public.venue_orders SET created_at = created_at - interval '45 minutes', confirmed_at = confirmed_at - interval '40 minutes'
+WHERE venue_id = public.t5f_id('v2');
+SELECT public.t5f_ok((SELECT bool_and(p.business_date = public.t5f_t()) AND count(*) = 2
+    FROM public.venue_till_payments p JOIN public.venue_till_sales s ON s.id = p.sale_id WHERE s.venue_id = public.t5f_id('v2'))
+  AND (SELECT bool_and(r.business_date = public.t5f_t()) AND count(*) = 1
+    FROM public.venue_till_refunds r JOIN public.venue_till_payments p ON p.id = r.payment_id
+    JOIN public.venue_till_sales s ON s.id = p.sale_id WHERE s.venue_id = public.t5f_id('v2')),
+  'F1-1 the Till stored day T on both payments and on the refund when the money was recorded');
+-- Before anything changes: what T and T-1 show, live.
+INSERT INTO t5f_r SELECT 'md_t', public.issue_4490_venue_money_day(public.t5f_id('v2'), public.t5f_t());
+INSERT INTO t5f_r SELECT 'md_y', public.issue_4490_venue_money_day(public.t5f_id('v2'), public.t5f_t() - 1);
+INSERT INTO t5f_r SELECT 'sum_y', public.issue_4490_day_summary(public.t5f_id('v2'), public.t5f_t() - 1, public.t5f_id('owner'), NULL);
+INSERT INTO t5f_r SELECT 'live_t', public.issue_4490_day_totals(public.t5f_id('v2'), public.t5f_t());
+SELECT public.t5f_ok((public.t5f_rv('live_t')->'takings'->>'count')::int = 2
+  AND (public.t5f_rv('live_t')->'takings'->>'amountMinor')::bigint = 600000
+  AND (public.t5f_rv('live_t')->'refunds'->>'amountMinor')::bigint = 50000
+  AND (public.t5f_rv('live_t')->'orderedOnline'->>'count')::int = 1
+  AND (public.t5f_rv('sum_y')->'totals'->'takings'->>'count')::int = 0,
+  'F1-2 day T live: 2 Till payments 6,000.00, a 500.00 refund, 1 guest order online; day T-1 has nothing');
+-- Close day T, counted exactly.
+INSERT INTO t5f_r SELECT 'close_t', public.issue_4490_day_close(public.t5f_id('v2'), public.t5f_t(),
+  (public.t5f_rv('live_t')->'cash'->>'expectedMinor')::bigint, public.t5f_id('owner'), NULL, gen_random_uuid());
+INSERT INTO t5f_r SELECT 'snap_t', (SELECT totals FROM public.venue_day_closes WHERE venue_id = public.t5f_id('v2') AND business_date = public.t5f_t());
+-- Twenty minutes ago the owner moved closing time to 03:00 (the night now runs
+-- past midnight): written the way the Host writes hours, then dated.
+UPDATE public.brand_hours SET close_time = '03:00' WHERE venue_id = public.t5f_id('v2');
+UPDATE public.venue_hours_history SET valid_from = now() - interval '20 minutes'
+WHERE venue_id = public.t5f_id('v2') AND valid_from > '-infinity'::timestamptz;
+SELECT public.t5f_ok((SELECT count(*) FROM public.venue_hours_history WHERE venue_id = public.t5f_id('v2')) = 2
+  AND public.issue_4490_venue_service_date(public.t5f_id('v2'), now()) = public.t5f_t() - 1
+  AND public.issue_4490_venue_service_date(public.t5f_id('v2'), now() - interval '40 minutes') = public.t5f_t(),
+  'F1-3 the hours history keeps both versions: NOW belongs to the night before (new hours), the money''s moments still to T (the hours then)');
+SELECT public.t5f_ok(
+  (public.issue_4490_day_summary(public.t5f_id('v2'), public.t5f_t(), public.t5f_id('owner'), NULL)->>'state') = 'closed'
+  AND (public.issue_4490_day_summary(public.t5f_id('v2'), public.t5f_t(), public.t5f_id('owner'), NULL)->'totals')
+      = public.t5f_rv('snap_t') - 'paymentIds' - 'refundIds'
+  AND (public.issue_4490_day_summary(public.t5f_id('v2'), public.t5f_t(), public.t5f_id('owner'), NULL)->'late'->>'count')::int = 0
+  AND (SELECT totals = public.t5f_rv('snap_t') FROM public.venue_day_closes WHERE venue_id = public.t5f_id('v2') AND business_date = public.t5f_t()),
+  'F1-4 the closed day T still answers (no day_out_of_range), its stored snapshot is unchanged and nothing is late');
+INSERT INTO t5f_r SELECT 'sum_y2', public.issue_4490_day_summary(public.t5f_id('v2'), public.t5f_t() - 1, public.t5f_id('owner'), NULL);
+SELECT public.t5f_ok(public.t5f_rv('sum_y2')->'totals' = public.t5f_rv('sum_y')->'totals'
+  AND (public.t5f_rv('sum_y2')->'totals'->'takings'->>'count')::int = 0
+  AND (public.t5f_rv('sum_y2')->'totals'->'orderedOnline'->>'count')::int = 0
+  AND public.issue_4490_day_payment_ids(public.t5f_id('v2'), public.t5f_t() - 1) = '{}'::uuid[]
+  AND public.issue_4490_day_refund_ids(public.t5f_id('v2'), public.t5f_t() - 1) = '{}'::uuid[],
+  'F1-5 the night before (now "today") is unchanged: none of T''s payments, refunds or online orders moved into it');
+SELECT public.t5f_ok(public.issue_4490_venue_money_day(public.t5f_id('v2'), public.t5f_t()) = public.t5f_rv('md_t')
+  AND public.issue_4490_venue_money_day(public.t5f_id('v2'), public.t5f_t() - 1) = public.t5f_rv('md_y'),
+  'F1-6 "Paid in today" for T and for the night before is unchanged');
+SELECT public.t5f_ok(NOT EXISTS (
+    SELECT p.id FROM public.venue_till_payments p JOIN public.venue_till_sales s ON s.id = p.sale_id
+    WHERE s.venue_id = public.t5f_id('v2')
+      AND (SELECT count(*) FROM generate_series(-1, 1) d
+           WHERE p.id = ANY (public.issue_4490_day_payment_ids(public.t5f_id('v2'), public.t5f_t() + d))) <> 1)
+  AND (SELECT array_agg(x ORDER BY x) FROM jsonb_array_elements_text(public.t5f_rv('snap_t')->'paymentIds') x)
+      = (SELECT array_agg(x::text ORDER BY x::text) FROM unnest(public.issue_4490_day_payment_ids(public.t5f_id('v2'), public.t5f_t())) x),
+  'F1-7 every payment is on exactly one day (T), the one its close holds');
+-- A closed day stays reopenable and closable after the change.
+SELECT public.issue_4490_day_reopen(public.t5f_id('v2'), public.t5f_t(), 'Recount', public.t5f_id('owner'), NULL);
+INSERT INTO t5f_r SELECT 'close_t2', public.issue_4490_day_close(public.t5f_id('v2'), public.t5f_t(),
+  (public.t5f_rv('live_t')->'cash'->>'expectedMinor')::bigint, public.t5f_id('owner'), NULL, gen_random_uuid());
+SELECT public.t5f_ok((SELECT totals->'paymentIds' = public.t5f_rv('snap_t')->'paymentIds'
+       AND totals->'refundIds' = public.t5f_rv('snap_t')->'refundIds'
+       AND totals->'takings' = public.t5f_rv('snap_t')->'takings' AND totals->'cash' = public.t5f_rv('snap_t')->'cash'
+       AND totals->'orderedOnline' = public.t5f_rv('snap_t')->'orderedOnline' AND reopen_count = 1
+    FROM public.venue_day_closes WHERE venue_id = public.t5f_id('v2') AND business_date = public.t5f_t()),
+  'F1-8 day T reopens and closes again after the hours change with the same payments, refunds, cash and online orders');
+SELECT public.t5f_ok(jsonb_array_length(public.issue_4490_day_export(public.t5f_id('v2'), public.t5f_t(), public.t5f_id('owner'), NULL)->'rows') = 2
+  AND jsonb_array_length(public.issue_4490_day_export(public.t5f_id('v2'), public.t5f_t() - 1, public.t5f_id('owner'), NULL)->'rows') = 0,
+  'F1-9 the export of T still has its 2 payments; the night before has none');
+SELECT public.t5f_expect(format($$SELECT public.issue_4490_day_summary(%L, %L::date, %L, NULL)$$,
+  public.t5f_id('v2'), public.t5f_t() + 1, public.t5f_id('owner')),
+  '22023', 'day_out_of_range', 'F1-10 a day after "today" with no close and no money is still out of range');
+-- Money recorded after the change follows the new hours: a sale now lands on the night before.
+DO $after$
+DECLARE v_sale uuid;
+BEGIN
+  v_sale := public.t5f_open(public.t5f_id('v2'), 'after-change', public.t5f_id('seller'));
+  PERFORM public.t5f_round(v_sale, public.t5f_id('beer'), 1, public.t5f_id('seller'));
+  PERFORM public.issue_4490_till_send(v_sale, public.t5f_id('seller'));
+  PERFORM public.issue_4490_till_take_payment(v_sale, 'cash', (SELECT total_due_minor - paid_minor FROM public.venue_till_sales WHERE id = v_sale),
+    0, 1000000, public.t5f_id('seller'), NULL, gen_random_uuid(), public.t5f_v(v_sale));
+  INSERT INTO t5f_ids VALUES ('after', v_sale);
+END
+$after$;
+SELECT public.t5f_ok((SELECT p.business_date = public.t5f_t() - 1 FROM public.venue_till_payments p WHERE p.sale_id = public.t5f_id('after'))
+  AND (SELECT (s->'late'->>'count')::int = 0 FROM public.issue_4490_day_summary(public.t5f_id('v2'), public.t5f_t(), public.t5f_id('owner'), NULL) s),
+  'F1-11 a sale recorded after the change is the night before''s (the new hours), never late money of the closed day T');
 SELECT public.t5f_reset();
 
 ROLLBACK;
