@@ -583,6 +583,15 @@ describe("08-O5 fix 6 item 4: a blocking open check stacks on a phone", () => {
     const source = require("fs").readFileSync(require("path").join(__dirname, "../../close/DayCloseScreen.tsx"), "utf8") as string;
     expect(source).toContain("<DayCloseChecks stacked={!wide}");
   });
+  test("the day close header: on a phone the seller pill has its own row, so the title is never cut", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const source = require("fs").readFileSync(require("path").join(__dirname, "../../close/DayCloseScreen.tsx"), "utf8") as string;
+    expect(source).toContain("{wide ? sellerSlot : null}");
+    expect(source).toContain('testID="day-close-seller-row">{sellerSlot}</View>');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const gate = require("fs").readFileSync(require("path").join(__dirname, "../../close/DayCloseGate.tsx"), "utf8") as string;
+    expect(gate).not.toContain('maxWidth: "50%"');
+  });
 });
 
 describe("08-O5 fix 6 items 6 and 7: the PIN pad in its sheet", () => {

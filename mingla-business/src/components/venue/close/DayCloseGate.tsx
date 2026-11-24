@@ -137,7 +137,10 @@ const styles = StyleSheet.create({
     paddingLeft: space[3],
     borderRadius: radius.full,
     backgroundColor: color.card2,
-    maxWidth: "50%",
+    // #4490 08-O5 fix 6: on a phone the chip has its own row (DayCloseScreen),
+    // so the seller's name has the whole width ("T4490 Ma…" at 50%).
+    maxWidth: "100%",
+    flexShrink: 1,
   },
   chipText: { ...type.caption, color: color.text1, flexShrink: 1 },
 });

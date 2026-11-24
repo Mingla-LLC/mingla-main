@@ -250,14 +250,17 @@ export function DayCloseScreen({ venueId, approvers, sellerSlot = null }: DayClo
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="day-close-screen">
-      <View style={styles.header}>
+      {/* #4490 08-O5 fix 6: on a phone the seller pill takes its own row under
+          the title, so "Close the day" and the venue and day are never cut. */}
+      <View style={styles.header} testID="day-close-header">
         <Button label={CLOSE_COPY.back} variant="ghost" size="sm" onPress={back} testID="day-close-back" />
         <View style={styles.titleBlock}>
-          <Text style={styles.title} numberOfLines={1} accessibilityRole="header">{CLOSE_COPY.title}</Text>
-          {summary !== null ? <Text style={styles.sub} numberOfLines={1}>{`${summary.venueName} · ${dayLabel(summary.businessDate)}`}</Text> : null}
+          <Text style={styles.title} numberOfLines={wide ? 1 : 2} accessibilityRole="header">{CLOSE_COPY.title}</Text>
+          {summary !== null ? <Text style={styles.sub} numberOfLines={wide ? 1 : 2}>{`${summary.venueName} · ${dayLabel(summary.businessDate)}`}</Text> : null}
         </View>
-        {sellerSlot}
+        {wide ? sellerSlot : null}
       </View>
+      {!wide && sellerSlot !== null ? <View style={styles.sellerRow} testID="day-close-seller-row">{sellerSlot}</View> : null}
       <ScrollView style={styles.grow} contentContainerStyle={styles.scroll} testID="day-close-scroll">
         <View style={styles.column}>
           {summary !== null ? (
@@ -302,6 +305,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.canvas },
   header: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[3], paddingVertical: space[2] },
   titleBlock: { flex: 1, minWidth: 0 },
+  sellerRow: { flexDirection: "row", paddingHorizontal: space[4], paddingBottom: space[2] },
   title: { ...type.h2, color: color.text1 },
   sub: { ...type.caption, color: color.text2 },
   grow: { flexGrow: 1 },
