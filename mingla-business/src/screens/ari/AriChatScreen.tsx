@@ -169,6 +169,7 @@ import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 // the Done bar; this flag is the one switch.
 import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 import { setDoneBarSuppressed } from "../../wrappers/doneBarSuppression";
+import { composerKeyboardOffsetFor } from "./ariComposerKeyboardFrame";
 
 // Height the floating BottomNav capsule occupies above the safe-area bottom.
 // Matches NAV_HEIGHT (64) + paddingTop (8) + paddingBottom (≥8) in
@@ -411,6 +412,22 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   );
   // #4572 — never strand the "no Done bar" flag if the screen goes away focused.
   React.useEffect(() => (): void => setDoneBarSuppressed(false), []);
+  // #4572 retest P1-1 — the keyboard-controller KeyboardAvoidingView reads its
+  // OWN onLayout frame, which is relative to its parent (`styles.kav`), and
+  // compares it with the keyboard's top in SCREEN space. Everything above
+  // that parent (status bar, Ari top bar, banners) was missing from the sum,
+  // so the composer stopped that far short and ended under the keyboard
+  // (measured on iOS 26.5: 57-101pt). The parent's window Y, measured, is the
+  // view's `keyboardVerticalOffset`, which puts both in screen space.
+  const composerHostRef = useRef<View | null>(null);
+  const [composerHostWindowY, setComposerHostWindowY] = useState(0);
+  const measureComposerHost = React.useCallback((): void => {
+    composerHostRef.current?.measureInWindow((_x, y) => {
+      if (!Number.isFinite(y)) return;
+      const next = composerKeyboardOffsetFor(y);
+      setComposerHostWindowY((previous) => (previous === next ? previous : next));
+    });
+  }, []);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
   // #4453 — the chip names the brand the route names (`/ari?brandId=`), read by the root shell.
   const routeBrand = useContext(WorkspaceRouteContext).brand;
@@ -1653,7 +1670,13 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                               ? emptyBrandCopy.placeholder
                               : "Ask Ari…"
                   }
-                  onFocus={() => setDoneBarSuppressed(true)}
+                  onFocus={() => {
+                    setDoneBarSuppressed(true);
+                    // #4572 retest P1-1 — re-measure before the keyboard rises:
+                    // the host's own onLayout does not fire when something
+                    // ABOVE its parent moves it on screen.
+                    measureComposerHost();
+                  }}
                   onBlur={() => setDoneBarSuppressed(false)}
                   onAttach={() => {
                     if (Platform.OS === "web") void attachments.addFiles("all");
@@ -1859,7 +1882,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           }}
         />
 
-        <View style={styles.kav}>
+        <View ref={composerHostRef} style={styles.kav} onLayout={measureComposerHost} testID="ari-composer-host">
           {/* #4420 (Seth): restoring which thread to open is the same
               moment as opening it: one centred loading state, not a
               gutterless orb beside an empty caret pill. */}
@@ -2249,7 +2272,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
               field is focused). Keyboard closed, the pill rests exactly where
               it always did. Web has no soft keyboard: the wrapper is a plain
               View and the web padding below is the same as before. */}
-          <KeyboardAvoidingView behavior="padding">
+          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={composerHostWindowY}>
           <View
             style={[
               styles.inputWrap,

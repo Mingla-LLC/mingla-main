@@ -109,8 +109,14 @@ jest.mock("react-native-keyboard-controller", () => {
   return {
   // [TEST-MOD-APPROVED #4572] the composer now sits in the library's
   // KeyboardAvoidingView; a locatable host stand-in that keeps its props.
-  KeyboardAvoidingView: (props: { children?: React.ReactNode; behavior?: string }) =>
-    R.createElement(RN.View, { testID: "keyboard-avoiding-view", behavior: props.behavior }, props.children),
+  // #4572 retest P1-1 — it also keeps `keyboardVerticalOffset`, the one input
+  // that puts the library's parent-relative frame into screen space.
+  KeyboardAvoidingView: (props: { children?: React.ReactNode; behavior?: string; keyboardVerticalOffset?: number }) =>
+    R.createElement(
+      RN.View,
+      { testID: "keyboard-avoiding-view", behavior: props.behavior, keyboardVerticalOffset: props.keyboardVerticalOffset },
+      props.children,
+    ),
   KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
   KeyboardToolbar: "KeyboardToolbar@library",
   KeyboardProvider: ({ children }: { children?: React.ReactNode }) => children,
@@ -369,6 +375,9 @@ const findComposerWrapper = (root: HostNode): HostNode => {
   );
 };
 
+/** Where the mocked composer host sits on screen (status bar + Ari top bar). */
+const COMPOSER_HOST_WINDOW_Y = 118;
+
 interface Branch {
   readonly id: string;
   /** The composer wrapper's resolved paddingBottom (the pill container's own space). */
@@ -377,7 +386,13 @@ interface Branch {
   readonly paddingAt200: number;
   /** paddingBottom after firing EACH handler alone at an absurd height. */
   readonly paddingPerHandler: readonly number[];
-  readonly kav: { found: boolean; behavior: unknown; containsWrapper: boolean };
+  readonly kav: {
+    found: boolean;
+    behavior: unknown;
+    containsWrapper: boolean;
+    offsetBeforeLayout: unknown;
+    offsetAfterLayout: unknown;
+  };
   /** The resting spacer's height, and whether it is the KAV's next sibling. */
   readonly spacerHeight: number | null;
   readonly spacerFollowsKav: boolean;
@@ -410,6 +425,17 @@ function measureBranch(id: string, os: string, version: number | string, keyboar
     };
     const suppression = require("../../../wrappers/doneBarSuppression") as { getDoneBarSuppressed: () => boolean };
     const { AriChatScreen } = require("../AriChatScreen") as { AriChatScreen: React.ComponentType };
+    // #4572 retest P1-1 — react-native's jest View shares one native-methods
+    // object; make its measureInWindow report the composer host's screen Y so
+    // the screen's measured offset is observable on the mounted tree.
+    const nativeMethods = (
+      require("react-native/jest/MockNativeMethods") as {
+        default: { measureInWindow: jest.Mock };
+      }
+    ).default;
+    nativeMethods.measureInWindow.mockImplementation(
+      (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, COMPOSER_HOST_WINDOW_Y, 402, 700),
+    );
     /* eslint-enable @typescript-eslint/no-require-imports */
 
     let tree: { root: HostNode; unmount: () => void } | null = null;
@@ -452,6 +478,18 @@ function measureBranch(id: string, os: string, version: number | string, keyboar
     // The KeyboardAvoidingView ancestor and the resting spacer beside it.
     let kavNode: HostNode | null = wrapper.parent;
     while (kavNode != null && kavNode.props?.testID !== "keyboard-avoiding-view") kavNode = kavNode.parent;
+    // #4572 retest P1-1 — the offset before and after the composer host lays
+    // out (and is measured in the window).
+    const offsetBeforeLayout = kavNode?.props?.keyboardVerticalOffset;
+    const hostNode = findByTestId(root, "ari-composer-host");
+    TR.act(() => {
+      (hostNode.props.onLayout as (e: unknown) => void)({
+        nativeEvent: { layout: { x: 0, y: 0, width: 402, height: 700 } },
+      });
+    });
+    let kavAfter: HostNode | null = findComposerWrapper(findByTestId(root, "ari-input-bar")).parent;
+    while (kavAfter != null && kavAfter.props?.testID !== "keyboard-avoiding-view") kavAfter = kavAfter.parent;
+    const offsetAfterLayout = kavAfter?.props?.keyboardVerticalOffset;
     const spacerNode = (() => {
       try {
         return findByTestId(root, "ari-composer-rest-spacer");
@@ -505,6 +543,8 @@ function measureBranch(id: string, os: string, version: number | string, keyboar
         found: kavNode != null,
         behavior: kavNode?.props?.behavior,
         containsWrapper: kavNode != null,
+        offsetBeforeLayout,
+        offsetAfterLayout,
       },
       spacerHeight: spacerNode == null ? null : (flatten(spacerNode.props.style).height as number),
       spacerFollowsKav,
@@ -593,6 +633,19 @@ describe("#4572 (was #1890) — Ari composer rides the keyboard and sits flush",
       // The spacer is AFTER the view, so the keyboard's overlap with the view's
       // frame starts above it (it holds still until the keyboard reaches it).
       expect(b.spacerFollowsKav).toBe(true);
+    }
+  });
+
+  // ── 3b. #4572 retest P1-1: the view's frame is put into screen space ──────
+  //
+  // The library compares its PARENT-RELATIVE onLayout frame with the
+  // keyboard's top in SCREEN space. With no offset the composer stopped short
+  // by the host's own screen Y and ended under the keyboard on device. The
+  // mounted tree must hand the view the host's measured window Y.
+  it("3b. the KeyboardAvoidingView's offset is the composer host's measured window Y", () => {
+    for (const b of branches) {
+      expect(b.kav.offsetBeforeLayout).toBe(0);
+      expect(b.kav.offsetAfterLayout).toBe(COMPOSER_HOST_WINDOW_Y);
     }
   });
 
