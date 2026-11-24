@@ -222,7 +222,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected=$'jest.mock(\n  "../PendingVenueIdentityCorrectionLauncher",\n  () => ({ __esModule: true, default: (): null => null }),\n  { virtual: true },\n);'
+          # #4490 moved both route shells behind the one lazy Host venue owner.
+          # The issue1483 harnesses intentionally carry only minimal RN mocks,
+          # so this exact additive stand-in is the sole current authorization;
+          # every fixture and assertion remains byte-identical to origin/main.
+          expected=$'// #4490 — the route now loads both suites through the one Host venue owner.\n// This exact structural stand-in keeps the locked #1483 harness import-light.\njest.mock("../host/LazyVenueSuites", () => ({\n  __esModule: true,\n  StaySuiteShell: (): null => null,\n  VenueSuiteShell: (): null => null,\n}));'
           for f in \
             "mingla-business/src/components/venue/__tests__/venuePublicPageActions.issue1483.test.tsx" \
             "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx"; do
@@ -232,13 +236,6 @@ jobs:
               continue
             fi
             authorized="$expected"
-            if [ "$f" = "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx" ]; then
-              # #2211 changes the real venue loading/not-found roots from View
-              # to ScrollView. This exact structural host export is the only
-              # additional harness line authorized; assertions, fixtures and
-              # every #1483/#2099 product mock remain immutable.
-              authorized='    ScrollView: "ScrollView",'
-            fi
             dels="$(printf '%s\n' "$diff" | grep -c '^-[^-]' || true)"
             if [ "$dels" -ne 0 ]; then
               echo "::error::$f has $dels deletion line(s). No existing line may be edited, reordered, deleted or reformatted."

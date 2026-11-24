@@ -256,8 +256,8 @@ jest.mock("../../stay/StaySuiteShell", () => ({
   __esModule: true,
   StaySuiteShell: (): null => null,
 }));
-// #4490 venue owners: the route mounts both shells through LazyVenueSuites
-// (the Host venue owner); hand it the mocked shells below, synchronously.
+// #4490 — the route now loads both suites through the one Host venue owner.
+// This exact structural stand-in keeps the locked #1483 harness import-light.
 jest.mock("../host/LazyVenueSuites", () => ({
   __esModule: true,
   StaySuiteShell: (): null => null,
@@ -503,13 +503,8 @@ describe("#1483 — venue page header + public-page actions", () => {
     expect(byTestID(tree, "venue-page-share")).toHaveLength(0);
     expect(tree.root.findAll((n) => n.type === "ShareModalMock")).toHaveLength(0);
     // No disabled ghost either — the controls are absent, not inert.
-    // [TEST-MOD-APPROVED #4490] the owner's "Preview page" control is the one
-    // thing a non-public venue shows; no other control is allowed.
     expect(
-      tree.root.findAll(
-        (n) =>
-          n.type === "IconChromeMock" && n.props.testID !== "venue-page-preview",
-      ),
+      tree.root.findAll((n) => n.type === "IconChromeMock"),
     ).toHaveLength(0);
 
     unmount(tree);

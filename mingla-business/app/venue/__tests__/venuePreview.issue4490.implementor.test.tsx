@@ -301,9 +301,31 @@ describe("#4490 Host venue preview", () => {
     expect(analytics).toHaveLength(0);
   });
 
-  test("P-6 a non-public venue's page has a Preview control and a public one does not hide View", async () => {
+  test("P-6 a non-public venue's page has its own working Preview control", async () => {
     const page = readFileSync(join(__dirname, "../[venueId]/index.tsx"), "utf8");
-    expect(page).toMatch(/testID="venue-page-preview"/);
+    expect(page).toMatch(/<VenuePreviewAction/);
     expect(page).toMatch(/router\.push\(`\/venue\/\$\{venueId\}\/preview`/);
+
+    const { VenuePreviewAction } = require("../../../src/components/venue/VenuePreviewAction") as {
+      VenuePreviewAction: React.ComponentType<{ compact: boolean; onPress: () => void }>;
+    };
+    let presses = 0;
+    let action!: ReturnType<typeof TestRenderer.create>;
+    TestRenderer.act(() => {
+      action = TestRenderer.create(
+        <VenuePreviewAction compact={false} onPress={() => { presses += 1; }} />,
+      );
+    });
+    const control = action.root.findAll(
+      (n) =>
+        n.props.testID === "venue-page-preview" &&
+        typeof n.props.onPress === "function",
+    );
+    expect(control.length).toBeGreaterThan(0);
+    expect(json(action)).toContain("Preview page");
+    const pressTarget = control[control.length - 1];
+    TestRenderer.act(() => (pressTarget.props.onPress as () => void)());
+    expect(presses).toBe(1);
+    action.unmount();
   });
 });

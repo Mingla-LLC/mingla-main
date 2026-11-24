@@ -46,6 +46,7 @@ import { VenueClaimFeedbackSheet } from "../../../src/components/brand/VenueClai
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
+import { VenuePreviewAction } from "../../../src/components/venue/VenuePreviewAction";
 import {
   parseVenueItemParam,
   parseVenueModuleParam,
@@ -491,25 +492,12 @@ export default function VenueManagementPage(): React.ReactElement {
             ) : venue !== null && venueId !== null ? (
               // #4490 — a venue that is not public yet (in review, say) has no
               // public page to view, but its owner can see exactly the page
-              // guests will get, with booking switched off.
-              isWideDesktop ? (
-                <Button
-                  label="Preview page"
-                  variant="secondary"
-                  size="sm"
-                  leadingIcon="eye"
-                  onPress={handlePreviewPage}
-                  testID="venue-page-preview"
-                />
-              ) : (
-                <IconChrome
-                  icon="eye"
-                  size={36}
-                  accessibilityLabel="Preview page"
-                  onPress={handlePreviewPage}
-                  testID="venue-page-preview"
-                />
-              )
+              // guests will get, with booking switched off. It is deliberately
+              // separate from #1483's public/share controls.
+              <VenuePreviewAction
+                compact={!isWideDesktop}
+                onPress={handlePreviewPage}
+              />
             ) : (
               // Empty placeholder for layout balance (TopBar.tsx:71-73). The
               // controls are HIDDEN, never disabled.
