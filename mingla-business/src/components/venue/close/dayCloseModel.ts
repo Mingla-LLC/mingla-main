@@ -7,6 +7,7 @@
 
 import { formatCurrency } from "../../../utils/currency";
 import type {
+  DayLatePayment,
   DayOpenCheck,
   DayPerson,
   DaySummary,
@@ -52,6 +53,17 @@ export function personName(p: DayPerson | null | undefined): string {
       return never;
     }
   }
+}
+
+/**
+ * #4490 08-O5 fix 4: how a late payment is named on the closed day: the
+ * check's name or QR spot, else who took it, never a bare "Team member".
+ */
+export function latePaymentTitle(p: Pick<DayLatePayment, "checkLabel" | "takenBy">): string {
+  if (p.checkLabel !== null && p.checkLabel.trim() !== "") return p.checkLabel;
+  const by = p.takenBy;
+  if (by !== null && !(by.kind === "person" && by.name === null)) return CLOSE_COPY.lateTakenBy(personName(by));
+  return CLOSE_COPY.latePaymentUntitled;
 }
 
 export function blockingChecks(summary: DaySummary): DayOpenCheck[] {

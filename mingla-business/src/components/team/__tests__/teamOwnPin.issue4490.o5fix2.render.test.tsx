@@ -139,7 +139,7 @@ jest.mock("../../../services/tillPinService", () => {
 import BrandTeamRoute from "../../../../app/brand/[id]/team";
 import { MemberDetailSheet } from "../MemberDetailSheet";
 import { TillError } from "../../../services/venueTillService";
-import { rowTappable, showSelfRowAboveEmpty } from "../teamRowModel";
+import { MEMBER_SHEET_PIN_SNAP, rowTappable, showSelfRowAboveEmpty, TEAM_EMPTY_COPY, teamEmptyCopy } from "../teamRowModel";
 import { PIN_COPY } from "../../venue/till/pinModel";
 import { tillErrorCopy } from "../../venue/till/tillCopy";
 import { SETTINGS_COPY } from "../../venue/close/dayCloseCopy";
@@ -199,6 +199,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockReleased.value = true;
   mockRole.role = "brand_owner";
+  mockRole.rank = 60;
   mockMembers.rows = [];
   mockMine.mockResolvedValue({ memberId: "m-me", hasPin: false, setAt: null, hardLocked: false, tillDevice: false });
   mockTeamPins.mockResolvedValue([]);
@@ -327,5 +328,41 @@ describe("O5-B1 a manager's reset of another member still works", () => {
     await flush();
     expect(mockReset).toHaveBeenCalledWith("m-other");
     expect(allText(t)).toContain(PIN_COPY.resetDone);
+  });
+});
+
+// #4490 08-O5 fix 4 (device pass at d20ce4857e). Fails on revert: with the
+// sheet back on snapPoint "half" (no memberSheetSnap / onPinPadChange) the
+// first test reads "half"; with the empty state back to "You're working solo"
+// for everyone the second finds the solo words on a staff member's page.
+describe("08-O5 fix 4: the Set your PIN sheet and a staff member's Team page", () => {
+  const sheetSnap = (t: RenderTree): unknown =>
+    t.root.findAll((n) => n.props.testID === "member-detail-sheet" && n.props.snapPoint !== undefined)[0]?.props.snapPoint;
+
+  test("opening the PIN pad makes the sheet the pad at full height (keypad, OK and Close fit); Cancel brings it back", async () => {
+    const t = await mount(<MemberDetailSheet visible entry={SELF} isSelf {...noopSheetProps} />);
+    expect(sheetSnap(t)).toBe("half");
+    await press(t, "till-pin-set");
+    expect(sheetSnap(t)).toBe(MEMBER_SHEET_PIN_SNAP);
+    expect(MEMBER_SHEET_PIN_SNAP).toBeGreaterThanOrEqual(0.9);
+    const text = allText(t);
+    expect(text).not.toContain("This is you");
+    expect(text).not.toContain("What this role does");
+    expect(pressable(t, "till-pin-choose-ok")).toBeDefined();
+    expect(text).toContain("Close");
+    const cancel = t.root.findAll((n) => n.props.label === PIN_COPY.cancel && typeof n.props.onPress === "function")[0];
+    await TestRenderer.act(async () => { (cancel.props.onPress as () => void)(); });
+    expect(sheetSnap(t)).toBe("half");
+    expect(allText(t)).toContain("This is you");
+  });
+
+  test("a staff member who cannot invite sees who manages the team, not 'You're working solo'", async () => {
+    mockRole.role = "venue_staff";
+    mockRole.rank = -1;
+    const t = await mount(<BrandTeamRoute />);
+    const text = allText(t);
+    expect(text).not.toContain("You're working solo");
+    expect(text).toContain(TEAM_EMPTY_COPY.staffTitle);
+    expect(teamEmptyCopy(true).title).toBe("You're working solo");
   });
 });

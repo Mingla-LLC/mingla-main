@@ -9,7 +9,7 @@
  * client sends who has which item (units) or how many people, never a sum.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../../constants/designSystem";
@@ -73,6 +73,24 @@ export function SplitSheet({
   const [active, setActive] = useState(0);
   const left = sale.remainingMinor;
   const scLeft = sale.split?.serviceChargeLeftMinor ?? 0;
+  // #4490 08-O5 fix 4: after "Split", go straight to the shares the server
+  // made. The shares' ids before the request; once the server's answer brings
+  // different shares, the list shows them (a refusal keeps the editor open).
+  const shareIds = shares.map((s) => s.id).join(",");
+  const [sentFrom, setSentFrom] = useState<string | null>(null);
+  useEffect(() => {
+    if (sentFrom !== null && shareIds !== sentFrom && shareIds !== "") {
+      setSentFrom(null);
+      setEditing(false);
+    }
+  }, [sentFrom, shareIds]);
+  useEffect(() => {
+    if (error !== null) setSentFrom(null);
+  }, [error]);
+  const submit = (split: TillSplitInput): void => {
+    setSentFrom(shareIds);
+    void onSetSplit(split);
+  };
 
   if (!editing && shares.length > 0) {
     // The shares, as the server set them (paid ones stay with a tick).
@@ -169,7 +187,7 @@ export function SplitSheet({
             fullWidth
             loading={busy}
             disabled={left < people}
-            onPress={() => void onSetSplit({ mode: "even", count: people })}
+            onPress={() => submit({ mode: "even", count: people })}
             testID="till-split-even-go"
           />
         </View>
@@ -225,7 +243,7 @@ export function SplitSheet({
             fullWidth
             loading={busy}
             disabled={!complete}
-            onPress={() => void onSetSplit({ mode: "by_item", shares: byItemPayload(units, assign) })}
+            onPress={() => submit({ mode: "by_item", shares: byItemPayload(units, assign) })}
             testID="till-split-item-go"
           />
         </View>

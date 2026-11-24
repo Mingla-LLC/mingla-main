@@ -536,7 +536,7 @@ export function PaymentSheet({
         ) : null}
         {share === null ? (
           <MoneyField
-            label={TILL_COPY.payInFull}
+            label={wholeAmount ? TILL_COPY.payInFull : TILL_COPY.payPart}
             valueMinor={amountMinor ?? due}
             onChangeMinor={(next) => setAmountMinor(next)}
             currency={currency}

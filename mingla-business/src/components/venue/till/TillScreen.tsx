@@ -118,6 +118,8 @@ import {
   serverName,
   setDraftQuantity,
   coveredByCredit,
+  payActionShown,
+  saveCheckEnabled,
   depositExcessMinor,
   totalsReady,
   voidAsksRestock,
@@ -629,9 +631,9 @@ export function TillScreen({
                 <Text style={styles.tileName} numberOfLines={2}>{item.name}</Text>
                 <View style={styles.tileFoot}>
                   <Text style={styles.tilePrice}>{item.priceMinor === null ? "--" : money(item.priceMinor)}</Text>
-                  {!sellable ? <Pill variant="draft">{TILL_COPY.soldOut}</Pill> : stock === null ? null : (
+                  {!sellable ? <Pill variant="draft" style={styles.tilePill} testID={`till-item-sold-out-${item.id}`}>{TILL_COPY.soldOut}</Pill> : stock === null ? null : (
                     // #4490 O5 part C: "{n} left" while counted (warning tone at "Warn me at").
-                    <Pill variant={stock.tone === "warn" ? "warn" : "muted"} testID={`till-item-stock-${item.id}`}>{stock.label}</Pill>
+                    <Pill variant={stock.tone === "warn" ? "warn" : "muted"} style={styles.tilePill} testID={`till-item-stock-${item.id}`}>{stock.label}</Pill>
                   )}
                 </View>
               </Pressable>
@@ -798,13 +800,14 @@ export function TillScreen({
           label={TILL_COPY.saveCheck}
           variant="secondary"
           size="md"
-          disabled={busy || nothingOnCheck}
+          disabled={busy || nothingOnCheck || !saveCheckEnabled(sale, draft)}
           onPress={() => setNameSheet(true)}
           style={styles.grow}
           testID="till-save"
         />
       </View>
-      <Button
+      {/* #4490 08-O5 fix 4: nothing due on a paid check, so no "Pay 0.00". */}
+      {payActionShown(sale, draft) ? <Button
         label={payLabel}
         variant="primary"
         size="lg"
@@ -834,7 +837,7 @@ export function TillScreen({
           })
         }
         testID="till-pay"
-      />
+      /> : null}
     </View>
   );
 
@@ -1163,7 +1166,8 @@ export function TillScreen({
           <Pressable accessibilityRole="button" onPress={() => setBasketSheet(true)} style={styles.bottomInfo} testID="till-basket-open">
             <Text style={styles.h3}>{`${itemCount} · ${ready && sale !== null ? money(sale.remainingMinor) : "--"}`}</Text>
           </Pressable>
-          <Button label={payLabel} variant="primary" size="md" disabled={nothingOnCheck || busy}
+          {/* #4490 08-O5 fix 4: a paid check opens as "View check", never "Pay 0.00". */}
+          <Button label={payActionShown(sale, draft) ? payLabel : TILL_COPY.viewCheck} variant="primary" size="md" disabled={nothingOnCheck || busy}
             onPress={() => setBasketSheet(true)} testID="till-bar-pay" />
         </View>
       ) : null}
@@ -2060,12 +2064,15 @@ const styles = StyleSheet.create({
   catalogScroll: { padding: space[4], gap: space[3] },
   catalogCol: { gap: space[3] },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: space[3] },
-  tile: { width: 160, minHeight: 88, padding: space[3], borderRadius: radius.lg, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, justifyContent: "space-between", gap: space[2] },
+  tile: { width: 160, minHeight: 88, padding: space[3], borderRadius: radius.lg, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, justifyContent: "space-between", gap: space[2], overflow: "hidden" },
   tilePhone: { width: "47%" },
   tilePressed: { backgroundColor: color.card2 },
   tileOff: { opacity: 0.5 },
   tileName: { ...type.body, color: color.text1 },
-  tileFoot: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[1] },
+  // #4490 08-O5 fix 4: the price and its chip wrap onto two lines when the
+  // tile is too narrow for both, so "Sold out" never runs into the next tile.
+  tileFoot: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: space[1] },
+  tilePill: { flexShrink: 1, maxWidth: "100%" },
   tilePrice: { ...type.small, color: color.text2 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   basket: { flex: 1, gap: space[3] },

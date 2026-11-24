@@ -45,6 +45,7 @@ import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 import { VenueAccessEditor } from "./VenueAccessEditor";
 import { LazyTillPinSection } from "./LazyTillPinSection";
+import { memberSheetSnap } from "./teamRowModel";
 
 // ORCH-1384 web eager-bundle budget fix — INLINE error-copy copy.
 //
@@ -145,11 +146,18 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
     useState<boolean>(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const [venueGrants, setVenueGrants] = useState<VenueAccessGrant[]>([]);
+  // #4490 08-O5 fix 4: while the Till PIN pad is open the sheet is the pad
+  // (full height, nothing above it), so the keypad, OK and Close all fit.
+  const [pinPadOpen, setPinPadOpen] = useState<boolean>(false);
   const disconnectMutation = useDisconnectLink();
 
   useEffect(() => {
     setVenueGrants(entry?.venueGrants ?? []);
+    setPinPadOpen(false);
   }, [entry]);
+  useEffect(() => {
+    if (!visible) setPinPadOpen(false);
+  }, [visible]);
 
   const handleConfirm = useCallback((): void => {
     if (entry === null) return;
@@ -219,13 +227,15 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
   return (
     <Sheet visible={visible}
       onClose={handleSheetClose}
-      snapPoint="half"
+      snapPoint={memberSheetSnap(pinPadOpen)}
       dismissDisabled={removePending}
+      testID="member-detail-sheet"
     >
       <ScrollView
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
       >
+        {pinPadOpen ? null : (<>
         <Text style={styles.title}>{entry.inviteeName}</Text>
         <Text style={styles.email}>{entry.inviteeEmail}</Text>
 
@@ -275,12 +285,14 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
           </View>
         ) : null}
 
+        </>)}
+
         {isAccepted ? (
           // #4490 spec 08 O5 (§2 screen 13): your own Till PIN, or a manager's
           // reset of this member's. Inline in this sheet, shown only while the
           // Till is released; renders nothing otherwise.
           <LazyTillPinSection brandId={entry.brandId} memberId={entry.id} memberName={entry.inviteeName}
-            own={isSelf} onOwnPinSaved={onOwnPinSaved} />
+            own={isSelf} onOwnPinSaved={onOwnPinSaved} onPinPadChange={setPinPadOpen} />
         ) : null}
 
         {showPartnerDisconnect ? (
@@ -335,7 +347,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
             />
           </View>
         ) : (
-          <View style={styles.actions}>
+          <View style={pinPadOpen ? styles.actionsTight : styles.actions}>
             <Button
               label="Close"
               onPress={handleSheetClose}
@@ -501,6 +513,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     paddingTop: space[6],
+  },
+  actionsTight: {
+    paddingTop: space[2],
   },
   actionSpacer: {
     height: space[2],

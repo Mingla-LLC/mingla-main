@@ -300,6 +300,34 @@ export function coveredByCredit(sale: TillSale | null): boolean {
 }
 
 /**
+ * #4490 08-O5 fix 4: a check that is paid (or refunded or voided) takes no
+ * more money and has nothing left to save.
+ */
+export function checkSettled(sale: TillSale | null): boolean {
+  return sale !== null && sale.state !== "open" && sale.state !== "paying";
+}
+
+/**
+ * #4490 08-O5 fix 4: the Pay button shows only while something is due (or
+ * while unsent lines are still to be priced, or a deposit closes the check);
+ * a paid check never offers "Pay 0.00". Display rule only; the server decides.
+ */
+export function payActionShown(sale: TillSale | null, draft: readonly DraftLine[]): boolean {
+  if (draft.length > 0) return !checkSettled(sale);
+  if (sale === null) return true;
+  if (checkSettled(sale)) return false;
+  return sale.remainingMinor > 0 || coveredByCredit(sale);
+}
+
+/**
+ * #4490 08-O5 fix 4: "Save check" saves new lines (or a new check); with
+ * nothing changed, or on a paid check, there is nothing to save.
+ */
+export function saveCheckEnabled(sale: TillSale | null, draft: readonly DraftLine[]): boolean {
+  return draft.length > 0 && !checkSettled(sale);
+}
+
+/**
  * #4490 08-O4 fix 3 (spec 08 §15): the part of the deposit the bill does not
  * need (it goes back to the guest when the check is finished). Display only.
  */

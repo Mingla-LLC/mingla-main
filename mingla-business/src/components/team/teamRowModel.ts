@@ -24,3 +24,30 @@ export function rowTappable(row: TeamRowLike, tillReleased: boolean): boolean {
 export function showSelfRowAboveEmpty(rows: readonly TeamRowLike[], tillReleased: boolean): boolean {
   return rows.length === 1 && rows[0].status === "self" && rowTappable(rows[0], tillReleased);
 }
+
+/**
+ * #4490 08-O5 fix 4: the member sheet's height. Half while it shows the
+ * member; the tallest sheet while your own Till PIN pad is open, so the dots,
+ * the whole keypad, OK and Close fit on a small phone without scrolling.
+ */
+export const MEMBER_SHEET_PIN_SNAP = 0.95;
+export function memberSheetSnap(pinPadOpen: boolean): "half" | number {
+  return pinPadOpen ? MEMBER_SHEET_PIN_SNAP : "half";
+}
+
+/**
+ * #4490 08-O5 fix 4: the Team page when it lists nobody but you. Someone who
+ * can invite runs the brand alone ("working solo"); a staff member who cannot
+ * invite only sees themselves, so the page says that, not that they are solo.
+ */
+export const TEAM_EMPTY_COPY = {
+  soloTitle: "You're working solo",
+  soloBody: "Tap + to invite a team member.",
+  staffTitle: "Your team is managed by your brand admin",
+  staffBody: "You can see your own place here. Ask a brand admin to add or change team members.",
+} as const;
+export function teamEmptyCopy(canInvite: boolean): { title: string; description: string } {
+  return canInvite
+    ? { title: TEAM_EMPTY_COPY.soloTitle, description: TEAM_EMPTY_COPY.soloBody }
+    : { title: TEAM_EMPTY_COPY.staffTitle, description: TEAM_EMPTY_COPY.staffBody };
+}

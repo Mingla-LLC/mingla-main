@@ -14,7 +14,7 @@
  * factory); nothing persisted; the PIN itself only in PinPad's state.
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -50,6 +50,11 @@ export interface TillPinSectionProps {
   own?: boolean;
   /** Your own PIN was saved: the screen closes the sheet and shows a toast. */
   onOwnPinSaved?: (message: string) => void;
+  /**
+   * #4490 08-O5 fix 4: told when the PIN pad opens (true) and closes (false),
+   * so the sheet can give the keypad its full height.
+   */
+  onPinPadChange?: (open: boolean) => void;
 }
 
 type Step = { kind: "idle" } | { kind: "choose"; error: string | null } | { kind: "confirm"; first: string };
@@ -66,7 +71,7 @@ export function TillPinSection(props: TillPinSectionProps): React.ReactElement |
   return <TillPinSectionBody {...props} />;
 }
 
-function TillPinSectionBody({ brandId, memberId, memberName, own: ownRow = false, onOwnPinSaved }: TillPinSectionProps): React.ReactElement | null {
+function TillPinSectionBody({ brandId, memberId, memberName, own: ownRow = false, onOwnPinSaved, onPinPadChange }: TillPinSectionProps): React.ReactElement | null {
   const queryClient = useQueryClient();
   const mine = useQuery({
     queryKey: tillPinTeamKeys.mine(brandId),
@@ -83,6 +88,11 @@ function TillPinSectionBody({ brandId, memberId, memberName, own: ownRow = false
   });
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const padOpen = step.kind !== "idle";
+  useEffect(() => {
+    onPinPadChange?.(padOpen);
+  }, [onPinPadChange, padOpen]);
+  useEffect(() => () => onPinPadChange?.(false), [onPinPadChange]);
 
   const setPin = useMutation({
     mutationFn: (pin: string) => setMyTillPin({ brandId, pin }),

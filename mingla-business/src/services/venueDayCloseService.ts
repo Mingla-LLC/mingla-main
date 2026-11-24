@@ -102,6 +102,8 @@ export interface DayLatePayment {
   tipMinor: number;
   paidAtLocal: string;
   checkLabel: string | null;
+  /** #4490 08-O5 fix 4: who took the payment (null from a server before it). */
+  takenBy: DayPerson | null;
 }
 
 export interface DayClose {
@@ -283,6 +285,7 @@ export function mapDaySummary(v: unknown): DaySummary {
           tipMinor: num(x.tipMinor),
           paidAtLocal: str(x.paidAtLocal),
           checkLabel: strOrNull(x.checkLabel),
+          takenBy: x.takenBy === undefined || x.takenBy === null ? null : mapPerson(x.takenBy),
         };
       }),
       refundCount: num(late.refundCount),

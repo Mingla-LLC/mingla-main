@@ -160,6 +160,20 @@ export function pinAppend(pin: string, digit: string): string {
   return pin + digit;
 }
 
+/**
+ * #4490 08-O5 fix 4: what a physical key does on a web PIN pad: a digit
+ * (0-9, the number row or the keypad), Backspace removes one, Enter is OK.
+ * Anything else (and any key with Ctrl, Alt or Cmd held) is not the pad's.
+ */
+export type PinKeyAction = { kind: "digit"; digit: string } | { kind: "back" } | { kind: "submit" };
+export function pinKeyAction(key: string, modified = false): PinKeyAction | null {
+  if (modified) return null;
+  if (/^[0-9]$/.test(key)) return { kind: "digit", digit: key };
+  if (key === "Backspace") return { kind: "back" };
+  if (key === "Enter") return { kind: "submit" };
+  return null;
+}
+
 export function pinComplete(pin: string): boolean {
   return pin.length >= PIN_MIN_DIGITS && pin.length <= PIN_MAX_DIGITS && /^[0-9]+$/.test(pin);
 }

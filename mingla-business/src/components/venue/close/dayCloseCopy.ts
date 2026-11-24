@@ -101,6 +101,9 @@ export const CLOSE_COPY = {
   lateRow: (method: string, time: string): string => `${method} · landed ${time}`,
   lateRefunds: (amount: string): string => `${amount} refunded since close`,
   latePill: "Late",
+  // #4490 08-O5 fix 4: a late payment on a check with no name or QR spot.
+  lateTakenBy: (name: string): string => `Taken by ${name}`,
+  latePaymentUntitled: "Payment with no check name",
   drawerTitle: "Cash drawer",
   drawerHint: "Both count in Expected in the drawer. Needs money rights.",
   setFloat: "Set the float",

@@ -7,12 +7,12 @@
  * state only and cleared on submit.
  */
 
-import React, { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, size, space, type } from "../../../constants/designSystem";
 import { Button } from "../../ui/Button";
-import { PIN_COPY, PIN_MAX_DIGITS, pinAppend, pinComplete } from "./pinModel";
+import { PIN_COPY, PIN_MAX_DIGITS, pinAppend, pinComplete, pinKeyAction } from "./pinModel";
 
 export interface PinPadProps {
   /** Shown above the dots ("Enter your PIN", "Enter it again"). */
@@ -39,6 +39,28 @@ export function PinPad({ title, subtitle = null, error = false, busy = false, di
     setPin("");
     onSubmit(entered);
   }, [onSubmit, pin]);
+
+  // #4490 08-O5 fix 4: on web the keyboard types the PIN too (0-9, Backspace,
+  // Enter = OK). Native keeps the on-screen keys only. A key typed into a
+  // text field elsewhere is that field's, not the pad's.
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  useEffect(() => {
+    if (Platform.OS !== "web" || off || typeof window === "undefined") return undefined;
+    const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
+      const tag = typeof target?.tagName === "string" ? target.tagName.toUpperCase() : "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable === true) return;
+      const action = pinKeyAction(e.key, e.ctrlKey || e.metaKey || e.altKey);
+      if (action === null) return;
+      e.preventDefault();
+      if (action.kind === "digit") press(action.digit);
+      else if (action.kind === "back") back();
+      else submitRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [back, off, press]);
 
   const key = (label: string, onPress: () => void, a11y: string, id: string): React.ReactElement => (
     <Pressable

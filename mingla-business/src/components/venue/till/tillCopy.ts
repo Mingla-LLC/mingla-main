@@ -15,6 +15,7 @@ export const TILL_COPY = {
   sendToBar: "Send to bar",
   send: "Send",
   saveCheck: "Save check",
+  viewCheck: "View check", // #4490 08-O5 fix 4: the phone bar on a paid check
   soldOut: "Sold out",
   left: (n: number): string => `${n} left`,
   priceUpdated: "Price updated",
@@ -49,6 +50,7 @@ export const TILL_COPY = {
   // Pay sheet
   noTip: "No tip",
   payInFull: "Pay in full",
+  payPart: "Pay part of the bill", // #4490 08-O5 fix 4: a part amount is entered
   scanToPay: "Scan to pay",
   cash: "Cash",
   cashSub: "Work out the change",

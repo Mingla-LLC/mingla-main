@@ -50,7 +50,7 @@ import { Table } from "../../../src/components/ui/Table";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useTillReleased } from "../../../src/hooks/useTillReleased";
-import { rowTappable, showSelfRowAboveEmpty } from "../../../src/components/team/teamRowModel";
+import { rowTappable, showSelfRowAboveEmpty, teamEmptyCopy } from "../../../src/components/team/teamRowModel";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
@@ -509,12 +509,8 @@ export default function BrandTeamRoute(): React.ReactElement {
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="users"
-              title="You're working solo"
-              description={
-                canInvite
-                  ? "Tap + to invite a team member."
-                  : "Ask the brand admin to invite team members."
-              }
+              title={teamEmptyCopy(canInvite).title}
+              description={teamEmptyCopy(canInvite).description}
               cta={
                 canInvite
                   ? {

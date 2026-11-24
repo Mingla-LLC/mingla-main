@@ -15,7 +15,7 @@ import { GlassCard } from "../../ui/GlassCard";
 import { ListRow } from "../../ui/ListRow";
 import { Pill } from "../../ui/Pill";
 import { CLOSE_COPY } from "./dayCloseCopy";
-import { dayLabel, methodLabel } from "./dayCloseModel";
+import { dayLabel, latePaymentTitle, methodLabel } from "./dayCloseModel";
 
 export function DayCloseLate({ summary }: { summary: DaySummary }): React.ReactElement | null {
   const late = summary.late;
@@ -27,7 +27,7 @@ export function DayCloseLate({ summary }: { summary: DaySummary }): React.ReactE
       <GlassCard padding={0}>
         {late.payments.map((p, i) => (
           <ListRow key={p.paymentId} divider={i > 0} icon="qr"
-            title={`${p.checkLabel ?? CLOSE_COPY.person.teamMember} · ${money(p.amountMinor + p.tipMinor)}`}
+            title={`${latePaymentTitle(p)} · ${money(p.amountMinor + p.tipMinor)}`}
             subtitle={CLOSE_COPY.lateRow(methodLabel(p.method), p.paidAtLocal)}
             trailing={<Pill variant="info">{CLOSE_COPY.latePill}</Pill>} testID={`day-close-late-${p.paymentId}`} />
         ))}
