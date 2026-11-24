@@ -29,6 +29,9 @@
 --          per call and one notice to the owner per record comment; it
 --          refuses a caller that is not the bridge (42501) and bad input
 --          (22023).
+--   HALT   (A3) ops_release_batch_halted writes one 'stopped' release_record
+--          row per run and one owner notice per batch; refuses bad input
+--          (22023) and a caller that is not the bridge (42501).
 --   LOG    ops_agent_log_action_check keeps every older action and also
 --          allows guide_deferred and release_record_poisoned; the outcome rule
 --          is unchanged.
@@ -303,6 +306,33 @@ select pg_temp.chk('POISON', 'a caller that is not the bridge is refused 42501',
   pg_temp.state($q$select public.ops_release_record_poisoned(994592, null, 'INGEST_FAILED')$q$), '42501');
 select set_config('request.jwt.claim.role', 'service_role', true);
 
+-- ───────────────────────────── HALT (amendment A3) ─────────────────────────────
+select pg_temp.chk('HALT', 'the bridge records a batch whose every record failed',
+  pg_temp.state($q$select public.ops_release_batch_halted(994600, 994609, 10, 'INGEST_FAILED', E'permission denied\nfor function x')$q$), 'ok');
+select pg_temp.chk('HALT', 'and again on the next run (same batch)',
+  pg_temp.state($q$select public.ops_release_batch_halted(994600, 994609, 10, 'INGEST_FAILED', 'permission denied for function x')$q$), 'ok');
+select pg_temp.chk('HALT', 'one stopped row in the Admin log per run, naming the batch and the first error',
+  (select count(*)::text || ':' || min(action) || ':' || min(outcome) || ':' || min(detail->>'from_pr') || '-' || min(detail->>'to_pr')
+          || ':' || min(detail->>'first_error')
+     from public.ops_agent_log where detail->>'batch_halted' = 'true' and detail->>'from_pr' = '994600'),
+  '2:release_record:stopped:994600-994609:permission denied for function x');
+select pg_temp.chk('HALT', 'the owner is told once per batch',
+  (select count(*)::text || ':' || coalesce(min(u.email), '-') from public.team_mentions m join auth.users u on u.id = m.target_user_id
+    where m.source_kind = 'ops_activity' and m.body_excerpt like '%PRs #994600 to #994609%'), '1:own.r4580@test.local');
+select pg_temp.chk('HALT', 'the halt row does not read as a refused status post',
+  (select count(*)::text from public.ops_agent_log where detail->>'batch_halted' = 'true' and detail ? 'status_refused'), '0');
+select pg_temp.chk('HALT', 'bad input is refused 22023',
+  pg_temp.state($q$select public.ops_release_batch_halted(994600, 994609, 1, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(994609, 994600, 10, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(0, 994600, 10, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(994600, 994609, 101, 'INGEST_FAILED', 'x')$q$)
+  || ',' || pg_temp.state($q$select public.ops_release_batch_halted(994600, 994609, 10, 'not a code', 'x')$q$),
+  '22023,22023,22023,22023,22023');
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select pg_temp.chk('HALT', 'a caller that is not the bridge is refused 42501',
+  pg_temp.state($q$select public.ops_release_batch_halted(994600, 994609, 10, 'INGEST_FAILED', 'x')$q$), '42501');
+select set_config('request.jwt.claim.role', 'service_role', true);
+
 -- ───────────────────────────── LOG ─────────────────────────────
 select pg_temp.chk('LOG', 'the Admin log keeps the older actions and learns the two new ones',
   (select (pg_get_constraintdef(oid) like '%backfill_confirmed%' and pg_get_constraintdef(oid) like '%card_added%'
@@ -317,14 +347,15 @@ select pg_temp.chk('LOG', 'the outcome rule is unchanged (error is still refused
 select pg_temp.chk('GRANTS', 'the new functions are closed to anon and authenticated, open to service_role',
   (select string_agg(r || ':' || coalesce(has_function_privilege(r, to_regprocedure(f), 'EXECUTE')::text, 'missing'), ',' order by f, r)
      from unnest(array['public.ops_release_guide_watchers()', 'public.ops_release_guide_budget()',
-                       'public.ops_release_record_poisoned(integer, text, text)']) f,
+                       'public.ops_release_record_poisoned(integer, text, text)',
+                       'public.ops_release_batch_halted(integer, integer, integer, text, text)']) f,
           unnest(array['anon', 'authenticated', 'service_role']) r),
-  'anon:false,authenticated:false,service_role:true,anon:false,authenticated:false,service_role:true,anon:false,authenticated:false,service_role:true');
+  'anon:false,authenticated:false,service_role:true,anon:false,authenticated:false,service_role:true,anon:false,authenticated:false,service_role:true,anon:false,authenticated:false,service_role:true');
 select pg_temp.chk('GRANTS', 'the definer functions pin their search_path',
   (select string_agg(p.proname || ':' || p.prosecdef::text || ':' || coalesce(array_to_string(p.proconfig, ';'), '-'), ',' order by p.proname)
      from pg_proc p where p.pronamespace = 'public'::regnamespace
-      and p.proname in ('ops_release_guide_watchers', 'ops_release_record_poisoned', 'ops_release_guide_apply')),
-  'ops_release_guide_apply:true:search_path=pg_catalog, pg_temp,ops_release_guide_watchers:true:search_path=pg_catalog, pg_temp,ops_release_record_poisoned:true:search_path=pg_catalog, pg_temp');
+      and p.proname in ('ops_release_guide_watchers', 'ops_release_record_poisoned', 'ops_release_guide_apply', 'ops_release_batch_halted')),
+  'ops_release_batch_halted:true:search_path=pg_catalog, pg_temp,ops_release_guide_apply:true:search_path=pg_catalog, pg_temp,ops_release_guide_watchers:true:search_path=pg_catalog, pg_temp,ops_release_record_poisoned:true:search_path=pg_catalog, pg_temp');
 
 -- ───────────────────────────── report ─────────────────────────────
 do $r$

@@ -57,7 +57,7 @@ const PRS = Array.from({ length: 25 }, (_, i) => 8000 + i);
 
 type Call = { name: string; args: Json };
 
-function fakeAdmin(opts: { badPr?: number; poisonFails?: boolean; onIngest?: () => void } = {}) {
+function fakeAdmin(opts: { badPr?: number; poisonFails?: boolean; onIngest?: () => void; allFail?: () => boolean } = {}) {
   const calls: Call[] = [];
   const ingested: number[] = [];
   const admin: BridgeAdmin = {
@@ -68,6 +68,9 @@ function fakeAdmin(opts: { badPr?: number; poisonFails?: boolean; onIngest?: () 
         opts.onIngest?.();
         const rows = args.p_records as Json[];
         const prs = rows.map((r) => Number((r.data as Json).pr));
+        if (opts.allFail?.()) {
+          return Promise.resolve({ data: null, error: { code: "42501", message: "permission denied for function ops_release_records_ingest" } });
+        }
         if (opts.badPr !== undefined && prs.includes(opts.badPr)) {
           return Promise.resolve({
             data: null,
@@ -84,6 +87,7 @@ function fakeAdmin(opts: { badPr?: number; poisonFails?: boolean; onIngest?: () 
             : { data: null, error: null },
         );
       }
+      if (name === "ops_release_batch_halted") return Promise.resolve({ data: null, error: null });
       if (name === "ops_release_status_due") return Promise.resolve({ data: [], error: null });
       return Promise.resolve({ data: {}, error: null });
     },
@@ -135,6 +139,9 @@ Deno.test("#4580 SC-6: a record that fails on its own is poisoned out loud; ever
   assertEquals(db.cursorSets().at(-1), at(25), "the cursor ends at the newest comment");
   assert(res.failed >= 1);
   assert(lines.some((l) => l.event === "release_record_poisoned" && l.pr === bad && l.code === "INGEST_TIMEOUT"));
+  // A3 (b): a mixed batch keeps D3; the circuit breaker stays shut.
+  assertEquals(db.calls.filter((c) => c.name === "ops_release_batch_halted").length, 0);
+  assertEquals(res.release_records.halted, null);
 });
 
 Deno.test("#4580 SC-6: if the poison record cannot be written, the cursor never passes the record", async () => {
@@ -183,4 +190,82 @@ Deno.test("#4580 SC-7: a run whose time budget runs out after chunk 2 of 3 leave
   assert(!db.cursorSets().includes(at(25)), "not the newest comment");
   assert(res.deferred.includes("release_records"));
   assertEquals(res.release_records.ingested, 20);
+});
+
+// Amendment A3: a batch in which EVERY record fails is a broken ingest, not a
+// bad record. Nothing is skipped and the cursor does not move; the run stops
+// and says so once; the next run retries the same batch.
+Deno.test("#4580 A3 (a): every record of a batch fails: cursor unchanged, nothing poisoned, one halt record", async () => {
+  const lines: Json[] = [];
+  const db = fakeAdmin({ allFail: () => true });
+  const res = await runReleaseBridges(db.admin, fakeGitHub(page(PRS)), { log: (l) => lines.push(l) });
+  assertEquals(db.cursorSets(), [], "the cursor does not move");
+  assertEquals(db.calls.filter((c) => c.name === "ops_release_record_poisoned").length, 0, "nothing is poisoned");
+  const halted = db.calls.filter((c) => c.name === "ops_release_batch_halted");
+  assertEquals(halted.length, 1, "one log row and one notice, through one call");
+  assertEquals(halted[0].args, {
+    p_from_pr: 8000,
+    p_to_pr: 8009,
+    p_count: 10,
+    p_code: "INGEST_FAILED",
+    p_first_error: "permission denied for function ops_release_records_ingest",
+  });
+  // The run stopped at the first batch: 1 chunk call + 10 single retries.
+  assertEquals(db.calls.filter((c) => c.name === "ops_release_records_ingest").length, 11);
+  assertEquals(res.release_records.halted?.from_pr, 8000);
+  assertEquals(res.release_records.poisoned, []);
+  assert(res.deferred.includes("release_records"));
+  assert(res.failed >= 1);
+  assert(lines.some((l) => l.event === "release_batch_halted" && l.count === 10));
+});
+
+Deno.test("#4580 A3 (a): a halt in the second batch keeps the cursor at the end of the first", async () => {
+  let n = 0;
+  // The first chunk call succeeds; everything after it fails.
+  const db = fakeAdmin({ allFail: () => ++n > 1 });
+  const res = await runReleaseBridges(db.admin, fakeGitHub(page(PRS)));
+  assertEquals(db.cursorSets(), [at(10)]);
+  assertEquals(db.calls.filter((c) => c.name === "ops_release_record_poisoned").length, 0);
+  assertEquals(res.release_records.halted?.from_pr, 8010);
+  assertEquals(res.release_records.halted?.to_pr, 8019);
+});
+
+Deno.test("#4580 A3 (a): the halt record itself failing still never moves the cursor", async () => {
+  const db = fakeAdmin({ allFail: () => true });
+  const base = db.admin;
+  const admin: BridgeAdmin = {
+    rpc(name, args) {
+      if (name === "ops_release_batch_halted") return Promise.resolve({ data: null, error: { code: "PGRST202", message: "missing" } });
+      return base.rpc(name, args);
+    },
+  };
+  const res = await runReleaseBridges(admin, fakeGitHub(page(PRS)));
+  assertEquals(db.cursorSets(), []);
+  assertEquals(db.calls.filter((c) => c.name === "ops_release_record_poisoned").length, 0);
+  assert(res.failed >= 1);
+});
+
+Deno.test("#4580 A3 (b): a lone record that fails in a one-record batch is still skipped audibly (D3)", async () => {
+  // 21 records: the last batch holds only PR 8020.
+  const db = fakeAdmin({ badPr: 8020 });
+  const res = await runReleaseBridges(db.admin, fakeGitHub(page(PRS.slice(0, 21))));
+  assertEquals(res.release_records.poisoned, [8020]);
+  assertEquals(db.calls.filter((c) => c.name === "ops_release_batch_halted").length, 0);
+  assertEquals(db.cursorSets().at(-1), at(21));
+});
+
+Deno.test("#4580 A3 (c): all fail, then the next run succeeds: every record is ingested and the cursor advances", async () => {
+  let broken = true;
+  const db = fakeAdmin({ allFail: () => broken });
+  const first = await runReleaseBridges(db.admin, fakeGitHub(page(PRS)));
+  assertEquals(db.cursorSets(), []);
+  assertEquals(first.release_records.ingested, 0);
+  broken = false;
+  const second = await runReleaseBridges(db.admin, fakeGitHub(page(PRS)));
+  assertEquals([...db.ingested].sort(), [...PRS].sort(), "every record arrives, none was skipped");
+  assertEquals(second.release_records.ingested, 25);
+  assertEquals(second.release_records.poisoned, []);
+  assertEquals(second.release_records.halted, null);
+  assertEquals(db.cursorSets().at(-1), at(25));
+  assertEquals(db.calls.filter((c) => c.name === "ops_release_record_poisoned").length, 0);
 });

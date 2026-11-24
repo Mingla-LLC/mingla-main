@@ -16,6 +16,8 @@
 --     "is Live" notice per release per pass instead of one per entry.
 -- A4. ops_release_record_poisoned(): the audible record of a release record
 --     the bridge had to skip because it fails on its own.
+-- A4b. ops_release_batch_halted() (amendment A3): when every record of a
+--     batch fails, nothing is skipped; one log row and one owner notice.
 --
 -- ops_release_records_ingest(jsonb) is not changed: its call to
 -- ops_release_guide_apply() is safe once the callee is bounded.
@@ -27,7 +29,8 @@
 -- 20280626014398_issue_4398_review_and_notices.sql, then
 --   DROP FUNCTION public.ops_release_guide_watchers(),
 --                 public.ops_release_guide_budget(),
---                 public.ops_release_record_poisoned(integer, text, text);
+--                 public.ops_release_record_poisoned(integer, text, text),
+--                 public.ops_release_batch_halted(integer, integer, integer, text, text);
 -- and, once no ops_agent_log row uses the two actions, restore
 -- ops_agent_log_action_check from 20271202003980_issue_3980_synced_w4_backfills_guide.sql.
 -- Warning: rolling back restores the timeout (one PR naming ~90+ entries
@@ -333,5 +336,42 @@ REVOKE ALL ON FUNCTION public.ops_release_record_poisoned(integer, text, text) F
 GRANT EXECUTE ON FUNCTION public.ops_release_record_poisoned(integer, text, text) TO service_role;
 COMMENT ON FUNCTION public.ops_release_record_poisoned(integer, text, text) IS
   'Issue #4580. The bridge skipped a release record that fails on its own: one stopped row in the Admin log (release_record_poisoned) and one Admin notice (alert) to the owner, once per record comment.';
+
+-- A4b (amendment A3). Every record of a batch failed (more than one record):
+-- that is not a bad record but a broken ingest, so nothing is skipped. The
+-- bridge stops the run without moving the cursor, and this writes one
+-- 'stopped' row in the Admin log per run and one notice to the owner per
+-- batch; the next run retries the same batch.
+CREATE OR REPLACE FUNCTION public.ops_release_batch_halted(p_from_pr integer, p_to_pr integer, p_count integer,
+                                                           p_code text, p_first_error text) RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $function$
+DECLARE v_boss text; v_error text;
+BEGIN
+  PERFORM public.ops_service_only();
+  IF p_from_pr IS NULL OR p_from_pr NOT BETWEEN 1 AND 9999999 OR p_to_pr IS NULL OR p_to_pr NOT BETWEEN p_from_pr AND 9999999
+     OR p_count IS NULL OR p_count NOT BETWEEN 2 AND 100
+     OR p_code IS NULL OR p_code !~ '^[A-Z0-9_]{1,60}$' THEN
+    RAISE EXCEPTION 'invalid_halted_batch: Send the batch''s first and last pull request, its size (2 to 100) and a short code.' USING ERRCODE = '22023';
+  END IF;
+  v_error := COALESCE(NULLIF(left(public.ops_one_line(p_first_error), 160), ''), 'no message');
+  PERFORM public.ops_log_write('system@usemingla.com', 'system', 'release_record', 'stopped', NULL, 'release', NULL,
+    format('Release-record sync stopped: all %s records of PRs #%s to #%s failed (%s: %s). Nothing was skipped; the next run retries them.',
+           p_count, p_from_pr, p_to_pr, p_code, v_error),
+    jsonb_build_object('batch_halted', true, 'from_pr', p_from_pr, 'to_pr', p_to_pr, 'count', p_count, 'code', p_code, 'first_error', v_error));
+  v_boss := public.ops_owner_email();
+  IF v_boss IS NOT NULL THEN
+    PERFORM public.ops_activity_notice('alert', md5('release_batch_halted:pr-' || p_from_pr || '-' || p_to_pr)::uuid,
+      ARRAY[v_boss],
+      left(format('Release-record sync stopped: all %s records of PRs #%s to #%s failed (%s: %s). Nothing was skipped; it retries every run.',
+                  p_count, p_from_pr, p_to_pr, p_code, v_error), 280),
+      'https://admin.usemingla.com/#/work-board');
+  END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.ops_release_batch_halted(integer, integer, integer, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_release_batch_halted(integer, integer, integer, text, text) TO service_role;
+COMMENT ON FUNCTION public.ops_release_batch_halted(integer, integer, integer, text, text) IS
+  'Issue #4580 (A3). Every record of a release-record batch failed: one stopped row in the Admin log (action release_record, detail batch_halted) per run and one Admin notice (alert) to the owner per batch. Nothing is skipped and the cursor does not move.';
 
 COMMIT;

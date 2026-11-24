@@ -133,7 +133,14 @@ const later = (a: string | null, b: string | null | undefined): string | null =>
 };
 
 /** #4580: what the release-record step did; poisoned lists the PRs skipped. */
-export type ReleaseRecordsResult = { ingested: number; invalid: number; completed: number[]; poisoned: number[] };
+export type ReleaseRecordsResult = {
+  ingested: number;
+  invalid: number;
+  completed: number[];
+  poisoned: number[];
+  /** #4580 (A3): the batch whose every record failed; the run stopped there. */
+  halted: { from_pr: number; to_pr: number; count: number; code: string; first_error: string } | null;
+};
 
 /** #4580: oldest first (ties by comment link), so the cursor only moves forward. */
 function byCommentedAt(a: Json, b: Json): number {
@@ -145,6 +152,12 @@ function byCommentedAt(a: Json, b: Json): number {
   const ua = String(a.comment_url ?? "");
   const ub = String(b.comment_url ?? "");
   return ua < ub ? -1 : ua > ub ? 1 : 0;
+}
+
+/** #4580 (A3): a PostgREST error's message, one line, at most 160 characters. */
+function errorMessage(error: unknown): string {
+  const raw = error && typeof error === "object" && "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
+  return raw.replace(/\s+/g, " ").trim().slice(0, 160) || "no message";
 }
 
 /** #4580: the SQLSTATE of a PostgREST error (57014 is a statement timeout). */
@@ -176,7 +189,7 @@ export async function runReleaseBridges(
   const minBudget = opts.minBudget ?? MIN_BUDGET;
   const log = opts.log ?? (() => {});
   const result: BridgeResult = {
-    release_records: { ingested: 0, invalid: 0, completed: [], poisoned: [] },
+    release_records: { ingested: 0, invalid: 0, completed: [], poisoned: [], halted: null },
     main_commits: { inserted: 0 },
     feature_guide_coverage: null,
     statuses_posted: 0,
@@ -207,7 +220,10 @@ export async function runReleaseBridges(
   // record that fails on its own is recorded (ops_release_record_poisoned),
   // listed in the run result and skipped, so it can never freeze the records
   // after it. Nothing is skipped without that record: if it cannot be
-  // written, the run stops before the cursor passes the record.
+  // written, the run stops before the cursor passes the record. (A3) When
+  // every record of a batch of two or more fails, nothing is skipped: the run
+  // stops before that batch (ops_release_batch_halted says so once) and the
+  // next run retries it.
   try {
     if (mayCall("release_records")) {
       const cursor = await admin.rpc("ops_bridge_cursor", { p_name: "issue_comments" });
@@ -236,6 +252,7 @@ export async function runReleaseBridges(
         if (!r.error) {
           add(r.data);
         } else {
+          const failed: { row: Json; pr: number; code: string; error: unknown }[] = [];
           for (const row of chunk) {
             const one = await admin.rpc("ops_release_records_ingest", { p_records: [row] });
             if (!one.error) {
@@ -243,15 +260,45 @@ export async function runReleaseBridges(
               continue;
             }
             const pr = Number((row.data as Json | undefined)?.pr);
-            const code = errorCode(one.error) === "57014" ? "INGEST_TIMEOUT" : "INGEST_FAILED";
+            failed.push({ row, pr, code: errorCode(one.error) === "57014" ? "INGEST_TIMEOUT" : "INGEST_FAILED", error: one.error });
+          }
+          // #4580 (A3): every record of the batch failed. That is a broken
+          // ingest, not a bad record: skip nothing, leave the cursor where it
+          // is, say so once (Admin log and a notice to the owner) and stop;
+          // the next run retries the same batch.
+          if (chunk.length > 1 && failed.length === chunk.length) {
+            const prs = failed.map((f) => f.pr);
+            const halted = {
+              from_pr: Math.min(...prs),
+              to_pr: Math.max(...prs),
+              count: chunk.length,
+              code: failed[0].code,
+              first_error: errorMessage(failed[0].error),
+            };
+            const said = await admin.rpc("ops_release_batch_halted", {
+              p_from_pr: halted.from_pr,
+              p_to_pr: halted.to_pr,
+              p_count: halted.count,
+              p_code: halted.code,
+              p_first_error: halted.first_error,
+            });
+            if (said.error) throw new Error("RECORD_HALT_FAILED");
+            log({ fn: "ops-bridges", event: "release_batch_halted", ...halted });
+            acc.halted = halted;
+            result.failed += 1;
+            if (!result.deferred.includes("release_records")) result.deferred.push("release_records");
+            handledAll = false;
+            break;
+          }
+          for (const f of failed) {
             const poisoned = await admin.rpc("ops_release_record_poisoned", {
-              p_pr: pr,
-              p_comment_url: typeof row.comment_url === "string" ? row.comment_url : null,
-              p_code: code,
+              p_pr: f.pr,
+              p_comment_url: typeof f.row.comment_url === "string" ? f.row.comment_url : null,
+              p_code: f.code,
             });
             if (poisoned.error) throw new Error("RECORD_POISON_FAILED");
-            log({ fn: "ops-bridges", event: "release_record_poisoned", pr, code });
-            acc.poisoned.push(pr);
+            log({ fn: "ops-bridges", event: "release_record_poisoned", pr: f.pr, code: f.code });
+            acc.poisoned.push(f.pr);
             result.failed += 1;
           }
         }

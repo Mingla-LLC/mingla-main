@@ -5,8 +5,8 @@
 // order with equal timestamps (the cursor may never move backwards), the
 // poisoned record in the LAST chunk, the new edge code against the OLD SQL
 // (no ops_release_record_poisoned: PGRST202 must fail closed), a budget that
-// is already spent (no cursor write at all), and what a systemic ingest
-// failure does today (every record poisoned; documented on #4580).
+// is already spent (no cursor write at all), and a systemic ingest failure
+// (A3: nothing skipped, the cursor stays, the run stops).
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { type BridgeAdmin, type BridgeGitHub, runReleaseBridges } from "../opsBridges.ts";
 
@@ -149,17 +149,17 @@ Deno.test("#4580 tester: a run whose budget is already spent writes no cursor at
   assert(res.deferred.includes("release_records"));
 });
 
-Deno.test("#4580 tester (documents a finding): a systemic ingest failure poisons every record and moves the cursor past them", async () => {
-  // Every ingest call fails (e.g. a broken grant or a bad ingest deploy) while
-  // the poison RPC still works. D3 as specified treats each record as failing
-  // "on its own", so all are skipped. Pinned here so a later fix is a visible,
-  // deliberate change; see the test verdict on #4580.
+// [TEST-MOD-APPROVED #4580] A3 (Seth, 24 Nov) closes N-1: a systemic failure
+// no longer poisons every record; the run stops, skips nothing and retries.
+Deno.test("#4580 tester (N-1, closed by A3): a systemic ingest failure skips nothing and leaves the cursor where it was", async () => {
+  // Every ingest call fails (e.g. a broken grant or a bad ingest deploy).
   const comments = range(12).map((pr, i) => comment(pr, i + 1, 1100 + i));
   const d = db(() => ({ code: "PGRST000" }));
   const res = await runReleaseBridges(d.admin, gh(comments));
-  assertEquals(d.poisoned().length, 12);
-  assertEquals(d.cursorSets().at(-1), at(12));
-  // 2 chunk calls + 12 single-record retries; the single retries do not check the time budget.
-  assertEquals(d.calls.filter((c) => c.name === "ops_release_records_ingest").length, 14);
-  assertEquals(res.failed, 12);
+  assertEquals(d.poisoned().length, 0);
+  assertEquals(d.cursorSets(), []);
+  assertEquals(d.calls.filter((c) => c.name === "ops_release_batch_halted").length, 1);
+  // 1 chunk call + 10 single-record retries, then the run stops.
+  assertEquals(d.calls.filter((c) => c.name === "ops_release_records_ingest").length, 11);
+  assert(res.failed >= 1);
 });
