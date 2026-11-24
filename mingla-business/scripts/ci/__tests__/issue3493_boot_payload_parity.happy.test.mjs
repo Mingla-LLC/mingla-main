@@ -4,13 +4,17 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BASELINE_MOVEMENT_THRESHOLD_BYTES,
+  ONE_TIME_PR_ALLOWANCE,
   assessCommonBaselineMovement,
+  gitSubjectsSince,
+  resolveOneTimeAllowance,
 } from "../bundle-budget-lib.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -213,5 +217,151 @@ describe("#3493 VAT/pricing UI stays out of the eager shared chunk", () => {
         file,
       );
     }
+  });
+});
+
+// Issue #4522 — Seth extended the one-time #4594 allowance to this gate on
+// 2026-11-24 ("Decision from Seth (2026-11-24): the two #4594 gates"). These
+// tests prove the shared entry reaches the movement gate for that one pull
+// request only, and that the 1,024 B threshold stands for everyone else.
+describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => {
+  const SHA = "a".repeat(40);
+  const HEAD = "4522-young-polish";
+  const none = () => [];
+  const merged = () => ["Unrelated (#3900)", "toward #4522: trip partial payments (#4594)"];
+  const prEnv = (headRef, ref) => ({ GITHUB_EVENT_NAME: "pull_request", GITHUB_HEAD_REF: headRef, GITHUB_REF: ref });
+  const mainPush = { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main" };
+  const decide = (env, subjects = none, today = "2026-11-24") =>
+    resolveOneTimeAllowance({
+      env,
+      today,
+      baselineCommit: SHA,
+      subjectsSinceBaseline: subjects,
+      normalLimit: BASELINE_MOVEMENT_THRESHOLD_BYTES,
+    }).entry;
+  const verdictFor = (entry, delta) =>
+    assessCommonBaselineMovement(2_744_094, 2_744_094 + delta, entry ? { oneTimeCap: entry.common } : {});
+
+  test("one table: exactly the #4594 entry, frozen, capped at 23,000 B and dated", () => {
+    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 1);
+    const [only] = ONE_TIME_PR_ALLOWANCE;
+    assert.deepEqual(
+      { issue: only.issue, pr: only.pr, headRef: only.headRef, common: only.common, expiresAfter: only.expiresAfter, approvedBy: only.approvedBy },
+      { issue: 4522, pr: 4594, headRef: HEAD, common: 23_000, expiresAfter: "2026-12-08", approvedBy: "Seth, 2026-11-24" },
+    );
+    assert.ok(Object.isFrozen(ONE_TIME_PR_ALLOWANCE) && Object.isFrozen(only));
+    const budget = readBusiness("scripts/ci/orch-1083-initial-bundle-budget.mjs");
+    assert.doesNotMatch(budget, /const ONE_TIME_PR_ALLOWANCE\s*=/, "orch-1083 must not keep a second table");
+    assert.doesNotMatch(budget, /function resolveOneTimeAllowance/, "orch-1083 must not keep a second resolver");
+    const movement = readBusiness("scripts/ci/bundle-baseline-movement.mjs");
+    assert.match(movement, /normalLimit: BASELINE_MOVEMENT_THRESHOLD_BYTES/);
+  });
+
+  test("PR #4594 on its branch gets the 23,000 B cap; the measured +22,357 B passes only there", () => {
+    const entry = decide(prEnv(HEAD, "refs/pull/4594/merge"));
+    assert.equal(entry, ONE_TIME_PR_ALLOWANCE[0]);
+    const granted = verdictFor(entry, 22_357);
+    assert.equal(granted.ok, true);
+    assert.equal(granted.normalOk, false);
+    assert.equal(granted.normalThreshold, 1_024);
+    assert.equal(verdictFor(entry, 23_001).ok, false, "the cap is a cap, not an exemption");
+    assert.equal(verdictFor(null, 22_357).ok, false);
+  });
+
+  test("every other branch, pull request or missing value keeps 1,024 B", () => {
+    const strangers = [
+      prEnv("3697-host-ads", "refs/pull/4600/merge"),
+      prEnv(HEAD, "refs/pull/4600/merge"),
+      prEnv("3697-host-ads", "refs/pull/4594/merge"),
+      prEnv(`${HEAD}-2`, "refs/pull/4594/merge"),
+      prEnv("", "refs/pull/4594/merge"),
+      prEnv(HEAD, "refs/pull/45940/merge"),
+      {},
+      { GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4594/merge" },
+      { GITHUB_EVENT_NAME: "push", GITHUB_REF: `refs/heads/${HEAD}` },
+      { GITHUB_EVENT_NAME: "merge_group", GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4594/merge" },
+    ];
+    for (const env of strangers) {
+      const entry = decide(env, merged);
+      assert.equal(entry, null, JSON.stringify(env));
+      const verdict = verdictFor(entry, 1_025);
+      assert.equal(verdict.ok, false);
+      assert.equal(verdict.threshold, 1_024);
+    }
+  });
+
+  test("on main it lives only until the baseline includes the merge", () => {
+    assert.equal(decide(mainPush, merged), ONE_TIME_PR_ALLOWANCE[0]);
+    assert.equal(decide(mainPush, none), null);
+    assert.equal(decide(mainPush, () => ["Mentions (#4594) mid-subject (#3901)", "x (#45941)"]), null);
+    assert.equal(decide(mainPush, () => { throw new Error("not a git repository"); }), null);
+  });
+
+  test("dead after its end date and inside a test harness", () => {
+    assert.equal(decide(prEnv(HEAD, "refs/pull/4594/merge"), none, "2026-12-08"), ONE_TIME_PR_ALLOWANCE[0]);
+    assert.equal(decide(prEnv(HEAD, "refs/pull/4594/merge"), none, "2026-12-09"), null);
+    assert.equal(decide(mainPush, merged, "2026-12-09"), null);
+    assert.equal(decide({ ...prEnv(HEAD, "refs/pull/4594/merge"), NODE_TEST_CONTEXT: "child-v8" }), null);
+    assert.equal(decide({ ...mainPush, NODE_TEST_CONTEXT: "child-v8" }, merged), null);
+  });
+
+  test("a cap that is not above the threshold is an error, never a silent widening", () => {
+    for (const cap of [1_024, 0, -1, 1.5, Number.NaN, Infinity, null]) {
+      assert.throws(() => assessCommonBaselineMovement(2_744_094, 2_744_095, { oneTimeCap: cap }), /oneTimeCap/);
+    }
+  });
+
+  test("a shallow main checkout reads only HEAD's subject, and a full clone never falls back", () => {
+    const fakeGit = ({ hasCommit, shallow, head, subject }) => (args) => {
+      if (args[0] === "cat-file") {
+        if (!hasCommit) throw new Error("missing");
+        return "";
+      }
+      if (args[0] === "log" && args[1] === "--format=%s") return "older (#1)\nnewer (#2)\n";
+      if (args[1] === "--is-shallow-repository") return `${shallow}\n`;
+      if (args[0] === "rev-parse" && args[1] === "HEAD") return `${head}\n`;
+      if (args[0] === "log" && args[1] === "-1") return `${subject}\n`;
+      throw new Error(`unexpected git ${args.join(" ")}`);
+    };
+    const squash = "Trip partial payments (#4594)";
+    assert.deepEqual(gitSubjectsSince(SHA, { git: fakeGit({ hasCommit: true }) }), ["older (#1)", "newer (#2)"]);
+    assert.deepEqual(
+      gitSubjectsSince(SHA, { git: fakeGit({ hasCommit: false, shallow: true, head: "b".repeat(40), subject: squash }) }),
+      [squash],
+    );
+    assert.deepEqual(gitSubjectsSince(SHA, { git: fakeGit({ hasCommit: false, shallow: true, head: SHA, subject: squash }) }), []);
+    assert.throws(
+      () => gitSubjectsSince(SHA, { git: fakeGit({ hasCommit: false, shallow: false, head: "b".repeat(40), subject: squash }) }),
+      /not in this full clone/,
+    );
+  });
+
+  test("the movement gate itself prints the refusal in one line and keeps 1,024 B (harness and stranger)", () => {
+    const baseline = JSON.parse(readBusiness("scripts/ci/bundle-baseline.json"));
+    const dir = mkdtempSync(join(tmpdir(), "issue4522-movement-"));
+    const js = join(dir, "_expo/static/js/web");
+    mkdirSync(js, { recursive: true });
+    const common = `__common-${"a".repeat(32)}.js`;
+    const entry = `index-${"b".repeat(32)}.js`;
+    writeFileSync(join(js, common), "x".repeat(baseline.common.raw + 22_357));
+    writeFileSync(join(js, entry), "y".repeat(1_000));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<script src="/_expo/static/js/web/${common}"></script><script src="/_expo/static/js/web/${entry}"></script>`,
+    );
+    const run = (env) =>
+      spawnSync(process.execPath, [join(BUSINESS, "scripts/ci/bundle-baseline-movement.mjs")], {
+        encoding: "utf8",
+        env: { ...process.env, ORCH_1083_WEB_BUILD: dir, ...env },
+      });
+    // Inside node --test the harness guard refuses even PR #4594 on its branch.
+    const harness = run(prEnv(HEAD, "refs/pull/4594/merge"));
+    assert.equal(harness.status, 1);
+    assert.match(harness.stdout, /one-time allowance not applied \(normal \+1,024 B threshold stands\) .*test harness/);
+    assert.match(harness.stderr, /above the shared 1,024 B movement threshold/);
+    const stranger = run({ ...prEnv("3697-host-ads", "refs/pull/4600/merge"), NODE_TEST_CONTEXT: "" });
+    assert.equal(stranger.status, 1);
+    assert.match(stranger.stdout, /not applied .*this is not that pull request/);
+    assert.equal(stranger.stdout.match(/one-time allowance not applied/g)?.length, 1);
   });
 });
