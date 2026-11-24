@@ -218,10 +218,11 @@ describe("META-ORCH-1290 Leg C — public page 'About' pitch (§6)", () => {
     // unchanged and is asserted more strongly below, by source position.
     expect(pageSrc).toContain("{identityBlock}");
     expect(pageSrc.indexOf("{identityBlock}")).toBeLessThan(
-      pageSrc.indexOf("profile.overview.map((sectionId)"),
+      pageSrc.indexOf("profile.overview.map((sectionId"),
     );
     // The pane is driven by the profile's ordered section list.
-    expect(pageSrc).toContain("profile.overview.map((sectionId)");
+    // [TEST-MOD-APPROVED #4490] the map callback now also takes the index.
+    expect(pageSrc).toContain("profile.overview.map((sectionId");
     expect(pageSrc).toContain(
       "Record<VenueSectionId, VenueSectionRenderer>",
     );
