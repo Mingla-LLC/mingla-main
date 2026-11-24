@@ -335,7 +335,8 @@
         "supabase/functions/_shared/opsBridges.ts",
         "supabase/functions/product-avengers-sync/index.ts",
         "supabase/migrations/20280210004179_issue_4179_release_reason_backfill.sql",
-        "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql"
+        "supabase/migrations/20280211004179_issue_4179_release_reason_json_null.sql",
+        "supabase/migrations/20281202004580_issue_4580_release_guide_bounded.sql"
       ]
     },
     {
@@ -2270,6 +2271,7 @@
         "mingla-admin/src/hooks/useDrafts.js",
         "supabase/migrations/20280707004423_issue_4423_w2_ops_set_based_card_builders.sql",
         "supabase/migrations/20280707014423_issue_4423_w2_ops_work_list_review_counts.sql",
+        "supabase/migrations/20281202014580_issue_4580_work_list_timezone_cache.sql",
         "supabase/migrations/20280707024423_issue_4423_w2_sprint_plan_read_first.sql",
         "supabase/migrations/20280707034423_issue_4423_w2_team_inbox_limit_first.sql",
         "mingla-admin/public/fonts/InstrumentSerif-latin-400-normal.woff2",
