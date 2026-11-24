@@ -60,7 +60,11 @@ export async function providerRefundsMade(
       charge: String(a.transaction_reference ?? "?"),
       providerRefundId: String(a.provider_refund_id ?? "unknown"),
       amountMinor: Number(a.amount_cents ?? 0),
-      recorded: false,
+      // Seventh pass (H-2): a second-provider refund the provider confirmed
+      // ('processed') is recorded against its charge the moment that is
+      // written (issue_4522_record_confirmed_cancel_refund), even while
+      // other refunds of the same cancel are still unknown.
+      recorded: a.status === "processed",
     });
   }
   return made;

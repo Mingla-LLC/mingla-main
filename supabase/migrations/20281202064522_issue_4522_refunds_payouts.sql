@@ -807,15 +807,37 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
-  SELECT COALESCE(sum(r.amount_cents - LEAST(r.amount_cents, COALESCE((
-           SELECT sum(x.amount_cents) FROM public.order_installment_refund_applications x
-            WHERE x.refund_id = r.id), 0))), 0)::integer
-    FROM public.refunds r
-   WHERE r.order_id = p_order_id AND r.status = 'succeeded' AND r.order_installment_id IS NULL
+  SELECT (COALESCE((
+    SELECT sum(r.amount_cents - LEAST(r.amount_cents, COALESCE((
+             SELECT sum(x.amount_cents) FROM public.order_installment_refund_applications x
+              WHERE x.refund_id = r.id), 0)))
+      FROM public.refunds r
+     WHERE r.order_id = p_order_id AND r.status = 'succeeded' AND r.order_installment_id IS NULL), 0)
+    -- Seventh pass (H-2): a trip cancel still in progress is one refunds row
+    -- that settles only when every refund it intends is done. The part of it
+    -- the provider has already confirmed on the order's own charge (the
+    -- deposit) is refunded money now and is counted now: second provider,
+    -- its attempt processed; card, its attempt settled with a buyer refund.
+    + COALESCE((
+    SELECT sum(pa.amount_cents)
+      FROM public.refunds r
+      JOIN public.paystack_refund_attempts pa ON pa.local_refund_id = r.id
+     WHERE r.order_id = p_order_id AND r.status = 'pending' AND r.order_installment_id IS NULL
+       AND r.metadata ? 'trip_cancel' AND pa.status = 'processed'
+       AND pa.merchant_note = 'mingla_trip_refund:' || r.id::text || ':deposit'), 0)
+    + COALESCE((
+    SELECT sum(a.buyer_refund_amount_text::bigint)
+      FROM public.refunds r
+      JOIN public.orders o ON o.id = r.order_id
+      JOIN public.ticket_refund_attempts a ON a.refund_id = r.id
+     WHERE r.order_id = p_order_id AND r.status = 'pending' AND r.order_installment_id IS NULL
+       AND r.metadata ? 'trip_cancel' AND a.payment_intent_id = o.stripe_payment_intent_id
+       AND a.status IN ('succeeded_positive', 'not_applicable') AND a.buyer_refund_id IS NOT NULL
+       AND a.buyer_refund_amount_text ~ '^[1-9][0-9]{0,15}$'), 0))::integer
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_order_charge_refunded_cents(uuid) FROM PUBLIC, anon, authenticated, service_role;
 COMMENT ON FUNCTION public.issue_4522_order_charge_refunded_cents(uuid) IS
-  'Issue #4522 (S9-1): what has been refunded of the order''s own charge (the deposit on a plan order): settled refunds of the order minus their parts applied to instalment rows; instalment refunds (order_installment_id) excluded. The one owner of orders.refunded_amount_cents for the refund finalize and the trip-cancel commit.';
+  'Issue #4522 (S9-1, H-2): what has been refunded of the order''s own charge (the deposit on a plan order): settled refunds of the order minus their parts applied to instalment rows, plus the deposit part of a trip cancel still in progress that the provider has confirmed; instalment refunds (order_installment_id) excluded. The one owner of orders.refunded_amount_cents for the refund finalize, the trip-cancel commit and a confirmed refund of a cancel in progress.';
 
 -- Body as 20280305003281 except: instalment parts recorded on their rows
 -- first, and the order total from issue_4522_order_charge_refunded_cents.
@@ -1155,6 +1177,81 @@ END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_settle_trip_cancel_status(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_settle_trip_cancel_status(uuid) TO service_role;
+
+-- Seventh pass (H-2): every refund of a cancel in progress that the provider
+-- confirms is recorded against its own charge at once, whatever happens to
+-- the other refunds of the same cancel. A second-provider refund is
+-- confirmed when its attempt is 'processed' (the refund webhook, the cancel's
+-- read-back, or its own answer all write that row through
+-- record_paystack_refund_outcome); a card refund when its attempt settles
+-- with a buyer refund. An instalment's part goes on its row through the one
+-- owner (issue_3645_mark_installment_refunded; a later replay is a no-op);
+-- the deposit's part on the order (issue_4522_order_charge_refunded_cents).
+-- The cancel itself still completes only when every intended refund is done
+-- (the commit), and the buyer emails go then. Never raises: a recording that
+-- fails here is left to the cancel's own resume, which alerts ops.
+CREATE FUNCTION public.issue_4522_record_confirmed_cancel_refund()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_refund public.refunds%ROWTYPE;
+  v_installment uuid;
+  v_amount bigint;
+  v_charge_refunded integer;
+BEGIN
+  IF TG_TABLE_NAME = 'paystack_refund_attempts' THEN
+    IF NEW.local_refund_id IS NULL
+       OR NEW.merchant_note NOT LIKE 'mingla_trip_refund:' || NEW.local_refund_id::text || ':%' THEN
+      RETURN NULL;
+    END IF;
+    SELECT * INTO v_refund FROM public.refunds WHERE id = NEW.local_refund_id;
+    IF split_part(NEW.merchant_note, ':', 3) <> 'deposit' THEN
+      v_installment := split_part(NEW.merchant_note, ':', 3)::uuid;
+    END IF;
+    v_amount := NEW.amount_cents;
+  ELSE
+    SELECT * INTO v_refund FROM public.refunds WHERE id = NEW.refund_id;
+    SELECT oi.id INTO v_installment FROM public.order_installments oi
+     WHERE oi.order_id = NEW.order_id AND oi.stripe_payment_intent_id = NEW.payment_intent_id;
+    v_amount := NEW.buyer_refund_amount_text::bigint;
+  END IF;
+  IF v_refund.id IS NULL OR v_refund.status <> 'pending' OR NOT (v_refund.metadata ? 'trip_cancel')
+     OR v_refund.order_installment_id IS NOT NULL OR v_amount IS NULL OR v_amount <= 0 THEN
+    RETURN NULL;
+  END IF;
+  BEGIN
+    IF v_installment IS NOT NULL THEN
+      PERFORM public.issue_3645_mark_installment_refunded(v_installment, v_refund.id, v_amount);
+    END IF;
+    PERFORM 1 FROM public.orders WHERE id = v_refund.order_id FOR NO KEY UPDATE;
+    v_charge_refunded := public.issue_4522_order_charge_refunded_cents(v_refund.order_id);
+    UPDATE public.orders
+       SET refunded_amount_cents = v_charge_refunded,
+           payment_status = CASE WHEN v_charge_refunded > 0 AND payment_status = 'paid'
+             THEN 'partial_refund' ELSE payment_status END,
+           updated_at = now()
+     WHERE id = v_refund.order_id AND refunded_amount_cents IS DISTINCT FROM v_charge_refunded;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'issue_4522 confirmed cancel refund not recorded refund=% sqlstate=% message=%',
+      v_refund.id, SQLSTATE, SQLERRM;
+  END;
+  RETURN NULL;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_record_confirmed_cancel_refund() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER issue_4522_record_confirmed_cancel_refund
+  AFTER INSERT OR UPDATE OF status ON public.paystack_refund_attempts
+  FOR EACH ROW WHEN (NEW.status = 'processed' AND NEW.local_refund_id IS NOT NULL)
+  EXECUTE FUNCTION public.issue_4522_record_confirmed_cancel_refund();
+CREATE TRIGGER issue_4522_record_confirmed_cancel_refund
+  AFTER UPDATE OF status ON public.ticket_refund_attempts
+  FOR EACH ROW WHEN (NEW.status IN ('succeeded_positive', 'not_applicable')
+    AND NEW.buyer_refund_id IS NOT NULL AND NEW.refund_id IS NOT NULL
+    AND NEW.buyer_refund_amount_text ~ '^[1-9][0-9]{0,15}$')
+  EXECUTE FUNCTION public.issue_4522_record_confirmed_cancel_refund();
 
 -- ---------------------------------------------------------------------------
 -- 7. Pass 6 (S9-1): an instalment whose charge the provider has refunded is

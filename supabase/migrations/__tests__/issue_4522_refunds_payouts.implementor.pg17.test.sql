@@ -1173,6 +1173,69 @@ BEGIN
   END IF;
 END $$;
 
+-- J5. Seventh pass (H-2): a second-provider cancel whose instalment refund got
+--     no answer while its deposit refund was processed. Each refund the
+--     provider confirms is recorded against its own charge at once (the
+--     refund webhook writes the attempt through record_paystack_refund_outcome);
+--     the cancel stays in progress until the last one, and settles once.
+--     A plan order shaped like a real one: the order row is the ₦300,000
+--     deposit, the collected instalment its own charge. FAILS ON REVERT: the
+--     processed deposit stayed unrecorded (order ₦0 refunded) until the
+--     unanswered instalment was resolved.
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000004f5', NULL, NULL);
+UPDATE public.order_installments SET status = 'collected', collected_at = now() - interval '1 day',
+       due_at = now() - interval '1 day', stripe_payment_intent_id = 'mingla-inst-j5-a1', payout_accounting_state = 'ready'
+ WHERE order_id = '45220008-0000-4000-8000-0000000004f5' AND ordinal = 1;
+DO $$
+DECLARE v_b jsonb; v_refund uuid; v_row uuid; v_o public.orders;
+BEGIN
+  v_b := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000004f5', 'operator', NULL, 'Host cancelled');
+  v_refund := (v_b->>'refund_id')::uuid;
+  SELECT id INTO v_row FROM public.order_installments WHERE order_id = '45220008-0000-4000-8000-0000000004f5' AND ordinal = 1;
+  IF (v_b->>'refund_total_cents')::bigint <> 60600000 THEN
+    RAISE EXCEPTION 'J5-0 the cancel refunds the deposit and the collected instalment: %', v_b;
+  END IF;
+  -- the instalment refund was sent and never answered
+  PERFORM public.issue_4522_claim_trip_paystack_send(v_refund, 'mingla_trip_refund:' || v_refund || ':' || v_row);
+  -- the deposit refund: queued, then processed (its webhook)
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000004f5', v_refund,
+    'ps_deposit_45220008-0000-4000-8000-0000000004f5', 'mingla_trip_refund:' || v_refund || ':deposit', '4522j51', 30000000, 'accepted');
+  SELECT * INTO v_o FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000004f5';
+  IF v_o.refunded_amount_cents <> 0 THEN
+    RAISE EXCEPTION 'J5-1 a refund the provider only queued is not yet refunded money: %', v_o.refunded_amount_cents;
+  END IF;
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000004f5', v_refund,
+    'ps_deposit_45220008-0000-4000-8000-0000000004f5', 'mingla_trip_refund:' || v_refund || ':deposit', '4522j51', 30000000, 'processed');
+  SELECT * INTO v_o FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000004f5';
+  IF v_o.refunded_amount_cents <> 30000000 OR v_o.payment_status <> 'partial_refund' THEN
+    RAISE EXCEPTION 'J5-2 the confirmed deposit refund is recorded on the order at once: % %',
+      v_o.refunded_amount_cents, v_o.payment_status;
+  END IF;
+  IF (SELECT status FROM public.refunds WHERE id = v_refund) <> 'pending'
+     OR public.issue_4522_trip_cancel_operation('45220008-0000-4000-8000-0000000004f5') IS NULL
+     OR (SELECT refunded_amount_cents FROM public.order_installments WHERE id = v_row) <> 0 THEN
+    RAISE EXCEPTION 'J5-3 the cancel stays in progress; the unanswered instalment is not recorded';
+  END IF;
+  IF (SELECT n.net_cents FROM public.order_installments oi
+        CROSS JOIN LATERAL public.issue_4522_payout_item_now('order_installment', oi.id, 30600000, 0, 0, 1350000, 29050000) n
+       WHERE oi.id = v_row) <> 0 THEN
+    RAISE EXCEPTION 'J5-4 the instalment whose refund is unknown stays held from payouts';
+  END IF;
+  -- the provider shows the instalment refund later (read-back or its webhook)
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000004f5', v_refund,
+    'mingla-inst-j5-a1', 'mingla_trip_refund:' || v_refund || ':' || v_row, '4522j52', 30600000, 'processed');
+  IF (SELECT refunded_amount_cents FROM public.order_installments WHERE id = v_row) <> 30600000
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000004f5') <> 30000000 THEN
+    RAISE EXCEPTION 'J5-5 the instalment refund is recorded on its own row, the deposit stays counted once';
+  END IF;
+  -- the cancel's commit settles it: nothing counted twice
+  IF NOT (public.biz_cancel_trip_booking_commit(v_refund, ARRAY['4522j52', '4522j51'], 0)->>'ok')::boolean
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000004f5') <> 30000000
+     OR public.issue_4522_settle_trip_cancel_status('45220008-0000-4000-8000-0000000004f5') <> 'refunded' THEN
+    RAISE EXCEPTION 'J5-6 the commit settles the cancel once and the booking ends refunded';
+  END IF;
+END $$;
+
 -- K. G-6: refund tiers count CALENDAR days in the trip's zone. Trips as the
 --    builder stores them (each date at UTC midnight, #4420): departure
 --    20 Mar 2027 in New York (DST starts 14 Mar), Lagos and Tokyo; 100% from
