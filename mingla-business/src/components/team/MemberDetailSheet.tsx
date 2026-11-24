@@ -110,6 +110,14 @@ export interface MemberDetailSheetProps {
   viewerIsOwner?: boolean;
   /** ORCH-1384 — fires after a successful disconnect (sheet already closed). */
   onPartnerDisconnected?: () => void;
+  /**
+   * #4490 08-O5 fix 2 (O5-B1): this is YOUR OWN row. Read-only: no role,
+   * venue-access, remove or disconnect control (you cannot change your own
+   * role or permissions here); the one control is your own Till PIN.
+   */
+  isSelf?: boolean;
+  /** #4490 08-O5 fix 2: your own PIN was saved (the screen closes the sheet and toasts). */
+  onOwnPinSaved?: () => void;
 }
 
 export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
@@ -128,6 +136,8 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
   partnerLink = null,
   viewerIsOwner = false,
   onPartnerDisconnected,
+  isSelf = false,
+  onOwnPinSaved,
 }) => {
   const [confirmVisible, setConfirmVisible] = useState<boolean>(false);
   const [disconnectConfirmVisible, setDisconnectConfirmVisible] =
@@ -188,7 +198,9 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
   const action = isPending ? "REVOKE_INVITATION" : "REMOVE_TEAM_MEMBER";
   const canAct = canPerformAction(currentRank, action);
 
-  const statusText = isPending
+  const statusText = isSelf
+    ? "This is you"
+    : isPending
     ? `Invitation sent ${formatRelativeTime(entry.invitedAt)}`
     : isAccepted && entry.acceptedAt !== null
       ? `Joined ${formatRelativeTime(entry.acceptedAt)}`
@@ -239,7 +251,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
           </Text>
         </View>
 
-        {entry.role === "venue_staff" ? (
+        {entry.role === "venue_staff" && !isSelf ? (
           <View style={styles.venueAccessBlock}>
             <VenueAccessEditor
               venues={venues}
@@ -266,7 +278,8 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
           // #4490 spec 08 O5 (§2 screen 13): your own Till PIN, or a manager's
           // reset of this member's. Inline in this sheet, shown only while the
           // Till is released; renders nothing otherwise.
-          <TillPinSection brandId={entry.brandId} memberId={entry.id} memberName={entry.inviteeName} />
+          <TillPinSection brandId={entry.brandId} memberId={entry.id} memberName={entry.inviteeName}
+            own={isSelf} onOwnPinSaved={onOwnPinSaved} />
         ) : null}
 
         {showPartnerDisconnect ? (
@@ -293,7 +306,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
               accessibilityLabel="Close member detail"
             />
           </View>
-        ) : (isPending || isAccepted) ? (
+        ) : (isPending || isAccepted) && !isSelf ? (
           <View style={styles.actions}>
             <Button
               label={actionLabel}

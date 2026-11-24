@@ -217,7 +217,7 @@ export const SETTINGS_COPY = {
   footerPlaceholder: "Like: Thank you for coming",
   footerCount: (n: number): string => `${n} of 200`,
   pins: "Till PINs",
-  pinsBody: "Each person sets their own PIN in Team. Managers reset them there.",
+  pinsBody: "In Team, tap your own name to set your PIN. Managers reset a PIN there.",
   openTeam: "Open Team",
   save: "Save",
   saved: "Saved.",

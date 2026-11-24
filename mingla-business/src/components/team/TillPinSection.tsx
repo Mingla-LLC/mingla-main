@@ -42,6 +42,14 @@ export interface TillPinSectionProps {
   /** The membership shown in the sheet (brand_team_members.id). */
   memberId: string;
   memberName: string;
+  /**
+   * #4490 08-O5 fix 2 (O5-B1): the sheet is showing YOUR OWN row (the Team
+   * screen's synthesized "You" row has no membership id to compare), so this
+   * is the set-or-change-my-PIN control whatever the id says.
+   */
+  own?: boolean;
+  /** Your own PIN was saved: the screen closes the sheet and shows a toast. */
+  onOwnPinSaved?: () => void;
 }
 
 type Step = { kind: "idle" } | { kind: "choose"; error: string | null } | { kind: "confirm"; first: string };
@@ -58,7 +66,7 @@ export function TillPinSection(props: TillPinSectionProps): React.ReactElement |
   return <TillPinSectionBody {...props} />;
 }
 
-function TillPinSectionBody({ brandId, memberId, memberName }: TillPinSectionProps): React.ReactElement | null {
+function TillPinSectionBody({ brandId, memberId, memberName, own: ownRow = false, onOwnPinSaved }: TillPinSectionProps): React.ReactElement | null {
   const queryClient = useQueryClient();
   const mine = useQuery({
     queryKey: tillPinTeamKeys.mine(brandId),
@@ -69,6 +77,7 @@ function TillPinSectionBody({ brandId, memberId, memberName }: TillPinSectionPro
   const team = useQuery({
     queryKey: tillPinTeamKeys.team(brandId),
     queryFn: () => fetchTeamTillPins(brandId),
+    enabled: !ownRow,
     staleTime: 0,
     retry: false,
   });
@@ -81,6 +90,7 @@ function TillPinSectionBody({ brandId, memberId, memberName }: TillPinSectionPro
       setStep({ kind: "idle" });
       setMessage({ tone: "ok", text: PIN_COPY.saved });
       void queryClient.invalidateQueries({ queryKey: tillPinTeamKeys.mine(brandId) });
+      onOwnPinSaved?.();
     },
     onError: (err: unknown) => {
       const code = err instanceof TillError ? err.code : "till_failed";
@@ -97,10 +107,30 @@ function TillPinSectionBody({ brandId, memberId, memberName }: TillPinSectionPro
     onError: (err: unknown) => setMessage({ tone: "error", text: tillErrorCopy(err instanceof TillError ? err.code : "till_failed") }),
   });
 
-  const own = mine.data !== undefined && mine.data.memberId === memberId;
+  const own = ownRow || (mine.data !== undefined && mine.data.memberId === memberId);
   const other = team.data?.find((m) => m.memberId === memberId) ?? null;
-  if (mine.isLoading || team.isLoading) return null;
-  if (own && mine.data?.tillDevice) return null; // a Till device login never has a PIN
+  if (mine.isLoading || (!ownRow && team.isLoading)) return null;
+  // Your own row with no answer: say so and offer another try (never an empty sheet).
+  if (ownRow && mine.data === undefined) {
+    return (
+      <View style={styles.card} testID="till-pin-own-error">
+        <Text style={styles.label}>{PIN_COPY.tillPin}</Text>
+        <Text style={[styles.note, styles.noteError]} accessibilityRole="alert">
+          {tillErrorCopy(mine.error instanceof TillError ? mine.error.code : "till_failed")}
+        </Text>
+        <Button label={PIN_COPY.retry} variant="secondary" size="md" fullWidth onPress={() => void mine.refetch()} testID="till-pin-own-retry" />
+      </View>
+    );
+  }
+  if (own && mine.data?.tillDevice) {
+    // A Till device login never has a PIN: say what it is, never an empty sheet on your own row.
+    return ownRow ? (
+      <View style={styles.card} testID="till-pin-own-device">
+        <Text style={styles.label}>{PIN_COPY.tillPin}</Text>
+        <Text style={styles.hint}>{PIN_COPY.tillDeviceExplainer}</Text>
+      </View>
+    ) : null;
+  }
   if (!own && other === null) return null;
 
   const note = message !== null ? (

@@ -119,7 +119,7 @@ const menuStale = (c: QueryClient): boolean => stale(c, menuStockKey(BRAND, VENU
 
 async function mount(): Promise<{ client: QueryClient; tree: RenderTree; actions: Actions }> {
   const sink: { current: Actions | null } = { current: null };
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
   seed(client);
   let tree: RenderTree | null = null;
   await TestRenderer.act(async () => {
@@ -226,7 +226,7 @@ describe("O5-B2 stock reads come back from the server after every stock change",
   });
 
   test("a restock saved from the Menu marks the Till tiles stale at once", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
     seed(client);
     let tree: RenderTree | null = null;
     await TestRenderer.act(async () => {

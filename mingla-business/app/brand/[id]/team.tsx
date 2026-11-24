@@ -49,6 +49,9 @@ import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Table } from "../../../src/components/ui/Table";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
+import { useTillReleased } from "../../../src/hooks/useTillReleased";
+import { PIN_COPY } from "../../../src/components/venue/till/pinModel";
+import { rowTappable, showSelfRowAboveEmpty } from "../../../src/components/team/teamRowModel";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
@@ -193,6 +196,9 @@ export default function BrandTeamRoute(): React.ReactElement {
   );
 
   const { isWideDesktop } = useResponsiveLayout();
+  // #4490 08-O5 fix 2 (O5-B1): while the Till is released your own row opens
+  // your Till PIN (nobody else can set it); otherwise it stays informational.
+  const tillReleased = useTillReleased();
   const [inviteVisible, setInviteVisible] = useState<boolean>(false);
   const [detailEntry, setDetailEntry] = useState<DisplayEntry | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -283,12 +289,28 @@ export default function BrandTeamRoute(): React.ReactElement {
             role: currentRole,
             status: "self",
             timestampIso: new Date().toISOString(),
-            storeEntry: null,
+            // The sheet shows you read-only (no role, access or remove controls);
+            // its only control is your own Till PIN (MemberDetailSheet isSelf).
+            storeEntry: brandIdResolved !== null
+              ? {
+                  id: `self_${userId}`,
+                  brandId: brandIdResolved,
+                  inviteeEmail: user?.email ?? "",
+                  inviteeName: user?.email ?? "You",
+                  role: currentRole,
+                  venueGrants: [],
+                  status: "accepted",
+                  invitedBy: userId,
+                  invitedAt: new Date().toISOString(),
+                  acceptedAt: new Date().toISOString(),
+                  removedAt: null,
+                }
+              : null,
             partnerLinkId: null,
           }
         : null;
     return selfRow !== null ? [selfRow, ...fromServer] : fromServer;
-  }, [memberRows, currentRole, user, userId, partnerLinkByUserId, directoryByUserId]);
+  }, [memberRows, currentRole, user, userId, brandIdResolved, partnerLinkByUserId, directoryByUserId]);
 
   const canInvite = canPerformAction(currentRank, "INVITE_TEAM_MEMBER");
 
@@ -315,9 +337,9 @@ export default function BrandTeamRoute(): React.ReactElement {
   );
 
   const handleRowTap = useCallback((entry: DisplayEntry): void => {
-    if (entry.status === "self") return; // self-row is informational only
+    if (!rowTappable(entry, tillReleased)) return;
     setDetailEntry(entry);
-  }, []);
+  }, [tillReleased]);
 
   const handleRevoke = useCallback(
     (entry: BrandTeamEntry): void => {
@@ -476,6 +498,14 @@ export default function BrandTeamRoute(): React.ReactElement {
         contentContainerStyle={[styles.scrollContent, isWideDesktop && styles.scrollContentDesktop]}
         showsVerticalScrollIndicator={false}
       >
+        {showEmpty && showSelfRowAboveEmpty(acceptedEntries, tillReleased) ? (
+          <SectionList
+            title="Active members"
+            rows={acceptedEntries}
+            tillReleased={tillReleased}
+            onRowTap={handleRowTap}
+          />
+        ) : null}
         {showEmpty ? (
           <View style={styles.emptyHost}>
             <EmptyState
@@ -503,6 +533,7 @@ export default function BrandTeamRoute(): React.ReactElement {
             // invitations first; rows open the same detail sheet.
             <TeamTable
               rows={[...pendingEntries, ...acceptedEntries]}
+              tillReleased={tillReleased}
               onRowTap={handleRowTap}
             />
           ) : (
@@ -511,12 +542,14 @@ export default function BrandTeamRoute(): React.ReactElement {
               <SectionList
                 title="Pending invitations"
                 rows={pendingEntries}
+                tillReleased={tillReleased}
                 onRowTap={handleRowTap}
               />
             ) : null}
             <SectionList
               title="Active members"
               rows={acceptedEntries}
+              tillReleased={tillReleased}
               onRowTap={handleRowTap}
             />
           </>
@@ -544,6 +577,12 @@ export default function BrandTeamRoute(): React.ReactElement {
       <MemberDetailSheet
         visible={detailEntry !== null}
         entry={detailEntry?.storeEntry ?? null}
+        isSelf={detailEntry?.status === "self"}
+        onOwnPinSaved={() => {
+          // The sheet closes first; the toast follows once it has gone (iOS).
+          setDetailEntry(null);
+          deferAfterDismiss(() => setToast(PIN_COPY.saved));
+        }}
         currentRank={currentRank}
         onClose={() => {
           if (removePending) return;
@@ -589,12 +628,14 @@ export default function BrandTeamRoute(): React.ReactElement {
 interface SectionListProps {
   title: string;
   rows: DisplayEntry[];
+  tillReleased: boolean;
   onRowTap: (entry: DisplayEntry) => void;
 }
 
 const SectionList: React.FC<SectionListProps> = ({
   title,
   rows,
+  tillReleased,
   onRowTap,
 }) => {
   if (rows.length === 0) return null;
@@ -610,11 +651,11 @@ const SectionList: React.FC<SectionListProps> = ({
           onPress={() => onRowTap(row)}
           accessibilityRole="button"
           accessibilityLabel={`${row.name}, ${roleDisplayName(row.role)}`}
-          disabled={row.status === "self"}
+          disabled={!rowTappable(row, tillReleased)}
           style={({ pressed }) => [
             styles.row,
             index > 0 && styles.rowDivider,
-            pressed && row.status !== "self" && styles.rowPressed,
+            pressed && rowTappable(row, tillReleased) && styles.rowPressed,
           ]}
         >
           <Avatar name={row.name} size="row" />
@@ -659,14 +700,15 @@ const SectionList: React.FC<SectionListProps> = ({
 
 const TeamTable: React.FC<{
   rows: DisplayEntry[];
+  tillReleased: boolean;
   onRowTap: (entry: DisplayEntry) => void;
-}> = ({ rows, onRowTap }) => (
+}> = ({ rows, tillReleased, onRowTap }) => (
   <View style={styles.tableWrap}>
     <Table<DisplayEntry>
       rows={rows}
       rowKey={(row) => row.id}
       onRowPress={(row) => {
-        if (row.status !== "self") onRowTap(row);
+        if (rowTappable(row, tillReleased)) onRowTap(row);
       }}
       columns={[
         {
