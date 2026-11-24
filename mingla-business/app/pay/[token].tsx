@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
+import { GuestPayWordmark } from "../../src/components/brand/GuestPayWordmark";
 import { Button } from "../../src/components/ui/Button";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import {
@@ -227,7 +228,7 @@ export default function InstallmentPayPage(): React.ReactElement {
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <View style={styles.wordmark}><Text style={styles.wordmarkText}>Mingla</Text></View>
+        <View style={styles.wordmark}><GuestPayWordmark /></View>
         {content}
       </ScrollView>
     </SafeScreen>
@@ -275,7 +276,6 @@ const styles = StyleSheet.create({
     paddingVertical: space[7],
   },
   wordmark: { marginBottom: space[6] },
-  wordmarkText: { ...type.h1, color: color.text1 },
   card: {
     width: "100%",
     maxWidth: 480,

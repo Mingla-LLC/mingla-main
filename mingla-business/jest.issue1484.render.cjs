@@ -75,6 +75,8 @@ module.exports = {
     "**/__tests__/tillSoldOut.issue4490.o5fix2.render.test.tsx",
     // #4490 spec 08 O5 fix 4: the Till items of the device and browser pass (tile chip, late payment name, split, paid check, web PIN keys, part payment label).
     "**/__tests__/tillDevicePass.issue4490.o5fix4.render.test.tsx",
+    // #4490: the guest pay pages show the Mingla logo image, not the word typed out.
+    "**/__tests__/guestPayWordmark.issue4490.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",
