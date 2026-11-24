@@ -1,11 +1,15 @@
 /**
  * issue #4522 — the "Pay over time" choice made on /t/{brand}/{trip} must reach
  * checkout when Reserve is pressed before any package quantity is picked.
+ *
+ * Calls the REAL `resolveTripReserveChoice`, the function the page's Reserve
+ * runs on its selected lines. That the page calls it (and forwards the same
+ * lines) is pinned by tripCartInstallmentAware_orch_1180_regression.
+ *
+ * FAILS ON REVERT: collapse an empty selection to "full" again (the old
+ * `collapseTripPlanChoice(lines)` alone), or ignore a package's own choice.
  */
 import { describe, expect, test } from "@jest/globals";
-import { readFileSync } from "fs";
-import path from "path";
-
 import { resolveTripReserveChoice } from "../tripCartPlanChoice";
 
 describe("issue #4522 — Reserve keeps the plan choice with no quantity picked", () => {
@@ -27,13 +31,5 @@ describe("issue #4522 — Reserve keeps the plan choice with no quantity picked"
     expect(
       resolveTripReserveChoice([{ paymentPlanChoice: "installments" }], "full", {}),
     ).toBe("installments");
-  });
-  test("the page's Reserve uses the resolver, not a bare collapse of the lines", () => {
-    const src = readFileSync(
-      path.join(__dirname, "..", "..", "..", "..", "app", "t", "[brandSlug]", "[tripSlug].tsx"),
-      "utf-8",
-    );
-    expect(src).toMatch(/resolveTripReserveChoice\(/);
-    expect(src).not.toMatch(/handleTripReserve\(\s*collapseTripPlanChoice\(/);
   });
 });
