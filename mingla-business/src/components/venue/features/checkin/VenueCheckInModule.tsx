@@ -586,6 +586,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
               <View style={styles.memberCodeRow}>
                 <Pressable
                   accessible={false}
+                  accessibilityLabel="Type the member code"
                   style={styles.memberCodePressable}
                   onPress={() => memberCodeInput.current?.focus()}
                 >

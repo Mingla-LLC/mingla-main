@@ -523,6 +523,11 @@ export function TillScreen({
           <Pressable
             key={offer.id}
             accessibilityRole="button"
+            accessibilityLabel={TILL_COPY.tileLabel(
+              TILL_COPY.startHourLabel(offer.name),
+              offer.pricePerHourMinor === null ? null : TILL_COPY.perHour(money(offer.pricePerHourMinor)),
+              null,
+            )}
             onPress={() => setSessionFor(offer)}
             style={({ pressed }) => [styles.tile, layout === "phone" && styles.tilePhone, pressed && styles.tilePressed]}
             testID={`till-hour-${offer.id}`}
@@ -542,6 +547,11 @@ export function TillScreen({
           <Pressable
             key={table.spotId}
             accessibilityRole="button"
+            accessibilityLabel={TILL_COPY.tileLabel(
+              TILL_COPY.seatTableLabel(table.name),
+              table.minSpendMinor !== null ? TILL_COPY.minSpendTable(money(table.minSpendMinor)) : null,
+              table.hasCheck ? TILL_COPY.tableBusy : table.bookings.length > 0 ? TILL_COPY.seatBooking : null,
+            )}
             accessibilityState={{ disabled: table.hasCheck }}
             disabled={table.hasCheck}
             onPress={() => setSeatFor(table)}
@@ -571,6 +581,11 @@ export function TillScreen({
             <Pressable
               key={offer.id}
               accessibilityRole="button"
+              accessibilityLabel={TILL_COPY.tileLabel(
+                TILL_COPY.sellEntryLabel(offer.name),
+                Number.isFinite(from) ? money(from) : null,
+                null,
+              )}
               onPress={() => setOfferSheet({ offer, counts: {}, guestListEntryId: null })}
               style={({ pressed }) => [styles.tile, layout === "phone" && styles.tilePhone, pressed && styles.tilePressed]}
               testID={`till-offer-${offer.id}`}
@@ -599,6 +614,11 @@ export function TillScreen({
               <Pressable
                 key={item.id}
                 accessibilityRole="button"
+                accessibilityLabel={TILL_COPY.tileLabel(
+                  TILL_COPY.addItemLabel(item.name),
+                  item.priceMinor === null ? null : money(item.priceMinor),
+                  sellable ? null : TILL_COPY.soldOut,
+                )}
                 accessibilityState={{ disabled: !sellable }}
                 disabled={!sellable}
                 onPress={() => onTile(item)}

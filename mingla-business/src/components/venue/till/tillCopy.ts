@@ -247,6 +247,13 @@ export const TILL_COPY = {
   anyFreeOne: "Any free one",
   inUse: "In use",
   perHour: (amount: string): string => `${amount} an hour`,
+  // I-39: what each till tile says to a screen reader (name, price, state).
+  tileLabel: (name: string, price: string | null, state: string | null): string =>
+    [name, price, state].filter((part): part is string => part !== null && part.length > 0).join(", "),
+  startHourLabel: (name: string): string => `Start a session: ${name}`,
+  seatTableLabel: (name: string): string => `Open table ${name}`,
+  sellEntryLabel: (name: string): string => `Sell ${name}`,
+  addItemLabel: (name: string): string => `Add ${name}`,
   addThirty: "Add 30 min",
   addMinutes: (n: number): string => (n === 30 ? "Add 30 min" : `Add ${n} min`),
   minutesLeft: (n: number): string => `${n} min left`,

@@ -119,6 +119,8 @@ export function TillSoldOutSheet({ visible, venueId, waiting, onClose }: TillSol
               <View key={row.orderId} style={styles.card} testID={`till-sold-out-order-${row.orderId}`}>
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`${row.destination}: ${row.items.join(", ")}`}
+                  accessibilityHint={STOCK_COPY.afterPayment}
                   accessibilityState={{ expanded: open }}
                   onPress={() => {
                     setOpenId(open ? null : row.orderId);
