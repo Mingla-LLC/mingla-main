@@ -461,3 +461,80 @@ SELECT pg_temp.ok(public.issue_4579_admin_public_name(pg_temp.u('k1')) = 'Kunle'
 UPDATE public.profiles SET username = NULL, display_name = 'kunle_adeyemi99' WHERE id = pg_temp.u('k1');
 SELECT pg_temp.ok(public.issue_4579_admin_public_name(pg_temp.u('k1')) = 'kunle_adeyemi99', 'X-11 no username: the rule does not invent a match (handle rule unrelated)');
 ROLLBACK;
+
+-- X-12 older Community readers (retest 2, P2-2 fix): through the v1 feed and comments_v2 an
+--      active Mingla admin is never shown by a handle, whatever shape the leak takes: a display
+--      name that is the email (upper-cased, padded), the email's local part, or the username; an
+--      admin_users email that differs from the sign-in email only by case and padding is still
+--      recognised; the admin's own pending post (is_mine path) is masked too; no admin label in
+--      either reader equals or contains any of the suite's usernames, emails or local parts; a
+--      host keeps their own name and a staff answer keeps its staff name (no over-masking).
+-- fails-on-revert: restoring the 20271103003720 v1 feed body or the 20271108073720
+-- comments_v2 body (raw profiles.display_name) fails X-12.
+BEGIN;
+SELECT pg_temp.fixture();
+-- k1: display name is the sign-in email, upper-cased and padded.
+UPDATE public.profiles SET display_name = '  T4579-K1@EXAMPLE.TEST ' WHERE id = pg_temp.u('k1');
+-- k2: display name is the email's local part in another case.
+UPDATE public.profiles SET display_name = 'T4579-K2' WHERE id = pg_temp.u('k2');
+-- kinv: display name is the username; the admin row's email differs only by case and padding.
+UPDATE public.profiles SET username = 'kinv_ops', display_name = 'Kinv_Ops' WHERE id = pg_temp.u('kinv');
+UPDATE public.admin_users SET email = '  T4579-KINV@Example.Test ' WHERE id = pg_temp.u('akinv');
+UPDATE public.profiles SET display_name = 'Ada Owner' WHERE id = pg_temp.u('owner');
+INSERT INTO public.community_posts(id, author_user_id, kind, title, body, review_state) VALUES
+  (pg_temp.u('xp_k1'), pg_temp.u('k1'), 'question', 'x12 k1', 'body', 'published'),
+  (pg_temp.u('xp_kinv'), pg_temp.u('kinv'), 'question', 'x12 kinv', 'body', 'published'),
+  (pg_temp.u('xp_k2_pending'), pg_temp.u('k2'), 'question', 'x12 k2 pending', 'body', 'pending'),
+  (pg_temp.u('xp_owner'), pg_temp.u('owner'), 'question', 'x12 owner', 'body', 'published');
+INSERT INTO public.community_post_comments(id, post_id, author_user_id, body, staff_answer, staff_display_name) VALUES
+  (pg_temp.u('xc_k1'), pg_temp.u('xp_owner'), pg_temp.u('k1'), 'c k1', false, NULL),
+  (pg_temp.u('xc_k2'), pg_temp.u('xp_owner'), pg_temp.u('k2'), 'c k2', false, NULL),
+  (pg_temp.u('xc_kinv'), pg_temp.u('xp_owner'), pg_temp.u('kinv'), 'c kinv', false, NULL),
+  (pg_temp.u('xc_owner'), pg_temp.u('xp_owner'), pg_temp.u('owner'), 'c owner', false, NULL),
+  (pg_temp.u('xc_staff'), pg_temp.u('xp_owner'), pg_temp.u('k2'), 'c staff', true, 'Mingla Support');
+DO $x12$
+DECLARE feed jsonb; own jsonb; cm jsonb; lbl text; bad text;
+BEGIN
+  PERFORM pg_temp.ok(public.issue_4579_is_active_mingla_admin_uid(pg_temp.u('kinv')),
+    'X-12 an admin row whose email differs only by case and padding is still an active admin');
+  feed := pg_temp.val_as(pg_temp.u('owner'), $$SELECT coalesce(jsonb_agg(to_jsonb(r)), '[]'::jsonb)::text FROM public.issue_3720_community_feed(NULL) r$$)::jsonb;
+  own  := pg_temp.val_as(pg_temp.u('k2'), $$SELECT coalesce(jsonb_agg(to_jsonb(r)), '[]'::jsonb)::text FROM public.issue_3720_community_feed(NULL) r$$)::jsonb;
+  cm   := pg_temp.val_as(pg_temp.u('owner'), format('SELECT coalesce(jsonb_agg(to_jsonb(r)), ''[]''::jsonb)::text FROM public.issue_3720_community_comments_v2(%L) r', pg_temp.u('xp_owner')))::jsonb;
+
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(feed) e WHERE e->>'id' = pg_temp.u('xp_k1')::text) = 'Mingla Team',
+    'X-12 v1 feed: an admin whose display name is their email (case, padding) shows Mingla Team');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(feed) e WHERE e->>'id' = pg_temp.u('xp_kinv')::text) = 'Mingla Team',
+    'X-12 v1 feed: an admin whose display name is their username shows Mingla Team (admin row email in another case)');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(feed) e WHERE e->>'id' = pg_temp.u('xp_owner')::text) = 'Ada Owner',
+    'X-12 v1 feed: a host keeps their own name');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(feed) e WHERE e->>'id' = pg_temp.u('xp_k2_pending')::text),
+    'X-12 v1 feed: another member never sees an admin''s pending post');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(own) e WHERE e->>'id' = pg_temp.u('xp_k2_pending')::text) = 'Mingla Team',
+    'X-12 v1 feed: the admin''s own pending post (is_mine) is masked too');
+
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(cm) e WHERE e->>'id' = pg_temp.u('xc_k1')::text) = 'Mingla Team',
+    'X-12 comments_v2: email-shaped display name shows Mingla Team');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(cm) e WHERE e->>'id' = pg_temp.u('xc_k2')::text) = 'Mingla Team',
+    'X-12 comments_v2: local-part display name shows Mingla Team');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(cm) e WHERE e->>'id' = pg_temp.u('xc_kinv')::text) = 'Mingla Team',
+    'X-12 comments_v2: username display name shows Mingla Team');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(cm) e WHERE e->>'id' = pg_temp.u('xc_owner')::text) = 'Ada Owner',
+    'X-12 comments_v2: a host keeps their own name');
+  PERFORM pg_temp.ok((SELECT e->>'author_label' FROM jsonb_array_elements(cm) e WHERE e->>'id' = pg_temp.u('xc_staff')::text) = 'Mingla Support',
+    'X-12 comments_v2: a staff answer keeps its staff name');
+
+  -- Sweep: no label from an admin author, in either reader, equals or contains a handle.
+  SELECT string_agg(lbl2, ', ') INTO bad FROM (
+    SELECT e->>'author_label' AS lbl2 FROM jsonb_array_elements(feed || own || cm) e
+  ) s
+  WHERE EXISTS (
+    SELECT 1 FROM auth.users u LEFT JOIN public.profiles p ON p.id = u.id
+     WHERE u.id IN (pg_temp.u('k1'), pg_temp.u('k2'), pg_temp.u('kinv'))
+       AND (position(lower(split_part(u.email::text, '@', 1)) IN lower(s.lbl2)) > 0
+            OR position('@' IN s.lbl2) > 0
+            OR (p.username IS NOT NULL AND position(lower(p.username) IN lower(s.lbl2)) > 0))
+  );
+  PERFORM pg_temp.ok(bad IS NULL, 'X-12 sweep: no admin label in either reader carries an email, local part or username (' || coalesce(bad, 'none') || ')');
+END;
+$x12$;
+ROLLBACK;
