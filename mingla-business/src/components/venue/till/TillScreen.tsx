@@ -549,7 +549,7 @@ export function TillScreen({
             accessibilityRole="button"
             accessibilityLabel={TILL_COPY.tileLabel(
               TILL_COPY.seatTableLabel(table.name),
-              table.minSpendMinor !== null ? TILL_COPY.minSpendTable(money(table.minSpendMinor)) : null,
+              table.minSpendMinor !== null ? TILL_COPY.minSpendTable(money(table.minSpendMinor)) : TILL_COPY.seatsLabel(table.capacity),
               table.hasCheck ? TILL_COPY.tableBusy : table.bookings.length > 0 ? TILL_COPY.seatBooking : null,
             )}
             accessibilityState={{ disabled: table.hasCheck }}
@@ -610,6 +610,7 @@ export function TillScreen({
         <View style={styles.grid}>
           {(menu?.items ?? []).map((item) => {
             const sellable = itemSellable(item);
+            const stock = sellable ? stockPill(item.stockLeft, item.stockWarnAt) : null;
             return (
               <Pressable
                 key={item.id}
@@ -617,7 +618,7 @@ export function TillScreen({
                 accessibilityLabel={TILL_COPY.tileLabel(
                   TILL_COPY.addItemLabel(item.name),
                   item.priceMinor === null ? null : money(item.priceMinor),
-                  sellable ? null : TILL_COPY.soldOut,
+                  sellable ? (stock === null ? null : stock.label) : TILL_COPY.soldOut,
                 )}
                 accessibilityState={{ disabled: !sellable }}
                 disabled={!sellable}
@@ -628,13 +629,10 @@ export function TillScreen({
                 <Text style={styles.tileName} numberOfLines={2}>{item.name}</Text>
                 <View style={styles.tileFoot}>
                   <Text style={styles.tilePrice}>{item.priceMinor === null ? "--" : money(item.priceMinor)}</Text>
-                  {!sellable ? <Pill variant="draft">{TILL_COPY.soldOut}</Pill> : (() => {
+                  {!sellable ? <Pill variant="draft">{TILL_COPY.soldOut}</Pill> : stock === null ? null : (
                     // #4490 O5 part C: "{n} left" while counted (warning tone at "Warn me at").
-                    const pill = stockPill(item.stockLeft, item.stockWarnAt);
-                    return pill === null ? null : (
-                      <Pill variant={pill.tone === "warn" ? "warn" : "muted"} testID={`till-item-stock-${item.id}`}>{pill.label}</Pill>
-                    );
-                  })()}
+                    <Pill variant={stock.tone === "warn" ? "warn" : "muted"} testID={`till-item-stock-${item.id}`}>{stock.label}</Pill>
+                  )}
                 </View>
               </Pressable>
             );

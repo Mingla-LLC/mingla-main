@@ -252,6 +252,7 @@ export const TILL_COPY = {
   // I-39: what each till tile says to a screen reader (name, price, state).
   tileLabel: (name: string, price: string | null, state: string | null): string =>
     [name, price, state].filter((part): part is string => part !== null && part.length > 0).join(", "),
+  seatsLabel: (n: number): string => `${n} ${n === 1 ? "seat" : "seats"}`,
   startHourLabel: (name: string): string => `Start a session: ${name}`,
   seatTableLabel: (name: string): string => `Open table ${name}`,
   sellEntryLabel: (name: string): string => `Sell ${name}`,
