@@ -70,6 +70,7 @@ import {
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
 import {
+  chargeCents,
   computeRefundForActor,
   depositKeptCents,
   paymentRefundEntries,
@@ -681,7 +682,7 @@ serve(async (req: Request): Promise<Response> => {
       paymentRefundEntries(floorCompute.per_payment_refund).some((entry) =>
         entry.refund_cents > 0 &&
         entry.refund_cents < PAYSTACK_MIN_REFUND_SUBUNITS &&
-        entry.refund_cents !== entry.paid_cents
+        entry.refund_cents !== chargeCents(entry)
       )
     ) {
       return jsonResponse(
@@ -793,7 +794,11 @@ serve(async (req: Request): Promise<Response> => {
       console.error("[cancel-trip-booking] cancel note failed", error.message);
       return { alert: false, first_completion: false };
     }
-    const note = (data ?? {}) as { alert?: boolean; first_completion?: boolean };
+    const note = (data ?? {}) as {
+      alert?: boolean;
+      first_completion?: boolean;
+      cause?: string | null;
+    };
     if (note.alert === true) {
       const made = await providerRefundsMade(supabase, refundId).catch(() => []);
       await alertTripCancelNotFinished(installmentOpsAlert, {
@@ -804,7 +809,12 @@ serve(async (req: Request): Promise<Response> => {
         made,
         intended: perPaymentRefund,
         unconfirmed,
-        cause: kind === "unconfirmed" ? "unconfirmed" : "failure",
+        // Seventh pass (H-1 b): past the 24-hour ceiling it says so.
+        cause: note.cause === "stuck"
+          ? "stuck"
+          : kind === "unconfirmed"
+          ? "unconfirmed"
+          : "failure",
       });
     }
     return {
@@ -987,7 +997,10 @@ serve(async (req: Request): Promise<Response> => {
           entry.installment_id ?? "deposit"
         }`;
         const transaction = entry.source_pi;
-        const amountSubunits = entry.refund_cents === entry.paid_cents
+        // Seventh pass (H-1): only a refund of the whole charge as made may
+        // omit the amount (a full reversal); after an earlier partial refund
+        // the provider would refuse that, so the amount is always named.
+        const amountSubunits = entry.refund_cents === chargeCents(entry)
           ? undefined
           : entry.refund_cents;
         const recordOutcome = (made: { id: string; status: string }) =>

@@ -121,7 +121,7 @@ export async function alertTripCancelNotFinished(
     made: ProviderRefundMade[];
     intended: IntendedTripRefund[];
     unconfirmed: string[];
-    cause: "failure" | "unconfirmed";
+    cause: "failure" | "unconfirmed" | "stuck";
   },
 ): Promise<void> {
   const cur = input.currency.toUpperCase();
@@ -141,11 +141,13 @@ export async function alertTripCancelNotFinished(
   await alert("A trip cancel refund could not be finished", [
     input.cause === "unconfirmed"
       ? "A cancelled trip booking's refund was sent to the second payment provider, which has not confirmed it. Mingla never sends it again automatically. The booking's payouts stay held until the refund is recorded."
+      : input.cause === "stuck"
+      ? "A cancelled trip booking's refund is still not finished 24 hours after the cancel: the payment provider has not confirmed or has refused part of it. Mingla keeps checking. The booking's payouts stay held until it is finished. The traveler has not been told the refund is done."
       : "A cancelled trip booking still owes the traveler a refund, and three attempts to finish it failed, so Mingla has stopped retrying it automatically. The booking's payouts stay held until it is finished. The traveler has not been told the refund is done.",
     `Order: ${input.orderId}; refund: ${input.refundId}`,
     ...lines,
     `What failed: ${input.detail.slice(0, 300)}`,
-    input.cause === "unconfirmed"
+    input.cause === "unconfirmed" || input.cause === "stuck"
       ? "Next: check this refund with the provider. When the provider shows it, the next instalment run or the host pressing Cancel & refund again records it."
       : "Next: fix the cause, then the host can press Cancel & refund again on this booking to finish it; refunds already made are never sent again.",
   ]);

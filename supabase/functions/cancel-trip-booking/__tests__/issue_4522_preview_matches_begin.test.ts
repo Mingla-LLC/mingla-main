@@ -237,3 +237,36 @@ Deno.test("G-3/G-4: the one alert says per charge what is true now and what happ
   assertStringIncludes(text2, "never sends it again automatically");
 });
 
+
+// Seventh pass (H-1): after an earlier refund of the same charge only what
+// is left is refunded, and that amount is always named: a refund of the
+// whole charge as made (and only that) may omit it. Driven through the real
+// chargeCents the cancel's second-provider branch and its minimum check use.
+// FAILS ON REVERT: paid_cents (what is left) equal to the refund omitted the
+// amount, a full reversal the provider refuses after a partial refund.
+import { chargeCents, paymentRefundEntries } from "../refundEntries.ts";
+Deno.test("H-1: an amount is omitted only for a refund of the whole charge as made", () => {
+  const [left, whole, legacy] = paymentRefundEntries([
+    { installment_id: null, ordinal: 0, source_pi: "ref_dep", paid_cents: 30000000, charge_cents: 42000000, refund_cents: 30000000, currency: "NGN" },
+    { installment_id: null, ordinal: 0, source_pi: "ref_full", paid_cents: 50000000, charge_cents: 50000000, refund_cents: 50000000, currency: "NGN" },
+    { installment_id: null, ordinal: 0, source_pi: "ref_main", paid_cents: 50000000, refund_cents: 50000000, currency: "NGN" },
+  ]);
+  assertEquals(left.refund_cents === chargeCents(left), false);
+  assertEquals(whole.refund_cents === chargeCents(whole), true);
+  // main's database (no charge_cents): exactly as before
+  assertEquals(legacy.refund_cents === chargeCents(legacy), true);
+  assertStringIncludes(source, "entry.refund_cents === chargeCents(entry)");
+});
+
+// Seventh pass (H-1 b): past 24 hours a cancel still waiting says so.
+Deno.test("H-1: a cancel still unfinished after 24 hours is one truthful alert", async () => {
+  const sent: string[] = [];
+  await alertTripCancelNotFinished(async (_s, p) => { sent.push(p.join("\n")); }, {
+    orderId: "o_3", refundId: "rf_3", currency: "usd", detail: "fee_truth_awaiting_application_fee",
+    made: [], intended: [{ installment_id: null, source_pi: "pi_dep", refund_cents: 30000 }],
+    unconfirmed: [], cause: "stuck",
+  });
+  assertStringIncludes(sent[0], "still not finished 24 hours after the cancel");
+  assertStringIncludes(sent[0], "fee_truth_awaiting_application_fee");
+  assertStringIncludes(sent[0], "pi_dep (deposit): 30000 USD (minor units): not refunded yet");
+});

@@ -17,6 +17,11 @@ export interface RefundPaymentEntry {
   refund_cents: number;
   currency: string;
   note?: string;
+  /**
+   * Seventh pass (H-1): the charge as it was made. paid_cents is what is
+   * still refundable on it (after earlier refunds); absent before #4522.
+   */
+  charge_cents?: number;
 }
 
 const isMoney = (value: unknown): value is number =>
@@ -30,6 +35,15 @@ export function paymentRefundEntries(list: unknown): RefundPaymentEntry[] {
     isMoney((entry as Record<string, unknown>).refund_cents) &&
     isMoney((entry as Record<string, unknown>).paid_cents)
   );
+}
+
+/**
+ * Seventh pass (H-1): the charge as made, so a refund of all of it (and only
+ * that) is a full reversal. Before #4522 the computation had no charge_cents
+ * and paid_cents was the whole charge: unchanged there.
+ */
+export function chargeCents(entry: RefundPaymentEntry): number {
+  return isMoney(entry.charge_cents) ? entry.charge_cents : entry.paid_cents;
 }
 
 /** The deposit a traveler's cancel keeps (0 when none). */

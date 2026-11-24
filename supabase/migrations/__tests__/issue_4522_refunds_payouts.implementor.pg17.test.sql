@@ -1236,6 +1236,103 @@ BEGIN
   END IF;
 END $$;
 
+-- J6. Seventh pass (H-1 a): a cancel after an earlier refund of the same
+--     charge refunds at most what is left on it: policy % × (paid − already
+--     refunded − a kept deposit), floor 0, per charge. Orders shaped like real
+--     ones: a plan order whose $420 deposit carried a $120 add-on paid today
+--     (the add-on refunded first), and a $1,000 pay-in-full order with one of
+--     two seats ($500) refunded first. FAILS ON REVERT: the preview and begin
+--     asked for $420 / $1,000, which the provider refused (more than is
+--     unrefunded) and the booking stayed cancelled with nothing refunded.
+INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, buyer_total_cents,
+  list_subtotal_cents, net_subtotal_cents, buyer_fees_cents, tax_cents, pricing_source,
+  currency, payment_method, payment_status, source, installment_plan_root, payment_plan_terms,
+  addon_payment_mode, stripe_payment_intent_id)
+VALUES ('45220008-0000-4000-8000-0000000004f7', '45220008-0000-4000-8000-000000000022', 'addon-first@example.test',
+  'Addon First', '+12025550114', 42000, 42000, 42000, 42000, 0, 0, 'provider_reconciled',
+  'USD', 'online_card', 'partial_refund', 'online_checkout', true,
+  '{"v":2,"deposit_minor":30000,"deposit_non_refundable":true,"flex_enabled":false,"auto_adjust":true}', 'today',
+  'pi_j6_deposit'),
+  ('45220008-0000-4000-8000-0000000004f8', '45220008-0000-4000-8000-000000000022', 'seat-first@example.test',
+  'Seat First', '+12025550115', 100000, 100000, 100000, 100000, 0, 0, 'provider_reconciled',
+  'USD', 'online_card', 'partial_refund', 'online_checkout', false, NULL, NULL, 'pi_j6_full');
+INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+  collection_method, plan_bound_at)
+SELECT '45220008-0000-4000-8000-0000000004f7', g, 30000, 'USD', now() + (g * 20 || ' days')::interval,
+       'scheduled', 'stripe', 'auto_card', now()
+  FROM generate_series(1, 3) g;
+INSERT INTO public.refunds(order_id, amount_cents, currency, status, reason, application_fee_refunded_cents,
+  application_fee_refund_status, processed_at)
+VALUES ('45220008-0000-4000-8000-0000000004f7', 12000, 'USD', 'succeeded', 'Add-on refunded', 540, 'succeeded_positive', now()),
+       ('45220008-0000-4000-8000-0000000004f8', 50000, 'USD', 'succeeded', 'One seat refunded', 2250, 'succeeded_positive', now());
+UPDATE public.orders SET refunded_amount_cents = public.issue_4522_order_charge_refunded_cents(id)
+ WHERE id IN ('45220008-0000-4000-8000-0000000004f7', '45220008-0000-4000-8000-0000000004f8');
+DO $$
+DECLARE v jsonb; v_e jsonb;
+BEGIN
+  -- host cancel: the deposit is refunded (D-9), but only what is left of it
+  v := public.issue_4522_compute_refund_for_cancel_as('45220008-0000-4000-8000-0000000004f7', now(), 'operator');
+  v_e := v->'per_payment_refund'->(jsonb_array_length(v->'per_payment_refund') - 1);
+  IF (v->>'refund_total_cents')::bigint <> 30000 OR (v_e->>'refund_cents')::bigint <> 30000
+     OR (v_e->>'paid_cents')::bigint <> 30000 OR (v_e->>'charge_cents')::bigint <> 42000 THEN
+    RAISE EXCEPTION 'J6-0 add-on refunded first: the host cancel refunds the $300 left, never $420: %', v;
+  END IF;
+  -- traveler: the non-refundable trip part is kept; nothing else is left
+  v := public.issue_4522_compute_refund_for_cancel_as('45220008-0000-4000-8000-0000000004f7', now(), 'buyer');
+  IF (v->>'refund_total_cents')::bigint <> 0 THEN
+    RAISE EXCEPTION 'J6-1 the traveler keeps nothing more back than is left: %', v;
+  END IF;
+  -- pay in full, one of two seats refunded: 100% of the $500 left
+  v := public.issue_4522_compute_refund_for_cancel_as('45220008-0000-4000-8000-0000000004f8', now(), 'operator');
+  IF (v->>'refund_total_cents')::bigint <> 50000 OR (v->>'paid_total_cents')::bigint <> 50000
+     OR (v->'per_payment_refund'->0->>'charge_cents')::bigint <> 100000 THEN
+    RAISE EXCEPTION 'J6-2 seat refunded first: the cancel refunds the $500 left: %', v;
+  END IF;
+  -- begin writes the same amount the preview showed
+  v := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000004f8', 'operator', NULL, 'Host cancelled');
+  IF (v->>'refund_total_cents')::bigint <> 50000 THEN
+    RAISE EXCEPTION 'J6-3 begin refunds what the preview showed: %', v;
+  END IF;
+END $$;
+-- a 50% tier applies to what is left (spec §5.5: base = paid − already refunded)
+UPDATE public.events SET refund_policy = '{"kind":"standard","tiers":[{"days_before_start":0,"refund_pct":50}]}'
+ WHERE id = '45220008-0000-4000-8000-000000000022';
+DO $$
+BEGIN
+  IF (public.issue_4522_compute_refund_for_cancel_as('45220008-0000-4000-8000-0000000004f7', now(), 'operator')
+        ->>'refund_total_cents')::bigint <> 15000 THEN
+    RAISE EXCEPTION 'J6-4 a 50%% tier is half of what is left';
+  END IF;
+END $$;
+UPDATE public.events SET refund_policy = '{"kind":"standard","tiers":[{"days_before_start":0,"refund_pct":100}]}'
+ WHERE id = '45220008-0000-4000-8000-000000000022';
+
+-- J7. Seventh pass (H-1 b): no state of a cancel is "in progress" forever in
+--     silence. Waiting on the provider (or refused by it) past 24 hours is
+--     one ops alert ('stuck'); before that, waiting alerts nobody. FAILS ON
+--     REVERT: waiting never counted, so no alert was ever sent.
+DO $$
+DECLARE v_refund uuid; v_n jsonb; v_alerts int := 0; i int;
+BEGIN
+  SELECT id INTO v_refund FROM public.refunds WHERE order_id = '45220008-0000-4000-8000-0000000004f8'
+     AND metadata ? 'trip_cancel';
+  v_n := public.issue_4522_trip_cancel_note(v_refund, 'waiting', 'fee_truth_awaiting_application_fee');
+  IF (v_n->>'alert')::boolean THEN RAISE EXCEPTION 'J7-0 a fresh wait alerts nobody'; END IF;
+  UPDATE public.refunds SET created_at = now() - interval '25 hours' WHERE id = v_refund;
+  FOR i IN 1..3 LOOP
+    v_n := public.issue_4522_trip_cancel_note(v_refund, 'waiting', 'fee_truth_awaiting_application_fee');
+    IF (v_n->>'alert')::boolean THEN
+      v_alerts := v_alerts + 1;
+      IF v_n->>'cause' <> 'stuck' THEN RAISE EXCEPTION 'J7-1 the alert names its cause: %', v_n; END IF;
+    END IF;
+  END LOOP;
+  IF v_alerts <> 1 THEN RAISE EXCEPTION 'J7-2 past 24 hours ops are told exactly once (%)', v_alerts; END IF;
+  IF '45220008-0000-4000-8000-0000000004f8'::uuid IN (SELECT public.issue_4522_trip_cancels_to_resume(50))
+     AND (SELECT (metadata #>> '{trip_cancel,failures}')::int FROM public.refunds WHERE id = v_refund) <> 0 THEN
+    RAISE EXCEPTION 'J7-3 waiting is still no failure';
+  END IF;
+END $$;
+
 -- K. G-6: refund tiers count CALENDAR days in the trip's zone. Trips as the
 --    builder stores them (each date at UTC midnight, #4420): departure
 --    20 Mar 2027 in New York (DST starts 14 Mar), Lagos and Tokyo; 100% from

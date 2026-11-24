@@ -134,6 +134,7 @@ DECLARE
   v_per_installment_refund jsonb := '[]'::jsonb;
   v_deposit_kept bigint := 0;
   v_overpayment_return bigint := 0;
+  v_charge_left bigint;
 BEGIN
   -- Fetch order + event
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
@@ -183,13 +184,23 @@ BEGIN
   -- For installment-plan-root orders: deposit lives on orders.total_cents +
   -- each collected installment has its own row in order_installments.
   -- For single-payment orders: orders.total_cents is the only paid amount.
+  -- Seventh pass (H-1): what is still refundable on the order's own charge
+  -- (the deposit on a plan order, the whole payment otherwise). An earlier
+  -- refund of it (an add-on, one line) is gone from the provider's charge, so
+  -- the cancel never asks for it again. The rule, per charge (spec §5.5
+  -- "refund base = paid − already refunded"): policy percentage × (paid −
+  -- already refunded on that charge − a kept non-refundable deposit), floor
+  -- 0, exactly as each instalment row already is.
+  v_charge_left := greatest(0, v_order.total_cents::bigint
+    - public.issue_4522_order_charge_refunded_cents(v_order.id));
+
   IF v_order.installment_plan_root THEN
     -- Deposit (orders row) + sum of collected installments
     -- issue #4522 (N2) — money a row collected beyond what the plan owed and
     -- has not yet returned is not part of the policy base: it goes back in
     -- full through its own refund (issue_4522_begin_overpayment_refund),
     -- whatever the tier, and is reported as overpayment_return_cents.
-    SELECT v_order.total_cents +
+    SELECT v_charge_left +
            COALESCE(sum(coalesce(buyer_total_cents, amount_cents) - refunded_amount_cents
                         - public.issue_4522_row_unreturned_overpayment(id)), 0)
     INTO v_paid_total_cents
@@ -200,6 +211,7 @@ BEGIN
     FOR v_installment IN
       SELECT id, coalesce(buyer_total_cents, amount_cents) - refunded_amount_cents
                  - public.issue_4522_row_unreturned_overpayment(id) AS amount_cents,
+             coalesce(buyer_total_cents, amount_cents) AS charge_cents,
              currency, stripe_payment_intent_id, ordinal
       FROM public.order_installments
       WHERE order_id = v_order.id AND status = 'collected'
@@ -210,6 +222,9 @@ BEGIN
         'ordinal', v_installment.ordinal,
         'source_pi', v_installment.stripe_payment_intent_id,
         'paid_cents', v_installment.amount_cents,
+        -- H-1: the charge as made; a refund of all of it may omit the amount
+        -- (a full reversal), anything less must name it.
+        'charge_cents', v_installment.charge_cents,
         'refund_cents', FLOOR(v_installment.amount_cents::numeric * v_tier_pct / 100.0)::bigint,
         'currency', v_installment.currency
       );
@@ -224,7 +239,7 @@ BEGIN
        AND COALESCE((v_order.payment_plan_terms->>'deposit_non_refundable')::boolean, false)
        AND COALESCE(current_setting('mingla.cancel_actor_kind', true), '') <> 'operator' THEN
       v_deposit_kept := least(greatest(COALESCE((v_order.payment_plan_terms->>'deposit_minor')::bigint, 0), 0),
-                              v_order.total_cents::bigint);
+                              v_charge_left);
     END IF;
 
     -- Append the deposit row (orders-level, installment_id=NULL).
@@ -232,20 +247,23 @@ BEGIN
       'installment_id', NULL,
       'ordinal', 0,
       'source_pi', v_order.stripe_payment_intent_id,
-      'paid_cents', v_order.total_cents,
-      'refund_cents', FLOOR((v_order.total_cents - v_deposit_kept)::numeric * v_tier_pct / 100.0)::bigint,
+      'paid_cents', v_charge_left,
+      'charge_cents', v_order.total_cents,
+      'refund_cents', FLOOR((v_charge_left - v_deposit_kept)::numeric * v_tier_pct / 100.0)::bigint,
       'currency', v_order.currency,
       'note', 'deposit'
     );
   ELSE
-    -- Single-payment order: total_cents = paid.
-    v_paid_total_cents := v_order.total_cents;
+    -- Single-payment order: total_cents = paid; what is left of it after
+    -- earlier refunds is what the cancel can refund (H-1).
+    v_paid_total_cents := v_charge_left;
     v_per_installment_refund := jsonb_build_array(jsonb_build_object(
       'installment_id', NULL,
       'ordinal', 0,
       'source_pi', v_order.stripe_payment_intent_id,
-      'paid_cents', v_order.total_cents,
-      'refund_cents', FLOOR(v_order.total_cents::numeric * v_tier_pct / 100.0)::bigint,
+      'paid_cents', v_charge_left,
+      'charge_cents', v_order.total_cents,
+      'refund_cents', FLOOR(v_charge_left::numeric * v_tier_pct / 100.0)::bigint,
       'currency', v_order.currency
     ));
   END IF;
@@ -1069,7 +1087,8 @@ GRANT EXECUTE ON FUNCTION public.issue_4522_trip_cancels_to_resume(integer) TO s
 --   'unconfirmed' a second-provider refund was sent with no answer;
 --   'completed'   every intended refund made and recorded.
 -- alert is true exactly once per cause: the 3rd failure, the first
--- unconfirmed. first_completion is true for the one call that completed it.
+-- unconfirmed, the first step past the 24-hour ceiling ('stuck'); cause names
+-- it. first_completion is true for the one call that completed it.
 -- p_refused_charge: a card refund of this charge suffix ('deposit' or the
 -- instalment id) that the provider refused with no money moved; the next try
 -- uses a new provider key (a refused key would only replay its refusal).
@@ -1095,8 +1114,17 @@ BEGIN
       'failures', COALESCE((v->>'failures')::integer, 0));
   END IF;
   v_failures := COALESCE((v->>'failures')::integer, 0) + CASE WHEN p_kind = 'failure' THEN 1 ELSE 0 END;
+  -- Seventh pass (H-1 b): no step of a cancel stays "in progress" forever in
+  -- silence. Still waiting on the provider (a refund whose fee or visibility
+  -- it has not confirmed, or one it keeps refusing) past the in-flight hard
+  -- ceiling (issue_4522_flex_in_flight_ceiling, 24 hours) is one alert, as
+  -- the 3rd failure and an unanswered second-provider refund are.
   v_cause := CASE WHEN p_kind = 'failure' AND v_failures >= 3 THEN 'failure'
-                  WHEN p_kind = 'unconfirmed' THEN 'unconfirmed' END;
+                  WHEN p_kind = 'unconfirmed' THEN 'unconfirmed'
+                  WHEN p_kind IN ('waiting', 'failure')
+                   AND (SELECT r.created_at FROM public.refunds r WHERE r.id = p_refund_id)
+                       <= now() - public.issue_4522_flex_in_flight_ceiling()
+                  THEN 'stuck' END;
   IF v_cause IS NOT NULL AND NOT (COALESCE(v->'alerted', '[]'::jsonb) ? v_cause) THEN
     v_alert := true;
     v := jsonb_set(v, '{alerted}', COALESCE(v->'alerted', '[]'::jsonb) || to_jsonb(v_cause));
@@ -1110,7 +1138,7 @@ BEGIN
                    COALESCE((v #>> ARRAY['card_tries', p_refused_charge])::integer, 0) + 1)) END;
   UPDATE public.refunds SET metadata = jsonb_set(metadata, '{trip_cancel}', v) WHERE id = p_refund_id;
   RETURN jsonb_build_object('alert', v_alert, 'first_completion', p_kind = 'completed',
-    'failures', v_failures);
+    'failures', v_failures, 'cause', v_cause);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_note(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
