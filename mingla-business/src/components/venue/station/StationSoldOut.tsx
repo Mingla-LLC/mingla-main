@@ -16,6 +16,7 @@ import {
   StockError,
   type StationStockItem,
 } from "../../../services/venueStockService";
+import { refreshStockReads } from "../../../hooks/stockRefresh";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Spinner } from "../../ui/Spinner";
@@ -64,6 +65,7 @@ export function StationSoldOutBody({
     setError(null);
     try {
       await setStationSoldOut(venueId, item.menuItemId, on);
+      refreshStockReads(queryClient, venueId);
       await queryClient.invalidateQueries({ queryKey: ["stationStock", venueId] });
       if (on) onMarked({ menuItemId: item.menuItemId, name: item.name });
     } catch (err) {

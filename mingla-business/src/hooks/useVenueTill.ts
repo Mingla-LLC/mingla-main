@@ -38,15 +38,10 @@ import {
   type TillServer,
 } from "../services/venueTillService";
 import { tillSaleChangeMatches } from "../components/venue/till/tillModel";
+import { isSoldOutRefusal, refreshStockReads } from "./stockRefresh";
+import { venueTillKeys } from "./venueTillKeys";
 
-export const venueTillKeys = {
-  all: (venueId: string) => ["venueTill", venueId] as const,
-  catalog: (venueId: string) => ["venueTill", venueId, "catalog"] as const,
-  checks: (venueId: string) => ["venueTill", venueId, "checks"] as const,
-  sale: (venueId: string, saleId: string) => ["venueTill", venueId, "sale", saleId] as const,
-  servers: (venueId: string) => ["venueTill", venueId, "servers"] as const,
-};
-
+export { venueTillKeys };
 
 export const TILL_POLL_MS = 15_000;
 
@@ -140,16 +135,43 @@ export function useTillActions(venueId: string | null) {
   const refreshSale = (saleId: string): void => {
     if (venueId !== null) void queryClient.invalidateQueries({ queryKey: venueTillKeys.sale(venueId, saleId) });
   };
+  // #4490 08-O5 fix 2 (O5-B2): every write that can change a count marks the
+  // Till's tiles and the Menu's counts stale, so they come back from the
+  // server. A refused send or pay (item_sold_out) means the count on screen
+  // was stale: refresh it too, then let the caller word the refusal.
+  const refreshStock = (): void => refreshStockReads(queryClient, venueId);
+  const stockWrite = async <T,>(call: () => Promise<T>, changesStock: boolean): Promise<T> => {
+    try {
+      const result = await call();
+      if (changesStock) refreshStock();
+      return result;
+    } catch (err) {
+      if (isSoldOutRefusal(err)) refreshStock();
+      throw err;
+    }
+  };
   return {
     refreshSale,
+    refreshStock,
     open: useMutation({ mutationFn: async (i: Omit<Parameters<typeof openTillCheck>[0], "venueId">) => put(await openTillCheck({ venueId: venueId as string, ...i })) }),
-    addMenu: useMutation({ mutationFn: async (i: Omit<Parameters<typeof addTillMenu>[0], "venueId">) => put(await addTillMenu({ venueId: venueId as string, ...i })) }),
+    // A round that is sent takes stock on the server; a held one does not.
+    addMenu: useMutation({
+      mutationFn: async (i: Omit<Parameters<typeof addTillMenu>[0], "venueId">) =>
+        put(await stockWrite(() => addTillMenu({ venueId: venueId as string, ...i }), i.send)),
+    }),
     addOffer: useMutation({ mutationFn: async (i: Omit<Parameters<typeof addTillOffer>[0], "venueId">) => put(await addTillOffer({ venueId: venueId as string, ...i })) }),
-    voidLine: useMutation({ mutationFn: async (i: Omit<Parameters<typeof voidTillLine>[0], "venueId">) => put(await voidTillLine({ venueId: venueId as string, ...i })) }),
-    send: useMutation({ mutationFn: async (i: { saleId: string }) => put(await sendTill({ venueId: venueId as string, ...i })) }),
+    // A void may put units back (restock on or off: the server decides what comes back).
+    voidLine: useMutation({
+      mutationFn: async (i: Omit<Parameters<typeof voidTillLine>[0], "venueId">) =>
+        put(await stockWrite(() => voidTillLine({ venueId: venueId as string, ...i }), true)),
+    }),
+    send: useMutation({
+      mutationFn: async (i: { saleId: string }) => put(await stockWrite(() => sendTill({ venueId: venueId as string, ...i }), true)),
+    }),
     pay: useMutation({
       mutationFn: async (i: Omit<Parameters<typeof payTill>[0], "venueId">) => {
-        const result = await payTill({ venueId: venueId as string, ...i });
+        // T8: a payment sends what is still held, so it takes stock too.
+        const result = await stockWrite(() => payTill({ venueId: venueId as string, ...i }), true);
         put(result.sale);
         return result;
       },
@@ -163,7 +185,10 @@ export function useTillActions(venueId: string | null) {
         return result;
       },
     }),
-    refund: useMutation({ mutationFn: async (i: Omit<Parameters<typeof refundTill>[0], "venueId">) => put(await refundTill({ venueId: venueId as string, ...i })) }),
+    refund: useMutation({
+      mutationFn: async (i: Omit<Parameters<typeof refundTill>[0], "venueId">) =>
+        put(await stockWrite(() => refundTill({ venueId: venueId as string, ...i }), i.restock)),
+    }),
     refundLine: useMutation({ mutationFn: async (i: Omit<Parameters<typeof refundTillLine>[0], "venueId">) => put(await refundTillLine({ venueId: venueId as string, ...i })) }),
     relabel: useMutation({ mutationFn: async (i: Omit<Parameters<typeof relabelTill>[0], "venueId">) => put(await relabelTill({ venueId: venueId as string, ...i })) }),
     // 08-O4: split, seat a table, start / extend a by-the-hour session.

@@ -29,6 +29,7 @@ import {
   type OrderSoldOut,
   type SoldOutLine,
 } from "../../../services/venueStockService";
+import { refreshStockReads } from "../../../hooks/stockRefresh";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Pill } from "../../ui/Pill";
@@ -108,6 +109,8 @@ function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionPro
       });
       setSwapFor(null);
       setRefundFor(null);
+      // A swap takes the swap item's stock and a refund gives the line's back.
+      refreshStockReads(queryClient, venueId);
       await queryClient.invalidateQueries({ queryKey: ["venueOrders"] });
     } catch (err) {
       // Cancelling the PIN prompt is not an error: the line stays waiting.

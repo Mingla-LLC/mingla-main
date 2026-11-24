@@ -31,6 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { color, radius, size, space, type } from "../../../constants/designSystem";
 import { useVenueOffers } from "../../../hooks/useVenueOffers";
+import { isSoldOutRefusal } from "../../../hooks/stockRefresh";
 import { useTillActions, useTillCatalog, useTillChecks, useTillSale, useTillServers } from "../../../hooks/useVenueTill";
 import type {
   TillCatalog,
@@ -842,10 +843,20 @@ export function TillScreen({
         onSendReceipt={({ channel: _channel, ...input }) => sendReceipt(input)}
         venueId={venueId}
         tapOffer={tapOffer}
-        onStartCard={({ method, ...input }) =>
-          method === "tap"
-            ? startTillTap({ venueId, saleId: sale?.id as string, platform: Platform.OS, ...input })
-            : startTillScan({ venueId, saleId: sale?.id as string, ...input })}
+        onStartCard={async ({ method, ...input }) => {
+          // T8: starting a card or scan payment sends what is still held, so the
+          // count moves (or, refused, the count on screen was stale): read it again.
+          try {
+            const started = await (method === "tap"
+              ? startTillTap({ venueId, saleId: sale?.id as string, platform: Platform.OS, ...input })
+              : startTillScan({ venueId, saleId: sale?.id as string, ...input }));
+            actions.refreshStock();
+            return started;
+          } catch (err) {
+            if (isSoldOutRefusal(err)) actions.refreshStock();
+            throw err;
+          }
+        }}
         scanApi={scanApi}
       />
 

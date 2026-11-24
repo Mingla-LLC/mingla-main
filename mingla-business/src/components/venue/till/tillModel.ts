@@ -249,9 +249,13 @@ export function changeDue(givenMinor: number | null, dueMinor: number, tipMinor:
   return change >= 0 ? change : null;
 }
 
-/** An item a seller can add now (orderable, priced). */
+/**
+ * An item a seller can add now (orderable, priced). A counted item at 0 is
+ * never addable, whatever else the tile says (O5-B2): the count is the
+ * server's, read again after every send, void and restock.
+ */
 export function itemSellable(item: TillMenuItem): boolean {
-  return item.orderable && item.priceMinor !== null;
+  return item.orderable && item.priceMinor !== null && item.stockLeft !== 0;
 }
 
 /** An item that needs the choices sheet first (modifier groups). */

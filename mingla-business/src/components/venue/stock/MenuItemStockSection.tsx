@@ -17,6 +17,7 @@ import { Button } from "../../ui/Button";
 import { NumberStepper, NumberStepperPair } from "../../ui/NumberStepper";
 import { Switch } from "../../ui/Switch";
 import { menuKeys } from "../../../hooks/useMenus";
+import { refreshStockReads } from "../../../hooks/stockRefresh";
 import { setMenuItemStock, StockError } from "../../../services/venueStockService";
 import { STOCK_COPY, stockErrorCopy } from "./stockCopy";
 import {
@@ -70,6 +71,9 @@ export function MenuItemStockSection({
       const input = stockSaveInput(draft);
       await setMenuItemStock({ venueId, menuItemId, count: input.count, warnAt: input.warnAt });
       setStatus({ ok: true, text: input.count === null ? STOCK_COPY.stopped : STOCK_COPY.saved });
+      // The Till's tiles hear a restock (or a stop) at once, not after their
+      // own 30 s: the same stock reads the Till's writes refresh (O5-B2).
+      refreshStockReads(queryClient, venueId);
       if (brandId !== null) {
         await queryClient.invalidateQueries({ queryKey: menuKeys.brandMenus(brandId, venueId) });
       }
