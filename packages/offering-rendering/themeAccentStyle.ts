@@ -57,7 +57,10 @@ export const themeFontFace = (
 export const WEB_FONT_FALLBACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const withWebFallback = (fontFamily: string): string =>
   // A theme with no face key at all (older rows, stubs) stays as it was.
-  typeof fontFamily !== "string" || fontFamily.includes(",")
+  // "System" is react-native-web's own keyword: it expands it to the system
+  // stack only when the value is exactly "System", so it gets no tail (#4420:
+  // Host chrome draws shared parts in the app's face).
+  typeof fontFamily !== "string" || fontFamily === "System" || fontFamily.includes(",")
     ? fontFamily
     : `${fontFamily}, ${WEB_FONT_FALLBACK}`;
 
