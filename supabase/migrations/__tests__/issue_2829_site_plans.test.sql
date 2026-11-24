@@ -403,14 +403,22 @@ BEGIN
   IF NOT v_failed THEN RAISE EXCEPTION 'a finance manager could ask to start the website'; END IF;
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_marketing)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_marketing::text, true);
+  -- #4579: the active Mingla admin created above is added to every new brand
+  -- as a brand admin (granted_via 'mingla_admin') and has full brand-admin
+  -- parity, so it is asked too: owner, invited brand admin and Mingla admin.
+  IF NOT EXISTS (SELECT 1 FROM public.brand_team_members
+    WHERE brand_id = v_brand AND user_id = v_mingla_admin AND role = 'brand_admin'
+      AND granted_via = 'mingla_admin' AND removed_at IS NULL) THEN
+    RAISE EXCEPTION 'the active Mingla admin was not added to the new brand';
+  END IF;
   v_result := public.brand_site_request_start(v_brand);
-  IF (v_result->>'notified')::int <> 2 OR (v_result->>'already_asked')::boolean THEN
-    RAISE EXCEPTION 'owner and brand admin were not both notified: %', v_result;
+  IF (v_result->>'notified')::int <> 3 OR (v_result->>'already_asked')::boolean THEN
+    RAISE EXCEPTION 'owner, brand admin and Mingla admin were not all notified: %', v_result;
   END IF;
   SELECT count(*) INTO v_count FROM public.notification_outbox
   WHERE brand_id = v_brand AND category_key = 'business.site_start_requested'
-    AND user_id IN (v_owner, v_admin);
-  IF v_count <> 2 THEN RAISE EXCEPTION 'start-request outbox rows: %', v_count; END IF;
+    AND user_id IN (v_owner, v_admin, v_mingla_admin);
+  IF v_count <> 3 THEN RAISE EXCEPTION 'start-request outbox rows: %', v_count; END IF;
   -- #2829 W11: Core's own sentence words a nameless member ("A teammate"),
   -- never an empty body.
   IF EXISTS (SELECT 1 FROM public.notification_outbox
@@ -425,7 +433,7 @@ BEGIN
   PERFORM set_config('request.jwt.claims', jsonb_build_object('sub', v_events)::text, true);
   PERFORM set_config('request.jwt.claim.sub', v_events::text, true);
   v_result := public.brand_site_request_start(v_brand);
-  IF (v_result->>'notified')::int <> 2 THEN RAISE EXCEPTION 'an event manager could not ask'; END IF;
+  IF (v_result->>'notified')::int <> 3 THEN RAISE EXCEPTION 'an event manager could not ask'; END IF;
 
   RAISE NOTICE 'ISSUE_2829_W9A_SITE_PLANS_OK';
 END;

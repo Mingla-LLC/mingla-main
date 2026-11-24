@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4572-ARI-COMPOSER-FLUSH | issue #4572 item 16 | The Ari composer rides the keyboard in the keyboard-controller KeyboardAvoidingView (behavior="padding") and sits flush on it: no Done bar and no clearance while it is focused, and every other field keeps the Done bar.
+// MINGLA-INVARIANT: I-4572-ARI-COMPOSER-FLUSH | issue #4572 | Item 16: the Ari composer rides the keyboard in the keyboard-controller KeyboardAvoidingView (behavior="padding") and sits flush on it: no Done bar and no clearance while it is focused, and every other field keeps the Done bar.
 /**
  * #4572 item 16 — regression test for the no-brand Host home's keyboard.
  *
