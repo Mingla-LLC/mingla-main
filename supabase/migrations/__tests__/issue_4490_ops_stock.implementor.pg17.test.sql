@@ -565,7 +565,7 @@ SELECT public.t5c_reset();
 SELECT public.t5c_service();
 SELECT public.t5c_ok((SELECT (v->>'canRefund')::boolean AND (v->>'canSwap')::boolean AND (v->>'refundUsed')::boolean
     AND jsonb_array_length(v->'lines') = 2
-    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'swapOptions') o WHERE (o->>'menuItemId')::uuid IN (public.t5c_id('rice'), public.t5c_id('jollof'), public.t5c_id('soup'))))
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'swapOptions') o WHERE (o->>'menuItemId')::uuid IN (public.t5c_id('rice'), public.t5c_id('jollof'), public.t5c_id('soup')))
   FROM public.issue_4490_order_sold_out(public.t5c_id('guest_g4'), '44900615-0000-4000-8000-000000000001') v),
   'K-9a the owner sees both lines, may swap and refund, the refund is used, swap options are only orderable items');
 SELECT public.t5c_ok((SELECT NOT (v->>'canRefund')::boolean AND (v->>'canSwap')::boolean
