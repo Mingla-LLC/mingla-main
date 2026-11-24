@@ -321,8 +321,14 @@ jest.mock("../../../components/ari/InputBar", () => {
   const RN = jest.requireActual("react-native");
   const R = jest.requireActual("react") as typeof React;
   return {
-    InputBar: (props: { onFocus?: () => void; onBlur?: () => void }) =>
-      R.createElement(RN.View, { testID: "ari-input-bar", onFocus: props.onFocus, onBlur: props.onBlur }),
+    InputBar: (props: { onFocus?: () => void; onBlur?: () => void; onSend?: (text: string) => unknown }) =>
+      R.createElement(RN.View, {
+        testID: "ari-input-bar",
+        onFocus: props.onFocus,
+        onBlur: props.onBlur,
+        // #4572 item 16 — the composer's own Send, so the test can press it.
+        onSend: props.onSend,
+      }),
   };
 });
 
@@ -396,6 +402,10 @@ interface Branch {
   /** The resting spacer's height, and whether it is the KAV's next sibling. */
   readonly spacerHeight: number | null;
   readonly spacerFollowsKav: boolean;
+  /** #4572 item 16 — the composer's Send result and Keyboard.dismiss() calls. */
+  readonly sendAccepted: unknown;
+  readonly dismissCallsOnSend: number;
+  readonly dismissCallsOnEmptySend: number;
   /** Done-bar suppression flag read after focus, then after blur. */
   readonly flagAfterFocus: boolean;
   readonly flagAfterBlur: boolean;
@@ -406,7 +416,14 @@ interface Branch {
  * module registry, then report the resolved composer geometry, what happens
  * when every onLayout in the composer subtree is fired, and the focus flag.
  */
-function measureBranch(id: string, os: string, version: number | string, keyboardHeight = 336): Branch {
+function measureBranch(
+  id: string,
+  os: string,
+  version: number | string,
+  keyboardHeight = 336,
+  /** #4579/#4572 — what the (tabs) shell says about its tab bar; undefined = no provider (default). */
+  shellTabBar?: boolean,
+): Branch {
   PLATFORM_STATE.OS = os;
   PLATFORM_STATE.Version = version;
   KEYBOARD_STATE.height = keyboardHeight;
@@ -436,11 +453,21 @@ function measureBranch(id: string, os: string, version: number | string, keyboar
     nativeMethods.measureInWindow.mockImplementation(
       (cb: (x: number, y: number, w: number, h: number) => void) => cb(0, COMPOSER_HOST_WINDOW_Y, 402, 700),
     );
+    const { TabBarVisibilityContext } = require("../../../context/TabBarVisibilityContext") as {
+      TabBarVisibilityContext: React.Context<boolean>;
+    };
+    const RNi = require("react-native") as { Keyboard: { dismiss: () => void } };
+    const dismiss = jest.spyOn(RNi.Keyboard, "dismiss").mockImplementation(() => undefined);
     /* eslint-enable @typescript-eslint/no-require-imports */
 
     let tree: { root: HostNode; unmount: () => void } | null = null;
     TR.act(() => {
-      tree = TR.create(R.createElement(AriChatScreen));
+      const screen = R.createElement(AriChatScreen);
+      tree = TR.create(
+        shellTabBar === undefined
+          ? screen
+          : R.createElement(TabBarVisibilityContext.Provider, { value: shellTabBar }, screen),
+      );
     });
     if (tree == null) throw new Error(`[#1890] renderer produced no tree under ${os}/${version}.`);
     const root = (tree as { root: HostNode }).root;
@@ -533,6 +560,20 @@ function measureBranch(id: string, os: string, version: number | string, keyboar
     });
     const flagAfterBlur = suppression.getDoneBarSuppressed();
 
+    // #4572 item 16 — the composer's Send dismisses the keyboard once accepted.
+    dismiss.mockClear();
+    let sendAccepted: unknown = null;
+    TR.act(() => {
+      sendAccepted = (findByTestId(root, "ari-input-bar").props.onSend as (t: string) => unknown)("hello Ari");
+    });
+    const dismissCallsOnSend = dismiss.mock.calls.length;
+    dismiss.mockClear();
+    TR.act(() => {
+      (findByTestId(root, "ari-input-bar").props.onSend as (t: string) => unknown)("   ");
+    });
+    const dismissCallsOnEmptySend = dismiss.mock.calls.length;
+    dismiss.mockRestore();
+
     result = {
       id,
       paddingBottom: readPadding(),
@@ -550,6 +591,9 @@ function measureBranch(id: string, os: string, version: number | string, keyboar
       spacerFollowsKav,
       flagAfterFocus,
       flagAfterBlur,
+      sendAccepted,
+      dismissCallsOnSend,
+      dismissCallsOnEmptySend,
     };
     TR.act(() => {
       TR.act(() => {
@@ -687,5 +731,43 @@ describe("#4572 (was #1890) — Ari composer rides the keyboard and sits flush",
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     expect(code).not.toMatch(/DONE_BAR_OCCUPIED|MIN_VISIBLE_CLEARANCE|composerOccupiedPxFor/);
     expect(code).toMatch(/KeyboardAvoidingView[^\n]*behavior="padding"/);
+  });
+});
+
+// ── #4579/#4572 — the resting clearance follows the shell's real tab bar ──────
+//
+// A first-run host has no phone tab bar (the (tabs) shell hides it, #4420 B5),
+// yet the composer kept the 80pt capsule room: an empty 72pt band above the
+// home indicator on device (spacer 106 = 34 + 80 - 8). The shell now says
+// whether it draws the bar; the screen reads that one value.
+describe("#4579/#4572 — no tab bar, no tab-bar room under the Ari composer", () => {
+  const hidden = measureBranch("ios-26-no-tab-bar", "ios", 26, 336, false);
+  const shown = measureBranch("ios-26-tab-bar", "ios", 26, 336, true);
+
+  it("the shell hides the tab bar: the resting spacer is the safe area only (no 80pt)", () => {
+    expect(hidden.spacerHeight).toBe(INSET_BOTTOM - CONTAINER_SPACE);
+  });
+
+  it("the shell shows the tab bar: the resting spacer keeps the 80pt room", () => {
+    expect(shown.spacerHeight).toBe(INSET_BOTTOM + TAB_ROOM - CONTAINER_SPACE);
+  });
+
+  it("keyboard up, the composer is flush either way (only its container's space[2] under the pill)", () => {
+    expect(hidden.paddingBottom).toBe(CONTAINER_SPACE);
+    expect(shown.paddingBottom).toBe(CONTAINER_SPACE);
+  });
+});
+
+// ── #4572 item 16 — Send dismisses the keyboard (tap-outside, swipe-down AND Send)
+describe("#4572 item 16 — the composer's Send dismisses the keyboard", () => {
+  const b = measureBranch("ios-26-send", "ios", 26);
+
+  it("an accepted send dismisses the keyboard once", () => {
+    expect(b.sendAccepted).toBe(true);
+    expect(b.dismissCallsOnSend).toBe(1);
+  });
+
+  it("a send that is not accepted (empty text) leaves the keyboard up", () => {
+    expect(b.dismissCallsOnEmptySend).toBe(0);
   });
 });

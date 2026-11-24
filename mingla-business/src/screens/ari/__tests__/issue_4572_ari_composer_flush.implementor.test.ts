@@ -252,3 +252,27 @@ describe("#4572 retest P1-1 — the installed library and the device measurement
     expect(focus).toMatch(/measureComposerHost\(\);/);
   });
 });
+
+describe("#4579/#4572 — tab-bar room and keyboard dismissal (device follow-ups)", () => {
+  it("the (tabs) shell is the one owner of 'is the tab bar drawn', and Ari reads it", () => {
+    const layout = code(read("../../../../app/(tabs)/_layout.tsx"));
+    expect(layout).toMatch(/<TabBarVisibilityContext\.Provider value=\{!hideBottomNav\}>/);
+    expect(screen).toMatch(/const shellShowsTabBar = useShellTabBarVisible\(\);/);
+    expect(screen).toMatch(/const noTabBar = websiteSetup \|\| withoutTabBar \|\| !shellShowsTabBar;/);
+    // Ari never re-derives the shell's rule.
+    expect(screen).not.toMatch(/shouldShowTabBar\(/);
+  });
+
+  it("Send dismisses the keyboard on native only, and only the composer's own Send", () => {
+    expect(screen).toMatch(/if \(accepted && Platform\.OS !== "web"\) Keyboard\.dismiss\(\);/);
+    expect(screen).toMatch(/onSend=\{handleComposerSend\}/);
+  });
+
+  it("swipe-down dismissal is wired on every Ari scroll area", () => {
+    const greeting = code(read("../../../components/ari/FirstRunGreeting.tsx"));
+    expect(greeting).toMatch(/keyboardDismissMode=\{Platform\.OS === "ios" \? "interactive" : "on-drag"\}/);
+    expect(greeting).toMatch(/keyboardDismissMode="on-drag"/);
+    const list = code(read("../../../components/ari/MessageList.tsx"));
+    expect(list).toMatch(/keyboardDismissMode="on-drag"/);
+  });
+});

@@ -130,6 +130,7 @@ import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { useAuth } from "../../context/AuthContext";
 // #4304 part 3 — First Home with Ari (greeting, chips and top bar by stage).
 import { useFirstRunStageContext } from "../../context/FirstRunStageContext";
+import { useShellTabBarVisible } from "../../context/TabBarVisibilityContext";
 import { FirstRunGreeting, FirstRunSetupStage } from "../../components/ari/FirstRunGreeting";
 import { useFirstRunStore } from "../../store/firstRunStore";
 import { useAriSeedStore } from "../../store/ariSeedStore";
@@ -378,7 +379,10 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   // #2830 — Website setup has no tab bar, and neither has Ari embedded in
   // Help & Support (#4420, withoutTabBar), so nothing here clears one: the
   // composer, its resting lift and the empty hero all read this one value.
-  const noTabBar = websiteSetup || withoutTabBar;
+  // #4579/#4572 — and none when the (tabs) shell does not draw one (a
+  // first-run host, #4420 B5): the shell owns that rule, this only reads it.
+  const shellShowsTabBar = useShellTabBarVisible();
+  const noTabBar = websiteSetup || withoutTabBar || !shellShowsTabBar;
   const BOTTOM_NAV_CLEARANCE_PX = noTabBar ? 0 : TAB_BAR_CLEARANCE_PX;
   // An old address: setup lives on the one setup screen now.
   const legacySetupRoute =
@@ -903,6 +907,16 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     !disclosureNeeded &&
     brands.isSuccess &&
     (brandCount === 0 || (selectedBrandId !== null && conversationRestored));
+  // #4572 item 16 (Seth) — the keyboard goes away by tap-outside, swipe-down
+  // AND Send. Only the composer's own Send dismisses it (programmatic sends —
+  // a claimed draft, a chip — never touch the keyboard), only once the turn
+  // was accepted, and only on native (web has no soft keyboard). Dismissing
+  // blurs the field, so its onBlur lowers the no-Done-bar flag as usual.
+  const handleComposerSend = (text: string): boolean => {
+    const accepted = handleSend(text);
+    if (accepted && Platform.OS !== "web") Keyboard.dismiss();
+    return accepted;
+  };
   const handleSendRef = useRef(handleSend);
   handleSendRef.current = handleSend;
   useSitePromptDraftHandoff({
@@ -1640,7 +1654,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
                   </Text>
                 ) : null}
                 <InputBar
-                  onSend={handleSend}
+                  onSend={handleComposerSend}
                   value={draftText}
                   onChangeText={setDraftText}
                   inputRef={composerInputRef}
