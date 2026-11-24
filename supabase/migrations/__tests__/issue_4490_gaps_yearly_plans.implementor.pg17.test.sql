@@ -320,7 +320,9 @@ SELECT public.t4490k_service();
 DO $k5d$
 DECLARE
   v_door jsonb := public.issue_4490_check_in_list(
-    '44908000-0000-4000-9000-0000000000a1', current_date, '44908000-0000-4000-8000-000000000001');
+    '44908000-0000-4000-9000-0000000000a1',
+    public.issue_4490_venue_local_date('44908000-0000-4000-9000-0000000000a1'),
+    '44908000-0000-4000-8000-000000000001');
 BEGIN
   PERFORM public.t4490k_ok(EXISTS (
       SELECT 1 FROM jsonb_array_elements(v_door->'members') m
