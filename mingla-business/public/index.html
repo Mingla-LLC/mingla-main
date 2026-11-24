@@ -24,17 +24,6 @@
         flex: 1;
       }
     </style>
-    <!--
-      #4490 N35/N42/N73: the page is dark from the first paint. Before this the
-      document had no background until the JavaScript arrived (5 to 25 seconds
-      on a slow phone or a busy dev server), so every first load, every return
-      from payment and every member link showed a plain white page with an
-      unreadable "Loading…". The colour is the app canvas (designSystem
-      color.canvas, pinned equal by the issue-4490-host-wiring gate). The
-      loader sits beside an EMPTY #root (the Expo scaffold the #922 critical
-      entry requires) and shows only while #root is empty, so the first React
-      render (or the #922 invite entry) hides it.
-    -->
     <style id="mingla-preboot">
       html,
       body {
@@ -42,39 +31,11 @@
         color: #a8a8ad;
         color-scheme: dark;
       }
-      .mingla-preboot {
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 16px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 15px;
-      }
-      .mingla-preboot-ring {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        border: 3px solid rgba(255, 255, 255, 0.14);
-        border-top-color: rgba(255, 255, 255, 0.72);
-        animation: mingla-preboot-spin 0.9s linear infinite;
-      }
-      #root:not(:empty) ~ .mingla-preboot {
-        display: none;
-      }
-      @keyframes mingla-preboot-spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .mingla-preboot-ring {
-          animation: none;
-        }
-      }
+      .mingla-preboot{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:15px}
+      .mingla-preboot-ring{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.72);animation:mingla-preboot-spin .9s linear infinite}
+      #root:not(:empty) ~ .mingla-preboot{display:none}
+      @keyframes mingla-preboot-spin{to{transform:rotate(360deg)}}
+      @media (prefers-reduced-motion:reduce){.mingla-preboot-ring{animation:none}}
     </style>
   </head>
 
