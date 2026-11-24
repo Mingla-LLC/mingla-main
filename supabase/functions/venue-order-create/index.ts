@@ -68,6 +68,7 @@ import {
   venueOrderChargeCurrency,
   venueOrderErrorStatus,
   venueOrderProviderFloorRefusal,
+  venueOrderRepricedVerdict,
   venueOrderIdempotencyKey,
 } from "../_shared/venueOrderPricing.ts";
 import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
@@ -771,6 +772,40 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       console.error("[venue-order-create] discount release failed", error);
     }
   };
+  // The guest's "the price changed, look again" answer, with the new quote.
+  const checkoutReviewRequired = (
+    quote: DiscountQuote,
+    reviewed: ReturnType<typeof priceDiscountedQuote>,
+    detail: "discount_changed" | "price_changed",
+  ): Response =>
+    jsonResponse({
+      error: "checkout_review_required",
+      detail,
+      quote: {
+        kind: "preview",
+        currency: settlementCurrency,
+        listSubtotalCents: reviewed.discountedCart.listSubtotalCents,
+        discountCents: reviewed.discountedCart.discountCents,
+        subtotalCents: reviewed.money.subtotalCents,
+        serviceChargeCents: reviewed.money.serviceChargeCents,
+        serviceChargeLabel: ctx.settings.service_charge_label,
+        feesAndTaxCents: reviewed.money.feesAndTaxCents,
+        tipCents: reviewed.money.tipCents,
+        totalCents: reviewed.money.totalCents,
+        discounts: quote.applied.map((entry) => ({
+          id: entry.discountId,
+          kind: entry.kind,
+          name: entry.name,
+          code: entry.code,
+          amountCents: entry.amountMinor,
+        })),
+        codeOutcome: quote.codeOutcome,
+        notices: reviewed.notices,
+        quoteDigest: quote.digest,
+        lines: reviewed.discountedCart.lines,
+      },
+    }, 409);
+  let reviewDetail: "discount_changed" | "price_changed" = "discount_changed";
   if (discountedCart.discountCents > 0) {
     try {
       const reserve = await callReserveDiscountUses(supabase, {
@@ -792,60 +827,45 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         consume: false,
       });
       if (!reserve.ok) {
-        const reviewed = priceDiscountedQuote(reserve.quote);
-        return jsonResponse({
-          error: "checkout_review_required",
-          detail: reserve.quote.listDigest === discountQuote.listDigest
+        return checkoutReviewRequired(
+          reserve.quote,
+          priceDiscountedQuote(reserve.quote),
+          reserve.quote.listDigest === discountQuote.listDigest
             ? "discount_changed"
             : "price_changed",
-          quote: {
-            kind: "preview",
-            currency: settlementCurrency,
-            listSubtotalCents: reviewed.discountedCart.listSubtotalCents,
-            discountCents: reviewed.discountedCart.discountCents,
-            subtotalCents: reviewed.money.subtotalCents,
-            serviceChargeCents: reviewed.money.serviceChargeCents,
-            serviceChargeLabel: ctx.settings.service_charge_label,
-            feesAndTaxCents: reviewed.money.feesAndTaxCents,
-            tipCents: reviewed.money.tipCents,
-            totalCents: reviewed.money.totalCents,
-            discounts: reserve.quote.applied.map((entry) => ({
-              id: entry.discountId,
-              kind: entry.kind,
-              name: entry.name,
-              code: entry.code,
-              amountCents: entry.amountMinor,
-            })),
-            codeOutcome: reserve.quote.codeOutcome,
-            notices: reviewed.notices,
-            quoteDigest: reserve.quote.digest,
-            lines: reviewed.discountedCart.lines,
-          },
-        }, 409);
+        );
       }
       discountUsesReserved = true;
+      const checkedListDigest = discountQuote.listDigest;
       discountQuote = reserve.quote;
       pricedDiscount = priceDiscountedQuote(discountQuote);
       ({ discountedCart, money, notices, pricingBreakdown } = pricedDiscount);
+      reviewDetail = discountQuote.listDigest === checkedListDigest
+        ? "discount_changed"
+        : "price_changed";
     } catch (error) {
       console.error("[venue-order-create] discount reserve failed", error);
       return fail("internal_error");
     }
-    // #3645 (review of #4560): the reservation checks the guest's own
-    // quoteDigest, not necessarily the quote priced above, so it can hand back
-    // a stronger discount and a total that is now under the provider minimum.
-    // Check the final total again; on refusal, give the reserved uses back
-    // before answering. Still before any row write or provider call.
-    if (movesMoney) {
-      const reservedRefusal = venueOrderProviderFloorRefusal(
-        money.totalCents,
-        venueOrderChargeCurrency(routing.provider, settlementCurrency),
-        "guest",
-      );
-      if (reservedRefusal) {
-        await releaseDiscountUses();
-        return jsonResponse(reservedRefusal.body, reservedRefusal.status);
+    // #3645 (reviews of #4560 and #4565): the reservation checks the guest's
+    // own quoteDigest, not necessarily the quote priced above, so it can hand
+    // back a different discount. If that flips the order between free and
+    // paid, every gate above (charge readiness, money path, payment state) was
+    // decided on the wrong answer: send the guest back to review the new
+    // price. A paid total is held to the provider minimum on the final
+    // amount. Either way the reserved uses go back first, and both answers
+    // come before any row write or provider call.
+    const repriced = venueOrderRepricedVerdict(
+      movesMoney,
+      money.totalCents,
+      venueOrderChargeCurrency(routing.provider, settlementCurrency),
+    );
+    if (repriced.kind !== "proceed") {
+      await releaseDiscountUses();
+      if (repriced.kind === "refuse") {
+        return jsonResponse(repriced.refusal.body, repriced.refusal.status);
       }
+      return checkoutReviewRequired(discountQuote, pricedDiscount, reviewDetail);
     }
   }
 
