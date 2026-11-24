@@ -60,6 +60,22 @@ export const MINGLA_TEAM_COPY = {
 
 export type MinglaTeamView = "on" | "off" | "hidden";
 
+/**
+ * #4579 retest (Android) — only a real On <-> Off swap cross-fades. The first
+ * transition out of "hidden" (the first data load) mounts the row in that same
+ * commit; a native-driver fade started on a view that has just mounted did not
+ * take on Android and left the row at opacity 0 while still tappable. Pure;
+ * exported for tests.
+ */
+export function minglaTeamShouldCrossFade(
+  previous: MinglaTeamView,
+  next: MinglaTeamView,
+  reduceMotion: boolean,
+): boolean {
+  if (reduceMotion || previous === next) return false;
+  return previous !== "hidden" && next !== "hidden";
+}
+
 /** Pure: which form the section takes. Exported for tests. */
 export function minglaTeamView(state: MinglaTeamState | null | undefined): MinglaTeamView {
   if (state === null || state === undefined) return "hidden";
@@ -105,16 +121,25 @@ export const MinglaTeamSection: React.FC<MinglaTeamSectionProps> = ({
   const [sheetContentHeight, setSheetContentHeight] = useState<number | null>(null);
   const previousView = useRef<MinglaTeamView>(view);
 
-  // On/Off swap: a 180 ms cross-fade; instant with reduced motion.
+  // On/Off swap: a 180 ms cross-fade; instant with reduced motion, and none
+  // at all on the first load (hidden -> on/off): the row starts at opacity 1.
+  // JS-side guarantee: whether the animation finishes, is interrupted or the
+  // section goes away, the opacity is put back to 1, so no path leaves the row
+  // invisible but tappable.
   useEffect(() => {
-    if (previousView.current === view) return;
+    const previous = previousView.current;
     previousView.current = view;
-    if (reduceMotion) {
+    if (!minglaTeamShouldCrossFade(previous, view, reduceMotion)) {
       fade.setValue(1);
-      return;
+      return undefined;
     }
     fade.setValue(0);
-    Animated.timing(fade, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    const animation = Animated.timing(fade, { toValue: 1, duration: 180, useNativeDriver: true });
+    animation.start(() => fade.setValue(1));
+    return (): void => {
+      animation.stop();
+      fade.setValue(1);
+    };
   }, [view, reduceMotion, fade]);
 
   const closeSheet = useCallback((): void => {
