@@ -40,7 +40,13 @@ export const eventBuyersKeys = {
 };
 
 export interface UseEventBuyersState {
+  /**
+   * The names roster only (#4596). Its `reach` is not a count to show or send
+   * by: the event's count and reach come from useEventAudienceCount.
+   */
   data: ResolveBuyersResult | undefined;
+  /** #4596 — "rsvp" once known, so error and empty copy can say guests. */
+  audienceType: EventBuyersAudienceType | undefined;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -111,6 +117,7 @@ export function useEventBuyers(
   return useMemo(
     () => ({
       data: query.data,
+      audienceType: eventType ?? typeProbe.data,
       isLoading: query.isLoading || probePending,
       isError: query.isError || typeProbe.isError,
       error: query.error ?? typeProbe.error,
@@ -118,6 +125,8 @@ export function useEventBuyers(
     }),
     [
       query.data,
+      eventType,
+      typeProbe.data,
       query.isLoading,
       query.isError,
       query.error,

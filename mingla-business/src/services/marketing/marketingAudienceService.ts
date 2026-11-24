@@ -29,6 +29,10 @@
  */
 
 import { supabase } from "../supabase";
+import {
+  eventAudienceShape,
+  eventRowName,
+} from "../../features/marketing/blastSendModel";
 import type {
   AudienceListEntry,
   AudienceReachSummary,
@@ -489,6 +493,53 @@ export function maskPhone(phone: string | null): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// #4596 — event audience discovery (the server's one owner)
+// ---------------------------------------------------------------------------
+// Every event of the brand with a paid buyer or a going RSVP guest, with the
+// server's counts: people (de-duplicated), buyers, guests, and going guests
+// still waiting on a duplicate check in the Book. These are the only event
+// counts a host is shown as reachable or used to decide sending; the roster
+// resolvers above (resolveEventBuyers / resolveRsvpGuests) only list names.
+
+export interface EventAudienceSummary {
+  eventId: string;
+  title: string | null;
+  eventType: string | null;
+  startsAt: string | null;
+  buyerCount: number;
+  guestCount: number;
+  peopleCount: number;
+  pendingReviewCount: number;
+}
+
+const toCount = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : 0;
+
+export async function listEventAudiences(input: {
+  actor_id: string;
+  brand_id: string;
+}): Promise<EventAudienceSummary[]> {
+  assertUuid(input.actor_id, "listEventAudiences.actor_id");
+  assertUuid(input.brand_id, "listEventAudiences.brand_id");
+  const { data, error } = await supabase.rpc("biz_marketing_event_audiences_v1", {
+    p_actor_id: input.actor_id,
+    p_brand_id: input.brand_id,
+  });
+  if (error) throw error;
+  if (!Array.isArray(data)) throw new Error("EVENT_AUDIENCES_INVALID_RESPONSE");
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    eventId: String(row.eventId),
+    title: typeof row.title === "string" ? row.title : null,
+    eventType: typeof row.eventType === "string" ? row.eventType : null,
+    startsAt: typeof row.startsAt === "string" ? row.startsAt : null,
+    buyerCount: toCount(row.buyerCount),
+    guestCount: toCount(row.guestCount),
+    peopleCount: toCount(row.peopleCount),
+    pendingReviewCount: toCount(row.pendingReviewCount),
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // Phase B — Audiences tab unified list (ORCH-0863)
 // ---------------------------------------------------------------------------
 // SPEC §6.2.3: merges three lists into one, scoped to ONE brand (#3682):
@@ -496,7 +547,8 @@ export function maskPhone(phone: string | null): string | null {
 //   2. Discovered brand_buyers virtual row — this brand with >=1 paid order
 //      that has no existing brand_buyers row.
 //   3. Discovered event_buyers virtual rows — every event under THIS brand
-//      with >=1 paid order that has no existing event_buyers row.
+//      the server lists (#4596: paid buyers or going RSVP guests) that has no
+//      existing event_buyers row.
 // Virtual rows are materialized lazily by the UI on first tap.
 // Cross-brand automatic groups on a multi-brand account are a data leak
 // (Lantern Room could open Harmattan Club buyers) — never list other brands.
@@ -569,29 +621,16 @@ export async function listAudiencesForBrand(
     }
   }
 
-  // Step 3 — Discover paid orders for THIS brand only.
-  const { data: paidOrderEvents, error: ordersErr } = await supabase
-    .from("orders")
-    .select("event_id, events!inner ( id, title, brand_id )")
-    .in("payment_status", ["paid", "partial_refund"])
-    .eq("events.brand_id", input.brand_id);
-  if (ordersErr) throw ordersErr;
-  const paidEventRows = (paidOrderEvents ?? []) as unknown as Array<{
-    event_id: string;
-    events: { id: string; title: string | null; brand_id: string } | null;
-  }>;
+  // Step 3 — #4596: the server's event audiences for THIS brand (paid buyers
+  // or going RSVP guests), with their counts. Replaces the paid-orders scan,
+  // which never saw an RSVP event.
+  const eventAudiences = await listEventAudiences({
+    actor_id: input.account_id,
+    brand_id: input.brand_id,
+  });
 
-  // Step 4 — Events with paid orders under this brand.
-  const paidEventById = new Map<string, string | null>(); // event_id → title
-  let hasPaidOrders = false;
-  for (const row of paidEventRows) {
-    if (row.events === null) continue;
-    if (row.events.brand_id !== input.brand_id) continue;
-    hasPaidOrders = true;
-    if (!paidEventById.has(row.events.id)) {
-      paidEventById.set(row.events.id, row.events.title);
-    }
-  }
+  // Step 4 — the brand rollup needs at least one paid buyer.
+  const hasPaidOrders = eventAudiences.some((event) => event.buyerCount > 0);
 
   // Step 5 — Brand display name (RLS gates).
   const brandNameById = new Map<string, string>();
@@ -638,11 +677,11 @@ export async function listAudiencesForBrand(
     });
   }
 
-  // 7b — Event-scoped entries (this brand only).
-  for (const [eventId, eventTitle] of paidEventById.entries()) {
+  // 7b — Event-scoped entries (this brand only), named for who they hold.
+  for (const event of eventAudiences) {
+    const eventId = event.eventId;
     const clientKey = `event_buyers:${eventId}`;
     const existing = existingByClientKey.get(clientKey);
-    const titleLabel = eventTitle ?? "Untitled event";
     entries.push({
       client_key: clientKey,
       kind: "event_buyers",
@@ -650,7 +689,7 @@ export async function listAudiencesForBrand(
       brand_id: input.brand_id,
       brand_name: brandName,
       event_id: eventId,
-      display_name: `${titleLabel} — buyers`,
+      display_name: eventRowName(eventAudienceShape(event), event.title),
       last_used_at: existing !== undefined ? (lastUsedByAudienceId.get(existing.id) ?? null) : null,
     });
   }

@@ -12,7 +12,10 @@
 // post-finalize reason fails T-FINALIZE; restoring the orders resolver for
 // event_buyers fails T-EVENT-LANE; dropping the combined branch of
 // eventChatEventId fails T-CHAT.
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   eventChatEventId,
   failureReasonCode,
@@ -31,7 +34,10 @@ interface Write {
   filters: Array<[string, string, unknown]>;
 }
 
-function client(rpcs: Record<string, { data: unknown; error: unknown }> = {}, messageRows: unknown[] = []) {
+function client(
+  rpcs: Record<string, { data: unknown; error: unknown }> = {},
+  messageRows: unknown[] = [],
+) {
   const called: string[] = [];
   const writes: Write[] = [];
   return {
@@ -61,7 +67,8 @@ function client(rpcs: Record<string, { data: unknown; error: unknown }> = {}, me
           return chain;
         },
         limit: () => chain,
-        then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve),
+        then: (resolve: (value: unknown) => unknown) =>
+          Promise.resolve(result).then(resolve),
       };
       return chain;
     },
@@ -82,8 +89,19 @@ const options = { live: true, resendApiKey: "" };
 
 Deno.test("T-ZERO SC-7 zero reachable ends failed with no_recipients, no finalize", async () => {
   const c = client();
-  const out = await processClaimedCampaigns(c, [campaign as never], options, () =>
-    Promise.resolve({ delivered: 0, deferred: 0, failed: 0, preview_skipped: 0, no_recipients: true }));
+  const out = await processClaimedCampaigns(
+    c,
+    [campaign as never],
+    options,
+    () =>
+      Promise.resolve({
+        delivered: 0,
+        deferred: 0,
+        failed: 0,
+        preview_skipped: 0,
+        no_recipients: true,
+      }),
+  );
   const write = c.writes.find((w) => w.table === "marketing_campaigns");
   assert(write !== undefined);
   assertEquals(write.values.status, "failed");
@@ -91,58 +109,120 @@ Deno.test("T-ZERO SC-7 zero reachable ends failed with no_recipients, no finaliz
   assertEquals(write.values.recipient_count, 0);
   assert(!c.called.includes("mkt_finalize_campaign"));
   assert(c.called.includes("biz_record_marketing_book_send_failure_v1"));
-  assertEquals(out.errors, [{ campaign_id: CAMPAIGN, reason: "no_recipients" }]);
+  assertEquals(out.errors, [{
+    campaign_id: CAMPAIGN,
+    reason: "no_recipients",
+  }]);
 });
 
 Deno.test("T-CATCH a thrown send writes its code, never the raw message or null", async () => {
   const c = client();
-  await processClaimedCampaigns(c, [campaign as never], options, () =>
-    Promise.reject(new Error("audience_load:provider said something private")));
+  await processClaimedCampaigns(
+    c,
+    [campaign as never],
+    options,
+    () =>
+      Promise.reject(
+        new Error("audience_load:provider said something private"),
+      ),
+  );
   const write = c.writes.find((w) => w.table === "marketing_campaigns");
   assertEquals(write?.values.status, "failed");
   assertEquals(write?.values.failure_reason, "audience_load");
   assertEquals(failureReasonCode("email_body_empty"), "email_body_empty");
-  assertEquals(failureReasonCode("Some provider text with spaces"), "send_failed");
+  assertEquals(
+    failureReasonCode("Some provider text with spaces"),
+    "send_failed",
+  );
   assertEquals(failureReasonCode(""), "send_failed");
   assertEquals(failureReasonCode("x".repeat(200)).length, 120);
 });
 
 Deno.test("T-FINALIZE a finalize that fails the campaign (push: 0 delivered) gets no_recipients when null", async () => {
   const c = client({ mkt_finalize_campaign: { data: "failed", error: null } });
-  await processClaimedCampaigns(c, [{ ...campaign, channel: "push" } as never], options, () =>
-    Promise.resolve({ delivered: 0, deferred: 0, failed: 0, preview_skipped: 0 }));
+  await processClaimedCampaigns(
+    c,
+    [{ ...campaign, channel: "push" } as never],
+    options,
+    () =>
+      Promise.resolve({
+        delivered: 0,
+        deferred: 0,
+        failed: 0,
+        preview_skipped: 0,
+      }),
+  );
   const write = c.writes.find((w) => w.table === "marketing_campaigns");
   assertEquals(write?.values, { failure_reason: "no_recipients" });
-  assert(write?.filters.some(([op, col, v]) => op === "is" && col === "failure_reason" && v === null));
-  assert(write?.filters.some(([op, col, v]) => op === "eq" && col === "status" && v === "failed"));
+  assert(
+    write?.filters.some(([op, col, v]) =>
+      op === "is" && col === "failure_reason" && v === null
+    ),
+  );
+  assert(
+    write?.filters.some(([op, col, v]) =>
+      op === "eq" && col === "status" && v === "failed"
+    ),
+  );
 });
 
 Deno.test("T-FINALIZE a sent campaign is not touched", async () => {
   const c = client({ mkt_finalize_campaign: { data: "sent", error: null } });
-  await processClaimedCampaigns(c, [campaign as never], options, () =>
-    Promise.resolve({ delivered: 2, deferred: 0, failed: 0, preview_skipped: 0 }));
-  assertEquals(c.writes.filter((w) => w.table === "marketing_campaigns").length, 0);
+  await processClaimedCampaigns(
+    c,
+    [campaign as never],
+    options,
+    () =>
+      Promise.resolve({
+        delivered: 2,
+        deferred: 0,
+        failed: 0,
+        preview_skipped: 0,
+      }),
+  );
+  assertEquals(
+    c.writes.filter((w) => w.table === "marketing_campaigns").length,
+    0,
+  );
 });
 
 Deno.test("T-GUARD zero reachable is refused only on a first pass", async () => {
   assertEquals(await noRecipientsToReach(client(), CAMPAIGN, 3), false);
   assertEquals(await noRecipientsToReach(client({}, []), CAMPAIGN, 0), true);
   // A resumed pass already wrote rows: its finalize decides, not the guard.
-  assertEquals(await noRecipientsToReach(client({}, [{ id: "m1" }]), CAMPAIGN, 0), false);
+  assertEquals(
+    await noRecipientsToReach(client({}, [{ id: "m1" }]), CAMPAIGN, 0),
+    false,
+  );
 });
 
 Deno.test("T-EVENT-LANE A2 event_buyers asks the database owner for buyers plus going guests", async () => {
   const rows = [
-    { contact_key: "p1", raw_email: "guest@example.test", email_marketing_ok: true },
-    { contact_key: "k1", raw_email: "buyer@example.test", email_marketing_ok: true },
+    {
+      contact_key: "p1",
+      raw_email: "guest@example.test",
+      email_marketing_ok: true,
+    },
+    {
+      contact_key: "k1",
+      raw_email: "buyer@example.test",
+      email_marketing_ok: true,
+    },
   ];
   const c = client({
     biz_marketing_event_send_audience_v1: {
-      data: { rows, brand_id: BRAND, reach: { total: 2, reachable_email: 2, reachable_sms: 0 } },
+      data: {
+        rows,
+        brand_id: BRAND,
+        reach: { total: 2, reachable_email: 2, reachable_sms: 0 },
+      },
       error: null,
     },
   });
-  const out = await resolveAudience(c as never, { kind: "event_buyers", event_id: EVENT }, CAMPAIGN);
+  const out = await resolveAudience(c as never, {
+    kind: "event_buyers",
+    event_id: EVENT,
+  }, CAMPAIGN);
   assertEquals(c.called, ["biz_marketing_event_send_audience_v1"]);
   assertEquals(out.rows.length, 2);
   assertEquals(out.brand_id, BRAND);
@@ -151,7 +231,10 @@ Deno.test("T-EVENT-LANE A2 event_buyers asks the database owner for buyers plus 
 Deno.test("T-EVENT-LANE event_buyers without a campaign, or a bad answer, fails closed", async () => {
   let threw = "";
   try {
-    await resolveAudience(client() as never, { kind: "event_buyers", event_id: EVENT });
+    await resolveAudience(client() as never, {
+      kind: "event_buyers",
+      event_id: EVENT,
+    });
   } catch (error) {
     threw = (error as Error).message;
   }
@@ -159,7 +242,12 @@ Deno.test("T-EVENT-LANE event_buyers without a campaign, or a bad answer, fails 
   threw = "";
   try {
     await resolveAudience(
-      client({ biz_marketing_event_send_audience_v1: { data: { rows: [] }, error: null } }) as never,
+      client({
+        biz_marketing_event_send_audience_v1: {
+          data: { rows: [] },
+          error: null,
+        },
+      }) as never,
       { kind: "event_buyers", event_id: EVENT },
       CAMPAIGN,
     );
@@ -170,14 +258,32 @@ Deno.test("T-EVENT-LANE event_buyers without a campaign, or a bad answer, fails 
 });
 
 Deno.test("T-CHAT SC-9 a single-event combined blast still writes into the event chat", () => {
-  assertEquals(eventChatEventId({ kind: "event_buyers", event_id: EVENT }), EVENT);
   assertEquals(
-    eventChatEventId({ kind: "combined_sources", brand_id: BRAND, sources: [`event:${EVENT}`] }),
+    eventChatEventId({ kind: "event_buyers", event_id: EVENT }),
     EVENT,
   );
   assertEquals(
-    eventChatEventId({ kind: "combined_sources", brand_id: BRAND, sources: ["book", `event:${EVENT}`] }),
+    eventChatEventId({
+      kind: "combined_sources",
+      brand_id: BRAND,
+      sources: [`event:${EVENT}`],
+    }),
+    EVENT,
+  );
+  assertEquals(
+    eventChatEventId({
+      kind: "combined_sources",
+      brand_id: BRAND,
+      sources: ["book", `event:${EVENT}`],
+    }),
     null,
   );
-  assertEquals(eventChatEventId({ kind: "combined_sources", brand_id: BRAND, sources: ["book"] }), null);
+  assertEquals(
+    eventChatEventId({
+      kind: "combined_sources",
+      brand_id: BRAND,
+      sources: ["book"],
+    }),
+    null,
+  );
 });
