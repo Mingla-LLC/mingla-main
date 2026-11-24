@@ -5,6 +5,7 @@
  */
 import {
   COMBINED_ZERO_REACH_COPY,
+  canPickEventAudience,
   campaignFailureCopy,
   eventAudienceCount,
   eventAudienceShape,
@@ -61,6 +62,24 @@ describe("#4596 zero and pending copy", () => {
     expect(COMBINED_ZERO_REACH_COPY).toBe(
       "No one in this audience can receive this. Pick another audience or method.",
     );
+  });
+});
+
+describe("#4596 fix pass 2 who may pick an event audience", () => {
+  it("mirrors the server: event_manager (40) and up", () => {
+    expect(canPickEventAudience(20)).toBe(false); // marketing_manager
+    expect(canPickEventAudience(30)).toBe(false); // finance_manager
+    expect(canPickEventAudience(40)).toBe(true); // event_manager
+    expect(canPickEventAudience(60)).toBe(true); // brand_owner
+  });
+});
+
+describe("#4596 fix pass 2 only a send that reached nobody says so", () => {
+  it("no_recipients says no one could receive it", () => {
+    expect(campaignFailureCopy("no_recipients")).toBe("Not sent: no one in this audience could receive it.");
+  });
+  it("provider failures keep the usual Failed {date} wording (no reason line)", () => {
+    expect(campaignFailureCopy("all_sends_failed")).toBeNull();
   });
 });
 

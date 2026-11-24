@@ -191,6 +191,7 @@ import {
   audienceSourceDetail,
   combinedCountCaption,
   COMBINED_ZERO_REACH_COPY,
+  canPickEventAudience,
   eventAudienceShape,
   eventRowName,
   leadBlastChannel,
@@ -2685,6 +2686,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             ? { selectedKeys: pickedKeys, onDone: handleAudienceDone }
             : undefined}
           actorId={accountId}
+          eventAudiencesAllowed={
+            roleResolved &&
+            currentBrandRole.accepted &&
+            canPickEventAudience(currentBrandRole.rank)
+          }
           bookBlastEnabled={bookBlastEnabled}
           manualGroupsEnabled={bookBlastEnabled && manualGroupFlag.data === true}
           circleAudienceEnabled={circleAudienceEnabled}

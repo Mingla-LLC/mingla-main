@@ -573,6 +573,16 @@ export function smsReachNote(state: "none_picked" | "loading" | "unavailable"): 
 
 // ── #4596 — event audiences: buyers, guests or both ─────────────────────────
 
+/**
+ * Whether this role may pick an event audience. Mirrors the server rule in
+ * issue_4273_assert_sources_allowed: an `event:` source needs event_manager
+ * (rank 40) or above; a marketing manager (20) is refused at quote.
+ */
+export const EVENT_AUDIENCE_MIN_RANK = 40;
+export function canPickEventAudience(rank: number): boolean {
+  return rank >= EVENT_AUDIENCE_MIN_RANK;
+}
+
 /** Who an event audience is, for its copy: RSVP guests, paid buyers or both. */
 export type EventAudienceShape = "guests" | "buyers" | "people";
 

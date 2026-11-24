@@ -82,7 +82,7 @@ afterEach(async () => {
   });
 });
 
-async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest.fn(), selectedKeys: string[] = [], reach: unknown = REACH) {
+async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest.fn(), selectedKeys: string[] = [], reach: unknown = REACH, eventAudiencesAllowed?: boolean) {
   let tree: any;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
@@ -99,6 +99,7 @@ async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest
         circleAudienceEnabled
         circleReach={reach as typeof REACH}
         multiSelect={{ selectedKeys, onDone }}
+        eventAudiencesAllowed={eventAudiencesAllowed}
       />,
     );
   });
@@ -115,6 +116,16 @@ const row = (tree: any, name: string) =>
       node.props.onPress,
   )[0];
 const done = (tree: any) => tree.root.findByProps({ testID: "audience-picker-done", accessibilityRole: "button" });
+
+describe("#4596 fix pass 2 event rows follow the server's rank rule", () => {
+  it("a role below event_manager sees no event row (the server would refuse it at quote)", async () => {
+    const hidden = text((await mount(jest.fn(), jest.fn(), [], REACH, false)).toJSON());
+    expect(hidden).not.toContain("Buyers of Highlife");
+    expect(hidden).toContain("All buyers of Harmattan");
+    const shown = text((await mount(jest.fn(), jest.fn(), [], REACH, true)).toJSON());
+    expect(shown).toContain("Buyers of Highlife");
+  });
+});
 
 describe("#4273 audience picker", () => {
   beforeEach(() => mockSummary.mockClear());

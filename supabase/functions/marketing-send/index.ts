@@ -1415,6 +1415,8 @@ interface DispatchOutcome {
 // INVARIANT I-4596-NO-SILENT-ZERO: marketing-send never leaves a campaign failed with a null failure_reason; zero reachable is failure_reason no_recipients.
 /** #4596 — the reason written when a campaign reaches nobody. */
 export const NO_RECIPIENTS_REASON = "no_recipients";
+/** #4596 fix pass 2 — every message row was attempted and failed at the provider. */
+export const ALL_SENDS_FAILED_REASON = "all_sends_failed";
 const NO_RECIPIENTS_OUTCOME: DispatchOutcome = {
   delivered: 0,
   deferred: 0,
@@ -1620,10 +1622,18 @@ export async function processClaimedCampaigns(
         // included) without a reason. Say why, unless a reason is already set.
         // Best-effort: the send itself is already final and must not be
         // re-marked by a failed reason write, so this never throws.
+        // Fix pass 2: 'no_recipients' only when nobody was attempted (push,
+        // which finalizes on 0 delivered, or no message rows at all). Email
+        // or SMS whose rows all failed at the provider is 'all_sends_failed',
+        // which the host app shows with its usual "Failed {date}" wording.
         try {
+          const reason = campaign.channel === "push" ||
+              await noRecipientsToReach(supabase, campaign.id, 0)
+            ? NO_RECIPIENTS_REASON
+            : ALL_SENDS_FAILED_REASON;
           const { error: reasonErr } = await supabase
             .from("marketing_campaigns")
-            .update({ failure_reason: NO_RECIPIENTS_REASON })
+            .update({ failure_reason: reason })
             .eq("id", campaign.id)
             .eq("status", "failed")
             .is("failure_reason", null);

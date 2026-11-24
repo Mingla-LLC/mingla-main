@@ -166,6 +166,22 @@ Deno.test("T-FINALIZE a finalize that fails the campaign (push: 0 delivered) get
   );
 });
 
+Deno.test("T-FINALIZE email whose rows all failed at the provider is all_sends_failed, not no_recipients", async () => {
+  const c = client({ mkt_finalize_campaign: { data: "failed", error: null } }, [{ id: "m1" }]);
+  await processClaimedCampaigns(c, [campaign as never], options, () =>
+    Promise.resolve({ delivered: 0, deferred: 0, failed: 0, preview_skipped: 0 }));
+  const write = c.writes.find((w) => w.table === "marketing_campaigns");
+  assertEquals(write?.values, { failure_reason: "all_sends_failed" });
+});
+
+Deno.test("T-FINALIZE email with no message rows at all is no_recipients", async () => {
+  const c = client({ mkt_finalize_campaign: { data: "failed", error: null } }, []);
+  await processClaimedCampaigns(c, [campaign as never], options, () =>
+    Promise.resolve({ delivered: 0, deferred: 0, failed: 0, preview_skipped: 0 }));
+  const write = c.writes.find((w) => w.table === "marketing_campaigns");
+  assertEquals(write?.values, { failure_reason: "no_recipients" });
+});
+
 Deno.test("T-FINALIZE a sent campaign is not touched", async () => {
   const c = client({ mkt_finalize_campaign: { data: "sent", error: null } });
   await processClaimedCampaigns(

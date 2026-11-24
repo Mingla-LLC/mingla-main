@@ -138,6 +138,11 @@ export interface AudiencePickerSheetProps {
     selectedKeys: readonly string[];
     onDone: (options: AudienceOption[]) => void;
   };
+  /**
+   * #4596 fix pass 2 — false hides event rows: the server refuses an event
+   * source below event_manager (see canPickEventAudience). Absent = shown.
+   */
+  eventAudiencesAllowed?: boolean;
 }
 
 interface OrderJoinRow {
@@ -168,6 +173,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   circleReach,
   onRetryCircleReach,
   multiSelect,
+  eventAudiencesAllowed,
 }) => {
   const isMulti = multiSelect !== undefined;
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
@@ -236,7 +242,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         // paid buyers plus going RSVP guests, de-duplicated.
         // Signed out (no actor) there is no host to ask for; the composer
         // always passes one.
-        const eventAudiences = actorId == null
+        const eventAudiences = actorId == null || eventAudiencesAllowed === false
           ? []
           : await listEventAudiences({ actor_id: actorId, brand_id: brandId });
         // 1) Pull paid orders for this brand (the brand rollup row only).
@@ -429,6 +435,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     manualGroupsEnabled,
     circleAudienceEnabled,
     circleReach,
+    eventAudiencesAllowed,
   ]);
 
   /**
