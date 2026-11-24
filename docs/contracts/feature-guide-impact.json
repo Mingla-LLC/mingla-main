@@ -6673,29 +6673,7 @@
         "mingla-business/app/visit/list/[token].tsx",
         "mingla-business/app/visit/plan/[subscriptionId].tsx",
         "mingla-business/app/visit/waitlist/[id].tsx",
-        "mingla-business/src/components/home/venueStaffHomeModel.ts",
-        "mingla-business/src/components/team/LazyTillPinSection.tsx",
-        "mingla-business/src/components/team/TillPinSection.tsx",
-        "mingla-business/src/components/team/teamRowModel.ts",
-        "mingla-business/src/components/team/venueAccessOptions.ts",
-        "mingla-business/src/components/ui/Chip.tsx",
-        "mingla-business/src/components/ui/DayDateField.tsx",
-        "mingla-business/src/components/ui/DurationSelect.tsx",
-        "mingla-business/src/components/ui/LeadTimeSelect.tsx",
-        "mingla-business/src/components/ui/MoneyField.tsx",
-        "mingla-business/src/components/ui/NativeTabletColumn.tsx",
-        "mingla-business/src/components/ui/NativeTabletColumn.web.tsx",
-        "mingla-business/src/components/ui/PickerSheetHead.tsx",
-        "mingla-business/src/components/ui/SelectSheet.tsx",
         "mingla-business/src/components/ui/SpacePicker.tsx",
-        "mingla-business/src/components/ui/TimeField.tsx",
-        "mingla-business/src/components/ui/VenueCoverButton.tsx",
-        "mingla-business/src/components/ui/WeekdayChips.tsx",
-        "mingla-business/src/components/ui/appBackgroundCss.ts",
-        "mingla-business/src/components/ui/appBackgroundCss.web.ts",
-        "mingla-business/src/components/ui/fieldModels.ts",
-        "mingla-business/src/components/ui/useScrollToTopOnChange.ts",
-        "mingla-business/src/components/ui/useToastTimer.ts",
         "mingla-business/src/components/venue/claim/claimReviewRows.ts",
         "mingla-business/src/components/venue/features/CombineSpacesSheet.tsx",
         "mingla-business/src/components/venue/features/CreatedVenueSetupNeeds.tsx",
@@ -6805,7 +6783,6 @@
         "mingla-business/src/components/venue/venueSubmitErrors.ts",
         "mingla-business/src/components/venue/venueWizardValidation.ts",
         "mingla-business/src/components/venue/waitlistSeatModel.ts",
-        "mingla-business/src/hooks/useBrandCurrency.ts",
         "mingla-business/src/hooks/useEventAtVenue.ts",
         "mingla-business/src/hooks/useVenueBooking.ts",
         "mingla-business/src/hooks/useVenueCheckIns.ts",
@@ -6836,7 +6813,6 @@
         "mingla-business/src/store/venueSuiteStore.ts",
         "mingla-business/src/types/venueMembers.ts",
         "mingla-business/src/types/venueOffers.ts",
-        "mingla-business/src/utils/csvCell.ts",
         "mingla-business/src/utils/draftRsvpValidation.ts",
         "mingla-business/src/utils/experienceUpfrontDraft.ts",
         "mingla-business/src/utils/guestReservationManage.ts",
@@ -6939,6 +6915,55 @@
         "supabase/migrations/20281203764490_issue_4490_ops_o5_fix4.sql",
         "supabase/migrations/20281203774490_issue_4490_ops_mingla_team_names.sql",
         "supabase/migrations/20281203784490_issue_4490_ops_o5_fix5_swap_rule.sql"
+      ]
+    },
+    {
+      "capability_key": "account-settings",
+      "paths": [
+        "mingla-business/src/components/home/venueStaffHomeModel.ts",
+        "mingla-business/src/components/ui/Chip.tsx",
+        "mingla-business/src/components/ui/DayDateField.tsx",
+        "mingla-business/src/components/ui/DurationSelect.tsx",
+        "mingla-business/src/components/ui/LeadTimeSelect.tsx",
+        "mingla-business/src/components/ui/MoneyField.tsx",
+        "mingla-business/src/components/ui/NativeTabletColumn.tsx",
+        "mingla-business/src/components/ui/NativeTabletColumn.web.tsx",
+        "mingla-business/src/components/ui/PickerSheetHead.tsx",
+        "mingla-business/src/components/ui/SelectSheet.tsx",
+        "mingla-business/src/components/ui/TimeField.tsx",
+        "mingla-business/src/components/ui/WeekdayChips.tsx",
+        "mingla-business/src/components/ui/appBackgroundCss.ts",
+        "mingla-business/src/components/ui/appBackgroundCss.web.ts",
+        "mingla-business/src/components/ui/fieldModels.ts",
+        "mingla-business/src/components/ui/useScrollToTopOnChange.ts",
+        "mingla-business/src/components/ui/useToastTimer.ts"
+      ]
+    },
+    {
+      "capability_key": "brand-profile",
+      "paths": [
+        "mingla-business/src/hooks/useBrandCurrency.ts"
+      ]
+    },
+    {
+      "capability_key": "brand-team-roles",
+      "paths": [
+        "mingla-business/src/components/team/LazyTillPinSection.tsx",
+        "mingla-business/src/components/team/TillPinSection.tsx",
+        "mingla-business/src/components/team/teamRowModel.ts",
+        "mingla-business/src/components/team/venueAccessOptions.ts"
+      ]
+    },
+    {
+      "capability_key": "events-guest-list",
+      "paths": [
+        "mingla-business/src/utils/csvCell.ts"
+      ]
+    },
+    {
+      "capability_key": "venues-go-live-readiness",
+      "paths": [
+        "mingla-business/src/components/ui/VenueCoverButton.tsx"
       ]
     }
   ]
