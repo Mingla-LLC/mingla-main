@@ -221,7 +221,7 @@ export function DayCloseScreen({ venueId, approvers, sellerSlot = null }: DayClo
   const body = summary === null ? content : (
     <View style={styles.column}>
       {view === "closed" ? (
-        <DayCloseDone summary={summary} wide={wide} exporting={exporting} printing={printing}
+        <DayCloseDone summary={summary} exporting={exporting} printing={printing}
           onExport={() => void exportDay()} onPrint={() => void printDay()} onReopen={() => openSheet({ kind: "reopen" })} />
       ) : (
         <>

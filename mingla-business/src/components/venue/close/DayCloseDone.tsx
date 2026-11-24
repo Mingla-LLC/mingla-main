@@ -8,7 +8,7 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { color, space, type } from "../../../constants/designSystem";
 import type { DaySummary } from "../../../services/venueDayCloseService";
@@ -19,11 +19,10 @@ import { KpiTile } from "../../ui/KpiTile";
 import { ListRow } from "../../ui/ListRow";
 import { CLOSE_COPY } from "./dayCloseCopy";
 import { DayCloseLate } from "./DayCloseLate";
-import { dayLabel, differenceWords, personName } from "./dayCloseModel";
+import { closedTileBasis, dayLabel, differenceWords, personName } from "./dayCloseModel";
 
 export interface DayCloseDoneProps {
   summary: DaySummary;
-  wide: boolean;
   exporting: boolean;
   printing: boolean;
   onExport: () => void;
@@ -31,11 +30,13 @@ export interface DayCloseDoneProps {
   onReopen: () => void;
 }
 
-export function DayCloseDone({ summary, wide, exporting, printing, onExport, onPrint, onReopen }: DayCloseDoneProps): React.ReactElement {
+export function DayCloseDone({ summary, exporting, printing, onExport, onPrint, onReopen }: DayCloseDoneProps): React.ReactElement {
   const money = (minor: number): string => formatCurrency(minor, summary.currency, true);
   const close = summary.close;
   const diff = close?.differenceMinor ?? null;
   const words = diff === null ? null : differenceWords(diff, summary.currency);
+  const { width } = useWindowDimensions();
+  const tileStyle = [styles.tile, { flexBasis: closedTileBasis(width) }] as const;
   return (
     <View style={styles.root} testID="day-close-done">
       <GlassCard>
@@ -48,13 +49,15 @@ export function DayCloseDone({ summary, wide, exporting, printing, onExport, onP
           </Text>
         </View>
         <View style={styles.tiles}>
-          <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.takings}
+          <KpiTile style={tileStyle} label={CLOSE_COPY.takings} wrapValue
             value={money(summary.totals.takings.amountMinor)} sub={CLOSE_COPY.payments(summary.totals.takings.count)}
             testID="day-close-done-takings" />
-          <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.tips} value={money(summary.totals.takings.tipMinor)} />
-          <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.cashCounted}
-            value={close?.cashCountedMinor !== null && close?.cashCountedMinor !== undefined ? money(close.cashCountedMinor) : "--"} />
-          <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.difference}
+          <KpiTile style={tileStyle} label={CLOSE_COPY.tips} wrapValue value={money(summary.totals.takings.tipMinor)}
+            testID="day-close-done-tips" />
+          <KpiTile style={tileStyle} label={CLOSE_COPY.cashCounted} wrapValue
+            value={close?.cashCountedMinor !== null && close?.cashCountedMinor !== undefined ? money(close.cashCountedMinor) : "--"}
+            testID="day-close-done-cash" />
+          <KpiTile style={tileStyle} label={CLOSE_COPY.difference} wrapValue
             value={words?.text ?? "--"} testID="day-close-done-difference" />
         </View>
       </GlassCard>
@@ -89,8 +92,7 @@ const styles = StyleSheet.create({
   h1: { ...type.h1, color: color.text1 },
   sub: { ...type.small, color: color.text2 },
   tiles: { flexDirection: "row", flexWrap: "wrap", gap: space[3] },
-  tile: { flexBasis: "46%", flexGrow: 1 },
-  tileWide: { flexBasis: "22%" },
+  tile: { flexGrow: 1 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   grow: { flexGrow: 1 },
   hint: { ...type.caption, color: color.text3 },

@@ -138,3 +138,13 @@ export function settingsValid(draft: TillSettings): boolean {
     && draft.autoLockMinutes >= AUTO_LOCK_MIN && draft.autoLockMinutes <= AUTO_LOCK_MAX
     && (draft.receiptFooter ?? "").trim().length <= FOOTER_MAX;
 }
+
+/**
+ * #4490 08-O5 fix 2 (O5-B4): how wide a headline tile on the closed-day card
+ * is. Four across only where there is room for a full amount (1024 and up);
+ * below that each tile takes its own row, so "₦45,100.00" is never cut off at
+ * 390 or 768. The amount itself also wraps (KpiTile wrapValue) as the floor.
+ */
+export function closedTileBasis(windowWidth: number): "100%" | "22%" {
+  return windowWidth >= 1024 ? "22%" : "100%";
+}

@@ -31,17 +31,17 @@ export function DayCloseTotals({ summary, wide }: DayCloseTotalsProps): React.Re
   return (
     <View style={styles.root} testID="day-close-totals">
       <View style={styles.tiles}>
-        <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.takings} value={money(t.takings.amountMinor)}
+        <KpiTile style={[styles.tile, wide && styles.tileWide]} wrapValue label={CLOSE_COPY.takings} value={money(t.takings.amountMinor)}
           sub={CLOSE_COPY.payments(t.takings.count)} testID="day-close-takings" />
-        <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.cash} value={money(t.cash.expectedMinor)}
+        <KpiTile style={[styles.tile, wide && styles.tileWide]} wrapValue label={CLOSE_COPY.cash} value={money(t.cash.expectedMinor)}
           sub={CLOSE_COPY.inDrawer} testID="day-close-cash" />
-        <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.tips} value={money(t.takings.tipMinor)}
+        <KpiTile style={[styles.tile, wide && styles.tileWide]} wrapValue label={CLOSE_COPY.tips} value={money(t.takings.tipMinor)}
           sub={CLOSE_COPY.byWhoServed} testID="day-close-tips" />
-        <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.serviceCharge} value={money(t.serviceChargeMinor)}
+        <KpiTile style={[styles.tile, wide && styles.tileWide]} wrapValue label={CLOSE_COPY.serviceCharge} value={money(t.serviceChargeMinor)}
           sub={CLOSE_COPY.insideTakings} />
-        <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.refunds} value={money(t.refunds.amountMinor)}
+        <KpiTile style={[styles.tile, wide && styles.tileWide]} wrapValue label={CLOSE_COPY.refunds} value={money(t.refunds.amountMinor)}
           sub={CLOSE_COPY.payments(t.refunds.count)} testID="day-close-refunds" />
-        <KpiTile style={[styles.tile, wide && styles.tileWide]} label={CLOSE_COPY.voids} value={money(t.voids.amountMinor)}
+        <KpiTile style={[styles.tile, wide && styles.tileWide]} wrapValue label={CLOSE_COPY.voids} value={money(t.voids.amountMinor)}
           sub={`${t.voids.count} · ${CLOSE_COPY.beforePayment}`} />
       </View>
 

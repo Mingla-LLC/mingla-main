@@ -65,6 +65,8 @@ module.exports = {
     "**/__tests__/tillDepositExcess.issue4490.o4fix3.render.test.tsx",
     // #4490 spec 08 O5 part B: Close the day (one sheet at a time; the reopen PIN inside it).
     "**/__tests__/dayClose.issue4490.o5b.render.test.tsx",
+    // #4490 spec 08 O5 fix 2 (O5-B4): the closed-day headline money is never cut off, 390 to 1440.
+    "**/__tests__/dayCloseMoney.issue4490.o5fix2.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",

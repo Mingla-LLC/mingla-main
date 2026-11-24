@@ -31,6 +31,12 @@ export interface KpiTileProps {
   /** Drives delta colour: `true` = success, `false` = error, `undefined` = neutral. */
   deltaUp?: boolean;
   sub?: string;
+  /**
+   * Money (and any value that must be read in full) wraps instead of being
+   * cut to "₦45,10…": no line limit, no shrink-to-fit. Default off, so every
+   * other tile keeps its one-line value.
+   */
+  wrapValue?: boolean;
   loading?: boolean;
   testID?: string;
   style?: StyleProp<ViewStyle>;
@@ -42,6 +48,7 @@ export const KpiTile: React.FC<KpiTileProps> = ({
   delta,
   deltaUp,
   sub,
+  wrapValue = false,
   loading = false,
   testID,
   style,
@@ -68,7 +75,11 @@ export const KpiTile: React.FC<KpiTileProps> = ({
             testID={testID === undefined ? "kpi-loading" : `${testID}-loading`}
           />
         ) : (
-          <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
+          <Text
+            style={styles.value}
+            numberOfLines={wrapValue ? undefined : 1}
+            adjustsFontSizeToFit={!wrapValue}
+          >
             {String(value)}
           </Text>
         )}
