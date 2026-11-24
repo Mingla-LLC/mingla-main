@@ -15,13 +15,23 @@ export function isChunkLoadError(error) {
   return CHUNK_ERROR_PATTERNS.some((p) => text.includes(p.toLowerCase()));
 }
 
+// Reading window.sessionStorage itself throws (SecurityError) when site data is
+// blocked; never let that crash Admin's boot. null makes the handler skip.
+function safeSessionStorage(win) {
+  try {
+    return win.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Listen for vite:preloadError and reload once per window.
  * `log` is told about every reload (Sentry message) and every skip (console).
  */
 export function installStaleChunkReload({
   win = window,
-  storage = win.sessionStorage,
+  storage = safeSessionStorage(win),
   now = () => Date.now(),
   log = () => {},
 } = {}) {

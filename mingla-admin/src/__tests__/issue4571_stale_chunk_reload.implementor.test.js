@@ -140,3 +140,23 @@ export const html = (message) => {
     assert.ok(!out.includes(UPDATED_MESSAGE));
   });
 });
+
+describe("S-7 reading sessionStorage throws (site data blocked)", () => {
+  it("installs without throwing and never reloads", () => {
+    const listeners = {};
+    let reloads = 0;
+    const win = {
+      addEventListener: (n, f) => { listeners[n] = f; },
+      removeEventListener: () => {},
+      location: { reload: () => { reloads += 1; } },
+    };
+    Object.defineProperty(win, "sessionStorage", {
+      get() { throw new Error("SecurityError: access denied"); },
+    });
+    let prevented = false;
+    assert.doesNotThrow(() => installStaleChunkReload({ win, now: () => 1 }));
+    listeners["vite:preloadError"]({ preventDefault: () => { prevented = true; } });
+    assert.equal(reloads, 0);
+    assert.equal(prevented, false);
+  });
+});
