@@ -565,6 +565,45 @@ const PINS = [
     absentMatches: [/from "@react-native-async-storage/, /\blocalStorage\./, /\bsessionStorage\./, /expo-secure-store/, /zustand\/middleware/],
     why: "the PIN session token lives in memory only and sign-out clears it (Constitution 5, 6, 14; spec 08 §3 O5)",
   },
+  // #4490 08-O5 fix 2 (carried 1): a Till device login has no Orders screen, so
+  // the Till carries "Sold out after payment": its banner and ONE sheet, whose
+  // card (Swap item / Refund, the PIN asked again) renders inside that sheet.
+  {
+    id: "till-gate-carries-the-sold-out-slot",
+    file: `${BIZ}/src/components/venue/till/TillGate.tsx`,
+    matches: [
+      /<TillScreen venueId=\{venueId\} \{\.\.\.screenProps\} soldOutSlot=\{<TillSoldOutHost venueId=\{venueId\} \/>\} \/>/,
+      /stepUpApprovers=\{approvers\(staff\.people\)\}\s*soldOutSlot=\{<TillSoldOutHost venueId=\{venueId\} \/>\}/,
+    ],
+    why: "both Till entries (a plain account and a Till device in a PIN session) show guest orders that sold out after payment",
+  },
+  // #4490 08-O5 fix 2 (O5-B1): your own Team row opens your own Till PIN; the
+  // sheet on it is read-only (no role, access or remove control).
+  {
+    id: "team-own-row-opens-your-till-pin",
+    file: `${BIZ}/app/brand/[id]/team.tsx`,
+    contains: [
+      "if (!rowTappable(entry, tillReleased)) return;",
+      'isSelf={detailEntry?.status === "self"}',
+      "showSelfRowAboveEmpty(acceptedEntries, tillReleased)",
+    ],
+    absent: ['if (entry.status === "self") return;'],
+    why: "no member could set their own Till PIN while the Team screen ignored taps on your own row",
+  },
+  {
+    id: "member-sheet-own-row-is-read-only",
+    file: `${BIZ}/src/components/team/MemberDetailSheet.tsx`,
+    contains: ['entry.role === "venue_staff" && !isSelf', "(isPending || isAccepted) && !isSelf", "own={isSelf}"],
+    why: "your own row shows only your Till PIN: you cannot change your own role, venue access or remove yourself from this sheet",
+  },
+  {
+    id: "till-sold-out-one-sheet",
+    file: `${BIZ}/src/components/venue/till/TillSoldOut.tsx`,
+    contains: ['testID="till-sold-out-sheet"', "<OrderSoldOutSection venueId={venueId} orderId={row.orderId} currency={row.currency} />"],
+    absent: ["<Modal", "ConfirmDialog"],
+    absentMatches: [/<Sheet[\s\S]*<Sheet /],
+    why: "the sold-out list is one native sheet; the swap list, refund confirm and PIN pad render inside it (iOS: one modal per presenter)",
+  },
   {
     id: "who-is-selling-no-sheet",
     file: `${BIZ}/src/components/venue/till/WhoIsSelling.tsx`,

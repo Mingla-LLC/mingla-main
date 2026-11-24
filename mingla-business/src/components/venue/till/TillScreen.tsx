@@ -136,6 +136,12 @@ export interface TillScreenProps {
   sellerSlot?: React.ReactNode;
   /** #4490 O5: who may approve a refund or a sent void on the spot (TillGate). */
   stepUpApprovers?: readonly TillPinPerson[];
+  /**
+   * #4490 08-O5 fix 2 (carried 1): guest orders waiting for a swap or a refund
+   * (TillSoldOutHost: its banner, and its one sheet). A Till device login has no
+   * Orders screen, so the Till carries it. Supplied by the gate.
+   */
+  soldOutSlot?: React.ReactNode;
 }
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
@@ -151,6 +157,7 @@ export function TillScreen({
   openChecksOnStart = false,
   sellerSlot = null,
   stepUpApprovers = NO_APPROVERS,
+  soldOutSlot = null,
 }: TillScreenProps): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -166,6 +173,7 @@ export function TillScreen({
   const saleQuery = useTillSale(venueId, saleId);
   const sale = saleId !== null ? saleQuery.data ?? null : null;
   const [checksOpen, setChecksOpen] = useState(openChecksOnStart);
+
   const checksQuery = useTillChecks(venueId, true);
   const actions = useTillActions(venueId);
 
@@ -1102,6 +1110,7 @@ export function TillScreen({
           testID="till-checks-open"
         />
       </View>
+      {soldOutSlot}
       {tabs.length > 1 ? (
         <Segmented options={tabs} value={activeTab} onChange={(k) => setTab(k)} style={styles.tabs} />
       ) : null}

@@ -71,6 +71,8 @@ module.exports = {
     "**/__tests__/tillStockRefresh.issue4490.o5fix2.render.test.tsx",
     // #4490 spec 08 O5 fix 2 (O5-B1): set your own Till PIN from Brand > Team (your own row).
     "**/__tests__/teamOwnPin.issue4490.o5fix2.render.test.tsx",
+    // #4490 spec 08 O5 fix 2 (carried 1): sold out after payment on a Till device (one sheet, PIN asked again).
+    "**/__tests__/tillSoldOut.issue4490.o5fix2.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",

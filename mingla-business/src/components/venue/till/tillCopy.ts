@@ -109,6 +109,8 @@ export const TILL_COPY = {
   ],
   refunded: "Refunded",
   close: "Close",
+  // #4490 08-O5 fix 2 (carried 1): the Till banner for guest orders that sold out after payment.
+  swapOrRefund: "Swap or refund",
   // Leaving with items not yet on the check
   leaveTitle: "Leave the Till?",
   leaveBody: "The items you picked aren't on the check yet, so they'll be lost.",

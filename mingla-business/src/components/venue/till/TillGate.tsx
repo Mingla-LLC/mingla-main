@@ -34,6 +34,7 @@ import { Button } from "../../ui/Button";
 import { CenteredState } from "../../ui/CenteredState";
 import { Spinner } from "../../ui/Spinner";
 import { TillScreen, type TillScreenProps } from "./TillScreen";
+import { TillSoldOutHost } from "./TillSoldOut";
 import { WhoIsSelling } from "./WhoIsSelling";
 import { PIN_COPY, approvers } from "./pinModel";
 
@@ -112,7 +113,7 @@ export function TillGate(props: TillScreenProps & { startSigningOut?: boolean })
       </View>
     );
   }
-  if (!staff.gated) return <TillScreen venueId={venueId} {...screenProps} />;
+  if (!staff.gated) return <TillScreen venueId={venueId} {...screenProps} soldOutSlot={<TillSoldOutHost venueId={venueId} />} />;
   // #4490 O5 part B: Account › Sign out on a Till device lands here on the
   // same "Who's signing this Till out?" step (one sign-out flow).
   if (session === null || startSigningOut) {
@@ -139,6 +140,7 @@ export function TillGate(props: TillScreenProps & { startSigningOut?: boolean })
           </View>
         }
         stepUpApprovers={approvers(staff.people)}
+        soldOutSlot={<TillSoldOutHost venueId={venueId} />}
       />
     </View>
   );
