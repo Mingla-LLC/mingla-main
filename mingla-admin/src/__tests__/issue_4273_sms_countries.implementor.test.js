@@ -17,6 +17,8 @@ import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+// [TEST-MOD-APPROVED #4522] #4523 puts the shared calendar (@mingla/calendar-web) in Admin components; this bundle now needs the same workspace alias Vite has, so the old plain esbuild call could no longer resolve them.
+import { workspacePackagesPlugin } from "./_workspacePackagesPlugin.mjs";
 import { fileURLToPath } from "node:url";
 import { NAV_GROUPS } from "../lib/constants.js";
 import {
@@ -238,7 +240,7 @@ export const page = () => renderToStaticMarkup(<ToastProvider><SmsCountriesPage 
       },
       bundle: true, write: false, platform: "node", format: "esm", jsx: "automatic", logLevel: "silent",
       loader: { ".js": "jsx" },
-      plugins: [stubs],
+      plugins: [stubs, workspacePackagesPlugin],
       banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
       define: { "process.env.NODE_ENV": '"production"', "import.meta.env": '{"VITE_SUPABASE_URL":"https://x.supabase.test","VITE_SUPABASE_ANON_KEY":"test"}' },
     });
