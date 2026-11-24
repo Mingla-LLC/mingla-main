@@ -9,6 +9,11 @@
  * Rendered INSIDE the order detail Sheet. The swap list is an inline panel and
  * the refund confirm a ConfirmDialog that is this sheet's JSX descendant (the
  * iOS one-modal-per-presenter rule), never a second sheet.
+ *
+ * On a Till device a refund needs a fresh PIN with money rights (part A's
+ * refund rule): the PIN pad takes this section's place inside the same sheet
+ * (TillStepUpHost), so a guest who paid is never stuck waiting for a manager's
+ * own phone. Swaps need no PIN.
  */
 import React, { useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -28,6 +33,10 @@ import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { Pill } from "../../ui/Pill";
 import { Spinner } from "../../ui/Spinner";
+import { useTillStaffSession } from "../../../services/tillStaffSession";
+import type { TillPinStaff } from "../../../services/venueTillService";
+import { TillStepUpHost } from "../till/TillStepUp";
+import { approvers } from "../till/pinModel";
 import { STOCK_COPY, stockErrorCopy } from "./stockCopy";
 import { swapChoice } from "./stockModel";
 
@@ -40,7 +49,28 @@ export interface OrderSoldOutSectionProps {
   currency: string;
 }
 
-export function OrderSoldOutSection({ venueId, orderId, currency }: OrderSoldOutSectionProps): React.ReactElement {
+/** Same key as the Till's "Who's selling" read (TillGate), so the cache is shared. */
+const pinStaffKey = (venueId: string) => ["venueTill", venueId, "pinStaff"] as const;
+
+export function OrderSoldOutSection(props: OrderSoldOutSectionProps): React.ReactElement {
+  const session = useTillStaffSession(props.venueId);
+  const staffQuery = useQuery<TillPinStaff>({
+    queryKey: pinStaffKey(props.venueId),
+    enabled: session !== null,
+    staleTime: 60_000,
+    // Loaded on use: a signed-in account (no PIN session) never pulls the Till transport.
+    queryFn: async () => (await import("../../../services/venueTillService")).fetchTillPinStaff(props.venueId),
+  });
+  const body = <OrderSoldOutBody {...props} />;
+  if (session === null) return body;
+  return (
+    <TillStepUpHost venueId={props.venueId} approvers={approvers(staffQuery.data?.people ?? [])}>
+      {body}
+    </TillStepUpHost>
+  );
+}
+
+function OrderSoldOutBody({ venueId, orderId, currency }: OrderSoldOutSectionProps): React.ReactElement {
   const queryClient = useQueryClient();
   const query = useQuery<OrderSoldOut>({
     queryKey: orderSoldOutKey(venueId, orderId),
@@ -81,7 +111,10 @@ export function OrderSoldOutSection({ venueId, orderId, currency }: OrderSoldOut
       setRefundFor(null);
       await queryClient.invalidateQueries({ queryKey: ["venueOrders"] });
     } catch (err) {
-      setError(stockErrorCopy(err instanceof StockError ? err.code : "stock_failed"));
+      // Cancelling the PIN prompt is not an error: the line stays waiting.
+      if (!(err instanceof StockError && err.code === "pin_step_up_cancelled")) {
+        setError(stockErrorCopy(err instanceof StockError ? err.code : "stock_failed"));
+      }
       // A refusal the server explained is final for this decision; a new tap
       // is a new decision. A lost answer (network) keeps the id for the retry.
       if (!(err instanceof StockError) || err.code !== "network") requestIds.current.delete(decision);
@@ -187,7 +220,10 @@ export function OrderSoldOutSection({ venueId, orderId, currency }: OrderSoldOut
         cancelLabel="Keep it"
         destructive
         onConfirm={() => {
-          if (refundFor !== null) void run(refundFor, "refund", null);
+          // Close the confirm first: on a Till device the PIN pad shows next.
+          const line = refundFor;
+          setRefundFor(null);
+          if (line !== null) void run(line, "refund", null);
         }}
         onClose={() => setRefundFor(null)}
         testID="order-sold-out-refund-confirm"

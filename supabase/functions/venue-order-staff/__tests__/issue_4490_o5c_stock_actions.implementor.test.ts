@@ -235,6 +235,78 @@ Deno.test("K5C-E8 resolve passes the request key, and refund on a Till device ne
   );
 });
 
+Deno.test("K5C-E8b a refused step-up PIN says how many tries are left (or when the lock ends); a right one runs as the approver", async () => {
+  const base = {
+    orderId: ORDER,
+    orderItemIds: [LINE],
+    resolution: "refund",
+    requestId: "req-12345678",
+    staffSession: TOKEN,
+  };
+  const wrong = client({
+    gated: true,
+    answers: {
+      issue_4490_pin_approve: {
+        data: { ok: false, reason: "wrong", triesLeft: 2 },
+      },
+    },
+  });
+  const w = await run(wrong, "sold_out_resolve", {
+    ...base,
+    stepUp: { pin: "482613" },
+  });
+  assertEquals(w.status, 403);
+  assertEquals(await w.json(), {
+    code: "pin_wrong",
+    triesLeft: 2,
+    error: "pin_wrong",
+  });
+  assertFalse(
+    wrong.calls.some((x) => x.name === "issue_4490_order_sold_out_resolve"),
+  );
+  const locked = client({
+    gated: true,
+    answers: {
+      issue_4490_pin_approve: {
+        data: {
+          ok: false,
+          reason: "locked",
+          lockedUntil: "2026-11-24T21:19:00Z",
+        },
+      },
+    },
+  });
+  const l = await run(locked, "sold_out_resolve", {
+    ...base,
+    stepUp: { pin: "482613" },
+  });
+  assertEquals((await l.json()).lockedUntil, "2026-11-24T21:19:00Z");
+  const right = client({
+    gated: true,
+    answers: {
+      issue_4490_pin_approve: {
+        data: {
+          ok: true,
+          approverUserId: "44900615-0000-4000-8000-0000000000aa",
+          approvalId: "a1",
+        },
+      },
+      issue_4490_order_sold_out_resolve: {
+        data: { resolution: "refund", refundMinor: 440000 },
+      },
+    },
+  });
+  const r = await run(right, "sold_out_resolve", {
+    ...base,
+    stepUp: { pin: "482613" },
+  });
+  assertEquals(r.status, 200);
+  const call = right.calls.find((x) =>
+    x.name === "issue_4490_order_sold_out_resolve"
+  )!;
+  assertEquals(call.params.p_actor, "44900615-0000-4000-8000-0000000000aa");
+});
+
 Deno.test("K5C-E9 refusals map to their code (with the item), unknown ones to internal_error", async () => {
   const c = client({
     answers: {

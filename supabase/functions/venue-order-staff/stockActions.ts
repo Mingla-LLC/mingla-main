@@ -260,7 +260,10 @@ export async function handleStockAction(
       target: orderId,
     });
     if (!step.ok) {
+      // The PIN refusal's details (triesLeft, lockedUntil) ride along so the
+      // prompt can say how many tries are left or when the lock ends.
       return respond({
+        ...step.body,
         error: String(step.body.code ?? "pin_step_up_required"),
       }, step.status);
     }

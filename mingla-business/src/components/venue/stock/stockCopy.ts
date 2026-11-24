@@ -98,7 +98,7 @@ export const STOCK_ERROR_COPY: Record<string, string> = {
   sold_out_invalid: "Something was missing. Refresh and try again.",
   pin_session_required: "Pick who's selling on the Till first.",
   pin_session_invalid: "Pick who's selling on the Till first.",
-  pin_step_up_required: "A refund on a shared Till needs a manager. Ask them to refund it from their own sign-in.",
+  pin_step_up_required: "A refund needs a PIN from someone who can refund. Try again and enter it.",
   network: "No connection. Check the network and try again.",
   stock_failed: "That didn't save. Try again.",
 };

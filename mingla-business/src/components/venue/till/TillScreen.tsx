@@ -894,7 +894,9 @@ export function TillScreen({
                 lineId: voidRow.lineId,
                 orderItemId: voidRow.orderItemId,
                 reason,
-                restock: !voidRow.sent,
+                // #4490 08-O5C: always ask; the server gives back only what this
+                // line took from the count and only if no kitchen screen started it.
+                restock: true,
                 expectedVersion: sale.version,
               });
               setVoidRow(null);

@@ -6,18 +6,30 @@
  * (stockCopy.ts). The server decides every count, right and refund.
  */
 import { supabase } from "./supabase";
-import { getTillStaffSession } from "./tillStaffSession";
+import { clearTillStaffSession, getTillStaffSession, requestStepUp } from "./tillStaffSession";
+import { pinRetryMessage } from "../components/venue/till/pinModel";
 
 export class StockError extends Error {
   readonly code: string;
   readonly itemName: string | null;
   readonly left: number | null;
-  constructor(code: string, itemName: string | null = null, left: number | null = null) {
+  /** A refused step-up PIN: tries left and the lock's end (pin_wrong / pin_locked). */
+  readonly triesLeft: number | null;
+  readonly lockedUntil: string | null;
+  constructor(
+    code: string,
+    itemName: string | null = null,
+    left: number | null = null,
+    triesLeft: number | null = null,
+    lockedUntil: string | null = null,
+  ) {
     super(code);
     this.name = "StockError";
     this.code = code;
     this.itemName = itemName;
     this.left = left;
+    this.triesLeft = triesLeft;
+    this.lockedUntil = lockedUntil;
   }
 }
 
@@ -32,7 +44,9 @@ async function stockErrorFrom(error: { message?: string; context?: unknown }): P
     try {
       const body = obj(await (context as Response).clone().json());
       const code = typeof body.error === "string" ? body.error : typeof body.code === "string" ? body.code : "";
-      if (code.length > 0) return new StockError(code, text(body.itemName), num(body.left));
+      if (code.length > 0) {
+        return new StockError(code, text(body.itemName), num(body.left), num(body.triesLeft), text(body.lockedUntil));
+      }
     } catch {
       // An unreadable body falls through to the network mapping below.
     }
@@ -220,7 +234,7 @@ export async function resolveSoldOut(input: {
   swapMenuItemId: string | null;
   requestId: string;
 }): Promise<SoldOutResolution> {
-  const data = await staff(withSession(input.venueId, {
+  const send = withSession(input.venueId, {
     action: "sold_out_resolve",
     venueId: input.venueId,
     orderId: input.orderId,
@@ -228,14 +242,58 @@ export async function resolveSoldOut(input: {
     resolution: input.resolution,
     swapMenuItemId: input.swapMenuItemId,
     requestId: input.requestId,
-  }));
-  const r = obj(data.resolution);
+  });
+  const r = obj((await withStepUp(input.venueId, send)).resolution);
   return {
     resolution: r.resolution === "swap" ? "swap" : "refund",
     refundMinor: num(r.refundMinor) ?? 0,
     swapName: text(r.swapName),
     replayed: r.replayed === true,
   };
+}
+
+const SESSION_LOST = ["pin_session_required", "pin_session_invalid"];
+
+/**
+ * #4490 08 O5 part C: a sold-out REFUND on a Till device follows part A's
+ * refund rule. The server answers pin_step_up_required; the open order sheet
+ * shows "Enter your PIN again to confirm" (TillStepUpHost), and the call is
+ * sent again with that PIN. A wrong PIN asks again with the reason; Cancel
+ * ends it with pin_step_up_cancelled. A signed-in account never steps up.
+ */
+async function withStepUp(venueId: string, send: Json): Promise<Json> {
+  const hasSession = typeof send.staffSession === "string";
+  try {
+    return await staff(send);
+  } catch (err) {
+    if (!(err instanceof StockError) || !hasSession) throw err;
+    if (SESSION_LOST.includes(err.code)) {
+      clearTillStaffSession(venueId, "server");
+      throw err;
+    }
+    if (err.code !== "pin_step_up_required") throw err;
+    let message: string | null = null;
+    for (;;) {
+      const answer = await requestStepUp(venueId, "refund", message);
+      if (answer === null) throw new StockError("pin_step_up_cancelled");
+      try {
+        return await staff({ ...send, stepUp: { pin: answer.pin, ...(answer.memberId ? { memberId: answer.memberId } : {}) } });
+      } catch (retryErr) {
+        if (!(retryErr instanceof StockError)) throw retryErr;
+        if (SESSION_LOST.includes(retryErr.code)) {
+          clearTillStaffSession(venueId, "server");
+          throw retryErr;
+        }
+        const retry = pinRetryMessage({
+          code: retryErr.code,
+          triesLeft: retryErr.triesLeft,
+          lockedUntil: retryErr.lockedUntil,
+        });
+        if (retry === null) throw retryErr;
+        message = retry;
+      }
+    }
+  }
 }
 
 export interface MenuStockRow {
