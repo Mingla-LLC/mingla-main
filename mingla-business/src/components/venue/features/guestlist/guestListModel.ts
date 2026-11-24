@@ -1,7 +1,7 @@
 /** Pure copy/model helpers for #4490 07-I promoter guest lists. */
-import { toVenueOfferError } from "../../../../services/venueOffersService";
+import { toVenueOfferError } from "../../../../services/venueOfferErrors";
 import type { PromoterGuestListPage } from "../../../../types/venueOffers";
-import { money } from "../offers/offersModel";
+import { money } from "../offers/offerMoney";
 
 export function promoterGuestListErrorCopy(error: unknown): string {
   const code = toVenueOfferError(error).code;

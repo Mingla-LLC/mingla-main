@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { loadVenueGuestScreens } from "./guest/venueGuestOwner";
 import {
   QueryClient,
   QueryClientProvider,
@@ -78,12 +79,13 @@ import {
 } from "../../services/venueGuestReservationService";
 import type { GuestTableOption } from "../../services/venueTableGuestService";
 // #4490 P5 — the seat map and the waitlist form load only when a guest opens them.
-const VenueFloorPick = React.lazy(() =>
-  import("./offers/VenueFloorPick").then((module) => ({ default: module.VenueFloorPick })),
-);
-const GuestWaitlistForm = React.lazy(() =>
-  import("./offers/GuestWaitlistForm").then((module) => ({ default: module.GuestWaitlistForm })),
-);
+// Both come from the ONE Guest venue owner (guest/venueGuestOwner.ts).
+const VenueFloorPick = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueFloorPick,
+}));
+const GuestWaitlistForm = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).GuestWaitlistForm,
+}));
 const optionKey = (o: Pick<GuestTableOption, "tableIds">): string => [...o.tableIds].sort().join("+");
 import {
   clearPending,
@@ -426,7 +428,7 @@ function GuestVenueReservationBody({
     enabled: seat === "pick" && !big && selectedSlot !== undefined && date !== null,
     staleTime: 10_000,
     queryFn: async () =>
-      (await import("../../services/venueTableGuestService")).fetchGuestTables({
+      (await loadVenueGuestScreens()).fetchGuestTables({
         venueId,
         date: date ?? "",
         partySize,
@@ -439,7 +441,7 @@ function GuestVenueReservationBody({
     enabled: seat === "pick" && brandSlug !== null && venueSlug !== null,
     staleTime: 60_000,
     queryFn: async () =>
-      (await import("../../services/venueTableGuestService")).fetchGuestSpacePlans({ brandSlug: brandSlug ?? "", venueSlug: venueSlug ?? "" }),
+      (await loadVenueGuestScreens()).fetchGuestSpacePlans({ brandSlug: brandSlug ?? "", venueSlug: venueSlug ?? "" }),
   });
   const pickedLive =
     picked === null ? null : (tablesQuery.data ?? []).find((o) => optionKey(o) === optionKey(picked)) ?? null;

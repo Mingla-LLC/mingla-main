@@ -11,7 +11,7 @@ import { useLocalSearchParams } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { VisitWaitlist } from "../../../src/components/venue/offers/VisitWaitlist";
+import { LazyVisitWaitlist } from "../../../src/components/venue/guest/LazyVenueGuestScreens";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -29,7 +29,7 @@ export default function VisitWaitlistRoute(): React.ReactElement {
         <title>Your waitlist place · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
-      <VisitWaitlist key={id ?? "none"} waitlistId={id} safeTop={insets.top} safeBottom={insets.bottom} />
+      <LazyVisitWaitlist key={id ?? "none"} waitlistId={id} safeTop={insets.top} safeBottom={insets.bottom} />
     </>
   );
 }

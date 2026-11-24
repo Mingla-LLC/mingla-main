@@ -285,7 +285,9 @@ describe("I6 the pay code has a Copy link button", () => {
 
   it("check-in and the scan screen sell at the gate with the Till off and in the Till with it on", () => {
     const module = read("src/components/venue/features/checkin/VenueCheckInModule.tsx");
-    const scan = read("app/venue/[venueId]/check-in/scan.tsx");
+    // #4490 — the native camera screen moved out of the route file (scan.tsx is
+    // also bundled on web), into VenueCheckInScanScreen.native.tsx.
+    const scan = read("src/components/venue/features/checkin/VenueCheckInScanScreen.native.tsx");
     for (const src of [module, scan]) {
       expect(src).toContain("<VenueGateSale");
       expect(src).toContain("doorSaleEntry({ tillReleased");

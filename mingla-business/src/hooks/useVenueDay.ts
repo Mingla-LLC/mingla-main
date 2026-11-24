@@ -7,7 +7,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
-import { fetchVenueDay } from "../services/venueOffersService";
+import { fetchVenueDay } from "../services/venueDayService";
 import type { VenueDay } from "../types/venueOffers";
 import { venueFeatureKeys } from "./venueFeatureKeys";
 

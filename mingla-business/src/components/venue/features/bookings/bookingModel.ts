@@ -13,7 +13,7 @@ import type {
   VenueBookingDetail,
 } from "../../../../types/venueOffers";
 import { dayDateLabel } from "../../../ui/fieldModels";
-import { money } from "../offers/offersModel";
+import { money } from "../offers/offerMoney";
 
 /** "Sat 28 Nov": bookings are close in time, so the year is left out. */
 export function shortDay(iso: string): string {

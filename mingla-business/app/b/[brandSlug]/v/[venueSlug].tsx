@@ -98,6 +98,7 @@ import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
+import { loadVenueGuestScreens } from "../../../../src/components/venue/guest/venueGuestOwner";
 import { tablesBlockChangesFlow } from "../../../../src/components/venue/offers/tablePickModel";
 import { ShareModal } from "../../../../src/components/ui/ShareModal";
 import { useThemeFont } from "../../../../src/theme/useThemeFont";
@@ -137,36 +138,28 @@ const BuyerStayGuestExperience = React.lazy(() =>
 
 // #4490 P2 — the Entry tab's buying flow (availability, quote, checkout
 // hand-off). Lazy for the same reason: only a venue that sells entry loads it.
-const VenueEntryPane = React.lazy(() =>
-  import("../../../../src/components/venue/offers/VenueEntryPane").then(
-    (module) => ({ default: module.VenueEntryPane }),
-  ),
-);
+// Every guest tab below loads from the ONE Guest venue owner
+// (venueGuestOwner.ts), so what the tabs share never reaches __common.
+const VenueEntryPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueEntryPane,
+}));
 
 // #4490 P4 — the Private hire tab's flow, lazy for the same reason.
-const VenueHirePane = React.lazy(() =>
-  import("../../../../src/components/venue/offers/VenueHirePane").then(
-    (module) => ({ default: module.VenueHirePane }),
-  ),
-);
+const VenueHirePane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueHirePane,
+}));
 // #4490 P5 — the By the hour tab's flow, lazy for the same reason.
-const VenueHourPane = React.lazy(() =>
-  import("../../../../src/components/venue/offers/VenueHourPane").then(
-    (module) => ({ default: module.VenueHourPane }),
-  ),
-);
+const VenueHourPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueHourPane,
+}));
 // #4490 P6 — the Plans tab (monthly plans and Join), lazy for the same reason.
-const VenuePlansPane = React.lazy(() =>
-  import("../../../../src/components/venue/offers/VenuePlansPane").then(
-    (module) => ({ default: module.VenuePlansPane }),
-  ),
-);
+const VenuePlansPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenuePlansPane,
+}));
 // #4490 P3 — the Groups tab's booking flow, lazy for the same reason.
-const VenueGroupsPane = React.lazy(() =>
-  import("../../../../src/components/venue/offers/VenueGroupsPane").then(
-    (module) => ({ default: module.VenueGroupsPane }),
-  ),
-);
+const VenueGroupsPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueGroupsPane,
+}));
 
 /**
  * #1793 (#1767 Phase 4) — the ordering renderers, behind a lazy boundary that

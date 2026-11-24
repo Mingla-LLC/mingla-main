@@ -4,7 +4,7 @@
  * brand currency; weekdays are 0 = Monday.
  */
 
-import { formatCurrency } from "../../../../utils/currency";
+import { money } from "./offerMoney";
 import { weekdaysSummary } from "../../../ui/fieldModels";
 import { builtPreset, type VenueFeatureKey, type VenueTypeKey } from "../../../../types/venueFeatures";
 import type {
@@ -103,10 +103,7 @@ export function splitOfferCards(
 
 // ---------------------------------------------------------------- money
 
-export function money(minor: number, currency: string | null): string {
-  if (currency === null) return "—";
-  return formatCurrency(minor, currency, true).replace(/\.00$/, "");
-}
+export { money };
 
 /** Venue VAT rate as a percent label ("7.5%"); null when unknown. */
 export function vatRateLabel(bps: number | null): string | null {

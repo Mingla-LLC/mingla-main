@@ -13,6 +13,21 @@
 import { isVenueLayout, type VenueLayout } from "@mingla/brand-rendering/venueOffers/layoutModel";
 
 import { supabase } from "./supabase";
+import { arr, num, numOrNull, obj, str, strOrNull, weekdays, type Json } from "./venueJsonRead";
+import { VenueOfferError, edgeError, toVenueOfferError } from "./venueOfferErrors";
+import { mapKind, mapStyle } from "./venueDayService";
+import { mapGuestListEntry, mapGuestListTerms } from "./venuePromoterGuestListService";
+
+// #4490 — split out so the Hub card and the Guest pages load only what they use;
+// re-exported so Host callers keep one import.
+export { VenueOfferError, toVenueOfferError } from "./venueOfferErrors";
+export { fetchVenueDay, mapVenueDay, parseVenueDayMoney } from "./venueDayService";
+export {
+  fetchPromoterGuestList,
+  mapGuestListEntry,
+  mapGuestListTerms,
+  writePromoterGuestList,
+} from "./venuePromoterGuestListService";
 import { randomId } from "../utils/randomId";
 import type {
   BusyRule,
@@ -74,65 +89,6 @@ import type {
   PromoterGuestListPage,
 } from "../types/venueOffers";
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-/** A server refusal with its token kept for mapping (never shown raw). */
-export class VenueOfferError extends Error {
-  readonly code: string;
-  /** Text after "code:" (e.g. the first not-ready reason). */
-  readonly detail: string | null;
-  /** Every not-ready reason (from the error DETAIL), when the server sent them. */
-  readonly reasons: string[];
-  constructor(code: string, detail: string | null = null, reasons: string[] = []) {
-    super(code);
-    this.name = "VenueOfferError";
-    this.code = code;
-    this.detail = detail;
-    this.reasons = reasons;
-  }
-}
-
-export function toVenueOfferError(error: unknown): VenueOfferError {
-  if (error instanceof VenueOfferError) return error;
-  const obj = error !== null && typeof error === "object" ? (error as Record<string, unknown>) : {};
-  const raw = typeof obj.message === "string" ? obj.message : String(error ?? "");
-  const idx = raw.indexOf(":");
-  const code = (idx >= 0 ? raw.slice(0, idx) : raw).trim();
-  const detail = idx >= 0 ? raw.slice(idx + 1).trim() : null;
-  const details = typeof obj.details === "string" ? obj.details : "";
-  const reasons =
-    code === "offer_not_ready" && details.length > 0
-      ? details.split(",").map((r) => r.trim()).filter((r) => r.length > 0)
-      : detail !== null && code === "offer_not_ready"
-        ? [detail]
-        : [];
-  // A network failure has no token: keep it distinct from a refusal.
-  if (/failed to fetch|network/i.test(raw)) return new VenueOfferError("network", null);
-  return new VenueOfferError(code.length > 0 ? code : "unknown", detail, reasons);
-}
-
-// ---------------------------------------------------------------------------
-// Small readers (defensive: the JSON is the server's, not ours)
-// ---------------------------------------------------------------------------
-
-type Json = Record<string, unknown>;
-const obj = (v: unknown): Json => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {});
-const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
-const str = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
-const strOrNull = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-const num = (v: unknown, fallback = 0): number => {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
-  return fallback;
-};
-const numOrNull = (v: unknown): number | null =>
-  v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null;
-const weekdays = (v: unknown): number[] =>
-  arr(v)
-    .map((d) => Number(d))
-    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
 
 function mapBusyRule(v: unknown): BusyRule {
   const r = obj(v);
@@ -183,16 +139,6 @@ export function mapPool(v: unknown): VenueCapacityPool {
     archived: p.archived === true,
     version: num(p.version, 1),
   };
-}
-
-function mapKind(v: unknown): VenueOfferKind {
-  const k = str(v);
-  return k === "group_package" || k === "private_hire" || k === "by_the_hour" ? k : "entry";
-}
-
-function mapStyle(v: unknown): EntryStyle | null {
-  const s = str(v);
-  return s === "walk_in" || s === "day_pass" || s === "timed_session" ? s : null;
 }
 
 function mapInclusion(v: unknown): PackageInclusion {
@@ -1098,123 +1044,6 @@ export async function setCapacityOverride(input: {
 // The venue's day (Today, Overview, Hub card)
 // ---------------------------------------------------------------------------
 
-export function mapVenueDay(v: unknown): VenueDay {
-  const d = obj(v);
-  const check = obj(d.checkIn);
-  const guestList = obj(d.guestList);
-  return {
-    localDate: str(d.localDate),
-    timezone: str(d.timezone, "Africa/Lagos"),
-    closed: d.closed === true,
-    pools: arr(d.pools).map((p): VenueDayPool => {
-      const r = obj(p);
-      return {
-        poolId: str(r.poolId),
-        name: str(r.name),
-        dailyLimit: num(r.dailyLimit),
-        keptForWalkIns: num(r.keptForWalkIns),
-        used: num(r.used),
-        soldOnline: num(r.soldOnline),
-        soldAtGate: num(r.soldAtGate),
-        onlineLeft: num(r.onlineLeft),
-        walkInLeft: num(r.walkInLeft),
-        gateLeft: num(r.gateLeft),
-        closed: r.closed === true,
-        hasOverride: r.override !== null && r.override !== undefined,
-      };
-    }),
-    offers: arr(d.offers).map((o): VenueDayOffer => {
-      const r = obj(o);
-      const status = str(r.status, "live");
-      return {
-        offerId: str(r.offerId),
-        name: str(r.name),
-        kind: mapKind(r.kind),
-        entryStyle: mapStyle(r.entryStyle),
-        status: status === "paused" ? "paused" : status === "draft" ? "draft" : status === "archived" ? "archived" : "live",
-        poolId: strOrNull(r.poolId),
-        sold: num(r.sold),
-        held: num(r.held),
-      };
-    }),
-    checkIn: { passes: num(check.passes), expected: num(check.expected), admitted: num(check.admitted) },
-    membersIn: num(d.membersIn),
-    guestList: { names: num(guestList.names), in: num(guestList.in) },
-    money: parseVenueDayMoney(d.money),
-    bookings: arr(d.bookings).map((b): VenueDayBooking => {
-      const r = obj(b);
-      return {
-        groupId: str(r.groupId),
-        reference: str(r.reference),
-        state: str(r.state),
-        guestName: str(r.guestName, "Guest"),
-        guests: num(r.guests),
-        totalMinor: num(r.totalMinor),
-        currencyCode: strOrNull(r.currencyCode),
-        source: strOrNull(r.source),
-        paymentCollection: strOrNull(r.paymentCollection),
-        admittedCount: num(r.admittedCount),
-        createdAt: str(r.createdAt),
-        offerKind: r.offerKind === undefined || r.offerKind === null ? null : mapKind(r.offerKind),
-        offerName: strOrNull(r.offerName),
-        startsAt: strOrNull(r.startsAt),
-        // A gate sale paid by cash or transfer is settled at the door but carries no
-        // payment row, so the server reports its whole total as owed: it owes nothing.
-        balanceDueMinor: str(r.paymentCollection) === "property" ? 0 : num(r.balanceDueMinor),
-        balanceDueAt: strOrNull(r.balanceDueAt),
-      };
-    }),
-  };
-}
-
-export function mapGuestListEntry(v: unknown): VenueGuestListEntry {
-  const e = obj(v);
-  return {
-    id: str(e.id),
-    venueId: str(e.venueId),
-    localDate: str(e.localDate),
-    eventId: strOrNull(e.eventId),
-    guestName: str(e.guestName, "Guest"),
-    plusOnes: num(e.plusOnes),
-    phone: strOrNull(e.phone),
-    note: strOrNull(e.note),
-    addedByKind: e.addedByKind === "promoter" ? "promoter" : "staff",
-    promoterId: strOrNull(e.promoterId),
-    promoterName: strOrNull(e.promoterName),
-    arrived: num(e.arrived),
-    arrivedAt: strOrNull(e.arrivedAt),
-    status: e.status === "removed" ? "removed" : "on_list",
-    version: num(e.version),
-    createdAt: strOrNull(e.createdAt),
-  };
-}
-
-export function mapGuestListTerms(v: unknown): VenueGuestListTerms {
-  const t = obj(v);
-  const price = t.reducedPrice === null || t.reducedPrice === undefined ? null : obj(t.reducedPrice);
-  return {
-    venueId: str(t.venueId),
-    freeUntil: strOrNull(t.freeUntil),
-    reducedUntil: strOrNull(t.reducedUntil),
-    reducedPriceOptionId: strOrNull(t.reducedPriceOptionId),
-    reducedPrice:
-      price === null
-        ? null
-        : {
-            optionId: str(price.optionId),
-            offeringId: str(price.offeringId),
-            name: str(price.name),
-            priceMinor: num(price.priceMinor),
-            currencyCode: strOrNull(price.currencyCode),
-          },
-    plusOnesMax: num(t.plusOnesMax, 3),
-    closesMinutesBefore: num(t.closesMinutesBefore, 60),
-    version: num(t.version),
-    opensAt: strOrNull(t.opensAt),
-    closesAt: strOrNull(t.closesAt),
-  };
-}
-
 function mapGuestListPromoter(v: unknown): VenueGuestListPromoter {
   const p = obj(v);
   return {
@@ -1279,78 +1108,9 @@ export async function manageGuestList(input: {
   return obj(data);
 }
 
-function mapPromoterGuestListPage(v: unknown): PromoterGuestListPage {
-  const d = obj(v);
-  const promoter = obj(d.promoter);
-  const venue = obj(d.venue);
-  return {
-    promoter: { id: str(promoter.id), name: str(promoter.name), namesPerNight: numOrNull(promoter.namesPerNight) },
-    venue: { id: str(venue.id), name: str(venue.name) },
-    today: str(d.today),
-    lastDate: str(d.lastDate),
-    nights: arr(d.nights).map((n) => {
-      const night = obj(n);
-      return {
-        localDate: str(night.localDate),
-        terms: mapGuestListTerms(night.terms),
-        entries: arr(night.entries).map(mapGuestListEntry),
-      };
-    }),
-  };
-}
-
-async function promoterGuestListEdge(body: Record<string, unknown>): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke("venue-guest-list", { body });
-  if (error) throw await edgeError(error as { message?: string; context?: unknown });
-  const envelope = obj(data);
-  if (envelope.kind !== "success") throw new VenueOfferError(str(envelope.code, "guest_list_failed"));
-  return envelope.data;
-}
-
-export async function fetchPromoterGuestList(token: string): Promise<PromoterGuestListPage> {
-  return mapPromoterGuestListPage(await promoterGuestListEdge({ action: "get", token }));
-}
-
-export async function writePromoterGuestList(input: {
-  token: string;
-  action: "add" | "remove";
-  localDate: string;
-  guestName?: string;
-  plusOnes?: number;
-  phone?: string;
-  entryId?: string;
-}): Promise<VenueGuestListEntry> {
-  const data = obj(await promoterGuestListEdge(input));
-  return mapGuestListEntry(data.entry);
-}
-
-export async function fetchVenueDay(venueId: string, localDate: string | null): Promise<VenueDay> {
-  const { data, error } = await supabase.rpc("issue_4490_venue_day", {
-    p_venue_id: venueId,
-    p_local_date: localDate,
-  });
-  if (error !== null) throw toVenueOfferError(error);
-  return mapVenueDay(data);
-}
-
 // ---------------------------------------------------------------------------
 // Check-in door (edge function `venue-check-in`, staff JWT)
 // ---------------------------------------------------------------------------
-
-async function edgeError(error: { message?: string; context?: unknown }): Promise<VenueOfferError> {
-  const context = error.context;
-  if (context !== null && context !== undefined && typeof (context as Response).json === "function") {
-    try {
-      const body = obj(await (context as Response).json());
-      if (typeof body.code === "string" && body.code.length > 0) {
-        return new VenueOfferError(body.code, typeof body.remaining === "number" ? String(body.remaining) : null);
-      }
-    } catch {
-      // An unreadable body falls through to the network/unknown mapping below.
-    }
-  }
-  return toVenueOfferError({ message: error.message ?? "check_in_failed" });
-}
 
 async function checkIn<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke("venue-check-in", { body });
@@ -1968,29 +1728,3 @@ export async function balancePayLink(input: { venueId: string; groupId: string }
   return { payUrl: str(data.payUrl), balanceMinor: num(data.balanceMinor), currencyCode: strOrNull(data.currencyCode) };
 }
 
-/** #4490 07-E — the day's money as the server computed it; null when absent or malformed. */
-export function parseVenueDayMoney(raw: unknown): VenueDayMoney | null {
-  if (raw === null || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const parts = (p: unknown): VenueDayMoneyParts | null => {
-    if (p === null || typeof p !== "object") return null;
-    const o = p as Record<string, unknown>;
-    const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : Number(v ?? 0) || 0);
-    return { online: n(o.online), atVenue: n(o.atVenue), members: n(o.members), tableDeposits: n(o.tableDeposits), refunded: n(o.refunded) };
-  };
-  const paidIn = parts(r.paidIn);
-  const forToday = parts(r.forToday);
-  const paidInMinor = Number(r.paidInMinor);
-  const forTodayPaidMinor = Number(r.forTodayPaidMinor);
-  if (paidIn === null || forToday === null || !Number.isFinite(paidInMinor) || !Number.isFinite(forTodayPaidMinor)) {
-    return null;
-  }
-  return {
-    currencyCode: typeof r.currencyCode === "string" && r.currencyCode.length > 0 ? r.currencyCode : null,
-    otherCurrency: r.otherCurrency === true,
-    paidInMinor,
-    paidIn,
-    forTodayPaidMinor,
-    forToday,
-  };
-}

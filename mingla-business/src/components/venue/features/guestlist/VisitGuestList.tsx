@@ -6,7 +6,7 @@ import { color, radius, space, type } from "../../../../constants/designSystem";
 import {
   fetchPromoterGuestList,
   writePromoterGuestList,
-} from "../../../../services/venueOffersService";
+} from "../../../../services/venuePromoterGuestListService";
 import type { PromoterGuestListPage } from "../../../../types/venueOffers";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
 import { Banner } from "../../../ui/Banner";

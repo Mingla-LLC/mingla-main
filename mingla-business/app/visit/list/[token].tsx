@@ -5,7 +5,7 @@ import { useLocalSearchParams } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { VisitGuestList } from "../../../src/components/venue/features/guestlist/VisitGuestList";
+import { LazyVisitGuestList } from "../../../src/components/venue/guest/LazyVenueGuestScreens";
 
 const TOKEN = /^[a-f0-9]{64}$/i;
 const one = (value: string | string[] | undefined): string | null =>
@@ -22,7 +22,7 @@ export default function VisitGuestListRoute(): React.ReactElement {
         <title>Guest list · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
-      <VisitGuestList key={token ?? "none"} token={token} safeTop={insets.top} safeBottom={insets.bottom} />
+      <LazyVisitGuestList key={token ?? "none"} token={token} safeTop={insets.top} safeBottom={insets.bottom} />
     </>
   );
 }

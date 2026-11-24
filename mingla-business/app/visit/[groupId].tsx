@@ -12,7 +12,7 @@ import { useLocalSearchParams } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { VisitBooking } from "../../src/components/venue/offers/VisitBooking";
+import { LazyVisitBooking } from "../../src/components/venue/guest/LazyVenueGuestScreens";
 import { useWebDocumentTitle } from "../../src/hooks/useWebDocumentTitle";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,7 +33,7 @@ export default function VisitBookingRoute(): React.ReactElement {
         <title>Your booking · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
-      <VisitBooking
+      <LazyVisitBooking
         key={groupId}
         groupId={groupId}
         paidReturn={one(params.paid) === "1"}

@@ -13,7 +13,7 @@ import { useLocalSearchParams } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { VisitMembership } from "../../../src/components/venue/offers/VisitMembership";
+import { LazyVisitMembership } from "../../../src/components/venue/guest/LazyVenueGuestScreens";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,7 +31,7 @@ export default function VisitMembershipRoute(): React.ReactElement {
         <title>Your membership · Mingla</title>
         <meta name="robots" content="noindex" />
       </Head>
-      <VisitMembership
+      <LazyVisitMembership
         key={subscriptionId}
         subscriptionId={subscriptionId}
         paidReturn={one(params.paid) === "1"}
