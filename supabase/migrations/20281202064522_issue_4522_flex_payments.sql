@@ -102,6 +102,10 @@ CREATE INDEX order_overpayments_open_by_installment ON public.order_overpayments
   WHERE state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops');
 CREATE INDEX order_overpayments_open_by_provider_ref ON public.order_overpayments (provider_ref)
   WHERE state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops');
+-- #4423 W4a hygiene: every foreign key on an order_* table has an index led by
+-- the key, so a refunds row delete or key update never scans this table.
+CREATE INDEX order_overpayments_refund_id_idx ON public.order_overpayments (refund_id)
+  WHERE refund_id IS NOT NULL;
 -- N9: no client role and no direct table access at all; every reader and
 -- writer is a SECURITY DEFINER function below (the edge calls those).
 ALTER TABLE public.order_overpayments ENABLE ROW LEVEL SECURITY;
@@ -771,6 +775,10 @@ CREATE UNIQUE INDEX uq_overpayment_attempt_provider_refund
 CREATE INDEX order_overpayment_refund_attempts_by_provider_refund
   ON public.order_overpayment_refund_attempts (provider_refund_id)
   WHERE provider_refund_id IS NOT NULL;
+-- #4423 W4a hygiene: the refunds foreign key has an index led by the key.
+CREATE INDEX order_overpayment_refund_attempts_refund_id_idx
+  ON public.order_overpayment_refund_attempts (refund_id)
+  WHERE refund_id IS NOT NULL;
 ALTER TABLE public.order_overpayment_refund_attempts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.order_overpayment_refund_attempts FROM PUBLIC, anon, authenticated, service_role;
 COMMENT ON TABLE public.order_overpayment_refund_attempts IS
