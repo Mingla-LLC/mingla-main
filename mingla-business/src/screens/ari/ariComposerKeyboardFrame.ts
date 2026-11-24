@@ -12,15 +12,40 @@
  * pure functions so the geometry can be proved without a device.
  */
 
-/** The offset the composer's KeyboardAvoidingView needs: its parent's window Y. */
-export function composerKeyboardOffsetFor(parentWindowY: number): number {
+/**
+ * The offset the composer's KeyboardAvoidingView needs: its parent's window Y.
+ *
+ * Android (#4572 retest, API 34 emulator, edge-to-edge): React Native's
+ * `measureInWindow` subtracts the window's visible display frame top (the
+ * status bar), while the library compares the frame with a keyboard top that
+ * is measured from the top of the screen. The composer therefore ended exactly
+ * one status bar (63px = 24dp) under the keyboard. On Android the status-bar
+ * height is added back; iOS and web are unchanged.
+ */
+export function composerKeyboardOffsetFor(
+  parentWindowY: number,
+  platform: string = "ios",
+  androidStatusBarHeight: number | null | undefined = 0,
+): number {
   if (!Number.isFinite(parentWindowY)) return 0;
-  return Math.max(0, Math.round(parentWindowY));
+  const statusBar =
+    platform === "android" &&
+    typeof androidStatusBarHeight === "number" &&
+    Number.isFinite(androidStatusBarHeight) &&
+    androidStatusBarHeight > 0
+      ? androidStatusBarHeight
+      : 0;
+  return Math.max(0, Math.round(parentWindowY + statusBar));
 }
 
 export interface ComposerKeyboardGeometry {
-  /** The composer host (`styles.kav`) top, in screen points. */
+  /** The composer host (`styles.kav`) top as `measureInWindow` reports it. */
   parentWindowY: number;
+  /**
+   * Where `measureInWindow`'s 0 sits on screen: 0 on iOS; the status bar on
+   * Android, whose measureInWindow subtracts the visible frame's top.
+   */
+  measureOriginOnScreen?: number;
   /** The KeyboardAvoidingView's frame, relative to that host (keyboard closed). */
   frameY: number;
   frameHeight: number;
@@ -45,7 +70,7 @@ export function libraryPaddingFor(g: ComposerKeyboardGeometry): number {
  * padding grows upward from it.
  */
 export function composerGapAboveKeyboard(g: ComposerKeyboardGeometry): number {
-  const viewBottomOnScreen = g.parentWindowY + g.frameY + g.frameHeight;
+  const viewBottomOnScreen = (g.measureOriginOnScreen ?? 0) + g.parentWindowY + g.frameY + g.frameHeight;
   const composerBottomOnScreen = viewBottomOnScreen - libraryPaddingFor(g);
   const keyboardTopOnScreen = g.screenHeight - g.keyboardHeight;
   return keyboardTopOnScreen - composerBottomOnScreen;

@@ -19,6 +19,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -428,7 +429,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   const measureComposerHost = React.useCallback((): void => {
     composerHostRef.current?.measureInWindow((_x, y) => {
       if (!Number.isFinite(y)) return;
-      const next = composerKeyboardOffsetFor(y);
+      // Android: measureInWindow starts under the status bar (see the helper).
+      const next = composerKeyboardOffsetFor(y, Platform.OS, StatusBar.currentHeight);
       setComposerHostWindowY((previous) => (previous === next ? previous : next));
     });
   }, []);
