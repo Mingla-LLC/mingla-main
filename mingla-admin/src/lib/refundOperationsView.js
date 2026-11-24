@@ -127,14 +127,19 @@ function providerName(provider) {
 export function tripCancelOpenAmountCents(row) {
   const unconfirmed = Number.isInteger(row?.unconfirmed_amount_cents) ? row.unconfirmed_amount_cents : null;
   const refused = Number.isInteger(row?.refused_amount_cents) ? row.refused_amount_cents : null;
-  if (unconfirmed === null && refused === null) return null;
-  return (unconfirmed ?? 0) + (refused ?? 0);
+  // Pass 10 (P10-3): owed parts below the provider minimum wait for staff too.
+  const belowMin = Number.isInteger(row?.below_minimum_amount_cents) ? row.below_minimum_amount_cents : null;
+  if (unconfirmed === null && refused === null && belowMin === null) return null;
+  return (unconfirmed ?? 0) + (refused ?? 0) + (belowMin ?? 0);
 }
 
 /** Pass 9 (P9-6): the row and panel title names the parts' real state. */
 export function tripCancelPanelTitle(row) {
   const unconfirmed = Number.isInteger(row?.unconfirmed_amount_cents) ? row.unconfirmed_amount_cents : 0;
   const refused = Number.isInteger(row?.refused_amount_cents) ? row.refused_amount_cents : 0;
+  const belowMin = Number.isInteger(row?.below_minimum_amount_cents) ? row.below_minimum_amount_cents : 0;
+  if (belowMin > 0 && refused === 0 && unconfirmed === 0) return "Trip cancel, owed amount below Paystack's minimum";
+  if (belowMin > 0) return "Trip cancel, parts waiting for staff";
   if (refused > 0 && unconfirmed > 0) return "Trip cancel, parts unconfirmed and refused";
   if (refused > 0) return "Trip cancel, part refused by Paystack";
   return "Trip cancel, part unconfirmed";
@@ -168,6 +173,7 @@ const CHARGE_STATE_WORDS = {
   unanswered: "Sent, no answer",
   accepted: "Accepted by Paystack, not yet confirmed",
   refused: "Refused by Paystack",
+  below_minimum: "Below Paystack's minimum, not sent",
   not_sent: "Not sent yet",
 };
 
@@ -195,6 +201,7 @@ export function tripCancelChargeRows(detail) {
 export const TRIP_CANCEL_OUTCOMES = [
   { value: "refunded_at_provider", label: "Paystack shows it refunded: record it" },
   { value: "refunded_elsewhere", label: "Paystack shows it partly refunded already: ask only for what is left" },
+  { value: "paid_outside_provider", label: "Paid to the traveler outside Paystack: record it" },
   { value: "escalate", label: "Paystack shows no refund: escalate (nothing is re-sent from here)" },
 ];
 
@@ -212,7 +219,8 @@ export function majorToMinor(text) {
  */
 export function validateTripCancelResolution({ outcome, reference, reason, refundedElsewhere, chargeCents }) {
   const errors = {};
-  if (outcome !== "refunded_at_provider" && outcome !== "refunded_elsewhere" && outcome !== "escalate") {
+  if (outcome !== "refunded_at_provider" && outcome !== "refunded_elsewhere"
+      && outcome !== "paid_outside_provider" && outcome !== "escalate") {
     errors.outcome = "Choose what Paystack shows for this refund.";
   }
   const ref = String(reference ?? "").trim();
@@ -227,6 +235,10 @@ export function validateTripCancelResolution({ outcome, reference, reason, refun
     }
     if (ref.length === 0) errors.reference = "Enter the reference of that other Paystack refund.";
     else if (ref.length > 200) errors.reference = "The refund reference is too long. Check it in Paystack.";
+  }
+  if (outcome === "paid_outside_provider") {
+    if (ref.length === 0) errors.reference = "Enter the reference of the payment you made to the traveler.";
+    else if (ref.length > 200) errors.reference = "The payment reference is too long.";
   }
   if (outcome === "refunded_at_provider") {
     if (ref.length === 0) errors.reference = "Enter the Paystack refund reference to record it.";
@@ -252,11 +264,21 @@ const TRIP_CANCEL_ERROR_WORDS = {
   trip_cancel_refund_amount_or_currency_mismatch: "This refund changed since you opened it. Refresh the queue and try again.",
   trip_cancel_refund_not_recorded: "The refund could not be recorded, so nothing was saved. Try again or ask engineering.",
   reason_invalid_length: "Write why you are doing this (3 to 500 characters).",
+  // Pass 10 (P10-2 / P10-3)
+  refunded_elsewhere_amount_mismatch: "That amount is not what Paystack shows for this refund, so nothing was recorded. Enter the amount Paystack lists for it.",
+  provider_refund_reference_not_found: "Paystack shows no refund with that reference on this payment, so nothing was recorded. Check the reference in the Paystack dashboard.",
+  provider_refund_list_unreadable: "Paystack's refund list for this payment could not be read just now, so nothing was recorded. Try again in a few minutes.",
+  refunded_elsewhere_needs_provider_check: "This needs Paystack's refund list checked first. Refresh the page and try again.",
+  trip_cancel_refund_not_below_minimum: "This amount is not below Paystack's minimum. Refresh the queue.",
 };
 
 /** Plain words for a failed trip cancel action (falls back to the page's). */
 export function tripCancelErrorMessage(error) {
   const message = error instanceof Error ? error.message : String(error?.message ?? error ?? "");
+  // Pass 10: the edge function's own plain words name the exact reference.
+  if (message === "provider_refund_reference_not_found" && typeof error?.serverMessage === "string") {
+    return error.serverMessage;
+  }
   const known = Object.keys(TRIP_CANCEL_ERROR_WORDS).find((code) => message.includes(code));
   return known ? TRIP_CANCEL_ERROR_WORDS[known] : refundQueueErrorMessage(error, "action");
 }

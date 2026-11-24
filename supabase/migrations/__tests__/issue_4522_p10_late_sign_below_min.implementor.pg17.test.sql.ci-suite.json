@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4522_p10_late_sign_below_min.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4522-p10-late-sign-below-min-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

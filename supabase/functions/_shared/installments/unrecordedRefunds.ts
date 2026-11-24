@@ -271,6 +271,15 @@ export async function alertTripCancelShortfalls(
 export function tripCancelShortfallSubject(row: Record<string, unknown>): string {
   if (row.kind === "unresolved") return "A trip cancel is waiting on a seat or add-on refund that is not finished";
   if (row.kind === "overlap") return "A refund Mingla marked failed later went through after the owed amount was sent";
+  if (row.kind === "late_held") {
+    return row.late_held_reason === "seat_refund_recorded_made"
+      ? "A cancelled trip booking's owed refund was not sent: the seat or add-on refund went through after all"
+      : "A cancelled trip booking's owed refund was stopped before sending (check the provider)";
+  }
+  // Pass 10 (P10-3): below the provider minimum, it is never sent automatically.
+  if (row.below_minimum === true) {
+    return "A cancelled trip booking owes the traveler an amount below Paystack's refund minimum (staff must pay it)";
+  }
   return row.held === true
     ? "A cancelled trip booking still owes the traveler money (not sent: check the provider)"
     : "A cancelled trip booking's owed refund is being sent automatically";
@@ -295,6 +304,34 @@ export function tripCancelShortfallParagraphs(row: Record<string, unknown>): str
       ids,
       `Owed amount already sent: ${String(row.owed_cents ?? "?")} ${cur} (minor units), refund ${String(row.shortfall_refund_id ?? "?")}.`,
       "Next (staff): check both refunds with the provider and escalate to finance.",
+    ];
+  }
+  // Pass 10 (P10-1): announced as being sent, then stopped before sending.
+  if (row.kind === "late_held") {
+    const owed = `Owed part NOT sent: ${String(row.owed_cents ?? "?")} ${cur} (minor units), refund ${String(row.shortfall_refund_id ?? "?")} (withdrawn).`;
+    if (row.late_held_reason === "seat_refund_recorded_made") {
+      return [
+        "An earlier alert said Mingla was sending a traveler an owed amount because a seat or add-on refund had failed. That refund was then recorded as made by the provider, so the traveler already has it. Mingla withdrew the owed amount before sending it. Nothing was paid twice and nothing was written off.",
+        ids,
+        owed,
+        "Nothing to do.",
+      ];
+    }
+    return [
+      "An earlier alert said Mingla was sending a traveler an owed amount because a seat or add-on refund had failed. Before it was sent, the provider showed a sign that the seat or add-on refund may have been made after all (sent with no answer, accepted, or a provider refund id). Mingla stopped the owed amount and has not sent it. Nothing was written off.",
+      ids,
+      owed,
+      "Next (staff): check that seat or add-on refund with the provider. If it was made, the traveler is whole and nothing is owed. If it was not, escalate to finance so the traveler is paid the owed amount once.",
+    ];
+  }
+  // Pass 10 (P10-3): below the provider's minimum refund (Paystack: NGN 50).
+  if (row.below_minimum === true) {
+    const min = Number(row.provider_minimum_cents ?? 5000);
+    return [
+      "A trip cancel counted a seat or add-on refund that was still in progress as already refunded, so it refunded less. That refund then did not go through, so the traveler is owed the difference. The amount is below Paystack's minimum refund, so Paystack cannot send it and Mingla has NOT sent it. Nothing has been written off.",
+      ids,
+      `Owed to the traveler: ${String(row.owed_cents ?? "?")} ${cur} (minor units), the cancel's ${String(row.tier_pct ?? "?")}% policy on that refund's ${String(row.failed_refund_cents ?? "?")} ${cur}. Paystack's minimum refund: ${Number.isFinite(min) ? min : 5000} ${cur} (minor units). Owed part: refund ${String(row.shortfall_refund_id ?? "?")}.`,
+      "Next (staff): pay the traveler this exact amount outside Paystack (for example a bank transfer), then open Admin, Money, Refund operations, choose this trip cancel and record it as paid outside Paystack with the payment reference and a reason. That finishes the cancel and releases the host's payout hold. If it cannot be paid, choose Escalate there.",
     ];
   }
   if (row.held === true) {

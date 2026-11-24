@@ -103,3 +103,31 @@ describe("G-4 after an action the panel is a fresh instance for the new state", 
     assert.equal(tripCancelPanelKey(refused), before);
   });
 });
+
+// Pass 10 (P10-3): an owed part below Paystack's minimum, rendered.
+const belowMin = {
+  refund_id: "r-b", order_id: "o-b", trip_name: "Tiny trip", currency: "ngn", provider: "paystack",
+  cancel_amount_cents: 3000, unconfirmed_amount_cents: 0, refused_amount_cents: 0, below_minimum_amount_cents: 3000,
+  waiting_since: new Date().toISOString(),
+  charges: [{ attempt_id: "b-1", part: "deposit", ordinal: null, amount_cents: 3000, currency: "ngn", state: "below_minimum",
+    actionable: true, outcomes: ["paid_outside_provider", "escalate"], charge_cents: 30000, ops_resolution: null,
+    waiting_since: new Date().toISOString() }],
+};
+describe("P10-3 below the provider minimum", () => {
+  it("renders the state, the exact amount, paid outside Paystack with its reference field, and escalate", () => {
+    const html = text(h.panel(belowMin));
+    assert.match(html, /Trip cancel, owed amount below Paystack's minimum/);
+    assert.match(html, /Below Paystack's minimum, not sent/);
+    assert.match(html, /NGN 30\.00/);
+    assert.match(html, /Paid to the traveler outside Paystack: record it/);
+    assert.match(html, /Reference of your payment to the traveler/);
+    assert.match(html, /Pay the traveler exactly NGN 30\.00 another way/);
+    assert.match(html, /Record payment and finish cancel/);
+    assert.match(html, /Escalate/);
+    assert.doesNotMatch(html, /sent in the last 15 minutes/);
+  });
+  it("the queue row names it and its amount", () => {
+    const row = queueRowModel({ itemKind: "trip_cancel_refund", itemId: "r-b", safeSummary: belowMin });
+    assert.match(JSON.stringify(row), /below Paystack's minimum/);
+  });
+});

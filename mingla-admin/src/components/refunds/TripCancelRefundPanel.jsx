@@ -161,19 +161,26 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
                     setFieldErrors((current) => ({ ...current, refundedElsewhere: undefined }));
                   }}
                   error={fieldErrors.refundedElsewhere}
-                  placeholder="The other refunds Paystack lists on this payment, added up"
+                  placeholder="The amount Paystack lists for that one refund"
                 />
               )}
-              {(chosenOutcome === "refunded_at_provider" || chosenOutcome === "refunded_elsewhere") && (
+              {(chosenOutcome === "refunded_at_provider" || chosenOutcome === "refunded_elsewhere"
+                || chosenOutcome === "paid_outside_provider") && (
                 <Input
-                  label={chosenOutcome === "refunded_elsewhere" ? "Reference of that other Paystack refund" : "Paystack refund reference"}
+                  label={chosenOutcome === "refunded_elsewhere"
+                    ? "Reference of that other Paystack refund"
+                    : chosenOutcome === "paid_outside_provider"
+                    ? "Reference of your payment to the traveler"
+                    : "Paystack refund reference"}
                   value={reference}
                   onChange={(event) => {
                     setReference(event.target.value);
                     setFieldErrors((current) => ({ ...current, reference: undefined }));
                   }}
                   error={fieldErrors.reference}
-                  placeholder="As shown on the refund in the Paystack dashboard"
+                  placeholder={chosenOutcome === "paid_outside_provider"
+                    ? "For example the bank transfer reference"
+                    : "As shown on the refund in the Paystack dashboard"}
                 />
               )}
               <Textarea
@@ -187,6 +194,13 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
                 placeholder="What you checked in Paystack"
                 rows={3}
               />
+              {target?.state === "below_minimum" && (
+                <p className="text-[var(--color-text-secondary)]">
+                  This owed amount is below Paystack's minimum refund, so Mingla cannot send it through Paystack.
+                  Pay the traveler exactly {money(target.amountCents, String(target.currency).toUpperCase())} another
+                  way, then record it here. Recording moves no money.
+                </p>
+              )}
               <p className="text-[var(--color-text-secondary)]">
                 Finishing sends the traveler their refund email and updates the host's payout.
               </p>
@@ -208,6 +222,17 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
                       onClick={() => submit("refunded_elsewhere")}
                     >
                       Ask only for what is left
+                    </Button>
+                  )
+                  : chosenOutcome === "paid_outside_provider"
+                  ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => submit("paid_outside_provider")}
+                    >
+                      Record payment and finish cancel
                     </Button>
                   )
                   : (

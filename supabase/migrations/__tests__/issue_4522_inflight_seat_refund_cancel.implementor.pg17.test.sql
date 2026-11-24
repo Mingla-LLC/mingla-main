@@ -222,10 +222,21 @@ DECLARE v_att uuid; v_err text; v_list jsonb; v_res jsonb; v_ref uuid := (SELECT
 BEGIN
   SELECT id INTO v_att FROM public.paystack_refund_attempts WHERE merchant_note = (SELECT note FROM f5);
   PERFORM pg_temp.act_as('45228001-0000-4000-8000-000000000003');
-  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L, NULL, NULL, %s)',
-    v_att, 'refunded_elsewhere', 'p8f-seat-ref', 'Paystack shows the seat refund', 50000000));
+  -- Pass 10 (P10-2): "partly refunded already" goes through the edge
+  -- function (it reads Paystack's refund list); its entry point takes the
+  -- verified caller and the amount Paystack lists for the reference.
+  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(%L, %L, %L, %L, NULL, NULL, %s, %s)',
+    '45228001-0000-4000-8000-000000000003', v_att, 'p8f-seat-ref', 'Paystack shows the seat refund', 50000000, 50000000));
   IF v_err IS NULL OR v_err NOT LIKE '42501:%' THEN RAISE EXCEPTION 'F-6a a non-admin is refused: %', v_err; END IF;
   PERFORM pg_temp.act_as('45228001-0000-4000-8000-000000000002');
+  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L, NULL, NULL, %s)',
+    v_att, 'refunded_elsewhere', 'p8f-seat-ref', 'Paystack shows the seat refund', 50000000));
+  IF v_err IS NULL OR v_err NOT LIKE 'PT409:refunded_elsewhere_needs_provider_check%' THEN
+    RAISE EXCEPTION 'F-6a2 P10-2 a typed figure is never taken from the Admin session directly: %', v_err;
+  END IF;
+  IF has_function_privilege('authenticated', 'public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(uuid, uuid, text, text, bigint, text, bigint, bigint)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'F-6a3 P10-2 the checked entry point is service role only';
+  END IF;
   v_list := public.issue_4522_list_unanswered_trip_cancel_refunds();
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_list) x
                   WHERE (x->>'refund_id')::uuid = v_ref AND (x->>'refused_amount_cents')::bigint = 100000000
@@ -233,14 +244,22 @@ BEGIN
                     AND x->'charges'->0->'outcomes' = '["refunded_elsewhere","escalate"]'::jsonb) THEN
     RAISE EXCEPTION 'F-6b the refused part is in Refund operations: %', v_list;
   END IF;
-  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L)',
-    v_att, 'refunded_elsewhere', 'p8f-seat-ref', 'Paystack shows the seat refund'));
+  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(%L, %L, %L, %L, NULL, NULL, NULL, NULL)',
+    '45228001-0000-4000-8000-000000000002', v_att, 'p8f-seat-ref', 'Paystack shows the seat refund'));
   IF v_err NOT LIKE '%refunded_elsewhere_required%' THEN RAISE EXCEPTION 'F-6c the figure is required: %', v_err; END IF;
   v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L)',
     v_att, 'refunded_at_provider', 'p8f-x', 'Paystack shows it refunded'));
   IF v_err NOT LIKE '%trip_cancel_refund_not_unanswered%' THEN RAISE EXCEPTION 'F-6d a refused part is not recorded as made: %', v_err; END IF;
-  v_res := public.issue_4522_resolve_trip_cancel_refund_by_ops(v_att, 'refunded_elsewhere', 'p8f-seat-ref',
-    'Paystack shows the seat refund', 100000000, 'ngn', 50000000);
+  -- P10-2: a figure other than the amount Paystack lists for that reference
+  -- (a N500k refund typed as N1M) is refused; nothing changes.
+  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(%L, %L, %L, %L, %s, %L, %s, %s)',
+    '45228001-0000-4000-8000-000000000002', v_att, 'p8f-seat-ref', 'Paystack shows the seat refund', 100000000, 'ngn', 100000000, 50000000));
+  IF v_err IS NULL OR v_err NOT LIKE '22023:refunded_elsewhere_amount_mismatch%'
+     OR (SELECT amount_cents FROM public.refunds WHERE id = v_ref) <> 100000000 THEN
+    RAISE EXCEPTION 'F-6d2 P10-2 the figure must equal the listed refund: %', v_err;
+  END IF;
+  v_res := public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops('45228001-0000-4000-8000-000000000002', v_att, 'p8f-seat-ref',
+    'Paystack shows the seat refund', 100000000, 'ngn', 50000000, 50000000);
   IF (v_res->>'to_cents')::bigint <> 50000000 OR (SELECT amount_cents FROM public.refunds WHERE id = v_ref) <> 50000000
      OR (SELECT amount_cents FROM public.paystack_refund_attempts WHERE id = v_att) <> 50000000
      OR (SELECT (metadata #>> '{trip_cancel,failures}')::int FROM public.refunds WHERE id = v_ref) <> 0 THEN
@@ -251,8 +270,8 @@ BEGIN
         AND after->>'reason' IS NOT NULL) <> 1 THEN
     RAISE EXCEPTION 'F-6f one audit row with the figure and the reason';
   END IF;
-  v_res := public.issue_4522_resolve_trip_cancel_refund_by_ops(v_att, 'refunded_elsewhere', 'p8f-seat-ref',
-    'Paystack shows the seat refund', 100000000, 'ngn', 50000000);
+  v_res := public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops('45228001-0000-4000-8000-000000000002', v_att, 'p8f-seat-ref',
+    'Paystack shows the seat refund', 100000000, 'ngn', 50000000, 50000000);
   IF NOT (v_res->>'idempotent_replay')::boolean
      OR (SELECT count(*) FROM public.audit_log WHERE action = 'trip_cancel_refund.resized_by_ops'
            AND (after->>'refund_id')::uuid = v_ref) <> 1 THEN
@@ -266,8 +285,8 @@ DECLARE v_att uuid; v_err text;
 BEGIN
   SELECT id INTO v_att FROM public.paystack_refund_attempts WHERE merchant_note = (SELECT note FROM f5);
   PERFORM pg_temp.act_as('45228001-0000-4000-8000-000000000002');
-  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L, NULL, NULL, %s)',
-    v_att, 'refunded_elsewhere', 'p8f-seat-ref', 'A smaller figure later', 10000000));
+  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(%L, %L, %L, %L, NULL, NULL, %s, %s)',
+    '45228001-0000-4000-8000-000000000002', v_att, 'p8f-seat-ref', 'A smaller figure later', 10000000, 10000000));
   IF v_err IS NULL OR v_err NOT LIKE 'PT409:trip_cancel_refund_already_resolved%' THEN
     RAISE EXCEPTION 'G-6a a second figure is refused: %', v_err;
   END IF;
@@ -453,11 +472,11 @@ DECLARE v_att uuid; v_err text; v_res jsonb; v_ref uuid := (SELECT refund_id FRO
 BEGIN
   SELECT id INTO v_att FROM public.paystack_refund_attempts WHERE merchant_note = (SELECT note FROM g7);
   PERFORM pg_temp.act_as('45228001-0000-4000-8000-000000000002');
-  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_by_ops(%L, %L, %L, %L, NULL, NULL, %s)',
-    v_att, 'refunded_elsewhere', 'PS-DASH-G7', 'Paystack shows the whole payment refunded', 100000001));
+  v_err := pg_temp.raised(format('SELECT public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(%L, %L, %L, %L, NULL, NULL, %s, %s)',
+    '45228001-0000-4000-8000-000000000002', v_att, 'PS-DASH-G7', 'Paystack shows the whole payment refunded', 100000001, 100000001));
   IF v_err NOT LIKE '%refunded_elsewhere_more_than_charge%' THEN RAISE EXCEPTION 'G-7a never more than the charge: %', v_err; END IF;
-  v_res := public.issue_4522_resolve_trip_cancel_refund_by_ops(v_att, 'refunded_elsewhere', '  PS-DASH-G7 ',
-    'Paystack shows the whole payment refunded', 100000000, 'ngn', 100000000);
+  v_res := public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops('45228001-0000-4000-8000-000000000002', v_att, '  PS-DASH-G7 ',
+    'Paystack shows the whole payment refunded', 100000000, 'ngn', 100000000, 100000000);
   IF NOT (v_res->>'recorded_whole_charge')::boolean OR (v_res->>'to_cents')::bigint <> 0 THEN
     RAISE EXCEPTION 'G-7b recorded with nothing left: %', v_res;
   END IF;
@@ -471,8 +490,8 @@ BEGIN
         AND after->>'provider_refund_reference' = 'PS-DASH-G7') <> 1 THEN
     RAISE EXCEPTION 'G-7d audited once with the reference';
   END IF;
-  v_res := public.issue_4522_resolve_trip_cancel_refund_by_ops(v_att, 'refunded_elsewhere', 'PS-DASH-G7',
-    'Paystack shows the whole payment refunded', 100000000, 'ngn', 100000000);
+  v_res := public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops('45228001-0000-4000-8000-000000000002', v_att, 'PS-DASH-G7',
+    'Paystack shows the whole payment refunded', 100000000, 'ngn', 100000000, 100000000);
   IF NOT (v_res->>'idempotent_replay')::boolean THEN RAISE EXCEPTION 'G-7e replay: %', v_res; END IF;
   PERFORM pg_temp.act_as(NULL);
   v_res := public.biz_cancel_trip_booking_commit(v_ref, ARRAY['PS-DASH-G7'], 0);

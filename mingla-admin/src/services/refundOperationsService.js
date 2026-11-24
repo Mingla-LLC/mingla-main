@@ -174,23 +174,54 @@ export async function getUnansweredTripCancelRefund(refundId, rpc = callAdminRpc
   return data ?? null;
 }
 
+// Pass 10 (P10-2): an edge-function error as a plain Error whose message is
+// the server's code and whose serverMessage is its plain-words message.
+async function edgeError(error) {
+  let payload = null;
+  try {
+    payload = typeof error?.context?.json === "function" ? await error.context.json() : null;
+  } catch {
+    payload = null;
+  }
+  const err = new Error(typeof payload?.error === "string" ? payload.error : error?.message ?? "edge_failed");
+  err.status = error?.context?.status ?? error?.status ?? null;
+  err.serverMessage = typeof payload?.message === "string" ? payload.message : null;
+  return err;
+}
+
 export async function resolveTripCancelRefund(
   { attemptId, outcome, reference, reason, amountCents, currency, refundedElsewhereCents },
   rpc = callAdminRpc,
+  invoke = invokeAdminFunction,
 ) {
+  // Pass 10 (P10-2): "partly refunded already" goes through the edge
+  // function, which checks the reference and the figure against Paystack's
+  // refund list for this payment before anything is recorded.
+  if (outcome === "refunded_elsewhere") {
+    const { data, error } = await invoke("cancel-trip-booking", {
+      body: {
+        mode: "ops_refunded_elsewhere",
+        attemptId,
+        reference,
+        reason,
+        amountCents,
+        currency,
+        refundedElsewhereCents,
+      },
+    });
+    if (error) throw await edgeError(error);
+    return data;
+  }
   const { data, error, status } = await rpc(
     "issue_4522_resolve_trip_cancel_refund_by_ops",
     {
       p_attempt_id: attemptId,
       p_outcome: outcome,
       p_provider_refund_reference:
-        outcome === "refunded_at_provider" || outcome === "refunded_elsewhere" ? reference : null,
+        outcome === "refunded_at_provider" || outcome === "paid_outside_provider" ? reference : null,
       p_reason: reason,
       p_amount_cents: amountCents,
       p_currency: currency,
-      // Pass 8 (P8-2): sent only for that outcome, so the other actions call
-      // exactly as before.
-      ...(outcome === "refunded_elsewhere" ? { p_refunded_elsewhere_cents: refundedElsewhereCents } : {}),
     },
   );
   if (error) throw rpcError(error, status);

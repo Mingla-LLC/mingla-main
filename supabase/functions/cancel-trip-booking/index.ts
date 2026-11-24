@@ -83,6 +83,7 @@ import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { returnOrderOverpaymentsBestEffort } from "../_shared/installments/overpaymentLane.ts";
 import { overpaymentReturnCents } from "./refundEntries.ts";
 import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
+import { handleOpsRefundedElsewhere, parseOpsRefundedElsewhere } from "./opsRefundedElsewhere.ts";
 import {
   alertTripCancelNotFinished,
   cardRefundsRequestedUnrecorded,
@@ -368,6 +369,31 @@ serve(async (req: Request): Promise<Response> => {
     body = await req.json();
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
+  }
+
+  // Issue #4522 pass 10 (P10-2): staff "partly refunded already" is checked
+  // against Paystack's refund list here, before the database records it.
+  if (body.mode === "ops_refunded_elsewhere") {
+    const service = serviceClient();
+    const result = await handleOpsRefundedElsewhere(parseOpsRefundedElsewhere(body), {
+      callerId: () => userIdFromAuthHeader(req),
+      attemptCharge: async (attemptId) => {
+        const { data } = await service.from("paystack_refund_attempts")
+          .select("transaction_reference, merchant_note, local_refund_id")
+          .eq("id", attemptId).maybeSingle();
+        const row = data as Record<string, unknown> | null;
+        return row && typeof row.transaction_reference === "string" &&
+            String(row.merchant_note ?? "").startsWith(`mingla_trip_refund:${String(row.local_refund_id)}:`)
+          ? row.transaction_reference
+          : null;
+      },
+      listRefunds: (transaction) => listPaystackTransactionRefunds({ transaction, currency: "NGN" }),
+      resolve: async (args) => {
+        const { data, error } = await service.rpc("issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops", args);
+        return { data, error };
+      },
+    });
+    return jsonResponse(result.body, result.status);
   }
 
   const mode: CancelMode = body.mode === "buyer"

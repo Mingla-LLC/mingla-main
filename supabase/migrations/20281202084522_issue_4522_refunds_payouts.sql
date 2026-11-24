@@ -1345,6 +1345,8 @@ AS $fn$
     JOIN public.orders o ON o.id = r.order_id
    WHERE r.status IN ('pending', 'succeeded') AND r.metadata ? 'trip_cancel'
      AND NOT (r.metadata->'trip_cancel' ? 'completed_at')
+     -- Pass 10 (P10-3): a part waiting for staff (below the provider minimum)
+     AND NOT (r.metadata->'trip_cancel' ? 'awaiting_staff')
      AND o.cancelled_at IS NOT NULL
      AND COALESCE((r.metadata #>> '{trip_cancel,failures}')::integer, 0) < 3
      AND COALESCE((r.metadata #>> '{trip_cancel,last_attempt_at}')::timestamptz, r.created_at)
@@ -1429,6 +1431,8 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
+DECLARE
+  v_failed uuid;
 BEGIN
   IF p_release THEN
     UPDATE public.paystack_refund_attempts
@@ -1438,11 +1442,33 @@ BEGIN
        AND error_message = 'provider_call_started';
     RETURN FOUND;
   END IF;
+  -- Pass 10 (P10-1): an owed part (shortfall_of) is sent only while the seat
+  -- or add-on refund it replaces still shows no sign of having been made.
+  -- Checked here, immediately before the send, under that refund's row lock
+  -- (the same lock the provider's late answer takes to record it), against
+  -- every sign: its second-provider attempts processed, accepted, carrying a
+  -- provider refund id or sent with no answer; its card attempts holding a
+  -- buyer refund or permitted to call the provider; or the row itself
+  -- recorded as made. Any sign: the part is held (withdrawn, not sent) and
+  -- ops are told once; nothing is written off.
+  v_failed := NULLIF((SELECT r.metadata #>> '{trip_cancel,shortfall_of,failed_refund_id}'
+                        FROM public.refunds r WHERE r.id = p_refund_id), '')::uuid;
+  IF v_failed IS NOT NULL THEN
+    PERFORM 1 FROM public.refunds WHERE id = v_failed FOR UPDATE;
+    IF public.issue_4522_refund_maybe_made(v_failed)
+       OR EXISTS (SELECT 1 FROM public.refunds WHERE id = v_failed AND status = 'succeeded') THEN
+      PERFORM public.issue_4522_trip_cancel_hold_owed_parts(v_failed, 'seat_refund_sign_at_send');
+      RETURN false;
+    END IF;
+  END IF;
+  -- Pass 10 (P10-3): a part below the provider's minimum is never sent; it
+  -- waits for staff (Refund operations: paid outside Paystack, or escalate).
   UPDATE public.paystack_refund_attempts
      SET error_message = 'provider_call_started', updated_at = now()
    WHERE local_refund_id = p_refund_id AND merchant_note = p_merchant_note
      AND status = 'pending' AND provider_refund_id IS NULL
-     AND error_message IS DISTINCT FROM 'provider_call_started';
+     AND error_message IS DISTINCT FROM 'provider_call_started'
+     AND error_message IS DISTINCT FROM 'below_provider_minimum';
   RETURN FOUND;
 END
 $fn$;
@@ -1804,6 +1830,7 @@ DECLARE
   v_held boolean;
   v_sf uuid;
   v_provider text;
+  v_below_min boolean;
 BEGIN
   v_held := public.issue_4522_refund_maybe_made(NEW.id);
   FOR v_c IN
@@ -1820,6 +1847,7 @@ BEGIN
       SELECT value INTO v_dep FROM jsonb_array_elements(v_c.tc->'per_payment_refund')
        WHERE value->>'installment_id' IS NULL LIMIT 1;
       v_sf := NULL;
+      v_below_min := false;
       IF NOT v_held AND v_dep IS NOT NULL AND NULLIF(v_dep->>'source_pi', '') IS NOT NULL THEN
         v_sf := md5('issue_4522_trip_cancel_shortfall:' || v_c.id::text || ':' || NEW.id::text)::uuid;
         INSERT INTO public.refunds(id, order_id, amount_cents, currency, status, reason,
@@ -1839,12 +1867,24 @@ BEGIN
             JOIN public.brands b ON b.id = e.brand_id
            WHERE o.id = NEW.order_id;
           IF v_provider = 'paystack' THEN
+            -- Pass 10 (P10-3): Paystack refuses a partial refund below NGN 50
+            -- (PAYSTACK_MIN_REFUND_SUBUNITS, 5000 kobo, _shared/paystackRefunds.ts).
+            -- Such a part is recorded and owed, never sent: it waits in
+            -- Refund operations for staff (paid outside Paystack, or escalate),
+            -- and the cancel's resume leaves it alone (awaiting_staff).
+            v_below_min := v_owed < 5000;
             INSERT INTO public.paystack_refund_attempts(
               source_type, source_id, local_refund_id, transaction_reference,
-              merchant_note, amount_cents, currency, status, idempotency_key)
+              merchant_note, amount_cents, currency, status, idempotency_key, error_message)
             VALUES ('order', NEW.order_id, v_sf, v_dep->>'source_pi',
               'mingla_trip_refund:' || v_sf::text || ':deposit', v_owed, 'ngn', 'pending',
-              'paystack-refund:mingla_trip_refund:' || v_sf::text || ':deposit');
+              'paystack-refund:mingla_trip_refund:' || v_sf::text || ':deposit',
+              CASE WHEN v_below_min THEN 'below_provider_minimum' END);
+            IF v_below_min THEN
+              UPDATE public.refunds
+                 SET metadata = jsonb_set(metadata, '{trip_cancel,awaiting_staff}', '"below_provider_minimum"'::jsonb)
+               WHERE id = v_sf;
+            END IF;
           END IF;
         END IF;
       END IF;
@@ -1856,7 +1896,9 @@ BEGIN
                     'failed_refund_cents', v_amt, 'tier_pct', COALESCE((v_c.tc->>'tier_pct')::integer, 0),
                     'at', now())
                   || CASE WHEN v_sf IS NOT NULL THEN jsonb_build_object('shortfall_refund_id', v_sf)
-                          ELSE jsonb_build_object('held', true) END))
+                          ELSE jsonb_build_object('held', true) END
+                  || CASE WHEN v_below_min THEN jsonb_build_object('below_minimum', true, 'provider', 'paystack',
+                            'provider_minimum_cents', 5000) ELSE '{}'::jsonb END))
        WHERE id = v_c.id;
     END IF;
   END LOOP;
@@ -1902,7 +1944,10 @@ BEGIN
              metadata = jsonb_set(metadata, '{trip_cancel,withdrawn_at}', to_jsonb(now()))
        WHERE id = v_sf AND status = 'pending';
       UPDATE public.refunds
-         SET metadata = jsonb_set(metadata, ARRAY['trip_cancel', 'shortfalls', NEW.id::text, 'withdrawn_at'], to_jsonb(now()))
+         SET metadata = jsonb_set(metadata, ARRAY['trip_cancel', 'shortfalls', NEW.id::text],
+               (metadata #> ARRAY['trip_cancel', 'shortfalls', NEW.id::text])
+               || jsonb_build_object('withdrawn_at', now(), 'late_held_at', now(),
+                    'late_held_reason', 'seat_refund_recorded_made'))
        WHERE id = v_c.id;
     ELSE
       UPDATE public.refunds
@@ -1918,6 +1963,136 @@ CREATE TRIGGER issue_4522_trip_cancel_inflight_recovered
   AFTER UPDATE OF status ON public.refunds
   FOR EACH ROW WHEN (OLD.status IN ('failed', 'cancelled') AND NEW.status = 'succeeded')
   EXECUTE FUNCTION public.issue_4522_trip_cancel_inflight_recovered();
+
+-- Pass 10 (P10-1): a seat or add-on refund recorded as failed (or cancelled)
+-- whose owed part a trip cancel created, that later shows a sign of having
+-- been made. Each owed part of it not yet sent is held: withdrawn (its
+-- refunds row cancelled, its attempt closed), never sent, and ops are told
+-- once (late_held_at). One already sent (or possibly sent) is left as made
+-- and ops are told once (overlap_at). Nothing is ever written off. Callers
+-- hold the failed refund's row lock.
+CREATE FUNCTION public.issue_4522_trip_cancel_hold_owed_parts(p_failed_refund_id uuid, p_why text)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_c record;
+  v_sf uuid;
+  v_n integer := 0;
+BEGIN
+  FOR v_c IN
+    SELECT r.id, r.metadata #> ARRAY['trip_cancel', 'shortfalls', p_failed_refund_id::text] AS s
+      FROM public.refunds r
+     WHERE (r.metadata #> '{trip_cancel,shortfalls}') ? p_failed_refund_id::text
+     ORDER BY r.id
+     FOR UPDATE OF r
+  LOOP
+    v_sf := NULLIF(v_c.s->>'shortfall_refund_id', '')::uuid;
+    IF v_sf IS NULL OR v_c.s ? 'withdrawn_at' OR v_c.s ? 'late_held_at' OR v_c.s ? 'overlap_at' THEN
+      CONTINUE;
+    END IF;
+    PERFORM 1 FROM public.refunds WHERE id = v_sf FOR UPDATE;
+    IF NOT public.issue_4522_refund_maybe_made(v_sf)
+       AND EXISTS (SELECT 1 FROM public.refunds WHERE id = v_sf AND status = 'pending') THEN
+      UPDATE public.paystack_refund_attempts
+         SET status = 'failed', error_message = 'shortfall_held_seat_refund_signed', updated_at = now()
+       WHERE local_refund_id = v_sf AND status = 'pending' AND provider_refund_id IS NULL;
+      UPDATE public.refunds
+         SET status = 'cancelled',
+             metadata = jsonb_set(metadata, '{trip_cancel,withdrawn_at}', to_jsonb(now()))
+       WHERE id = v_sf AND status = 'pending';
+      UPDATE public.refunds
+         SET metadata = jsonb_set(metadata, ARRAY['trip_cancel', 'shortfalls', p_failed_refund_id::text],
+               v_c.s || jsonb_build_object('held', true, 'withdrawn_at', now(), 'late_held_at', now(),
+                 'late_held_reason', left(COALESCE(p_why, 'seat_refund_sign'), 60)))
+       WHERE id = v_c.id;
+    ELSE
+      UPDATE public.refunds
+         SET metadata = jsonb_set(metadata, ARRAY['trip_cancel', 'shortfalls', p_failed_refund_id::text, 'overlap_at'], to_jsonb(now()))
+       WHERE id = v_c.id;
+    END IF;
+    v_n := v_n + 1;
+  END LOOP;
+  RETURN v_n;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_hold_owed_parts(uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+
+-- Pass 10 (P10-1): the provider's late answer reaches the seat refund. The
+-- refund webhook (record_paystack_refund_outcome), the cancel's read-back and
+-- staff all record a second-provider outcome on its attempt row; the card
+-- lane records its buyer refund on its attempt row. When that row shows a
+-- sign for a refund recorded as failed or cancelled that a trip cancel
+-- counted:
+--   second provider, processed: the refund WAS made. It is recorded as made
+--     (succeeded, its provider id; the order's refunded total from its one
+--     owner), which fires issue_4522_trip_cancel_inflight_recovered: an
+--     unsent owed part is withdrawn, one already sent is an overlap.
+--   any other sign (accepted, a provider id, a card buyer refund or a card
+--     call permitted): the owed parts are held as above; the refund itself
+--     is left for its own lane to finish.
+-- Edge code is unchanged: before this migration none of it exists (as main).
+CREATE FUNCTION public.issue_4522_trip_cancel_late_sign()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_refund_id uuid;
+  v_r public.refunds%ROWTYPE;
+  v_charge_refunded integer;
+BEGIN
+  IF TG_TABLE_NAME = 'paystack_refund_attempts' THEN
+    v_refund_id := NEW.local_refund_id;
+  ELSE
+    v_refund_id := NEW.refund_id;
+  END IF;
+  IF v_refund_id IS NULL THEN RETURN NULL; END IF;
+  SELECT * INTO v_r FROM public.refunds WHERE id = v_refund_id FOR UPDATE;
+  IF v_r.id IS NULL OR v_r.status NOT IN ('failed', 'cancelled')
+     OR NOT EXISTS (SELECT 1 FROM public.refunds c
+                     WHERE c.order_id = v_r.order_id AND c.id <> v_r.id
+                       AND (c.metadata #> '{trip_cancel,shortfalls}') ? v_r.id::text) THEN
+    RETURN NULL;
+  END IF;
+  IF TG_TABLE_NAME = 'paystack_refund_attempts' AND NEW.status::text = 'processed' THEN
+    UPDATE public.refunds
+       SET status = 'succeeded',
+           stripe_refund_id = COALESCE(stripe_refund_id, NEW.provider_refund_id),
+           application_fee_refunded_cents = COALESCE(application_fee_refunded_cents, 0),
+           application_fee_refund_status = CASE WHEN COALESCE(application_fee_refunded_cents, 0) = 0
+             THEN 'not_applicable' ELSE application_fee_refund_status END,
+           processed_at = now()
+     WHERE id = v_r.id;
+    PERFORM 1 FROM public.orders WHERE id = v_r.order_id FOR NO KEY UPDATE;
+    v_charge_refunded := public.issue_4522_order_charge_refunded_cents(v_r.order_id);
+    UPDATE public.orders
+       SET refunded_amount_cents = v_charge_refunded,
+           payment_status = CASE WHEN v_charge_refunded > 0 AND payment_status = 'paid'
+             THEN 'partial_refund' ELSE payment_status END,
+           updated_at = now()
+     WHERE id = v_r.order_id AND refunded_amount_cents IS DISTINCT FROM v_charge_refunded;
+  ELSE
+    PERFORM public.issue_4522_trip_cancel_hold_owed_parts(v_r.id, 'seat_refund_sign_recorded');
+  END IF;
+  RETURN NULL;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_late_sign() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER issue_4522_trip_cancel_late_sign
+  AFTER INSERT OR UPDATE OF status, provider_refund_id, error_message ON public.paystack_refund_attempts
+  FOR EACH ROW WHEN (NEW.local_refund_id IS NOT NULL
+    AND (NEW.status IN ('processed', 'accepted') OR NEW.provider_refund_id IS NOT NULL
+         OR NEW.error_message = 'provider_call_started'))
+  EXECUTE FUNCTION public.issue_4522_trip_cancel_late_sign();
+CREATE TRIGGER issue_4522_trip_cancel_late_sign
+  AFTER INSERT OR UPDATE OF status, buyer_refund_id, provider_call_permitted_at ON public.ticket_refund_attempts
+  FOR EACH ROW WHEN (NEW.refund_id IS NOT NULL
+    AND (NEW.buyer_refund_id IS NOT NULL OR NEW.provider_call_permitted_at IS NOT NULL))
+  EXECUTE FUNCTION public.issue_4522_trip_cancel_late_sign();
 
 -- The instalment run's claim of what ops must be told, each returned once
 -- (marked in the same statement):
@@ -1944,7 +2119,10 @@ BEGIN
       FROM public.refunds r
       CROSS JOIN LATERAL jsonb_each(r.metadata #> '{trip_cancel,shortfalls}') s
      WHERE r.metadata #> '{trip_cancel,shortfalls}' IS NOT NULL
-       AND (NOT (s.value ? 'alerted_at') OR (s.value ? 'overlap_at' AND NOT (s.value ? 'overlap_alerted_at')))
+       AND (NOT (s.value ? 'alerted_at')
+            OR (s.value ? 'overlap_at' AND NOT (s.value ? 'overlap_alerted_at'))
+            -- Pass 10 (P10-1): an owed part held after it was announced.
+            OR (s.value ? 'late_held_at' AND NOT (s.value ? 'late_held_alerted_at')))
      ORDER BY r.created_at, r.id
      LIMIT v_lim
      FOR UPDATE OF r SKIP LOCKED
@@ -1952,11 +2130,17 @@ BEGIN
     UPDATE public.refunds
        SET metadata = jsonb_set(metadata, ARRAY['trip_cancel', 'shortfalls', v_r.key],
              (metadata #> ARRAY['trip_cancel', 'shortfalls', v_r.key])
-             || CASE WHEN v_r.value ? 'alerted_at' THEN jsonb_build_object('overlap_alerted_at', now())
-                     ELSE jsonb_build_object('alerted_at', now()) END)
+             || CASE WHEN NOT (v_r.value ? 'alerted_at')
+                     THEN jsonb_build_object('alerted_at', now())
+                       || CASE WHEN v_r.value ? 'late_held_at' THEN jsonb_build_object('late_held_alerted_at', now()) ELSE '{}'::jsonb END
+                       || CASE WHEN v_r.value ? 'overlap_at' THEN jsonb_build_object('overlap_alerted_at', now()) ELSE '{}'::jsonb END
+                     WHEN v_r.value ? 'late_held_at' AND NOT (v_r.value ? 'late_held_alerted_at')
+                     THEN jsonb_build_object('late_held_alerted_at', now())
+                     ELSE jsonb_build_object('overlap_alerted_at', now()) END)
      WHERE id = v_r.id;
     v_out := v_out || jsonb_build_array(v_r.value || jsonb_build_object(
-      'kind', CASE WHEN v_r.value ? 'alerted_at' THEN 'overlap' ELSE 'shortfall' END,
+      'kind', CASE WHEN v_r.value ? 'late_held_at' AND NOT (v_r.value ? 'late_held_alerted_at') THEN 'late_held'
+                   WHEN v_r.value ? 'alerted_at' THEN 'overlap' ELSE 'shortfall' END,
       'cancel_refund_id', v_r.id, 'order_id', v_r.order_id, 'failed_refund_id', v_r.key));
   END LOOP;
   -- Pass 9 (P9-3): counted refunds still unresolved past the ceiling.
@@ -2930,6 +3114,19 @@ AS $fn$
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_trip_attempt_refused(public.paystack_refund_attempts) FROM PUBLIC, anon, authenticated, service_role;
 
+-- Pass 10 (P10-3): an owed part below the provider's minimum, never sent;
+-- staff finish it (paid outside Paystack) or escalate it, at once.
+CREATE FUNCTION public.issue_4522_trip_attempt_below_min(p_attempt public.paystack_refund_attempts)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT p_attempt.status = 'pending' AND p_attempt.provider_refund_id IS NULL
+     AND p_attempt.error_message = 'below_provider_minimum'
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_attempt_below_min(public.paystack_refund_attempts) FROM PUBLIC, anon, authenticated, service_role;
+
 -- One cancel in progress, as the Refund operations panel shows it: the
 -- order, the trip, and each charge refund with its state.
 CREATE FUNCTION public.issue_4522_trip_cancel_ops_view(p_refund_id uuid)
@@ -2948,12 +3145,17 @@ AS $fn$
            -- Pass 8 (P8-2): parts the provider refused (a retry repeats the ask).
            'refused_amount_cents', COALESCE(sum(pa.amount_cents)
              FILTER (WHERE public.issue_4522_trip_attempt_refused(pa)), 0),
+           -- Pass 10 (P10-3): owed parts below the provider minimum.
+           'below_minimum_amount_cents', COALESCE(sum(pa.amount_cents)
+             FILTER (WHERE public.issue_4522_trip_attempt_below_min(pa)), 0),
            'waiting_since', min(pa.updated_at) FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)
-                                                         OR public.issue_4522_trip_attempt_refused(pa)),
+                                                         OR public.issue_4522_trip_attempt_refused(pa)
+                                                         OR public.issue_4522_trip_attempt_below_min(pa)),
            'escalated', COALESCE(bool_or((r.metadata #>> ARRAY['trip_cancel', 'ops_resolutions',
                split_part(pa.merchant_note, ':', 3), 'outcome']) = 'escalate')
              FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)
-                        OR public.issue_4522_trip_attempt_refused(pa)), false),
+                        OR public.issue_4522_trip_attempt_refused(pa)
+                        OR public.issue_4522_trip_attempt_below_min(pa)), false),
            'charges', jsonb_agg(jsonb_build_object(
                'attempt_id', pa.id,
                'part', split_part(pa.merchant_note, ':', 3),
@@ -2961,19 +3163,23 @@ AS $fn$
                'amount_cents', pa.amount_cents,
                'currency', pa.currency,
                'state', CASE WHEN pa.status = 'processed' THEN 'recorded'
+                             WHEN public.issue_4522_trip_attempt_below_min(pa) THEN 'below_minimum'
                              WHEN public.issue_4522_trip_attempt_unanswered(pa) THEN 'unanswered'
                              WHEN pa.status = 'accepted' THEN 'accepted'
                              WHEN pa.status = 'failed' THEN 'refused'
                              WHEN public.issue_4522_trip_attempt_refused(pa) THEN 'refused'
                              ELSE 'not_sent' END,
-               'actionable', (public.issue_4522_trip_attempt_unanswered(pa)
-                              OR public.issue_4522_trip_attempt_refused(pa))
-                             AND pa.updated_at <= now() - interval '15 minutes',
+               'actionable', public.issue_4522_trip_attempt_below_min(pa)
+                             OR ((public.issue_4522_trip_attempt_unanswered(pa)
+                                  OR public.issue_4522_trip_attempt_refused(pa))
+                                 AND pa.updated_at <= now() - interval '15 minutes'),
                -- Pass 8 (P8-2): which staff outcomes fit this part.
                'outcomes', CASE WHEN public.issue_4522_trip_attempt_unanswered(pa)
                                 THEN '["refunded_at_provider","escalate"]'::jsonb
                                 WHEN public.issue_4522_trip_attempt_refused(pa)
                                 THEN '["refunded_elsewhere","escalate"]'::jsonb
+                                WHEN public.issue_4522_trip_attempt_below_min(pa)
+                                THEN '["paid_outside_provider","escalate"]'::jsonb
                                 ELSE '[]'::jsonb END,
                'charge_cents', CASE WHEN split_part(pa.merchant_note, ':', 3) = 'deposit'
                                     THEN o.total_cents::bigint
@@ -2981,7 +3187,8 @@ AS $fn$
                'ops_resolution', r.metadata #> ARRAY['trip_cancel', 'ops_resolutions',
                                                      split_part(pa.merchant_note, ':', 3)],
                'waiting_since', CASE WHEN public.issue_4522_trip_attempt_unanswered(pa)
-                                       OR public.issue_4522_trip_attempt_refused(pa) THEN pa.updated_at END)
+                                       OR public.issue_4522_trip_attempt_refused(pa)
+                                       OR public.issue_4522_trip_attempt_below_min(pa) THEN pa.updated_at END)
              ORDER BY oi.ordinal NULLS FIRST, pa.created_at))
     FROM public.refunds r
     JOIN public.orders o ON o.id = r.order_id
@@ -2994,7 +3201,8 @@ AS $fn$
    WHERE r.id = p_refund_id AND r.status = 'pending' AND r.order_installment_id IS NULL
      AND r.metadata ? 'trip_cancel' AND NOT (r.metadata->'trip_cancel' ? 'completed_at')
    GROUP BY r.id, e.title
-  HAVING bool_or(public.issue_4522_trip_attempt_unanswered(pa) OR public.issue_4522_trip_attempt_refused(pa))
+  HAVING bool_or(public.issue_4522_trip_attempt_unanswered(pa) OR public.issue_4522_trip_attempt_refused(pa)
+                 OR public.issue_4522_trip_attempt_below_min(pa))
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_ops_view(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
@@ -3020,9 +3228,10 @@ BEGIN
                      WHERE r.status = 'pending' AND r.metadata ? 'trip_cancel'
                        AND NOT (r.metadata->'trip_cancel' ? 'completed_at')
                        AND pa.merchant_note LIKE 'mingla_trip_refund:' || r.id::text || ':%'
-                       AND (public.issue_4522_trip_attempt_unanswered(pa)
-                            OR public.issue_4522_trip_attempt_refused(pa))
-                       AND pa.updated_at <= now() - interval '15 minutes'
+                       AND (((public.issue_4522_trip_attempt_unanswered(pa)
+                              OR public.issue_4522_trip_attempt_refused(pa))
+                             AND pa.updated_at <= now() - interval '15 minutes')
+                            OR public.issue_4522_trip_attempt_below_min(pa))
                      LIMIT 200) x) q
      WHERE v IS NOT NULL), '[]'::jsonb);
 END
@@ -3051,21 +3260,25 @@ GRANT EXECUTE ON FUNCTION public.issue_4522_get_unanswered_trip_cancel_refund(uu
 -- (paystack_refund_attempts.id). p_amount_cents / p_currency: what the panel
 -- showed; a different one is refused (the item changed under the viewer).
 -- A second identical call is a no-op that returns the same result.
-CREATE FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(
+-- Pass 10: the core, with the acting staff member passed in by its two
+-- entry points below (never callable directly).
+CREATE FUNCTION public.issue_4522_resolve_trip_cancel_refund_core(
+  p_actor uuid,
   p_attempt_id uuid,
   p_outcome text,
   p_provider_refund_reference text,
   p_reason text,
   p_amount_cents bigint DEFAULT NULL,
   p_currency text DEFAULT NULL,
-  p_refunded_elsewhere_cents bigint DEFAULT NULL
+  p_refunded_elsewhere_cents bigint DEFAULT NULL,
+  p_listed_refund_cents bigint DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
 DECLARE
-  v_actor uuid := auth.uid();
+  v_actor uuid := p_actor;
   v_att public.paystack_refund_attempts;
   v_refund public.refunds;
   v_order_id uuid;
@@ -3078,10 +3291,10 @@ DECLARE
   v_resize jsonb;
   v_charge bigint;
 BEGIN
-  IF v_actor IS NULL OR NOT COALESCE(public.is_admin_user(), false) THEN
+  IF v_actor IS NULL THEN
     RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
   END IF;
-  IF p_outcome IS NULL OR p_outcome NOT IN ('refunded_at_provider', 'refunded_elsewhere', 'escalate') THEN
+  IF p_outcome IS NULL OR p_outcome NOT IN ('refunded_at_provider', 'refunded_elsewhere', 'paid_outside_provider', 'escalate') THEN
     RAISE EXCEPTION 'trip_cancel_ops_outcome_invalid' USING ERRCODE = '22023';
   END IF;
   v_reason := btrim(COALESCE(p_reason, ''));
@@ -3089,7 +3302,7 @@ BEGIN
     RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = '22023';
   END IF;
   v_ref := NULLIF(btrim(COALESCE(p_provider_refund_reference, '')), '');
-  IF p_outcome IN ('refunded_at_provider', 'refunded_elsewhere') AND (v_ref IS NULL OR length(v_ref) > 200) THEN
+  IF p_outcome IN ('refunded_at_provider', 'refunded_elsewhere', 'paid_outside_provider') AND (v_ref IS NULL OR length(v_ref) > 200) THEN
     RAISE EXCEPTION 'provider_refund_reference_required' USING ERRCODE = '22023';
   END IF;
   -- Pass 8 (P8-2): what the provider shows already refunded on this charge
@@ -3099,6 +3312,14 @@ BEGIN
     RAISE EXCEPTION 'refunded_elsewhere_required' USING ERRCODE = '22023';
   END IF;
   IF p_outcome = 'escalate' THEN v_ref := NULL; END IF;
+  -- Pass 10 (P10-2): the figure is never taken on trust. It must equal the
+  -- amount Paystack lists for that reference on this charge, read by the
+  -- edge function (cancel-trip-booking, ops_refunded_elsewhere) from the
+  -- provider's refund list just before this call.
+  IF p_outcome = 'refunded_elsewhere'
+     AND (p_listed_refund_cents IS NULL OR p_listed_refund_cents <> p_refunded_elsewhere_cents) THEN
+    RAISE EXCEPTION 'refunded_elsewhere_amount_mismatch' USING ERRCODE = '22023';
+  END IF;
 
   SELECT * INTO v_att FROM public.paystack_refund_attempts WHERE id = p_attempt_id;
   IF NOT FOUND OR v_att.local_refund_id IS NULL
@@ -3143,10 +3364,15 @@ BEGIN
     RAISE EXCEPTION 'trip_cancel_refund_not_refused' USING ERRCODE = 'PT409';
   END IF;
   IF p_outcome = 'escalate' AND NOT (public.issue_4522_trip_attempt_unanswered(v_att)
-                                     OR public.issue_4522_trip_attempt_refused(v_att)) THEN
+                                     OR public.issue_4522_trip_attempt_refused(v_att)
+                                     OR public.issue_4522_trip_attempt_below_min(v_att)) THEN
     RAISE EXCEPTION 'trip_cancel_refund_not_unanswered' USING ERRCODE = 'PT409';
   END IF;
-  IF v_att.updated_at > now() - interval '15 minutes' THEN
+  IF p_outcome = 'paid_outside_provider' AND NOT public.issue_4522_trip_attempt_below_min(v_att) THEN
+    RAISE EXCEPTION 'trip_cancel_refund_not_below_minimum' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_att.updated_at > now() - interval '15 minutes'
+     AND NOT public.issue_4522_trip_attempt_below_min(v_att) THEN
     RAISE EXCEPTION 'trip_cancel_refund_too_recent' USING ERRCODE = 'PT409';
   END IF;
   IF (p_amount_cents IS NOT NULL AND p_amount_cents <> v_att.amount_cents)
@@ -3183,6 +3409,30 @@ BEGIN
       RAISE EXCEPTION 'trip_cancel_refund_not_recorded' USING ERRCODE = 'P0001';
     END IF;
     v_entry := v_entry || jsonb_build_object('reference', v_ref);
+  END IF;
+
+  IF p_outcome = 'paid_outside_provider' THEN
+    -- Pass 10 (P10-3): staff paid the traveler this owed part outside
+    -- Paystack (below its minimum). Recorded as made with staff's reference,
+    -- through the one recording path, for exactly the owed amount; it never
+    -- moves money and never writes anything off. The part stops waiting for
+    -- staff, so the next run completes the cancel (the payout hold then
+    -- settles with it).
+    IF EXISTS (SELECT 1 FROM public.paystack_refund_attempts
+                WHERE lower(btrim(provider_refund_id)) = lower(v_ref) AND id <> v_att.id)
+       OR EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
+                   WHERE lower(btrim(provider_refund_id)) = lower(v_ref))
+       OR EXISTS (SELECT 1 FROM public.refunds WHERE lower(btrim(stripe_refund_id)) = lower(v_ref)) THEN
+      RAISE EXCEPTION 'provider_refund_reference_already_used' USING ERRCODE = 'PT409';
+    END IF;
+    PERFORM public.record_paystack_refund_outcome(v_att.source_type, v_att.source_id, v_att.local_refund_id,
+      v_att.transaction_reference, v_att.merchant_note, v_ref, v_att.amount_cents, 'processed', NULL);
+    IF (SELECT status FROM public.paystack_refund_attempts WHERE id = v_att.id) <> 'processed'
+       OR (SELECT refunded_amount_cents FROM public.orders WHERE id = v_refund.order_id)
+          IS DISTINCT FROM public.issue_4522_order_charge_refunded_cents(v_refund.order_id) THEN
+      RAISE EXCEPTION 'trip_cancel_refund_not_recorded' USING ERRCODE = 'P0001';
+    END IF;
+    v_entry := v_entry || jsonb_build_object('reference', v_ref, 'paid_outside_provider', true);
   END IF;
 
   IF p_outcome = 'refunded_elsewhere' THEN
@@ -3244,19 +3494,21 @@ BEGIN
   -- count (as an overpayment retry does) so the next resume finishes it.
   UPDATE public.refunds
      SET metadata = jsonb_set(metadata, '{trip_cancel}',
-           (metadata->'trip_cancel')
+           ((metadata->'trip_cancel')
            || jsonb_build_object('ops_resolutions',
                 COALESCE(metadata #> '{trip_cancel,ops_resolutions}', '{}'::jsonb)
                 || jsonb_build_object(v_part, v_entry))
-           || CASE WHEN p_outcome IN ('refunded_at_provider', 'refunded_elsewhere')
+           || CASE WHEN p_outcome IN ('refunded_at_provider', 'refunded_elsewhere', 'paid_outside_provider')
                 THEN jsonb_build_object('failures', 0, 'last_attempt_at', now() - interval '2 minutes')
                 ELSE '{}'::jsonb END)
+           - CASE WHEN p_outcome = 'paid_outside_provider' THEN 'awaiting_staff' ELSE '' END)
    WHERE id = v_refund.id;
 
   INSERT INTO public.audit_log (user_id, brand_id, event_id, action, target_type, target_id, after)
   SELECT v_actor, e.brand_id, e.id,
          CASE WHEN p_outcome = 'refunded_at_provider' THEN 'trip_cancel_refund.recorded_by_ops'
               WHEN p_outcome = 'refunded_elsewhere' THEN 'trip_cancel_refund.resized_by_ops'
+              WHEN p_outcome = 'paid_outside_provider' THEN 'trip_cancel_refund.paid_outside_provider_by_ops'
               ELSE 'trip_cancel_refund.escalated_by_ops' END,
          'order', o.id,
          -- Pass 8 (P8-4): the audit row itself carries why and the reference.
@@ -3277,9 +3529,73 @@ BEGIN
   RETURN v_result;
 END
 $fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_core(uuid, uuid, text, text, text, bigint, text, bigint, bigint) FROM PUBLIC, anon, authenticated, service_role;
+
+
+-- The staff action from the Admin session (is_admin_user; auth.uid() is who
+-- acted). "Partly refunded already" (refunded_elsewhere) is refused here: its
+-- figure must be checked against Paystack's refund list, which only the edge
+-- function can read (pass 10, P10-2).
+CREATE FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(
+  p_attempt_id uuid,
+  p_outcome text,
+  p_provider_refund_reference text,
+  p_reason text,
+  p_amount_cents bigint DEFAULT NULL,
+  p_currency text DEFAULT NULL,
+  p_refunded_elsewhere_cents bigint DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF auth.uid() IS NULL OR NOT COALESCE(public.is_admin_user(), false) THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  IF p_outcome = 'refunded_elsewhere' THEN
+    RAISE EXCEPTION 'refunded_elsewhere_needs_provider_check' USING ERRCODE = 'PT409';
+  END IF;
+  RETURN public.issue_4522_resolve_trip_cancel_refund_core(auth.uid(), p_attempt_id, p_outcome,
+    p_provider_refund_reference, p_reason, p_amount_cents, p_currency, p_refunded_elsewhere_cents, NULL);
+END
+$fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint) TO authenticated;
 COMMENT ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint) IS
-  'Issue #4522 (H-2): staff finish a second-provider trip cancel refund that was sent and never answered. refunded_at_provider records it with the provider reference through record_paystack_refund_outcome (as a confirmed refund) and restarts the cancel''s resume, which completes the cancel and sends the buyer email once; refunded_elsewhere (pass 8, P8-2: a part the provider refused because another refund of the charge was made) lowers that part to the cancel''s rule with what the provider shows and restarts the resume, which sends the remainder once; escalate records the reason only. Never calls the provider, never re-sends, never writes off. Admin session only (is_admin_user).';
+  'Issue #4522 (H-2): staff finish a second-provider trip cancel refund. refunded_at_provider records a sent, unanswered refund with the provider reference through record_paystack_refund_outcome and restarts the cancel''s resume, which completes it and sends the buyer email once; paid_outside_provider (pass 10, P10-3) records an owed part below the provider minimum that staff paid outside Paystack, with its reference; escalate records the reason only. refunded_elsewhere (P8-2) is refused here: it goes through cancel-trip-booking (ops_refunded_elsewhere), which checks the figure against Paystack''s refund list (P10-2). Never calls the provider, never re-sends, never writes off. Admin session only (is_admin_user).';
+
+-- Pass 10 (P10-2): "partly refunded already", called only by the edge
+-- function after it read Paystack's refund list for this charge and found the
+-- given reference there: p_listed_refund_cents is that refund's amount as
+-- Paystack lists it, and the typed figure must equal it. p_actor must be an
+-- active admin (the edge function passes the caller's verified user id).
+CREATE FUNCTION public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(
+  p_actor uuid,
+  p_attempt_id uuid,
+  p_provider_refund_reference text,
+  p_reason text,
+  p_amount_cents bigint,
+  p_currency text,
+  p_refunded_elsewhere_cents bigint,
+  p_listed_refund_cents bigint
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF p_actor IS NULL OR NOT EXISTS (
+       SELECT 1 FROM auth.users u JOIN public.admin_users a ON a.email = u.email
+        WHERE u.id = p_actor AND a.status = 'active') THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  RETURN public.issue_4522_resolve_trip_cancel_refund_core(p_actor, p_attempt_id, 'refunded_elsewhere',
+    p_provider_refund_reference, p_reason, p_amount_cents, p_currency, p_refunded_elsewhere_cents,
+    p_listed_refund_cents);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(uuid, uuid, text, text, bigint, text, bigint, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_elsewhere_by_ops(uuid, uuid, text, text, bigint, text, bigint, bigint) TO service_role;
 
 COMMIT;

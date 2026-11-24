@@ -254,6 +254,8 @@ export function RefundOperationsPage() {
           ? "Recorded. The cancel finishes on the next run: the traveler gets their refund email and the host's payout updates."
           : input.outcome === "refunded_elsewhere"
           ? "Saved. The next run asks Paystack only for what is left on this payment, once."
+          : input.outcome === "paid_outside_provider"
+          ? "Recorded as paid outside Paystack. The cancel finishes on the next run and the host's payout hold is released. No money was moved from here."
           : "Escalated. Nothing was re-sent and no money changed.",
       );
       setSelectedTrip(await getUnansweredTripCancelRefund(refundId));

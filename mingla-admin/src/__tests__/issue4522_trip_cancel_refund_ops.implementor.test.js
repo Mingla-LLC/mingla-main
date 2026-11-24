@@ -131,6 +131,7 @@ test("the panel carries the approved choices, buttons and note, and validates be
   assert.deepEqual(TRIP_CANCEL_OUTCOMES.map((o) => o.label), [
     "Paystack shows it refunded: record it",
     "Paystack shows it partly refunded already: ask only for what is left",
+    "Paid to the traveler outside Paystack: record it",
     "Paystack shows no refund: escalate (nothing is re-sent from here)",
   ]);
   for (const words of [
@@ -183,12 +184,49 @@ test("P8-2: a refused part offers 'partly refunded already' and needs the amount
   assert.match(pageSource, /asks Paystack only for what is left/);
 });
 
-test("P8-2: the figure is sent only for that outcome (the other actions call exactly as before)", async () => {
+test("P10-2: 'partly refunded already' goes to the edge function (Paystack's list is checked), never straight to the database", async () => {
+  const calls = [];
+  const invokes = [];
+  const rpc = async (fn, args) => { calls.push([fn, args]); return { data: { ok: true }, error: null, status: 200 }; };
+  const invoke = async (fn, options) => { invokes.push([fn, options]); return { data: { ok: true }, error: null }; };
+  await resolveTripCancelRefund({ attemptId: "a-9", outcome: "refunded_elsewhere", reference: "PS1", reason: "Seat refund", amountCents: 100000000, currency: "ngn", refundedElsewhereCents: 50000000 }, rpc, invoke);
+  await resolveTripCancelRefund({ attemptId: "a-9", outcome: "escalate", reference: "PS1", reason: "No refund", amountCents: 1, currency: "ngn", refundedElsewhereCents: 5 }, rpc, invoke);
+  assert.equal(invokes.length, 1);
+  assert.equal(invokes[0][0], "cancel-trip-booking");
+  assert.deepEqual(invokes[0][1].body, { mode: "ops_refunded_elsewhere", attemptId: "a-9", reference: "PS1", reason: "Seat refund", amountCents: 100000000, currency: "ngn", refundedElsewhereCents: 50000000 });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1].p_outcome, "escalate");
+  assert.equal("p_refunded_elsewhere_cents" in calls[0][1], false);
+});
+
+test("P10-2: the edge function's refusals read in plain words (unknown reference names it; unreadable list says retry)", async () => {
+  const fail = (payload, status) => async () => ({ data: null, error: { message: "Edge Function returned a non-2xx status code", context: { status, json: async () => payload } } });
+  const notFound = await resolveTripCancelRefund({ attemptId: "a", outcome: "refunded_elsewhere", reference: "X9", reason: "abc", refundedElsewhereCents: 1 }, null,
+    fail({ error: "provider_refund_reference_not_found", message: "Paystack shows no refund with reference X9 on this payment, so nothing was recorded. Check the reference in the Paystack dashboard." }, 422)).catch((e) => e);
+  assert.equal(tripCancelErrorMessage(notFound), "Paystack shows no refund with reference X9 on this payment, so nothing was recorded. Check the reference in the Paystack dashboard.");
+  const mismatch = await resolveTripCancelRefund({ attemptId: "a", outcome: "refunded_elsewhere", reference: "X9", reason: "abc", refundedElsewhereCents: 1 }, null,
+    fail({ error: "refunded_elsewhere_amount_mismatch" }, 422)).catch((e) => e);
+  assert.match(tripCancelErrorMessage(mismatch), /not what Paystack shows for this refund/);
+  const down = await resolveTripCancelRefund({ attemptId: "a", outcome: "refunded_elsewhere", reference: "X9", reason: "abc", refundedElsewhereCents: 1 }, null,
+    fail({ error: "provider_refund_list_unreadable" }, 503)).catch((e) => e);
+  assert.match(tripCancelErrorMessage(down), /could not be read just now, so nothing was recorded. Try again/);
+});
+
+test("P10-3: an owed part below Paystack's minimum offers 'paid outside Paystack' (reference and reason required) or escalate", async () => {
+  const [row] = tripCancelChargeRows({ currency: "ngn", charges: [{ attempt_id: "b-1", part: "deposit", amount_cents: 3000, currency: "ngn",
+    state: "below_minimum", actionable: true, outcomes: ["paid_outside_provider", "escalate"] }] });
+  assert.deepEqual([row.stateLabel, row.actionable, row.outcomes], ["Below Paystack's minimum, not sent", true, ["paid_outside_provider", "escalate"]]);
+  assert.ok(TRIP_CANCEL_OUTCOMES.some((o) => o.value === "paid_outside_provider"));
+  assert.deepEqual(Object.keys(validateTripCancelResolution({ outcome: "paid_outside_provider", reference: " ", reason: "" })).sort(), ["reason", "reference"]);
+  assert.equal(validateTripCancelResolution({ outcome: "paid_outside_provider", reference: "BANK-1", reason: "Paid by bank transfer" }), null);
   const calls = [];
   const rpc = async (fn, args) => { calls.push([fn, args]); return { data: { ok: true }, error: null, status: 200 }; };
-  await resolveTripCancelRefund({ attemptId: "a-9", outcome: "refunded_elsewhere", reference: "PS1", reason: "Seat refund", amountCents: 100000000, currency: "ngn", refundedElsewhereCents: 50000000 }, rpc);
-  await resolveTripCancelRefund({ attemptId: "a-9", outcome: "escalate", reference: "PS1", reason: "No refund", amountCents: 1, currency: "ngn", refundedElsewhereCents: 5 }, rpc);
-  assert.equal(calls[0][1].p_refunded_elsewhere_cents, 50000000);
-  assert.equal(calls[0][1].p_provider_refund_reference, "PS1");
-  assert.equal("p_refunded_elsewhere_cents" in calls[1][1], false);
+  await resolveTripCancelRefund({ attemptId: "b-1", outcome: "paid_outside_provider", reference: "BANK-1", reason: "Paid by bank transfer", amountCents: 3000, currency: "ngn" }, rpc, async () => assert.fail("no edge call"));
+  assert.equal(calls[0][0], "issue_4522_resolve_trip_cancel_refund_by_ops");
+  assert.equal(calls[0][1].p_outcome, "paid_outside_provider");
+  assert.equal(calls[0][1].p_provider_refund_reference, "BANK-1");
+  const model = queueRowModel({ itemKind: "trip_cancel_refund", itemId: "r-b", safeSummary: { refund_id: "r-b", currency: "ngn", provider: "paystack",
+    unconfirmed_amount_cents: 0, refused_amount_cents: 0, below_minimum_amount_cents: 3000, waiting_since: new Date().toISOString() } });
+  assert.match(JSON.stringify(model), /below Paystack's minimum/);
+  assert.match(JSON.stringify(model), /30\.00|3,000|3000/);
 });
