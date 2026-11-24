@@ -8,7 +8,7 @@
 // can see this task on their plan" (off by default, D4). Mingla writes the
 // card's instructions and done means (C-6); staff can edit them on the card.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Link2, Plus, Search } from "lucide-react";
 import { Button } from "../ui/Button";
 import { SideLink } from "../ui/PanelStack";
 import { Avatars } from "../ops/OpsChip";
@@ -19,6 +19,7 @@ import { useToast } from "../../context/ToastContext";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { dueChoices } from "../../lib/crmModel";
 import * as ops from "../../services/opsService";
+import { linkWorkToRecord, unlinkWorkFromRecord, workPickerRows, workStatusWords } from "../../lib/recordWorkLinks";
 import {
   dayLabel,
   isTagged,
@@ -41,11 +42,15 @@ function emptyForm(owners) {
   return { title: "", owners: (owners || []).slice(0, 10), watchers: [], due: "", filesUrl: "", hostSees: false };
 }
 
-/** One open card: title, due chip, owners, tag, Host sees. Opens the card beside. */
-export function HostToDoRow({ card, today = todayIso() }) {
+/**
+ * One open card: title, due chip, owners, tag, Host sees. Opens the card over
+ * the record panel (PanelStack, "Back to <record>"). #4571 design v5: Unlink
+ * sits beside the row (never inside the link), refused for a closed card.
+ */
+export function HostToDoRow({ card, today = todayIso(), onUnlink = null, unlinking = false, disabled = false }) {
   const done = card.status === "done";
   const late = !done && card.due_on && String(card.due_on).slice(0, 10) < today;
-  return (
+  const row = (
     <SideLink
       side={{ kind: "card", id: card.id }}
       href={`#/work-board?card=${card.id}`}
@@ -75,13 +80,101 @@ export function HostToDoRow({ card, today = todayIso() }) {
       )}
     </SideLink>
   );
+  if (!onUnlink) return row;
+  return (
+    <span className="flex min-w-0 items-stretch gap-1">
+      <span className="min-w-0 flex-1">{row}</span>
+      <Button variant="ghost" size="sm" className="min-h-11 shrink-0" data-unlink-work={card.id} loading={unlinking}
+        disabled={disabled || unlinking || done} title={done ? "A closed card's links can't change" : `Unlink card ${card.number ?? ""}`}
+        aria-label={`Unlink card ${card.number ?? ""}, ${card.title}`} onClick={() => onUnlink(card)}>
+        Unlink
+      </Button>
+    </span>
+  );
+}
+
+/**
+ * #4571 design v5: "Link existing work". Searches Work cards with
+ * ops_link_search('card', q) (by #number or title) and shows the open ones
+ * with their number, title, status and owners (from the Work list for the
+ * same words). Picking one links it to this record (lib/recordWorkLinks.js).
+ */
+export function WorkLinkPicker({ record, linkedIds, online, busyId, onPick, onClose }) {
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState({ query: null, rows: [], error: null });
+  const seq = useRef(0);
+  const query = q.trim().replace(/^#/, "");
+  useEffect(() => {
+    if (query.length < 2 && !/^\d+$/.test(query)) return undefined;
+    const mine = ++seq.current;
+    const timer = setTimeout(async () => {
+      try {
+        const [search, open] = await Promise.all([
+          ops.searchLinks("card", query),
+          ops.listBoardWork({ q: query, status: ["todo", "doing", "person"], limit: 20 }),
+        ]);
+        if (mine === seq.current) setFound({ query, rows: workPickerRows(search?.results, open?.cards, linkedIds), error: null });
+      } catch (error) {
+        if (mine === seq.current) setFound({ query, rows: [], error });
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+  const current = found.query === query;
+  const short = query.length < 2 && !/^\d+$/.test(query);
+  return (
+    <div data-work-link-picker="" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--gray-300)] bg-[var(--color-background-primary)] shadow-[var(--shadow-md)]">
+      <label className="flex min-w-0 items-center gap-2 border-b border-[var(--gray-200)] px-3" htmlFor={`work-link-${record.id}`}>
+        <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--color-text-tertiary)]" />
+        <span className="sr-only">Find a Work card by number or title</span>
+        <input id={`work-link-${record.id}`} type="search" autoFocus autoComplete="off" value={q} disabled={!online}
+          placeholder="Find a Work card by #number or title" onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
+          className="min-h-11 w-full min-w-0 bg-transparent text-[13.5px] text-[var(--color-text-primary)] outline-none" />
+      </label>
+      <div aria-live="polite" className="max-h-64 min-w-0 overflow-y-auto">
+        {short ? (
+          <p className="px-3 py-3 text-[13px] text-[var(--color-text-tertiary)]">Type a card number or at least 2 letters of its title.</p>
+        ) : !current ? (
+          <p className="px-3 py-3 text-[13px] text-[var(--color-text-tertiary)]">Searching…</p>
+        ) : found.error ? (
+          <p role="alert" className="px-3 py-3 text-[13px] text-[var(--color-error-700)]">Couldn’t search Work. {opsErrorWords(found.error)}</p>
+        ) : found.rows.length === 0 ? (
+          <p className="px-3 py-3 text-[13px] text-[var(--color-text-tertiary)]">No open Work card matches that isn’t already linked here.</p>
+        ) : (
+          <ul className="min-w-0">
+            {found.rows.map((r) => (
+              <li key={r.id} className="border-t border-[var(--gray-200)] first:border-t-0">
+                <button type="button" data-work-pick={r.id} disabled={!online || !!busyId} onClick={() => onPick(r)}
+                  className={`flex min-h-11 w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left hover:bg-[var(--gray-50)] disabled:opacity-60 ${FOCUS}`}>
+                  <span className="shrink-0 font-mono text-[12px] tabular-nums text-[var(--color-text-tertiary)]">#{r.number}</span>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className={`text-[13px] font-medium text-[var(--color-text-primary)] ${WORDS}`}>{r.title}</span>
+                    <span className="flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--color-text-tertiary)]">
+                      {workStatusWords(r.status) && <span className="rounded bg-[var(--gray-100)] px-1.5 py-px text-[11px] font-semibold text-[var(--color-text-secondary)]">{workStatusWords(r.status)}</span>}
+                      {r.due_on ? <span>Due {dayLabel(r.due_on)}</span> : <span>No due date</span>}
+                    </span>
+                  </span>
+                  {r.owners.length > 0 ? <Avatars people={r.owners} /> : <span className="shrink-0 text-[11px] text-[var(--color-text-tertiary)]">No owner</span>}
+                  {busyId === r.id && <span className="sr-only">Linking…</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="flex justify-end border-t border-[var(--gray-200)] px-2 py-1">
+        <Button variant="ghost" size="sm" className="min-h-11" onClick={onClose}>Done</Button>
+      </div>
+    </div>
+  );
 }
 
 /**
  * `prefill` (#4270 W7, Brand groups): { key, title }; a new key opens the
  * Add work item form with that title (Host can see stays off).
  */
-export function HostToDoSection({ record, read, online, onAdded, prefill = null }) {
+export function HostToDoSection({ record, read, online, onAdded, onLinksChanged = null, prefill = null }) {
   const isCreator = record?.pipeline === "creators";
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
@@ -96,6 +189,37 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
   const [refused, setRefused] = useState(null);
   const keyRef = useRef({ key: null, value: null });
   const today = todayIso();
+  // #4571 design v5: link an existing Work card, and unlink one, from here.
+  const [picking, setPicking] = useState(false);
+  const [linkBusy, setLinkBusy] = useState("");
+  const name = record?.name || "this card";
+  const linkPicked = async (pick) => {
+    if (!online || linkBusy) return;
+    setLinkBusy(pick.id);
+    try {
+      const res = await linkWorkToRecord(ops, pick.id, record);
+      addToast({ variant: res.already ? "info" : "success", title: res.already ? `Card ${pick.number} is already linked to ${name}` : `Linked card ${pick.number} to ${name}` });
+      setPicking(false);
+      onLinksChanged?.();
+    } catch (error) {
+      addToast({ variant: "error", title: `Card ${pick.number ?? ""} not linked`, description: opsErrorWords(error) });
+    } finally {
+      setLinkBusy("");
+    }
+  };
+  const unlink = async (card) => {
+    if (!online || linkBusy) return;
+    setLinkBusy(card.id);
+    try {
+      await unlinkWorkFromRecord(ops, card.id, record);
+      addToast({ variant: "success", title: `Unlinked card ${card.number ?? ""} from ${name}` });
+      onLinksChanged?.();
+    } catch (error) {
+      addToast({ variant: "error", title: `Card ${card.number ?? ""} not unlinked`, description: opsErrorWords(error) });
+    } finally {
+      setLinkBusy("");
+    }
+  };
 
   const data = read?.data;
   // #4571 W3: crm_record_work's rows, open first (the server's order), then those closed in the last 14 days.
@@ -149,9 +273,16 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
   return (
     <section aria-labelledby={`host-todo-${id}`} data-host-section="todo" className="flex min-w-0 flex-col gap-2">
       <h3 id={`host-todo-${id}`} className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-[14px] font-semibold text-[var(--color-text-primary)]">
-        <span>Work</span>
-        {!read?.loading && data && <span className="text-[12.5px] font-medium text-[var(--color-text-tertiary)]">{cards.length} open · {doneCount} done in the last 14 days</span>}
+        <span className="min-w-0">Work{!read?.loading && data && <span className="text-[12.5px] font-medium text-[var(--color-text-tertiary)]"> · {cards.length} open · {doneCount} done in the last 14 days</span>}</span>
+        <span className="flex flex-wrap gap-1">
+          {!adding && <Button variant="ghost" size="sm" className="min-h-11" icon={Plus} disabled={!online} onClick={open}>Add work item</Button>}
+          <Button variant="secondary" size="sm" className="min-h-11" icon={Link2} data-link-work="" aria-expanded={picking} disabled={!online} onClick={() => setPicking((x) => !x)}>Link existing work</Button>
+        </span>
       </h3>
+      {picking && (
+        <WorkLinkPicker record={record} linkedIds={all.map((c) => c.id)} online={online} busyId={linkBusy}
+          onPick={linkPicked} onClose={() => setPicking(false)} />
+      )}
       {read?.loading ? (
         <div role="status" className="flex flex-col gap-2"><span className="sr-only">Loading this card’s work…</span><div className="h-11 animate-pulse rounded-lg bg-[var(--gray-100)]" /><div className="h-11 animate-pulse rounded-lg bg-[var(--gray-100)]" /></div>
       ) : read?.error && !data ? (
@@ -160,10 +291,10 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
           <Button variant="secondary" size="sm" className="min-h-11" onClick={read.retry}>Try again</Button>
         </div>
       ) : all.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-tertiary)]">No Work points at this {isCreator ? "creator" : "host"} yet. Add a work item, or link this card from any Work card.</p>
+        <p className="rounded-lg border border-dashed border-[var(--gray-300)] px-3 py-3 text-[13px] text-[var(--color-text-tertiary)]">No Work points at this {isCreator ? "creator" : "host"} yet. Add a work item, or link an existing one.</p>
       ) : (
         <ul className="flex min-w-0 flex-col gap-1.5">
-          {[...cards, ...closed].map((c) => <li key={c.id} className="min-w-0"><HostToDoRow card={c} today={today} /></li>)}
+          {[...cards, ...closed].map((c) => <li key={c.id} className="min-w-0"><HostToDoRow card={c} today={today} onUnlink={unlink} unlinking={linkBusy === c.id} disabled={!online || (!!linkBusy && linkBusy !== c.id)} /></li>)}
         </ul>
       )}
 
@@ -218,9 +349,7 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
             <Button type="submit" className="min-h-11" loading={busy} disabled={!online || busy}>{busy ? "Adding…" : "Add work item"}</Button>
           </div>
         </form>
-      ) : (
-        <Button variant="ghost" className="min-h-11 self-start" icon={Plus} disabled={!online} onClick={open}>Add work item</Button>
-      )}
+      ) : null}
     </section>
   );
 }

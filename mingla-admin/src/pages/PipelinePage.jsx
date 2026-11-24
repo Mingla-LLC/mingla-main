@@ -61,6 +61,7 @@ import { boardColumns, filterByDueChip, forDisplay, stageCounts } from "../lib/o
 import { PanelLinksContext, PanelStack } from "../components/ui/PanelStack";
 import { SidePanel } from "../components/panels/SidePanel";
 import { usePanelStack } from "../hooks/usePanelStack";
+import { recordSideRoute } from "../lib/panelStack";
 import { OutreachContext } from "../components/outreach/OutreachContext";
 import { FunnelStrip } from "../components/outreach/FunnelStrip";
 import { ResetDueModal } from "../components/outreach/ResetDueModal";
@@ -203,6 +204,17 @@ function PipelinePage({ pipeline, onTabChange }) {
     if (!state.card) cardEntryPushed.current = false;
   }, [state.card]);
   // #4571 design v5: Mark signed on a card opens it on the agreement.
+  // #4571 design v5: Work and records link both ways. A host or creator named
+  // on a Work card (panel two) opens as THIS page's record panel; one from the
+  // other pipeline switches to its tab with the card open (recordSideRoute).
+  const recordLinks = useMemo(() => ({
+    openSide: (side) => {
+      const route = recordSideRoute(side, pipeline);
+      if (route.kind === "here") openCard(route.id);
+      else if (route.kind === "tab") window.location.hash = route.hash;
+      else stack.openSide(side);
+    },
+  }), [pipeline, openCard, stack.openSide]); // eslint-disable-line react-hooks/exhaustive-deps
   const openRecord = useCallback((record, opts) => openCard(record.id, { field: opts?.field || null }), [openCard]);
 
   // ── Moving a card ───────────────────────────────────────────────────────
@@ -688,9 +700,11 @@ function PipelinePage({ pipeline, onTabChange }) {
           question in "dialog", which is always above an open card. */}
       <PipelineOverlays
         card={
-          <PanelLinksContext.Provider value={stack.links}>
+          <PanelLinksContext.Provider value={recordLinks}>
             <PanelStack
               stack={stack}
+              firstSize={ready && openId && state.card !== NEW_CARD ? "record" : "default"}
+              over={stack.side?.kind === "card" || stack.side?.kind === "thread"}
               first={
                 ready && state.card === NEW_CARD && !holding ? (
                   <Drawer open onClose={closeCard} title={`New ${singular}`}>
