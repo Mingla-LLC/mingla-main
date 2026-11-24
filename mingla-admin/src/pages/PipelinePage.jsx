@@ -202,7 +202,8 @@ function PipelinePage({ pipeline, onTabChange }) {
   useEffect(() => {
     if (!state.card) cardEntryPushed.current = false;
   }, [state.card]);
-  const openRecord = useCallback((record) => openCard(record.id), [openCard]);
+  // #4571 design v5: Mark signed on a card opens it on the agreement.
+  const openRecord = useCallback((record, opts) => openCard(record.id, { field: opts?.field || null }), [openCard]);
 
   // ── Moving a card ───────────────────────────────────────────────────────
   // The Undo toast for the last move. It is taken away as soon as something

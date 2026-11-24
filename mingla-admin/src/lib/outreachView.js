@@ -7,16 +7,21 @@
 // The funnel and the column headers are the only counts on the page and both
 // count the cards the board shows, after the same filters. One rule decides
 // stale everywhere (isStale: due before today, not Lost or Passed).
+// #4571 (Seth, 2026-11-24): a Live host never goes Stale. It stays in Live with
+// a "Past due · <date>" label (pastDueWords), so isStale, the Stale filter,
+// staleIds (the Reset count) and boardColumns all leave stage live out.
 //
 // The Due filter keeps the server's outreach_summary rules (pinned by a test):
 //   today    due on the viewer's today, not Lost or Passed
 //   week     due from today to today + 6, not Lost or Passed
-//   stale    due before today, not Lost or Passed
+//   stale    due before today, not Lost or Passed, not Live (#4571)
 //   replied  in Replied (they answered; the next move is ours)
 //   noregion no region yet, not Lost or Passed
 //   nodue    no due date yet, not Lost or Passed
 
 const TERMINAL = new Set(["lost", "passed"]);
+// #4571: the stage that never goes Stale (Live sets itself; it only leaves for Lost).
+export const NEVER_STALE = "live";
 
 // The Due dropdown. "No next event" and "Go live soon" need each host's next
 // dated thing (ops_host_next), so the page applies those two itself.
@@ -60,7 +65,7 @@ export function inDueChip(record, chip, today) {
     case "week":
       return open && !!due && due >= today && due <= addDays(today, 6);
     case "stale":
-      return open && !!due && due < today;
+      return open && !!due && due < today && record.stage !== NEVER_STALE;
     case "replied":
       return record.stage === "replied";
     case "noregion":
@@ -78,9 +83,23 @@ export function filterByDueChip(records, chip, today) {
   return list.filter((r) => inDueChip(r, chip, today));
 }
 
-/** The one stale rule: due before today, not Lost or Passed. */
+/** The one stale rule: due before today, not Lost or Passed, not Live. */
 export function isStale(record, today) {
   return inDueChip(record, "stale", today);
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * #4571: "Past due · 22 Nov" for a Live card whose next-step date has passed
+ * (it stays in Live, never in Stale), or "" for every other card.
+ */
+export function pastDueWords(record, today) {
+  if (!record || record.stage !== NEVER_STALE || typeof today !== "string") return "";
+  const due = typeof record.due_on === "string" ? record.due_on : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || due >= today) return "";
+  const [y, m, d] = due.split("-").map(Number);
+  return `Past due · ${d} ${MONTHS[m - 1]}${today.slice(0, 4) === String(y) ? "" : ` ${y}`}`;
 }
 
 /** Ids of the loaded cards that are stale: what "Reset due dates" sends. */
