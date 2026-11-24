@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4579_ari_payout_owner_only.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4579-ari-payout-owner-only-implementor",
+  "profile": "deno-2-unit"
+}

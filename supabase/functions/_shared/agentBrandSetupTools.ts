@@ -40,7 +40,11 @@ const PAYOUT_COUNTRY_MESSAGES: Readonly<Record<string, string>> = Object.freeze(
   payout_country_locked:
     "Payouts are already set up for this brand's bank country. To use another country, disconnect payments first. Nothing was changed.",
   payout_country_unsupported: "Mingla can't pay out to banks in that country yet. Nothing was changed.",
-  forbidden: "Only the owner or a brand admin can choose the bank country. Nothing was changed.",
+  // #4579 — payout settings are owner-only. The database refuses a Brand
+  // admin (every Mingla admin included) with `payout_settings_owner_only`; the
+  // reason matches the bank-country screen's.
+  payout_settings_owner_only: "Only the brand owner can change payout settings. Nothing was changed.",
+  forbidden: "Only the brand owner can change payout settings. Nothing was changed.",
   brand_not_found: "That brand isn't available, so nothing was changed.",
 });
 
