@@ -418,7 +418,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580) in the #1857, #1931 and #2117 lanes and the filtered-replay skips, same lane position; re-sealed.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed.
 // #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
-export const BOOTSTRAP_SHA256 = "389e06f336154146ed30dcd601f333ce5445e09eb7632a9a02a63b6bef4d3b82";
+// #4571 Hosts board speed: listed migration 20281202034571 after 20281202024579 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and added an EXACT filtered-replay skip beside the other #4571 skips; re-sealed.
+export const BOOTSTRAP_SHA256 = "94c48301ec7159ed9751fbfe0d3374175304ee2b2d565aa91d1c17636b00eecf";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
