@@ -410,7 +410,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed.
 // #4571 merge of main after #3969 step 2: kept main's 20281201003969 rows and suites after the twelve #4571 migrations in the #1857, #1931 and #2117 lanes, and the pre-#1931 #4571 skips; re-sealed.
 // #4572 merge of main after #4584: kept both sides' rows (filename order); re-sealed.
-export const BOOTSTRAP_SHA256 = "0598b3e8c83f40823d15fbe58040631a072b72e91ce32f21dfd7e3cadf852744";
+// #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
+export const BOOTSTRAP_SHA256 = "705ad5025b732a1be558f8c3a03c522285e0c06b4e313c62a56e98c08b41e203";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
