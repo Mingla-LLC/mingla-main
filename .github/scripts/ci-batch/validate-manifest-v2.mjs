@@ -685,7 +685,7 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 ops O5 part A: PIN migration 20280809611490 + #2099 repin 20280809612490 (pin owner) + the PIN pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O5 part B: daily close migration 20280809613490 + #2099 repin 20280809614490 (pin owner) + the close pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O5 part C: stock migration 20280809615490 + the stock pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 re-sealed.
-// issue #4490 ops O5 fix 1: migration 20280809616490 (O5-T3 sold-out lines; O5-T1 a day decided once, the opening hours history) + #2099 repin 20280809617490 (pin owner) + the fix 1 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 ops O5 fix 1: migration 20280809616490 (O5-T3 sold-out lines; O5-T1 a day decided once; O5-T4 the no-screen void restock) + #2099 repin 20280809617490 (pin owner) + the fix 1 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; MANIFEST.json phase3eContractSha256 re-sealed.
 const LOCKED_PHASE3E_CONTRACT_SHA256 = "80e48ee1f22dcdef4ad9578d93cf8dabeb237096f8f14e0b7887d6d69db6311f";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];

@@ -6,6 +6,7 @@
 --
 -- MINGLA-INVARIANT: I-4490-SOLD-OUT-EVERY-LINE-ONCE | issue #4490 | every guest line that sold out after payment can be resolved (refund, or swap with the difference refunded) exactly once, in any order and any mix, one call or several; each money resolution is its own source_refunds row on the order; together they return exactly what the guest paid for those lines (discount and service charge share, rounding included) and never more than the order took; the whole-order staff refund then returns only what is left, with Mingla's fee netted, so no money is refunded twice and none is stranded.
 -- MINGLA-INVARIANT: I-4490-DAY-DECIDED-ONCE | issue #4490 | a recorded payment's or refund's business day never moves: the daily close reads the day the Till stored on the row when the money was recorded, and every day derived from a moment uses the opening hours in force at that moment (venue_hours_history); changing opening hours affects only money recorded afterwards, a closed day's snapshot never changes, and no payment is ever counted on two days.
+-- MINGLA-INVARIANT: I-4490-VOID-RESTOCK-NO-SCREEN | issue #4490 | a void of a sent line gives its units back exactly when the void's "Put it back in stock" is on and either the line's station has no kitchen screen or the screen never started it; never more than the line took, never twice; every choice on a counted line is audited (stock.set via void).
 --
 -- FAILS-ON-REVERT (verified on a fresh replay; outputs in the fix 1 report):
 -- put back 20280809615490's one-refund-per-order mint and F3-2 fails; put
@@ -403,6 +404,84 @@ SELECT public.t5f_ok((public.t5f_rv('e_whole')->>'amountCents')::bigint = 110000
        FROM public.t5f_refunds(public.t5f_id('guest_e')))
   AND (SELECT payment_status = 'partial_refund' AND refunded_amount_cents = 550000 FROM public.venue_orders WHERE id = public.t5f_id('guest_e')),
   'F3-13 after a settled line refund (5,500.00) the whole-order refund returns the rest (1,100.00); fee reversed once in all');
+SELECT public.t5f_reset();
+
+-- ===========================================================================
+-- F4 O5-T4: a void's "Put it back in stock" at a station with no screen.
+-- ===========================================================================
+SELECT public.t5f_service();
+-- V1 has kitchen screens on, but no station has a screen tonight.
+INSERT INTO public.venue_till_settings (venue_id, brand_id, screen_stations)
+VALUES (public.t5f_id('v1'), '44900616-0000-4000-9000-000000000010', '{}'::text[])
+ON CONFLICT (venue_id) DO UPDATE SET screen_stations = '{}'::text[];
+SELECT public.t5f_set(public.t5f_id('zobo'), 5);
+INSERT INTO t5f_ids VALUES ('sale_v', public.t5f_open(public.t5f_id('v1'), 'void-cycles', public.t5f_id('seller')));
+DO $cycles$
+DECLARE
+  i integer;
+  v_round uuid;
+BEGIN
+  FOR i IN 1..3 LOOP
+    v_round := public.t5f_round(public.t5f_id('sale_v'), public.t5f_id('zobo'), 1, public.t5f_id('seller'));
+    PERFORM public.issue_4490_till_send(public.t5f_id('sale_v'), public.t5f_id('seller'));
+    IF public.t5f_stock(public.t5f_id('zobo')) <> 4
+       OR (SELECT prep_state FROM public.venue_order_items WHERE venue_order_id = v_round) <> 'served' THEN
+      RAISE EXCEPTION 'T4490F FAIL: F4-1 cycle % send did not take one unit at a no-screen station', i;
+    END IF;
+    PERFORM public.issue_4490_till_void(public.t5f_id('sale_v'), NULL,
+      (SELECT id FROM public.venue_order_items WHERE venue_order_id = v_round), public.t5f_id('owner'),
+      'Rang the wrong item', true, public.t5f_v(public.t5f_id('sale_v')));
+  END LOOP;
+END
+$cycles$;
+SELECT public.t5f_ok(public.t5f_stock(public.t5f_id('zobo')) = 5
+  AND (SELECT count(*) FROM public.audit_log a WHERE a.action = 'stock.set' AND a.target_id = public.t5f_id('zobo')::text
+         AND a.after->>'via' = 'void' AND a.after->>'reason' = 'void_restock' AND (a.after->>'units_back')::int = 1
+         AND (a.after->>'station_screen')::boolean = false) = 3,
+  'F4-1 three send-then-void cycles at a no-screen station with "Put it back in stock" on: the count is back at 5, each audited');
+INSERT INTO t5f_ids VALUES ('round_off', public.t5f_round(public.t5f_id('sale_v'), public.t5f_id('zobo'), 1, public.t5f_id('seller')));
+SELECT public.issue_4490_till_send(public.t5f_id('sale_v'), public.t5f_id('seller'));
+SELECT public.issue_4490_till_void(public.t5f_id('sale_v'), NULL,
+  (SELECT id FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('round_off')), public.t5f_id('owner'),
+  'Made and dropped', false, public.t5f_v(public.t5f_id('sale_v')));
+SELECT public.t5f_ok(public.t5f_stock(public.t5f_id('zobo')) = 4
+  AND EXISTS (SELECT 1 FROM public.audit_log a WHERE a.action = 'stock.set' AND a.target_id = public.t5f_id('zobo')::text
+         AND a.after->>'reason' = 'void_no_restock' AND (a.after->>'restock')::boolean = false AND (a.after->>'units_back')::int = 0),
+  'F4-2 with the switch off nothing comes back (4 left), and the choice is audited');
+INSERT INTO t5f_ids VALUES ('round_two', public.t5f_round(public.t5f_id('sale_v'), public.t5f_id('zobo'), 2, public.t5f_id('seller')));
+SELECT public.issue_4490_till_send(public.t5f_id('sale_v'), public.t5f_id('seller'));
+SELECT public.t5f_ok(public.t5f_stock(public.t5f_id('zobo')) = 2, 'F4-3 a line of 2 is sent (2 left)');
+SELECT public.issue_4490_till_void(public.t5f_id('sale_v'), NULL,
+  (SELECT id FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('round_two')), public.t5f_id('owner'),
+  'Rang the wrong item', true, public.t5f_v(public.t5f_id('sale_v')));
+-- The same void again (a retry): the round is already cancelled, so it is
+-- refused as before this fix and nothing comes back a second time.
+SELECT public.t5f_expect(format($$SELECT public.issue_4490_till_void(%L, NULL, %L, %L, 'Rang the wrong item', true, %s)$$,
+  public.t5f_id('sale_v'), (SELECT id FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('round_two')),
+  public.t5f_id('owner'), public.t5f_v(public.t5f_id('sale_v'))),
+  'PT409', 'till_line_paid', 'F4-4a the same void again is refused (the round is already cancelled)');
+SELECT public.t5f_ok(public.t5f_stock(public.t5f_id('zobo')) = 4
+  AND (SELECT stock_taken FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('round_two')) = 0,
+  'F4-4 its void gives back exactly the 2 it took (4, never more), and the same void again gives nothing twice');
+-- A station WITH a screen keeps today's rule.
+UPDATE public.venue_till_settings SET screen_stations = ARRAY['kitchen', 'bar'] WHERE venue_id = public.t5f_id('v1');
+INSERT INTO t5f_ids VALUES ('round_scr', public.t5f_round(public.t5f_id('sale_v'), public.t5f_id('zobo'), 1, public.t5f_id('seller')));
+SELECT public.issue_4490_till_send(public.t5f_id('sale_v'), public.t5f_id('seller'));
+SELECT public.issue_4490_station_accept(public.t5f_id('round_scr'), 'bar', public.t5f_id('kitchen'));
+SELECT public.issue_4490_till_void(public.t5f_id('sale_v'), NULL,
+  (SELECT id FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('round_scr')), public.t5f_id('owner'),
+  'Made wrong', true, public.t5f_v(public.t5f_id('sale_v')));
+SELECT public.t5f_ok(public.t5f_stock(public.t5f_id('zobo')) = 3
+  AND EXISTS (SELECT 1 FROM public.audit_log a WHERE a.action = 'stock.set' AND a.target_id = public.t5f_id('zobo')::text
+         AND a.after->>'reason' = 'void_no_restock' AND (a.after->>'station_screen')::boolean AND (a.after->>'restock')::boolean),
+  'F4-5 at a station with a screen a line the bar already started never comes back, even with the switch on (3 left)');
+INSERT INTO t5f_ids VALUES ('round_scr2', public.t5f_round(public.t5f_id('sale_v'), public.t5f_id('zobo'), 1, public.t5f_id('seller')));
+SELECT public.issue_4490_till_send(public.t5f_id('sale_v'), public.t5f_id('seller'));
+SELECT public.issue_4490_till_void(public.t5f_id('sale_v'), NULL,
+  (SELECT id FROM public.venue_order_items WHERE venue_order_id = public.t5f_id('round_scr2')), public.t5f_id('owner'),
+  'Changed their mind', true, public.t5f_v(public.t5f_id('sale_v')));
+SELECT public.t5f_ok(public.t5f_stock(public.t5f_id('zobo')) = 3,
+  'F4-6 and a line still waiting on the screen comes back (3 again), as before this fix');
 SELECT public.t5f_reset();
 
 -- ===========================================================================

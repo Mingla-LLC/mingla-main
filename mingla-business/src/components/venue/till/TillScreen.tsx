@@ -72,6 +72,7 @@ import { Chip, Pill, Segmented } from "../../ui/Pill";
 import { Sheet } from "../../ui/Sheet";
 import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { Skeleton } from "../../ui/Skeleton";
+import { Switch } from "../../ui/Switch";
 import { Toast } from "../../ui/Toast";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { useUnsavedChangesGuard } from "../../../hooks/useUnsavedChangesGuard";
@@ -118,6 +119,7 @@ import {
   coveredByCredit,
   depositExcessMinor,
   totalsReady,
+  voidAsksRestock,
   type BasketRow,
   type DraftLine,
   type MoveTarget,
@@ -884,8 +886,9 @@ export function TillScreen({
         row={voidRow}
         currency={currency}
         busy={busy}
+        asksRestock={voidAsksRestock(voidRow, catalog)}
         onClose={() => setVoidRow(null)}
-        onVoid={(reason) =>
+        onVoid={(reason, restock) =>
           void run(async () => {
             if (sale === null || voidRow === null) return;
             try {
@@ -894,9 +897,11 @@ export function TillScreen({
                 lineId: voidRow.lineId,
                 orderItemId: voidRow.orderItemId,
                 reason,
-                // #4490 08-O5C: always ask; the server gives back only what this
-                // line took from the count and only if no kitchen screen started it.
-                restock: true,
+                // #4490 08-O5 fix 1 (O5-T4): the sheet's "Put it back in stock"
+                // (on unless turned off). The server gives back only what this
+                // line took, and at a station with a kitchen screen only if the
+                // screen never started it.
+                restock,
                 expectedVersion: sale.version,
               });
               setVoidRow(null);
@@ -1697,10 +1702,13 @@ function NameSheet({
   );
 }
 
-function VoidSheet({ row, currency, busy, onClose, onVoid, stepUp }: { row: BasketRow | null; currency: string; busy: boolean; onClose: () => void; onVoid: (reason: string) => void; stepUp: StepUpProps }): React.ReactElement {
+function VoidSheet({ row, currency, busy, asksRestock, onClose, onVoid, stepUp }: { row: BasketRow | null; currency: string; busy: boolean; asksRestock: boolean; onClose: () => void; onVoid: (reason: string, restock: boolean) => void; stepUp: StepUpProps }): React.ReactElement {
   const [reason, setReason] = useState<string>(TILL_COPY.voidReasons[0].label);
+  // #4490 08-O5 fix 1 (O5-T4): "Put it back in stock" starts on for every void.
+  const [putBack, setPutBack] = useState<boolean>(true);
   useEffect(() => {
     setReason(TILL_COPY.voidReasons[0].label);
+    setPutBack(true);
   }, [row?.key]);
   return (
     <Sheet visible={row !== null} onClose={onClose} snapPoint={0.6} dismissDisabled={busy} testID="till-void">
@@ -1709,13 +1717,23 @@ function VoidSheet({ row, currency, busy, onClose, onVoid, stepUp }: { row: Bask
         <TillStepUpHost venueId={stepUp.venueId} approvers={stepUp.approvers}>
           <SheetScrollLayout contentStyle={styles.sheetScroll}
           footer={<Button label={row !== null ? `${TILL_COPY.void} · ${formatCurrency(row.amountMinor, currency, true)}` : TILL_COPY.void}
-            variant="destructive" size="lg" fullWidth loading={busy} onPress={() => onVoid(reason)} testID="till-void-confirm" />}>
+            variant="destructive" size="lg" fullWidth loading={busy} onPress={() => onVoid(reason, asksRestock ? putBack : true)} testID="till-void-confirm" />}>
           <Text style={styles.label}>{TILL_COPY.why}</Text>
           <View style={styles.chips}>
             {TILL_COPY.voidReasons.map((r) => (
               <Chip key={r.key} label={r.label} selected={reason === r.label} onPress={() => setReason(r.label)} testID={`till-void-${r.key}`} />
             ))}
           </View>
+          {asksRestock ? (
+            <View style={styles.voidRestockRow} testID="till-void-restock">
+              <View style={styles.voidRestockText}>
+                <Text style={styles.voidRestockTitle}>{TILL_COPY.putBackInStock}</Text>
+                <Text style={styles.muted}>{TILL_COPY.putBackInStockHint}</Text>
+              </View>
+              <Switch value={putBack} onValueChange={setPutBack} disabled={busy}
+                accessibilityLabel={TILL_COPY.putBackInStock} testID="till-void-restock-switch" />
+            </View>
+          ) : null}
         </SheetScrollLayout>
         </TillStepUpHost>
       </View>
@@ -2033,6 +2051,9 @@ const styles = StyleSheet.create({
   h3: { ...type.row, color: color.text1, flexShrink: 1 },
   label: { ...type.small, color: color.text2 },
   muted: { ...type.small, color: color.text2 },
+  voidRestockRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingTop: space[3] },
+  voidRestockText: { flex: 1, minWidth: 0, gap: space[1] },
+  voidRestockTitle: { ...type.row, color: color.text1 },
   warnText: { ...type.small, color: color.warningText },
   sheetSection: { gap: space[2] },
 });

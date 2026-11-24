@@ -113,6 +113,8 @@ export interface BasketRow {
   lineState: TillLine["state"];
   /** #4490 O3 A2: the round's kitchen state (sent menu items only). */
   kitchen: RoundKitchenState | null;
+  /** #4490 08-O5 fix 1: the menu item of an item row (whether its void can restock). */
+  menuItemId?: string | null;
 }
 
 /** The check's server lines as rows: one per menu item, one per offer line. */
@@ -137,6 +139,7 @@ export function basketRows(sale: TillSale | null, nowMs: number = Date.now()): B
           lineId: null,
           lineState: line.state,
           kitchen: item.voided ? null : kitchen,
+          menuItemId: item.menuItemId,
         });
       }
     } else {
@@ -496,4 +499,21 @@ export function sessionLengths(minMinutes: number, maxMinutes: number, stepMinut
   const out: number[] = [];
   for (let m = minMinutes; m <= maxMinutes && out.length < 8; m += Math.max(15, stepMinutes)) out.push(m);
   return out;
+}
+
+/**
+ * #4490 08-O5 fix 1 (O5-T4): whether the void sheet asks "Put it back in
+ * stock". Only a SENT menu item took units from the count, and only an item
+ * the venue counts has a count to give back to. The switch starts on; the
+ * server decides what comes back (at a station with a kitchen screen only a
+ * line the screen never started; with no screen, what the switch says).
+ */
+export function voidAsksRestock(row: BasketRow | null, catalog: TillCatalog | null | undefined): boolean {
+  if (row === null || row.kind !== "item" || !row.sent || row.voided || !row.menuItemId || !catalog) return false;
+  for (const menu of catalog.menus) {
+    for (const item of menu.items) {
+      if (item.id === row.menuItemId) return item.stockLeft !== null;
+    }
+  }
+  return false;
 }

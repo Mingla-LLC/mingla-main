@@ -87,6 +87,9 @@ export const TILL_COPY = {
   void: "Void",
   voidItem: (name: string): string => `Void ${name}`,
   why: "Why?",
+  // #4490 08-O5 fix 1 (O5-T4): a sent counted item's void.
+  putBackInStock: "Put it back in stock",
+  putBackInStockHint: "Turn this off if it was made, dropped or can't be sold again.",
   voidReasons: [
     { key: "made_wrong", label: "Made wrong" },
     { key: "changed_mind", label: "Changed their mind" },

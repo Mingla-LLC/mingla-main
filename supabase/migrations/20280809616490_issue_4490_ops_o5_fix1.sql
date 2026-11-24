@@ -43,6 +43,14 @@
 -- reopenable when an hours change moves "today" back a day. Payments whose
 -- stored day is missing are backfilled from the hours as they are now.
 --
+-- O5-T4 (P2, stock). At a station with no kitchen screen the Till marks a
+-- sent line served on the spot, so a void with "restock" never gave the unit
+-- back. Now the void's switch ("Put it back in stock", default on, sent by the
+-- Till) is trusted at a no-screen station: the line's units come back (never
+-- more than it took, exactly once). At a station with a screen the rule is
+-- unchanged (only a line the screen never started). Off: nothing comes back.
+-- Every choice on a counted line is audited (stock.set, via void).
+--
 -- O5-T2 (formula injection in the day-close CSV) is a client fix
 -- (mingla-business/src/utils/dayCloseCsv.ts); nothing here.
 --
@@ -899,6 +907,85 @@ WHERE s.business_date IS NULL AND s.paid_at IS NOT NULL
   AND s.state IN ('paid', 'partially_refunded', 'refunded');
 
 -- ===========================================================================
+-- T4. A void's "Put it back in stock" (checked patch of the live body,
+--     20280809615490 §9).
+-- ===========================================================================
+-- Whether a station has a kitchen screen at the venue: the same rule the
+-- Till's send uses (the kitchen_screens feature, then the screen stations,
+-- default kitchen and bar).
+CREATE FUNCTION public.issue_4490_station_has_screen(p_venue_id uuid, p_station text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT p_station IS NOT NULL
+    AND public.issue_4490_venue_feature_on(p_venue_id, 'kitchen_screens')
+    AND p_station = ANY (COALESCE((SELECT s.screen_stations FROM public.venue_till_settings s WHERE s.venue_id = p_venue_id),
+                                  ARRAY['kitchen', 'bar']::text[]));
+$function$;
+
+SELECT pg_temp.issue_4490_o5f1_patch(
+  'public.issue_4490_till_void(uuid,uuid,uuid,uuid,text,boolean,integer)'::regprocedure,
+  $old$  v_sc bigint;
+BEGIN$old$,
+  $new$  v_sc bigint;
+  v_back record;
+  v_units integer;
+BEGIN$new$
+);
+SELECT pg_temp.issue_4490_o5f1_patch(
+  'public.issue_4490_till_void(uuid,uuid,uuid,uuid,text,boolean,integer)'::regprocedure,
+  $old$  -- #4490 08-O5C: p_restock gives back what each line voided by THIS call
+  -- took from the count, when it was never started at a station (fired_at
+  -- NULL). A held round never took stock; a refund never restocks.
+  IF p_restock IS TRUE THEN
+    PERFORM public.issue_4490_stock_give_back(i.id)
+    FROM public.venue_order_items i
+    JOIN public.venue_orders o ON o.id = i.venue_order_id
+    WHERE o.session_id = v_sale.session_id AND i.prep_state = 'voided'
+      AND i.voided_at = now() AND i.voided_by_user_id = p_actor
+      AND i.fired_at IS NULL AND COALESCE(i.stock_taken, 0) > 0
+      AND (p_order_item_id IS NULL OR i.id = p_order_item_id)
+      AND (p_line_id IS NULL OR i.venue_order_id = v_line.venue_order_id);
+  END IF;$old$,
+  $new$  -- #4490 08-O5C, fixed by 08-O5 fix 1 (O5-T4): p_restock is the void's
+  -- "Put it back in stock" switch (on by default in the Till). For each line
+  -- voided by THIS call that took units from the count: at a station with a
+  -- kitchen screen only a line the screen never started comes back (fired_at
+  -- NULL); at a station with NO screen the Till marked it served at send and
+  -- only the person voiding knows whether it was made, so their choice is
+  -- trusted and the line's units come back. Never more than the line took and
+  -- once only (give_back zeroes stock_taken; a replayed void returns early).
+  -- Off: nothing comes back. A held round never took stock; a refund never
+  -- restocks. Every choice on a counted line is audited (stock.set via void).
+  FOR v_back IN
+    SELECT i.id, i.menu_item_id, i.stock_taken, i.fired_at,
+           public.issue_4490_station_has_screen(v_sale.venue_id, i.station) AS screened
+    FROM public.venue_order_items i
+    JOIN public.venue_orders o ON o.id = i.venue_order_id
+    WHERE o.session_id = v_sale.session_id AND i.prep_state = 'voided'
+      AND i.voided_at = now() AND i.voided_by_user_id = p_actor
+      AND COALESCE(i.stock_taken, 0) > 0
+      AND (p_order_item_id IS NULL OR i.id = p_order_item_id)
+      AND (p_line_id IS NULL OR i.venue_order_id = v_line.venue_order_id)
+    ORDER BY i.menu_item_id, i.id
+  LOOP
+    v_units := 0;
+    IF p_restock IS TRUE AND (v_back.fired_at IS NULL OR NOT v_back.screened) THEN
+      v_units := public.issue_4490_stock_give_back(v_back.id);
+    END IF;
+    PERFORM public.issue_4490_floor_audit(v_sale.brand_id, p_actor, NULL, 'stock.set', 'menu_item',
+      v_back.menu_item_id::text,
+      jsonb_build_object('venue_id', v_sale.venue_id, 'via', 'void',
+        'reason', CASE WHEN v_units > 0 THEN 'void_restock' ELSE 'void_no_restock' END,
+        'restock', p_restock IS TRUE, 'station_screen', v_back.screened,
+        'order_item_id', v_back.id, 'taken', v_back.stock_taken, 'units_back', v_units));
+  END LOOP;$new$
+);
+
+-- ===========================================================================
 -- Grants. The two pure rules are public (they read nothing); everything
 -- else is internal. Trigger functions need no EXECUTE grant to fire.
 -- ===========================================================================
@@ -919,7 +1006,8 @@ REVOKE ALL ON FUNCTION
   public.issue_4490_venue_service_date(uuid, timestamptz),
   public.issue_4490_day_payment_ids(uuid, date),
   public.issue_4490_day_refund_ids(uuid, date),
-  public.issue_4490_day_check_date(uuid, date)
+  public.issue_4490_day_check_date(uuid, date),
+  public.issue_4490_station_has_screen(uuid, text)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.issue_4490_sold_out_basis_done(uuid),
@@ -930,7 +1018,8 @@ GRANT EXECUTE ON FUNCTION
   public.issue_4490_venue_service_date(uuid, timestamptz),
   public.issue_4490_day_payment_ids(uuid, date),
   public.issue_4490_day_refund_ids(uuid, date),
-  public.issue_4490_day_check_date(uuid, date)
+  public.issue_4490_day_check_date(uuid, date),
+  public.issue_4490_station_has_screen(uuid, text)
 TO service_role;
 
 COMMIT;
