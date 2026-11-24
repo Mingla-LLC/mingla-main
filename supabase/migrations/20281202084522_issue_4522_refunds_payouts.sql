@@ -880,6 +880,27 @@ $fn$;
 --    order with no instalment rows this is exactly the plain sum it replaces,
 --    so orders_refunded_amount_not_exceed_total keeps guarding every order.
 -- ---------------------------------------------------------------------------
+-- Pass 11 (P11-1): money Paystack refunded on the order's own charge from its
+-- dashboard (outside Mingla's refund calls) that staff recorded with
+-- "partly refunded already" (or a whole-charge refund recorded as a part,
+-- beyond what that part asked). It went back to the traveler, so it counts
+-- as refunded on the charge exactly as a Mingla-made refund would: the host
+-- is never paid for it. Counted whatever happens to the cancel afterwards
+-- (the provider already moved that money).
+CREATE FUNCTION public.issue_4522_order_outside_refunded_cents(p_order_id uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT COALESCE(sum((r.metadata #>> '{trip_cancel,ops_resolutions,deposit,outside_recorded_cents}')::bigint), 0)::bigint
+    FROM public.refunds r
+   WHERE r.order_id = p_order_id AND r.order_installment_id IS NULL AND r.metadata ? 'trip_cancel'
+     AND (r.metadata #>> '{trip_cancel,ops_resolutions,deposit,outside_recorded_cents}') ~ '^[0-9]{1,16}$'
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_order_outside_refunded_cents(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE FUNCTION public.issue_4522_order_charge_refunded_cents(p_order_id uuid)
 RETURNS integer
 LANGUAGE sql
@@ -913,11 +934,13 @@ AS $fn$
      WHERE r.order_id = p_order_id AND r.status = 'pending' AND r.order_installment_id IS NULL
        AND r.metadata ? 'trip_cancel' AND a.payment_intent_id = o.stripe_payment_intent_id
        AND a.status IN ('succeeded_positive', 'not_applicable') AND a.buyer_refund_id IS NOT NULL
-       AND a.buyer_refund_amount_text ~ '^[1-9][0-9]{0,15}$'), 0))::integer
+       AND a.buyer_refund_amount_text ~ '^[1-9][0-9]{0,15}$'), 0)
+    -- Pass 11 (P11-1): refunded on this charge outside Mingla's calls.
+    + public.issue_4522_order_outside_refunded_cents(p_order_id))::integer
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_order_charge_refunded_cents(uuid) FROM PUBLIC, anon, authenticated, service_role;
 COMMENT ON FUNCTION public.issue_4522_order_charge_refunded_cents(uuid) IS
-  'Issue #4522 (S9-1, H-2): what has been refunded of the order''s own charge (the deposit on a plan order): settled refunds of the order minus their parts applied to instalment rows, plus the deposit part of a trip cancel still in progress that the provider has confirmed; instalment refunds (order_installment_id) excluded. The one owner of orders.refunded_amount_cents for the refund finalize, the trip-cancel commit and a confirmed refund of a cancel in progress.';
+  'Issue #4522 (S9-1, H-2): what has been refunded of the order''s own charge (the deposit on a plan order): settled refunds of the order minus their parts applied to instalment rows, plus the deposit part of a trip cancel still in progress that the provider has confirmed, plus what staff recorded as refunded on it outside Mingla (pass 11, issue_4522_order_outside_refunded_cents); instalment refunds (order_installment_id) excluded. The one owner of orders.refunded_amount_cents for the refund finalize, the trip-cancel commit and a confirmed refund of a cancel in progress.';
 
 -- Body as 20280305003281 except: instalment parts recorded on their rows
 -- first, and the order total from issue_4522_order_charge_refunded_cents.
@@ -1146,6 +1169,9 @@ BEGIN
   SELECT COALESCE(SUM(amount_cents), 0) INTO v_total_refunded_cents
   FROM public.refunds
   WHERE order_id = v_order.id AND status = 'succeeded';
+  -- issue #4522 pass 11 (P11-1): a refund Paystack made from its dashboard
+  -- that staff recorded on a trip cancel stays counted.
+  v_total_refunded_cents := v_total_refunded_cents + public.issue_4522_order_outside_refunded_cents(v_order.id);
 
   v_new_payment_status := public.issue_3281_settled_payment_status(v_order.id);
 
@@ -1250,6 +1276,9 @@ BEGIN
   FROM public.refunds
   WHERE order_id = v_order.id AND status = 'succeeded'
     AND order_installment_id IS NULL;  -- issue #3645: instalment refunds are not deposit refunds
+  -- issue #4522 pass 11 (P11-1): a refund Paystack made from its dashboard
+  -- that staff recorded on a trip cancel stays counted.
+  v_total_refunded_cents := v_total_refunded_cents + public.issue_4522_order_outside_refunded_cents(v_order.id);
 
   v_new_payment_status := public.issue_3281_settled_payment_status(v_order.id);
 
@@ -2075,6 +2104,10 @@ BEGIN
              THEN 'partial_refund' ELSE payment_status END,
            updated_at = now()
      WHERE id = v_r.order_id AND refunded_amount_cents IS DISTINCT FROM v_charge_refunded;
+    -- Pass 11 (P11-4): the payment status follows the cancel's own rule
+    -- (the one its completion uses): the whole charge now refunded moves it
+    -- to 'refunded', not left at 'partial_refund'.
+    PERFORM public.issue_4522_settle_trip_cancel_status(v_r.order_id);
   ELSE
     PERFORM public.issue_4522_trip_cancel_hold_owed_parts(v_r.id, 'seat_refund_sign_recorded');
   END IF;
@@ -3290,6 +3323,11 @@ DECLARE
   v_result jsonb;
   v_resize jsonb;
   v_charge bigint;
+  v_known bigint;
+  v_outside boolean := false;
+  v_outside_total bigint := 0;
+  v_book bigint := 0;
+  v_charge_refunded integer;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
@@ -3453,7 +3491,41 @@ BEGIN
     IF v_charge IS NULL OR p_refunded_elsewhere_cents > v_charge THEN
       RAISE EXCEPTION 'refunded_elsewhere_more_than_charge' USING ERRCODE = '22023';
     END IF;
-    v_resize := public.issue_4522_trip_cancel_resize_charge(v_refund.id, v_part, p_refunded_elsewhere_cents);
+    -- Pass 11 (P11-1): a reference on none of Mingla's refund records is a
+    -- refund Paystack made outside Mingla's calls (its dashboard). That
+    -- money went back to the traveler, so it is booked on the charge (what
+    -- of it Mingla's books do not already hold), exactly as a Mingla-made
+    -- refund: the host payout is reduced, or a payout debt opened (capped
+    -- at what the host was paid), by the payout triggers on the charge.
+    -- The part then asks only what the policy allows of what is left.
+    -- A Mingla refund of this charge whose answer was lost (an attempt
+    -- with no provider reference, for exactly this amount) may be the one
+    -- Paystack lists: it is already counted as in flight, so nothing is
+    -- booked twice (its own answer records it).
+    v_outside := NOT (EXISTS (SELECT 1 FROM public.paystack_refund_attempts
+                               WHERE lower(btrim(provider_refund_id)) = lower(v_ref))
+                      OR EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
+                                  WHERE lower(btrim(provider_refund_id)) = lower(v_ref))
+                      OR EXISTS (SELECT 1 FROM public.refunds WHERE lower(btrim(stripe_refund_id)) = lower(v_ref))
+                      OR EXISTS (SELECT 1 FROM public.paystack_refund_attempts pa
+                                  WHERE pa.transaction_reference = v_att.transaction_reference
+                                    AND pa.id <> v_att.id AND pa.provider_refund_id IS NULL
+                                    AND pa.status <> 'processed'
+                                    AND pa.amount_cents = p_refunded_elsewhere_cents));
+    IF v_part = 'deposit' THEN
+      v_known := public.issue_4522_order_charge_refunded_cents(v_refund.order_id)
+        + COALESCE((SELECT sum(value::bigint)
+                      FROM jsonb_each_text(public.issue_4522_order_charge_inflight_refunds(v_refund.order_id))), 0);
+    ELSE
+      SELECT oi.refunded_amount_cents + public.issue_4522_row_unreturned_overpayment(oi.id)
+        INTO v_known FROM public.order_installments oi
+       WHERE oi.id::text = v_part AND oi.order_id = v_refund.order_id;
+    END IF;
+    IF v_outside THEN
+      v_outside_total := LEAST(p_refunded_elsewhere_cents, GREATEST(0, v_charge - COALESCE(v_known, 0)));
+    END IF;
+    v_resize := public.issue_4522_trip_cancel_resize_charge(v_refund.id, v_part,
+      CASE WHEN v_outside THEN COALESCE(v_known, 0) + v_outside_total ELSE p_refunded_elsewhere_cents END);
     IF NOT COALESCE((v_resize->>'ok')::boolean, false)
        AND v_resize->>'reason' = 'trip_cancel_nothing_left' AND p_refunded_elsewhere_cents = v_charge THEN
       -- Pass 9 (GAP): Paystack shows this whole charge refunded already by
@@ -3480,14 +3552,20 @@ BEGIN
       END IF;
       v_resize := jsonb_build_object('ok', true, 'changed', false, 'from_cents', v_att.amount_cents,
         'refund_cents', 0, 'recorded_whole_charge', true);
+      -- Pass 11 (P11-1): the part is recorded for what it asked; the rest of
+      -- that refund is booked on the charge too.
+      v_book := GREATEST(0, v_outside_total - v_att.amount_cents);
     ELSIF NOT COALESCE((v_resize->>'ok')::boolean, false) THEN
       RAISE EXCEPTION '%', COALESCE(v_resize->>'reason', 'trip_cancel_resize_failed') USING ERRCODE = 'PT409';
+    ELSE
+      v_book := v_outside_total;
     END IF;
     v_entry := v_entry || jsonb_build_object('reference', v_ref,
       'refunded_elsewhere_cents', p_refunded_elsewhere_cents,
       'from_cents', COALESCE((v_resize->>'from_cents')::bigint, v_att.amount_cents),
       'to_cents', (v_resize->>'refund_cents')::bigint, 'changed', (v_resize->>'changed')::boolean,
-      'recorded_whole_charge', COALESCE((v_resize->>'recorded_whole_charge')::boolean, false));
+      'recorded_whole_charge', COALESCE((v_resize->>'recorded_whole_charge')::boolean, false),
+      'outside_mingla', v_outside, 'outside_recorded_cents', v_book);
   END IF;
 
   -- Recorded on the cancel itself. A recorded part restarts the failure
@@ -3503,6 +3581,33 @@ BEGIN
                 ELSE '{}'::jsonb END)
            - CASE WHEN p_outcome = 'paid_outside_provider' THEN 'awaiting_staff' ELSE '' END)
    WHERE id = v_refund.id;
+
+  -- Pass 11 (P11-1): book the outside refund on its charge (the order's own
+  -- charge reads it from the entry just written; an instalment on its row,
+  -- under the order graph lock taken above). The deferred payout triggers on
+  -- these figures then reduce the host's payout or open its capped debt.
+  IF v_book > 0 THEN
+    IF v_part = 'deposit' THEN
+      v_charge_refunded := public.issue_4522_order_charge_refunded_cents(v_refund.order_id);
+      UPDATE public.orders
+         SET refunded_amount_cents = v_charge_refunded,
+             payment_status = CASE WHEN v_charge_refunded > 0 AND payment_status = 'paid'
+               THEN 'partial_refund' ELSE payment_status END,
+             updated_at = now()
+       WHERE id = v_refund.order_id AND refunded_amount_cents IS DISTINCT FROM v_charge_refunded;
+    ELSE
+      UPDATE public.order_installments
+         SET refunded_amount_cents = refunded_amount_cents + v_book,
+             status = CASE WHEN status = 'collected'
+               AND refunded_amount_cents + v_book >= COALESCE(buyer_total_cents, amount_cents)
+               THEN 'refunded' ELSE status END
+       WHERE id::text = v_part AND order_id = v_refund.order_id
+         AND refunded_amount_cents + v_book <= COALESCE(buyer_total_cents, amount_cents);
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'trip_cancel_refund_not_recorded' USING ERRCODE = 'P0001';
+      END IF;
+    END IF;
+  END IF;
 
   INSERT INTO public.audit_log (user_id, brand_id, event_id, action, target_type, target_id, after)
   SELECT v_actor, e.brand_id, e.id,

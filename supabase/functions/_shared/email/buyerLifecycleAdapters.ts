@@ -60,6 +60,16 @@ export interface RefundIssuedPayloadShape {
   installmentBreakdown?: InstallmentBreakdownRow[];
   refundIssued?: boolean;      // false when 0% tier applied
   stripe_refund_ids?: string[]; // Tr4 multi-PI refund — array of all refund IDs
+  // issue #4522 pass 11 (P11-3): parts of a trip cancel refund staff settled
+  // outside Mingla's refund calls (paid directly, or refunded earlier from the
+  // provider's dashboard). Never described as issued to the card.
+  settledOutside?: SettledOutsideRow[];
+}
+
+export interface SettledOutsideRow {
+  kind: "paid_directly" | "refunded_before";
+  amount_cents: number;
+  reference: string | null;
 }
 
 export interface OrderCancelledPayloadShape {
@@ -72,6 +82,8 @@ export interface OrderCancelledPayloadShape {
   currency?: string;
   installmentBreakdown?: InstallmentBreakdownRow[];
   refundIssued?: boolean;
+  // issue #4522 pass 11 (P11-3): see RefundIssuedPayloadShape.settledOutside.
+  settledOutside?: SettledOutsideRow[];
 }
 
 export interface BuyerContext {
@@ -188,6 +200,14 @@ function refundIssuedToGenericBodyTr4(
   const amount = formatMoneyFromCents(amountCents, payload.currency);
   const cardPhrase = cardEndingPhrase(context.cardLast4);
   const breakdownLines = installmentBreakdownLines(payload.installmentBreakdown);
+  // issue #4522 pass 11 (P11-3): a part settled outside Mingla's refund
+  // calls is told as what it was. Copy NOT yet approved by Seth.
+  const outside = (payload.settledOutside ?? []).filter((row) =>
+    Number.isSafeInteger(row.amount_cents) && row.amount_cents > 0
+  );
+  if (outside.length > 0) {
+    return refundIssuedSettledOutsideBody(payload, context, amountCents, outside);
+  }
   // Reference ID per DESIGN §5.3 OQ-D-2: RFD-{first-6-chars-of-refund-id}
   const referenceShort =
     typeof payload.stripe_refund_id === "string" && payload.stripe_refund_id.length >= 6
@@ -231,6 +251,72 @@ function refundIssuedToGenericBodyTr4(
     paragraphs,
     cta: null,
   };
+}
+
+// issue #4522 pass 11 (P11-3): the Tr4 refund email when part (or all) of
+// the refund was settled outside Mingla's refund calls. Only the part Mingla
+// sent through the provider is described as issued to the card (with the
+// 5–10 business days line); a part paid directly names its amount and the
+// reference staff entered; a part the provider had already refunded says so.
+// No "RFD-pending" placeholder. Copy NOT yet approved by Seth.
+function refundIssuedSettledOutsideBody(
+  payload: RefundIssuedPayloadShape,
+  context: BuyerContext,
+  amountCents: number,
+  outside: SettledOutsideRow[],
+): GenericBodyInput {
+  const currency = payload.currency;
+  const outsideCents = outside.reduce((sum, row) => sum + row.amount_cents, 0);
+  const cardCents = Math.max(0, amountCents - outsideCents);
+  const amount = formatMoneyFromCents(amountCents, currency);
+  const opening = payload.cancelledBy === "buyer"
+    ? `Following your cancellation of ${context.eventTitle}, your refund of ${amount} has been settled as follows.`
+    : `Following the cancellation of ${context.eventTitle} by ${context.brandName}, your refund of ${amount} has been settled as follows.`;
+  const paragraphs: string[] = [greeting(context.buyerName), opening];
+  if (cardCents > 0) {
+    paragraphs.push(
+      `${formatMoneyFromCents(cardCents, currency)} has been refunded ${cardEndingPhrase(context.cardLast4)}. It typically appears within 5–10 business days.`,
+    );
+  }
+  for (const row of outside) {
+    const part = formatMoneyFromCents(row.amount_cents, currency);
+    if (row.kind === "paid_directly") {
+      paragraphs.push(
+        row.reference
+          ? `Mingla paid ${part} to you directly. Reference: ${row.reference}`
+          : `Mingla paid ${part} to you directly.`,
+      );
+    } else {
+      paragraphs.push(
+        `${part} was already refunded to your original payment method earlier, so nothing more was sent for it.`,
+      );
+    }
+  }
+  const organizerEmail = context.organizerEmail;
+  if (payload.cancelledBy !== "buyer" && typeof organizerEmail === "string" && organizerEmail.length > 0) {
+    paragraphs.push(`If you have questions, contact the organizer at ${organizerEmail}.`);
+  }
+  return {
+    variant: "generic_notification",
+    title: cardCents > 0 ? `Refund of ${amount} is on its way` : `Refund of ${amount} settled`,
+    paragraphs,
+    cta: null,
+  };
+}
+
+// issue #4522 pass 11 (P11-3): the cancellation email's refund line never
+// says a part settled outside Mingla's refund calls is on its way to the
+// card; the refund email that follows gives the detail. Copy NOT yet
+// approved by Seth.
+function cancelRefundLine(
+  settledOutside: SettledOutsideRow[] | undefined,
+  refundAmount: string,
+  cardPhrase: string,
+): string {
+  if (!settledOutside || settledOutside.length === 0) {
+    return `A refund of ${refundAmount} is on its way ${cardPhrase}. Refunds typically appear within 5–10 business days.`;
+  }
+  return `Your refund of ${refundAmount} has been settled. A separate email explains how each part was paid.`;
 }
 
 export function orderCancelledToGenericBody(
@@ -292,7 +378,7 @@ function orderCancelledToGenericBodyTr4(
     ];
     if (refundIssued && refundAmount !== null) {
       paragraphs.push(
-        `A refund of ${refundAmount} is on its way ${cardPhrase}. Refunds typically appear within 5–10 business days.`,
+        cancelRefundLine(payload.settledOutside, refundAmount, cardPhrase),
       );
     } else {
       // 0% tier case — no refund applies
@@ -323,7 +409,7 @@ function orderCancelledToGenericBodyTr4(
   }
   if (refundIssued && refundAmount !== null) {
     paragraphs.push(
-      `A refund of ${refundAmount} is on its way ${cardPhrase}. Refunds typically appear within 5–10 business days.`,
+      cancelRefundLine(payload.settledOutside, refundAmount, cardPhrase),
     );
   } else {
     paragraphs.push(

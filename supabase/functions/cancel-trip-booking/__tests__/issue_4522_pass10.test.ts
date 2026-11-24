@@ -23,6 +23,7 @@ const ATTEMPT = "4522a010-0000-4000-8000-00000000aaaa";
 function deps(rows: ListedRefund[] | null | "throw", calls: Record<string, unknown>[] = []) {
   return {
     callerId: () => Promise.resolve("staff-1"),
+    isAdmin: () => Promise.resolve(true),
     attemptCharge: () => Promise.resolve("mingla_p10_charge"),
     listRefunds: () => rows === "throw" ? Promise.reject(new Error("paystack 503")) : Promise.resolve(rows),
     resolve: (args: Record<string, unknown>) => {

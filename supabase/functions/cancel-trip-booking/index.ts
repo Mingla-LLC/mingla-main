@@ -83,7 +83,7 @@ import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { returnOrderOverpaymentsBestEffort } from "../_shared/installments/overpaymentLane.ts";
 import { overpaymentReturnCents } from "./refundEntries.ts";
 import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
-import { handleOpsRefundedElsewhere, parseOpsRefundedElsewhere } from "./opsRefundedElsewhere.ts";
+import { handleOpsRefundedElsewhere, parseOpsRefundedElsewhere, settledOutsideParts } from "./opsRefundedElsewhere.ts";
 import {
   alertTripCancelNotFinished,
   cardRefundsRequestedUnrecorded,
@@ -377,6 +377,12 @@ serve(async (req: Request): Promise<Response> => {
     const service = serviceClient();
     const result = await handleOpsRefundedElsewhere(parseOpsRefundedElsewhere(body), {
       callerId: () => userIdFromAuthHeader(req),
+      // Pass 11 (P11-2): staff access first, asked as the caller.
+      isAdmin: async () => {
+        const { data, error } = await userClient(req).rpc("is_admin_user");
+        if (error) return null;
+        return data === true;
+      },
       attemptCharge: async (attemptId) => {
         const { data } = await service.from("paystack_refund_attempts")
           .select("transaction_reference, merchant_note, local_refund_id")
@@ -1585,8 +1591,18 @@ serve(async (req: Request): Promise<Response> => {
     ? orderDetail.buyer_email
     : "";
 
+  // Pass 11 (P11-3): parts staff settled outside Mingla's refund calls (paid
+  // to the traveler directly, or refunded from the provider's dashboard) are
+  // told as what they were, not as a refund Mingla issued to the card.
+  const { data: refundMetaRow } = await supabase.from("refunds")
+    .select("metadata").eq("id", refundId).maybeSingle();
+  const settledOutside = settledOutsideParts(
+    (refundMetaRow as { metadata?: unknown } | null)?.metadata ?? null,
+  );
+
   if (buyerEmail.length > 0) {
     const baseNotifPayload = {
+      ...(settledOutside.length > 0 ? { settledOutside } : {}),
       cancelledBy: actorKind,
       tierPct,
       refundAmountCents: computedRefundTotalCents,

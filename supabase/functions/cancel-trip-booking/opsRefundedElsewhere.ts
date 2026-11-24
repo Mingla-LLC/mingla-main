@@ -21,6 +21,12 @@ export type OpsRefundedElsewhereInput = {
 export type OpsRefundedElsewhereDeps = {
   /** The caller's verified user id, or null. */
   callerId: () => Promise<string | null>;
+  /**
+   * Pass 11 (P11-2): whether the caller is active Mingla staff
+   * (is_admin_user, asked as the caller); null when it cannot be checked.
+   * Checked before anything is looked up or read from Paystack.
+   */
+  isAdmin: () => Promise<boolean | null>;
   /** The charge (transaction reference) of the trip cancel refund attempt, or null. */
   attemptCharge: (attemptId: string) => Promise<string | null>;
   /** Paystack's refunds of the charge; null when the list cannot be trusted. */
@@ -56,6 +62,15 @@ export async function handleOpsRefundedElsewhere(
 ): Promise<OpsResult> {
   const callerId = await deps.callerId();
   if (!callerId) return { status: 401, body: { error: "not_authenticated" } };
+  // Pass 11 (P11-2): staff access first, before any lookup or provider call.
+  let admin: boolean | null = null;
+  try {
+    admin = await deps.isAdmin();
+  } catch {
+    admin = null;
+  }
+  if (admin === null) return { status: 503, body: { error: "admin_check_failed", message: "Staff access could not be checked just now. Try again." } };
+  if (admin !== true) return { status: 403, body: { error: "not_authorized" } };
   if (input === null) {
     return { status: 400, body: { error: "refunded_elsewhere_required", message: "Enter the amount of that Paystack refund." } };
   }
@@ -123,4 +138,40 @@ export async function handleOpsRefundedElsewhere(
     return { status, body: { error: String(error.message ?? "resolve_failed").slice(0, 200), code } };
   }
   return { status: 200, body: (data ?? {}) as Record<string, unknown> };
+}
+
+/**
+ * Pass 11 (P11-3): the parts of a trip cancel refund that staff settled
+ * outside Mingla's own refund calls, read from the cancel's recorded staff
+ * answers: paid to the traveler directly (below the provider minimum, with
+ * staff's reference), or a whole charge Paystack had already refunded from
+ * its dashboard (recorded as the part). The buyer email tells these as what
+ * they were. A part Mingla then sent itself is not listed.
+ */
+export type SettledOutsidePart = {
+  kind: "paid_directly" | "refunded_before";
+  amount_cents: number;
+  reference: string | null;
+};
+
+export function settledOutsideParts(metadata: unknown): SettledOutsidePart[] {
+  if (metadata === null || typeof metadata !== "object") return [];
+  const tc = (metadata as Record<string, unknown>).trip_cancel;
+  if (tc === null || typeof tc !== "object") return [];
+  const answers = (tc as Record<string, unknown>).ops_resolutions;
+  if (answers === null || typeof answers !== "object") return [];
+  const out: SettledOutsidePart[] = [];
+  for (const entry of Object.values(answers as Record<string, unknown>)) {
+    if (entry === null || typeof entry !== "object") continue;
+    const e = entry as Record<string, unknown>;
+    const amount = typeof e.amount_cents === "number" ? e.amount_cents : Number(e.amount_cents);
+    if (!Number.isSafeInteger(amount) || amount <= 0) continue;
+    const reference = typeof e.reference === "string" && e.reference.length > 0 ? e.reference : null;
+    if (e.outcome === "paid_outside_provider") {
+      out.push({ kind: "paid_directly", amount_cents: amount, reference });
+    } else if (e.outcome === "refunded_elsewhere" && e.recorded_whole_charge === true) {
+      out.push({ kind: "refunded_before", amount_cents: amount, reference });
+    }
+  }
+  return out;
 }
