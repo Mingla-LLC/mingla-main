@@ -303,6 +303,8 @@ function makeHarness(opts) {
     },
     '../store/appStore': { __esModule: true, useAppStore: () => ({ user: userBox.id ? { id: userBox.id } : null }) },
     '../services/supabase': { __esModule: true, supabase: sb.supabase },
+    // #3969: the step is read through the own-profile read; same stub chain.
+    '../services/profileAccessService': { __esModule: true, readMyProfile: () => sb.supabase.from('profiles') },
     '../constants/coachMarkSteps': stepsModule,
     './coachMarkSkipState': skipStateModule,
     '../services/mixpanelService': {

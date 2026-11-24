@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../services/supabase';
+import { resolvePerson } from '../services/profileAccessService';
 import { refreshChatListAfterConversationChange } from '../services/chatListRefresh';
 import { useAppStore } from '../store/appStore';
 import { CollaborationSession, SessionInvite, SessionState } from '../types';
@@ -445,15 +446,18 @@ export const useSessionManagementController = () => {
 
       // Process participants
       const participantPromises = participants.map(async (username) => {
-        // Find user by username (include email for push notification edge function)
-        const { data: userData, error: userError } = await supabase
-          .from('profiles')
-          .select('id, email')
-          .eq('username', username)
-          .single();
-
-        if (userError || !userData) {
-          console.error(`User not found: ${username}`, userError);
+        // Issue #3969: find the person by username through the server lookup
+        // (an id only); the push edge function resolves everything else.
+        let userData: { id: string };
+        try {
+          const person = await resolvePerson(username);
+          if (!person.user_exists || !person.can_view || !person.profile_id) {
+            console.error(`User not found: ${username}`);
+            return { success: false, username };
+          }
+          userData = { id: person.profile_id };
+        } catch (lookupError) {
+          console.error(`User lookup failed: ${username}`, lookupError);
           return { success: false, username };
         }
 
@@ -531,7 +535,6 @@ export const useSessionManagementController = () => {
               body: {
                 inviterId: user.id,
                 invitedUserId: userData.id,
-                invitedUserEmail: userData.email || '',
                 sessionId: sessionData!.id,
                 sessionName: resolvedName,
                 inviteId: inviteData.id,

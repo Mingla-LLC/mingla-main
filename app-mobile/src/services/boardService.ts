@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { resolvePerson } from './profileAccessService';
 import { Board, BoardCollaborator } from '../types';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -16,8 +17,9 @@ export interface BoardExperienceRecord {
 /** A board collaborator with nested profile info from the join query. */
 export interface BoardCollaboratorWithProfile extends BoardCollaborator {
   profiles: {
+    id?: string;
+    username?: string;
     display_name?: string;
-    email?: string;
     avatar_url?: string;
     first_name?: string;
     last_name?: string;
@@ -77,7 +79,7 @@ export async function fetchBoard(boardId: string): Promise<Board> {
 export async function fetchBoardCollaborators(boardId: string): Promise<BoardCollaboratorWithProfile[]> {
   const { data, error } = await supabase
     .from('board_collaborators')
-    .select(`*, profiles (*)`)
+    .select(`*, profiles (id, username, display_name, first_name, last_name, avatar_url)`)
     .eq('board_id', boardId);
 
   if (error) throw error;
@@ -168,19 +170,15 @@ export async function addCollaboratorByEmail(
   userEmail: string,
   role: string = 'collaborator',
 ): Promise<BoardCollaborator> {
-  const { data: invitedUser, error: userError } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('email', userEmail)
-    .single();
-
-  if (userError || !invitedUser) {
+  // Issue #3969: the server lookup turns the email into a user id only.
+  const invitedUser = await resolvePerson(userEmail);
+  if (!invitedUser.user_exists || !invitedUser.can_view || !invitedUser.profile_id) {
     throw new Error('User not found');
   }
 
   const { data, error } = await supabase
     .from('board_collaborators')
-    .insert({ board_id: boardId, user_id: invitedUser.id, role })
+    .insert({ board_id: boardId, user_id: invitedUser.profile_id, role })
     .select()
     .single();
 
