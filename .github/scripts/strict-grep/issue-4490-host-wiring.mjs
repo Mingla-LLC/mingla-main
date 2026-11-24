@@ -41,9 +41,9 @@ const PINS = [
   {
     id: "web-preboot-template",
     file: `${BIZ}/public/index.html`,
-    contains: ["%LANG_ISO_CODE%", "%WEB_TITLE%", "</head>"],
-    matches: [/<div id="root">[\s\S]*mingla-preboot[\s\S]*Loading…[\s\S]*<\/div>/],
-    why: "the Expo template placeholders and the readable loader inside #root stay",
+    contains: ["%LANG_ISO_CODE%", "%WEB_TITLE%", "</head>", "#root:not(:empty) ~ .mingla-preboot"],
+    matches: [/<div id="root"><\/div>\s*<div class="mingla-preboot"[\s\S]*Loading…[\s\S]*<\/div>/],
+    why: "the Expo template placeholders stay, #root stays the empty Expo scaffold (#922 critical entry), and the readable loader beside it shows only until #root has content",
   },
   // venueTableDepositUi (spec 07 B)
   {
