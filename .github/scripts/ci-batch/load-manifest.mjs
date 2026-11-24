@@ -483,7 +483,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4572 restore: re-added main's eight #4571 pre-#1931 template-replay skips that the #4584 merge resolution dropped (our four #4572 skips kept); re-sealed.
 // issue #4490 merge of origin/main 886723868d: kept both sides\' inventory rows (filename order) and both sides\' exact-filename skips in the #1931 baseline and #2117 phase-1 lanes (main\'s duplicate "run" key in the #1931 baseline replay collapsed to its effective, later value); re-sealed.
 // issue #4490 renumber: the 76 #4490 migrations moved from 20280809004490..20280809618490 to 20281203004490..20281203754490 (same relative order, after every main migration); every lane row, exact-filename skip and suite reference follows; the three sorted expectedFiles inventories re-sorted; re-sealed.
-export const BOOTSTRAP_SHA256 = "ac9b1927ae18c758b6352ae95e3379ed97bc04bd339632a1c169e15406d5d4bc";
+// issue #4490 08-O5 fix 4: registered the fix 3 tester adversarial suite (issue_4490_o5_fix3.tester.adversarial.pg17.test.sql + sidecar) beside the O5 tester suite in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "60d1cb3526d0c4b044b8da26715457bbb13fbd03a2594bf7943626edb15b913d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
