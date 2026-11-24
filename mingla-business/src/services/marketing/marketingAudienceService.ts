@@ -29,10 +29,6 @@
  */
 
 import { supabase } from "../supabase";
-import {
-  eventAudienceShape,
-  eventRowName,
-} from "../../features/marketing/blastSendModel";
 import type {
   AudienceListEntry,
   AudienceReachSummary,
@@ -505,6 +501,8 @@ export interface EventAudienceSummary {
   eventId: string;
   title: string | null;
   eventType: string | null;
+  /** The server's name for this audience: "Guests of" / "Buyers of" / "People at" {title}. */
+  name: string;
   startsAt: string | null;
   buyerCount: number;
   guestCount: number;
@@ -531,63 +529,15 @@ export async function listEventAudiences(input: {
     eventId: String(row.eventId),
     title: typeof row.title === "string" ? row.title : null,
     eventType: typeof row.eventType === "string" ? row.eventType : null,
+    name: typeof row.name === "string" && row.name.length > 0
+      ? row.name
+      : `Buyers of ${typeof row.title === "string" ? row.title : "Untitled event"}`,
     startsAt: typeof row.startsAt === "string" ? row.startsAt : null,
     buyerCount: toCount(row.buyerCount),
     guestCount: toCount(row.guestCount),
     peopleCount: toCount(row.peopleCount),
     pendingReviewCount: toCount(row.pendingReviewCount),
   }));
-}
-
-/**
- * #4596 fix pass 3 — the event Blasts roster from the same owner as the count:
- * one row per person the count includes (buyers, guests, both) plus going
- * guests waiting on a duplicate check. Consent is the server's decision.
- */
-export async function getEventRoster(input: {
-  actor_id: string;
-  brand_id: string;
-  event_id: string;
-}): Promise<BuyerRowData[]> {
-  assertUuid(input.actor_id, "getEventRoster.actor_id");
-  assertUuid(input.brand_id, "getEventRoster.brand_id");
-  assertUuid(input.event_id, "getEventRoster.event_id");
-  const { data, error } = await supabase.rpc("biz_marketing_event_roster_v1", {
-    p_actor_id: input.actor_id,
-    p_brand_id: input.brand_id,
-    p_event_id: input.event_id,
-  });
-  if (error) throw error;
-  const body = data as { eventTitle?: unknown; rows?: unknown } | null;
-  if (body === null || !Array.isArray(body.rows)) throw new Error("EVENT_ROSTER_INVALID_RESPONSE");
-  const title = typeof body.eventTitle === "string" ? body.eventTitle : null;
-  return (body.rows as Array<Record<string, unknown>>).map((row) => {
-    const role = row.role === "buyer" || row.role === "both" || row.role === "pending" ? row.role : "guest";
-    const email = typeof row.email === "string" ? row.email : null;
-    const phone = typeof row.phone === "string" ? row.phone : null;
-    return {
-      contact_key: String(row.key),
-      display_name: typeof row.name === "string" ? row.name : "Guest",
-      masked_email: maskEmail(email),
-      raw_email: email,
-      masked_phone: maskPhone(phone),
-      raw_phone: phone,
-      order_count: toCount(row.orderCount),
-      total_spend_minor: toCount(row.totalSpendMinor),
-      total_spend_currency: typeof row.currency === "string" ? row.currency : "USD",
-      last_event_id: input.event_id,
-      last_event_name: title,
-      last_purchase_at: typeof row.lastAt === "string" ? row.lastAt : null,
-      consent: {
-        email_marketing_ok: row.emailOk === true,
-        sms_marketing_ok: row.smsOk === true,
-        unsubscribed_brand_scope: row.emailRefused === true,
-        unsubscribed_global_scope: false,
-        pending_review: role === "pending",
-      },
-      audience_role: role,
-    };
-  });
 }
 
 /**
@@ -770,7 +720,7 @@ export async function listAudiencesForBrand(
       brand_id: input.brand_id,
       brand_name: brandName,
       event_id: eventId,
-      display_name: eventRowName(eventAudienceShape(event), event.title),
+      display_name: event.name,
       people_count: event.peopleCount,
       last_used_at: existing !== undefined ? (lastUsedByAudienceId.get(existing.id) ?? null) : null,
     });

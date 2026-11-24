@@ -1427,12 +1427,13 @@ const NO_RECIPIENTS_OUTCOME: DispatchOutcome = {
 
 /**
  * #4596 — the failure_reason for a thrown send error: the code before the
- * first ':' (never the rest, which can carry provider text), at most 120
- * characters, and never empty.
+ * first ':' (never the rest, which can carry provider text). It must satisfy
+ * the column's CHECK from #4541 (`^[a-z0-9_]{1,64}$`), or the failure write
+ * itself would be refused; anything else is 'send_failed'.
  */
 export function failureReasonCode(message: string): string {
-  const code = message.split(":")[0].trim().slice(0, 120);
-  return /^[a-z0-9_.-]+$/i.test(code) ? code : "send_failed";
+  const code = message.split(":")[0].trim();
+  return /^[a-z0-9_]{1,64}$/.test(code) ? code : "send_failed";
 }
 
 /**

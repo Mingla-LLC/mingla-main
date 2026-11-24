@@ -30,7 +30,7 @@ jest.mock("../../../services/supabase", () => ({ supabase: { from: (table: strin
 // (biz_marketing_event_audiences_v1), not the orders scan; mock its answer.
 jest.mock("../../../services/marketing/marketingAudienceService", () => ({
   listEventAudiences: jest.fn(async () => [
-    { eventId: "e1", title: "Highlife", eventType: "event", startsAt: null,
+    { eventId: "e1", title: "Highlife", eventType: "event", name: "Buyers of Highlife", startsAt: null,
       buyerCount: 1, guestCount: 0, peopleCount: 1, pendingReviewCount: 0 },
   ]),
 }));

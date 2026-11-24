@@ -52,7 +52,7 @@ jest.mock("../../../services/supabase", () => ({ supabase: { from } }));
 // (biz_marketing_event_audiences_v1), not the orders scan; mock its answer.
 jest.mock("../../../services/marketing/marketingAudienceService", () => ({
   listEventAudiences: jest.fn(async () => [
-    { eventId: "event-1", title: "Launch", eventType: "event", startsAt: null,
+    { eventId: "event-1", title: "Launch", eventType: "event", name: "Buyers of Launch", startsAt: null,
       buyerCount: 1, guestCount: 0, peopleCount: 1, pendingReviewCount: 0 },
   ]),
 }));

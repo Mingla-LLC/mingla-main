@@ -11,7 +11,7 @@ const rpc = jest.fn();
 jest.mock("../../../services/supabase", () => ({ supabase: { rpc, from: jest.fn() } }));
 
 import { buyerRowConsentLine, buyerRowMetaLine } from "../BuyerRow";
-import { getEventRoster } from "../../../services/marketing/marketingAudienceService";
+import { getEventRoster } from "../../../services/marketing/eventRosterService";
 import type { BuyerRowData } from "../../../types/marketing";
 
 const ACTOR = "45960000-0000-4000-8000-000000000007";

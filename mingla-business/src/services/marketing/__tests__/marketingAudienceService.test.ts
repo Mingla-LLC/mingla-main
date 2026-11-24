@@ -496,9 +496,9 @@ describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
   it("merges existing real rows with virtual rows for THIS brand's event audiences only", async () => {
     (supabase.rpc as jest.Mock).mockResolvedValueOnce({
       data: [
-        { eventId: EVENT_UUID_A, title: "Event Alpha", eventType: "event", startsAt: null,
+        { eventId: EVENT_UUID_A, title: "Event Alpha", eventType: "event", name: "Buyers of Event Alpha", startsAt: null,
           buyerCount: 2, guestCount: 0, peopleCount: 2, pendingReviewCount: 0 },
-        { eventId: EVENT_UUID_B, title: "Event Beta", eventType: "rsvp", startsAt: null,
+        { eventId: EVENT_UUID_B, title: "Event Beta", eventType: "rsvp", name: "Guests of Event Beta", startsAt: null,
           buyerCount: 0, guestCount: 5, peopleCount: 5, pendingReviewCount: 1 },
       ],
       error: null,

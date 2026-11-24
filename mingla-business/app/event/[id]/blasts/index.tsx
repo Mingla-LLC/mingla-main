@@ -50,7 +50,7 @@ import {
   eventHeaderCounts,
   eventZeroReachCaption,
   pendingReviewNote,
-} from "../../../../src/features/marketing/blastSendModel";
+} from "../../../../src/features/marketing/eventAudienceCopy";
 import type { BlastAudienceKind } from "../../../../src/components/marketing/BlastCustomersCta";
 
 export default function EventBlastsRoute(): React.ReactElement {

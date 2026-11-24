@@ -41,7 +41,9 @@ describe("#4596 FP1 an event manager's Blasts count", () => {
     const count = await loadEventAudienceCount(ACTOR, EVENT);
     expect(count).toMatchObject({ shape: "guests", peopleCount: 3, reachableEmail: 2, pendingReviewCount: 1 });
     // Fix pass 3: the roster (event_manager and up) joins the two count reads.
+    // The reach reader asks email and SMS (the Audiences tab's own reader).
     expect(rpc.mock.calls.map((call) => call[0]).sort()).toEqual([
+      "biz_marketing_combined_audience_reach_v1",
       "biz_marketing_combined_audience_reach_v1",
       "biz_marketing_event_audiences_v1",
       "biz_marketing_event_roster_v1",

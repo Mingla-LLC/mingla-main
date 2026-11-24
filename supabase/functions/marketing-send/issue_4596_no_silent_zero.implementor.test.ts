@@ -135,7 +135,10 @@ Deno.test("T-CATCH a thrown send writes its code, never the raw message or null"
     "send_failed",
   );
   assertEquals(failureReasonCode(""), "send_failed");
-  assertEquals(failureReasonCode("x".repeat(200)).length, 120);
+  // #4541's CHECK: ^[a-z0-9_]{1,64}$ — longer, upper-case or dotted codes are not stored raw.
+  assertEquals(failureReasonCode("x".repeat(65)), "send_failed");
+  assertEquals(failureReasonCode("x".repeat(64)), "x".repeat(64));
+  assertEquals(failureReasonCode("Provider.Error"), "send_failed");
 });
 
 Deno.test("T-FINALIZE a finalize that fails the campaign (push: 0 delivered) gets no_recipients when null", async () => {

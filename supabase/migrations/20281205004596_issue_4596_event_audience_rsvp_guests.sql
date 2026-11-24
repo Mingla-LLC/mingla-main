@@ -264,6 +264,7 @@ BEGIN
             AND bp.record_status = 'active' AND bp.deleted_at IS NULL);
     v_out := v_out || jsonb_build_array(jsonb_build_object(
       'eventId', v_event.id, 'title', v_event.title, 'eventType', v_event.event_type,
+      'name', public.issue_4273_source_name(p_brand_id, 'event:' || v_event.id::text),
       'startsAt', v_event.starts_at, 'buyerCount', v_buyers, 'guestCount', v_guests,
       'peopleCount', v_people, 'pendingReviewCount', v_pending));
   END LOOP;
@@ -459,16 +460,28 @@ REVOKE ALL ON FUNCTION public.biz_marketing_event_send_audience_v1(uuid) FROM PU
 GRANT EXECUTE ON FUNCTION public.biz_marketing_event_send_audience_v1(uuid) TO service_role;
 
 -- ── Bounded repair: a failed campaign that reached nobody says why ──────────
+-- marketing_campaigns.failure_reason is added by 20281122014541 (#4541). The
+-- filtered pre-#2117 / pre-#1931 CI replays skip that migration by exact
+-- filename, so the repair runs only where the column exists (every full chain
+-- and production) and is a no-op there otherwise.
 DO $repair$
 DECLARE v_count integer;
 BEGIN
-  SELECT count(*)::integer INTO v_count FROM public.marketing_campaigns
-   WHERE status = 'failed' AND failure_reason IS NULL AND COALESCE(recipient_count, 0) = 0;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'marketing_campaigns'
+       AND column_name = 'failure_reason') THEN
+    RAISE NOTICE 'issue_4596 repair skipped: marketing_campaigns.failure_reason is not in this chain';
+    RETURN;
+  END IF;
+  EXECUTE $q$SELECT count(*)::integer FROM public.marketing_campaigns
+             WHERE status = 'failed' AND failure_reason IS NULL AND COALESCE(recipient_count, 0) = 0$q$
+     INTO v_count;
   IF v_count > 10 THEN
     RAISE EXCEPTION 'issue_4596_null_reason_repair_too_wide: % rows', v_count;
   END IF;
-  UPDATE public.marketing_campaigns SET failure_reason = 'no_recipients'
-   WHERE status = 'failed' AND failure_reason IS NULL AND COALESCE(recipient_count, 0) = 0;
+  EXECUTE $q$UPDATE public.marketing_campaigns SET failure_reason = 'no_recipients'
+             WHERE status = 'failed' AND failure_reason IS NULL AND COALESCE(recipient_count, 0) = 0$q$;
 END;
 $repair$;
 

@@ -207,6 +207,7 @@ BEGIN
   SELECT x INTO r FROM jsonb_array_elements(d) x WHERE x ->> 'eventId' = pg_temp.u('e1')::text;
   PERFORM pg_temp.chk('SC-8 an RSVP-only event is discovered with its guests',
     r IS NOT NULL AND r ->> 'eventType' = 'rsvp' AND (r ->> 'guestCount')::integer = 3
+    AND r ->> 'name' = 'Guests of Rooftop RSVP'
     AND (r ->> 'buyerCount')::integer = 0 AND (r ->> 'peopleCount')::integer = 3, COALESCE(r::text, d::text));
   PERFORM pg_temp.chk('D6 unlinked, detached, merged and deleted going guests are pending review',
     (r ->> 'pendingReviewCount')::integer = 4, COALESCE(r::text, ''));

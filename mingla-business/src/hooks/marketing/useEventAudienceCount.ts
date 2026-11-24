@@ -15,17 +15,17 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabase";
-import { getCombinedAudienceReach } from "../../services/marketing/marketingCombinedAudienceService";
 import {
-  getEventRoster,
   listEventAudiences,
+  resolveEventAudienceReach,
   type EventAudienceSummary,
 } from "../../services/marketing/marketingAudienceService";
+import { getEventRoster } from "../../services/marketing/eventRosterService";
 import type { BuyerRowData } from "../../types/marketing";
 import {
   eventAudienceShape,
   type EventAudienceShape,
-} from "../../features/marketing/blastSendModel";
+} from "../../features/marketing/eventAudienceCopy";
 
 const STALE_TIME_MS = 60 * 1000;
 
@@ -94,13 +94,15 @@ export async function loadEventAudienceCount(
   if (typeof brandId !== "string") throw new Error("EVENT_NOT_FOUND");
   const eventType = (eventRow as { event_type?: unknown }).event_type;
 
-  const [events, reachableEmail, roster] = await Promise.all([
+  // The event reach reader the Audiences tab uses (same RPC as the composer),
+  // so this screen adds no second reach module to the boot path.
+  const [events, reach, roster] = await Promise.all([
     listEventAudiences({ actor_id: actorId, brand_id: brandId }),
-    getCombinedAudienceReach({
+    resolveEventAudienceReach({
       actor_id: actorId,
       brand_id: brandId,
-      sources: [`event:${eventId}`],
-      channel: "email",
+      event_id: eventId,
+      people_count: 0,
     }),
     getEventRoster({ actor_id: actorId, brand_id: brandId, event_id: eventId }),
   ]);
@@ -119,7 +121,7 @@ export async function loadEventAudienceCount(
     buyerCount: facts.buyerCount,
     guestCount: facts.guestCount,
     pendingReviewCount: row?.pendingReviewCount ?? 0,
-    reachableEmail,
+    reachableEmail: reach.reachable_email,
     roster,
   };
 }
