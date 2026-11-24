@@ -4,6 +4,11 @@
 -- A non-empty list must still be canonical. Signatures and grants unchanged
 -- (CREATE OR REPLACE keeps grants). issue_4490_set_event_venue refuses
 -- clearing the venue of a non-draft event that has no party type.
+--
+-- Renumbered after main (20281203...): this file now runs AFTER #4572's
+-- 20281129704572_issue_4572_event_types.sql, so each of the four re-emitted
+-- bodies carries #4572's 26-value canonical event type list (the 15 party
+-- types plus exhibition .. tasting); otherwise this re-emit would undo #4572.
 
 CREATE OR REPLACE FUNCTION public.business_publish_event_draft(p_event_id uuid, p_draft_payload jsonb, p_client_revision integer DEFAULT NULL::integer)
  RETURNS jsonb
@@ -219,7 +224,7 @@ BEGIN
   IF NOT (v_party_types <@ ARRAY[
     'birthday-party','rooftop-party','club-night','house-party','warehouse-party',
     'beach-party','pool-party','boat-party','themed-party','corporate-event',
-    'graduation-party','holiday-party','networking-event','rave','festival'
+    'graduation-party','holiday-party','networking-event','rave','festival','exhibition','opening','talk','workshop','screening','class','kids-family','market','tour','performance','tasting'
   ]::text[]) THEN
     RAISE EXCEPTION 'party_types_not_canonical';
   END IF;
@@ -798,7 +803,7 @@ BEGIN
   IF NOT (v_party_types <@ ARRAY[
     'birthday-party','rooftop-party','club-night','house-party','warehouse-party',
     'beach-party','pool-party','boat-party','themed-party','corporate-event',
-    'graduation-party','holiday-party','networking-event','rave','festival'
+    'graduation-party','holiday-party','networking-event','rave','festival','exhibition','opening','talk','workshop','screening','class','kids-family','market','tour','performance','tasting'
   ]::text[]) THEN
     RAISE EXCEPTION 'party_types_not_canonical';
   END IF;
@@ -1114,7 +1119,7 @@ BEGIN
   IF NOT (v_party_types <@ ARRAY[
     'birthday-party','rooftop-party','club-night','house-party','warehouse-party',
     'beach-party','pool-party','boat-party','themed-party','corporate-event',
-    'graduation-party','holiday-party','networking-event','rave','festival'
+    'graduation-party','holiday-party','networking-event','rave','festival','exhibition','opening','talk','workshop','screening','class','kids-family','market','tour','performance','tasting'
   ]::text[]) THEN
     RAISE EXCEPTION 'party_types_not_canonical';
   END IF;
@@ -1292,7 +1297,7 @@ BEGIN
   IF NOT (v_party_types <@ ARRAY[
     'birthday-party','rooftop-party','club-night','house-party','warehouse-party',
     'beach-party','pool-party','boat-party','themed-party','corporate-event',
-    'graduation-party','holiday-party','networking-event','rave','festival'
+    'graduation-party','holiday-party','networking-event','rave','festival','exhibition','opening','talk','workshop','screening','class','kids-family','market','tour','performance','tasting'
   ]::text[]) THEN
     RAISE EXCEPTION 'party_types_not_canonical';
   END IF;

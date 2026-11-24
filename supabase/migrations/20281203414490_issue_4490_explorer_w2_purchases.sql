@@ -9,6 +9,11 @@
 --    waitlist places to the account that proved the contact (a plan is
 --    announced as a pass only when it carries one: active, payment_due,
 --    grace; see the loop for which plan states attach).
+--    Renumbered after main: this re-emit now runs AFTER #4508's
+--    20281119014508_issue_4508_bring_a_friend.sql, so it carries #4508's
+--    claim_attendance_by_verified_identity changes (a claimed RSVP guest place
+--    skips the account's RSVP claim; the owned-RSVP check counts only
+--    not_going / denied; issue_4508_sweep_guest_yields releases a guest row).
 -- 2. issue_4473_share_purchases_by_verified_identity (latest
 --    20280805004473): the stay block ignores venue offer bookings.
 -- 3. New issue_4490_my_waitlist_entries() for the app's Purchases list.
@@ -222,6 +227,12 @@ BEGIN
          SELECT 1 FROM public.event_rsvps x
           WHERE x.event_id = r.event_id AND x.user_id = p_user_id
        )
+       AND NOT EXISTS (
+         SELECT 1 FROM public.event_rsvp_guests g4508
+           JOIN public.event_rsvps r4508 ON r4508.id = g4508.rsvp_id
+          WHERE r4508.event_id = r.event_id AND g4508.matched_user_id = p_user_id
+            AND g4508.claimed_at IS NOT NULL AND r4508.rsvp_status <> 'not_going'
+       )
      ORDER BY r.created_at, r.id
      LIMIT 25
      FOR UPDATE OF r SKIP LOCKED
@@ -269,6 +280,7 @@ BEGIN
        AND NOT EXISTS (
          SELECT 1 FROM public.event_rsvps owned
           WHERE owned.event_id = r.event_id AND owned.user_id = p_user_id
+            AND (owned.rsvp_status = 'not_going' OR owned.approval_status = 'denied')
        )
        AND NOT EXISTS (
          SELECT 1
@@ -281,6 +293,9 @@ BEGIN
      LIMIT 25
      FOR UPDATE OF g SKIP LOCKED
   LOOP
+    -- #4508 R5-2: one place per person (releases the row when the
+    -- account holds its own place on the event).
+    IF public.issue_4508_sweep_guest_yields(v_row.id, p_user_id) THEN CONTINUE; END IF;
     UPDATE public.event_rsvp_guests
        SET matched_user_id = p_user_id
      WHERE id = v_row.id AND matched_user_id IS NULL;
