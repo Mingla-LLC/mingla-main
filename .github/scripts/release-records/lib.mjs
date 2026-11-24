@@ -444,7 +444,7 @@ export function webSupersessionVerdict({
 }
 
 /**
- * #4490: the PR links check reads each changed migration's SQL at the head
+ * #4602: the PR links check reads each changed migration's SQL at the head
  * commit (one contents call per file) to learn the capability keys it adds.
  * This bounds those reads per run. It is a read budget, not a product rule:
  * one initiative can legitimately land more than 50 migrations, so the bound is
