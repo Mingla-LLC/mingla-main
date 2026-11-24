@@ -145,23 +145,25 @@ export function assessCommonBaselineMovement(baselineRaw, measuredRaw, { oneTime
 // in the same reviewed diff, which is the point: an exception is Seth's
 // decision, named, dated and visible, never a quiet edit.
 //
-// #4594: Seth approved the orch-1083 cap on 2026-11-24 and, the same day,
-// extended this same entry to the movement gate ("Decision from Seth
-// (2026-11-24): the two #4594 gates", on #4522).
+// #4601 (issue #4596): Seth approved in chat 2026-11-24 a one-time allowance
+// for this pull request, recorded on #4596. Its cap (3,300 B) sits under the
+// 12,000 B per-PR limit, which the PR already meets, so only the 1,024 B
+// baseline-movement gate uses it; orch-1083 refuses it as granting nothing.
+// It replaces the #4594 entry (#4522), which merged on 2026-11-24.
 // ═══════════════════════════════════════════════════════════════════════════
 export const ONE_TIME_PR_ALLOWANCE = Object.freeze([
   Object.freeze({
-    issue: 4522,
-    pr: 4594,
-    headRef: "4522-young-polish",
-    common: 23_000,
+    issue: 4596,
+    pr: 4601,
+    headRef: "4596-rsvp-event-blast-audience",
+    common: 3_300,
     expiresAfter: "2026-12-08",
     approvedBy: "Seth, 2026-11-24",
     reason:
-      "Trip partial payments, one calendar and add-ons (#4522, #4523, #3281): code genuinely " +
-      "shared by Host and buyer routes (trip balance helper, plan maths, instalments and add-ons " +
-      "services) lands in the shared chunk (+22,349 B measured against the #4589 baseline). The " +
-      "nested lazy load was already removed; splitting cohesive modules only to pass is not allowed.",
+      "RSVP guests in event blasts (#4596): the event-audience copy module is shared by the " +
+      "event Blasts route and the composer, so Metro hoists it into the shared chunk, and the " +
+      "boot-path Audiences tab gains server event discovery and reach (+3,048 B measured against " +
+      "the bundle baseline). Splitting cohesive modules only to pass is not allowed.",
   }),
 ]);
 
