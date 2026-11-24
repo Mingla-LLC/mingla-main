@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import {
   orientationOf,
   PREVIEW_DEVICE_LABELS,
@@ -14,6 +14,7 @@ import { previewFrameSource } from "../../../../sites/previewFrame";
 import { useSitePages } from "../../../../sites/contentApi";
 import { Chip, Hint, MiniButton, Segmented, Skeleton, WButton, ui } from "../ui";
 import { ScaledPreviewFrame } from "./ScaledPreviewFrame";
+import type { PreviewRefresh } from "../../../../sites/previewRefresh";
 
 import { color } from "../../../../constants/designSystem";
 const DEVICE_ICONS = { desktop: "monitor", tablet: "tablet", phone: "phone" } as const;
@@ -51,8 +52,34 @@ export function PreviewDeviceSwitcher({ preference, onChange }: {
 export type PreviewGrantState =
   | { kind: "nodraft" }
   | { kind: "loading" }
+  /** #4572 item 1 — a fresh grant is on its way (the draft changed): skeleton + "Updating preview…", never the old address. */
+  | { kind: "updating" }
   | { kind: "error"; onRetry: () => void }
-  | { kind: "ready"; previewUrl: string; siteId: string; pages: readonly { path: string; title: string; draft_by_ari?: true }[] };
+  | {
+    kind: "ready";
+    previewUrl: string;
+    siteId: string;
+    pages: readonly { path: string; title: string; draft_by_ari?: true }[];
+    /** The frame said the grant is for an older draft / couldn't load. */
+    onStale?: () => void;
+    onFailed?: () => void;
+  };
+
+/** #4572 item 1 — the panel's state from the grant query and the shared refresh state. */
+export function previewGrantState(
+  hasSite: boolean,
+  siteId: string | null,
+  grant: { data?: { preview_url: string; pages?: readonly { path: string; title: string; draft_by_ari?: true }[] } | undefined; isError: boolean },
+  refresh: PreviewRefresh,
+): PreviewGrantState {
+  if (!hasSite || !siteId) return { kind: "nodraft" };
+  if (refresh.phase === "failed") return { kind: "error", onRetry: refresh.retry };
+  if (refresh.phase === "updating") return grant.data ? { kind: "updating" } : { kind: "loading" };
+  if (grant.data) {
+    return { kind: "ready", previewUrl: grant.data.preview_url, siteId, pages: grant.data.pages ?? [], onStale: refresh.onStale, onFailed: refresh.onFailed };
+  }
+  return grant.isError ? { kind: "error", onRetry: refresh.retry } : { kind: "loading" };
+}
 
 /**
  * #4453 m11 rework (spec v2.1 §3.2, SC-AP2) — Ari's questions on a Draft page,
@@ -139,9 +166,18 @@ export function SitePreviewPanel({ grant, preference, onPreference, purpose, uns
         <View role="status" accessibilityLabel="Making your private preview">
           <Skeleton height={variant === "side" ? 300 : 420} />
         </View>
+      ) : grant.kind === "updating" ? (
+        <View style={[styles.frameStage, variant === "full" ? styles.fullBody : null]} testID="preview-updating">
+          <Skeleton height={variant === "side" ? 300 : 420} />
+          <View style={styles.statusPill} role="status" accessibilityLiveRegion="polite" accessibilityLabel="Updating preview">
+            <ActivityIndicator size="small" color={ui.t2} />
+            <Text style={styles.statusText}>Updating preview…</Text>
+          </View>
+        </View>
       ) : grant.kind === "error" ? (
-        <View style={styles.errorStage} role="alert">
+        <View style={styles.errorStage} role="alert" testID="preview-error">
           <Text style={styles.errorTitle}>We couldn&apos;t load the preview</Text>
+          <Hint>Your draft is saved. Only the preview didn&apos;t load.</Hint>
           <WButton label="Try again" size="sm" onPress={grant.onRetry} testID="preview-retry" />
         </View>
       ) : (
@@ -152,6 +188,8 @@ export function SitePreviewPanel({ grant, preference, onPreference, purpose, uns
             maxHeight={variant === "sheet" ? 560 : 520}
             fill={variant === "full"}
             tokenDeclarations={tokenDeclarations}
+            onStale={grant.onStale}
+            onFailed={grant.onFailed}
           />
           {/* #4453 m11 rework — a Draft page from Ari: the owner-only questions, over the frame. */}
           {grant.pages.some((page) => page.draft_by_ari === true && page.path === path) ? (
@@ -179,6 +217,8 @@ const styles = StyleSheet.create({
   caption: { fontSize: 12, lineHeight: 16, color: ui.t3, marginTop: 6 },
   errorStage: { minHeight: 200, alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 12, backgroundColor: color.fill.tableHead },
   errorTitle: { fontSize: 14, fontWeight: "600", color: ui.t1 },
+  statusPill: { position: "absolute", top: 14, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: ui.border2, backgroundColor: color.card },
+  statusText: { fontSize: 12.5, fontWeight: "600", color: ui.t1 },
   fullBody: { flex: 1 },
   frameStage: { position: "relative" },
   overlay: { position: "absolute", left: 12, right: 12, top: 12, alignItems: "flex-start" },

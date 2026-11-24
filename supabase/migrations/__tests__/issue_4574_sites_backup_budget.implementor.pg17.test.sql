@@ -41,7 +41,11 @@ BEGIN
   END IF;
 
   -- ── the live gate body reads the helpers ───────────────────────────────
-  v_body := pg_get_functiondef('public.brand_site_authorize_operation(uuid, uuid, text, text, text, text)'::regprocedure);
+  -- #4572 item 15 moved the recovery condition into its one owner,
+  -- brand_site_first_publish_ready(); the gate calls it. The budgets are
+  -- read there now (and the gate holds no literal budget either).
+  v_body := pg_get_functiondef('public.brand_site_first_publish_ready()'::regprocedure)
+    || pg_get_functiondef('public.brand_site_authorize_operation(uuid, uuid, text, text, text, text)'::regprocedure);
   IF position('database_backup_verified_at > clock_timestamp() - public.brand_site_database_backup_budget()' IN v_body) = 0
     OR position('object_manifest_verified_at > clock_timestamp() - public.brand_site_object_manifest_budget()' IN v_body) = 0 THEN
     RAISE EXCEPTION 'the live gate does not read the budget helpers';

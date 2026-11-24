@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- covers are served by the token-bound /om route (immutable, same origin). */
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
+import { Lines } from "../Lines";
 import type { SiteDestination } from "../../../contracts/generated/collections.ts";
 import { TrackedLink } from "../../../components/TrackedLink";
 import { GalleryLightbox } from "../../../components/GalleryLightbox";
@@ -116,7 +117,8 @@ export function Cover({ item, sizes, face = false }: { item: GridItem; sizes: st
    * #4453 — no usable cover (none, or a video cover the feed cannot serve as a
    * picture): on the cards layout (`face`), a designed face with the
    * offering's title instead of an empty box. Decorative only: the title is
-   * also the card's heading. Other layouts keep their own no-picture rule.
+   * also the card's heading. #4572 item 2 — Posters and Maison/Journal rows
+   * pass `face` too, so no layout draws an empty `.mg-ph`.
    */
   const image = item.card.coverUrl
     ? <img src={item.card.coverUrl} srcSet={item.card.coverSrcSet ?? undefined} sizes={item.card.coverSrcSet ? sizes : undefined} alt="" loading="lazy" decoding="async" />
@@ -144,11 +146,11 @@ export function OfferingGridPoster(props: SharedBlockProps) {
         <div className="mg-posters" data-mg-stagger="">
           {items.map((item, itemIndex) => (
             <article key={item.card.id} className={`mg-poster${itemIndex === 0 && items.length % 2 ? " mg-poster--wide" : ""}`} data-offering-kind={item.card.kind}>
-              <div className="mg-ph"><Cover item={item} sizes={itemIndex === 0 && items.length % 2 ? "(min-width: 1320px) 1280px, 100vw" : "(min-width: 900px) 50vw, 100vw"} /></div>
+              <div className="mg-ph"><Cover item={item} face sizes={itemIndex === 0 && items.length % 2 ? "(min-width: 1320px) 1280px, 100vw" : "(min-width: 900px) 50vw, 100vw"} /></div>
               <div className="mg-poster__body">
                 {item.card.destination || item.card.dates ? <p className="mg-poster__where">{[item.card.destination, item.card.dates].filter(Boolean).join(" · ")}</p> : null}
                 <h3><CardTitle card={item.card} /></h3>
-                {item.card.summary ? <p className="mg-poster__blurb">{item.card.summary}</p> : null}
+                {item.card.summary ? <p className="mg-poster__blurb"><Lines text={item.card.summary} /></p> : null}
                 <div className="mg-chips"><State item={item} /></div>
                 <div className="mg-poster__foot">
                   <Price item={item} className="mg-price" />
@@ -217,7 +219,7 @@ export function OfferingGridList(props: SharedBlockProps) {
               {flyers ? <div className="mg-lrow__img"><FlyerThumb item={item} /></div> : null}
               <div className="mg-lrow__t">
                 <h3><CardTitle card={item.card} /></h3>
-                {item.card.summary ? <p>{item.card.summary}</p> : null}
+                {item.card.summary ? <p><Lines text={item.card.summary} /></p> : null}
               </div>
               <div className="mg-lrow__meta">
                 {item.card.destination ? <span>{item.card.destination}</span> : null}
@@ -244,7 +246,7 @@ export function OfferingGridCards(props: SharedBlockProps) {
               <div className="mg-ocard__b">
                 {item.card.dates ? <p className="mg-ocard__when">{item.card.dates}</p> : null}
                 <h3><CardTitle card={item.card} /></h3>
-                {item.card.summary ? <p className="mg-ocard__blurb">{item.card.summary}</p> : null}
+                {item.card.summary ? <p className="mg-ocard__blurb"><Lines text={item.card.summary} /></p> : null}
                 {item.card.destination ? <p className="mg-ocard__where">{item.card.destination}</p> : null}
                 <State item={item} />
                 <div className="mg-ocard__row">

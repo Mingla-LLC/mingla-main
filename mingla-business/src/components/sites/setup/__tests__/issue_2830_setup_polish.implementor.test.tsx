@@ -102,8 +102,8 @@ function planMissingMedia(): SitePlanState {
 describe("#2830 bug 2 — Build names what is missing before the press", () => {
   it("lists exactly what Ari lists, from the same plan read", () => {
     expect(setupBuildBlockers(planMissingMedia())).toEqual([
-      { key: "profile_photo", label: "Brand logo" },
-      { key: "cover_media", label: "Cover media" },
+      { key: "profile_photo", label: "Brand logo", requirement: "required" },
+      { key: "cover_media", label: "Cover media", requirement: "required" },
     ]);
   });
 
@@ -118,7 +118,10 @@ describe("#2830 bug 2 — Build names what is missing before the press", () => {
     );
     const text = textOf(tree.root);
     expect(text).toContain("Your draft can't be built yet.");
-    expect(text).toContain("Still needed: brand logo and cover media. Nothing has been created.");
+    // #4572 item 4 — one row per item now (the sentence moved to the list label).
+    expect(text).toContain("Still needed. Nothing has been created.");
+    expect(text).toContain("Brand logo");
+    expect(text).toContain("Cover media");
     expect(has(tree.root, "setup-draft-missing")).toBe(true);
     expect(has(tree.root, "build-create")).toBe(false);
   });

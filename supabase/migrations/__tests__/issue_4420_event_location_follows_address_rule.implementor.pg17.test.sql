@@ -367,7 +367,8 @@ SELECT pg_temp.t4420l_check(
   'H-HIDE hiding it again takes the street out of the public theme');
 
 -- D-*: duplicating a hidden event (the unpublish path builds the same draft) keeps the
--- street: the draft's location is the stored label, as before this change (#3827).
+-- street. Since #4572 the draft keeps the venue name and the address as two fields
+-- (it used to hold the joined label in venueName).
 SELECT set_config('request.jwt.claims',
   json_build_object('sub', '44240000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true),
   set_config('request.jwt.claim.sub', '44240000-0000-4000-8000-0000000000a1', true);
@@ -379,7 +380,10 @@ SELECT set_config('request.jwt.claims', '', true), set_config('request.jwt.claim
 SELECT pg_temp.t4420l_check(
   (SELECT e.theme #>> '{business_draft,location,venueName}' FROM public.events e
     WHERE e.id = (SELECT (r #>> '{event,id}')::uuid FROM t4420l_dup))
-    = 'Loft Hall · 12 Hidden Lane, New York, NY 10005, USA'
+    = 'Loft Hall'
+  AND (SELECT e.theme #>> '{business_draft,location,address}' FROM public.events e
+    WHERE e.id = (SELECT (r #>> '{event,id}')::uuid FROM t4420l_dup))
+    = '12 Hidden Lane, New York, NY 10005, USA'
   AND NOT ((SELECT e.theme FROM public.events e
     WHERE e.id = (SELECT (r #>> '{event,id}')::uuid FROM t4420l_dup))::text LIKE '%Draft Street%'),
   'D-DUPLICATE a duplicate of a hidden event keeps the street and not the stale draft blob');

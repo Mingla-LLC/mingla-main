@@ -1,3 +1,4 @@
+import type { Where } from "payload";
 import { safeText } from "./validation";
 
 type Relationship = string | number | { id?: unknown } | null | undefined;
@@ -13,6 +14,10 @@ export interface StudioMediaSelectionInput {
 
 export interface StudioMediaTarget {
   id: string;
+  /** #4572 item 16 — "site_settings" for the logo and social image; page block targets leave it out. */
+  scope?: "site_settings";
+  /** The site-settings field, for a site_settings target. */
+  settingsField?: StudioSettingsField;
   pageId: string;
   pageTitle: string;
   pageRole: string;
@@ -24,6 +29,79 @@ export interface StudioMediaTarget {
   currentMediaId: string | null;
   currentAlt: string;
   decorativeOnly: boolean;
+}
+
+export type StudioSettingsField = "logo" | "social_image";
+
+interface SettingsLike {
+  id: string | number;
+  updatedAt?: unknown;
+  logo?: unknown;
+  social_image?: unknown;
+}
+
+const SETTINGS_TARGETS: ReadonlyArray<{ field: StudioSettingsField; label: string }> = [
+  { field: "logo", label: "Site settings · Logo" },
+  { field: "social_image", label: "Site settings · Social image" },
+];
+
+/*
+ * #4572 item 16 — the site's logo and social image as places a photo can go.
+ * Both are named by the site's own name (no alt text of their own), so they
+ * are decorative here, as the hero is. `pageId` carries the settings id so
+ * the attach reply is checked the same way as a page's.
+ */
+export function studioSettingsTargets(settings: SettingsLike | null | undefined): StudioMediaTarget[] {
+  if (!settings) return [];
+  const settingsId = String(settings.id);
+  return SETTINGS_TARGETS.map(({ field, label }) => ({
+    id: `site-settings:${field}`,
+    scope: "site_settings" as const,
+    settingsField: field,
+    pageId: settingsId,
+    pageTitle: "Site settings",
+    pageRole: "site-settings",
+    expectedRevision: String(settings.updatedAt ?? ""),
+    blockIndex: -1,
+    field: "media" as const,
+    imageIndex: null,
+    label,
+    currentMediaId: relationshipId(settings[field] as Relationship),
+    currentAlt: "",
+    decorativeOnly: true,
+  }));
+}
+
+/*
+ * #4572 QA P2-3 — the site logo and social image are photos. Studio's picker
+ * offers only image media, and the attach endpoint refuses anything else (the
+ * same rule as Ari's setSiteLogo: detected_mime image/*).
+ */
+export function studioSettingsMediaFilter(tenantId: string | undefined): false | Where {
+  return tenantId
+    ? { tenant: { equals: tenantId }, state: { equals: "READY" }, detected_mime: { like: "image/" } }
+    : false;
+}
+
+/** Refuses a non-photo for the logo or social image (MEDIA_NOT_A_PHOTO). */
+export function assertStudioSettingsPhoto(media: { detected_mime?: unknown }): void {
+  if (typeof media.detected_mime !== "string" || !media.detected_mime.toLowerCase().startsWith("image/")) {
+    throw new Error("MEDIA_NOT_A_PHOTO");
+  }
+}
+
+/** The site-settings change for a chosen photo; a stale revision or another field is refused. */
+export function applyStudioSettingsSelection(
+  settings: SettingsLike,
+  mediaId: string,
+  input: { expectedRevision: string; field: unknown },
+): { logo: string } | { social_image: string } {
+  if (!/^[0-9a-f-]{36}$/i.test(mediaId) || String(settings.updatedAt ?? "") !== input.expectedRevision) {
+    throw new Error("REVISION_CONFLICT");
+  }
+  if (input.field === "logo") return { logo: mediaId };
+  if (input.field === "social_image") return { social_image: mediaId };
+  throw new Error("VALIDATION_FAILED");
 }
 
 interface PageLike {

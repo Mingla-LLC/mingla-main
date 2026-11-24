@@ -73,6 +73,8 @@ const UNFINISHED = /(?:\.\.\.|…|,|\b(?:and|or|the|a|an|to|of|with|for))\s*$/i;
 
 /** The picture each block slot needs at least (CSS px × 2 for sharp screens). */
 const SLOT_MIN_WIDTH: Record<string, number> = { hero: 1600, page_header: 1600, media_feature: 1000, video_feature: 1280, gallery: 800 };
+/** #4572 item 14 — at or above this width a photo looks fine on a phone (the hint says so). */
+export const PHONE_FINE_WIDTH = 1080;
 
 /**
  * #2829 — the longest headline (characters) each design sets on a 390 px
@@ -272,7 +274,14 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
     }
     const need = SLOT_MIN_WIDTH[slot];
     if (need && typeof media.width === "number" && media.width < need && String(media.detected_mime ?? "").startsWith("image/")) {
-      photos.push({ message: `${placeLabel({ page_path, where })}: the picture is ${media.width} px wide; this spot looks sharp from ${need} px`, page_path, section: "pages" });
+      // #4572 item 14 (D13) — a phone-size photo (1080 px and up) is fine on phones; say so. Still a suggestion only.
+      photos.push({
+        message: media.width >= PHONE_FINE_WIDTH
+          ? `${placeLabel({ page_path, where })}: the picture is ${media.width} px wide. It looks fine on phones (Instagram photos are about this size); on large screens it looks sharpest from ${need} px.`
+          : `${placeLabel({ page_path, where })}: the picture is ${media.width} px wide; this spot looks sharp from ${need} px`,
+        page_path,
+        section: "pages",
+      });
     }
     if (needsAlt && !(typeof alt === "string" && alt.trim())) {
       photos.push({ message: `${placeLabel({ page_path, where })}: the picture has no description for people who can't see it`, page_path, section: "pages" });

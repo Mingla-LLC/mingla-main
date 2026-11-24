@@ -1102,10 +1102,8 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
       return;
     }
     if (isSoldOutTicket) return;
-    if (ticket.approvalRequired) {
-      callbacks.onRequestApproval(ticket.id);
-      return;
-    }
+    // #4572 7c (D7): ticket approval is not enforced yet, so an approval ticket
+    // follows the same free / buy path as the main button (no fake request).
     if (ticket.isFree) {
       callbacks.onClaimFreeTicket(ticket.id);
       return;
@@ -1121,7 +1119,6 @@ const PublicTicketRow: React.FC<PublicTicketRowProps> = ({
     if (isDoorOnly) return "Pay at the door";
     if (isSoldOutTicket && ticket.waitlistEnabled) return "Join waitlist";
     if (isSoldOutTicket) return "Sold out";
-    if (ticket.approvalRequired) return "Request approval";
     if (ticket.isFree) return "Get free ticket";
     return "Buy ticket";
   })();

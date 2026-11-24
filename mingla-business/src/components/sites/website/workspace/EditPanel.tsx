@@ -5,7 +5,7 @@ import { Sheet } from "../../../ui/Sheet";
 import { Banner, Chip, Field, MiniButton, Skeleton, WButton, ui } from "../ui";
 import { WebsiteIcon } from "../WebsiteIcon";
 import { PhotoChooser } from "../PhotoField";
-import { useSectionCatalog, type SectionField, type WorkspacePage, type WorkspaceSection } from "../../../../sites/contentApi";
+import { offeredSections, useSectionCatalog, type SectionField, type WorkspacePage, type WorkspaceSection } from "../../../../sites/contentApi";
 import { BrandSitesError } from "../../../../services/brandSitesService";
 import { markByOf, markLabel } from "../../../../sites/previewBridge";
 import { addRowBlocked, feedNote, moveBlocked, removeBlocked, removeRowBlocked, splitRows } from "../../../../sites/sectionEdits";
@@ -210,20 +210,32 @@ function SectionEditor({ ws, section, onAskAri, madeByTeam }: { ws: Workspace; s
   }, [section.id]);
   const note = feedNote(section);
   const split = splitRows(section);
-  const fieldInput = (field: SectionField, first: boolean) => (
-    <Field
-      key={field.key}
-      ref={first ? firstField : undefined}
-      label={field.label}
-      value={field.value}
-      onChangeText={(value) => ws.typeField(section, field.key, value)}
-      multiline={field.kind !== "text"}
-      max={field.max ?? undefined}
-      editable={!readOnly}
-      help={field.kind === "richtext" ? "Plain paragraphs. Leave a blank line between them." : null}
-      testID={`field-${section.id}-${field.key}`}
-    />
-  );
+  const fieldInput = (field: SectionField, first: boolean) => {
+    // #4572 item 11 — words a refused save kept are shown first, never wiped.
+    const kept = ws.unsavedValue(section.id, field.key);
+    const reason = kept === null ? null : ws.unsavedMessage(section.id, field.key);
+    return (
+      <View key={field.key}>
+        <Field
+          ref={first ? firstField : undefined}
+          label={field.label}
+          value={kept ?? field.value}
+          onChangeText={(value) => ws.typeField(section, field.key, value)}
+          multiline={field.kind !== "text"}
+          max={field.max ?? undefined}
+          editable={!readOnly}
+          help={field.kind === "richtext" ? "Plain paragraphs. Leave a blank line between them." : null}
+          testID={`field-${section.id}-${field.key}`}
+        />
+        {kept !== null ? (
+          <View style={styles.unsaved} role="alert" testID={`field-${section.id}-${field.key}-unsaved`}>
+            <Text style={styles.unsavedText}>{`Not saved. ${reason ?? ""}`.trim()}</Text>
+            <WButton label="Try again" size="sm" onPress={() => ws.retryField(section, field.key)} testID={`field-${section.id}-${field.key}-retry`} />
+          </View>
+        ) : null}
+      </View>
+    );
+  };
   const cannotRemove = ws.readOnlyReason ?? removeBlocked(section);
   const draft = section.review?.state === "draft";
   return (
@@ -348,7 +360,8 @@ function SectionEditor({ ws, section, onAskAri, madeByTeam }: { ws: Workspace; s
 }
 
 function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boolean; onClose: () => void }): React.ReactElement {
-  const catalog = useSectionCatalog(ws.siteId, visible);
+  const catalog = useSectionCatalog(ws.siteId, ws.page?.id ?? null, visible);
+  const offered = catalog.data ? offeredSections(catalog.data, ws.sections) : null;
   const after = ws.selected ?? ws.sections[ws.sections.length - 1] ?? null;
   // A section that starts from a photo: choose the photo, then it is added.
   const [photoFor, setPhotoFor] = useState<{ type: string; label: string } | null>(null);
@@ -364,8 +377,8 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
               <WButton label="Try again" size="sm" onPress={() => { void catalog.refetch(); }} />
             </Banner>
           ) : null}
-          {catalog.data && catalog.data.length === 0 ? <Text style={parts.body}>This design has no more sections to add. Ask Ari or the Mingla team for something custom.</Text> : null}
-          {(catalog.data ?? []).map((entry) => (
+          {offered && offered.types.length === 0 ? <Text style={parts.body}>This design has no more sections to add. Ask Ari or the Mingla team for something custom.</Text> : null}
+          {(offered?.types ?? []).map((entry) => (
             <Pressable
               key={entry.type}
               onPress={() => {
@@ -386,6 +399,7 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
               <WebsiteIcon name={entry.needs_photo ? "image" : "plus"} size={18} color={ui.t1} />
             </Pressable>
           ))}
+          {offered?.coverNote ? <Text style={parts.small} testID="add-section-cover-note">{offered.coverNote}</Text> : null}
           <WButton label="Cancel" variant="ghost" onPress={onClose} testID="add-section-cancel" />
         </View>
       </Sheet>
@@ -395,7 +409,8 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
         onPick={(picked) => {
           const wanted = photoFor;
           setPhotoFor(null);
-          if (wanted) ws.add(wanted.type, wanted.label, after?.id ?? null, picked.id);
+          // #4575: a cover always goes first on its page (it replaces a page title there).
+          if (wanted) ws.add(wanted.type, wanted.label, wanted.type === "hero" ? null : after?.id ?? null, picked.id);
         }}
       />
     </>
@@ -403,6 +418,9 @@ function AddSectionSheet({ ws, visible, onClose }: { ws: Workspace; visible: boo
 }
 
 const styles = StyleSheet.create({
+  // #4572 item 11 — the "Not saved" row under a field (error tint, a 44 px Try again).
+  unsaved: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[2], paddingVertical: space[2], paddingHorizontal: space[3], borderRadius: radius.sm, backgroundColor: color.errorTint, borderWidth: 1, borderColor: color.errorLine },
+  unsavedText: { flex: 1, minWidth: 160, color: color.text1, fontSize: 13, lineHeight: 18 },
   label: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ui.t3, marginBottom: 6 },
   picker: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 14, borderRadius: radius.sm, borderWidth: 1, borderColor: ui.border2, backgroundColor: ui.card },
   pickerText: { fontSize: 16, fontWeight: "600", color: ui.t1 },

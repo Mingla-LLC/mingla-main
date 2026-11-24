@@ -15,7 +15,7 @@ import {
   persistProvisionOperation,
   provisionBrandSite,
 } from "../services/brandSitesService";
-import { brandSiteKeys } from "./brandSiteKeys";
+import { brandSiteKeys, isSitePreviewKey } from "./brandSiteKeys";
 import { composeBrandSiteFromPlan } from "./planApi";
 import { planBuildDone, type SitePlanState } from "./sitePlanState";
 import {
@@ -207,6 +207,8 @@ export function useSetupDraft(args: {
       // returning. A compose the plan doesn't show as built is a failed compose,
       // or this screen would say "building" forever over an empty Home page.
       await queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId) });
+      // #4572 item 1 — the preview minted before Build shows the old draft (or a refusal): mint a new one.
+      await queryClient.invalidateQueries({ predicate: (query) => isSitePreviewKey(query.queryKey) });
       const latest = queryClient.getQueryData<SitePlanState>(brandSiteKeys.plan(brandId));
       if (latest && !planBuildDone(latest)) setComposeFailed(true);
     } catch (error) {

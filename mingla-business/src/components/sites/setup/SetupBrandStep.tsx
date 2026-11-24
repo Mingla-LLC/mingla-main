@@ -18,6 +18,7 @@ import type { AriFlowUploadCopy, AriFlowUploadKind } from "../../ari/ariFlowCard
 import { Chip, Field, Hint, WButton, ui } from "../website/ui";
 
 import { color } from "../../../constants/designSystem";
+import { NOT_APPLICABLE_KEYS } from "../../../sites/setupFields";
 /**
  * The brand contact email rule, word for word from `utils/brandContactEmail`
  * (its owner; a test pins the two together). Kept here so this lazy screen does
@@ -50,11 +51,6 @@ const UPLOAD_COPY: Readonly<Record<Extract<AriFlowUploadKind, "logo" | "cover">,
   cover: { action: "Upload a photo", note: "Wide photo, JPEG, PNG or WebP under 20 MB", answer: "" },
 };
 
-/** The nine the server accepts as "doesn't apply". Never a required field. */
-const NOT_APPLICABLE_KEYS: ReadonlySet<string> = new Set([
-  "venue_descriptor", "contact_email", "contact_phone", "address", "city_country",
-  "social_links", "profile_photo", "cover_media", "theme",
-]);
 
 const ORDER = ["name", "description", "city_country", "contact_email", "contact_phone", "address", "social_links", "profile_photo", "cover_media", "theme"];
 

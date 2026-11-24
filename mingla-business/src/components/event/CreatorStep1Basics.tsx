@@ -43,6 +43,7 @@ import {
 import type { DraftEventFormat } from "../../store/draftEventStore";
 import {
   PARTY_TYPES,
+  PARTY_TYPE_GROUPS,
   VIBE_TAGS,
   MUSIC_GENRES,
 } from "../../constants/eventTaxonomy";
@@ -286,20 +287,38 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
         </View>
       </View>
 
-      {/* Party Type — required, multi-select */}
+      {/* Event type (#4572 item 6, was "Party Type") — required,
+          multi-select, 26 choices in two headed groups. */}
       <View style={styles.field} onLayout={rememberSectionY("partyTypes")}>
-        <Text style={styles.fieldLabel}>Party Type *</Text>
-        <View style={styles.taxonomyGrid}>
-          {PARTY_TYPES.map((opt) => (
-            <TaxonomyPill
-              key={opt.slug}
-              slug={opt.slug}
-              label={opt.label}
-              selected={draft.partyTypes.includes(opt.slug)}
-              onToggle={handleTogglePartyType}
-            />
-          ))}
+        <View style={styles.fieldLabelRow}>
+          <Text style={styles.fieldLabel}>Event type *</Text>
+          {draft.partyTypes.length > 0 ? (
+            <Text style={styles.fieldCount}>
+              {draft.partyTypes.length} picked
+            </Text>
+          ) : null}
         </View>
+        <Text style={styles.fieldHint}>Pick all that fit.</Text>
+        {PARTY_TYPE_GROUPS.map((group) => (
+          <View key={group.id} style={styles.taxonomyGroup}>
+            <Text style={styles.taxonomyGroupLabel}>{group.label}</Text>
+            <View
+              style={styles.taxonomyGrid}
+              accessibilityRole="list"
+              accessibilityLabel={group.label}
+            >
+              {PARTY_TYPES.filter((opt) => opt.group === group.id).map((opt) => (
+                <TaxonomyPill
+                  key={opt.slug}
+                  slug={opt.slug}
+                  label={opt.label}
+                  selected={draft.partyTypes.includes(opt.slug)}
+                  onToggle={handleTogglePartyType}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
         {partyTypesError !== undefined ? (
           <Text style={styles.helperError}>{partyTypesError}</Text>
         ) : null}
@@ -466,6 +485,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: space[1],
+  },
+  // #4572 item 6 — Event type label row, hint and group headings.
+  fieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  fieldCount: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginBottom: space[1],
+  },
+  fieldHint: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginBottom: space[2],
+  },
+  taxonomyGroup: {
+    marginBottom: space[3],
+  },
+  taxonomyGroupLabel: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: color.text3,
+    marginBottom: space[2],
   },
   taxonomyPill: {
     flexDirection: "row",

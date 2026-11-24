@@ -52,6 +52,7 @@ export default async function PreviewPage({
       publishUrl={studioReturnLocationFromContext(grant, "preview_publish")}
       revision={grant.source_revision}
       expiresAt={grant.expires_at}
+      businessOrigin={cmsConfig().businessOrigin}
     />
   );
 }

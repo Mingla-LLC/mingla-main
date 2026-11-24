@@ -158,6 +158,9 @@ export const WORKSPACE_SNAPSHOT = {
     { page_id: "pg_about", label: "About" },
     { page_id: "pg_events", label: "Events" },
   ],
+  // #4572 item 17 — the header button is not a menu item; the logo is its own thing.
+  header_button: { label: "Tickets", page_id: "pg_events", links_outside: false },
+  logo: { media_id: null },
   truncated_at: 280,
   addable_sections: [
     { type: "gallery", label: "Photo gallery", needs_photo: true },
@@ -208,7 +211,7 @@ function plan(say, summary, steps, couldnt) {
           why: "The owner asked for this.",
           ...(cites
             ? { cites }
-            : step.op === "set_menu" || (step.edits ?? []).length > 0 ||
+            : step.op === "set_menu" || step.op === "set_header_button" || (step.edits ?? []).length > 0 ||
                 (step.list_ops ?? []).some((row) => row.op === "add")
             ? { cites: words(say) }
             : {}),
@@ -413,6 +416,32 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
           { page_id: "pg_events", label: "What's on" },
           { page_id: "pg_about", label: "About" },
         ],
+      }]],
+    )],
+  },
+  {
+    // #4572 item 17 — Kolanut's own sentence (agent_messages 2026-11-23 18:23:55, typo kept):
+    // the red header button, never the Events menu item.
+    id: "ws_set_header_button_kolanut",
+    source: "Step type set_header_button; #4572 item 17 (Kolanut renamed the menu item instead).",
+    turns: [applied(
+      "change the red button's words from Tckets to RSVP, still linking to the events page",
+      "Change the red button to RSVP",
+      [["Change the header button to RSVP", {
+        op: "set_header_button",
+        button_label: "RSVP",
+      }]],
+    )],
+  },
+  {
+    id: "ws_set_logo",
+    source: "Step type set_logo; #4572 item 16.",
+    turns: [applied(
+      "Use the open kitchen photo as our logo",
+      "Use the open kitchen photo as the logo",
+      [["Set the logo", {
+        op: "set_logo",
+        media_id: WS_MEDIA_KITCHEN,
       }]],
     )],
   },

@@ -336,7 +336,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   extraGuestCount: "Guests on your own list",
   inPersonPaymentsEnabled: "In-person payments",
   // ORCH-0824 hotfix
-  partyTypes: "Party types",
+  partyTypes: "Event types",
   vibeTags: "Vibe tags",
   musicGenres: "Music genres",
   city: "City",

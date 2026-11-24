@@ -91,6 +91,8 @@ describe("#2933 Payload hidden media fields", () => {
       context: {},
       user: { id: "user-1", tenantId: TENANT_ID, siteId: SITE_ID },
       payload: {
+        // #4572 item 12 — no READY copy of this file yet (the repeat-upload check).
+        find: async () => ({ docs: [] }),
         findByID: async (input: Record<string, unknown>) => {
           reads.push(input);
           return {
