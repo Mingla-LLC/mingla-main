@@ -697,10 +697,10 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             backgroundColor: palette.page.startsWith("#")
               ? hexToRgba(
                   palette.page,
-                  Platform.OS === "web"
-                    ? headerBlurred
-                      ? 0.72
-                      : isDesktop ? 0.78 : 1
+                  // Phone web never blurs the band (desktopBlur(0) below), so it
+                  // stays opaque whatever the material says; only desktop web
+                  // lowers it, further when its blur is on (#4420 A-2).
+                  Platform.OS === "web" ? (isDesktop ? (headerBlurred ? 0.72 : 0.78) : 1)
                     : glassFillAlpha({
                         platform: Platform.OS,
                         blurred: headerBlurred,

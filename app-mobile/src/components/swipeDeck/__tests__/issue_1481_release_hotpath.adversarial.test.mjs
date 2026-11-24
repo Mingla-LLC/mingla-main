@@ -49,7 +49,7 @@ test('normal persistence cannot serialize before a 750ms quiet IDLE window', () 
   assert.match(history, /Date\.now\(\) - lastInteractionAt >= DECK_SESSION_HISTORY_QUIET_IDLE_MS/);
 });
 
-test('promoted-card analytics waits for the owned quiet-IDLE queue', () => {
+test('promoted-card analytics waits for the owned quiet-IDLE queue', async () => {
   const viewEffect = swipeable.slice(
     swipeable.indexOf('// Track card viewed when the current card changes'),
     swipeable.indexOf('// Trigger card content entrance animations'),
@@ -59,8 +59,16 @@ test('promoted-card analytics waits for the owned quiet-IDLE queue', () => {
     /promotedCardIdRef\.current === currentRec\.id[\s\S]*enqueuePostSwipeWork\(trackCardViewed\)/,
   );
   assert.match(viewEffect, /else \{\s*void trackCardViewed\(\)/, 'initial card view remains immediate');
-  assert.equal((viewEffect.match(/mixpanelService\.trackCardViewed/g) ?? []).length, 1);
-  assert.equal((viewEffect.match(/postHogService\.capture/g) ?? []).length, 1);
+  // #4490 W5 fix 2: the view goes through ONE guarded helper, which makes
+  // exactly one Mixpanel and one PostHog card_viewed call.
+  assert.equal((viewEffect.match(/trackDeckCardViewed\(/g) ?? []).length, 1);
+  const analytics = await readFile(new URL('../../deckCard/deckCardAnalytics.ts', import.meta.url), 'utf8');
+  const viewed = analytics.slice(
+    analytics.indexOf('export function trackDeckCardViewed('),
+    analytics.indexOf('export function trackDeckCardExpanded('),
+  );
+  assert.equal((viewed.match(/mixpanelService\.trackCardViewed/g) ?? []).length, 1);
+  assert.equal((viewed.match(/postHogService\.capture\("card_viewed"/g) ?? []).length, 1);
 });
 
 test('terminal, background, reset, rollback, and unmount retain forced durability seams', () => {

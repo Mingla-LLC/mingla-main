@@ -29,7 +29,10 @@ Deno.test("A-1 the itinerary dot is the stop's position in the list", () => {
 
 Deno.test("A-2 the phone-web glass header band is opaque", () => {
   const shell = read("../ParallaxCoverShell.tsx");
-  assertStringIncludes(shell, 'Platform.OS === "web" ? (isDesktop ? 0.78 : 1)');
+  assertStringIncludes(shell, 'Platform.OS === "web" ? (isDesktop ? (headerBlurred ? 0.72 : 0.78) : 1)');
+  // #4490: the phone-web branch is opaque even when the glass material asks
+  // for blur, because phone web never applies the blur (desktopBlur(0)).
+  assert(!shell.includes("? headerBlurred\n                      ? 0.72"), "phone web band must not drop to 0.72");
 });
 
 Deno.test("A-3 a trip day's calendar date is formatted, never raw ISO", () => {

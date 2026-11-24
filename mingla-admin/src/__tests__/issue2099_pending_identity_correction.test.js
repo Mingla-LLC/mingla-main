@@ -53,7 +53,14 @@ test("#2099 Admin reuses the shared high-risk modal and owns its own proposal st
     !/const \[proposal/.test(page),
     "ClaimsPage must not own the #2099 proposal state — the panel does",
   );
-  contains(page, 'stay: "Stay"', "page");
+  // #4490 moved the venue category labels into one shared admin module; the
+  // Claims page still labels a Stay venue "Stay" through it.
+  contains(page, 'from "../lib/venueCategoryLabels"', "page");
+  contains(
+    read("mingla-admin/src/lib/venueCategoryLabels.js"),
+    'stay: "Stay"',
+    "venue category labels",
+  );
 });
 
 test("#2099 Admin stale recovery unmounts the modal and never reports success", () => {

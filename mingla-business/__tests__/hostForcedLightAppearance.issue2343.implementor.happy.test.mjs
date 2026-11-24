@@ -281,10 +281,12 @@ test("every iOS-reachable Host DateTimePicker explicitly owns its appearance", (
   const sites = pickerRegistry();
   // [TEST-MOD #4523] the Host calendar field (a JS surface on every platform,
   // shipped in PR #4594) replaced 8 native pickers, PaymentPlanEditor's among
-  // them; the 10 native call sites left are still each held to the rule below.
+  // them. [TEST-MOD #4490] BrandHoursEditor's two (iOS spinner + Android
+  // dialog) became the shared JS TimeField, which draws its own surface; the 8
+  // native call sites left are still each held to the rule below.
   assert.ok(
-    sites.length >= 10,
-    `expected at least 10 real Host picker call sites; found ${sites.length}`,
+    sites.length >= 8,
+    `expected at least 8 real Host picker call sites; found ${sites.length}`,
   );
   assert.ok(
     sites.some((site) => site.androidOnly),
