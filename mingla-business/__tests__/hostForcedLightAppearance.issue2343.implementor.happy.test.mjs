@@ -279,9 +279,12 @@ test("#2050 Host splash identity stays explicit and unchanged in both appearance
 
 test("every iOS-reachable Host DateTimePicker explicitly owns its appearance", () => {
   const sites = pickerRegistry();
+  // [TEST-MOD #4523] the Host calendar field (a JS surface on every platform,
+  // shipped in PR #4594) replaced 8 native pickers, PaymentPlanEditor's among
+  // them; the 10 native call sites left are still each held to the rule below.
   assert.ok(
-    sites.length >= 18,
-    `expected at least 18 real Host picker call sites; found ${sites.length}`,
+    sites.length >= 10,
+    `expected at least 10 real Host picker call sites; found ${sites.length}`,
   );
   assert.ok(
     sites.some((site) => site.androidOnly),
@@ -302,28 +305,22 @@ test("every iOS-reachable Host DateTimePicker explicitly owns its appearance", (
   );
 });
 
-test("PaymentPlanEditor pins its inline iOS picker to the established dark composition", () => {
-  const elements = extractElements(read(PAYMENT_PLAN), "DateTimePicker");
+test("PaymentPlanEditor dates use the Host calendar field, so no native picker appearance is left to pin", () => {
+  // [TEST-MOD #4523] the instalment due date moved from an inline iOS
+  // DateTimePicker (pinned dark here before) to the Host calendar DateField,
+  // which draws its own surface. The appearance risk is gone only if no
+  // native picker remains, so that is what this now pins.
+  const source = maskComments(read(PAYMENT_PLAN));
   assert.equal(
-    elements.length,
-    1,
-    "PaymentPlanEditor must retain one native picker owner",
+    extractElements(source, "DateTimePicker").length,
+    0,
+    "PaymentPlanEditor must not bring back a native picker beside the Host calendar field",
   );
-  const picker = elements[0].text;
-  assert.equal(
-    attribute(picker, "display")?.value,
-    'Platform.OS === "ios" ? "inline" : "default"',
-  );
-  assert.deepEqual(attribute(picker, "themeVariant"), {
-    literal: true,
-    value: "dark",
-    raw: '"dark"',
-  });
-  // [TEST-MOD-APPROVED #4420] textTokens.primary retired; color.text1 is the
-  // same light-on-dark text role.
-  assert.equal(attribute(picker, "textColor")?.value, "color.text1");
-  assert.match(picker, /minimumDate=\{new Date\(`/);
-  assert.match(picker, /onChange=\{onDateChange\(inst\.ordinal\)\}/);
+  assert.doesNotMatch(source, /@react-native-community\/datetimepicker/);
+  const fields = extractElements(source, "DateField");
+  assert.equal(fields.length, 1, "PaymentPlanEditor must keep exactly one due-date field");
+  assert.match(fields[0].text, /accessibilityLabel=\{`Installment \$\{inst\.ordinal\} due date`\}/);
+  assert.match(fields[0].text, /min=\{todayPlusDays\(1\)\}/);
 });
 
 test("CI names both #2343 suites explicitly and reconciles its suite counter", () => {
