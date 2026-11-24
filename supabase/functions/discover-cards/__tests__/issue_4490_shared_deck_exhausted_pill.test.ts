@@ -180,7 +180,7 @@ Deno.test('X-2 switch off: today\'s deck (the venue chip is dropped like any unk
 Deno.test('X-3 the same rule as an ordinary category that runs out (a one-place Play), switch on or off', async () => {
   const venue = await quiet(() => walk(fakeDb({ flags: { VENUE_DISCOVER: true }, base: { drinks: DRINKS }, venues: { bar_lounge: ONE_BAR },
     collab: session(['drinks_and_music', 'venue_type:bar_lounge']) }), 5));
-  for (const flags of [{}, { VENUE_DISCOVER: true }]) {
+  for (const flags of [{}, { VENUE_DISCOVER: true }] as Record<string, boolean>[]) {
     const ordinary = await quiet(() => walk(fakeDb({ flags, base: { drinks: DRINKS, play: PLAY_ONE }, collab: session(['drinks_and_music', 'play']) }), 5));
     assertEquals(ordinary.slice(0, 2), ['o0(Drinks & Music)', 'p0(Play)']);
     assertEquals(ordinary.slice(2), venue.slice(2), 'the venue pill ends the deck exactly as the ordinary one');

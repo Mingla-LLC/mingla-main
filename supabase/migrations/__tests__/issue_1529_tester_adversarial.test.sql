@@ -408,6 +408,10 @@ DECLARE
     -- writes one buyer_door_pay_link SMS row with mingla_e164_country(phone);
     -- issue_4490_ops_till_pay.implementor.pg17 (O2-DB11b) asserts it.
     'issue_4490_till_pay_code_text',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O5 sold-out lines: the buyer notice
+    -- writes one buyer_venue_order_sold_out row per channel: the text row with
+    -- mingla_e164_country(phone), the email row an explicit NULL.
+    'issue_4490_order_sold_out_resolve',
     'brand_form_auto_reminders_due',
     -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
     -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
