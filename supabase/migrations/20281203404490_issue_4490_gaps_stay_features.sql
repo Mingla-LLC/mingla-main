@@ -548,4 +548,10 @@ COMMENT ON FUNCTION public.issue_1387_assert_stay_row_integrity() IS
 COMMENT ON FUNCTION public.issue_1388_assert_reservation_scope() IS
   '#4490 J: NULL offer_kind is the Stay rail; a non-NULL offer_kind is the venue-offer rail on any venue category.';
 
+-- The helpers live in pg_temp for the session: drop them so a later migration
+-- applied in the same session (the CLI and CI replay every file in one
+-- connection) can define its own helper of the same name.
+DROP FUNCTION pg_temp.issue_4490_patch_each(regprocedure, text, text, integer);
+DROP FUNCTION pg_temp.issue_4490_patch(regprocedure, text, text);
+
 COMMIT;
