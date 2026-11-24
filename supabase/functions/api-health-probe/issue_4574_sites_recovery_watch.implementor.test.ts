@@ -15,13 +15,14 @@
 //   * an unreadable snapshot is "unproven" (never ok), repeated at most every 2 h;
 //   * a dry run sends nothing and records nothing; an undelivered email does
 //     not move the dedup state;
-//   * the source guard: the gate and the snapshot both read the SAME helpers
-//     in the newest migration that defines the gate, and this lane holds no
-//     budget of its own.
+//   * the source guard: the gate calls the one readiness owner
+//     (brand_site_first_publish_ready, #4572), that owner and the snapshot both
+//     read the SAME helpers, and this lane holds no budget of its own.
 //
-// FAILS-ON-REVERT: revert the migration's gate to `interval '26 hours'` and the
-// source guard fails; drop the same-incident rank check and the dedup test
-// fails; drop the `succeeded > 0` filter and the retry test fails.
+// FAILS-ON-REVERT: hard-code `interval '26 hours'` in the readiness owner, or
+// drop the gate's call to it, and the source guard fails; drop the
+// same-incident rank check and the dedup test fails; drop the `succeeded > 0`
+// filter and the retry test fails.
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
@@ -282,19 +283,31 @@ async function newestDefinition(name: string): Promise<{ file: string; body: str
 }
 
 Deno.test("#4574 source guard: the gate and the alert lane read one budget, and the lane holds none", async () => {
+  // #4572 moved the first-publish evidence checks into ONE owner,
+  // brand_site_first_publish_ready(), which the gate (and the Host's
+  // "publishing paused" read) call. The guard follows that owner: the gate must
+  // call it and hold no budget, and the owner must read both shared helpers.
   const gate = await newestDefinition("brand_site_authorize_operation");
+  assert(gate.body.length > 0, "no migration defines brand_site_authorize_operation");
   assert(
-    gate.body.includes("database_backup_verified_at > clock_timestamp() - public.brand_site_database_backup_budget()"),
-    `the newest gate (${gate.file}) must read the shared database-backup budget`,
+    /IF NOT public\.brand_site_first_publish_ready\(\) THEN/.test(gate.body),
+    `the newest gate (${gate.file}) must refuse a first publish through public.brand_site_first_publish_ready()`,
+  );
+  assert(!/(database_backup|object_manifest)_verified_at[^\n]*interval '/.test(gate.body), `the newest gate (${gate.file}) has a literal backup or manifest budget`);
+
+  const ready = await newestDefinition("brand_site_first_publish_ready");
+  assert(
+    ready.body.includes("database_backup_verified_at > clock_timestamp() - public.brand_site_database_backup_budget()"),
+    `the newest readiness owner (${ready.file}) must read the shared database-backup budget`,
   );
   assert(
-    gate.body.includes("object_manifest_verified_at > clock_timestamp() - public.brand_site_object_manifest_budget()"),
-    `the newest gate (${gate.file}) must read the shared manifest budget`,
+    ready.body.includes("object_manifest_verified_at > clock_timestamp() - public.brand_site_object_manifest_budget()"),
+    `the newest readiness owner (${ready.file}) must read the shared manifest budget`,
   );
-  assert(!/database_backup_verified_at[^\n]*interval '/.test(gate.body), "the gate has a literal database-backup budget");
+  assert(!/(database_backup|object_manifest)_verified_at[^\n]*interval '/.test(ready.body), `the readiness owner (${ready.file}) has a literal backup or manifest budget`);
 
   const snapshot = await newestDefinition("brand_site_recovery_watch_snapshot");
-  assertEquals(snapshot.file, gate.file, "the gate and the snapshot must be re-emitted together");
+  assert(snapshot.body.length > 0, "no migration defines brand_site_recovery_watch_snapshot");
   for (const token of [
     "'gate_budget_h', extract(epoch FROM public.brand_site_database_backup_budget()) / 3600",
     "config.database_backup_verified_at + public.brand_site_database_backup_budget()",

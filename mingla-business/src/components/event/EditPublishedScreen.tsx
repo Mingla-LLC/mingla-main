@@ -121,7 +121,7 @@ import { Toast } from "../ui/Toast";
 
 // #4420 — lazy: the sheet is mounted hidden and opens on intent.
 import { ChangeSummaryModal } from "./LazyChangeSummaryModal";
-import { CreatorStep1Basics } from "./CreatorStep1Basics";
+import { CreatorStep1Basics } from "./LazyCreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import {
@@ -1671,7 +1671,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 ? "This online event can't be updated right now. Contact support and quote city_required."
                 : "Pick the venue address from the suggestions so we have a city."
               : code.includes("party_types_required")
-                ? "Pick at least one party type before saving."
+                ? "Pick at least one event type before saving."
                 : code.includes("party_types_not_canonical") ||
                     code.includes("vibe_tags_not_canonical") ||
                     code.includes("music_genres_not_canonical")

@@ -35,6 +35,8 @@ jest.mock("../../../../hooks/useBrandSite", () => ({
   useDetachBrandSiteDomain: () => ({ mutate: mockMutate, isPending: false }),
   useBrandSiteLook: () => ({ isLoading: false, isError: false, data: { design: "voyage", tokens: {}, fonts: {}, revision: "r1" }, refetch: jest.fn() }),
   useSaveBrandSiteLook: () => ({ mutate: mockSaveLook, isPending: false }),
+  // #4572 item 16 — the Logo row in Design.
+  useSaveBrandSiteLogo: () => ({ mutate: jest.fn(), isPending: false }),
   // #2829 W10 — Settings carries the private share-preview card.
   useBrandSiteShareLinks: () => ({ isLoading: false, isError: false, data: [] }),
   useCreateBrandSiteShareLink: () => ({ mutate: jest.fn(), isPending: false }),

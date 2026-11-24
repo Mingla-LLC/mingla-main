@@ -1,3 +1,4 @@
+import { PUBLISHING_PAUSED_MESSAGE, PUBLISHING_PAUSED_TITLE } from "../services/brandSitesService";
 /**
  * #4453 Website workspace — the ONE status chip and the ONE Publish button.
  * Pure: the chip always says the state in words (never colour alone) and the
@@ -53,6 +54,8 @@ export function publishBarButton(input: WorkspaceStatusInput & { canPublish: boo
 
 export type PublishGateInput = {
   canPublish: boolean;
+  /** #4572 item 15 — Core's brand_site_publishing_paused() (absent = not paused). */
+  publishingPaused?: boolean;
   live: boolean;
   unpublished: number | null;
   unread: number;
@@ -93,6 +96,10 @@ export function publishGate(input: PublishGateInput): PublishGate {
     return { label: `${input.lockedBy ?? "A teammate"} is editing`, blocked: true, reason: "Only one person can change the website at a time. Take over from the banner to publish.", next: "wait" };
   }
   if (input.publishing) return { label: "Publishing…", blocked: true, reason: "Usually under a minute. You can close this; we’ll tell you when it’s live.", next: "wait" };
+  // #4572 item 15 — Core says a first Go live would be refused right now (brand_site_publishing_paused()).
+  if (input.publishingPaused === true && !input.live) {
+    return { label: PUBLISHING_PAUSED_TITLE, blocked: true, reason: PUBLISHING_PAUSED_MESSAGE, next: "wait" };
+  }
   if (input.offlineDevice) return { label: "You’re offline", blocked: true, reason: "Publishing needs a connection. Your draft is safe.", next: "retry" };
   if (input.unread > 0) {
     return { label: `Read ${input.unread} more to publish`, blocked: true, reason: "Read each section above and choose Looks good. Nothing goes live unread.", next: "read" };

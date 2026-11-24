@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Search, FileText, User, MapPin, Settings } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { fetchAdminProfileContactsById } from "../services/adminProfileContactsService";
 import { HEADER_PAGE_ITEMS, NAV_ITEMS } from "../lib/constants";
 import { useAuth } from "../context/AuthContext";
 import { AREA, TEAM_NAV_GROUP, canOpenPage } from "../lib/access";
@@ -45,12 +46,23 @@ export function CommandPalette({ open, onClose, onNavigate }) {
       try {
         const q = `%${escapeLike(query)}%`;
         const [usersRes, placesRes] = await Promise.all([
-          supabase.from("profiles").select("id, display_name, email").ilike("display_name", q).limit(5),
+          supabase.from("profiles").select("id, display_name").ilike("display_name", q).limit(5),
           supabase.from("place_pool").select("id, name, address").ilike("name", q).limit(5),
         ]);
         if (cancelled) return;
+        // #3969 — emails come from the admin contacts read, not the profile row.
+        let users = usersRes.data || [];
+        if (users.length > 0) {
+          try {
+            const contacts = await fetchAdminProfileContactsById(users.map((u) => u.id));
+            users = users.map((u) => ({ ...u, email: contacts[u.id]?.email || null }));
+          } catch (contactError) {
+            console.warn("[CommandPalette] contact read failed:", contactError?.message || contactError);
+          }
+        }
+        if (cancelled) return;
         setDbResults({
-          users: usersRes.data || [],
+          users,
           places: placesRes.data || [],
         });
       } catch {

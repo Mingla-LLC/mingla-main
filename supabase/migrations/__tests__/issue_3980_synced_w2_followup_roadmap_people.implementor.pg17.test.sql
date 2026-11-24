@@ -43,8 +43,8 @@ BEGIN
 END
 $routes4398$;
 -- The fixture's own checks run now, so nothing is left pending for later DDL.
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards IMMEDIATE;
-SET CONSTRAINTS ops_4398_card_people_people, ops_4398_card_people_cards DEFERRED;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards IMMEDIATE;
+SET CONSTRAINTS ops_4571_card_people_people, ops_4571_card_people_cards DEFERRED;
 -- [TEST-MOD-APPROVED #4398] an automatic card takes its main task's owner and
 -- watcher: this suite's main task is the owner's (Oz), watched by the admin (Ivy).
 update public.ops_work_people w set email = case w.role when 'owner' then 'oz.w2fu3980@test.local' else 'ivy.w2fu3980@test.local' end

@@ -4,6 +4,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { AgentToolDefinition } from "./agentToolHelpers.ts";
+import { PARTY_TYPE_SLUGS } from "./eventTaxonomy.ts";
 import {
   assertCanCollect,
   callRpc,
@@ -1224,23 +1225,9 @@ const getTripOrderMoney = writeTool(
 // executor may shallow-insert `events` or call `refund-order` for chip-ins.
 // ----------------------------------------------------------------------------
 
-const RSVP_PARTY_TYPES = [
-  "birthday-party",
-  "rooftop-party",
-  "club-night",
-  "house-party",
-  "warehouse-party",
-  "beach-party",
-  "pool-party",
-  "boat-party",
-  "themed-party",
-  "corporate-event",
-  "graduation-party",
-  "holiday-party",
-  "networking-event",
-  "rave",
-  "festival",
-] as const;
+// #4572 item 6 — the one canonical event type list (no local copy; the
+// ORCH-1292 parity gate enforces it).
+const RSVP_PARTY_TYPES: string[] = [...PARTY_TYPE_SLUGS];
 
 function compactRsvpPayload(
   args: Record<string, unknown>,

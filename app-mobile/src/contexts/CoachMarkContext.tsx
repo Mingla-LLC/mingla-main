@@ -3,6 +3,7 @@ import { BackHandler, Dimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
+import { readMyProfile } from '../services/profileAccessService';
 import { COACH_STEPS, COACH_STEP_COUNT, CoachStep } from '../constants/coachMarkSteps';
 import { mixpanelService } from '../services/mixpanelService';
 import {
@@ -246,8 +247,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
     async function fetchStep(attempt: number): Promise<void> {
       try {
-        const { data, error } = await supabase
-          .from('profiles')
+        // Issue #3969: the own-profile read (the step is a private field).
+        const { data, error } = await readMyProfile()
           .select('coach_mark_step')
           .eq('id', user!.id)
           .single();

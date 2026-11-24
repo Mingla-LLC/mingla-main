@@ -98,6 +98,19 @@ export function secondaryFormats(plan: FormatPlan): FormatKey[] {
 /** v2 §4.1 rule 3 — venue formats need exactly one verified venue of their category. */
 export const VENUE_FORMATS: readonly FormatKey[] = ["restaurants", "play", "art", "hotels"];
 
+/**
+ * #4572 item 6 (D6) — the format a site's STYLE is judged by (fit chips, Ari's
+ * picks, the "avoid" lines). A gallery that also sells event tickets is still
+ * a gallery: when "Creative & arts" is ticked and the primary format is not
+ * itself a venue format, styles are judged as "art", so its look is never
+ * called "too soft for a club night". Sections and pages keep primaryFormat.
+ */
+export function styleFormat(plan: FormatPlan): FormatKey | null {
+  const primary = primaryFormat(plan);
+  if (primary === null || VENUE_FORMATS.includes(primary)) return primary;
+  return formatsForPlan(plan.offerings_selected).includes("art") ? "art" : primary;
+}
+
 /* ───────────────────────── primary actions ───────────────────────── */
 
 /** The Mingla route kind a format's primary action resolves to (v2 §4.2 →). */

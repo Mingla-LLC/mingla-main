@@ -256,6 +256,10 @@ begin
         t := case k when 1 then null::text[] when 2 then array['admin.support_ticket_message', 'admin.product_signal_new']
                     when 3 then array['admin.support_ticket_message'] else array['business.order_paid'] end;
         a := pg_temp.old_team_inbox(t, l); b := public.team_inbox(t, l);
+        -- #4571: each card also lists every owner and watcher; the rest is unchanged.
+        b := jsonb_set(b, '{mentions}', coalesce((select jsonb_agg(case when jsonb_typeof(m->'card') = 'object'
+               then jsonb_set(m, '{card}', (m->'card') - 'owners' - 'watchers' - 'owner_emails' - 'watcher_emails') else m end order by o)
+               from jsonb_array_elements(b->'mentions') with ordinality x(m, o)), '[]'::jsonb));
         v_cases := v_cases + 1;
         if a is distinct from b then
           v_diff := coalesce(v_diff || '; ', '') || format('%s limit %s types %s: mentions %s alerts %s unread %s vs %s', u, l, t,

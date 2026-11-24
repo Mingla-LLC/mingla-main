@@ -122,6 +122,33 @@ export function setOwners(id, ownerEmails) {
   );
 }
 
+/**
+ * #4571 W3: owners (1 to 10 once there is one) and watchers (0 to 10) in one
+ * step; nobody both. `expectedUpdatedAt` is the card's updated_at as read.
+ */
+export function setRecordPeople(id, ownerEmails, watcherEmails, expectedUpdatedAt = null) {
+  return call(() =>
+    supabase.rpc("crm_record_set_people", {
+      p_id: id, p_owner_emails: ownerEmails, p_watcher_emails: watcherEmails, p_expected_updated_at: expectedUpdatedAt,
+    })
+  );
+}
+
+/** #4571 W3: every open or recently closed Work card and subtask pointing at a record. */
+export function recordWork(id) {
+  return call(() => supabase.rpc("crm_record_work", { p_id: id }));
+}
+
+/** #4571 W3: My calls today, in the SOP order. `today` is the viewer's day. */
+export function callsQueue(today) {
+  return call(() => supabase.rpc("crm_calls_queue", { p_today: today || null }));
+}
+
+/** #4571 W3: a handle's follower count, as a person read it (null clears it). */
+export function setFollowers(identifierId, followers) {
+  return call(() => supabase.rpc("crm_identifier_set_followers", { p_identifier_id: identifierId, p_followers: followers }));
+}
+
 /** entry: { kind: "note", body } or { kind: "touch", channel, direction, ... }. */
 export function logActivity(id, entry, requestKey) {
   return call(() =>
@@ -198,4 +225,74 @@ export function betaLeadToHost(leadId) {
  */
 export function contactCheck(pipeline, candidates) {
   return call(() => supabase.rpc("crm_contact_check", { p_pipeline: pipeline, p_candidates: candidates }));
+}
+
+// #4571 W4: booked demos and host cards. Needs linking, the Hosts banner count
+// and a person's link decisions. The answers never carry an email or a phone.
+export function demoInbox() {
+  return call(() => supabase.rpc("crm_demo_inbox"));
+}
+
+export function demoInboxCount() {
+  return call(() => supabase.rpc("crm_demo_inbox_count"));
+}
+
+export function demoSuggestions(bookingId) {
+  return call(() => supabase.rpc("crm_demo_suggestions", { p_booking_id: bookingId }));
+}
+
+/** source: confirmed_suggestion (Confirm) or picked (Pick another host). */
+export function demoLink(bookingId, recordId, source) {
+  return call(() => supabase.rpc("crm_demo_link", { p_booking_id: bookingId, p_record_id: recordId, p_source: source }));
+}
+
+export function demoCreateRecord(bookingId) {
+  return call(() => supabase.rpc("crm_demo_create_record", { p_booking_id: bookingId }));
+}
+
+export function demoNotAHost(bookingId) {
+  return call(() => supabase.rpc("crm_demo_not_a_host", { p_booking_id: bookingId }));
+}
+
+export function demoUnlink(bookingId) {
+  return call(() => supabase.rpc("crm_demo_unlink", { p_booking_id: bookingId }));
+}
+
+// #4571 W6a: Archived and Merge (people only; the server refuses an agent).
+export function archiveRecord(id, reason) {
+  return call(() => supabase.rpc("crm_record_archive", { p_id: id, p_reason: reason }));
+}
+export function unarchiveRecord(id) {
+  return call(() => supabase.rpc("crm_record_unarchive", { p_id: id }));
+}
+export function listArchived(pipeline) {
+  return call(() => supabase.rpc("crm_records_archived_list", { p_pipeline: pipeline }));
+}
+export function mergeRecords(keepId, dropId, requestKey) {
+  return call(() => supabase.rpc("crm_record_merge", { p_keep: keepId, p_drop: dropId, p_request_key: requestKey }));
+}
+export function unmergeRecords(mergeId) {
+  return call(() => supabase.rpc("crm_record_unmerge", { p_merge_id: mergeId }));
+}
+export function recordMerges(id) {
+  return call(() => supabase.rpc("crm_record_merges_json", { p_id: id }));
+}
+export function duplicatePairs(pipeline) {
+  return call(() => supabase.rpc("crm_duplicate_pairs", { p_pipeline: pipeline }));
+}
+
+// #4571 W6b: the Team dashboard's weekly numbers (Lagos days), from the data.
+export function fetchOutreachNumbers(from, to) {
+  return call(() => supabase.rpc("crm_outreach_numbers", { p_from: from, p_to: to }));
+}
+
+// #4571 W6c: the nightly cadence sweep (owner or admin to read; owner to switch).
+export function fetchSweepStatus(runId = null) {
+  return call(() => supabase.rpc("crm_cadence_sweep_status", { p_run_id: runId }));
+}
+export function runSweepDryRun() {
+  return call(() => supabase.rpc("crm_cadence_sweep_preview"));
+}
+export function configureSweep(mode, reportCardId = null) {
+  return call(() => supabase.rpc("crm_cadence_sweep_configure", { p_mode: mode, p_report_card_id: reportCardId }));
 }

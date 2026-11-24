@@ -1,4 +1,6 @@
 import { supabase } from "./supabase";
+import { readMyProfile } from "./profileAccessService";
+import type { User } from "../types";
 import { useAppStore } from "../store/appStore";
 import { moderateText } from "./moderationService";
 
@@ -68,11 +70,10 @@ class AuthService {
 
   async loadUserProfile(userId: string) {
     try {
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("*")
+      // Issue #3969: own row only, through the own-profile read.
+      const { data: profile, error } = await readMyProfile()
         .eq("id", userId)
-        .single();
+        .single<User>();
 
       if (error) {
         console.error("Error loading user profile:", error);
@@ -89,17 +90,17 @@ class AuthService {
 
   async createUserProfile(userId: string, profileData: Partial<UserProfile>) {
     try {
-      const { data, error } = await supabase
+      const { error: insertError } = await supabase
         .from("profiles")
         .insert({
           id: userId,
           ...profileData,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+        });
 
+      if (insertError) throw insertError;
+      const { data, error } = await readMyProfile().eq("id", userId).single<User>();
       if (error) throw error;
       return data;
     } catch (error) {
@@ -120,12 +121,13 @@ class AuthService {
         updateData.updated_at = new Date().toISOString();
       }
 
-      const { data, error } = await supabase
+      const { error: updateError } = await supabase
         .from("profiles")
         .update(updateData)
-        .eq("id", userId)
-        .select()
-        .single();
+        .eq("id", userId);
+      const { data, error } = updateError
+        ? { data: null, error: updateError }
+        : await readMyProfile().eq("id", userId).single<User>();
 
       if (error) {
         console.error("❌ Profile update error:", error);
@@ -255,11 +257,9 @@ class AuthService {
       console.log("✅ Profile updated successfully with avatar_url");
 
       // Now fetch the updated profile separately
-      const { data: updatedProfile, error: selectError } = await supabase
-        .from("profiles")
-        .select("*")
+      const { data: updatedProfile, error: selectError } = await readMyProfile()
         .eq("id", userId)
-        .single();
+        .single<User>();
 
       if (selectError) {
         console.warn("⚠️ Could not fetch updated profile:", selectError);

@@ -18,6 +18,8 @@ jest.mock("../../../../sites/setupApi", () => ({
   planBuildDone: () => false,
   useSetupFlowState: () => mockFlow,
   useTakeOverSetup: () => ({ mutate: jest.fn(), isPending: false }),
+  // #4572 item 4 — the Build step's "Doesn't apply to my brand".
+  useMarkNotApplicable: () => ({ mutateAsync: jest.fn(async () => undefined) }),
   useSetupDraft: (args: { canManage?: boolean }) => {
     mockDraftArgs.push(args);
     return { ...mockDraft, start: jest.fn(), retry: jest.fn() };

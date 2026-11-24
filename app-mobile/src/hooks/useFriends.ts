@@ -14,6 +14,7 @@ import {
   friendsKeys,
 } from "./useFriendsQuery";
 import { dismissNotificationByEntity } from "./useNotifications";
+import { resolvePerson } from "../services/profileAccessService";
 
 // Re-export types from service so existing imports work
 export type { Friend, FriendRequest, BlockedUser } from "../services/friendsService";
@@ -97,139 +98,72 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
         let receiverId: string | null = null;
         let userExists = false;
         let receiverUsernameFinal = receiverUsername;
-        let isUUID = false;
 
-        if (
-          friendUserIdOrEmail.match(
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-          )
-        ) {
-          isUUID = true;
-          receiverId = friendUserIdOrEmail;
-          userExists = true;
+        // Issue #3969: people are found by id, email or username through the
+        // server lookup, which never returns contact details.
+        const identifier = friendUserIdOrEmail.match(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        )
+          ? friendUserIdOrEmail
+          : receiverEmail.trim().toLowerCase();
 
-          const { data: userById, error: idError } = await supabase
-            .from("profiles")
-            .select("id, username, email")
-            .eq("id", friendUserIdOrEmail)
-            .maybeSingle();
-
-          if (idError) {
-            console.error("Error fetching user by ID:", idError);
+        if (identifier) {
+          const person = await resolvePerson(identifier);
+          if (person.user_exists && (person.is_blocked || !person.can_view)) {
+            throw new Error("User not found. Please check the details and try again.");
           }
-
-          if (userById) {
-            receiverEmail = userById.email || receiverEmail;
-            receiverUsernameFinal = userById.username || receiverUsernameFinal;
-          } else {
+          if (person.user_exists && person.profile_id) {
+            receiverId = person.profile_id;
+            userExists = true;
+            receiverUsernameFinal = person.username || receiverUsernameFinal;
+          } else if (identifier === friendUserIdOrEmail) {
             throw new Error("User not found. Please try searching again.");
-          }
-        } else {
-          if (receiverEmail) {
-            const { data: visibilityData } = await supabase.rpc(
-              "resolve_user_visibility_by_identifier",
-              { p_identifier: receiverEmail.trim().toLowerCase() }
-            );
-
-            const visibility = Array.isArray(visibilityData)
-              ? visibilityData[0]
-              : visibilityData;
-
-            if (visibility?.user_exists && (visibility?.is_blocked || !visibility?.can_view)) {
-              throw new Error("User not found. Please check the email and try again.");
-            }
-
-            const { data: userByEmail, error: emailError } = await supabase
-              .from("profiles")
-              .select("id, username, email")
-              .ilike("email", receiverEmail.trim().toLowerCase())
-              .maybeSingle();
-
-            if (emailError) {
-              console.error("Error searching by email:", emailError);
-            }
-
-            if (userByEmail) {
-              receiverId = userByEmail.id;
-              userExists = true;
-              receiverEmail = userByEmail.email || receiverEmail;
-              receiverUsernameFinal =
-                userByEmail.username || receiverUsernameFinal;
-            } else if (visibility?.user_exists && visibility?.can_view && visibility?.profile_id) {
-              receiverId = visibility.profile_id;
-              userExists = true;
-              receiverEmail = visibility.email || receiverEmail;
-              receiverUsernameFinal = visibility.username || receiverUsernameFinal;
-            }
           }
         }
 
         let requestId: string | null = null;
 
         if (userExists && receiverId) {
-          if (!isUUID) {
-            const { data: receiverProfile, error: receiverError } =
-              await supabase
-                .from("profiles")
-                .select("id, email")
-                .eq("id", receiverId)
-                .maybeSingle();
+          const { data: existingRequest } = await supabase
+            .from("friend_requests")
+            .select("id, status")
+            .eq("sender_id", user.id)
+            .eq("receiver_id", receiverId)
+            .single();
 
-            if (receiverError) {
-              console.error("Error verifying receiver profile:", receiverError);
-            }
-
-            if (!receiverProfile) {
-              console.warn("Receiver profile not found during verification");
-              userExists = false;
-              receiverId = null;
+          if (existingRequest) {
+            if (existingRequest.status === "pending") {
+              requestId = existingRequest.id;
             } else {
-              receiverEmail = receiverProfile.email || receiverEmail;
-            }
-          }
-
-          if (userExists && receiverId) {
-            const { data: existingRequest } = await supabase
-              .from("friend_requests")
-              .select("id, status")
-              .eq("sender_id", user.id)
-              .eq("receiver_id", receiverId)
-              .single();
-
-            if (existingRequest) {
-              if (existingRequest.status === "pending") {
-                requestId = existingRequest.id;
-              } else {
-                const { data: updatedRequest, error: updateError } = await supabase
-                  .from("friend_requests")
-                  .update({ status: "pending", created_at: new Date().toISOString() })
-                  .eq("id", existingRequest.id)
-                  .select("id")
-                  .single();
-
-                if (updateError) {
-                  console.error("Error updating friend request:", updateError);
-                  throw updateError;
-                }
-                requestId = updatedRequest.id;
-              }
-            } else {
-              const { data: newRequest, error: insertError } = await supabase
+              const { data: updatedRequest, error: updateError } = await supabase
                 .from("friend_requests")
-                .insert({
-                  sender_id: user.id,
-                  receiver_id: receiverId,
-                  status: "pending",
-                })
+                .update({ status: "pending", created_at: new Date().toISOString() })
+                .eq("id", existingRequest.id)
                 .select("id")
                 .single();
 
-              if (insertError) {
-                console.error("Error creating friend request:", insertError);
-                throw insertError;
-              } else {
-                requestId = newRequest.id;
+              if (updateError) {
+                console.error("Error updating friend request:", updateError);
+                throw updateError;
               }
+              requestId = updatedRequest.id;
+            }
+          } else {
+            const { data: newRequest, error: insertError } = await supabase
+              .from("friend_requests")
+              .insert({
+                sender_id: user.id,
+                receiver_id: receiverId,
+                status: "pending",
+              })
+              .select("id")
+              .single();
+
+            if (insertError) {
+              console.error("Error creating friend request:", insertError);
+              throw insertError;
+            } else {
+              requestId = newRequest.id;
             }
           }
         }

@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v40"); // #4453 Website workspace rules and tools on top of v39
+    assertEquals(PROMPT_VERSION, "v41"); // #4572 header button and logo steps on top of v40
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

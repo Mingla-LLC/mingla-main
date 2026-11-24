@@ -49,3 +49,13 @@ export const brandSiteKeys = {
   /** #2829 W10 — the site's private share-preview links. */
   shareLinks: (siteId: string | null) => ["brand-sites", siteId, "share-links"] as const,
 };
+
+/**
+ * #4572 item 1 — any site's draft-preview grant (`["brand-sites", <site>,
+ * "data", "preview"]`). Build and "Rebuild my pages" change the draft, so the
+ * grant minted before them is refused (REVISION_CONFLICT): they drop it by
+ * this predicate, whichever site the screen holds.
+ */
+export function isSitePreviewKey(key: readonly unknown[]): boolean {
+  return key.length === 4 && key[0] === "brand-sites" && key[2] === "data" && key[3] === "preview";
+}

@@ -19,6 +19,7 @@ import {
   rollbackBrandSite,
   validateBrandSiteDraft,
   getBrandSiteLook,
+  saveBrandSiteLogo,
   saveBrandSiteLook,
   searchBrandSiteFonts,
   getBrandSiteDomains,
@@ -332,6 +333,21 @@ export function useSaveBrandSiteLook(brandId: string, siteId: string | null) {
       await queryClient.invalidateQueries({ queryKey: brandSiteKeys.look(siteId) });
       // #2829 W9a — Studio reports the save to Core; "Your look" on the plan follows.
       await queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId) });
+    },
+  });
+}
+
+/** #4572 item 16 — sets or removes the site's logo on the draft; the preview reads it again. */
+export function useSaveBrandSiteLogo(brandId: string, siteId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { revision: string; logoMediaId: string | null }) => {
+      if (!siteId) throw siteUnavailable();
+      return saveBrandSiteLogo({ brandId, siteId, ...input });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: brandSiteKeys.look(siteId) });
+      await queryClient.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
     },
   });
 }

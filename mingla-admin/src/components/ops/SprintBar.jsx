@@ -8,9 +8,14 @@
 // The bar is `relative` so it is the containing block of the goals'
 // screen-reader text (absolutely positioned): without it that text escaped the
 // bar's scroll box and widened the whole page on a phone (390px -> 670px).
-import { ChevronLeft, ChevronRight } from "lucide-react";
+// #4571: the first three goals are pills; the rest fold into "+N more",
+// which opens a list of them (fixed, so the bar's overflow never clips it).
+// #4571 rework: on a wide screen the pills shrink (truncating their titles) so
+// "+N more" always sits inside the bar; the goals strip never scrolls there.
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { sprintLabel } from "../../lib/opsModel";
-import { goalStateLabel, sprintDay, sprintProgress, teamCapacity } from "../../lib/workBoardModel";
+import { goalFold, goalPillsThatFit, goalStateLabel, sprintDay, sprintProgress, teamCapacity } from "../../lib/workBoardModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
@@ -21,8 +26,72 @@ const STATE_DOT = {
   missed: "bg-[var(--color-error-500)]",
 };
 
+function GoalPill({ g, on, onGoal, wide = false }) {
+  return (
+    <button type="button" data-goal-pill={g.id} aria-pressed={on ? "true" : "false"}
+      title={`${g.title} · ${goalStateLabel(g.state)}${g.owner_name ? ` · ${g.owner_name}` : ""}`}
+      onClick={() => onGoal(on ? null : g.id)}
+      className={`inline-flex h-8 ${wide ? "w-full" : "min-w-[5.5rem] max-w-[15rem] shrink max-sm:shrink-0"} items-center gap-1.5 rounded-full border px-2.5 text-[12px] ${on ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"} ${FOCUS}`}>
+      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${STATE_DOT[g.state] || STATE_DOT.on_track}`} />
+      <span className="min-w-0 flex-1 truncate text-left font-semibold text-[var(--color-text-primary)]">{g.title}</span>
+      <span className="shrink-0 tabular-nums">{Number(g.done) || 0}/{Number(g.cards) || 0}</span>
+      <span className="sr-only">{goalStateLabel(g.state)}</span>
+    </button>
+  );
+}
+
+function MoreGoals({ goals, goalId, onGoal }) {
+  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState(null);
+  const buttonRef = useRef(null);
+  const listRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = (e) => { if (!listRef.current?.contains(e.target) && !buttonRef.current?.contains(e.target)) setOpen(false); };
+    const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); buttonRef.current?.focus(); } };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key, true);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", key, true); };
+  }, [open]);
+  const toggle = () => {
+    const r = buttonRef.current?.getBoundingClientRect();
+    if (r) setAt({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 296)) });
+    setOpen(!open);
+  };
+  const picked = goals.some((g) => g.id === goalId);
+  return (
+    <>
+      <button ref={buttonRef} type="button" data-goals-more="" aria-haspopup="dialog" aria-expanded={open ? "true" : "false"} aria-label={`${goals.length} more goals`} onClick={toggle}
+        className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold ${picked ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"} ${FOCUS}`}>
+        +{goals.length} more<ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      {open && at && (
+        <div ref={listRef} role="dialog" aria-label="More sprint goals" style={{ top: at.top, left: at.left }}
+          className="fixed z-40 flex max-h-[60vh] w-72 max-w-[calc(100vw-1rem)] flex-col gap-1 overflow-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]">
+          {goals.map((g) => <GoalPill key={g.id} g={g} on={goalId === g.id} wide onGoal={(id) => { onGoal(id); setOpen(false); }} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function SprintBar({ sprint, plan = null, today, late = 0, goalId = null, onGoal, onWeek, onThisWeek, isThisWeek, onPlan, online = true }) {
   const goals = Array.isArray(plan?.goals) ? plan.goals : Array.isArray(sprint?.goals) ? sprint.goals : [];
+  // #4571 rework: on a wide screen, only the pills that fit; the rest fold into "+N more".
+  const stripRef = useRef(null);
+  const [stripWidth, setStripWidth] = useState(null);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el || typeof ResizeObserver === "undefined" || typeof window === "undefined" || !window.matchMedia) return undefined;
+    const wide = window.matchMedia("(min-width: 640px)");
+    const measure = () => setStripWidth(wide.matches ? el.clientWidth : null);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    wide.addEventListener?.("change", measure);
+    measure();
+    return () => { ro.disconnect(); wide.removeEventListener?.("change", measure); };
+  }, []);
+  const fold = goalFold(goals, goalPillsThatFit(stripWidth, goals.filter((g) => g && !g.archived).length));
   const day = sprintDay(sprint?.starts_on, today);
   const prog = sprintProgress(plan?.in_sprint);
   const cap = teamCapacity(plan?.capacity);
@@ -35,23 +104,15 @@ export function SprintBar({ sprint, plan = null, today, late = 0, goalId = null,
         {!isThisWeek && <button type="button" onClick={onThisWeek} className={`h-9 whitespace-nowrap rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-100)] ${FOCUS}`}>This week</button>}
         {day >= 1 && day <= 7 && <span className="hidden whitespace-nowrap pl-1 text-[12px] text-[var(--color-text-tertiary)] sm:inline">Day {day} of 7</span>}
       </div>
-      <div data-sprint-goals="" role="group" aria-label="Sprint goals" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto py-1 max-sm:min-w-max max-sm:overflow-visible">
+      <div ref={stripRef} data-sprint-goals="" role="group" aria-label="Sprint goals" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden py-1 max-sm:min-w-max max-sm:overflow-visible">
         {goals.length === 0 ? (
           <span className="whitespace-nowrap px-1 text-[12.5px] text-[var(--color-text-tertiary)]">No sprint goals yet</span>
-        ) : goals.map((g) => {
-          const on = goalId === g.id;
-          return (
-            <button key={g.id} type="button" data-goal-pill={g.id} aria-pressed={on ? "true" : "false"}
-              title={`${g.title} · ${goalStateLabel(g.state)}${g.owner_name ? ` · ${g.owner_name}` : ""}`}
-              onClick={() => onGoal(on ? null : g.id)}
-              className={`inline-flex h-8 max-w-[15rem] shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] ${on ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-200)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"} ${FOCUS}`}>
-              <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${STATE_DOT[g.state] || STATE_DOT.on_track}`} />
-              <span className="truncate font-semibold text-[var(--color-text-primary)]">{g.title}</span>
-              <span className="shrink-0 tabular-nums">{Number(g.done) || 0}/{Number(g.cards) || 0}</span>
-              <span className="sr-only">{goalStateLabel(g.state)}</span>
-            </button>
-          );
-        })}
+        ) : (
+          <>
+            {fold.shown.map((g) => <GoalPill key={g.id} g={g} on={goalId === g.id} onGoal={onGoal} />)}
+            {fold.more.length > 0 && <MoreGoals goals={fold.more} goalId={goalId} onGoal={onGoal} />}
+          </>
+        )}
       </div>
       <div data-sprint-numbers="" className="flex shrink-0 items-center gap-2 pl-1">
         <span className="hidden items-center gap-1.5 whitespace-nowrap text-[12px] text-[var(--color-text-secondary)] md:inline-flex">

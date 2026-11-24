@@ -42,7 +42,7 @@ export const BRAND_GROUP_MINGLA_COPY = {
 /** #4579 — a roster row's second line: never an email for a Mingla admin. */
 export function memberSecondLine(member: BrandGroupMember): string {
   if (member.is_mingla_team === true) return BRAND_GROUP_MINGLA_COPY.fromMingla;
-  return member.email ?? "";
+  return typeof member.email === "string" ? member.email.trim() : "";
 }
 
 /**
@@ -118,7 +118,10 @@ export function BrandGroupPeoplePanel({
               ) : avatar}
               <View style={styles.memberCopy}>
                 <Text style={styles.memberName} numberOfLines={1}>{member.display_name}</Text>
-                <Text style={styles.memberEmail} numberOfLines={2}>{memberSecondLine(member)}</Text>
+                {/* #3969 — the line is left out when there is nothing to show. */}
+                {memberSecondLine(member).length > 0 ? (
+                  <Text style={styles.memberEmail} numberOfLines={2}>{memberSecondLine(member)}</Text>
+                ) : null}
               </View>
               <Text style={styles.role}>{memberRoleLabel(member.role)}</Text>
             </View>

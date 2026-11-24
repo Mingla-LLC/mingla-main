@@ -23,6 +23,8 @@ jest.mock("../../../../hooks/useBrands", () => ({
 jest.mock("../../../../hooks/useBrandSite", () => ({
   useBrandSiteLook: () => ({ isLoading: false, isError: false, data: mockLook, refetch: jest.fn() }),
   useSaveBrandSiteLook: () => ({ mutate: mockSaveLook, isPending: false }),
+  // #4572 item 16 — the Logo row in Design.
+  useSaveBrandSiteLogo: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock("../../../../sites/contentApi", () => {
   const actual = jest.requireActual("../../../../sites/contentApi");

@@ -31,11 +31,20 @@ export function useFriendProfile(userId: string | null) {
   return useQuery({
     queryKey: friendProfileKeys.detail(userId ?? ''),
     queryFn: async (): Promise<FriendProfileData | null> => {
+      // Issue #3969: the server read gives location only to the person and
+      // their accepted friends.
       const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, username, avatar_url, country, bio, location')
-        .eq('id', userId!)
-        .maybeSingle();
+        .rpc('issue_3969_friend_profile', { p_user_id: userId! })
+        .maybeSingle<{
+          id: string;
+          first_name: string | null;
+          last_name: string | null;
+          username: string | null;
+          avatar_url: string | null;
+          country: string | null;
+          bio: string | null;
+          location: string | null;
+        }>();
       if (profileError) throw new Error(profileError.message);
       if (!profile) return null;
 

@@ -16,6 +16,9 @@ export type LivePreviewProps = {
   onReady?: (pagePath: string) => void;
   /** The page could not be rebuilt after a change: build the draft preview again. */
   onRetry?: () => void;
+  /** #4572 item 1 — the shown frame's page said its grant is for an older draft, or it couldn't load. */
+  onStale?: () => void;
+  onFailed?: () => void;
   /** Desktop only: the small Ari card, drawn beside the selected section. */
   renderCard?: (() => React.ReactNode) | null;
   cardHeight?: number;

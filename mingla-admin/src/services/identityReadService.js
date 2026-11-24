@@ -23,6 +23,7 @@
  */
 
 import { supabase } from "../lib/supabase";
+import { fetchAdminProfileContactsById } from "./adminProfileContactsService";
 import { escapeLike } from "../lib/formatters";
 
 export function followerNumber(value) {
@@ -472,17 +473,13 @@ async function resolveAccountNames(ids) {
 async function resolveProfiles(ids) {
   const uniq = [...new Set(ids)];
   if (uniq.length === 0) return {};
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id,display_name,email")
-    .in("id", uniq);
-  if (error) {
+  // #3969 — names and emails through the admin contacts read.
+  try {
+    return await fetchAdminProfileContactsById(uniq);
+  } catch (error) {
     logDegrade("resolveProfiles", error);
     return {};
   }
-  const map = {};
-  for (const p of data || []) map[p.id] = p;
-  return map;
 }
 
 // ── Sub-read failure handling (never silent; degrade to empty, log a warning) ──

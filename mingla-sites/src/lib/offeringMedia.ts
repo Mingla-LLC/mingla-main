@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import type { SiteOffering } from "../contracts/generated/offerings.ts";
+import { offeringStreamPosterUrl, type SiteOffering } from "../contracts/generated/offerings.ts";
 import type { OfferingCoverMedia } from "../contracts/generated/artifactV2.ts";
 import { hmacBase64 } from "./crypto";
 import { runtimeConfig } from "./config";
@@ -61,10 +61,10 @@ export async function offeringCoverUrl(siteId: string, offering: Pick<SiteOfferi
  */
 export async function offeringCoverSources(
   siteId: string,
-  offering: Pick<SiteOffering, "cover">,
+  offering: Pick<SiteOffering, "cover" | "cover_stream_poster">,
   offeringMedia: readonly OfferingCoverMedia[] | undefined,
 ): Promise<{ src: string; srcSet: string | null } | null> {
-  if (!offering.cover) return null;
+  if (!offering.cover) return streamPosterSources(offering);
   const base = `/om/${await offeringMediaToken(siteId, offering.cover.path)}`;
   const entry = offeringMedia?.find((row) => row.path === offering.cover!.path);
   if (!entry) return { src: `${base}/original`, srcSet: null };
@@ -81,6 +81,18 @@ export async function offeringCoverSources(
   }
   const src = entry.variants.some((row) => row.name === "c768") ? `${base}/c768` : `${base}/original`;
   return { src, srcSet: candidates.length > 1 ? candidates.join(", ") : null };
+}
+
+/**
+ * #4572 item 2 (D2) — a video cover's still frame, straight from the stream
+ * CDN (never through `/om`, so `pathForToken` never sees it), only for a host
+ * the runtime trusts for video (SITES_VIDEO_CDN_HOSTS). Anything else is null
+ * and the card draws its title face.
+ */
+export function streamPosterSources(offering: Pick<SiteOffering, "cover_stream_poster">): { src: string; srcSet: null } | null {
+  const poster = offering.cover_stream_poster;
+  if (!poster || !runtimeConfig().videoCdnHosts.includes(poster.host)) return null;
+  return { src: offeringStreamPosterUrl(poster), srcSet: null };
 }
 
 /**

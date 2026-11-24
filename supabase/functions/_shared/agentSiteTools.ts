@@ -1541,7 +1541,7 @@ const proposeSiteComposition = tool(
       type: "array",
       maxItems: MAX_NAV_ITEMS,
       description:
-        "The header menu, in order (labels and pages). Links to other websites and “More” groups stay as they are.",
+        "The menu links in the header, in order (labels and pages); never the header button, which is not a menu item. Links to other websites and “More” groups stay as they are.",
       items: closedObject({
         page_path: PAGE_PATH,
         label: plainText(MAX_NAV_LABEL_LENGTH),
@@ -1637,7 +1637,7 @@ const proposeSiteCopy = tool(
 
 const proposeSiteImagery = tool(
   "propose_site_imagery",
-  "Propose the owner's approved photos and videos for picture spots on one page: a block's picture, a film's poster, a hero or brand-film video (hero videos up to 15 seconds), or a gallery's photos with descriptions. Draft only.",
+  "Propose the owner's approved photos and videos for picture spots on one page: a block's picture, a film's poster, a hero or brand-film video (hero videos up to 15 seconds), or a gallery's photos with descriptions. Draft only. A hero video goes only on a page that already has a cover section; when get_site_workspace shows home_cover.available false, say the owner can add one in Design → Cover.",
   {
     brand_id: UUID,
     site_id: UUID,

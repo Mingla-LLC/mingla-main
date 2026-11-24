@@ -133,8 +133,10 @@ export function PeopleField({
     if (r.refused) { tell(r.refused); return; }
     if (r.value.length !== emails.length) { tell(""); onChange?.(r.value, { added: email }); }
   };
+  // #4571: minWords may name the person ("Ada is the last owner. ...").
+  const minText = (email) => (typeof minWords === "function" ? minWords(known(email)) : minWords);
   const remove = (email) => {
-    const r = removePerson(emails, email, min, minWords);
+    const r = removePerson(emails, email, min, minText(email));
     if (r.refused) { tell(r.refused); return; }
     tell("");
     onChange?.(r.value, { removed: email });
@@ -152,7 +154,7 @@ export function PeopleField({
     if (event.key === "Backspace" && query) return;
     if (event.key !== "Backspace" || emails.length) event.preventDefault();
     if (event.key === "Escape" && !open) return;
-    const next = fieldKey({ open, hi }, event.key, { options, value: emails, query, min, minWords });
+    const next = fieldKey({ open, hi }, event.key, { options, value: emails, query, min, minWords: minText(emails[emails.length - 1]) });
     setOpen(next.state.open);
     setHi(next.state.hi);
     if (next.refused) tell(next.refused, next.refused === invitedWords(options[hi]) ? options[hi] : null);
@@ -213,7 +215,8 @@ export function PeopleField({
           placeholder={placeholder || (single ? (picked.length ? "Change" : "Pick one person") : picked.length ? "Add someone" : "Type a name")}
           onFocus={() => setOpen(true)}
           onClick={() => setOpen(true)}
-          onChange={(event) => { setQuery(event.target.value); setOpen(true); setHi(0); }}
+          // #4571 rework: typing moves on, so a refusal ("the last owner") clears.
+          onChange={(event) => { setQuery(event.target.value); setOpen(true); setHi(0); if (message) tell(""); }}
           onKeyDown={onKeyDown}
           className="min-h-8 min-w-[8rem] flex-1 border-0 bg-transparent px-1.5 text-[13px] text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-tertiary)]"
         />

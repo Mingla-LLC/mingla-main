@@ -43,6 +43,9 @@ const LABELS = "packages/offering-rendering/taxonomyLabels.ts";
 const EVENT_BODY = "packages/offering-rendering/EventOfferingBody.tsx";
 const RSVP_BODY = "packages/offering-rendering/RsvpOfferingBody.tsx";
 const MOMENTUM = "packages/offering-rendering/RsvpMomentumDecision.tsx";
+// #4572 item 6 — Ari's RSVP tool schema reads the canonical list; it may not
+// keep its own copy (the copy drifted silently before).
+const AGENT_TOOLS = "supabase/functions/_shared/agentDomainTools.ts";
 
 // ───────────────────────── pure helpers (self-testable) ─────────────────────────
 
@@ -61,10 +64,10 @@ function stripComments(src) {
 function parseCanonicalPairs(src) {
   const clean = stripComments(src);
   const pairs = [];
-  const re = /slug:\s*"([^"]+)"\s*,\s*label:\s*"([^"]*)"/g;
+  const re = /slug:\s*"([^"]+)"\s*,\s*label:\s*"([^"]*)"(?:\s*,\s*group:\s*"([^"]+)")?/g;
   let m;
   while ((m = re.exec(clean)) !== null) {
-    pairs.push({ slug: m[1], label: m[2] });
+    pairs.push({ slug: m[1], label: m[2], group: m[3] ?? null });
   }
   return pairs;
 }
@@ -140,6 +143,34 @@ function checkDrift(canonicalPairs, labelMap) {
 }
 
 /** (B) render sites resolve, not raw (fails-on-revert). */
+/** (C) #4572 — agentDomainTools.ts imports PARTY_TYPE_SLUGS from the canonical
+ *  module and holds no inline party / event type slug list. */
+function checkAgentTools(agentSrc, canonicalPairs) {
+  const failures = [];
+  const clean = stripComments(agentSrc);
+  if (!/import\s*\{[^}]*\bPARTY_TYPE_SLUGS\b[^}]*\}\s*from\s*"\.\/eventTaxonomy\.ts"/.test(clean)) {
+    failures.push(
+      "agentDomainTools.ts: does not import PARTY_TYPE_SLUGS from ./eventTaxonomy.ts (#4572).",
+    );
+  }
+  const partySlugs = new Set(
+    canonicalPairs.filter((p) => p.group === "party" || p.group === "culture").map((p) => p.slug),
+  );
+  // An inline list = any array literal holding 2+ canonical event type slugs
+  // (single words such as "tour" may appear elsewhere in the file on their own).
+  const arrays = clean.match(/\[[^\[\]]*\]/g) ?? [];
+  for (const arr of arrays) {
+    const hits = [...arr.matchAll(/"([^"]+)"/g)].filter((m) => partySlugs.has(m[1]));
+    if (hits.length >= 2) {
+      failures.push(
+        `agentDomainTools.ts: holds its own copy of the event type list (${hits.map((h) => h[1]).slice(0, 3).join(", ")}, …) — read PARTY_TYPE_SLUGS instead (#4572).`,
+      );
+      break;
+    }
+  }
+  return failures;
+}
+
 function checkRenderSites(eventSrc, rsvpSrc, momentumSrc) {
   const failures = [];
   const ev = stripComments(eventSrc);
@@ -305,6 +336,23 @@ function runSelfTest() {
     problems.push("BAD (RsvpMomentumDecision reverted to partyTypeLabel) did not fail the render check.");
   }
 
+  // (C) #4572 — Ari's tool schema must read the canonical list.
+  const stCanonGrouped = parseCanonicalPairs(
+    `export const PARTY_TYPES = [ { slug: "exhibition", label: "Exhibition", group: "culture" }, { slug: "rave", label: "Rave", group: "party" } ];`,
+  );
+  const ST_AGENT_GOOD = `import { PARTY_TYPE_SLUGS } from "./eventTaxonomy.ts";\nconst RSVP_PARTY_TYPES = PARTY_TYPE_SLUGS;`;
+  const ST_AGENT_COPY = `import { PARTY_TYPE_SLUGS } from "./eventTaxonomy.ts";\nconst RSVP_PARTY_TYPES = ["exhibition", "rave"];`;
+  const ST_AGENT_NO_IMPORT = `const RSVP_PARTY_TYPES = [];`;
+  if (checkAgentTools(ST_AGENT_GOOD, stCanonGrouped).length !== 0) {
+    problems.push("GOOD agentDomainTools fixture failed the agent-tools check.");
+  }
+  if (checkAgentTools(ST_AGENT_COPY, stCanonGrouped).length === 0) {
+    problems.push("BAD (agentDomainTools keeps its own slug copy) did not fail the agent-tools check.");
+  }
+  if (checkAgentTools(ST_AGENT_NO_IMPORT, stCanonGrouped).length === 0) {
+    problems.push("BAD (agentDomainTools does not import PARTY_TYPE_SLUGS) did not fail the agent-tools check.");
+  }
+
   if (problems.length > 0) {
     console.error("\nORCH-1292 taxonomy-label-parity gate SELF-TEST FAIL:\n");
     for (const p of problems) console.error(`  ✗ ${p}`);
@@ -344,6 +392,7 @@ function runReal() {
   }
 
   failures.push(...checkDrift(canonical, labelMap));
+  failures.push(...checkAgentTools(readOrDie(AGENT_TOOLS), canonical));
   failures.push(
     ...checkRenderSites(
       readOrDie(EVENT_BODY),

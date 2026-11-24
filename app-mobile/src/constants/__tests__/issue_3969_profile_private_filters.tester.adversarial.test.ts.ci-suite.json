@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/constants/__tests__/issue_3969_profile_private_filters.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3969-profile-private-filters",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

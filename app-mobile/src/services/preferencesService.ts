@@ -8,6 +8,7 @@
  * See: HARDENING_EXECUTION_PLAN_V3.md, Deferred items.
  */
 import { supabase } from "./supabase";
+import { readMyProfile } from "./profileAccessService";
 
 // Canonical type — single source of truth. See types/preferences.ts (ORCH-0339).
 import type { UserPreferences } from '../types/preferences';
@@ -85,11 +86,10 @@ export class PreferencesService {
    */
   static async getUserProfile(userId: string): Promise<ProfileData | null> {
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
+      // Issue #3969: own row only, through the own-profile read.
+      const { data, error } = await readMyProfile()
         .eq("id", userId)
-        .single();
+        .single<ProfileData>();
 
       if (error) {
         console.error("Error fetching user profile:", error);

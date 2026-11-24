@@ -5,6 +5,7 @@ import type {
 } from "payload";
 import {
   enforceLiveStudioWrite,
+  tenantFieldAccess,
   tenantMediaCreate,
   tenantRead,
   tenantWrite,
@@ -17,6 +18,18 @@ const systemMediaField: FieldAccess = ({ req }) =>
 const systemFieldAccess = {
   create: systemMediaField,
   read: systemMediaField,
+  update: systemMediaField,
+};
+/*
+ * #4572 item 16 — the fields Studio's media pickers filter on (`state`,
+ * `kind`, `detected_mime`). A member of the site may READ them (Payload
+ * refuses a picker query on a field the user can't read: "The following path
+ * cannot be queried"), but only Mingla's own system writes them.
+ * INVARIANT sites-media-picker-fields-readable: every Media field a Studio filterOptions queries is readable by a site member
+ */
+const pickerFieldAccess = {
+  create: systemMediaField,
+  read: ((args) => systemMediaField(args) || tenantFieldAccess(args)) as FieldAccess,
   update: systemMediaField,
 };
 const rejectDirectPayloadUpload: CollectionBeforeOperationHook = ({ req }) => {
@@ -51,7 +64,7 @@ export const Media: CollectionConfig = {
       defaultValue: "UPLOADING",
       options: [...MEDIA_STATES],
       admin: { readOnly: true },
-      access: systemFieldAccess,
+      access: pickerFieldAccess,
     },
     {
       name: "original_filename_safe",
@@ -66,7 +79,7 @@ export const Media: CollectionConfig = {
       required: true,
       options: ["image/jpeg", "image/png", "image/webp", "video/mp4"],
     },
-    { name: "detected_mime", type: "text", admin: { readOnly: true }, access: systemFieldAccess },
+    { name: "detected_mime", type: "text", admin: { readOnly: true }, access: pickerFieldAccess },
     { name: "bytes", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "width", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
     { name: "height", type: "number", admin: { readOnly: true }, access: systemFieldAccess },
@@ -84,7 +97,7 @@ export const Media: CollectionConfig = {
       type: "select",
       options: ["image", "file_video", "stream_video"],
       admin: { readOnly: true },
-      access: systemFieldAccess,
+      access: pickerFieldAccess,
     },
     { name: "stream_video_id", type: "text", hidden: true, access: systemFieldAccess },
     { name: "stream_url", type: "text", admin: { readOnly: true }, access: systemFieldAccess },

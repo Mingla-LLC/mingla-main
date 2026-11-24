@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4571_log_emails.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4571-w6b-log-emails",
+  "profile": "deno-1.46-stripe"
+}
