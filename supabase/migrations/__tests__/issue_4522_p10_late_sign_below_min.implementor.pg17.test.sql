@@ -276,6 +276,13 @@ BEGIN
   IF r.order_id NOT IN (SELECT public.issue_4522_trip_cancels_to_resume(50)) THEN
     RAISE EXCEPTION 'B-1k the next run picks the cancel up to finish it';
   END IF;
+  -- Everything in this file runs in one transaction, so now() is frozen and the
+  -- order's other refunds all share one created_at; "the order's latest refund"
+  -- (ORDER BY created_at DESC, id DESC) then fell to a random uuid and could
+  -- pick the failed seat refund. In real time the owed part is created last:
+  -- state that order explicitly.
+  UPDATE public.refunds SET created_at = now() - interval '1 hour' WHERE order_id = r.order_id AND id <> r.owed;
+  UPDATE public.refunds SET created_at = now() WHERE id = r.owed;
   v_res := public.biz_cancel_trip_booking_commit(r.owed, ARRAY['BANK-P10L-1'], 0);
   IF NOT (v_res->>'ok')::boolean OR (SELECT status FROM public.refunds WHERE id = r.owed) <> 'succeeded'
      OR public.issue_4522_cancel_refund_unsettled(r.order_id) THEN
