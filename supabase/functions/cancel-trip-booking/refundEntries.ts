@@ -99,3 +99,40 @@ export function computeRefundForActor(
       p_cancel_at: input.cancelAt,
     });
 }
+
+/**
+ * Pass 8 (P8-2): from the provider's refund list of one charge, what other
+ * refunds have already taken from it (every refund except this cancel's own
+ * and refused ones), in minor units.
+ */
+export function providerRefundedElsewhere(
+  rows: Array<{ amount: number; status: string; merchantNote: string }>,
+  ownMerchantNote: string,
+): number {
+  return rows.reduce((sum, row) =>
+    row.merchantNote !== ownMerchantNote && row.status !== "failed" &&
+      Number.isFinite(row.amount) && row.amount > 0
+      ? sum + Math.trunc(row.amount)
+      : sum, 0);
+}
+
+/**
+ * Pass 8 (P8-2): Mingla's own refunds of this charge that the provider's list
+ * shows made while Mingla has no answer recorded (status not 'processed'):
+ * each is recorded from the read-back with the provider's id and status.
+ */
+export function lostMinglaRefunds<
+  A extends { merchant_note: string; status: string; provider_refund_id: string | null },
+>(
+  rows: Array<{ id: string; amount: number; status: string; merchantNote: string }>,
+  attempts: A[],
+  ownMerchantNote: string,
+): Array<{ attempt: A; providerRefundId: string; amount: number; status: string }> {
+  const out: Array<{ attempt: A; providerRefundId: string; amount: number; status: string }> = [];
+  for (const attempt of attempts) {
+    if (attempt.merchant_note === ownMerchantNote || attempt.status === "processed") continue;
+    const row = rows.find((r) => r.merchantNote === attempt.merchant_note && r.status !== "failed" && r.id !== "");
+    if (row) out.push({ attempt, providerRefundId: row.id, amount: Math.trunc(row.amount), status: row.status });
+  }
+  return out;
+}

@@ -130,6 +130,7 @@ test("escalate sends no reference; record sends the reference, amount and curren
 test("the panel carries the approved choices, buttons and note, and validates before sending", () => {
   assert.deepEqual(TRIP_CANCEL_OUTCOMES.map((o) => o.label), [
     "Paystack shows it refunded: record it",
+    "Paystack shows it partly refunded already: ask only for what is left",
     "Paystack shows no refund: escalate (nothing is re-sent from here)",
   ]);
   for (const words of [
@@ -141,7 +142,7 @@ test("the panel carries the approved choices, buttons and note, and validates be
   ]) {
     assert.ok(panelSource.includes(words), words);
   }
-  assert.match(panelSource, /validateTripCancelResolution\(\{ outcome: chosen, reference, reason \}\)/);
+  assert.match(panelSource, /validateTripCancelResolution\(\{\s*outcome: chosen,\s*reference,\s*reason,/);
   assert.match(panelSource, /variant="primary"[^<]*?onClick=\{\(\) => submit\("refunded_at_provider"\)\}[^<]*?>\s*Record refund and finish cancel/);
   assert.match(pageSource, /listUnansweredTripCancelRefunds\(\)/);
   assert.match(pageSource, /<TripCancelRefundPanel/);
@@ -155,4 +156,37 @@ test("the charge table keeps a gap between Amount and State", () => {
   assert.match(panelSource, /<th className="py-1 pl-8">State<\/th>/);
   assert.match(panelSource, /<td className="py-1 pr-8 text-right tabular-nums whitespace-nowrap">/);
   assert.match(panelSource, /<td className="py-1 pl-8">\s*\{charge\.stateLabel\}/);
+});
+
+// Pass 8 (P8-2): a part Paystack refused (another refund of the payment was
+// made, its answer lost) is finished by saying what Paystack already shows
+// refunded; the cancel then asks only for what is left.
+test("P8-2: a refused part offers 'partly refunded already' and needs the amount and the other refund's reference", async () => {
+  const { majorToMinor } = await import("../lib/refundOperationsView.js");
+  const refused = {
+    ...stuck,
+    charges: [{ attempt_id: "a-9", part: "deposit", ordinal: null, amount_cents: 100000000, currency: "ngn",
+      state: "refused", actionable: true, outcomes: ["refunded_elsewhere", "escalate"], charge_cents: 100000000 }],
+  };
+  const [row] = tripCancelChargeRows(refused);
+  assert.deepEqual([row.stateLabel, row.outcomes, row.chargeCents], ["Refused by Paystack", ["refunded_elsewhere", "escalate"], 100000000]);
+  assert.equal(majorToMinor("500,000.00"), 50000000);
+  assert.equal(majorToMinor("12.5"), 1250);
+  assert.equal(majorToMinor("-1"), null);
+  assert.deepEqual(Object.keys(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "", reason: "Paystack lists the seat refund", refundedElsewhere: "", chargeCents: 100000000 })).sort(), ["reference", "refundedElsewhere"]);
+  assert.ok(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "PS1", reason: "Paystack lists the seat refund", refundedElsewhere: "1000000", chargeCents: 100000000 }).refundedElsewhere);
+  assert.equal(validateTripCancelResolution({ outcome: "refunded_elsewhere", reference: "PS1", reason: "Paystack lists the seat refund", refundedElsewhere: "500000", chargeCents: 100000000 }), null);
+  assert.ok(TRIP_CANCEL_OUTCOMES.some((o) => o.value === "refunded_elsewhere"));
+  assert.match(panelSource, /Ask only for what is left/);
+  assert.match(pageSource, /asks Paystack only for what is left/);
+});
+
+test("P8-2: the figure is sent only for that outcome (the other actions call exactly as before)", async () => {
+  const calls = [];
+  const rpc = async (fn, args) => { calls.push([fn, args]); return { data: { ok: true }, error: null, status: 200 }; };
+  await resolveTripCancelRefund({ attemptId: "a-9", outcome: "refunded_elsewhere", reference: "PS1", reason: "Seat refund", amountCents: 100000000, currency: "ngn", refundedElsewhereCents: 50000000 }, rpc);
+  await resolveTripCancelRefund({ attemptId: "a-9", outcome: "escalate", reference: "PS1", reason: "No refund", amountCents: 1, currency: "ngn", refundedElsewhereCents: 5 }, rpc);
+  assert.equal(calls[0][1].p_refunded_elsewhere_cents, 50000000);
+  assert.equal(calls[0][1].p_provider_refund_reference, "PS1");
+  assert.equal("p_refunded_elsewhere_cents" in calls[1][1], false);
 });

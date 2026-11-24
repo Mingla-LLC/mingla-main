@@ -8,6 +8,7 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Input, Textarea } from "../ui/Input";
 import {
+  majorToMinor,
   TRIP_CANCEL_OUTCOMES,
   tripCancelChargeRows,
   validateTripCancelResolution,
@@ -21,12 +22,22 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
   const [outcome, setOutcome] = useState("refunded_at_provider");
   const [reference, setReference] = useState("");
   const [reason, setReason] = useState("");
+  const [refundedElsewhere, setRefundedElsewhere] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
   const target = actionable.find((charge) => charge.attemptId === attemptId) ?? actionable[0];
   const hours = waitingHours(detail?.waiting_since);
+  // Pass 8 (P8-2): a part Paystack refused offers "partly refunded already".
+  const outcomes = TRIP_CANCEL_OUTCOMES.filter((option) => (target?.outcomes ?? []).includes(option.value));
+  const chosenOutcome = outcomes.some((option) => option.value === outcome) ? outcome : outcomes[0]?.value;
 
   const submit = (chosen) => {
-    const problems = validateTripCancelResolution({ outcome: chosen, reference, reason });
+    const problems = validateTripCancelResolution({
+      outcome: chosen,
+      reference,
+      reason,
+      refundedElsewhere,
+      chargeCents: target?.chargeCents,
+    });
     if (problems || !target) {
       setFieldErrors(problems ?? {});
       return;
@@ -39,6 +50,7 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
       reason: reason.trim(),
       amountCents: target.amountCents,
       currency: target.currency,
+      ...(chosen === "refunded_elsewhere" ? { refundedElsewhereCents: majorToMinor(refundedElsewhere) } : {}),
     });
   };
 
@@ -103,7 +115,7 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
             <>
               {actionable.length > 1 && (
                 <fieldset className="space-y-1">
-                  <legend className="text-[var(--color-text-tertiary)]">Which unanswered refund</legend>
+                  <legend className="text-[var(--color-text-tertiary)]">Which refund</legend>
                   {actionable.map((charge) => (
                     <label key={charge.key} className="flex items-center gap-2">
                       <input
@@ -121,13 +133,13 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
                 <legend className="text-[var(--color-text-tertiary)]">
                   What does Paystack show for {target?.label ?? "this refund"}?
                 </legend>
-                {TRIP_CANCEL_OUTCOMES.map((option) => (
+                {outcomes.map((option) => (
                   <label key={option.value} className="flex items-center gap-2">
                     <input
                       type="radio"
                       name="trip-cancel-outcome"
                       value={option.value}
-                      checked={outcome === option.value}
+                      checked={chosenOutcome === option.value}
                       onChange={() => {
                         setOutcome(option.value);
                         setFieldErrors({});
@@ -138,9 +150,22 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
                 ))}
                 {fieldErrors.outcome && <p role="alert" className="text-[var(--color-error-600,#dc2626)]">{fieldErrors.outcome}</p>}
               </fieldset>
-              {outcome === "refunded_at_provider" && (
+              {chosenOutcome === "refunded_elsewhere" && (
                 <Input
-                  label="Paystack refund reference"
+                  label={`Already refunded on this payment (${String(target?.currency ?? "").toUpperCase()})`}
+                  inputMode="decimal"
+                  value={refundedElsewhere}
+                  onChange={(event) => {
+                    setRefundedElsewhere(event.target.value);
+                    setFieldErrors((current) => ({ ...current, refundedElsewhere: undefined }));
+                  }}
+                  error={fieldErrors.refundedElsewhere}
+                  placeholder="The other refunds Paystack lists on this payment, added up"
+                />
+              )}
+              {(chosenOutcome === "refunded_at_provider" || chosenOutcome === "refunded_elsewhere") && (
+                <Input
+                  label={chosenOutcome === "refunded_elsewhere" ? "Reference of that other Paystack refund" : "Paystack refund reference"
                   value={reference}
                   onChange={(event) => {
                     setReference(event.target.value);
@@ -168,19 +193,32 @@ export function TripCancelRefundPanel({ detail, money, busy, error, onResolve })
                 <Button
                   variant="secondary"
                   size="sm"
-                  disabled={busy || outcome !== "escalate"}
+                  disabled={busy || chosenOutcome !== "escalate"}
                   onClick={() => submit("escalate")}
                 >
                   Escalate
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={busy || outcome !== "refunded_at_provider"}
-                  onClick={() => submit("refunded_at_provider")}
-                >
-                  Record refund and finish cancel
-                </Button>
+                {chosenOutcome === "refunded_elsewhere"
+                  ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => submit("refunded_elsewhere")}
+                    >
+                      Ask only for what is left
+                    </Button>
+                  )
+                  : (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      disabled={busy || chosenOutcome !== "refunded_at_provider"}
+                      onClick={() => submit("refunded_at_provider")}
+                    >
+                      Record refund and finish cancel
+                    </Button>
+                  )}
               </div>
             </>
           )}

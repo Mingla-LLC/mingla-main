@@ -175,7 +175,7 @@ export async function getUnansweredTripCancelRefund(refundId, rpc = callAdminRpc
 }
 
 export async function resolveTripCancelRefund(
-  { attemptId, outcome, reference, reason, amountCents, currency },
+  { attemptId, outcome, reference, reason, amountCents, currency, refundedElsewhereCents },
   rpc = callAdminRpc,
 ) {
   const { data, error, status } = await rpc(
@@ -183,10 +183,14 @@ export async function resolveTripCancelRefund(
     {
       p_attempt_id: attemptId,
       p_outcome: outcome,
-      p_provider_refund_reference: outcome === "refunded_at_provider" ? reference : null,
+      p_provider_refund_reference:
+        outcome === "refunded_at_provider" || outcome === "refunded_elsewhere" ? reference : null,
       p_reason: reason,
       p_amount_cents: amountCents,
       p_currency: currency,
+      // Pass 8 (P8-2): sent only for that outcome, so the other actions call
+      // exactly as before.
+      ...(outcome === "refunded_elsewhere" ? { p_refunded_elsewhere_cents: refundedElsewhereCents } : {}),
     },
   );
   if (error) throw rpcError(error, status);

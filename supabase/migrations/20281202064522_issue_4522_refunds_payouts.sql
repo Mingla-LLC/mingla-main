@@ -54,6 +54,11 @@
 --     own charge and was refused (orders_refunded_amount_not_exceed_total)
 --     after the provider had refunded; a second-provider cancel never
 --     settled at all (refunds_application_fee_amount_truth_check).
+--   tg_refunds_amount_immutable (20280707414423) — pass 8 (P8-2): the one
+--     exception to the pinned cancel amount is a trip cancel's refund of a
+--     charge NOT yet made, lowered (never raised) by
+--     issue_4522_trip_cancel_resize_charge after the provider refused it as
+--     more than the charge holds.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -73,7 +78,8 @@ BEGIN
     ('public.authorize_stripe_payout_execution(uuid,uuid,integer,timestamptz)','02024b64f8ac98326be5703410241645'),
     ('public.authorize_paystack_payout_execution(uuid,uuid,timestamptz)','d8c549c1a96ce54133cd8055c5e8219a'),
     ('public.biz_refund_order_commit(uuid,text,integer,text,text)','69518ee8cfca51fb439df4bd90e93ca2'),
-    ('public.admin_refund_order_commit(uuid,text,integer,text,text)','d5408a9eacd02fd8ebbb9bdb5b6e23be')
+    ('public.admin_refund_order_commit(uuid,text,integer,text,text)','d5408a9eacd02fd8ebbb9bdb5b6e23be'),
+    ('public.tg_refunds_amount_immutable()','a1c2fb6206726166f9a15d82b0244cb2')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -117,6 +123,31 @@ AS $fn$
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_order_unreturned_overpayment(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
+-- Pass 8 (P8-1 / P8-2): refunds of the order's own charge still in flight
+-- (a seat or add-on refund whose row is pending: not sent yet, sent with no
+-- answer, or made at the provider and not yet recorded), as
+-- {refund_id: amount on the order's charge}. A trip cancel counts them as
+-- already refunded (spec 5.5 refund base), so the cancel and the pending
+-- refund together never pass the policy. A trip cancel's own row is never
+-- one of them (its confirmed parts are in issue_4522_order_charge_refunded_cents).
+CREATE FUNCTION public.issue_4522_order_charge_inflight_refunds(p_order_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT COALESCE(jsonb_object_agg(q.id::text, q.amount) FILTER (WHERE q.amount > 0), '{}'::jsonb)
+    FROM (SELECT r.id,
+                 (r.amount_cents - LEAST(r.amount_cents, COALESCE((
+                    SELECT sum(x.amount_cents) FROM public.order_installment_refund_applications x
+                     WHERE x.refund_id = r.id), 0)))::bigint AS amount
+            FROM public.refunds r
+           WHERE r.order_id = p_order_id AND r.status = 'pending' AND r.order_installment_id IS NULL
+             AND NOT (COALESCE(r.metadata, '{}'::jsonb) ? 'trip_cancel')) q
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_order_charge_inflight_refunds(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
 -- ---------------------------------------------------------------------------
 -- 1. The policy refund keeps a non-refundable deposit on a traveler's cancel.
 -- ---------------------------------------------------------------------------
@@ -142,6 +173,8 @@ DECLARE
   v_deposit_kept bigint := 0;
   v_overpayment_return bigint := 0;
   v_charge_left bigint;
+  v_inflight jsonb;
+  v_inflight_cents bigint := 0;
 BEGIN
   -- Fetch order + event
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
@@ -198,8 +231,15 @@ BEGIN
   -- "refund base = paid − already refunded"): policy percentage × (paid −
   -- already refunded on that charge − a kept non-refundable deposit), floor
   -- 0, exactly as each instalment row already is.
+  -- Pass 8 (P8-1 / P8-2): a refund of this charge still in flight (pending:
+  -- not sent, sent with no answer, or made and not yet recorded) is already
+  -- refunded for this rule. Ignoring it let the cancel and that refund
+  -- together pass the policy (50% tier: $1,000 back where $750 was due) or
+  -- ask the provider for more than the charge still holds (refused for ever).
+  v_inflight := public.issue_4522_order_charge_inflight_refunds(v_order.id);
+  SELECT COALESCE(sum(value::bigint), 0) INTO v_inflight_cents FROM jsonb_each_text(v_inflight);
   v_charge_left := greatest(0, v_order.total_cents::bigint
-    - public.issue_4522_order_charge_refunded_cents(v_order.id));
+    - public.issue_4522_order_charge_refunded_cents(v_order.id) - v_inflight_cents);
 
   IF v_order.installment_plan_root THEN
     -- Deposit (orders row) + sum of collected installments
@@ -313,6 +353,11 @@ BEGIN
     || CASE WHEN v_overpayment_return > 0
        THEN jsonb_build_object('overpayment_return_cents', v_overpayment_return,
               'total_back_cents', v_refund_total_cents + v_overpayment_return)
+       ELSE '{}'::jsonb END
+  -- Pass 8 (P8-1): refunds of the order's charge counted as already refunded
+  -- because they are still in flight; absent when none.
+    || CASE WHEN v_inflight_cents > 0
+       THEN jsonb_build_object('inflight_refund_cents', v_inflight_cents, 'inflight_refunds', v_inflight)
        ELSE '{}'::jsonb END;
 END;
 $function$;
@@ -484,6 +529,11 @@ BEGIN
         'per_payment_refund',v_compute->'per_payment_refund','failures',0)
         || CASE WHEN v_compute ? 'deposit_non_refundable_cents'
            THEN jsonb_build_object('deposit_non_refundable_cents',v_compute->'deposit_non_refundable_cents')
+           ELSE '{}'::jsonb END
+        -- Pass 8 (P8-1): the in-flight refunds this cancel counted as already
+        -- refunded; one that later fails is owed (issue_4522_trip_cancel_inflight_failed).
+        || CASE WHEN v_compute ? 'inflight_refunds'
+           THEN jsonb_build_object('inflight_counted',v_compute->'inflight_refunds')
            ELSE '{}'::jsonb END)
     ) RETURNING id INTO v_refund_id;
   END IF;
@@ -1498,6 +1548,256 @@ CREATE TRIGGER issue_4522_record_confirmed_cancel_refund
     AND NEW.buyer_refund_amount_text ~ '^[1-9][0-9]{0,15}$')
   EXECUTE FUNCTION public.issue_4522_record_confirmed_cancel_refund();
 
+-- Body as 20280707414423 except the pass-8 exception: inside
+-- issue_4522_trip_cancel_resize_charge (its transaction-local mark names this
+-- refund) a pending trip cancel's amount may be LOWERED, never raised, never
+-- to zero. Every other change of amount_cents is still refused.
+CREATE OR REPLACE FUNCTION public.tg_refunds_amount_immutable()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public', 'extensions', 'pg_temp'
+AS $function$
+BEGIN
+  IF OLD.amount_cents IS DISTINCT FROM NEW.amount_cents THEN
+    IF COALESCE(current_setting('mingla.trip_cancel_resize_refund', true), '') = OLD.id::text
+       AND OLD.status = 'pending' AND NEW.status = 'pending'
+       AND COALESCE(OLD.metadata, '{}'::jsonb) ? 'trip_cancel'
+       AND NEW.amount_cents > 0 AND NEW.amount_cents < OLD.amount_cents THEN
+      RETURN NEW;
+    END IF;
+    RAISE EXCEPTION 'I-PROPOSED-TR4-REFUND-AMOUNT-PINNED-AT-CANCEL: refunds.amount_cents is immutable post-insert (attempted change from % to %)',
+      OLD.amount_cents, NEW.amount_cents;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+-- Pass 8 (P8-2): a cancel's refund of one charge that the provider refused
+-- because the charge holds less than asked (another refund of it was made,
+-- and its answer lost) asks only for what is truly left, once. The rule is
+-- the cancel's own (spec 5.5): policy % x (charge - refunded elsewhere - a
+-- kept deposit), floor 0, where "refunded elsewhere" is the larger of what
+-- Mingla knows (settled + in flight) and what the provider shows on that
+-- charge (p_provider_refunded_elsewhere_cents: the cancel's read-back of the
+-- provider's refund list, or what staff read on the provider's dashboard).
+-- It only ever lowers the ask (never raises it, so nothing is refunded
+-- twice), only for a part not yet made, and a replay is a no-op. The next
+-- run sends the new amount (a second-provider part released after its
+-- refusal is claimed again; a card part uses a new provider key). Never
+-- calls the provider and never writes anything off.
+CREATE FUNCTION public.issue_4522_trip_cancel_resize_charge(
+  p_refund_id uuid, p_part text, p_provider_refunded_elsewhere_cents bigint DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order_id uuid;
+  v_refund public.refunds;
+  v_tc jsonb;
+  v_entries jsonb := '[]'::jsonb;
+  v_e jsonb;
+  v_entry jsonb;
+  v_charge bigint;
+  v_known bigint;
+  v_elsewhere bigint;
+  v_left bigint;
+  v_kept bigint := 0;
+  v_old bigint;
+  v_new bigint;
+BEGIN
+  IF p_provider_refunded_elsewhere_cents IS NOT NULL AND p_provider_refunded_elsewhere_cents < 0 THEN
+    RAISE EXCEPTION 'refunded_elsewhere_invalid' USING ERRCODE = '22023';
+  END IF;
+  SELECT order_id INTO v_order_id FROM public.refunds WHERE id = p_refund_id;
+  IF v_order_id IS NULL OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'trip_cancel_not_in_progress');
+  END IF;
+  SELECT * INTO v_refund FROM public.refunds WHERE id = p_refund_id FOR UPDATE;
+  v_tc := v_refund.metadata->'trip_cancel';
+  IF v_refund.status <> 'pending' OR v_tc IS NULL OR v_tc ? 'completed_at'
+     OR v_refund.order_installment_id IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'trip_cancel_not_in_progress');
+  END IF;
+  SELECT value INTO v_entry FROM jsonb_array_elements(v_tc->'per_payment_refund')
+   WHERE COALESCE(value->>'installment_id', 'deposit') = p_part LIMIT 1;
+  IF v_entry IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'trip_cancel_part_not_found');
+  END IF;
+  v_old := (v_entry->>'refund_cents')::bigint;
+  -- a part already made (or sent and unanswered) is never resized.
+  IF EXISTS (SELECT 1 FROM public.paystack_refund_attempts pa
+              WHERE pa.local_refund_id = p_refund_id
+                AND pa.merchant_note = 'mingla_trip_refund:' || p_refund_id::text || ':' || p_part
+                AND (pa.status IN ('processed', 'accepted') OR pa.provider_refund_id IS NOT NULL
+                     OR pa.error_message = 'provider_call_started'))
+     OR EXISTS (SELECT 1 FROM public.ticket_refund_attempts a
+                 WHERE a.refund_id = p_refund_id AND a.payment_intent_id = v_entry->>'source_pi'
+                   AND a.buyer_refund_id IS NOT NULL) THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'trip_cancel_part_already_sent');
+  END IF;
+  IF p_part = 'deposit' THEN
+    SELECT COALESCE((v_entry->>'charge_cents')::bigint, o.total_cents::bigint),
+           public.issue_4522_order_charge_refunded_cents(o.id)
+             + COALESCE((SELECT sum(value::bigint)
+                           FROM jsonb_each_text(public.issue_4522_order_charge_inflight_refunds(o.id))), 0)
+      INTO v_charge, v_known
+      FROM public.orders o WHERE o.id = v_order_id;
+    v_kept := COALESCE((v_tc->>'deposit_non_refundable_cents')::bigint, 0);
+  ELSE
+    SELECT COALESCE(oi.buyer_total_cents, oi.amount_cents)::bigint,
+           oi.refunded_amount_cents + public.issue_4522_row_unreturned_overpayment(oi.id)
+      INTO v_charge, v_known
+      FROM public.order_installments oi
+     WHERE oi.id::text = p_part AND oi.order_id = v_order_id;
+  END IF;
+  v_elsewhere := GREATEST(COALESCE(v_known, 0), COALESCE(p_provider_refunded_elsewhere_cents, 0));
+  v_left := GREATEST(0, COALESCE(v_charge, 0) - v_elsewhere);
+  v_new := FLOOR(GREATEST(0, v_left - LEAST(v_kept, v_left))::numeric
+                 * COALESCE((v_tc->>'tier_pct')::integer, 0) / 100.0)::bigint;
+  IF v_new >= v_old THEN
+    RETURN jsonb_build_object('ok', true, 'changed', false, 'part', p_part, 'refund_cents', v_old,
+      'refunded_elsewhere_cents', v_elsewhere);
+  END IF;
+  IF v_refund.amount_cents - (v_old - v_new) <= 0 THEN
+    -- nothing at all is left to refund: staff finish it (escalate).
+    RETURN jsonb_build_object('ok', false, 'reason', 'trip_cancel_nothing_left', 'part', p_part,
+      'refund_cents', v_new, 'refunded_elsewhere_cents', v_elsewhere);
+  END IF;
+  FOR v_e IN SELECT value FROM jsonb_array_elements(v_tc->'per_payment_refund') LOOP
+    IF COALESCE(v_e->>'installment_id', 'deposit') = p_part THEN
+      v_e := v_e || jsonb_build_object('refund_cents', v_new, 'paid_cents', v_left);
+    END IF;
+    v_entries := v_entries || jsonb_build_array(v_e);
+  END LOOP;
+  v_tc := v_tc || jsonb_build_object('per_payment_refund', v_entries,
+    'resized', COALESCE(v_tc->'resized', '{}'::jsonb) || jsonb_build_object(p_part, jsonb_build_object(
+      'from_cents', v_old, 'to_cents', v_new, 'refunded_elsewhere_cents', v_elsewhere,
+      'provider_refunded_elsewhere_cents', p_provider_refunded_elsewhere_cents, 'at', now())));
+  PERFORM set_config('mingla.trip_cancel_resize_refund', p_refund_id::text, true);
+  UPDATE public.refunds
+     SET amount_cents = amount_cents - (v_old - v_new),
+         metadata = jsonb_set(metadata, '{trip_cancel}', v_tc)
+   WHERE id = p_refund_id;
+  PERFORM set_config('mingla.trip_cancel_resize_refund', '', true);
+  -- the part's second-provider attempt (never sent, or released after a
+  -- refusal) asks for the new amount; at zero it is never sent.
+  UPDATE public.paystack_refund_attempts
+     SET amount_cents = CASE WHEN v_new > 0 THEN v_new ELSE amount_cents END,
+         status = CASE WHEN v_new > 0 THEN status ELSE 'failed' END,
+         error_message = CASE WHEN v_new > 0 THEN error_message ELSE 'resized_to_nothing' END,
+         updated_at = now()
+   WHERE local_refund_id = p_refund_id
+     AND merchant_note = 'mingla_trip_refund:' || p_refund_id::text || ':' || p_part
+     AND status = 'pending' AND provider_refund_id IS NULL
+     AND error_message IS DISTINCT FROM 'provider_call_started';
+  RETURN jsonb_build_object('ok', true, 'changed', true, 'part', p_part, 'from_cents', v_old,
+    'refund_cents', v_new, 'refunded_elsewhere_cents', v_elsewhere);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_resize_charge(uuid, text, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_trip_cancel_resize_charge(uuid, text, bigint) TO service_role;
+COMMENT ON FUNCTION public.issue_4522_trip_cancel_resize_charge(uuid, text, bigint) IS
+  'Issue #4522 pass 8 (P8-2): lower a trip cancel''s refund of one charge not yet made to policy % x (charge - refunded elsewhere - kept deposit), refunded elsewhere being the larger of Mingla''s records and the provider''s figure. Only lowers, only unsent parts, replay is a no-op; never calls the provider.';
+
+-- Pass 8 (P8-1): an in-flight refund a trip cancel counted as already
+-- refunded that then fails (or is cancelled) leaves the traveler owed the
+-- difference: what the cancel's policy would have refunded without it minus
+-- what it did. Chosen path (simplest that never loses money and never
+-- double-refunds): nothing is sent automatically; the exact amount owed is
+-- recorded once on the cancel (trip_cancel.shortfalls) and ops are emailed
+-- once by the instalment run (issue_4522_claim_trip_cancel_shortfalls).
+CREATE FUNCTION public.issue_4522_trip_cancel_inflight_failed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_c record;
+  v_dep jsonb;
+  v_amt bigint;
+  v_left bigint;
+  v_kept bigint;
+  v_kept_new bigint;
+  v_pct integer;
+  v_owed bigint;
+BEGIN
+  FOR v_c IN
+    SELECT r.id, r.metadata->'trip_cancel' AS tc, o.payment_plan_terms
+      FROM public.refunds r JOIN public.orders o ON o.id = r.order_id
+     WHERE r.order_id = NEW.order_id AND r.id <> NEW.id AND r.status IN ('pending', 'succeeded')
+       AND (r.metadata #> '{trip_cancel,inflight_counted}') ? NEW.id::text
+       AND NOT (COALESCE(r.metadata #> '{trip_cancel,shortfalls}', '{}'::jsonb) ? NEW.id::text)
+     FOR UPDATE OF r
+  LOOP
+    SELECT value INTO v_dep FROM jsonb_array_elements(v_c.tc->'per_payment_refund')
+     WHERE value->>'installment_id' IS NULL LIMIT 1;
+    v_amt := (v_c.tc #>> ARRAY['inflight_counted', NEW.id::text])::bigint;
+    v_left := COALESCE((v_dep->>'paid_cents')::bigint, 0);
+    v_pct := COALESCE((v_c.tc->>'tier_pct')::integer, 0);
+    v_kept := COALESCE((v_c.tc->>'deposit_non_refundable_cents')::bigint, 0);
+    v_kept_new := CASE WHEN v_kept > 0
+      THEN LEAST(GREATEST(COALESCE((v_c.payment_plan_terms->>'deposit_minor')::bigint, 0), 0), v_left + v_amt)
+      ELSE 0 END;
+    v_owed := FLOOR(GREATEST(0, v_left + v_amt - v_kept_new)::numeric * v_pct / 100.0)::bigint
+            - FLOOR(GREATEST(0, v_left - v_kept)::numeric * v_pct / 100.0)::bigint;
+    IF v_owed > 0 THEN
+      UPDATE public.refunds
+         SET metadata = jsonb_set(metadata, '{trip_cancel,shortfalls}',
+               COALESCE(metadata #> '{trip_cancel,shortfalls}', '{}'::jsonb)
+               || jsonb_build_object(NEW.id::text, jsonb_build_object(
+                    'owed_cents', v_owed, 'currency', lower(btrim(NEW.currency)),
+                    'failed_refund_cents', v_amt, 'tier_pct', v_pct, 'at', now())))
+       WHERE id = v_c.id;
+    END IF;
+  END LOOP;
+  RETURN NULL;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_inflight_failed() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER issue_4522_trip_cancel_inflight_failed
+  AFTER UPDATE OF status ON public.refunds
+  FOR EACH ROW WHEN (OLD.status = 'pending' AND NEW.status IN ('failed', 'cancelled'))
+  EXECUTE FUNCTION public.issue_4522_trip_cancel_inflight_failed();
+
+-- The instalment run's claim of owed amounts not yet told to ops: each is
+-- returned once (marked alerted_at in the same statement).
+CREATE FUNCTION public.issue_4522_claim_trip_cancel_shortfalls(p_limit integer DEFAULT 20)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_r record;
+  v_out jsonb := '[]'::jsonb;
+BEGIN
+  FOR v_r IN
+    SELECT r.id, r.order_id, s.key, s.value
+      FROM public.refunds r
+      CROSS JOIN LATERAL jsonb_each(r.metadata #> '{trip_cancel,shortfalls}') s
+     WHERE r.metadata #> '{trip_cancel,shortfalls}' IS NOT NULL
+       AND NOT (s.value ? 'alerted_at')
+     ORDER BY r.created_at, r.id
+     LIMIT least(greatest(COALESCE(p_limit, 20), 1), 50)
+     FOR UPDATE OF r SKIP LOCKED
+  LOOP
+    UPDATE public.refunds
+       SET metadata = jsonb_set(metadata, ARRAY['trip_cancel', 'shortfalls', v_r.key, 'alerted_at'], to_jsonb(now()))
+     WHERE id = v_r.id AND NOT ((metadata #> ARRAY['trip_cancel', 'shortfalls', v_r.key]) ? 'alerted_at');
+    IF FOUND THEN
+      v_out := v_out || jsonb_build_array(v_r.value || jsonb_build_object(
+        'cancel_refund_id', v_r.id, 'order_id', v_r.order_id, 'failed_refund_id', v_r.key));
+    END IF;
+  END LOOP;
+  RETURN v_out;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_claim_trip_cancel_shortfalls(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_claim_trip_cancel_shortfalls(integer) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 7. Pass 6 (S9-1): an instalment whose charge the provider has refunded is
 --    never paid out before our books show it. issue_4522_row_payout_blocked
@@ -2397,6 +2697,21 @@ AS $fn$
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_trip_attempt_unanswered(public.paystack_refund_attempts) FROM PUBLIC, anon, authenticated, service_role;
 
+-- Pass 8 (P8-2): a refund of a cancel in progress that the provider refused
+-- with no money moved (released for a later send), e.g. because the charge
+-- holds less than asked after another refund of it whose answer was lost.
+-- A retry repeats the same ask; staff finish it with what the provider shows.
+CREATE FUNCTION public.issue_4522_trip_attempt_refused(p_attempt public.paystack_refund_attempts)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT p_attempt.status = 'pending' AND p_attempt.provider_refund_id IS NULL
+     AND p_attempt.error_message = 'refused_before_any_refund'
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_trip_attempt_refused(public.paystack_refund_attempts) FROM PUBLIC, anon, authenticated, service_role;
+
 -- One cancel in progress, as the Refund operations panel shows it: the
 -- order, the trip, and each charge refund with its state.
 CREATE FUNCTION public.issue_4522_trip_cancel_ops_view(p_refund_id uuid)
@@ -2412,10 +2727,15 @@ AS $fn$
            'cancel_amount_cents', r.amount_cents,
            'unconfirmed_amount_cents', COALESCE(sum(pa.amount_cents)
              FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)), 0),
-           'waiting_since', min(pa.updated_at) FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)),
+           -- Pass 8 (P8-2): parts the provider refused (a retry repeats the ask).
+           'refused_amount_cents', COALESCE(sum(pa.amount_cents)
+             FILTER (WHERE public.issue_4522_trip_attempt_refused(pa)), 0),
+           'waiting_since', min(pa.updated_at) FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)
+                                                         OR public.issue_4522_trip_attempt_refused(pa)),
            'escalated', COALESCE(bool_or((r.metadata #>> ARRAY['trip_cancel', 'ops_resolutions',
                split_part(pa.merchant_note, ':', 3), 'outcome']) = 'escalate')
-             FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)), false),
+             FILTER (WHERE public.issue_4522_trip_attempt_unanswered(pa)
+                        OR public.issue_4522_trip_attempt_refused(pa)), false),
            'charges', jsonb_agg(jsonb_build_object(
                'attempt_id', pa.id,
                'part', split_part(pa.merchant_note, ':', 3),
@@ -2426,12 +2746,24 @@ AS $fn$
                              WHEN public.issue_4522_trip_attempt_unanswered(pa) THEN 'unanswered'
                              WHEN pa.status = 'accepted' THEN 'accepted'
                              WHEN pa.status = 'failed' THEN 'refused'
+                             WHEN public.issue_4522_trip_attempt_refused(pa) THEN 'refused'
                              ELSE 'not_sent' END,
-               'actionable', public.issue_4522_trip_attempt_unanswered(pa)
+               'actionable', (public.issue_4522_trip_attempt_unanswered(pa)
+                              OR public.issue_4522_trip_attempt_refused(pa))
                              AND pa.updated_at <= now() - interval '15 minutes',
+               -- Pass 8 (P8-2): which staff outcomes fit this part.
+               'outcomes', CASE WHEN public.issue_4522_trip_attempt_unanswered(pa)
+                                THEN '["refunded_at_provider","escalate"]'::jsonb
+                                WHEN public.issue_4522_trip_attempt_refused(pa)
+                                THEN '["refunded_elsewhere","escalate"]'::jsonb
+                                ELSE '[]'::jsonb END,
+               'charge_cents', CASE WHEN split_part(pa.merchant_note, ':', 3) = 'deposit'
+                                    THEN o.total_cents::bigint
+                                    ELSE COALESCE(oi.buyer_total_cents, oi.amount_cents)::bigint END,
                'ops_resolution', r.metadata #> ARRAY['trip_cancel', 'ops_resolutions',
                                                      split_part(pa.merchant_note, ':', 3)],
-               'waiting_since', CASE WHEN public.issue_4522_trip_attempt_unanswered(pa) THEN pa.updated_at END)
+               'waiting_since', CASE WHEN public.issue_4522_trip_attempt_unanswered(pa)
+                                       OR public.issue_4522_trip_attempt_refused(pa) THEN pa.updated_at END)
              ORDER BY oi.ordinal NULLS FIRST, pa.created_at))
     FROM public.refunds r
     JOIN public.orders o ON o.id = r.order_id
@@ -2444,7 +2776,7 @@ AS $fn$
    WHERE r.id = p_refund_id AND r.status = 'pending' AND r.order_installment_id IS NULL
      AND r.metadata ? 'trip_cancel' AND NOT (r.metadata->'trip_cancel' ? 'completed_at')
    GROUP BY r.id, e.title
-  HAVING bool_or(public.issue_4522_trip_attempt_unanswered(pa))
+  HAVING bool_or(public.issue_4522_trip_attempt_unanswered(pa) OR public.issue_4522_trip_attempt_refused(pa))
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_trip_cancel_ops_view(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
@@ -2470,7 +2802,8 @@ BEGIN
                      WHERE r.status = 'pending' AND r.metadata ? 'trip_cancel'
                        AND NOT (r.metadata->'trip_cancel' ? 'completed_at')
                        AND pa.merchant_note LIKE 'mingla_trip_refund:' || r.id::text || ':%'
-                       AND public.issue_4522_trip_attempt_unanswered(pa)
+                       AND (public.issue_4522_trip_attempt_unanswered(pa)
+                            OR public.issue_4522_trip_attempt_refused(pa))
                        AND pa.updated_at <= now() - interval '15 minutes'
                      LIMIT 200) x) q
      WHERE v IS NOT NULL), '[]'::jsonb);
@@ -2506,7 +2839,8 @@ CREATE FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(
   p_provider_refund_reference text,
   p_reason text,
   p_amount_cents bigint DEFAULT NULL,
-  p_currency text DEFAULT NULL
+  p_currency text DEFAULT NULL,
+  p_refunded_elsewhere_cents bigint DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2523,11 +2857,12 @@ DECLARE
   v_prior jsonb;
   v_entry jsonb;
   v_result jsonb;
+  v_resize jsonb;
 BEGIN
   IF v_actor IS NULL OR NOT COALESCE(public.is_admin_user(), false) THEN
     RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
   END IF;
-  IF p_outcome IS NULL OR p_outcome NOT IN ('refunded_at_provider', 'escalate') THEN
+  IF p_outcome IS NULL OR p_outcome NOT IN ('refunded_at_provider', 'refunded_elsewhere', 'escalate') THEN
     RAISE EXCEPTION 'trip_cancel_ops_outcome_invalid' USING ERRCODE = '22023';
   END IF;
   v_reason := btrim(COALESCE(p_reason, ''));
@@ -2535,8 +2870,14 @@ BEGIN
     RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = '22023';
   END IF;
   v_ref := NULLIF(btrim(COALESCE(p_provider_refund_reference, '')), '');
-  IF p_outcome = 'refunded_at_provider' AND (v_ref IS NULL OR length(v_ref) > 200) THEN
+  IF p_outcome IN ('refunded_at_provider', 'refunded_elsewhere') AND (v_ref IS NULL OR length(v_ref) > 200) THEN
     RAISE EXCEPTION 'provider_refund_reference_required' USING ERRCODE = '22023';
+  END IF;
+  -- Pass 8 (P8-2): what the provider shows already refunded on this charge
+  -- by other refunds (its dashboard), in minor units.
+  IF p_outcome = 'refunded_elsewhere'
+     AND (p_refunded_elsewhere_cents IS NULL OR p_refunded_elsewhere_cents <= 0) THEN
+    RAISE EXCEPTION 'refunded_elsewhere_required' USING ERRCODE = '22023';
   END IF;
   IF p_outcome = 'escalate' THEN v_ref := NULL; END IF;
 
@@ -2557,7 +2898,9 @@ BEGIN
 
   -- Idempotent replay: the same answer again returns what was recorded.
   IF v_prior IS NOT NULL AND v_prior->>'outcome' = p_outcome
-     AND (p_outcome = 'escalate' OR v_prior->>'reference' = v_ref) THEN
+     AND (p_outcome = 'escalate' OR v_prior->>'reference' = v_ref)
+     AND (p_outcome <> 'refunded_elsewhere'
+          OR (v_prior->>'refunded_elsewhere_cents')::bigint = p_refunded_elsewhere_cents) THEN
     RETURN v_prior || jsonb_build_object('ok', true, 'idempotent_replay', true);
   END IF;
   IF v_prior->>'outcome' = 'refunded_at_provider' THEN
@@ -2570,7 +2913,14 @@ BEGIN
      OR NOT (v_refund.metadata ? 'trip_cancel') OR v_refund.metadata->'trip_cancel' ? 'completed_at' THEN
     RAISE EXCEPTION 'trip_cancel_not_in_progress' USING ERRCODE = 'PT409';
   END IF;
-  IF NOT public.issue_4522_trip_attempt_unanswered(v_att) THEN
+  IF p_outcome = 'refunded_at_provider' AND NOT public.issue_4522_trip_attempt_unanswered(v_att) THEN
+    RAISE EXCEPTION 'trip_cancel_refund_not_unanswered' USING ERRCODE = 'PT409';
+  END IF;
+  IF p_outcome = 'refunded_elsewhere' AND NOT public.issue_4522_trip_attempt_refused(v_att) THEN
+    RAISE EXCEPTION 'trip_cancel_refund_not_refused' USING ERRCODE = 'PT409';
+  END IF;
+  IF p_outcome = 'escalate' AND NOT (public.issue_4522_trip_attempt_unanswered(v_att)
+                                     OR public.issue_4522_trip_attempt_refused(v_att)) THEN
     RAISE EXCEPTION 'trip_cancel_refund_not_unanswered' USING ERRCODE = 'PT409';
   END IF;
   IF v_att.updated_at > now() - interval '15 minutes' THEN
@@ -2612,6 +2962,21 @@ BEGIN
     v_entry := v_entry || jsonb_build_object('reference', v_ref);
   END IF;
 
+  IF p_outcome = 'refunded_elsewhere' THEN
+    -- Pass 8 (P8-2): the cancel asks only for what the charge truly holds,
+    -- by the cancel's own rule; nothing is sent from here (the next run
+    -- sends the new amount once). The reference is the OTHER refund's, kept
+    -- for the audit (it may already be on Mingla's own record of it).
+    v_resize := public.issue_4522_trip_cancel_resize_charge(v_refund.id, v_part, p_refunded_elsewhere_cents);
+    IF NOT COALESCE((v_resize->>'ok')::boolean, false) THEN
+      RAISE EXCEPTION '%', COALESCE(v_resize->>'reason', 'trip_cancel_resize_failed') USING ERRCODE = 'PT409';
+    END IF;
+    v_entry := v_entry || jsonb_build_object('reference', v_ref,
+      'refunded_elsewhere_cents', p_refunded_elsewhere_cents,
+      'from_cents', COALESCE((v_resize->>'from_cents')::bigint, v_att.amount_cents),
+      'to_cents', (v_resize->>'refund_cents')::bigint, 'changed', (v_resize->>'changed')::boolean);
+  END IF;
+
   -- Recorded on the cancel itself. A recorded part restarts the failure
   -- count (as an overpayment retry does) so the next resume finishes it.
   UPDATE public.refunds
@@ -2620,7 +2985,7 @@ BEGIN
            || jsonb_build_object('ops_resolutions',
                 COALESCE(metadata #> '{trip_cancel,ops_resolutions}', '{}'::jsonb)
                 || jsonb_build_object(v_part, v_entry))
-           || CASE WHEN p_outcome = 'refunded_at_provider'
+           || CASE WHEN p_outcome IN ('refunded_at_provider', 'refunded_elsewhere')
                 THEN jsonb_build_object('failures', 0, 'last_attempt_at', now() - interval '2 minutes')
                 ELSE '{}'::jsonb END)
    WHERE id = v_refund.id;
@@ -2628,12 +2993,16 @@ BEGIN
   INSERT INTO public.audit_log (user_id, brand_id, event_id, action, target_type, target_id, after)
   SELECT v_actor, e.brand_id, e.id,
          CASE WHEN p_outcome = 'refunded_at_provider' THEN 'trip_cancel_refund.recorded_by_ops'
+              WHEN p_outcome = 'refunded_elsewhere' THEN 'trip_cancel_refund.resized_by_ops'
               ELSE 'trip_cancel_refund.escalated_by_ops' END,
          'order', o.id,
          -- Pass 8 (P8-4): the audit row itself carries why and the reference.
          jsonb_build_object('refund_id', v_refund.id, 'attempt_id', v_att.id, 'part', v_part,
            'amount_cents', v_att.amount_cents, 'currency', v_att.currency,
            'reason', left(v_reason, 500), 'provider_refund_reference', v_ref)
+         || CASE WHEN p_outcome = 'refunded_elsewhere' THEN jsonb_build_object(
+              'refunded_elsewhere_cents', p_refunded_elsewhere_cents,
+              'from_cents', v_entry->'from_cents', 'to_cents', v_entry->'to_cents') ELSE '{}'::jsonb END
     FROM public.orders o JOIN public.events e ON e.id = o.event_id
    WHERE o.id = v_refund.order_id;
 
@@ -2644,9 +3013,9 @@ BEGIN
   RETURN v_result;
 END
 $fn$;
-REVOKE ALL ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text) FROM PUBLIC, anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text) TO authenticated;
-COMMENT ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text) IS
-  'Issue #4522 (H-2): staff finish a second-provider trip cancel refund that was sent and never answered. refunded_at_provider records it with the provider reference through record_paystack_refund_outcome (as a confirmed refund) and restarts the cancel''s resume, which completes the cancel and sends the buyer email once; escalate records the reason only. Never calls the provider, never re-sends, never writes off. Admin session only (is_admin_user).';
+REVOKE ALL ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint) TO authenticated;
+COMMENT ON FUNCTION public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint) IS
+  'Issue #4522 (H-2): staff finish a second-provider trip cancel refund that was sent and never answered. refunded_at_provider records it with the provider reference through record_paystack_refund_outcome (as a confirmed refund) and restarts the cancel''s resume, which completes the cancel and sends the buyer email once; refunded_elsewhere (pass 8, P8-2: a part the provider refused because another refund of the charge was made) lowers that part to the cancel''s rule with what the provider shows and restarts the resume, which sends the remainder once; escalate records the reason only. Never calls the provider, never re-sends, never writes off. Admin session only (is_admin_user).';
 
 COMMIT;

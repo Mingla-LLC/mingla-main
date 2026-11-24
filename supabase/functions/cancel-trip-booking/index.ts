@@ -53,6 +53,7 @@ import { executeTicketRefundWithFeeTruth } from "../_shared/issue2097TicketRefun
 import {
   createPaystackRefund,
   isRetryablePaystackRefundError,
+  listPaystackTransactionRefunds,
   PAYSTACK_MIN_REFUND_SUBUNITS,
   paystackRefundOutcomeStatus,
   persistPaystackRefundOutcome,
@@ -73,7 +74,9 @@ import {
   chargeCents,
   computeRefundForActor,
   depositKeptCents,
+  lostMinglaRefunds,
   paymentRefundEntries,
+  providerRefundedElsewhere,
 } from "./refundEntries.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { returnOrderOverpaymentsBestEffort } from "../_shared/installments/overpaymentLane.ts";
@@ -973,6 +976,66 @@ serve(async (req: Request): Promise<Response> => {
       : `tr4_cancel:${refundId}:${suffix}`;
   };
 
+  const settleRefusedPaystackPart = async (
+    input: { transaction: string; merchantNote: string; part: string },
+  ): Promise<void> => {
+    try {
+      const rows = await listPaystackTransactionRefunds({
+        transaction: input.transaction,
+        currency: "NGN",
+      });
+      if (rows === null) return; // the list cannot be trusted: staff finish it
+      const { error: resizeError } = await supabase.rpc(
+        "issue_4522_trip_cancel_resize_charge",
+        {
+          p_refund_id: refundId,
+          p_part: input.part,
+          p_provider_refunded_elsewhere_cents: providerRefundedElsewhere(rows, input.merchantNote),
+        },
+      );
+      // before the #4522 migration the resize does not exist: as main.
+      if (resizeError) return;
+      const { data: attempts } = await supabase.from("paystack_refund_attempts")
+        .select("source_type, source_id, local_refund_id, merchant_note, status, provider_refund_id, amount_cents")
+        .eq("transaction_reference", input.transaction);
+      for (
+        const lost of lostMinglaRefunds(
+          rows,
+          (attempts ?? []) as Array<{
+            source_type: string;
+            source_id: string;
+            local_refund_id: string | null;
+            merchant_note: string;
+            status: string;
+            provider_refund_id: string | null;
+            amount_cents: number;
+          }>,
+          input.merchantNote,
+        )
+      ) {
+        await persistPaystackRefundOutcome(
+          () =>
+            supabase.rpc("record_paystack_refund_outcome", {
+              p_source_type: lost.attempt.source_type,
+              p_source_id: lost.attempt.source_id,
+              p_local_refund_id: lost.attempt.local_refund_id,
+              p_transaction_reference: input.transaction,
+              p_merchant_note: lost.attempt.merchant_note,
+              p_provider_refund_id: lost.providerRefundId,
+              p_amount_cents: lost.attempt.amount_cents,
+              p_status: paystackRefundOutcomeStatus(lost.status),
+            }),
+          "cancel-trip-booking",
+        );
+      }
+    } catch (readBackErr) {
+      console.warn(
+        "[cancel-trip-booking] refused part read-back failed",
+        readBackErr instanceof Error ? readBackErr.message : String(readBackErr),
+      );
+    }
+  };
+
   for (const entry of perPaymentRefund) {
     if (entry.refund_cents <= 0) {
       // Zero-refund tier (e.g., 0% tier or rounding edge case for tiny installments).
@@ -1112,6 +1175,16 @@ serve(async (req: Request): Promise<Response> => {
                 p_refund_id: refundId,
                 p_merchant_note: merchantNote,
                 p_release: true,
+              });
+              // Pass 8 (P8-2): a refusal may mean the charge holds less than
+              // asked (another refund of it made, its answer lost). Read the
+              // provider's refunds of this charge back, lower this part to
+              // the cancel's rule (sent once, by the next run) and record
+              // any of Mingla's own refunds found made there.
+              await settleRefusedPaystackPart({
+                transaction,
+                merchantNote,
+                part: entry.installment_id ?? "deposit",
               });
             }
             throw sendErr;
@@ -1260,6 +1333,17 @@ serve(async (req: Request): Promise<Response> => {
         status < 500 && status !== 409 && status !== 429
       ) {
         refusedCardCharge = entry.installment_id ?? "deposit";
+        // Pass 8 (P8-2, card): lower this part to the cancel's rule with
+        // what Mingla holds of other refunds of the charge (settled or in
+        // flight); the next try uses a new provider key. No-op when nothing
+        // else took from the charge, and before the #4522 migration (as main).
+        const { error: resizeError } = await supabase.rpc(
+          "issue_4522_trip_cancel_resize_charge",
+          { p_refund_id: refundId, p_part: refusedCardCharge },
+        );
+        if (resizeError) {
+          console.warn("[cancel-trip-booking] card part not resized", resizeError.message);
+        }
       }
       paystackFailureRetryable = paymentProvider === "paystack" &&
         isRetryablePaystackRefundError(err);

@@ -118,9 +118,9 @@ BEGIN
     RAISE EXCEPTION 'O-1c a non-admin cannot list the queue';
   END IF;
   IF NOT has_function_privilege('authenticated',
-       'public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text)', 'EXECUTE')
+       'public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint)', 'EXECUTE')
      OR has_function_privilege('anon',
-       'public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text)', 'EXECUTE')
+       'public.issue_4522_resolve_trip_cancel_refund_by_ops(uuid, text, text, text, bigint, text, bigint)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.issue_4522_list_unanswered_trip_cancel_refunds()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.issue_4522_trip_cancel_ops_view(uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'O-1d execute is granted to authenticated only';

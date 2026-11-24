@@ -159,7 +159,8 @@ export async function alertTripCancelNotFinished(
     `What failed: ${input.detail.slice(0, 300)}`,
     input.cause === "unconfirmed" || input.cause === "stuck"
       ? "Next: check this refund with the provider. When the provider shows it, the next instalment run or the host pressing Cancel & refund again records it."
-      : "Next: fix the cause, then the host can press Cancel & refund again on this booking to finish it; refunds already made are never sent again.",
+      // Pass 8 (P8-2): never promise a host retry that repeats the same refused ask.
+      : "Next (staff): Mingla has stopped retrying, and the host pressing Cancel & refund again repeats the same request, so it only helps if the cause was temporary. Check this charge with the provider. If the provider refused it because part of the charge was already refunded by another refund (for example a seat refund), open Admin > Money > Refund operations, choose \"Paystack shows it partly refunded already\" and enter what Paystack shows: the next run sends only what is left, once. Card cancels lower the amount automatically when Mingla already holds the other refund. Otherwise escalate it. Refunds already made are never sent again.",
     // Pass 8 (P8-6): a refund sent with no answer is finished by staff.
     ...(input.unconfirmed.length > 0
       ? ["To finish a refund marked \"no answer\": once it has waited 15 minutes, open Admin > Money > Refund operations, check it with the provider, then record the provider's refund reference or escalate it. Nothing is sent again."]
@@ -177,8 +178,15 @@ export async function resumeTripCancels(
   supabase: Client,
   limit: number,
   invoke: (body: Record<string, unknown>, key: string) => Promise<Response> = defaultResumeInvoke,
+  alert?: (subject: string, paragraphs: string[]) => Promise<void>,
 ): Promise<{ completed: number; in_progress: number; error: number }> {
   const out = { completed: 0, in_progress: 0, error: 0 };
+  // loaded on use: the ops mailer reads its secrets when imported.
+  await alertTripCancelShortfalls(
+    supabase,
+    alert ?? (async (subject, paragraphs) =>
+      (await import("./installmentOpsAlert.ts")).installmentOpsAlert(subject, paragraphs)),
+  );
   const { data, error } = await supabase.rpc("issue_4522_trip_cancels_to_resume", {
     p_limit: Math.min(Math.max(limit, 1), 10),
   });
@@ -208,6 +216,49 @@ export async function resumeTripCancels(
     }
   }
   return out;
+}
+
+/**
+ * Pass 8 (P8-1): a seat or add-on refund a trip cancel counted as already
+ * refunded (it was still in flight) that then failed leaves the traveler
+ * owed the difference. Nothing is sent automatically: each owed amount is
+ * claimed once (issue_4522_claim_trip_cancel_shortfalls) and told to ops
+ * once, with the exact amount. Before the #4522 migration is applied the
+ * claim does not exist and this does nothing (as main).
+ */
+export async function alertTripCancelShortfalls(
+  supabase: Client,
+  alert: (subject: string, paragraphs: string[]) => Promise<void>,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("issue_4522_claim_trip_cancel_shortfalls", { p_limit: 20 });
+  if (error) {
+    if (!isMissingRpc(error)) {
+      console.error(JSON.stringify({ event: "trip_cancel_shortfall_claim_failed", reason: String(error.message ?? "").slice(0, 200) }));
+    }
+    return 0;
+  }
+  const rows = (Array.isArray(data) ? data : []) as Record<string, unknown>[];
+  for (const row of rows) {
+    await alert("A cancelled trip booking still owes the traveler money", tripCancelShortfallParagraphs(row));
+  }
+  return rows.length;
+}
+
+/** The ops alert text for one owed amount (exact minor units). */
+export function tripCancelShortfallParagraphs(row: Record<string, unknown>): string[] {
+  const cur = String(row.currency ?? "?").toUpperCase();
+  return [
+    "A trip cancel counted a seat or add-on refund that was still in progress as already refunded, so it refunded less. That refund has since failed, so the traveler is owed the difference. Mingla has NOT sent it automatically and has not written it off.",
+    `Order: ${String(row.order_id ?? "?")}; cancel refund: ${String(row.cancel_refund_id ?? "?")}; failed refund: ${String(row.failed_refund_id ?? "?")}`,
+    `Owed to the traveler: ${String(row.owed_cents ?? "?")} ${cur} (minor units), the cancel's ${String(row.tier_pct ?? "?")}% policy on the failed refund's ${String(row.failed_refund_cents ?? "?")} ${cur}.`,
+    "Next (staff): refund exactly this amount to the traveler once from Admin (order refund), then note it on the order. Do not ask the host to repeat the cancel.",
+  ];
+}
+
+function isMissingRpc(error: { code?: unknown; message?: unknown }): boolean {
+  const code = String(error.code ?? "");
+  return code === "PGRST202" || code === "42883" ||
+    /could not find the function|does not exist/i.test(String(error.message ?? ""));
 }
 
 function defaultResumeInvoke(body: Record<string, unknown>, key: string): Promise<Response> {

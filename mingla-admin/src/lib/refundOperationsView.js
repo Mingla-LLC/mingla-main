@@ -151,24 +151,47 @@ export function tripCancelChargeRows(detail) {
     stateLabel: CHARGE_STATE_WORDS[charge.state] ?? "Not finished",
     actionable: charge.actionable === true,
     escalated: charge.ops_resolution?.outcome === "escalate",
+    // Pass 8 (P8-2): what staff may do with this part (unanswered: record or
+    // escalate; refused: say what Paystack already shows refunded, or escalate).
+    outcomes: Array.isArray(charge.outcomes) ? charge.outcomes : ["refunded_at_provider", "escalate"],
+    chargeCents: Number.isInteger(charge.charge_cents) ? charge.charge_cents : null,
   }));
 }
 
 export const TRIP_CANCEL_OUTCOMES = [
   { value: "refunded_at_provider", label: "Paystack shows it refunded: record it" },
+  { value: "refunded_elsewhere", label: "Paystack shows it partly refunded already: ask only for what is left" },
   { value: "escalate", label: "Paystack shows no refund: escalate (nothing is re-sent from here)" },
 ];
+
+/** Pass 8 (P8-2): a typed amount in major units (e.g. "500000.00") as minor units, or null. */
+export function majorToMinor(text) {
+  const value = String(text ?? "").trim().replace(/,/g, "");
+  if (!/^\d{1,13}(\.\d{1,2})?$/.test(value)) return null;
+  const [whole, fraction = ""] = value.split(".");
+  return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+}
 
 /**
  * Field errors for the trip cancel form, or null when it can be sent.
  * The provider refund reference is required to record; the reason always.
  */
-export function validateTripCancelResolution({ outcome, reference, reason }) {
+export function validateTripCancelResolution({ outcome, reference, reason, refundedElsewhere, chargeCents }) {
   const errors = {};
-  if (outcome !== "refunded_at_provider" && outcome !== "escalate") {
+  if (outcome !== "refunded_at_provider" && outcome !== "refunded_elsewhere" && outcome !== "escalate") {
     errors.outcome = "Choose what Paystack shows for this refund.";
   }
   const ref = String(reference ?? "").trim();
+  if (outcome === "refunded_elsewhere") {
+    const minor = majorToMinor(refundedElsewhere);
+    if (minor === null || minor <= 0) {
+      errors.refundedElsewhere = "Enter the amount Paystack shows already refunded on this payment.";
+    } else if (Number.isInteger(chargeCents) && minor >= chargeCents) {
+      errors.refundedElsewhere = "That is the whole payment or more. Check it in Paystack, or escalate.";
+    }
+    if (ref.length === 0) errors.reference = "Enter the reference of that other Paystack refund.";
+    else if (ref.length > 200) errors.reference = "The refund reference is too long. Check it in Paystack.";
+  }
   if (outcome === "refunded_at_provider") {
     if (ref.length === 0) errors.reference = "Enter the Paystack refund reference to record it.";
     else if (ref.length > 200) errors.reference = "The refund reference is too long. Check it in Paystack.";
@@ -184,6 +207,9 @@ const TRIP_CANCEL_ERROR_WORDS = {
   trip_cancel_refund_already_confirmed: "Paystack has already confirmed this refund. Refresh the queue.",
   trip_cancel_refund_already_resolved: "This refund was already recorded. Refresh the queue.",
   trip_cancel_refund_not_unanswered: "This refund is no longer waiting on Paystack. Refresh the queue.",
+  trip_cancel_refund_not_refused: "Paystack has not refused this refund. Refresh the queue.",
+  refunded_elsewhere_required: "Enter the amount Paystack shows already refunded on this payment.",
+  trip_cancel_nothing_left: "Nothing is left to refund on this payment after that amount. Escalate it instead.",
   trip_cancel_not_in_progress: "This cancel is already finished. Refresh the queue.",
   trip_cancel_refund_too_recent: "This refund was sent in the last 15 minutes. Wait for Paystack to answer, then try again.",
   trip_cancel_refund_amount_or_currency_mismatch: "This refund changed since you opened it. Refresh the queue and try again.",

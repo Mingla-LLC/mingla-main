@@ -224,7 +224,7 @@ Deno.test("G-3/G-4: the one alert says per charge what is true now and what happ
   const text = sent[0].paragraphs.join("\n");
   assertEquals(sent[0].subject, "A trip cancel refund could not be finished");
   for (const want of ["o_1", "rf_1", "pi_row1", "refunded and recorded", "pi_dep (deposit): 30000 USD (minor units): not refunded yet",
-    "three attempts", "payouts stay held", "press Cancel & refund again", "never sent again"]) {
+    "three attempts", "payouts stay held", "repeats the same request", "never sent again"]) {
     assertStringIncludes(text, want);
   }
   await alertTripCancelNotFinished(alert, {
@@ -236,8 +236,9 @@ Deno.test("G-3/G-4: the one alert says per charge what is true now and what happ
   assertStringIncludes(text2, "sent to the provider, no answer yet (never re-sent automatically)");
   assertStringIncludes(text2, "never sends it again automatically");
   assertStringIncludes(text2, "Admin > Money > Refund operations");
-  // a failure alert with nothing unanswered does not send staff there
-  assertEquals(text.includes("Refund operations"), false);
+  // Pass 8 (P8-2): a failure alert sends staff to Refund operations for a
+  // part refused as more than the charge holds (a host retry repeats it).
+  assertStringIncludes(text, "Refund operations");
 });
 
 // Pass 8 (P8-6): the H-2 alert states each part's real state. A deposit the
