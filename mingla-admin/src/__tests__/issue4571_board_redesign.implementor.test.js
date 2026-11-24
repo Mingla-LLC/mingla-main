@@ -316,20 +316,32 @@ describe("S-1 the Work card opens over the record and goes back", () => {
 });
 
 describe("R-1 the most urgent status wins", () => {
-  it("reply waiting > demo lock > next demo > next event > stuck > round", () => {
-    const all = { suggest_replied: { at: "x" }, demo_gate: { locked: true }, next_demo: { call_at: "2026-11-25T10:00:00Z" }, cadence: { round: 2, of: 6, steps: [] } };
+  it("reply waiting > stuck (past its date) > demo cancelled > next demo > next event > demo lock > round", () => {
+    const all = { suggest_replied: { at: "x" }, demo_gate: { locked: true, demo_cancelled: true }, next_demo: { call_at: "2026-11-25T10:00:00Z" }, cadence: { round: 2, of: 6, steps: [] } };
     const opts = { stageTag: "Contacted", hostRow: { needs_next: true } };
-    assert.equal(cardStatus(HOSTS, host(all), opts).kind, "reply");
-    assert.equal(cardStatus(HOSTS, host({ ...all, suggest_replied: null }), opts).kind, "lock");
-    assert.equal(cardStatus(HOSTS, host({ ...all, suggest_replied: null, demo_gate: null }), opts).kind, "demo");
-    assert.equal(cardStatus(HOSTS, host({ cadence: all.cadence }), opts).kind, "event");
-    assert.equal(cardStatus(HOSTS, host({ cadence: all.cadence }), { stageTag: "Contacted" }).kind, "stale");
+    const no = (o) => cardStatus(HOSTS, host({ ...all, ...o }), opts).kind;
+    assert.equal(no({}), "reply");
+    assert.equal(no({ suggest_replied: null }), "stale");
+    assert.equal(cardStatus(HOSTS, host({ ...all, suggest_replied: null }), { hostRow: opts.hostRow }).kind, "cancelled");
+    const rest = { suggest_replied: null, demo_gate: { locked: true } };
+    assert.equal(cardStatus(HOSTS, host({ ...all, ...rest }), { hostRow: opts.hostRow }).kind, "demo");
+    assert.equal(cardStatus(HOSTS, host({ ...all, ...rest, next_demo: null }), { hostRow: opts.hostRow }).kind, "event");
+    assert.equal(cardStatus(HOSTS, host({ ...all, ...rest, next_demo: null })).kind, "lock");
     assert.equal(cardStatus(HOSTS, host({ cadence: all.cadence })).kind, "round");
   });
   it("a stale card with a reply waiting shows the reply, not Stuck in", () => {
     const html = h.card({ record: host({ due_on: "2026-11-01", suggest_replied: { at: "x" } }), def: HOSTS, stageTag: "Contacted" });
     assert.match(html, /data-tile-replied=""[^>]*>[\s\S]*?Replied by email\? Open to move it\./);
     assert.doesNotMatch(html, /Stuck in/);
+  });
+  it("a Prospect host past its date with no demo says Stuck in Prospect · past its date, even when locked", () => {
+    const html = h.card({ record: host({ stage: "prospect", due_on: "2026-11-01", demo_gate: { locked: true } }), def: HOSTS, stageTag: "Prospect" });
+    assert.match(html, /data-stage-tag="prospect"[^>]*>[\s\S]*?Stuck in <b>Prospect<\/b> · past its date/);
+    assert.doesNotMatch(html, /data-demo-lock/);
+  });
+  it("a lock-only card still shows the lock", () => {
+    const html = h.card({ record: host({ stage: "replied", demo_gate: { locked: true } }), def: HOSTS });
+    assert.match(html, /data-demo-lock=""[^>]*>[\s\S]*?Demo booked locked/);
   });
 });
 

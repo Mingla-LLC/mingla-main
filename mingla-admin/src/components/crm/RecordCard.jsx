@@ -123,16 +123,17 @@ function StatusLine({ status, record }) {
     stale: { "data-stage-tag": record.stage },
     reply: { "data-tile-replied": "" },
     lock: { "data-demo-lock": "" },
+    cancelled: { "data-demo-cancelled": "" },
     demo: { "data-next-demo": "" },
     round: { "data-cadence": "" },
   }[status.kind] || {};
   return (
-    <p {...marker} title={status.kind === "stale" ? `Stuck in ${status.words}` : status.words}
+    <p {...marker} title={status.kind === "stale" ? `Stuck in ${status.words} · past its date` : status.words}
       className={`flex min-w-0 items-center gap-1.5 text-[12.5px] font-semibold ${STATUS_INK[status.k] || "text-[var(--color-text-primary)]"}`}>
       <i aria-hidden="true" className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${DOT[status.k] || DOT.none}`} />
       {status.kind === "lock" && <Lock aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}
       {status.kind === "demo" && <Calendar aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}
-      <span className="min-w-0 truncate">{status.kind === "stale" ? <>Stuck in <b>{status.words}</b></> : status.words}</span>
+      <span className="min-w-0 truncate">{status.kind === "stale" ? <>Stuck in <b>{status.words}</b> · past its date</> : status.words}</span>
     </p>
   );
 }

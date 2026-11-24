@@ -2453,6 +2453,7 @@
         "mingla-admin/src/components/crm/NextEventLine.jsx",
         "mingla-admin/src/hooks/useHostNextRow.js",
         "mingla-admin/src/lib/recordCardModel.js",
+        "mingla-admin/src/lib/recordPanelModel.js",
         "mingla-admin/src/lib/recordWorkLinks.js",
         "mingla-admin/src/components/crm/RecordDrawer.jsx",
         "mingla-admin/src/components/outreach/FunnelStrip.jsx",
