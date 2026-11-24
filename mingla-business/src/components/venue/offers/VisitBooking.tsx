@@ -422,6 +422,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
     );
   };
 
+  // Merge with #4420/#4527: addOfferingToCalendar takes only the entry and
+  // opens the Google Calendar page (the old web .ics download was removed:
+  // in-app browsers ignored it).
   const addToCalendar = (): void => {
     if (booking === null || booking.window === null) return;
     const startMs = Date.parse(booking.window.startsAt);
@@ -436,7 +439,6 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         url: null,
         details: `Booking ${shortBookingReference(booking.reference)}. Show your pass at the gate.`,
       },
-      `venue-booking-${booking.groupId}`,
     );
   };
 

@@ -555,9 +555,6 @@ const BOUNDARY: Record<string, () => unknown> = {
     useTripIntakeSchemasByEvent: () => intakeQuery,
     useUpsertTripIntakeSchema: () => mutation,
   }),
-  // [TEST-MOD-APPROVED #4490] fix round 2: the event creator starts a new
-  // event in the brand's time zone (pure helpers; real module).
-  timezones: () => jest.requireActual("../../utils/timezones"),
 };
 const STEP_LEAF =
   /^(CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet|TripCreatorStep(1Basics|2Itinerary|3Inclusions|5Policy|6Intake))$/;

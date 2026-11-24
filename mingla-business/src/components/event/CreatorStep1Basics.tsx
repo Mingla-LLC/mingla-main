@@ -324,7 +324,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
         ))}
         {/* #4490 fix 2 (N81 e) — events are filed under an event type; a class,
             workshop or tour is an experience (its own creator, no event type). */}
-        <Text style={styles.fieldHint}>
+        <Text style={styles.fieldHintAfter}>
           Running a class, workshop or tour? Make it an experience instead: Create › Experience, or
           &quot;Add an experience here&quot; inside your venue.
         </Text>
@@ -432,7 +432,8 @@ const styles = StyleSheet.create({
     color: color.text2,
     marginBottom: space[1],
   },
-  fieldHint: {
+  // #4490 fix 2 (N81 e): the class / workshop / tour hint under the choices.
+  fieldHintAfter: {
     fontSize: type.caption.fontSize,
     lineHeight: type.caption.lineHeight,
     color: color.text3,
