@@ -17,9 +17,11 @@ import { useAuth } from "../../context/AuthContext";
 import { supabase } from "../../services/supabase";
 import { getCombinedAudienceReach } from "../../services/marketing/marketingCombinedAudienceService";
 import {
+  getEventRoster,
   listEventAudiences,
   type EventAudienceSummary,
 } from "../../services/marketing/marketingAudienceService";
+import type { BuyerRowData } from "../../types/marketing";
 import {
   eventAudienceShape,
   type EventAudienceShape,
@@ -31,7 +33,22 @@ export const eventAudienceKeys = {
   all: ["marketing", "event-audience"] as const,
   byEvent: (eventId: string): readonly [string, string, string] =>
     ["marketing", "event-audience", eventId] as const,
+  type: (eventId: string): readonly [string, string, string, string] =>
+    ["marketing", "event-audience", eventId, "type"] as const,
 };
+
+/** The event's type alone, so error and empty copy can say guests even if the count fails. */
+export async function loadEventType(eventId: string): Promise<string | null> {
+  // orch-strict-grep-allow events-type-filter — #4596: single-row read of a known event's type; the type is read, not filtered.
+  const { data, error } = await supabase
+    .from("events")
+    .select("event_type")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (error) throw error;
+  const value = (data as { event_type?: unknown } | null)?.event_type;
+  return typeof value === "string" ? value : null;
+}
 
 export interface EventAudienceCount {
   eventId: string;
@@ -46,10 +63,17 @@ export interface EventAudienceCount {
   pendingReviewCount: number;
   /** How many the email method can reach now (the composer's basis). */
   reachableEmail: number;
+  /**
+   * Fix pass 3 — the names behind the count, from the same owner: every
+   * person counted plus going guests waiting on a duplicate check.
+   */
+  roster: BuyerRowData[];
 }
 
 export interface UseEventAudienceCountState {
   data: EventAudienceCount | undefined;
+  /** "rsvp" once known, from its own read, even when the count failed. */
+  eventType: string | null | undefined;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -70,7 +94,7 @@ export async function loadEventAudienceCount(
   if (typeof brandId !== "string") throw new Error("EVENT_NOT_FOUND");
   const eventType = (eventRow as { event_type?: unknown }).event_type;
 
-  const [events, reachableEmail] = await Promise.all([
+  const [events, reachableEmail, roster] = await Promise.all([
     listEventAudiences({ actor_id: actorId, brand_id: brandId }),
     getCombinedAudienceReach({
       actor_id: actorId,
@@ -78,6 +102,7 @@ export async function loadEventAudienceCount(
       sources: [`event:${eventId}`],
       channel: "email",
     }),
+    getEventRoster({ actor_id: actorId, brand_id: brandId, event_id: eventId }),
   ]);
   const row: EventAudienceSummary | undefined = events.find((event) => event.eventId === eventId);
   const facts = {
@@ -95,6 +120,7 @@ export async function loadEventAudienceCount(
     guestCount: facts.guestCount,
     pendingReviewCount: row?.pendingReviewCount ?? 0,
     reachableEmail,
+    roster,
   };
 }
 
@@ -116,14 +142,21 @@ export function useEventAudienceCount(
     enabled,
     staleTime: STALE_TIME_MS,
   });
+  const typeQuery = useQuery<string | null>({
+    queryKey: enabled ? eventAudienceKeys.type(eventId as string) : eventAudienceKeys.all,
+    queryFn: () => loadEventType(eventId as string),
+    enabled,
+    staleTime: STALE_TIME_MS,
+  });
   return useMemo(
     () => ({
       data: query.data,
+      eventType: query.data?.eventType ?? typeQuery.data,
       // A disabled query (auth still bootstrapping) is loading, not empty.
       isLoading: query.isLoading || !enabled,
       isError: query.isError,
       error: query.error,
     }),
-    [query.data, query.isLoading, query.isError, query.error, enabled],
+    [query.data, typeQuery.data, query.isLoading, query.isError, query.error, enabled],
   );
 }

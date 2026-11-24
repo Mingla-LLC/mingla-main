@@ -35,12 +35,16 @@ describe("#4596 FP1 an event manager's Blasts count", () => {
     rpc.mockImplementation(async (name: string) => name === "biz_marketing_event_audiences_v1"
       ? { data: [{ eventId: EVENT, title: "Rooftop", eventType: "rsvp", startsAt: null,
           buyerCount: 0, guestCount: 3, peopleCount: 3, pendingReviewCount: 1 }], error: null }
-      : { data: 2, error: null });
+      : name === "biz_marketing_event_roster_v1"
+        ? { data: { eventTitle: "Rooftop", rows: [] }, error: null }
+        : { data: 2, error: null });
     const count = await loadEventAudienceCount(ACTOR, EVENT);
     expect(count).toMatchObject({ shape: "guests", peopleCount: 3, reachableEmail: 2, pendingReviewCount: 1 });
+    // Fix pass 3: the roster (event_manager and up) joins the two count reads.
     expect(rpc.mock.calls.map((call) => call[0]).sort()).toEqual([
       "biz_marketing_combined_audience_reach_v1",
       "biz_marketing_event_audiences_v1",
+      "biz_marketing_event_roster_v1",
     ]);
     expect(rpc).toHaveBeenCalledWith("biz_marketing_combined_audience_reach_v1", expect.objectContaining({
       p_actor_id: ACTOR, p_brand_id: BRAND, p_sources: [`event:${EVENT}`], p_channel: "email",

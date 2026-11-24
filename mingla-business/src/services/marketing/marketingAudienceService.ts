@@ -540,6 +540,57 @@ export async function listEventAudiences(input: {
 }
 
 /**
+ * #4596 fix pass 3 — the event Blasts roster from the same owner as the count:
+ * one row per person the count includes (buyers, guests, both) plus going
+ * guests waiting on a duplicate check. Consent is the server's decision.
+ */
+export async function getEventRoster(input: {
+  actor_id: string;
+  brand_id: string;
+  event_id: string;
+}): Promise<BuyerRowData[]> {
+  assertUuid(input.actor_id, "getEventRoster.actor_id");
+  assertUuid(input.brand_id, "getEventRoster.brand_id");
+  assertUuid(input.event_id, "getEventRoster.event_id");
+  const { data, error } = await supabase.rpc("biz_marketing_event_roster_v1", {
+    p_actor_id: input.actor_id,
+    p_brand_id: input.brand_id,
+    p_event_id: input.event_id,
+  });
+  if (error) throw error;
+  const body = data as { eventTitle?: unknown; rows?: unknown } | null;
+  if (body === null || !Array.isArray(body.rows)) throw new Error("EVENT_ROSTER_INVALID_RESPONSE");
+  const title = typeof body.eventTitle === "string" ? body.eventTitle : null;
+  return (body.rows as Array<Record<string, unknown>>).map((row) => {
+    const role = row.role === "buyer" || row.role === "both" || row.role === "pending" ? row.role : "guest";
+    const email = typeof row.email === "string" ? row.email : null;
+    const phone = typeof row.phone === "string" ? row.phone : null;
+    return {
+      contact_key: String(row.key),
+      display_name: typeof row.name === "string" ? row.name : "Guest",
+      masked_email: maskEmail(email),
+      raw_email: email,
+      masked_phone: maskPhone(phone),
+      raw_phone: phone,
+      order_count: toCount(row.orderCount),
+      total_spend_minor: toCount(row.totalSpendMinor),
+      total_spend_currency: typeof row.currency === "string" ? row.currency : "USD",
+      last_event_id: input.event_id,
+      last_event_name: title,
+      last_purchase_at: typeof row.lastAt === "string" ? row.lastAt : null,
+      consent: {
+        email_marketing_ok: row.emailOk === true,
+        sms_marketing_ok: row.smsOk === true,
+        unsubscribed_brand_scope: row.emailRefused === true,
+        unsubscribed_global_scope: false,
+        pending_review: role === "pending",
+      },
+      audience_role: role,
+    };
+  });
+}
+
+/**
  * #4596 — an event audience's reach, from the same server owner the Blasts
  * screen and the composer read: people from discovery, email and SMS reach
  * from biz_marketing_combined_audience_reach_v1 for `event:<id>`. Never the

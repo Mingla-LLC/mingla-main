@@ -370,6 +370,41 @@ BEGIN
         AND a.query_definition -> 'sources' = pg_temp.ev('e1')) = 'Guests of Rooftop RSVP', '');
 END $t$;
 
+-- ── Fix pass 3: the roster lists every person the count includes ───────────
+DO $t$
+DECLARE b uuid := pg_temp.u('b1'); m uuid := pg_temp.u('07'); r jsonb; rows jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', m::text, true);
+  r := public.biz_marketing_event_roster_v1(m, b, pg_temp.u('e3'));
+  rows := r -> 'rows';
+  PERFORM pg_temp.chk('FP3 mixed roster lists all 3 people the count includes',
+    jsonb_array_length(rows) = 3
+    AND (SELECT count(*) FROM jsonb_array_elements(rows) x WHERE x ->> 'role' <> 'pending')
+        = (public.issue_4273_source_totals(b, pg_temp.ev('e3')) ->> 'peopleCount')::integer, rows::text);
+  PERFORM pg_temp.chk('FP3 the shared person is both, with their buyer line',
+    rows @> '[{"name":"Mix Shared","role":"both","orderCount":1,"totalSpendMinor":1000}]'::jsonb, rows::text);
+  PERFORM pg_temp.chk('FP3 a guest-only row carries no order or money',
+    rows @> '[{"name":"Mix Guest Only","role":"guest","orderCount":null,"totalSpendMinor":null,"currency":null}]'::jsonb, rows::text);
+  rows := public.biz_marketing_event_roster_v1(m, b, pg_temp.u('e1')) -> 'rows';
+  PERFORM pg_temp.chk('FP3 RSVP roster: 3 guests then 4 pending going guests',
+    (SELECT count(*) FROM jsonb_array_elements(rows) x WHERE x ->> 'role' = 'guest') = 3
+    AND (SELECT count(*) FROM jsonb_array_elements(rows) x WHERE x ->> 'role' = 'pending') = 4, rows::text);
+  PERFORM pg_temp.chk('FP3 a pending guest is never marketing OK',
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(rows) x
+                 WHERE x ->> 'role' = 'pending' AND ((x ->> 'emailOk')::boolean OR (x ->> 'smsOk')::boolean)), rows::text);
+  PERFORM pg_temp.chk('FP3 consent is the Book''s decision (unsubscribed guest refused, others allowed)',
+    rows @> '[{"name":"Bo Unsub","emailOk":false,"emailRefused":true},{"name":"Ada Guest","emailOk":true,"smsOk":true}]'::jsonb,
+    rows::text);
+  PERFORM set_config('request.jwt.claim.sub', pg_temp.u('08')::text, true);
+  BEGIN
+    PERFORM public.biz_marketing_event_roster_v1(pg_temp.u('08'), b, pg_temp.u('e1'));
+    PERFORM pg_temp.chk('FP3 a scanner cannot read the roster', false, 'no error');
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM pg_temp.chk('FP3 a scanner cannot read the roster', SQLSTATE = '42501', SQLERRM);
+  END;
+  PERFORM set_config('request.jwt.claim.sub', pg_temp.u('01')::text, true);
+END $t$;
+
 -- ── A1 repair: no failed campaign that reached nobody keeps a null reason ───
 DO $t$
 BEGIN

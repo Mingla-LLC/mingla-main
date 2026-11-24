@@ -44,7 +44,6 @@ import {
   space,
   type,
 } from "../../../../src/constants/designSystem";
-import { useEventBuyers } from "../../../../src/hooks/marketing/useEventBuyers";
 import { useEventAudienceCount } from "../../../../src/hooks/marketing/useEventAudienceCount";
 import {
   eventCardLabel,
@@ -62,7 +61,6 @@ export default function EventBlastsRoute(): React.ReactElement {
   const eventId =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
 
-  const buyersQuery = useEventBuyers(eventId);
   const countQuery = useEventAudienceCount(eventId);
 
   const handleBack = useCallback((): void => {
@@ -81,10 +79,10 @@ export default function EventBlastsRoute(): React.ReactElement {
     [router],
   );
 
-  const buyers = buyersQuery.data;
   const count = countQuery.data;
-  const isRsvpEvent =
-    count?.eventType === "rsvp" || buyersQuery.audienceType === "rsvp";
+  // Fix pass 3: the roster is the count's own list (same owner, same de-dup).
+  const roster = count?.roster;
+  const isRsvpEvent = countQuery.eventType === "rsvp";
   const headerCounts = useMemo(() => {
     if (count === undefined) return null;
     return eventHeaderCounts(count.shape, count.peopleCount, count.reachableEmail);
@@ -96,8 +94,7 @@ export default function EventBlastsRoute(): React.ReactElement {
       : null;
 
   if (
-    (buyersQuery.isLoading && buyers === undefined) ||
-    (countQuery.isLoading && count === undefined && !countQuery.isError)
+    countQuery.isLoading && count === undefined && !countQuery.isError
   ) {
     return (
       <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -116,7 +113,7 @@ export default function EventBlastsRoute(): React.ReactElement {
     );
   }
 
-  if (buyersQuery.isError || countQuery.isError) {
+  if (countQuery.isError) {
     return (
       <View style={[styles.host, { paddingTop: insets.top }]}>
         <View style={styles.barWrap}>
@@ -139,8 +136,8 @@ export default function EventBlastsRoute(): React.ReactElement {
   }
 
   if (
-    buyers !== undefined &&
-    buyers.rows.length === 0 &&
+    roster !== undefined &&
+    roster.length === 0 &&
     (count === undefined || count.peopleCount === 0)
   ) {
     return (
@@ -198,8 +195,8 @@ export default function EventBlastsRoute(): React.ReactElement {
               <View style={styles.cardDivider} />
             </>
           ) : null}
-          {buyers !== undefined
-            ? buyers.rows.map((buyer) => (
+          {roster !== undefined
+            ? roster.map((buyer) => (
                 <BuyerRow key={buyer.contact_key} buyer={buyer} />
               ))
             : null}

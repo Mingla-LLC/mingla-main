@@ -347,9 +347,114 @@ BEGIN
 END;
 $fn$;
 
+-- ── Roster: the names behind the count, from the same owner ─────────────────
+-- Fix pass 3. One row per person the event count includes (identities for
+-- `event:<id>`, de-duplicated the same way), plus every going guest still
+-- waiting on a duplicate check. The marketing state per row is the Book's /
+-- the combined lane's own decision (issue_4273_decided_people), never a
+-- client guess. A guest-only row carries no order or money figures. Contacts
+-- are the ones the brand itself holds (Book or orders), as the old roster
+-- showed; the app masks them. event_manager and up, the rank the old roster's
+-- RLS (event_rsvps_host_read) required.
+CREATE OR REPLACE FUNCTION public.biz_marketing_event_roster_v1(
+  p_actor_id uuid, p_brand_id uuid, p_event_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions, pg_temp
+AS $fn$
+DECLARE v_sources jsonb; v_title text; v_rows jsonb;
+BEGIN
+  IF auth.uid() IS DISTINCT FROM p_actor_id
+     OR COALESCE(public.biz_brand_effective_rank(p_brand_id, p_actor_id), -1) < public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'book_blast_forbidden' USING ERRCODE = '42501';
+  END IF;
+  SELECT e.title INTO v_title FROM public.events e
+   WHERE e.id = p_event_id AND e.brand_id = p_brand_id AND e.deleted_at IS NULL;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'book_blast_audience_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  v_sources := jsonb_build_array('event:' || p_event_id::text);
+
+  WITH ids AS MATERIALIZED (
+    SELECT i.* FROM public.issue_4273_combined_identities(p_brand_id, v_sources) i
+  ), email AS MATERIALIZED (
+    SELECT d.person_key, bool_or(d.allowed AND d.normalized_contact IS NOT NULL) AS ok,
+      bool_or(NOT d.allowed AND d.normalized_contact IS NOT NULL) AS refused
+      FROM public.issue_4273_decided_people(p_actor_id, p_brand_id, v_sources, 'email') d
+     GROUP BY d.person_key
+  ), sms AS MATERIALIZED (
+    SELECT d.person_key, bool_or(d.allowed AND d.normalized_contact IS NOT NULL) AS ok
+      FROM public.issue_4273_decided_people(p_actor_id, p_brand_id, v_sources, 'sms') d
+     GROUP BY d.person_key
+  ), people AS MATERIALIZED (
+    SELECT i.person_key,
+      bool_or(i.subject = 'buyer') AS is_buyer,
+      bool_or(i.subject = 'book') AS is_guest,
+      (array_agg(i.display_name ORDER BY (i.subject = 'book') DESC, i.node)
+        FILTER (WHERE NULLIF(btrim(i.display_name), '') IS NOT NULL))[1] AS name,
+      (array_agg(i.buyer_email ORDER BY i.node) FILTER (WHERE i.buyer_email IS NOT NULL))[1] AS buyer_email,
+      (array_agg(i.brand_person_id ORDER BY i.node) FILTER (WHERE i.brand_person_id IS NOT NULL))[1] AS person_id
+      FROM ids i GROUP BY i.person_key
+  ), shaped AS (
+    SELECT p.person_key AS key, COALESCE(p.name, 'Guest') AS name,
+      CASE WHEN p.is_buyer AND p.is_guest THEN 'both' WHEN p.is_buyer THEN 'buyer' ELSE 'guest' END AS role,
+      COALESCE(p.buyer_email,
+        (SELECT m.normalized_value FROM public.brand_person_contact_methods m
+          WHERE m.brand_person_id = p.person_id AND m.brand_id = p_brand_id
+            AND m.record_state = 'active' AND m.channel = 'email'
+          ORDER BY m.is_primary DESC, m.created_at LIMIT 1)) AS email,
+      (SELECT m.normalized_value FROM public.brand_person_contact_methods m
+        WHERE m.brand_person_id = p.person_id AND m.brand_id = p_brand_id
+          AND m.record_state = 'active' AND m.channel = 'phone'
+        ORDER BY m.is_primary DESC, m.created_at LIMIT 1) AS phone,
+      o.order_count, o.total_spend_minor, o.currency, o.last_purchase_at,
+      (SELECT max(r.created_at) FROM public.event_rsvps r
+         JOIN public.brand_person_source_links l ON l.source_kind = 'event_rsvp' AND l.source_id = r.id
+          AND l.brand_id = p_brand_id AND l.detached_at IS NULL
+        WHERE r.event_id = p_event_id AND l.brand_person_id = p.person_id) AS rsvp_at,
+      COALESCE(e.ok, false) AS email_ok, COALESCE(e.refused, false) AS email_refused,
+      COALESCE(s.ok, false) AS sms_ok
+      FROM people p
+      LEFT JOIN email e ON e.person_key = p.person_key
+      LEFT JOIN sms s ON s.person_key = p.person_key
+      LEFT JOIN LATERAL (
+        SELECT count(*)::integer AS order_count, COALESCE(sum(x.total_cents), 0)::bigint AS total_spend_minor,
+          (array_agg(x.currency ORDER BY x.created_at DESC))[1] AS currency,
+          max(COALESCE(x.confirmed_at, x.created_at)) AS last_purchase_at
+          FROM public.orders x
+         WHERE p.is_buyer AND x.event_id = p_event_id AND x.payment_status IN ('paid', 'partial_refund')
+           AND lower(btrim(x.buyer_email)) = p.buyer_email
+      ) o ON true
+    UNION ALL
+    -- Going guests the Book cannot message yet (no live link to an active person).
+    SELECT 'rsvp:' || r.id::text, COALESCE(NULLIF(btrim(r.guest_name), ''), 'Guest'), 'pending',
+      lower(btrim(r.guest_email)), NULL, NULL, NULL, NULL, NULL, r.created_at, false, false, false
+      FROM public.event_rsvps r
+     WHERE r.event_id = p_event_id AND r.rsvp_status = 'going' AND r.approval_status = 'approved'
+       AND NOT EXISTS (
+         SELECT 1 FROM public.brand_person_source_links l
+           JOIN public.brand_people bp ON bp.id = l.brand_person_id
+          WHERE l.source_kind = 'event_rsvp' AND l.source_id = r.id AND l.brand_id = p_brand_id
+            AND l.detached_at IS NULL AND bp.brand_id = p_brand_id
+            AND bp.record_status = 'active' AND bp.deleted_at IS NULL)
+  )
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+    'key', x.key, 'name', x.name, 'role', x.role, 'email', x.email, 'phone', x.phone,
+    'orderCount', CASE WHEN x.role IN ('buyer', 'both') THEN x.order_count END,
+    'totalSpendMinor', CASE WHEN x.role IN ('buyer', 'both') THEN x.total_spend_minor END,
+    'currency', CASE WHEN x.role IN ('buyer', 'both') THEN x.currency END,
+    'lastAt', CASE WHEN x.role IN ('buyer', 'both') THEN x.last_purchase_at ELSE x.rsvp_at END,
+    'emailOk', x.email_ok, 'emailRefused', x.email_refused, 'smsOk', x.sms_ok
+  ) ORDER BY CASE x.role WHEN 'pending' THEN 1 ELSE 0 END, x.name, x.key), '[]'::jsonb) INTO v_rows
+  FROM shaped x;
+  RETURN jsonb_build_object('eventTitle', v_title, 'rows', v_rows);
+END;
+$fn$;
+
 -- ── Grants ──────────────────────────────────────────────────────────────────
 REVOKE ALL ON FUNCTION public.biz_marketing_event_audiences_v1(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.biz_marketing_event_audiences_v1(uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.biz_marketing_event_roster_v1(uuid, uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.biz_marketing_event_roster_v1(uuid, uuid, uuid) TO authenticated;
 REVOKE ALL ON FUNCTION public.biz_marketing_event_send_audience_v1(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_marketing_event_send_audience_v1(uuid) TO service_role;
 

@@ -349,7 +349,15 @@ export interface BuyerConsentSummary {
   sms_marketing_ok: boolean;
   unsubscribed_brand_scope: boolean;
   unsubscribed_global_scope: boolean;
+  /** #4596 — a going guest the Book cannot message until a duplicate check is reviewed. */
+  pending_review?: boolean;
 }
+
+/**
+ * #4596 — who a row is in an event audience. A guest (or pending guest) has no
+ * order, so their row never shows order or money figures.
+ */
+export type EventAudienceRole = "buyer" | "guest" | "both" | "pending";
 
 export interface BuyerRowData {
   /** Stable identity — buyer email is canonical for Phase A. */
@@ -370,6 +378,8 @@ export interface BuyerRowData {
   last_event_name: string | null;
   last_purchase_at: string | null;
   consent: BuyerConsentSummary;
+  /** #4596 — set on event-audience rows; absent means a buyer row (unchanged). */
+  audience_role?: EventAudienceRole;
 }
 
 // ---------------------------------------------------------------------------
