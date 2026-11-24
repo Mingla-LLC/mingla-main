@@ -194,6 +194,13 @@ $feat$;
 SELECT public.t9_reset();
 
 -- A held Till round of n x item, as venue-till inserts it (no service charge).
+-- TEST-MOD-APPROVED #4490 (flake fix): a round's pickup code came from random() in
+-- 100..899 and once hit another live order's code at the venue
+-- (venue_orders_live_pickup_code_uniq). Rounds now take 101..499 from their own
+-- sequence, disjoint from the guest orders' 501.. (t9_pickup): every code is
+-- unique and the run is repeatable. No assertion changes.
+CREATE SEQUENCE public.t9_round_pickup START 101 MAXVALUE 499 NO CYCLE;
+GRANT USAGE ON SEQUENCE public.t9_round_pickup TO PUBLIC;
 CREATE FUNCTION public.t9_round(p_sale uuid, p_actor uuid, p_item uuid, p_qty integer)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
 DECLARE
@@ -211,7 +218,7 @@ BEGIN
     buyer_subtotal_cents, total_cents, payment_status, fulfillment_status, idempotency_key, metadata
   ) VALUES (
     v_order, v_sale.session_id, v_sale.brand_id, v_sale.venue_id, 'staff', p_actor,
-    lpad((100 + floor(random() * 800))::int::text, 3, '0'),
+    lpad(nextval('public.t9_round_pickup')::text, 3, '0'),
     'venue_collected', 'NGN', v_price * p_qty, v_price * p_qty, 0, 0, 0, 0, 0, 0, false, false, false,
     v_price * p_qty, v_price * p_qty, 'pending', 'held', 't9-round:' || v_order,
     jsonb_build_object('unsettled_staff_order', true, 'till_sale_id', p_sale));
