@@ -38,7 +38,7 @@ const pending: Array<{ userId: string; resolve: (row: Row) => void }> = [];
 const fromMock = jest.fn();
 jest.mock("../../services/supabase", () => ({
   supabase: {
-    from: (...args: unknown[]) => {
+    rpc: (...args: unknown[]) => {
       fromMock(...args);
       return {
         select: () => ({

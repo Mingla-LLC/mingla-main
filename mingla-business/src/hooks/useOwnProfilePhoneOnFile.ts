@@ -4,7 +4,7 @@
  * `public-submit-rsvp` fills a signed-in guest's name, email and phone from the
  * account (`profiles`) and refuses the RSVP when the phone is missing. Knowing
  * this up front lets the RSVP page ask for the phone in the Going step instead
- * of failing first. Reads only the viewer's own row (RLS: `auth.uid() = id`).
+ * of failing first. Reads only the viewer's own row (`get_my_profile`).
  *
  * Returns `true` / `false` once known, and `null` while loading, when signed out,
  * when disabled, or when the read fails. `null` keeps the page on its existing
@@ -32,8 +32,9 @@ export const profilePhoneIsOnFile = (phone: unknown): boolean =>
 export const fetchOwnProfilePhoneOnFile = async (
   userId: string,
 ): Promise<boolean> => {
+  // #3969 — the own-profile read (the phone is a private field).
   const { data, error } = await supabase
-    .from("profiles")
+    .rpc("get_my_profile")
     .select("phone")
     .eq("id", userId)
     .maybeSingle();
