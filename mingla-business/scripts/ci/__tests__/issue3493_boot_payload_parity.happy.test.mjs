@@ -243,8 +243,8 @@ describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => 
   const verdictFor = (entry, delta) =>
     assessCommonBaselineMovement(2_744_094, 2_744_094 + delta, entry ? { oneTimeCap: entry.common } : {});
 
-  test("one table: exactly the #4594 entry, frozen, capped at 23,000 B and dated", () => {
-    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 1);
+  test("one table: the #4594 entry first (then #4490), frozen, capped at 23,000 B and dated", () => {
+    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 2); // #4594 first, then #4490
     const [only] = ONE_TIME_PR_ALLOWANCE;
     assert.deepEqual(
       { issue: only.issue, pr: only.pr, headRef: only.headRef, common: only.common, expiresAfter: only.expiresAfter, approvedBy: only.approvedBy },

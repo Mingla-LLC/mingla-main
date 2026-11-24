@@ -271,7 +271,7 @@ if (process.argv.includes("--self-test")) {
     const only = E[0] ?? {};
     checks.push(["one-time allowance: the general allowance is still 12,000 / 25,000",
       PR_DELTA_ALLOWANCE.common === 12_000 && PR_DELTA_ALLOWANCE.eager === 25_000]);
-    checks.push(["one-time allowance: the table holds exactly one entry", E.length === 1]);
+    checks.push(["one-time allowance: the table holds exactly two entries (#4594, #4490)", E.length === 2]);
     checks.push(["one-time allowance: that entry is PR #4594 / issue #4522 on its own branch, capped at 23,000 B, dated",
       only.pr === 4594 && only.issue === 4522 &&
         only.headRef === "4522-young-polish" &&
@@ -294,6 +294,19 @@ if (process.argv.includes("--self-test")) {
 
     checks.push(["one-time allowance: applies to PR #4594 from its branch",
       decide(prEnv(HEAD, "refs/pull/4594/merge")) === only]);
+    const second = E[1] ?? {};
+    checks.push(["one-time allowance: the second one-time entry is PR #4600 / issue #4490 on its own branch, capped at 162,000 B (eager 165,000 B), dated",
+      second.pr === 4600 && second.issue === 4490 &&
+        second.headRef === "4490-venue-features" &&
+        second.common === 162_000 && second.eager === 165_000 && second.expiresAfter === "2026-12-08" &&
+        second.approvedBy === "Seth, 2026-11-24" &&
+        typeof second.reason === "string" && second.reason.length > 40 &&
+        Object.keys(second).sort().join(",") === "approvedBy,common,eager,expiresAfter,headRef,issue,pr,reason" &&
+        Object.isFrozen(second)]);
+    checks.push(["one-time allowance: PR #4490 from its branch gets the cap, PR #4594 still gets its own",
+      decide(prEnv("4490-venue-features", "refs/pull/4600/merge")) === second &&
+        decide(prEnv("4490-venue-features", "refs/pull/4594/merge")) === null &&
+        decide(prEnv("4522-young-polish", "refs/pull/4600/merge")) === null]);
     const strangers = [
       prEnv("3697-host-ads", "refs/pull/4600/merge"),
       prEnv(HEAD, "refs/pull/4600/merge"), // same branch name, another pull request

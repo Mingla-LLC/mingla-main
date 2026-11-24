@@ -166,6 +166,20 @@ export const ONE_TIME_PR_ALLOWANCE = Object.freeze([
       "services) lands in the shared chunk (+22,349 B measured against the #4589 baseline). The " +
       "nested lazy load was already removed; splitting cohesive modules only to pass is not allowed.",
   }),
+  Object.freeze({
+    issue: 4490,
+    pr: 4600,
+    headRef: "4490-venue-features",
+    common: 162_000,
+    eager: 165_000,
+    expiresAfter: "2026-12-08",
+    approvedBy: "Seth, 2026-11-24",
+    reason:
+      "Venue features (#4490): the host and guest venue pages genuinely share about 161 KB of " +
+      "code (Till, Close the day, offers, venue models and services) that lands in the shared " +
+      "chunk (+161,172 B in __common and +163,802 B in the eager payload, measured against the #4589 baseline). Splitting cohesive modules only " +
+      "to pass is not allowed.",
+  }),
 ]);
 
 /**
