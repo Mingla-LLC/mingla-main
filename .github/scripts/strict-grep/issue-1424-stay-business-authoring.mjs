@@ -172,6 +172,9 @@ const STAY_FEATURE_MAP = {
   // [TEST-MOD-APPROVED #4490] spec 08 O3: Kitchen and bar shows the venue
   // `stations` module (which opens the station route).
   stations: "stations",
+  // [TEST-MOD-APPROVED #4490] spec 08 O5 part B: Close the day shows the venue
+  // `close` module.
+  close: "close",
   checkin: "checkin",
   menu: "menu",
   orders: "orders",
@@ -194,6 +197,9 @@ const STAY_FEATURE_ORDER = [
   // [TEST-MOD-APPROVED #4490] spec 08 O3: Kitchen and bar right after the Till
   // (the floor design's Operations rail: Till, Kitchen and bar, …).
   "stations",
+  // [TEST-MOD-APPROVED #4490] spec 08 O5 part B: Close the day right after
+  // Kitchen and bar, before Check-in.
+  "close",
   "checkin",
   "menu",
   "orders",
@@ -663,8 +669,11 @@ function selfTest() {
     ],
     // [TEST-MOD-APPROVED #4490] spec 08 O3 reversions: the Kitchen and bar map
     // entry, its place after the Till, and the static launcher import.
-    ["shell", '  stations: "stations",\n  checkin: "checkin",', '  stations: "orders",\n  checkin: "checkin",', "must show its own venue module"],
-    ["shell", '  "stations",\n  "checkin",\n  "menu",', '  "checkin",\n  "stations",\n  "menu",', "STAY_FEATURE_MODULE_ORDER must be exactly"],
+    ["shell", '  stations: "stations",\n  close: "close",', '  stations: "orders",\n  close: "close",', "must show its own venue module"],
+    // [TEST-MOD-APPROVED #4490] spec 08 O5 part B reversions: Close the day's map entry and its place after Kitchen and bar.
+    ["shell", '  close: "close",\n  checkin: "checkin",', '  close: "orders",\n  checkin: "checkin",', "must show its own venue module"],
+    ["shell", '  "stations",\n  // #4490 spec 08 O5 part B', '  // #4490 spec 08 O5 part B', "STAY_FEATURE_MODULE_ORDER must be exactly"],
+    ["shell", '  "close",\n  "checkin",\n  "menu",', '  "checkin",\n  "close",\n  "menu",', "STAY_FEATURE_MODULE_ORDER must be exactly"],
     [
       "shell",
       STATIONS_LAUNCHER_IMPORT,

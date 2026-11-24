@@ -51,7 +51,8 @@ describe("#4490 W1 pages", () => {
     expect(booking).toMatch(/handoff\.passInApp && !pass\?\.qrPayload \? \(\s*<VenuePassInAppBlock/);
     expect(booking).toMatch(/<VenueClaimCard\s+handoff=\{handoff\}\s+kind="pass"/);
     const member = read("offers/VisitMembership.tsx");
-    expect(member).toMatch(/\) : handoff\.passInApp \? \(\s*<VenuePassInAppBlock/);
+    // TEST-MOD-APPROVED #4490: the plan page now also hides the block for a requested or declined member (no pass exists to move to the app).
+    expect(member).toMatch(/\) : handoff\.passInApp && member\.status !== "requested" && member\.status !== "declined" \? \(\s*<VenuePassInAppBlock/);
     expect(member).toMatch(/setHandoff\(parseVenueHandoff\(raw\)\)/);
   });
 });

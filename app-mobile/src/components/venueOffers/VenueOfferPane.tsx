@@ -19,6 +19,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import type { PublicVenueEntrySlotContext } from "@mingla/brand-rendering/PublicVenueScreen";
 import type { PublicVenueTab } from "@mingla/brand-rendering/publicVenueTabState";
 import type { VenueFeaturePlanView } from "@mingla/brand-rendering/venueFeaturePage";
+import { accentFillWithBorder } from "@mingla/offering-rendering/themeAccentStyle";
 
 import { fontWeights, radius, spacing, typography } from "../../constants/designSystem";
 import { crowdCategoryFor } from "../venuePage/venueExplorerModel";
@@ -260,7 +261,7 @@ export function VenueOfferPane({
               styles.button,
               row.soldOut
                 ? { backgroundColor: palette.panel, borderColor: palette.panelBorder }
-                : { backgroundColor: palette.accent, borderColor: palette.accent },
+                : accentFillWithBorder(palette),
               pressed ? styles.pressed : null,
             ]}
             testID={`venue-pane-book-${row.id}`}
