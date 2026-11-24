@@ -57,7 +57,7 @@
  *      MAIN entry chunk, nor from ANY eager script. UNCHANGED by #1509: this
  *      half of the gate works and has caught real regressions.
  *      ONE-TIME ALLOWANCE (issue #4522): a single, named pull request may be
- *      granted a larger `__common` delta by an entry in ONE_TIME_PR_ALLOWANCE
+ *      granted a larger `__common` delta (and, when the entry carries `eager`, a larger eager delta) by an entry in ONE_TIME_PR_ALLOWANCE
  *      (bundle-budget-lib.mjs; the movement gate reads the same table).
  *      It never touches the general allowance or the product ceiling, it is
  *      printed on every run it applies to, and it expires by itself. See the
@@ -79,6 +79,7 @@ import {
   BASELINE_MOVEMENT_THRESHOLD_BYTES,
   ONE_TIME_PR_ALLOWANCE,
   resolveOneTimeAllowance,
+  effectivePerPrAllowance,
   gitSubjectsSince,
   measureWebBuild,
   fmtTriple,
@@ -340,6 +341,25 @@ if (process.argv.includes("--self-test")) {
       [undefined, 0, -1, 1.5].every((normalLimit) => resolveOneTimeAllowance({
         env: prEnv(HEAD, "refs/pull/4594/merge"), today: "2026-11-24", baselineCommit: SHA, subjectsSinceBaseline: none, normalLimit,
       }).entry === null)]);
+    checks.push(["one-time allowance: absent `eager` means the normal 25,000 B; a stranger or expired run gets nothing for eager either",
+      (() => {
+        const withEager = { ...only, eager: 165_000 };
+        const mine = prEnv(HEAD, "refs/pull/4594/merge");
+        const grant = (env, today = "2026-11-24", table = [withEager]) =>
+          effectivePerPrAllowance(
+            resolveOneTimeAllowance({ env, today, baselineCommit: SHA, subjectsSinceBaseline: none, normalLimit: N, table }).entry,
+            PR_DELTA_ALLOWANCE,
+          );
+        return effectivePerPrAllowance(only, PR_DELTA_ALLOWANCE).eager === 25_000 &&
+          grant(mine).eager === 165_000 && grant(mine).common === 23_000 &&
+          grant(prEnv(HEAD, "refs/pull/4600/merge")).eager === 25_000 &&
+          grant(prEnv("other-branch", "refs/pull/4594/merge")).eager === 25_000 &&
+          grant(mine, "2026-12-09").eager === 25_000 &&
+          grant({ ...mine, NODE_TEST_CONTEXT: "x" }).eager === 25_000 &&
+          effectivePerPrAllowance({ ...only, eager: 25_000 }, PR_DELTA_ALLOWANCE).eager === 25_000 &&
+          effectivePerPrAllowance({ ...only, eager: Infinity }, PR_DELTA_ALLOWANCE).eager === 25_000 &&
+          effectivePerPrAllowance(null, PR_DELTA_ALLOWANCE).eager === 25_000;
+      })()]);
     checks.push(["one-time allowance: the same entry serves the 1,024 B movement gate (one table, two gates)",
       resolveOneTimeAllowance({
         env: prEnv(HEAD, "refs/pull/4594/merge"), today: "2026-11-24", baselineCommit: SHA, subjectsSinceBaseline: none,
@@ -454,7 +474,9 @@ if (oneTime.entry) {
   const e = oneTime.entry;
   const commonDelta = measured.common ? measured.common.raw - baseline.common.raw : 0;
   const used = commonDelta > PR_DELTA_ALLOWANCE.common;
-  allowance.common = e.common;
+  const granted = effectivePerPrAllowance(e, PR_DELTA_ALLOWANCE);
+  allowance.common = granted.common;
+  allowance.eager = granted.eager;
   console.log(
     `\nNOTICE — ONE-TIME ALLOWANCE IN EFFECT for __common (issue #${e.issue}, PR #${e.pr}).\n` +
       `  normal per-PR limit   ${fmtB(PR_DELTA_ALLOWANCE.common)} B\n` +
@@ -471,7 +493,12 @@ if (oneTime.entry) {
       `  reason                ${e.reason}\n` +
       `  approved by           ${e.approvedBy}\n` +
       `  expires               by itself: on main once the baseline records the merge, and everywhere after ${e.expiresAfter}\n` +
-      `  unchanged             the eager allowance (${fmtB(PR_DELTA_ALLOWANCE.eager)} B) and both product ceilings`,
+      `  eager payload         ${
+        granted.eager > PR_DELTA_ALLOWANCE.eager
+          ? `granted for this run ${fmtB(granted.eager)} B (a cap, not an exemption; normal ${fmtB(PR_DELTA_ALLOWANCE.eager)} B)`
+          : `unchanged at ${fmtB(PR_DELTA_ALLOWANCE.eager)} B`
+      }\n` +
+      `  unchanged             both product ceilings`,
   );
 } else {
   for (const why of oneTime.refusals) {

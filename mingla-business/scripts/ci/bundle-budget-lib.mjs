@@ -135,8 +135,11 @@ export function assessCommonBaselineMovement(baselineRaw, measuredRaw, { oneTime
 //   - NEVER INSIDE A TEST HARNESS: the budget suites run these gates against
 //     synthetic exports and must keep meeting the normal limit on every branch.
 //
-// It raises ONLY `common`. The eager allowance and both PRODUCT CEILINGS are
-// untouched and still enforced first. Every run an entry applies to prints the
+// It raises `common`, and, only when an entry carries an optional `eager` cap
+// (issue #4490: eager includes __common, so shared code is counted in both),
+// the eager per-PR allowance of the orch-1083 gate, scoped by exactly the same
+// checks. An entry without `eager` leaves eager at its normal 25,000 B. Both
+// PRODUCT CEILINGS are untouched and still enforced first. Every run an entry applies to prints the
 // normal limit, the granted cap, the measured delta, the reason and the
 // approver, and every run it does NOT apply to says so in one line.
 //
@@ -164,6 +167,23 @@ export const ONE_TIME_PR_ALLOWANCE = Object.freeze([
       "nested lazy load was already removed; splitting cohesive modules only to pass is not allowed.",
   }),
 ]);
+
+/**
+ * The per-pull-request `__common` and eager caps a resolved entry grants.
+ * `entry` is what resolveOneTimeAllowance returned (null for a run it does not
+ * apply to: another PR, another branch, expired, a test harness). An absent or
+ * unusable `eager` on an entry means the normal eager allowance, never a grant.
+ * Pure; it never touches PR_DELTA_ALLOWANCE or the product ceilings.
+ */
+export function effectivePerPrAllowance(entry, normal) {
+  const common = entry && Number.isSafeInteger(entry.common) && entry.common > normal.common
+    ? entry.common
+    : normal.common;
+  const eager = entry && Number.isSafeInteger(entry.eager) && entry.eager > normal.eager
+    ? entry.eager
+    : normal.eager;
+  return { common, eager };
+}
 
 const MAIN_REF = "refs/heads/main";
 const MAIN_EVENTS = new Set(["push", "workflow_dispatch"]);
