@@ -5692,6 +5692,7 @@
     {
       "capability_key": "venues-go-live-readiness",
       "paths": [
+        "supabase/migrations/20281205044490_issue_4490_demo_only_venues.sql",
         "mingla-business/app/venue/[venueId]/index.tsx",
         "mingla-business/src/components/venue/BrandHoursEditor.tsx",
         "mingla-business/src/components/venue/GuestViewHostBar.tsx",
