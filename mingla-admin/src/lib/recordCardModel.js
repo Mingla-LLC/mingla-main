@@ -34,4 +34,3 @@ export function cardStatus(def, record, { stageTag = "", hostRow = null } = {}) 
   if (round) return { k: "none", kind: "round", words: round };
   return null;
 }
-
