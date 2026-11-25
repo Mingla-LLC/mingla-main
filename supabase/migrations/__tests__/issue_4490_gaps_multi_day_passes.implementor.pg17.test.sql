@@ -394,6 +394,12 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM public.venue_pass_days d WHERE d.pass_id = v_night),
     'F-2f past-midnight undo deletes the service-day row at zero');
   DELETE FROM public.brand_hours WHERE venue_id = '4490f000-0000-4000-9000-0000000000a1';
+  -- Remove the cleanup capture stamped after this transaction's fixed now().
+  -- Otherwise the history reader still sees the backdated overnight-hours
+  -- version until the transaction ends and later blocks inherit yesterday's
+  -- service date when this suite happens to run just after local midnight.
+  DELETE FROM public.venue_hours_history
+  WHERE venue_id = '4490f000-0000-4000-9000-0000000000a1' AND valid_from > now();
   UPDATE public.venue_booking_settings SET timezone = v_old_tz
   WHERE venue_id = '4490f000-0000-4000-9000-0000000000a1';
 END
