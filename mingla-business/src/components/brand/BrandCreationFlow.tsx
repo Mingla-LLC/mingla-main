@@ -98,9 +98,6 @@ import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutSt
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrandTeamMemberDirectory } from "../../hooks/useBrandTeamMemberDirectory";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { captureException } from "../../diagnostics/sentry";
-import { isAuthNotReadyError } from "../../utils/authReadyGate";
-import { isLikelyOfflineError } from "../../utils/supabaseErrorMessage";
 import {
   CountryConflictBanner,
   ForbiddenBanner,
@@ -1059,13 +1056,26 @@ export function draftDiscardFailureMessage(failure: unknown, brandName: string):
       case "confirm_name_mismatch": return C.n1.discardMismatch;
     }
   }
-  if (
-    isAuthNotReadyError(failure) ||
-    (failure instanceof Error && failure.name === "BusinessAuthNotReadyError")
-  ) return C.n1.discardAuth;
+  const failureName = typeof failure === "object" && failure !== null &&
+      "name" in failure && typeof (failure as { name?: unknown }).name === "string"
+    ? (failure as { name: string }).name
+    : "";
+  if (failureName === "AuthNotReadyError" || failureName === "BusinessAuthNotReadyError") {
+    return C.n1.discardAuth;
+  }
   if (isSessionExpiredError(failure)) return C.n1.discardSession;
-  if (failure instanceof Error && failure.name === "FunctionsFetchError") return C.n1.discardOffline;
-  if (isLikelyOfflineError(failure)) return C.n1.discardOffline;
+  if (failureName === "FunctionsFetchError") return C.n1.discardOffline;
+  const failureMessage = typeof failure === "object" && failure !== null &&
+      "message" in failure && typeof (failure as { message?: unknown }).message === "string"
+    ? (failure as { message: string }).message.toLowerCase()
+    : "";
+  if (
+    failureMessage.includes("network request failed") ||
+    failureMessage.includes("failed to fetch") ||
+    failureMessage.includes("networkerror") ||
+    failureMessage.includes("timed out") ||
+    failureMessage.includes("timeout")
+  ) return C.n1.discardOffline;
   return C.n1.discardServer;
 }
 
@@ -1080,11 +1090,14 @@ export const DraftInProgress: React.FC<{
   const [confirming, setConfirming] = useState(startConfirming);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const checklist = useBrandSetupChecklist(draftId);
   const clearStep = checklist.data === undefined ? null : deriveSetupStep(checklist.data);
   // #4389 P0 — evicts the discarded brand from the brand caches (ORCH-1062).
-  const discardDraftBrand = useDiscardDraftBrand(user?.id ?? null);
+  const discardDraftBrand = useDiscardDraftBrand(
+    user?.id ?? null,
+    session?.access_token ?? null,
+  );
   const discard = async (): Promise<void> => {
     setBusy(true);
     setError(null);
@@ -1098,10 +1111,14 @@ export const DraftInProgress: React.FC<{
       setConfirming(false);
       onDiscarded();
     } catch (failure) {
-      captureException(failure, {
-        tags: { feature: "brand-setup", issue: "4572", action: "discard-draft" },
-        extra: { brandId: draftId },
-      });
+      // Diagnostics is an on-error chunk; draft recovery stays out of the
+      // shared web boot bundle used by both setup routes.
+      void import("../../diagnostics/sentry").then(({ captureException }) => {
+        captureException(failure, {
+          tags: { feature: "brand-setup", issue: "4572", action: "discard-draft" },
+          extra: { brandId: draftId },
+        });
+      }).catch(() => undefined);
       setError(draftDiscardFailureMessage(failure, draftName));
     } finally {
       setBusy(false);

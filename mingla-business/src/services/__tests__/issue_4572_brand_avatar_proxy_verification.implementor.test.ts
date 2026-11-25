@@ -35,7 +35,10 @@ jest.mock("../../utils/brandAvatarRules", () => {
   };
 });
 
-import { uploadBrandAvatar } from "../brandAvatarService";
+import {
+  brandAvatarSameOriginVerificationUrl,
+  uploadBrandAvatar,
+} from "../brandAvatarService";
 
 const canonical =
   "https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/brand_avatars/brand-id/token.png";
@@ -58,8 +61,7 @@ describe("#4572 brand avatar verification road", () => {
 
   test("web can verify through /_sb without changing the canonical returned URL", async () => {
     const result = await uploadBrandAvatar("brand-id", asset, {
-      verificationUrlFor: (url) =>
-        `/_sb${new URL(url).pathname}`,
+      verificationUrlFor: brandAvatarSameOriginVerificationUrl,
     });
 
     expect(verify).toHaveBeenCalledWith(sameOrigin);
@@ -80,7 +82,7 @@ describe("#4572 brand avatar verification road", () => {
       "utf8",
     );
     expect(source).toMatch(
-      /Platform\.OS === "web" \? toSameOriginStorage : undefined/,
+      /Platform\.OS === "web"[\s\S]*\? brandAvatarSameOriginVerificationUrl[\s\S]*: undefined/,
     );
   });
 });

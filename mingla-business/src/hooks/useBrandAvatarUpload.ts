@@ -16,13 +16,13 @@ import { Platform } from "react-native";
 
 import {
   BRAND_AVATARS_BUCKET,
+  brandAvatarSameOriginVerificationUrl,
   uploadBrandAvatar,
 } from "../services/brandAvatarService";
 import {
   BrandAvatarError,
   type BrandAvatarAssetInput,
 } from "../utils/brandAvatarRules";
-import { toSameOriginStorage } from "../services/buyerMediaRoute";
 import { useUpdateBrand } from "./useBrands";
 
 export interface BrandAvatarUploadInput {
@@ -79,7 +79,9 @@ export const useBrandAvatarUpload = (): UseBrandAvatarUploadResult => {
             // that same road for the safe HEAD/GET verification instead of
             // switching back to a direct supabase.co request on web.
             verificationUrlFor:
-              Platform.OS === "web" ? toSameOriginStorage : undefined,
+              Platform.OS === "web"
+                ? brandAvatarSameOriginVerificationUrl
+                : undefined,
           },
         );
 

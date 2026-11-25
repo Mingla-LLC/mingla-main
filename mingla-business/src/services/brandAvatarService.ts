@@ -52,6 +52,12 @@ import {
 
 export const BRAND_AVATARS_BUCKET = "brand_avatars";
 
+/** Host web's existing same-origin Supabase Storage rewrite. */
+export const brandAvatarSameOriginVerificationUrl = (publicUrl: string): string => {
+  const parsed = new URL(publicUrl);
+  return `/_sb${parsed.pathname}${parsed.search}`;
+};
+
 export interface BrandAvatarUploadResult {
   publicUrl: string;
   storagePath: string;

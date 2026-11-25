@@ -1,39 +1,57 @@
 /**
- * #4572 regression: draft discard must use the bounded authenticated edge
- * caller so an auth lock cannot swallow the request before the network, while
+ * #4572 regression: draft discard must send with AuthContext's already-held
+ * token so an auth lock cannot swallow the request before the network, while
  * preserving structured server refusals for the UI.
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
-const mockInvokeLaneFunction = jest.fn<
-  (...args: unknown[]) => Promise<{ data: unknown; error: unknown }>
+const mockSupabaseFetch = jest.fn<
+  (url: string, init: RequestInit) => Promise<Response>
 >();
+const mockFallbackInvoke = jest.fn();
 
-jest.mock("../laneEdgeInvoke", () => ({
-  invokeLaneFunction: (...args: unknown[]) => mockInvokeLaneFunction(...args),
+jest.mock("../supabase", () => ({
+  laneEdgeEndpoint: {
+    functionsUrl: "https://project.supabase.co/functions/v1",
+    anonKey: "anon-4572",
+    headers: { "x-client-info": "test" },
+  },
+  supabaseFetch: (url: string, init: RequestInit) =>
+    mockSupabaseFetch(url, init),
+  supabase: {
+    functions: { invoke: (...args: unknown[]) => mockFallbackInvoke(...args) },
+  },
 }));
 
 import { discardDraftBrand } from "../brandSetupService";
 
 beforeEach(() => {
-  mockInvokeLaneFunction.mockReset();
+  mockSupabaseFetch.mockReset();
+  mockFallbackInvoke.mockReset();
 });
 
-describe("#4572 bounded brand-delete invocation", () => {
-  test("sends discard_draft through the bounded caller and accepts only explicit ok", async () => {
-    mockInvokeLaneFunction.mockResolvedValue({
-      data: { ok: true, stripe: "none", paystack: "none" },
-      error: null,
-    });
+describe("#4572 pre-attached brand-delete invocation", () => {
+  test("sends discard_draft immediately with the held token and accepts only explicit ok", async () => {
+    mockSupabaseFetch.mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      stripe: "none",
+      paystack: "none",
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
 
-    await expect(discardDraftBrand("brand-4572")).resolves.toEqual({
+    await expect(discardDraftBrand("brand-4572", "jwt-4572")).resolves.toEqual({
       ok: true,
       stripe: "none",
       paystack: "none",
     });
-    expect(mockInvokeLaneFunction).toHaveBeenCalledWith("brand-delete", {
-      body: { brand_id: "brand-4572", mode: "discard_draft" },
-    });
+    expect(mockSupabaseFetch).toHaveBeenCalledWith(
+      "https://project.supabase.co/functions/v1/brand-delete",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer jwt-4572" }),
+        body: JSON.stringify({ brand_id: "brand-4572", mode: "discard_draft" }),
+      }),
+    );
+    expect(mockFallbackInvoke).not.toHaveBeenCalled();
   });
 
   test("returns the server's no-longer-draft refusal instead of erasing it", async () => {
@@ -41,26 +59,18 @@ describe("#4572 bounded brand-delete invocation", () => {
       status: 409,
       headers: { "Content-Type": "application/json" },
     });
-    mockInvokeLaneFunction.mockResolvedValue({
-      data: null,
-      error: Object.assign(new Error("non-2xx"), { context: response }),
-    });
+    mockSupabaseFetch.mockResolvedValue(response);
 
-    await expect(discardDraftBrand("brand-4572")).resolves.toEqual({
+    await expect(discardDraftBrand("brand-4572", "jwt-4572")).resolves.toEqual({
       ok: false,
       error: "not_a_draft",
     });
   });
 
   test("a transport failure rejects with its real message for UI classification", async () => {
-    mockInvokeLaneFunction.mockResolvedValue({
-      data: null,
-      error: Object.assign(new Error("Failed to send a request to the Edge Function"), {
-        name: "FunctionsFetchError",
-      }),
-    });
+    mockSupabaseFetch.mockRejectedValue(new TypeError("Failed to fetch"));
 
-    await expect(discardDraftBrand("brand-4572")).rejects.toThrow(
+    await expect(discardDraftBrand("brand-4572", "jwt-4572")).rejects.toThrow(
       "Failed to send a request to the Edge Function",
     );
   });
@@ -70,18 +80,26 @@ describe("#4572 bounded brand-delete invocation", () => {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
-    mockInvokeLaneFunction.mockResolvedValue({
-      data: null,
-      error: Object.assign(new Error("non-2xx"), { context: response }),
-    });
+    mockSupabaseFetch.mockResolvedValue(response);
 
-    await expect(discardDraftBrand("brand-4572")).rejects.toMatchObject({ status: 401 });
+    await expect(discardDraftBrand("brand-4572", "jwt-4572")).rejects.toMatchObject({ status: 401 });
   });
 
   test("a malformed 2xx response fails closed and never evicts the draft", async () => {
-    mockInvokeLaneFunction.mockResolvedValue({ data: {}, error: null });
-    await expect(discardDraftBrand("brand-4572")).rejects.toThrow(
+    mockSupabaseFetch.mockResolvedValue(new Response("{}", {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    await expect(discardDraftBrand("brand-4572", "jwt-4572")).rejects.toThrow(
       "brand-delete returned an invalid response",
     );
+  });
+
+  test("without an attached token it names the auth wait and sends nothing", async () => {
+    await expect(discardDraftBrand("brand-4572", null)).rejects.toMatchObject({
+      name: "BusinessAuthNotReadyError",
+    });
+    expect(mockSupabaseFetch).not.toHaveBeenCalled();
+    expect(mockFallbackInvoke).not.toHaveBeenCalled();
   });
 });

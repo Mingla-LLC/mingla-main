@@ -84,17 +84,18 @@ export const adoptBrandIntoCaches = (
  */
 export const useDiscardDraftBrand = (
   accountId: string | null,
+  accessToken: string | null = null,
 ): ((brandId: string) => Promise<BrandDeleteOutcome>) => {
   const queryClient = useQueryClient();
   return useCallback(
     async (brandId: string): Promise<BrandDeleteOutcome> => {
       const { discardDraftBrand } = await import("../services/brandSetupService");
-      const outcome = await discardDraftBrand(brandId);
+      const outcome = await discardDraftBrand(brandId, accessToken);
       if (outcome.ok && accountId !== null) {
         evictDeletedBrandFromCaches(queryClient, brandId, accountId);
       }
       return outcome;
     },
-    [accountId, queryClient],
+    [accessToken, accountId, queryClient],
   );
 };

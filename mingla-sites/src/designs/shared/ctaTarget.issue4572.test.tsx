@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4572-CTA-NO-DEAD-PLACEHOLDER | issue #4572 | targetless and legacy "/" CTA bands keep their words but render no button; a real safe target renders the button.
+// #4572 renderer regression for the invariant owned by the CMS validation suite.
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { CtaDarkPanelGlow } from "../voyage/blocks/CtaDarkPanelGlow";

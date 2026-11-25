@@ -80,6 +80,15 @@ export const ARI_HELD_ENUM_VALUES: Readonly<Record<string, readonly string[]>> =
   "offering_grid.kind": ["stay"],
 };
 
+/**
+ * Owner drafts may keep a CTA targetless (#4572), but Ari still writes a
+ * complete CTA in one proposal. Keeping this field required for Ari also
+ * preserves the rollout-off tool declaration byte-for-byte.
+ */
+const ARI_REQUIRED_FIELDS: Readonly<Record<string, true>> = {
+  "cta.href": true,
+};
+
 function ariKey(key: string): string {
   return ARI_FIELD_RENAMES[key] ?? key;
 }
@@ -175,7 +184,9 @@ export function blockSchema(type: BlockType, design?: DesignKey): JsonSchema {
     const schema = fieldSchema(field, `${type}.${key}`);
     if (!schema) continue;
     properties[ariKey(key)] = schema;
-    if ("required" in field && field.required) required.push(ariKey(key));
+    if (("required" in field && field.required) || ARI_REQUIRED_FIELDS[`${type}.${key}`]) {
+      required.push(ariKey(key));
+    }
   }
   return { type: "object", title: spec.label, description: spec.description, additionalProperties: false, properties, required };
 }

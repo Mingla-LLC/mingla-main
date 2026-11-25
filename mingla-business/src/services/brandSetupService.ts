@@ -290,15 +290,95 @@ export type BrandDeleteOutcome =
   | { ok: false; error: "payment_account_close_refused"; reasonCode: string }
   | { ok: false; error: "not_a_draft" | "confirm_name_mismatch" | "forbidden" };
 
-async function invokeBrandDelete(body: Record<string, unknown>): Promise<BrandDeleteOutcome> {
+type BrandDeleteInvokeResult = { data: unknown; error: unknown };
+
+const brandDeleteHttpError = (
+  name: string,
+  message: string,
+  response: Response,
+): Error => Object.assign(new Error(message), { name, context: response });
+
+/**
+ * #4572 — send brand-delete with the token AuthContext already holds. This
+ * bypasses supabase-js's pre-network getSession lock entirely: the request is
+ * either issued at once or the caller gets the explicit auth-not-ready reason.
+ * The service stays in the setup chunk instead of hoisting the video lane's
+ * larger edge client into the shared web boot bundle.
+ */
+async function invokeBrandDeleteRequest(
+  body: Record<string, unknown>,
+  accessToken: string | null,
+): Promise<BrandDeleteInvokeResult> {
+  const { laneEdgeEndpoint, supabase, supabaseFetch } = await import("./supabase");
+  if (laneEdgeEndpoint === null || laneEdgeEndpoint === undefined) {
+    return await supabase.functions.invoke("brand-delete", { body });
+  }
+  if (accessToken === null || accessToken.length === 0) {
+    throw Object.assign(
+      new Error("Finishing sign-in. No delete request was sent; try again in a moment."),
+      { name: "BusinessAuthNotReadyError" },
+    );
+  }
+  let response: Response;
+  try {
+    response = await supabaseFetch(`${laneEdgeEndpoint.functionsUrl}/brand-delete`, {
+      method: "POST",
+      headers: {
+        ...laneEdgeEndpoint.headers,
+        "Content-Type": "application/json",
+        apikey: laneEdgeEndpoint.anonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (fetchError) {
+    return {
+      data: null,
+      error: Object.assign(
+        new Error("Failed to send a request to the Edge Function"),
+        { name: "FunctionsFetchError", context: fetchError },
+      ),
+    };
+  }
+  if (response.headers.get("x-relay-error") === "true") {
+    return {
+      data: null,
+      error: brandDeleteHttpError(
+        "FunctionsRelayError",
+        "Relay Error invoking the Edge Function",
+        response,
+      ),
+    };
+  }
+  if (!response.ok) {
+    return {
+      data: null,
+      error: brandDeleteHttpError(
+        "FunctionsHttpError",
+        "Edge Function returned a non-2xx status code",
+        response,
+      ),
+    };
+  }
+  const contentType = (response.headers.get("Content-Type") ?? "text/plain")
+    .split(";")[0]
+    .trim();
+  const data = contentType === "application/json"
+    ? await response.json()
+    : await response.text();
+  return { data, error: null };
+}
+
+async function invokeBrandDelete(
+  body: Record<string, unknown>,
+  accessToken: string | null = null,
+): Promise<BrandDeleteOutcome> {
   // #4572 — the raw functions client waits on auth.getSession() before it
   // sends anything. In a busy multi-tab Host session that can fail or remain
   // queued before a `brand-delete` request exists, which made Discard appear
-  // to fail mysteriously. Use the existing bounded authenticated edge path:
-  // it reuses a live token, caps auth-lock acquisition and preserves the same
-  // `{ data, error }`/HTTP-response contract used below.
-  const { invokeLaneFunction } = await import("./laneEdgeInvoke");
-  const { data, error } = await invokeLaneFunction<unknown>("brand-delete", { body });
+  // to fail mysteriously. Send with the already-attached token so no auth-lock
+  // acquisition exists in front of this request.
+  const { data, error } = await invokeBrandDeleteRequest(body, accessToken);
   if (error) {
     let payload: Json = {};
     let httpStatus: number | null = null;
@@ -350,6 +430,12 @@ export function deleteBrandClosingPayments(brandId: string, confirmName: string)
 }
 
 /** N1 "Discard and start new" (S-12): owner only, no name typing. */
-export function discardDraftBrand(brandId: string): Promise<BrandDeleteOutcome> {
-  return invokeBrandDelete({ brand_id: brandId, mode: "discard_draft" });
+export function discardDraftBrand(
+  brandId: string,
+  accessToken: string | null = null,
+): Promise<BrandDeleteOutcome> {
+  return invokeBrandDelete(
+    { brand_id: brandId, mode: "discard_draft" },
+    accessToken,
+  );
 }
