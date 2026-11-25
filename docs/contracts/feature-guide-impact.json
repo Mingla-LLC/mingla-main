@@ -7005,6 +7005,13 @@
       ]
     },
     {
+      "capability_key": "sites-brand-website",
+      "paths": [
+        "mingla-site-cms/src/app/(payload)/studio.css",
+        "supabase/migrations/20281205054572_issue_4572_venue_offer_sites_feed.sql"
+      ]
+    },
+    {
       "capability_key": "venues-go-live-readiness",
       "paths": [
         "mingla-business/src/components/ui/VenueCoverButton.tsx"
