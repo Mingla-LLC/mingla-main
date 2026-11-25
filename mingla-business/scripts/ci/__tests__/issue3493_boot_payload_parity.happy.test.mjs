@@ -240,10 +240,11 @@ describe("#3493 VAT/pricing UI stays out of the eager shared chunk", () => {
 });
 
 // Issue #4596 — Seth approved in chat 2026-11-24 a one-time allowance for PR
-// #4601 (recorded on #4596); it replaced the merged #4601 entry. These tests
-// prove the entry reaches the movement gate for that one pull request only,
-// and that the 1,024 B threshold stands for everyone else.
-describe("#4596 the one-time #4601 entry, as the movement gate reads it", () => {
+// #4601 (recorded on #4596). Issue #3493 adds the Seth-approved, PR-#4610-only
+// bridge for #4601's already-merged delta while its baseline is stale. These
+// tests prove each entry reaches only its named pull request and that the
+// permanent 1,024 B threshold stands for everyone else.
+describe("#4596/#3493 named one-time entries, as the movement gate reads them", () => {
   const SHA = "a".repeat(40);
   const HEAD = "4596-rsvp-event-blast-audience";
   const none = () => [];
@@ -261,8 +262,8 @@ describe("#4596 the one-time #4601 entry, as the movement gate reads it", () => 
   const verdictFor = (entry, delta) =>
     assessCommonBaselineMovement(2_744_094, 2_744_094 + delta, entry ? { oneTimeCap: entry.common } : {});
 
-  test("one table: the #4601 entry first (then #4600), frozen, capped and dated", () => {
-    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 2); // #4596 first, then #4490
+  test("one table: #4601, #4600 and the #4610 deadlock bridge are frozen, capped and dated", () => {
+    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 3); // #4596, #4490, then #3493
     const [only] = ONE_TIME_PR_ALLOWANCE;
     assert.deepEqual(
       { issue: only.issue, pr: only.pr, headRef: only.headRef, common: only.common, expiresAfter: only.expiresAfter, approvedBy: only.approvedBy },
@@ -285,6 +286,25 @@ describe("#4596 the one-time #4601 entry, as the movement gate reads it", () => 
     assert.equal(granted.normalThreshold, 1_024);
     assert.equal(verdictFor(entry, 3_301).ok, false, "the cap is a cap, not an exemption");
     assert.equal(verdictFor(null, 3_048).ok, false);
+  });
+
+  test("PR #4610 alone gets the approved 3,000 B bridge for #4601's already-merged +2,852 B", () => {
+    const entry = decide(prEnv("3493-common-raw-ceiling", "refs/pull/4610/merge"), none, "2026-11-25");
+    assert.equal(entry, ONE_TIME_PR_ALLOWANCE[2]);
+    assert.deepEqual(
+      { issue: entry.issue, pr: entry.pr, headRef: entry.headRef, common: entry.common, expiresAfter: entry.expiresAfter, approvedBy: entry.approvedBy },
+      { issue: 3493, pr: 4610, headRef: "3493-common-raw-ceiling", common: 3_000, expiresAfter: "2026-12-09", approvedBy: "Seth, 2026-11-25" },
+    );
+    const granted = verdictFor(entry, 2_852);
+    assert.equal(granted.ok, true);
+    assert.equal(granted.normalOk, false);
+    assert.equal(granted.normalThreshold, 1_024);
+    assert.equal(verdictFor(entry, 3_001).ok, false, "the bridge remains a cap");
+    assert.equal(verdictFor(null, 2_852).ok, false);
+    assert.equal(effectivePerPrAllowance(entry, { common: 12_000, eager: 25_000 }).common, 12_000);
+    assert.equal(decide(prEnv("3493-common-raw-ceiling-x", "refs/pull/4610/merge"), none, "2026-11-25"), null);
+    assert.equal(decide(prEnv("3493-common-raw-ceiling", "refs/pull/46100/merge"), none, "2026-11-25"), null);
+    assert.equal(decide(prEnv("3493-common-raw-ceiling", "refs/pull/4610/merge"), none, "2026-12-10"), null);
   });
 
   test("an optional `eager` cap is scoped exactly like `common`; absent means the normal 25,000 B", () => {

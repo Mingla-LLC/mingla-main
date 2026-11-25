@@ -155,6 +155,14 @@ export function assessCommonBaselineMovement(baselineRaw, measuredRaw, { oneTime
 // It replaces the #4594 entry (#4522), which merged on 2026-11-24. The
 // independent #4600 / #4490 allowance remains beside it until that merge is
 // absorbed into the recorded baseline.
+//
+// #4610 (issue #3493): Seth approved in chat 2026-11-25 a one-time 3,000 B
+// movement allowance for the hard-ceiling correction PR. It carries only the
+// 2,852 B already merged by #4601 while the machine baseline is stale: the
+// baseline cannot bank that measurement under the old ceiling, and the ceiling
+// correction cannot pass the movement gate until it is banked. This entry is
+// exact to PR #4610 on its branch, expires by itself, changes no product ceiling
+// or permanent threshold, and grants nothing to the 12,000 B per-PR budget.
 // ═══════════════════════════════════════════════════════════════════════════
 export const ONE_TIME_PR_ALLOWANCE = Object.freeze([
   Object.freeze({
@@ -183,6 +191,19 @@ export const ONE_TIME_PR_ALLOWANCE = Object.freeze([
       "code (Till, Close the day, offers, venue models and services) that lands in the shared " +
       "chunk (+161,172 B in __common and +163,802 B in the eager payload, measured against the #4589 baseline). Splitting cohesive modules only " +
       "to pass is not allowed.",
+  }),
+  Object.freeze({
+    issue: 3493,
+    pr: 4610,
+    headRef: "3493-common-raw-ceiling",
+    common: 3_000,
+    expiresAfter: "2026-12-09",
+    approvedBy: "Seth, 2026-11-25",
+    reason:
+      "The common.raw ceiling correction carries #4601's already-merged +2,852 B while the " +
+      "machine baseline is stale: the baseline cannot bank the measurement under the old " +
+      "ceiling, and PR #4610 cannot pass the movement gate until that measurement is banked. " +
+      "This cap is scoped only to #4610 and leaves the permanent threshold unchanged.",
   }),
 ]);
 

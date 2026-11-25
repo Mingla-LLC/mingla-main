@@ -105,7 +105,7 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // deliberate runway above it so the DELTA gate — not this one — is what a
 // normal PR ever meets:
 //   __common  brotli 439,775 → ceiling 597,000   (raised 2026-09-20, 2026-10-27, 2026-11-24)
-//   __common  raw    2,341,978 → ceiling 2,940,000 (raised 2026-09-20, 2026-11-24)
+//   __common  raw    2,341,978 → ceiling 2,943,000 (raised 2026-09-20, 2026-11-24, 2026-11-25)
 //   eager     brotli 660,678 → ceiling 838,000   (raised 2026-10-17, 2026-11-24)
 //   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
 //
@@ -151,14 +151,23 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // these figures). The per-PR allowance and the machine-maintained baseline are
 // unchanged.
 //
+// RAISED 2026-11-25 — __common raw ONLY, from 2,940,000 to 2,943,000.
+// Production main measured 2,930,315 B after #4601, 2,692 B above the
+// pre-merge #4490 measurement used for the 2026-11-24 decision. The old
+// ceiling therefore left only 9,685 B of raw runway and the machine baseline
+// correctly refused to bank it. Seth approved the 3,000 B correction in chat:
+// 2,930,315 + the unchanged 12,000 B normal allowance = 2,942,315 B, leaving
+// 685 B spare beneath the corrected ceiling. Brotli and both eager ceilings,
+// the per-PR allowance, and the machine-maintained baseline are unchanged.
+//
 // The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
 // unfailable since route splitting landed. This is a tightening, not a
 // relaxation: 4,000,000 is 57% below the number it replaces.
 // ═══════════════════════════════════════════════════════════════════════════
 const HARD_CEILING = {
-  // 2026-11-24 — __common raw 2_800_000 → 2_940_000 and brotli 560_000 →
-  // 597_000, eager brotli 800_000 → 838_000 (issue #4490; Seth approved).
-  common: { raw: 2_940_000, brotli: 597_000 },
+  // 2026-11-25 — __common raw 2_940_000 → 2_943_000 after the measured
+  // #4601 main payload left less than one normal allowance (Seth approved).
+  common: { raw: 2_943_000, brotli: 597_000 },
   // 2026-10-17 — eager brotli 775_000 → 800_000 after #3937 recorded
   // eager.brotli at 750,291 B, which left only 24,709 B beneath the old
   // ceiling. Human limit move only; automation still cannot raise this.
@@ -263,15 +272,15 @@ if (process.argv.includes("--self-test")) {
     ]);
   }
 
-  // 4 — the one-time allowances for #4596 and #4490 are exactly two named
-  // entries. Each matches exactly one pull request; everyone else keeps the
-  // normal limit. Adding an entry, widening a cap or loosening a match fails.
+  // 4 — the one-time allowances for #4596, #4490 and #3493 are exactly three
+  // named entries. Each matches exactly one pull request; everyone else keeps
+  // the normal limit. Adding an entry, widening a cap or loosening a match fails.
   {
     const E = ONE_TIME_PR_ALLOWANCE;
     const only = E[0] ?? {};
     checks.push(["one-time allowance: the general allowance is still 12,000 / 25,000",
       PR_DELTA_ALLOWANCE.common === 12_000 && PR_DELTA_ALLOWANCE.eager === 25_000]);
-    checks.push(["one-time allowance: the table holds exactly two entries (#4596, #4490)", E.length === 2]);
+    checks.push(["one-time allowance: the table holds exactly three entries (#4596, #4490, #3493)", E.length === 3]);
     checks.push(["one-time allowance: that entry is PR #4601 / issue #4596 on its own branch, capped at 3,300 B, dated",
       only.pr === 4601 && only.issue === 4596 &&
         only.headRef === "4596-rsvp-event-blast-audience" &&
@@ -309,6 +318,20 @@ if (process.argv.includes("--self-test")) {
       decide(prEnv("4490-venue-features", "refs/pull/4600/merge")) === second &&
         decide(prEnv("4490-venue-features", "refs/pull/4601/merge")) === null &&
         decide(prEnv("4522-young-polish", "refs/pull/4600/merge")) === null]);
+    const third = E[2] ?? {};
+    checks.push(["one-time allowance: the third entry is PR #4610 / issue #3493 on its exact branch, capped at 3,000 B, dated and frozen",
+      third.pr === 4610 && third.issue === 3493 &&
+        third.headRef === "3493-common-raw-ceiling" &&
+        third.common === 3_000 && third.expiresAfter === "2026-12-09" &&
+        third.approvedBy === "Seth, 2026-11-25" &&
+        typeof third.reason === "string" && third.reason.length > 40 &&
+        Object.keys(third).sort().join(",") === "approvedBy,common,expiresAfter,headRef,issue,pr,reason" &&
+        Object.isFrozen(third)]);
+    checks.push(["one-time allowance: PR #4610 gets only its 3,000 B movement cap",
+      decide(prEnv("3493-common-raw-ceiling", "refs/pull/4610/merge"), none, "2026-11-25") === third &&
+        decide(prEnv("3493-common-raw-ceiling", "refs/pull/46100/merge"), none, "2026-11-25") === null &&
+        decide(prEnv("3493-common-raw-ceiling-x", "refs/pull/4610/merge"), none, "2026-11-25") === null &&
+        effectivePerPrAllowance(third, PR_DELTA_ALLOWANCE).common === PR_DELTA_ALLOWANCE.common]);
     const strangers = [
       prEnv("3697-host-ads", "refs/pull/4600/merge"),
       prEnv(HEAD, "refs/pull/4600/merge"), // same branch name, another pull request
@@ -318,6 +341,8 @@ if (process.argv.includes("--self-test")) {
       prEnv(HEAD.toUpperCase(), "refs/pull/4601/merge"),
       prEnv("", "refs/pull/4601/merge"),
       prEnv(HEAD, "refs/pull/46010/merge"),
+      prEnv("3493-common-raw-ceiling", "refs/pull/46100/merge"),
+      prEnv("3493-common-raw-ceiling-x", "refs/pull/4610/merge"),
       prEnv(HEAD, ""),
       {},
       { GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4601/merge" }, // no event

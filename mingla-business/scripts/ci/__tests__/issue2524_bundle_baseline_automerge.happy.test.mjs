@@ -432,8 +432,10 @@ describe("#2524 guard 4 — ceiling-locked", () => {
         // ceiling 550,000 -> 560,000 following #4133 (threshold 548,000).
         // REPOINTED by issue #4490 [TEST-MOD-APPROVED #4490] after Seth moved
         // __common to raw 2,940,000 / brotli 597,000 and eager brotli to
-        // 838,000 (thresholds 2,928,000 / 585,000 and 813,000).
-        common: { raw: 2_928_000, brotli: 585_000 },
+        // 838,000 (thresholds 2,928,000 / 585,000 and 813,000). REPOINTED by
+        // issue #3493 [TEST-MOD-APPROVED #3493] after Seth approved the
+        // 2,943,000 raw correction (threshold 2,931,000) on 2026-11-25.
+        common: { raw: 2_931_000, brotli: 585_000 },
         eager: { raw: 3_975_000, brotli: 813_000 },
       },
     );
@@ -489,13 +491,23 @@ describe("#2524 guard 4 — ceiling-locked", () => {
     assert.equal(assessCeilingRunway(live).ok, true);
   });
 
+  test("#3493's approved ceiling leaves a full allowance above the #4601 measurement", () => {
+    const measured = {
+      common: { raw: 2_930_315, brotli: 584_775 },
+      eager: { raw: 3_972_243, brotli: 812_975 },
+    };
+    assert.equal(assessCeilingRunway(measured).ok, true);
+    assert.equal(CEILING.common.raw - measured.common.raw, 12_685);
+    assert.ok(CEILING.common.raw - measured.common.raw >= REFUSAL_RUNWAY.common);
+  });
+
   test("the mirrored ceilings are re-derived from the budget source and cannot rot in silence", () => {
     const derived = assertCeilingMirrorMatchesBudgetSource();
     assert.deepEqual(derived.ceiling, JSON.parse(JSON.stringify(CEILING)));
     assert.deepEqual(derived.runway, JSON.parse(JSON.stringify(REFUSAL_RUNWAY)));
 
     const drifted = readFileSync(join(ROOT, "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"), "utf8")
-      .replace("raw: 2_940_000", "raw: 3_000_000");
+      .replace("raw: 2_943_000", "raw: 3_000_000");
     assert.throws(() => assertCeilingMirrorMatchesBudgetSource(drifted), (error) =>
       error instanceof AutomergeError && error.code === "MIRROR_DRIFTED");
   });
@@ -516,12 +528,13 @@ describe("#2524 guard 4 — ceiling-locked", () => {
     // __common brotli ceiling 550,000 -> 560,000 after #4133 recorded
     // 538,311 B, inside one 12,000 B allowance of the old limit. On 2026-11-24
     // Seth moved __common to raw 2,940,000 / brotli 597,000 and eager brotli to
-    // 838,000 for #4490 (measured 2,927,623 / 584,172 and 812,308 B).
+    // 838,000 for #4490 (measured 2,927,623 / 584,172 and 812,308 B), then
+    // approved the 2,943,000 raw correction after #4601 measured 2,930,315 B.
     // PR_DELTA_ALLOWANCE is unchanged. [TEST-MOD-APPROVED #3493]
     // [TEST-MOD-APPROVED #3872] [TEST-MOD-APPROVED #4490]
     const source = readFileSync(join(ROOT, "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"), "utf8");
     assert.match(source, /const PR_DELTA_ALLOWANCE = \{ common: 12_000, eager: 25_000 \};/);
-    assert.match(source, /common: \{ raw: 2_940_000, brotli: 597_000 \}/);
+    assert.match(source, /common: \{ raw: 2_943_000, brotli: 597_000 \}/);
     assert.match(source, /eager: \{ raw: 4_000_000, brotli: 838_000 \}/);
   });
 });
