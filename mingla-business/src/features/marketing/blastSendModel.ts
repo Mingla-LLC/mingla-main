@@ -109,6 +109,8 @@ export function sourceKeysForDefinition(
  * One group by one method keeps its existing lane unchanged. Anything wider
  * travels on the combined lane, which is what counts each person once. Followers
  * who are all in the Book also need it: the old follower lane leaves them out.
+ * #4596: every event audience rides the combined lane: it is the only lane that
+ * counts an event's RSVP guests, quotes them and refuses a blast to nobody.
  */
 export function needsCombinedLane(
   sourceKeys: readonly string[],
@@ -116,6 +118,7 @@ export function needsCombinedLane(
   followersAlsoInBook = 0,
 ): boolean {
   if (sourceKeys.length === 0) return false;
+  if (sourceKeys.some((key) => key.startsWith("event:"))) return true;
   if (sourceKeys.length > 1 || channels.length > 1) return true;
   return sourceKeys[0] === "followers" && followersAlsoInBook > 0;
 }
@@ -567,3 +570,12 @@ export function smsReachNote(state: "none_picked" | "loading" | "unavailable"): 
     }
   }
 }
+
+// #4596 — the event-audience copy (guests / buyers / people) lives in its own
+// dependency-free module: the eager Audiences tab names event rows with it, and
+// importing this whole composer model there would put it on the boot path.
+export * from "./eventAudienceCopy";
+
+// Lives in its own tiny module: the campaigns list and campaign screen import
+// it without pulling this model into their chunks.
+export { campaignFailureCopy } from "./campaignFailureCopy";

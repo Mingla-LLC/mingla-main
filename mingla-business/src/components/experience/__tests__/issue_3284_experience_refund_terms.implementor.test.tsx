@@ -56,6 +56,11 @@ type RpcResult = { data: unknown; error: { code?: string; message?: string } | n
 const mockRpc = jest.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
 const mockFrom = jest.fn<(table: string) => unknown>();
 
+// #4490 — the Where step's venue/space link has its own data (react-query);
+// these wizard harnesses mount no QueryClient, so it renders nothing here.
+jest.mock("../../venue/features/EventVenueSpacePicker", () => ({
+  EventVenueSpacePicker: () => null,
+}));
 jest.mock("../../../services/supabase", () => ({
   supabase: {
     rpc: (name: string, args: Record<string, unknown>) => mockRpc(name, args),
@@ -240,6 +245,7 @@ import {
   type ExperienceWizardInitialDraft,
 } from "../ExperienceCreatorWizard";
 import { RefundPolicyEditor } from "../../trip/RefundPolicyEditor";
+import { emptyPriceOption } from "../experienceWizardTypes";
 
 // ---------------------------------------------------------------------------
 // helpers + fixtures
@@ -322,6 +328,10 @@ const seed = (refundPolicy?: RefundPolicy | null): ExperienceWizardInitialDraft 
   pricingMode: "whole",
   stops: [stop(1), stop(2)] as never,
   wholePriceMajor: "0.00",
+  // #4490 — every price is named by the host (a blank name blocks Continue).
+  priceOptions: [
+    emptyPriceOption({ name: "General admission", priceMajor: "0.00", priceBasis: "person" }),
+  ],
   isFree: true,
   capacity: "20",
   unlimited: false,

@@ -53,11 +53,14 @@ describe("#3682 brand-scoped automatic audiences (happy)", () => {
     expect(service).toContain("updateDraft: campaign brand missing");
   });
 
-  it("listAudiencesForBrand filters marketing_audiences and orders by brand_id", () => {
+  // [TEST-MOD-APPROVED #4596] event discovery is the brand-scoped server RPC
+  // biz_marketing_event_audiences_v1 (p_brand_id), not a client orders scan.
+  it("listAudiencesForBrand filters marketing_audiences and event discovery by brand_id", () => {
     const service = read("src/services/marketing/marketingAudienceService.ts");
     expect(service).toContain("export async function listAudiencesForBrand");
     expect(service).toContain('.eq("brand_id", input.brand_id)');
-    expect(service).toContain('.eq("events.brand_id", input.brand_id)');
+    expect(service).toContain('"biz_marketing_event_audiences_v1"');
+    expect(service).toContain("p_brand_id: input.brand_id");
     expect(service).toContain("Cross-brand automatic groups");
   });
 });

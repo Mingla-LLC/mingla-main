@@ -15,6 +15,39 @@ on:
       - "supabase/migrations/20280403044261_issue_4261_chat_plans.sql"
       - "supabase/migrations/20280403054261_issue_4261_plan_places_and_link_previews.sql"
       - "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql"
+      # issue #4490 — the current pin owner (D4 replays it) and the migrations
+      # whose venue lanes (spaces, combinations, features, special hours, event
+      # venue links) it reviews.
+      - "supabase/migrations/20281203004490_issue_4490_p1_spaces_features.sql"
+      - "supabase/migrations/20281203014490_issue_4490_p1_hours.sql"
+      - "supabase/migrations/20281203024490_issue_4490_p1_event_venue.sql"
+      - "supabase/migrations/20281203054490_issue_4490_p1_pending_venue_repin.sql"
+      # issue #4490 P2 — the venue offer lanes and their pin owner (now the
+      # current pin owner D4 replays).
+      - "supabase/migrations/20281203074490_issue_4490_p2_offer_engine.sql"
+      - "supabase/migrations/20281203084490_issue_4490_p2_offer_checkout.sql"
+      - "supabase/migrations/20281203094490_issue_4490_p2_check_in.sql"
+      - "supabase/migrations/20281203104490_issue_4490_p2_pending_venue_repin.sql"
+      # issue #4490 guest list — the guest list lanes and their pin owner.
+      - "supabase/migrations/20281203394490_issue_4490_gaps_guest_list.sql"
+      - "supabase/migrations/20281203424490_issue_4490_guest_list_pending_venue_repin.sql"
+      # issue #4490 spec 08 O1 — the Till lanes and their pin owner.
+      - "supabase/migrations/20281203504490_issue_4490_ops_till_core.sql"
+      - "supabase/migrations/20281203524490_issue_4490_ops_o1_pending_venue_repin.sql"
+      # issue #4490 spec 08 O2 fix 1 / O3 — the Till pay-link texts lane and its
+      # pin owner.
+      - "supabase/migrations/20281203574490_issue_4490_ops_o2_fix1.sql"
+      - "supabase/migrations/20281203594490_issue_4490_ops_o3_pending_venue_repin.sql"
+      # issue #4490 spec 08 O5 part A — the PIN lanes and their pin owner.
+      - "supabase/migrations/20281203684490_issue_4490_ops_pin.sql"
+      - "supabase/migrations/20281203694490_issue_4490_ops_o5a_pending_venue_repin.sql"
+      # issue #4490 spec 08 O5 part B — the daily close lanes and their pin owner.
+      - "supabase/migrations/20281203704490_issue_4490_ops_close.sql"
+      - "supabase/migrations/20281203714490_issue_4490_ops_o5b_pending_venue_repin.sql"
+      # issue #4490 spec 08 O5 fix 1 — the opening hours history and its pin owner
+      # (now the current pin owner D4 replays).
+      - "supabase/migrations/20281203734490_issue_4490_ops_o5_fix1.sql"
+      - "supabase/migrations/20281203744490_issue_4490_ops_o5_fix1_pending_venue_repin.sql"
       # issue #2648 — the four files below are READ by
       # issue_2855_pending_venue_schema_pin.implementor.test.ts, which this
       # workflow runs, and none of them were listed here. So inputs that decide
@@ -189,7 +222,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected=$'jest.mock(\n  "../PendingVenueIdentityCorrectionLauncher",\n  () => ({ __esModule: true, default: (): null => null }),\n  { virtual: true },\n);'
+          # #4490 moved both route shells behind the one lazy Host venue owner.
+          # The issue1483 harnesses intentionally carry only minimal RN mocks,
+          # so this exact additive stand-in is the sole current authorization;
+          # every fixture and assertion remains byte-identical to origin/main.
+          expected=$'// #4490 — the route now loads both suites through the one Host venue owner.\n// This exact structural stand-in keeps the locked #1483 harness import-light.\njest.mock("../host/LazyVenueSuites", () => ({\n  __esModule: true,\n  StaySuiteShell: (): null => null,\n  VenueSuiteShell: (): null => null,\n}));'
           for f in \
             "mingla-business/src/components/venue/__tests__/venuePublicPageActions.issue1483.test.tsx" \
             "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx"; do
@@ -199,13 +236,6 @@ jobs:
               continue
             fi
             authorized="$expected"
-            if [ "$f" = "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx" ]; then
-              # #2211 changes the real venue loading/not-found roots from View
-              # to ScrollView. This exact structural host export is the only
-              # additional harness line authorized; assertions, fixtures and
-              # every #1483/#2099 product mock remain immutable.
-              authorized='    ScrollView: "ScrollView",'
-            fi
             dels="$(printf '%s\n' "$diff" | grep -c '^-[^-]' || true)"
             if [ "$dels" -ne 0 ]; then
               echo "::error::$f has $dels deletion line(s). No existing line may be edited, reordered, deleted or reformatted."
@@ -267,7 +297,12 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
+      # #3493 — the push lane must see every squash subject since the recorded
+      # baseline. Otherwise a later main commit can hide the approved merge
+      # whose one-time allowance is still waiting to be banked.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20.19.4
@@ -348,9 +383,10 @@ jobs:
           PY
 
       # §D4 — the exact ordered current contract (historical original followed
-      # by #2855's forward owner, then #4261's current pin owner, which re-pins
-      # over Local, Stay and group-chat plan venue dependencies; #4188's pin
-      # owner refuses the newer schema by design, so it is no longer replayed)
+      # by #2855's forward owner, then #4490's current pin owner, which re-pins
+      # over Local, Stay, group-chat plan and venue feature dependencies; the
+      # #4188 and #4261 pin owners refuse the newer schema by design, so they
+      # are no longer replayed)
       # applied a SECOND and THIRD time must
       # exit 0 without dropping or truncating either #2099 table, without losing
       # a guard or audit row, and leaving the catalog contract equivalent.
@@ -397,14 +433,14 @@ jobs:
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql
+            -f - < supabase/migrations/20281203744490_issue_4490_ops_o5_fix1_pending_venue_repin.sql
           after_second="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql
+            -f - < supabase/migrations/20281203744490_issue_4490_ops_o5_fix1_pending_venue_repin.sql
           after_third="$(snapshot)"
           test "$before" = "$after_second"
           test "$after_second" = "$after_third"

@@ -1,12 +1,14 @@
 /**
  * Tabs — #4420 Graphite Glass (spec §3.2). Underline tabs for sections inside
  * a page. The active tab: text1 label + a 2px paper underline; others text3.
- * Optional count after the label. When the tabs are wider than the screen
- * they scroll horizontally inside their own row (no bleed-outs).
+ * Optional count after the label. When the tabs are wider than their row
+ * they wrap onto a second line (#4490 click-test D28): a hidden horizontal
+ * scroll clipped the last tab ("Te…" for Team) with nothing to say more
+ * were there.
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import { color, space, type } from "../../constants/designSystem";
@@ -29,7 +31,7 @@ export interface TabsProps<K extends string = string> {
 export function Tabs<K extends string = string>({ items, value, onChange, testID, style }: TabsProps<K>): React.ReactElement {
   return (
     <View style={[styles.root, style]} testID={testID} accessibilityRole="tablist">
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+      <View style={styles.row}>
         {items.map((item) => {
           const on = item.key === value;
           return (
@@ -52,14 +54,14 @@ export function Tabs<K extends string = string>({ items, value, onChange, testID
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line },
-  row: { gap: space[5] },
+  row: { flexDirection: "row", flexWrap: "wrap", columnGap: space[5] },
   tab: { paddingTop: space[2], minHeight: 44, justifyContent: "flex-end" },
   labelRow: { flexDirection: "row", alignItems: "center", gap: space[1], paddingBottom: space[2] },
   label: { ...type.small, fontWeight: "600", color: color.text3 },

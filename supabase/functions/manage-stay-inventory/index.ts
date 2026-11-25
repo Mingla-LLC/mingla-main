@@ -61,6 +61,40 @@ function hasUnsafeNumber(value: unknown, depth = 0): boolean {
   return false;
 }
 
+// #4490 R4J-N21 — payload fields the database reads as lists. A present value
+// that is not a JSON array (an object, a string, null) is refused here as the
+// plain invalid-payload answer (422) instead of reaching SQL, where it used to
+// surface as "cannot extract elements from an object" (500). The database
+// refuses the same shapes too (biz_manage_stay_inventory, J-16l..q).
+const LIST_FIELDS = ["fees", "items", "nights", "windows", "units", "mediaIds"];
+
+export function hasInvalidListShape(payload: unknown): boolean {
+  // No payload is read as {} (unchanged).
+  if (payload === undefined || payload === null) return false;
+  if (typeof payload !== "object" || Array.isArray(payload)) return true;
+  const record = payload as Record<string, unknown>;
+  for (const field of LIST_FIELDS) {
+    if (field in record && !Array.isArray(record[field])) return true;
+  }
+  for (const listField of ["items", "nights", "windows"]) {
+    const list = record[listField];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) {
+        return true;
+      }
+      if (
+        listField === "items" &&
+        "fees" in (item as Record<string, unknown>) &&
+        !Array.isArray((item as Record<string, unknown>).fees)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export type ManageStayInventoryDependencies = {
   createRpcClient?: (
     url: string,
@@ -181,6 +215,9 @@ function errorResponse(
     "stay_dst_fold",
     "fx_snapshot_stale",
     "fx_unavailable",
+    // #4490: a row id the uuid type cannot read is refused as invalid input
+    // (422), never a server error.
+    "stay_invalid_payload",
     // issue #3645 — biz_publish_stay refuses a member who has not accepted the
     // current Organiser Terms. Last in the list so every older code keeps the
     // match it had; the Host app opens the acceptance sheet on this code.
@@ -300,6 +337,10 @@ export async function handleManageStayInventory(
       message: "Choose a valid Stay and action.",
       requestId,
     });
+  }
+
+  if (hasInvalidListShape(body.payload)) {
+    return errorResponse({ message: "stay_invalid_payload" }, requestId);
   }
 
   const url = Deno.env.get("SUPABASE_URL") ?? "";

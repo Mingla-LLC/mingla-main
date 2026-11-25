@@ -44,6 +44,15 @@ interface VenueSuiteState {
    * Calls `proceed` immediately when clean; otherwise opens the leave dialog.
    */
   requestLeave: ((proceed: () => void, restoreFocus?: () => void) => void) | null;
+  /**
+   * Stay installs its own gate for its feature modules without touching the
+   * venue module state above (Stay draws no store-driven pill row).
+   */
+  setRequestLeave: (
+    requestLeave:
+      | ((proceed: () => void, restoreFocus?: () => void) => void)
+      | null,
+  ) => void;
   pendingLeaveFocus: (() => void) | null;
   setPendingLeaveFocus: (restoreFocus: (() => void) | null) => void;
   takePendingLeaveFocus: () => (() => void) | null;
@@ -59,6 +68,14 @@ interface VenueSuiteState {
   savedFlash: { venueId: string; message: string; at: number } | null;
   setSavedFlash: (venueId: string, message: string, at: number) => void;
   takeSavedFlash: (venueId: string, now: number) => string | null;
+
+  /**
+   * #4490 — the host asked to set up spaces (Settings › "Add spaces") before
+   * the venue has one. Keeps the Spaces module reachable for that venue until
+   * the suite unmounts; once a space exists the venue shows it on its own.
+   */
+  spacesRequestedVenueId: string | null;
+  requestSpaces: (venueId: string) => void;
 
   /** Shell lifecycle. */
   activate: (initialModule: VenueModule) => void;
@@ -89,6 +106,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
   },
   selectModule: null,
   requestLeave: null,
+  setRequestLeave: (requestLeave) => set({ requestLeave }),
   pendingLeaveFocus: null,
   setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
   savedFlash: null,
@@ -111,6 +129,9 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
     return pending;
   },
 
+  spacesRequestedVenueId: null,
+  requestSpaces: (venueId) => set({ spacesRequestedVenueId: venueId }),
+
   activate: (initialModule) =>
     set({ active: true, activeModule: initialModule }),
   deactivate: () =>
@@ -122,6 +143,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
       requestLeave: null,
       pendingLeaveFocus: null,
       dirtyModules: new Set(),
+      spacesRequestedVenueId: null,
     }),
   sync: ({ activeModule, visibleModules, selectModule, requestLeave }) =>
     set({

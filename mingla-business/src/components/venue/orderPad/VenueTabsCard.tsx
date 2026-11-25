@@ -1,5 +1,9 @@
 /**
  * Issue #1792 (#1767 Phase 3b) — OPEN TABS on the Orders queue (DESIGN D-2
+ *
+ * [TRANSITIONAL] #4490 spec 08 O1: used only where the Till is not running
+ * (`venueOrderEntry` = "pad"); exits when every venue runs the Till, and this
+ * file is then deleted with the pad and the tabs card.
  * AMENDED, D-11; SPEC #1788 P-2a).
  *
  * A tab is a sitting a waiter opened and is still serving. This card is where it

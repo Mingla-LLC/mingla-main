@@ -88,6 +88,8 @@ export interface GenericBodyInput {
   title: string;
   paragraphs: string[];
   cta?: { label: string; url: string } | null;
+  /** #4490 Explorer W1: a second, quieter link under the button. */
+  secondaryCta?: { label: string; url: string } | null;
   /** #3720 — validated Admin composer blocks. Legacy paragraphs remain valid. */
   document?: EmailContentBlock[] | null;
 }

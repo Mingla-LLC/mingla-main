@@ -58,6 +58,7 @@
   "pill.experiences": "Experiences",
   "pill.trips": "Trips",
   "pill.stays": "Stays",
+  "pill.venues": "Venues",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.show_one": "Show {{count}}",
@@ -72,6 +73,8 @@
   "count.trips_other": "{{count}} trips",
   "count.stays_one": "{{count}} stay",
   "count.stays_other": "{{count}} stays",
+  "count.venues_one": "{{count}} venue",
+  "count.venues_other": "{{count}} venues",
   "count.capped": "{{count}}+",
   "count.nothing": "Nothing yet",
   "group.when": "When",
@@ -89,6 +92,7 @@
   "group.check_in": "Check in",
   "group.guests": "Guests",
   "group.property_kind": "Type of place",
+  "group.venue_type": "Type of place",
   "group.any_suffix": "{{group}} · Any",
   "when.any_day": "Any day",
   "when.tomorrow": "Tomorrow",
@@ -214,5 +218,10 @@
   "empty.see_city": "See {{city}} · {{count}} things",
   "banner.tm_unavailable": "Live events are temporarily unavailable. Showing what we have.",
   "banner.tm_fallback": "Showing events near you. {{city}} has no Ticketmaster events right now.",
-  "stays.unavailable": "Stays aren't open yet."
+  "stays.unavailable": "Stays aren't open yet.",
+  "venues.empty_title": "No venues to book here yet.",
+  "venues.empty_body": "Venues you can book on Mingla will show up here.",
+  "venues.filtered_title": "No venues match those filters.",
+  "venues.error_title": "We could not load venues.",
+  "venues.error_retry": "Try again"
 }

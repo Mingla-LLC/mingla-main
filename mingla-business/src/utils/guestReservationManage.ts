@@ -31,12 +31,41 @@ export type GuestManageStatus =
   | "cancelled_by_venue"
   | "waitlisted";
 
+/**
+ * #4490 N119 — "Fri 20 Nov · 19:00": the booking's time in the VENUE's zone,
+ * day-first, 24-hour, the way the confirmation says it. With no zone (an older
+ * server answer) it falls back to the device's. "" when the instant is bad.
+ */
+export function guestManageWhen(iso: string, timeZone: string | null | undefined): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const zone = typeof timeZone === "string" && timeZone.trim().length > 0 ? timeZone.trim() : undefined;
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+  } catch {
+    return guestManageWhen(iso, null);
+  }
+  const pick = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("weekday")} ${pick("day")} ${pick("month")} · ${pick("hour")}:${pick("minute")}`;
+}
+
 export interface GuestManageReservation {
   status: GuestManageStatus;
   paymentStatus: "none" | "paid" | "refunded";
   reservedForUtc: string;
   partySize: number;
   venueName: string | null;
+  /** The venue's IANA zone (absent from older answers). */
+  timezone?: string | null;
   canCancel: boolean;
 }
 

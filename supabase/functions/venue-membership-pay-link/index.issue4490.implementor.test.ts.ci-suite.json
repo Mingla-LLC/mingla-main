@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/venue-membership-pay-link/index.issue4490.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-venue-membership-pay-link",
+  "profile": "deno-2-unit"
+}

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4490_pr_links_migration_reads.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4490-pr-links-migration-reads",
+  "profile": "deno-1.46-stripe"
+}

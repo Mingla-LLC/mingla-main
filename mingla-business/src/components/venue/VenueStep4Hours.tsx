@@ -45,7 +45,8 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
           prev === undefined ||
           prev.openTime !== n.openTime ||
           prev.closeTime !== n.closeTime ||
-          prev.isClosed !== n.isClosed
+          prev.isClosed !== n.isClosed ||
+          JSON.stringify(prev.extraWindows ?? []) !== JSON.stringify(n.extraWindows ?? [])
         );
       });
       for (const row of changed) {
@@ -53,6 +54,8 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
           openTime: row.openTime,
           closeTime: row.closeTime,
           isClosed: row.isClosed,
+          // #4490 D5 — a split day keeps its extra windows in the draft.
+          extraWindows: row.extraWindows ?? [],
         });
       }
     },
@@ -62,12 +65,17 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
   return (
     <View style={styles.host}>
       <Text style={styles.title}>Opening hours</Text>
-      <Text style={styles.helper}>Default: Mon–Sat 9–5, Sun closed.</Text>
+      <Text style={styles.helper}>
+        {/* #4490 N37: no fixed "Mon to Sat 09:00–17:00" line that goes stale after edits. */}
+        Set the days and times you open. Add a window for a split day, and close after midnight if you need to.
+      </Text>
+      {/* #4490 D5 — the same multi-window editor as Availability. */}
       <React.Suspense fallback={null}>
         <BrandHoursEditor
           hours={hours}
           onChange={handleChange}
           showErrors={showErrors}
+          allowWindows
         />
       </React.Suspense>
     </View>

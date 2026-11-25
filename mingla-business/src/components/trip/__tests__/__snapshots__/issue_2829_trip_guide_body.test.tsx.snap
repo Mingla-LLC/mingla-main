@@ -45,7 +45,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -247,7 +247,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
                   },
                   {
                     "color": "#ffffff",
-                    "fontFamily": "Inter_700Bold",
+                    "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
                   },
                 ]
               }
@@ -306,7 +306,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
                     "color": "#ffffff",
                   },
                   {
-                    "fontFamily": "Inter_700Bold",
+                    "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
                   },
                 ]
               }
@@ -344,7 +344,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -392,7 +392,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -475,7 +475,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -525,7 +525,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
                 "color": "#ffffff",
               },
               {
-                "fontFamily": "Inter_700Bold",
+                "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
               },
             ]
           }
@@ -674,7 +674,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -876,7 +876,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
                   },
                   {
                     "color": "#ffffff",
-                    "fontFamily": "Inter_700Bold",
+                    "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
                   },
                 ]
               }
@@ -935,7 +935,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
                     "color": "#ffffff",
                   },
                   {
-                    "fontFamily": "Inter_700Bold",
+                    "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
                   },
                 ]
               }
@@ -973,7 +973,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -1021,7 +1021,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -1104,7 +1104,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
             "color": "#ffffff",
           },
           {
-            "fontFamily": "Inter_700Bold",
+            "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
           },
         ]
       }
@@ -1154,7 +1154,7 @@ exports[`#2829 trip guide on the shared trip body a trip without a guide renders
                 "color": "#ffffff",
               },
               {
-                "fontFamily": "Inter_700Bold",
+                "fontFamily": "Inter_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif",
               },
             ]
           }

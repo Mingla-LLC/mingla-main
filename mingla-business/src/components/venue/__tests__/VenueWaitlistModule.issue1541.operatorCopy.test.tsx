@@ -78,6 +78,8 @@ jest.mock("../../../hooks/useVenueWaitlist", () => {
     useAddToWaitlist: () => ({ mutate: jest.fn(), isPending: false }),
     useConvertWaitlist: () => ({ mutate: jest.fn(), isPending: false }),
     useMarkWaitlistLost: () => ({ mutate: jest.fn(), isPending: false }),
+    // TEST-MOD-APPROVED #4490 P5-2 — the module also tells online guests their table is ready.
+    useOfferWaitlistTable: () => ({ mutate: jest.fn(), isPending: false, isError: false }),
     useNotifyWaitlist: () => ({
       mutate: jest.fn(),
       isPending: false,
@@ -86,6 +88,25 @@ jest.mock("../../../hooks/useVenueWaitlist", () => {
     }),
   };
 });
+
+// TEST-MOD-APPROVED #4490 P5-2 — the waitlist reads the Waitlist feature (guests joining online).
+// TEST-MOD-APPROVED #4490 fix 3 (N112): the waitlist reads the venue's own spaces for its seating chips.
+jest.mock("../../../hooks/useVenueSpaces", () => ({ useVenueSpaces: () => ({ data: [] }) }));
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  __esModule: true,
+  useVenueFeatures: () => ({ data: undefined }),
+  useSetVenueFeature: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+jest.mock("../../../hooks/useVenueAvailability", () => ({
+  __esModule: true,
+  useVenueAvailabilityConfig: () => ({ data: undefined }),
+}));
+jest.mock("../../../hooks/useVenueEditAccess", () => ({
+  __esModule: true,
+  useVenueEditAccess: () => ({ canSwitchFeatures: false }),
+}));
+jest.mock("../../ui/BrandSwitch", () => ({ __esModule: true, BrandSwitch: () => null }));
+jest.mock("../../ui/Pill", () => ({ __esModule: true, Pill: () => null }));
 
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   __esModule: true,

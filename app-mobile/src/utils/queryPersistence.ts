@@ -5,6 +5,16 @@ const NEVER_PERSIST_ROOT_KEYS = new Set([
   "recommendations",
   "phone-lookup",
   "link-consent",
+  // #4490 Explorer W3 — venue facts, features and offer availability are
+  // server state read fresh on every open; never written to the device.
+  "claimedVenues",
+  "venueFeaturesForPlace",
+  "publicVenueFeatures",
+  "venueOfferAvailability",
+  // #4490 Explorer W4 — the native checkout's offer, days and places reads.
+  "venueOfferCheckout",
+  // #4490 Explorer W6b — the deck's venue-type chips for a place.
+  "hostedVenueTypes",
 ]);
 
 const USER_ID_POSITIONS: Record<string, number[]> = {

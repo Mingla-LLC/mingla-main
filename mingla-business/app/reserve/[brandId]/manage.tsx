@@ -33,12 +33,14 @@ import {
   space,
   type,
 } from "../../../src/constants/designSystem";
+import { useWebDocumentTitle } from "../../../src/hooks/useWebDocumentTitle";
 import { formatCurrency } from "../../../src/utils/currency";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import {
   guestManageErrorCode,
   guestManageHeadline,
   guestManageMoneyLine,
+  guestManageWhen,
   type GuestManageReservation,
 } from "../../../src/utils/guestReservationManage";
 
@@ -58,24 +60,16 @@ function fragmentCredentials(): {
   return value;
 }
 
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
-
 const CANCEL_NOT_ALLOWED_COPY =
   "This reservation can no longer be cancelled here. Contact the venue if you need help.";
 const CANCEL_FAILED_COPY =
   "We couldn’t cancel it. Check your connection and try again.";
 
-export default function GuestReservationManageRoute() {
+const MANAGE_TITLE = "Your reservation · Mingla";
+
+export default function GuestReservationManageRoute(): React.ReactElement {
+  // #4490 N119 — the tab said "Mingla Host".
+  useWebDocumentTitle(MANAGE_TITLE);
   const [credentials] = useState(fragmentCredentials);
   const [reservation, setReservation] =
     useState<GuestManageReservation | null>(null);
@@ -183,7 +177,7 @@ export default function GuestReservationManageRoute() {
   }
 
   const moneyLine = guestManageMoneyLine(reservation, refund);
-  const when = formatWhen(reservation.reservedForUtc);
+  const when = guestManageWhen(reservation.reservedForUtc, reservation.timezone);
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.host}>
       <ScrollView

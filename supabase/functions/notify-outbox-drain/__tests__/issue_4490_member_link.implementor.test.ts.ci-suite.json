@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-outbox-drain/__tests__/issue_4490_member_link.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-notify-outbox-drain-member-link",
+  "profile": "deno-2-unit"
+}

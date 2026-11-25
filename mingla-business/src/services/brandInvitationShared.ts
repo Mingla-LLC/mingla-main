@@ -4,6 +4,8 @@ export type VenueAccessProfile =
   | "front_desk"
   | "restaurant_manager"
   | "kitchen_bar"
+  // #4490 spec 08 O1 — a shared Till login (staff switch in with a PIN in O5).
+  | "till_device"
   | "custom";
 
 export type VenueCapability =
@@ -15,7 +17,18 @@ export type VenueCapability =
   | "restaurant.manage_orders"
   | "restaurant.manage_menu"
   | "restaurant.manage_qr"
-  | "restaurant.manage_reservations";
+  | "restaurant.manage_reservations"
+  // #4490 — venue capabilities (server: issue_4188_has_venue_capability).
+  | "venue.manage_offers"
+  | "venue.manage_bookings"
+  | "venue.view_bookings"
+  | "venue.check_in"
+  | "venue.manage_money"
+  | "venue.manage_members"
+  // #4490 spec 08 O1 — sell at the Till, kitchen and bar screens, Till device.
+  | "venue.sell"
+  | "venue.kitchen"
+  | "venue.till_device";
 
 export interface VenueAccessGrant {
   venueId: string;

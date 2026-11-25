@@ -68,6 +68,8 @@ const LazyConfirmDialog = React.lazy(async () => {
   return { default: mod.ConfirmDialog };
 });
 import { Input } from "../ui/Input";
+import { Chip } from "../ui/Chip";
+import { durationLabel } from "../ui/fieldModels";
 import { Skeleton } from "../ui/Skeleton";
 import { Toast, type ToastKind } from "../ui/Toast";
 import { useShareNetworkState } from "../ui/useShareNetworkState";
@@ -261,7 +263,16 @@ interface NumericFieldDefinition {
   accessibilityLabel: string;
   placeholder: string;
   testID: string;
+  /**
+   * #4490 N27: one-tap values. `only` draws the chips instead of the typed box
+   * (slot step: the server takes just these six); otherwise the chips sit
+   * under the box as quick picks and any other number can still be typed.
+   */
+  chips?: { values: readonly number[]; label: (n: number) => string; only?: boolean };
 }
+
+const minutesChip = (n: number): string => (n === 0 ? "None" : durationLabel(n));
+const daysChip = (n: number): string => (n === 1 ? "1 day" : `${n} days`);
 
 const TURN_FIELDS: readonly NumericFieldDefinition[] = [
   {
@@ -270,6 +281,7 @@ const TURN_FIELDS: readonly NumericFieldDefinition[] = [
     accessibilityLabel: "Turn time for party of 1 to 2, minutes",
     placeholder: "90",
     testID: "venue-avail-turn-p2",
+    chips: { values: [60, 90, 120, 150, 180], label: minutesChip },
   },
   {
     key: "turnTimes.3-4",
@@ -277,6 +289,7 @@ const TURN_FIELDS: readonly NumericFieldDefinition[] = [
     accessibilityLabel: "Turn time for party of 3 to 4, minutes",
     placeholder: "90",
     testID: "venue-avail-turn-p4",
+    chips: { values: [60, 90, 120, 150, 180], label: minutesChip },
   },
   {
     key: "turnTimes.5-6",
@@ -284,6 +297,7 @@ const TURN_FIELDS: readonly NumericFieldDefinition[] = [
     accessibilityLabel: "Turn time for party of 5 to 6, minutes",
     placeholder: "120",
     testID: "venue-avail-turn-p6",
+    chips: { values: [60, 90, 120, 150, 180], label: minutesChip },
   },
   {
     key: "turnTimes.7+",
@@ -291,6 +305,7 @@ const TURN_FIELDS: readonly NumericFieldDefinition[] = [
     accessibilityLabel: "Turn time for party of 7 or more, minutes",
     placeholder: "120",
     testID: "venue-avail-turn-p8",
+    chips: { values: [60, 90, 120, 150, 180], label: minutesChip },
   },
 ];
 
@@ -301,6 +316,7 @@ const BOOKING_FIELDS: readonly NumericFieldDefinition[] = [
     accessibilityLabel: "Buffer between seatings, minutes",
     placeholder: "0",
     testID: "venue-avail-buffer",
+    chips: { values: [0, 10, 15, 30], label: minutesChip },
   },
   {
     key: "maxReservationsPerSlot",
@@ -311,10 +327,11 @@ const BOOKING_FIELDS: readonly NumericFieldDefinition[] = [
   },
   {
     key: "slotGranularityMinutes",
-    label: "Slot step (min: 5/10/15/20/30/60)",
+    label: "Start times every",
     accessibilityLabel: "Slot step, minutes",
     placeholder: "15",
     testID: "venue-avail-granularity",
+    chips: { values: [5, 10, 15, 20, 30, 60], label: (n) => `${n} min`, only: true },
   },
   {
     key: "advanceWindowDays",
@@ -322,6 +339,7 @@ const BOOKING_FIELDS: readonly NumericFieldDefinition[] = [
     accessibilityLabel: "Booking window, days ahead",
     placeholder: "30",
     testID: "venue-avail-advance",
+    chips: { values: [7, 14, 30, 60, 90], label: daysChip },
   },
   {
     key: "minNoticeMinutes",
@@ -329,6 +347,7 @@ const BOOKING_FIELDS: readonly NumericFieldDefinition[] = [
     accessibilityLabel: "Minimum notice, minutes",
     placeholder: "0",
     testID: "venue-avail-minnotice",
+    chips: { values: [0, 60, 120, 240, 1440], label: minutesChip },
   },
 ];
 
@@ -367,13 +386,24 @@ export interface VenueAvailabilityModuleProps {
   /** META-ORCH-1255 — the venue this module is scoped to. */
   venueId?: string | null;
   testID?: string;
+  /**
+   * #4490 — mounted inside "Availability & pricing", where the opening hours
+   * editor sits right above: hide the "Edit hours in Settings" link.
+   */
+  hideHoursLink?: boolean;
+  /**
+   * #4490 R4J-N23 — "Open tables" for a host that is not the venue suite
+   * (the Stay workspace opens Spaces › Tables itself). Omitted: the store's
+   * module switch, shown only when the venue suite installed one.
+   */
+  onOpenTables?: () => void;
 }
 
 export const VenueAvailabilityModule = forwardRef<
   VenueAvailabilityLeaveHandle,
   VenueAvailabilityModuleProps
 >(function VenueAvailabilityModule(
-  { brandId, venueId = null, testID },
+  { brandId, venueId = null, testID, hideHoursLink = false, onOpenTables },
   forwardedRef,
 ): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
@@ -455,6 +485,8 @@ export const VenueAvailabilityModule = forwardRef<
   }, [saveState]);
 
   const setDirtyModule = useVenueSuiteStore((s) => s.setDirtyModule);
+  const selectSuiteModule = useVenueSuiteStore((s) => s.selectModule);
+  const requestSpacesInSuite = useVenueSuiteStore((s) => s.requestSpaces);
 
   useEffect(() => {
     draftRef.current = draft;
@@ -728,6 +760,20 @@ export const VenueAvailabilityModule = forwardRef<
             ]}
           >
             <Text style={styles.turnLabel}>{field.label}</Text>
+            {field.chips?.only === true ? (
+              <View style={styles.numericChips} accessibilityLabel={field.accessibilityLabel} testID={field.testID}>
+                {field.chips.values.map((n) => (
+                  <Chip
+                    key={n}
+                    label={field.chips?.label(n) ?? String(n)}
+                    selected={draft[field.key] === String(n) || (draft[field.key] === "" && field.placeholder === String(n))}
+                    disabled={!canMutate || upsertConfig.isPending}
+                    onPress={() => handleNumericChange(field.key, String(n))}
+                    testID={`${field.testID}-${n}`}
+                  />
+                ))}
+              </View>
+            ) : (
             <View
               style={
                 stackNumericRows ? styles.turnInputStacked : styles.turnInput
@@ -764,7 +810,22 @@ export const VenueAvailabilityModule = forwardRef<
                 testID={field.testID}
               />
             </View>
+            )}
           </View>
+          {field.chips !== undefined && field.chips.only !== true ? (
+            <View style={styles.numericChips}>
+              {field.chips.values.map((n) => (
+                <Chip
+                  key={n}
+                  label={field.chips?.label(n) ?? String(n)}
+                  selected={draft[field.key] === String(n)}
+                  disabled={!canMutate || upsertConfig.isPending}
+                  onPress={() => handleNumericChange(field.key, String(n))}
+                  testID={`${field.testID}-chip-${n}`}
+                />
+              ))}
+            </View>
+          ) : null}
           {showError ? (
             <Text
               accessibilityRole="alert"
@@ -966,7 +1027,7 @@ export const VenueAvailabilityModule = forwardRef<
             ))
           )}
         </View>
-        {canMutate ? (
+        {canMutate && !hideHoursLink ? (
           <Button
             label="Edit hours in Settings"
             onPress={goToSettingsHours}
@@ -1031,6 +1092,28 @@ export const VenueAvailabilityModule = forwardRef<
           <GlassCard variant="base" contentStyle={styles.section}>
             <Text style={styles.sectionTitle}>Booking controls</Text>
             {renderNumericGrid(BOOKING_FIELDS, TURN_FIELDS.length, controlColumns, "Booking controls")}
+            {/* #4490 N27: say where the party-size limit and the table hold live. */}
+            <View style={styles.tablesPointer} testID="venue-avail-tables-pointer">
+              <Text style={styles.sectionHint}>
+                The most guests a table takes and the hold per guest are set on each table, in Spaces › Tables.
+              </Text>
+              {onOpenTables !== undefined || selectSuiteModule !== null ? (
+                <Button
+                  label="Open tables"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    if (onOpenTables !== undefined) {
+                      onOpenTables();
+                      return;
+                    }
+                    if (venueId !== null) requestSpacesInSuite(venueId);
+                    selectSuiteModule?.("tables");
+                  }}
+                  testID="venue-avail-open-tables"
+                />
+              ) : null}
+            </View>
             {canMutate ? (
               <View style={styles.saveBlock}>
                 {!isValid && (submitted || touched.size > 0) ? (
@@ -1237,6 +1320,8 @@ export const VenueAvailabilityModule = forwardRef<
 });
 
 const styles = StyleSheet.create({
+  tablesPointer: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[2] },
+  numericChips: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[1] },
   host: {
     width: "100%",
     paddingHorizontal: space[4],

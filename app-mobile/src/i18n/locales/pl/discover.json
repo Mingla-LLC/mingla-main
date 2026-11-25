@@ -56,6 +56,7 @@
   "pill.experiences": "Przeżycia",
   "pill.trips": "Wycieczki",
   "pill.stays": "Pobyty",
+  "pill.venues": "Miejsca",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Wyczyść",
   "filters.option_a11y": "{{label}}, {{count}} pasuje",
@@ -77,6 +78,7 @@
   "group.check_in": "Zameldowanie",
   "group.guests": "Goście",
   "group.property_kind": "Rodzaj miejsca",
+  "group.venue_type": "Rodzaj miejsca",
   "group.any_suffix": "{{group}} · Dowolny",
   "when.any_day": "Każdy dzień",
   "when.tomorrow": "Jutro",
@@ -219,6 +221,10 @@
   "count.stays_few": "{{count}} pobyty",
   "count.stays_many": "{{count}} pobyty",
   "count.stays_other": "{{count}} pobyty",
+  "count.venues_one": "{{count}} miejsce",
+  "count.venues_few": "{{count}} miejsca",
+  "count.venues_many": "{{count}} miejsc",
+  "count.venues_other": "{{count}} miejsc",
   "guests.value_one": "{{count}} goście",
   "guests.value_few": "{{count}} goście",
   "guests.value_many": "{{count}} goście",
@@ -226,5 +232,10 @@
   "card.type.stops_one": "{{count}} STOP",
   "card.type.stops_few": "{{count}} PRZYSTANY",
   "card.type.stops_many": "{{count}} PRZYSTANKI",
-  "card.type.stops_other": "{{count}} PRZYSTANKI"
+  "card.type.stops_other": "{{count}} PRZYSTANKI",
+  "venues.empty_title": "Nie ma tu jeszcze miejsc do zarezerwowania.",
+  "venues.empty_body": "Tutaj pojawią się miejsca, które możesz zarezerwować w Mingla.",
+  "venues.filtered_title": "Żadne miejsce nie pasuje do tych filtrów.",
+  "venues.error_title": "Nie udało się wczytać miejsc.",
+  "venues.error_retry": "Spróbuj ponownie"
 }

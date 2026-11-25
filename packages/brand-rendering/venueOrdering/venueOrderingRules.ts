@@ -14,6 +14,7 @@ import type {
   VenueOrderCartLine,
   VenueOrderHandover,
   VenueOrderingConfig,
+  VenueOrderingView,
   VenueOrderLiveStatus,
   VenueOrderModifierGroup,
   VenueOrderTipChoice,
@@ -190,6 +191,25 @@ export function venueOrderCartLineKey(input: {
   const mods = [...input.modifierIds].sort().join(",");
   const note = (input.notes ?? "").trim().toLowerCase();
   return `${input.menuItemId}|${mods}|${note}`;
+}
+
+/**
+ * #4490 W3 fix 5 (W3-N40) — the React key each basket row renders under. NOT
+ * the line's identity key: that one includes the note, so keying the row by it
+ * remounted the row (and its note field) on every keystroke and the field lost
+ * focus after the first key. A row's render key is its item and options plus
+ * its place among the lines that share them, which a note edit never changes.
+ */
+export function venueOrderLineRenderKeys(
+  lines: ReadonlyArray<{ menuItemId: string; modifierIds: string[] }>,
+): string[] {
+  const seen = new Map<string, number>();
+  return lines.map((line) => {
+    const base = `${line.menuItemId}|${[...line.modifierIds].sort().join(",")}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return `${base}#${n}`;
+  });
 }
 
 export type VenueOrderCartAction =
@@ -435,9 +455,13 @@ export function venueOrderProgressCopy(
   }
 }
 
-/** The one-line chip that says where this basket is going, before it is paid. */
-export function venueOrderHandoverChip(config: VenueOrderingConfig): string {
-  if (config.spotState === "ok" && config.spot !== null) {
+/**
+ * The one-line chip that says where this basket is going, before it is paid.
+ * #4490 07-D — a scanned spot whose order goes to the counter (Collect at the
+ * counter, or I'll collect it in Both) says the counter, never the table.
+ */
+export function venueOrderHandoverChip(config: VenueOrderingConfig, pickup = false): string {
+  if (config.spotState === "ok" && config.spot !== null && !venueOrderingIsCounterPickup(config, pickup)) {
     const label = config.spot.label;
     return label !== null && label.trim() !== ""
       ? `Ordering for ${label.trim()}`
@@ -532,11 +556,87 @@ export function venueOrderingCanOrder(config: VenueOrderingConfig): boolean {
   return config.counterPickupEnabled && config.venueId !== null;
 }
 
-/** True when the basket will become a counter-pickup order (no spot recorded). */
+/**
+ * #4490 W3 fix 4 (W3-N36) — what the order sheet shows, or null when it must
+ * be shut. An empty basket NEVER opens the review (nothing to pay for, and its
+ * only buttons lead back to the menu); the live order shows once the guest has
+ * one (or while it is being confirmed). The app's sheet reads ONLY this for its
+ * `visible`, so the sheet can never be on screen while the state says browse.
+ */
+export function venueOrderingSheetView(input: {
+  view: VenueOrderingView;
+  lineCount: number;
+}): "review" | "status" | null {
+  if (input.view === "status") return "status";
+  if (input.view === "review" && input.lineCount > 0) return "review";
+  return null;
+}
+
+/**
+ * #4490 W3 fix 4 (W3-N36) — does ordering own the venue page's bottom edge on
+ * the Menu tab? Yes whenever the guest can order here, or an order sheet is
+ * up: the menu's action is the order bar, never the lead's ("Buy entry"), and
+ * no docked bar is drawn over an open order.
+ */
+export function venueOrderingOwnsBottomEdge(input: {
+  canOrder: boolean;
+  sheetView: "review" | "status" | null;
+}): boolean {
+  return input.canOrder || input.sheetView !== null;
+}
+
+/**
+ * True when the basket will become a counter-pickup order (no spot recorded).
+ * #4490 07-D — also at a scanned spot when the venue has table service off, or
+ * when the guest chose "I'll collect it" (offered only in Both).
+ */
 export function venueOrderingIsCounterPickup(
   config: VenueOrderingConfig,
+  pickup = false,
 ): boolean {
-  return config.spotState !== "ok";
+  if (config.spotState !== "ok") return true;
+  if (config.tableServiceEnabled === false) return true;
+  return pickup && venueOrderingOffersPickup(config);
+}
+
+/** N126 — how often an open review re-reads the venue's ordering mode. */
+export const VENUE_ORDER_REVIEW_MODE_POLL_MS = 15_000;
+
+/**
+ * N126 (#4490 07-D) — the config the review shows. The basket may have been
+ * built before the host changed the ordering mode; the server's preview
+ * carries the mode it will apply now, and that wins.
+ */
+export function venueOrderingReviewConfig(
+  config: VenueOrderingConfig,
+  preview: { orderMode?: VenueOrderingConfig["orderMode"] } | null,
+): VenueOrderingConfig {
+  const mode = preview?.orderMode;
+  if (mode === undefined || mode === config.orderMode) return config;
+  return {
+    ...config,
+    orderMode: mode,
+    tableServiceEnabled: mode !== "counter",
+    counterPickupEnabled: mode !== "table",
+  };
+}
+
+/** #4490 07-D — the "I'll collect it" switch: a scanned spot at a Both venue. */
+export function venueOrderingOffersPickup(config: VenueOrderingConfig): boolean {
+  return config.spotState === "ok" && config.tableServiceEnabled !== false &&
+    config.counterPickupEnabled;
+}
+
+/** #4490 07-D — the one line under the basket that says where the order goes. */
+export function venueOrderingFulfilmentLine(
+  config: VenueOrderingConfig,
+  pickup = false,
+): string {
+  if (venueOrderingIsCounterPickup(config, pickup)) {
+    return "Collect it at the counter. We'll call your name.";
+  }
+  const spot = config.spot?.label?.trim();
+  return `We'll bring it to ${spot !== undefined && spot.length > 0 ? spot : "your table"}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -556,6 +656,14 @@ export function venueOrderBuyerFailure(
   }
   if (!EMAIL_RE.test(buyer.email.trim())) {
     return { field: "email", message: "That email doesn't look right." };
+  }
+  // N139 (#4490): reserved test domains are refused by the payment provider;
+  // the server says the same (buyer_email_undeliverable).
+  if (/(^|\.)(test|invalid|example|localhost|local)$/.test(buyer.email.trim().toLowerCase().split("@")[1] ?? "")) {
+    return {
+      field: "email",
+      message: "Use an email address you can get receipts at. Addresses ending in .test, .invalid, .example or .localhost can't be used.",
+    };
   }
   // Digits only, because the country code is chosen separately and the server
   // normalises to E.164 and is the authority (`normalizePhoneE164`). Seven is
@@ -588,3 +696,36 @@ export function venueOrderPartySizeValid(value: number | null): boolean {
 export const VENUE_ORDER_PARTY_SIZE_PROMPT = "How many of you? (optional)";
 export const VENUE_ORDER_PARTY_SIZE_HELP =
   "Your estimate. It helps the venue plan — skip it if you'd rather not.";
+
+/**
+ * N134 (#4490) — what a failed Pay leaves behind. A payment start that failed
+ * leaves an order with payment_status 'failed' under this basket's
+ * idempotency key; re-sending the same key only ever returns that dead order
+ * ("already_created"), so Pay looked dead. Any failure, and a replay of a
+ * failed order, mints a fresh key so the next tap starts a new payment.
+ * Returns the message to show (null = keep the thrown error's own message).
+ */
+export function venueOrderSubmitFailure(
+  outcome: { kind: "threw" } | { kind: "already_created"; paymentStatus: string },
+  alreadyInCopy: string,
+): { resetKey: boolean; message: string | null } {
+  if (outcome.kind === "threw") return { resetKey: true, message: null };
+  if (outcome.paymentStatus === "failed" || outcome.paymentStatus === "expired") {
+    return { resetKey: true, message: "Your card wasn't charged. Try again." };
+  }
+  return { resetKey: false, message: alreadyInCopy };
+}
+
+/**
+ * N140 (#4490) — the order page while a payment is unpaid. "checking" while
+ * the provider is still confirming (no second payment offered); "retry" only
+ * when the provider says nothing was paid, or no provider check applies.
+ */
+export function venueOrderPaymentView(live: {
+  paymentStatus: string;
+  paymentCheck?: "confirmed" | "in_progress" | "not_paid" | null;
+}): "none" | "checking" | "retry" {
+  if (live.paymentStatus !== "pending") return "none";
+  if (live.paymentCheck === "in_progress" || live.paymentCheck === "confirmed") return "checking";
+  return "retry";
+}

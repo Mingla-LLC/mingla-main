@@ -30,6 +30,10 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
+import {
+  captureVenueCheckoutFinished,
+  tableCheckoutOutcome,
+} from "../venueOffers/venueBookAnalytics";
 import { Icon } from "../ui/Icon";
 import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 import { PhoneInput } from "../onboarding/PhoneInput";
@@ -80,6 +84,17 @@ export interface VenueReserveSheetProps {
   countryCode?: string | null;
   /** Fires after a successful booking with the new reservation id. */
   onReserved: (reservationId: string) => void;
+  /**
+   * #4490 — the venue's own party limit (`pg_public_venue_page.tables.partyMax`,
+   * the largest table or join it has, up to 100). Unknown = 12, as before.
+   */
+  partyMax?: number | null;
+  /**
+   * #4490 W3 fix 4 (W3-N32) — the sheet's heading: the SAME words as the
+   * button that opened it (the venue's table verb from `deriveVenuePage`:
+   * "Book a table" with minimum-spend tables, otherwise "Reserve a table").
+   */
+  title?: string;
   /** Optional public-venue analytics seam; no guest or slot PII is passed. */
   onAvailabilityResultViewed?: () => void;
   onSlotSelected?: () => void;
@@ -109,7 +124,16 @@ export const reservePhoneStartCountry = (
 };
 
 const SHEET_SNAP_POINTS = ["82%"];
-const MAX_PARTY = 12;
+/** The party cap when the venue's own limit isn't known (an old page read). */
+const DEFAULT_MAX_PARTY = 12;
+/** #4490 P5 — the server's hard ceiling for one table booking. */
+const SERVER_MAX_PARTY = 100;
+
+/** #4490 — the party cap follows the venue's limit from its page (`tables.partyMax`). */
+export const reservePartyCap = (partyMax: number | null | undefined): number =>
+  typeof partyMax === "number" && Number.isFinite(partyMax) && partyMax >= 1
+    ? Math.min(SERVER_MAX_PARTY, Math.floor(partyMax))
+    : DEFAULT_MAX_PARTY;
 const ADVANCE_DAYS = 30;
 
 const formatMoney = (minor: number, currency: string): string => {
@@ -175,8 +199,11 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   onAvailabilityResultViewed,
   onSlotSelected,
   onReservationFailed,
+  partyMax = null,
+  title = "Reserve a table",
 }) => {
   const insets = useSafeAreaInsets();
+  const maxParty = reservePartyCap(partyMax);
   const { user, profile } = useAppStore();
   const reserve = useReserveTable(user?.id);
 
@@ -410,6 +437,11 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
         venueName,
       );
       setSubmitting(false);
+      // #4490 Explorer W5: the table checkout's outcome (no amounts, names or emails).
+      const finished = tableCheckoutOutcome(outcome.outcome);
+      if (finished !== null) {
+        captureVenueCheckoutFinished({ venueId, offerKind: "table_reservation", outcome: finished });
+      }
       if (outcome.outcome === "succeeded") {
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
@@ -435,6 +467,8 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
       onReservationFailed?.("create_failed");
     } catch (caught) {
       setSubmitting(false);
+      // #4490 W6 fix 1 (W6-N8): a checkout that throws is a failed checkout too.
+      captureVenueCheckoutFinished({ venueId, offerKind: "table_reservation", outcome: "failed" });
       const errorCode = caught instanceof Error ? caught.message : "";
       setError(
         guestReservationFailureCopy(errorCode) ??
@@ -452,7 +486,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
       snapPoints={SHEET_SNAP_POINTS}
       backgroundStyle={styles.sheetBackground}
       handleStyle={styles.handleIndicator}
-      accessibilityLabel="Reserve a table"
+      accessibilityLabel={title}
       scrollMode="scroll"
       hidesBottomNav
       scrollProps={{
@@ -468,7 +502,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     >
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          Reserve a table
+          {title}
         </Text>
         <Pressable
           style={styles.closeIcon}
@@ -509,19 +543,24 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
               {partySize}
             </Text>
             <Pressable
-              onPress={() => setPartySize((p) => Math.min(MAX_PARTY, p + 1))}
-              disabled={partySize >= MAX_PARTY}
+              onPress={() => setPartySize((p) => Math.min(maxParty, p + 1))}
+              disabled={partySize >= maxParty}
               accessibilityRole="button"
               accessibilityLabel="Increase party size"
               style={({ pressed }) => [
                 styles.stepperBtn,
-                partySize >= MAX_PARTY && styles.stepperBtnDisabled,
+                partySize >= maxParty && styles.stepperBtnDisabled,
                 pressed && styles.stepperBtnPressed,
               ]}
             >
               <Icon name="add" size={22} color="rgba(255,255,255,0.92)" />
             </Pressable>
           </View>
+          {partySize >= maxParty ? (
+            <Text style={styles.partyCapNote} testID="venue-reserve-party-cap">
+              {`Up to ${maxParty} people can book here online. For a bigger group, contact ${venueName}.`}
+            </Text>
+          ) : null}
 
           <Text style={[styles.sectionLabel, { marginTop: 20 }]}>DATE</Text>
           <View style={styles.dateGrid}>
@@ -907,6 +946,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+  },
+  partyCapNote: {
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "center",
   },
   stepperBtnDisabled: {
     opacity: 0.4,

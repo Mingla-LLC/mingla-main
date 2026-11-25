@@ -230,7 +230,7 @@ function planSilhouetteFor(shape: PlanPlateShape): (typeof PLAN_SILHOUETTES)[num
 
 /** One tile: "TIME · 2h 33m" on a plan, "RATING · ★ 4.6 (212)" on a place. `accent` marks Spend. */
 export interface PlanPlateTile {
-  readonly key: 'time' | 'away' | 'spend' | 'rating';
+  readonly key: 'time' | 'away' | 'spend' | 'rating' | 'offer';
   readonly label: string;
   readonly value: string;
   readonly accent?: boolean;

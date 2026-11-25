@@ -624,6 +624,76 @@ export function phase3dContractDigest(manifest) {
 // #4508 tester retest: registered issue_4508_one_place.tester.retest.pg17.test.sql in the #1931 and #2117 inventories; re-sealed.
 // #4508 merge of main after #4226: kept main's #4226 row and skip line beside the #4508 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows (filename order) and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P1-1 implementor: listed migrations 20281203004490 (venue spaces + features) and 20281203054490 (#2099 pin owner) after 20280808004389 in the #1857, #1931 and #2117 lanes, registered the P1 features pg17 suite (with sidecar) in the #1931 and #2117 inventories, skipped the pin owner on the filtered #1931 template replay, and added both migrations to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P1-2 implementor: listed migration 20281203014490 (hours: windows, special days) between 20281203004490 and the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 hours pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P1-3 implementor: listed migration 20281203024490 (events.venue_id/space_id/space_use + issue_4490_set_event_venue) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 event-venue pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P1-4 implementor: listed migration 20281203034490 (experience creator fixes) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P1-5 implementor: listed migration 20281203044490 (pg_public_venue_page, Host preview, admin read) before the #2099 pin owner in the #1857, #1931 and #2117 lanes and registered its pg17 suite (with sidecar) in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P1 venue grants implementor: listed migration 20281203064490 (issue_4188_set_member_venue_grants widened to venue.* capabilities and every non-stay venue type) and registered its pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
+// #4490 P2-1 implementor: listed migration 20281203074490 (venue offer engine: offer kinds on stay_offerings, pools, price options, booking settings, Stays isolation guards) and registered its pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
+// #4490 P2-2/P2-3 implementor: listed migrations 20281203084490 (venue offer checkout and cancel), 20281203094490 (check-in) and the #2099 pin owner 20281203104490 (skipped by exact filename on the filtered #1931 replay, like the P1 pin owner), registered their pg17 suites (with sidecars) and added them to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P2 implementor: skipped the P2 venue offer migrations (and, on the #2117 lane, the P2 pin owner) by exact filename on the filtered #1931 and #2117 template replays (issue-2492 C-1 closure); MANIFEST.json phase3eContractSha256 matches.
+// #4490 P2-7 implementor: listed migration 20281203114490 (admin_list_venue_offers, Admin venue offer list) and registered its pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P3 booking access: migration 20281203124490 and its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P3 collect online: migration 20281203134490 and its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P3-1 packages and deposits: migration 20281203144490 and its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+// #4490 P4-1 private hire registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P5-1 tables, floor plan, waitlist, by the hour; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P4 follow-up: hours you set, hire changes, damage deposit; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P3 follow-up money fixes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P5 test pins follow the new guest writer; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P5 follow-ups: hour pricing contract, flexible too-soon, calendar party; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P6-1: memberships migration + pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 fix round 1: past-midnight service windows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 fix round 1: features at create, presets, restore, member payments, hours flag, collected today; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 fix round 2: copy an offer as a draft, runs until, schedule saves keep selling; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 fix round 3: an event takes its space, combinations, calendar part in use; MANIFEST.json phase3eContractSha256 matches.
+// #4490 merge of main (#3645, #4238, #4226, #4453 rows): kept main's rows and skip lines beside the #4490 rows in filename order; re-sealed.
+// issue #4490 gap list 07-A: party type optional at a venue; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 gap list 07-D: menu ordering mode; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 gap list 07-E: Today money; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 gap list 07-L: venue cover for an event; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 07 round 1 tester suites (N130); MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 N147: finalize refuses a foreign payment reference; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 explorer W1: handoff and app-only pass; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 round 3: coworking requests, yearly plans, member door codes, multi-day passes and their pg17 proofs registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 rounds 2 and 3: remaining venue gap migrations and pg17 proofs registered; MANIFEST.json phase3eContractSha256 matches.
+// toward #4490 guest list registration; MANIFEST.json phase3eContractSha256 matches.
+// toward #4490 guest list filtered-lane registration; MANIFEST.json phase3eContractSha256 matches.
+// toward #4490 guest list filtered-lane registration; MANIFEST.json phase3eContractSha256 matches.
+// toward #4490 Stay venue features and filtered-lane registration; MANIFEST.json phase3eContractSha256 matches.
+// toward #4490 Stay venue features expectedFiles registration; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 explorer W2: purchases sweep, reads and visit reminders; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 W2 fix 1: guest list pin owner 20281203424490 registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 explorer W3: registered migration 20281203434490 (deck card facts) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 W3 fix 1: registered migration 20281203444490 (one grant decision per venue function) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 explorer W5: hosted deck wrappers migration + suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 explorer W6a: Discover venues migration + suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 explorer W6b: deck venue-type chips migration + suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 06-W4 fix 1: 20281203484490 (plan charges, one live payment page) + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 06-W4 fix 2: 20281203494490 (why everything is due now) + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O1: Till core migration and suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O1: #2099 repin over the Till lanes registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O1 part 2: Till receipts and the held-round sweep / card refund migrations + suites registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O1 fix 1: one-bill migration 20281203554490 + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O1 fix 2: money-and-door migration 20281203544490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O2: till-pay migration 20281203564490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O2 fix 1: o2-fix1 migration 20281203574490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O3 part A: stations migration 20281203584490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O3 part A: #2099 repin 20281203594490 (pin owner) registered, the 1931 baseline skips it by exact filename, the #2099 path scope lists 600490 and 602490; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O3 part A: the #2117 phase-1 lane skips the #2099 repin 20281203594490 by exact filename; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O3 part A2: floor-alerts migration 20281203604490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O3 fix 1: migration 20281203614490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O3 fix 5: migration 20281203624490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O4: split 20281203634490 + tables/hour 20281203644490 and their pg17 suites registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O4 fix 1: migration 20281203654490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O4 fix 2: migration 20281203664490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O4 fix 3: migration 20281203674490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O5 part A: PIN migration 20281203684490 + #2099 repin 20281203694490 (pin owner) + the PIN pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O5 part B: daily close migration 20281203704490 + #2099 repin 20281203714490 (pin owner) + the close pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 ops O5 part C: stock migration 20281203724490 + the stock pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 ops O5 fix 1: migration 20281203734490 (O5-T3 sold-out lines; O5-T1 a day decided once; O5-T4 the no-screen void restock) + #2099 repin 20281203744490 (pin owner) + the fix 1 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes, the #2099 path scope lists both; MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 ops O5 fix 3: migration 20281203754490 (step-up approvals bound and single use; money-returning swaps; stale close requests; sold-out key reuse; payment replay after a refund) + the fix 3 pg17 suite and the O5 tester adversarial suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
 // #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4508 merge of main after #3645 2e-1 and #4453: kept both sides' rows in filename order and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
@@ -674,6 +744,12 @@ export function phase3dContractDigest(manifest) {
 // #4579 merge of main after #4571, #4572 and #3969 step 2: re-applied only the #4579 rows and skips onto main's manifest; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4579 renumber: renamed the migration to 20281202024579 (above production's 20281202014580, #4580), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4580 merge of main after #4590: kept both sides' rows (filename order) and main's #4571/#4572 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 merge of origin/main 886723868d: kept both sides\' rows and skips; MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 renumber: #4490 migrations now 20281203004490..20281203754490 (same order, after main); MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 08-O5 fix 4: the fix 3 tester adversarial suite registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 retest P1/P3: the two fix 4 tester adversarial suites registered in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 merge of origin/main 68a54f2f30 (#4580, #4592): kept both sides' rows (filename order; main's two #4580 migrations before the #4490 block); re-sealed.
+// issue #4490 08-O5 fix 4: migration 20281203764490 (one refund rule: the sold-out refund, the money-returning swap and canRefund ask issue_4490_can_manage_money; late payments name who took them) + the fix 4 pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
 // #4579 merge of main after #4580 (#4591) and #4592: kept both sides' rows (filename order: 20281202004580, 20281202014580, then 20281202024579; #4579 suites before #4580 suites); re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed;
@@ -702,8 +778,15 @@ export function phase3dContractDigest(manifest) {
 // #4522 merge of main after #4591 release sync and #4592 venue order (68a54f2f30): kept main's 20281202004580 and 20281202014580 rows before the branch's 14 migrations (20281202033281..20281202163281 stay above them); re-sealed.
 // #4522 pass 10 rework (P10-1..P10-3): registered the #4522 implementor pg17 suite p10_late_sign_below_min (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4579 (#4593, d3527e3b93): kept main's 20281202024579 rows, its two pg17 suites and its filtered-replay skips beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 merge of origin/main d3527e3b93 (#4579): kept both sides' rows (main's 20281202024579 and its two #4579 pg17 suites before the #4490 block, filename order; the #4579 exact-filename skips in the #1931 baseline and #2117 phase-1 lanes); re-sealed.
+// issue #4490 after #4579: migration 20281203774490 (Till staff names follow #4579's public-name rule) + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 08-O5 fix 5: migration 20281203784490 (a cheaper sold-out swap follows the one refund rule; canSwap / canSwapEven) + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; no #2099 repin (no new venue_id column); MANIFEST.json phase3eContractSha256 re-sealed.
+// issue #4490 merge of origin/main 97a75873e2 (#4594 trip partial payments and add-ons, #4595): kept both sides' rows (main's fourteen 20281202033281..20281202163281 migrations before the #4490 block, filename order) and both sides' exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4571 Hosts board speed (merge of main after #4594, #4595 and #4597): listed migration 20281202174571 after main's 20281202163281 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and added an EXACT filtered-replay skip beside the other #4571 skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "c960df6a861993786e14df34b72b9924bd5c6dbbf514687061281fa5f4a92c5d";
+// issue #4490 merge of origin/main 60e3e235d2 (#4598 Hosts board speed): kept both sides' rows (main's 20281202174571 before the #4490 block, filename order) and both sides' exact-filename skips in the #2117 phase-1 lane; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// issue #4596 merge of origin/main 9289878e2a (#4490): kept main's 79 #4490 migration rows before 20281205004596, plus both #4596 pg17 suites and sidecars; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// issue #1493: registered the accepted-brand-member Venue Overview pg17 proof and sidecar in both filtered replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e72fab8740d6ed885b6b5d92c66e6ff43a9b0d6545249b53d26e209ae00cbd1d";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1200,6 +1283,10 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // node-forge 1.4.0 -> 1.4.2 security patch; package.json files are unchanged.
 // [TEST-MOD-APPROVED #1023] Re-banked after Host declared lottie-web 5.12.2 (exact pin),
 // the web player for the theme entrance motion, and its lockfile entries.
+// [TEST-MOD-APPROVED #4490] Re-banked after Host declared expo-audio ~1.1.1 and
+// expo-screen-orientation ~9.0.9 (Seth approved on the branch, spec 08 §14) and
+// expo-asset ~12.0.14 (the copy expo already ships, so expo-audio's peer does not
+// pull a newer SDK's native module). app-mobile is unchanged.
 // app-mobile is unchanged.
 // #1023: re-banked after merging origin/main (#3643 node-forge lock patch kept beside the #1023 lottie-web pin).
 // [TEST-MOD-APPROVED #3643] Re-banked all four after the advisory-floor overrides
@@ -1224,11 +1311,15 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // plus the #4389 store build guard prefixes.
 // [TEST-MOD-APPROVED #4522] Re-banked mingla-business/package.json again after merging
 // main with #4564 (the OneSignal autolinking exclude left); other files unchanged.
+// [TEST-MOD-APPROVED #4490] Re-banked mingla-business/package.json and package-lock.json after
+// merging origin/main 886723868d: #4490 expo-asset/expo-audio/expo-screen-orientation kept beside
+// main's @mingla/form-rendering, store-build guard and onesignal autolinking change.
+// [TEST-MOD-APPROVED #4490] Re-banked after merging origin/main 97a75873e2 (#4594): main's @mingla/calendar authority beside the #4490 expo-asset/expo-audio/expo-screen-orientation packages.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "77f4c9b0a293fceee7befe7c1e88d210499d53285b03aaa0a57a22f47d0fc0fc",
   "app-mobile/package-lock.json": "f122e88a4cf3ea5b2511a92a31e898bf56571d115def21233e3b830b6199760e",
-  "mingla-business/package.json": "c93681ccecbb8a6703c2b19e12dd64059fa71201c693d0784f842b5d8cf573ba",
-  "mingla-business/package-lock.json": "9111e13815ad504f0b5db09a4c4bd369cd2e3794a78ae1193dea19f1284d1f99",
+  "mingla-business/package.json": "e8518598af7c216f02fce5e95e64c934f4a82e174dad41d79b3254654696ec24",
+  "mingla-business/package-lock.json": "e5f3cbcb077454c96de858374c2b6a15e968f276f1710d4601cc0874ff3d70cf",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

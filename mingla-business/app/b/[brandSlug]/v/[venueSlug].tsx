@@ -41,6 +41,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // lucide shim's module-scope icon requires into the EAGER __common boot chunk
 // (ORCH-1083 bundle-budget breach). Enforced by i-1047-biz-bundle-budget-deferral.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+// #4490 — pure and import-light: what the venue sells decides the page.
+import { venueTabFromParam, type VenueFeaturePlanView } from "@mingla/brand-rendering/venueFeaturePage";
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import {
   classifyPublicVenueRouteState,
@@ -51,6 +53,7 @@ import {
   publicVenueMeta,
   type PublicVenueAnalyticsEvent,
   type PublicVenueBookingSlotContext,
+  type PublicVenueEntrySlotContext,
   type PublicVenueOrderingSlotContext,
   type PublicVenueReservationSheetContext,
   type PublicVenueViewModel,
@@ -88,11 +91,15 @@ import {
   usePublicVenueDiscoveryPrice,
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
+import { toVenueViewModel } from "../../../../src/components/venue/toPublicVenueViewModel";
+import { usePublicVenueFeatures } from "../../../../src/hooks/usePublicVenueFeatures";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
+import { loadVenueGuestScreens } from "../../../../src/components/venue/guest/venueGuestOwner";
+import { tablesBlockChangesFlow } from "../../../../src/components/venue/offers/tablesFlow";
 import { ShareModal } from "../../../../src/components/ui/ShareModal";
 import { useThemeFont } from "../../../../src/theme/useThemeFont";
 import { OptionalFeatureBoundary } from "../../../../src/components/brandContact/OptionalFeatureBoundary";
@@ -129,6 +136,31 @@ const BuyerStayGuestExperience = React.lazy(() =>
   ),
 );
 
+// #4490 P2 — the Entry tab's buying flow (availability, quote, checkout
+// hand-off). Lazy for the same reason: only a venue that sells entry loads it.
+// Every guest tab below loads from the ONE Guest venue owner
+// (venueGuestOwner.ts), so what the tabs share never reaches __common.
+const VenueEntryPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueEntryPane,
+}));
+
+// #4490 P4 — the Private hire tab's flow, lazy for the same reason.
+const VenueHirePane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueHirePane,
+}));
+// #4490 P5 — the By the hour tab's flow, lazy for the same reason.
+const VenueHourPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueHourPane,
+}));
+// #4490 P6 — the Plans tab (monthly plans and Join), lazy for the same reason.
+const VenuePlansPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenuePlansPane,
+}));
+// #4490 P3 — the Groups tab's booking flow, lazy for the same reason.
+const VenueGroupsPane = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueGroupsPane,
+}));
+
 /**
  * #1793 (#1767 Phase 4) — the ordering renderers, behind a lazy boundary that
  * lives HERE, in the host.
@@ -159,32 +191,6 @@ const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
 
 /** #1793 — a stable empty menu, so the ordering surface's deps do not churn. */
 const EMPTY_MENU_GROUPS: PublicMenuGroup[] = [];
-
-/** `PublicVenue` (this app's read model) → the shared screen's view model. */
-const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
-  id: venue.id,
-  brandId: venue.brandId,
-  brandSlug: venue.brandSlug,
-  brandName: venue.brandName,
-  slug: venue.slug,
-  name: venue.name,
-  address: venue.address,
-  city: venue.city,
-  lat: venue.lat,
-  lng: venue.lng,
-  venueCategory: venue.venueCategory,
-  coverMediaUrl: venue.coverMediaUrl,
-  coverMediaType: venue.coverMediaType,
-  theme: venue.theme,
-  hours: venue.hours,
-  // issue #1562 — the venue's OWN clock, so "open now" is resolved where the
-  // venue is rather than where the visitor happens to be standing.
-  timezone: venue.timezone,
-  galleryPhotoUrls: venue.galleryPhotoUrls,
-  pitch: venue.pitch,
-  // #4334 — the Google Maps link opens the named place.
-  googlePlaceId: venue.googlePlaceId ?? null,
-});
 
 function PublicVenueRouteBody(): React.ReactElement {
   const router = useRouter();
@@ -300,6 +306,17 @@ function PublicVenueRouteBody(): React.ReactElement {
     venueQuery.errorUpdatedAt,
     venueSlug,
   ]);
+  // #4490 — what the venue sells (features, hours windows, events). Anon: no
+  // auth anywhere in this chain. A failed read is not an error page: the screen
+  // falls back to today's tabs, so the page is never worse than before.
+  const featuresQuery = usePublicVenueFeatures(
+    typeof brandSlug === "string" ? brandSlug : null,
+    typeof venueSlug === "string" ? venueSlug : null,
+  );
+  const features = featuresQuery.data ?? null;
+  // The page waits for its features: showing today's "Tables through Mingla"
+  // row for a moment on a venue that sells no tables would be a lie.
+  const featuresPending = venue !== null && featuresQuery.isLoading;
   const stayQuery = usePublicStayDetail(
     venue?.id ?? null,
     venue?.venueCategory === "stay",
@@ -308,14 +325,10 @@ function PublicVenueRouteBody(): React.ReactElement {
   // Exact venue-owned menu — fetched only once the venue resolves (a
   // not-found page needs no menu round-trip).
   const menusQuery = usePublicMenus(
-    venue !== null &&
-        venue.venueCategory !== "stay" &&
-        typeof brandSlug === "string"
+    venue !== null && typeof brandSlug === "string"
       ? brandSlug
       : null,
-    venue !== null &&
-        venue.venueCategory !== "stay" &&
-        typeof venueSlug === "string"
+    venue !== null && typeof venueSlug === "string"
       ? venueSlug
       : null,
   );
@@ -323,10 +336,10 @@ function PublicVenueRouteBody(): React.ReactElement {
   // §6.7 reserve display gate — place-keyed, anon-safe. Disabled without a
   // linked place; error → not reservable (fail closed, no dead CTA).
   const reservableQuery = usePublicVenueReservable(
-    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
+    venue?.placePoolId ?? null,
   );
   const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
-    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
+    venue?.placePoolId ?? null,
   );
 
   const menuGroups = menusQuery.data ?? EMPTY_MENU_GROUPS;
@@ -582,9 +595,162 @@ function PublicVenueRouteBody(): React.ReactElement {
           palette={context.palette}
           // issue #4420 wave 2 (D-V3) — the Reservations tab's live bar.
           onReservationBarChange={context.onReservationBarChange}
+          // #4490 P5 — the venue's tables block (party cap, pick a table,
+          // waitlist). Sent only when the venue has one, so a venue without
+          // it renders byte-for-byte as before (#1559 parity).
+          {...(features?.tables != null && tablesBlockChangesFlow(features.tables)
+            ? {
+                tables: features.tables,
+                brandSlug: typeof brandSlug === "string" ? brandSlug : null,
+                venueSlug: typeof venueSlug === "string" ? venueSlug : null,
+                venueName: venue?.name ?? null,
+              }
+            : {})}
         />
       ),
-    [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room],
+    [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room, features?.tables, brandSlug, venueSlug, venue?.name],
+  );
+
+  // #4490 P2 — the Entry tab: pick a day and guests, then checkout.
+  const renderEntryBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueEntryPane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            verb={context.verb}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
+  // #4490 P3 — the Groups tab: pick a package, a day and time, the group, then checkout.
+  const renderGroupsBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueGroupsPane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
+  // #4490 P4 — the Private hire tab: group size, day, session, space, then the request.
+  const renderHireBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueHirePane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
+  // #4490 P5 — the By the hour tab: place, day, start, length, then checkout.
+  const renderHourBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueHourPane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
+  // #4490 P6 — the Plans tab: monthly plans, then Join.
+  const renderPlansBody = useCallback(
+    (context: PublicVenueEntrySlotContext & { plans: readonly VenueFeaturePlanView[] }): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenuePlansPane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            plans={context.plans}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
+  // #4490 — "What's on": events held at the venue open their public page.
+  const handleOpenEvent = useCallback(
+    (href: string): void => {
+      if (engagementScope !== null) {
+        void captureOfferingCta(engagementScope, "view_offering");
+      }
+      router.push(href as never);
+    },
+    [engagementScope, router],
   );
 
   const renderReservationSheet = useCallback(
@@ -601,7 +767,7 @@ function PublicVenueRouteBody(): React.ReactElement {
     [],
   );
 
-  if (routeState === "cold-loading") {
+  if (routeState === "cold-loading" || featuresPending) {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
@@ -685,12 +851,16 @@ function PublicVenueRouteBody(): React.ReactElement {
       // venue (`tabs.includes(initialTab)`), so a scan never lands on an empty
       // tab.
       initialTab={
-        requestedTab === "menu"
-          ? "menu"
-          : requestedTab === "reservations" || prefill.tab === "reservations"
-            ? "reservations"
-            : "overview"
+        venueTabFromParam(requestedTab) ??
+        (prefill.tab === "reservations" ? "reservations" : "overview")
       }
+      features={features}
+      onOpenEvent={handleOpenEvent}
+      entryBody={renderEntryBody}
+      groupsBody={renderGroupsBody}
+      hireBody={renderHireBody}
+      hourBody={renderHourBody}
+      plansBody={renderPlansBody}
       refreshState={
         routeState === "populated-error"
           ? "error"
@@ -864,3 +1034,12 @@ export default function PublicVenueRoute(): React.ReactElement {
     </PublicGlassProvider>
   );
 }
+
+/**
+ * #4490 — the Host's preview (`app/venue/[venueId]/preview.tsx`) mounts the
+ * SAME shared screen and takes it from this route's chunk (a lazy import of
+ * this module), so the public venue page is never bundled into a second chunk
+ * (which would hoist it into the eager web `__common` chunk). Not a route
+ * export: Expo Router reads only the default.
+ */
+export { PublicVenueScreen };

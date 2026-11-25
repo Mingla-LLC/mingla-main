@@ -108,6 +108,26 @@ Sentry.init({
   enabled: !__DEV__,
 });
 
+/**
+ * #4490 W4 — the venue checkout recovery check once per signed-in account on
+ * start. Loaded on use (a lazy require, like the auth cleanup's payment
+ * modules) so the payment code stays out of the boot bundle.
+ */
+function VenueCheckoutRecoveryOnStart(): null {
+  const accountId = useAppStore((s) => s.user?.id ?? null);
+  useEffect(() => {
+    if (accountId === null) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { runVenueCheckoutRecovery } = require("../src/payments/useVenueCheckoutRecovery") as typeof import("../src/payments/useVenueCheckoutRecovery");
+      void runVenueCheckoutRecovery(accountId);
+    } catch {
+      // Recovery must never break the app's start; the webhook confirms anyway.
+    }
+  }, [accountId]);
+  return null;
+}
+
 function RootLayout() {
   useFonts(MINGLA_THEME_FONTS);
 
@@ -210,6 +230,9 @@ function RootLayout() {
                         inside their own RN Modal mount their own provider. */}
                     <InAppBrowserProvider>
                       <RouteScreenTracker />
+                      {/* #4490 W4 (spec 06 W4 rule 4): a venue checkout the app was
+                          killed in is answered on start (next to the ticket recovery). */}
+                      <VenueCheckoutRecoveryOnStart />
                       <Stack screenOptions={{ headerShown: false }} />
                     </InAppBrowserProvider>
                   </UnifiedShareProvider>

@@ -153,6 +153,18 @@ const screenText = (tree: ReactTestRenderer): string =>
     .join("\n");
 
 describe("#4420 door guest page on the Public status template", () => {
+  // #4490: the page shows the Mingla logo image (labelled "Mingla"), never the word typed out.
+  test("S-logo the Mingla logo image heads the page; no text wordmark", async () => {
+    mockWide = false;
+    mockView = view("open");
+    const tree = await mount();
+    const logo = byTestId(tree, "guest-pay-wordmark");
+    expect(logo).toHaveLength(1);
+    expect(logo[0].props.accessibilityLabel).toBe("Mingla");
+    expect(logo[0].props.accessibilityRole).toBe("image");
+    expect(screenText(tree).split("\n")).not.toContain("Mingla");
+  });
+
   test("S1 wide web: status left, the locked basket in the summary column", async () => {
     mockWide = true;
     mockView = view("open");

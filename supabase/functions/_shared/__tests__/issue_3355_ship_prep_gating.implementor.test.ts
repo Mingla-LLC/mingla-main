@@ -84,8 +84,12 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // switch-OFF path is meant to gain the new types too (SC-6.5), so the tool
 // count stays 190 and the digest is recomputed the same way. The off path's
 // prompt digests and per-message selections are unchanged.
+// #4490 intended change: the Ari price option names change, block_minutes
+// accepts 15 to 1440, and the group-size cap is dropped, all in agentTools.ts.
+// The tool count stays 190 and the digest is recomputed the same way. The off
+// path's prompt digests and per-message selections are unchanged.
 const MAIN_DECLARATIONS_DIGEST =
-  "ba14adf52c471c636231505a5e65c520307228138be4bf058bd09394cdaeca76";
+  "b4cc82c97a6c73bb8a9f20267038b322020055be154c70975e56720c0bc5522b";
 const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/venue-till/fix5.issue4490.ops.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-venue-till-fix5",
+  "profile": "deno-2-unit"
+}

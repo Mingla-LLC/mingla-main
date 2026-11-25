@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   BASELINE_MOVEMENT_THRESHOLD_BYTES,
   ONE_TIME_PR_ALLOWANCE,
+  effectivePerPrAllowance,
   assessCommonBaselineMovement,
   gitSubjectsSince,
   resolveOneTimeAllowance,
@@ -113,6 +114,24 @@ describe("#3493 every Business bundle input is measured identically", () => {
     assert.match(
       RATCHET_WORKFLOW,
       /npx expo export -p web --output-dir \/tmp\/ratchet-web-build/,
+    );
+  });
+
+  test("both main-side movement lanes retain merge history until the baseline catches up", () => {
+    assert.match(
+      RATCHET_WORKFLOW,
+      /actions\/checkout@[^\n]+\n\s+with:\n\s+persist-credentials: false\n\s+fetch-depth: 0/,
+      "the ratchet must see approved merges older than the current main tip",
+    );
+
+    const start = WORKFLOW.indexOf("  issue-2099-boot-payload-ceiling:");
+    const end = WORKFLOW.indexOf("  issue-2099-postgres-contract:", start);
+    assert.ok(start >= 0 && end > start, "boot-payload job is missing");
+    const job = WORKFLOW.slice(start, end);
+    assert.match(
+      job,
+      /actions\/checkout@v4\n\s+with:\n\s+fetch-depth: 0/,
+      "the issue-2099 push lane must use the same full-history verdict",
     );
   });
 
@@ -220,15 +239,15 @@ describe("#3493 VAT/pricing UI stays out of the eager shared chunk", () => {
   });
 });
 
-// Issue #4522 — Seth extended the one-time #4594 allowance to this gate on
-// 2026-11-24 ("Decision from Seth (2026-11-24): the two #4594 gates"). These
-// tests prove the shared entry reaches the movement gate for that one pull
-// request only, and that the 1,024 B threshold stands for everyone else.
-describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => {
+// Issue #4596 — Seth approved in chat 2026-11-24 a one-time allowance for PR
+// #4601 (recorded on #4596); it replaced the merged #4601 entry. These tests
+// prove the entry reaches the movement gate for that one pull request only,
+// and that the 1,024 B threshold stands for everyone else.
+describe("#4596 the one-time #4601 entry, as the movement gate reads it", () => {
   const SHA = "a".repeat(40);
-  const HEAD = "4522-young-polish";
+  const HEAD = "4596-rsvp-event-blast-audience";
   const none = () => [];
-  const merged = () => ["Unrelated (#3900)", "toward #4522: trip partial payments (#4594)"];
+  const merged = () => ["Unrelated (#3900)", "toward #4596: RSVP guests in event blasts (#4601)"];
   const prEnv = (headRef, ref) => ({ GITHUB_EVENT_NAME: "pull_request", GITHUB_HEAD_REF: headRef, GITHUB_REF: ref });
   const mainPush = { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main" };
   const decide = (env, subjects = none, today = "2026-11-24") =>
@@ -242,12 +261,12 @@ describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => 
   const verdictFor = (entry, delta) =>
     assessCommonBaselineMovement(2_744_094, 2_744_094 + delta, entry ? { oneTimeCap: entry.common } : {});
 
-  test("one table: exactly the #4594 entry, frozen, capped at 23,000 B and dated", () => {
-    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 1);
+  test("one table: the #4601 entry first (then #4600), frozen, capped and dated", () => {
+    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 2); // #4596 first, then #4490
     const [only] = ONE_TIME_PR_ALLOWANCE;
     assert.deepEqual(
       { issue: only.issue, pr: only.pr, headRef: only.headRef, common: only.common, expiresAfter: only.expiresAfter, approvedBy: only.approvedBy },
-      { issue: 4522, pr: 4594, headRef: HEAD, common: 23_000, expiresAfter: "2026-12-08", approvedBy: "Seth, 2026-11-24" },
+      { issue: 4596, pr: 4601, headRef: HEAD, common: 3_300, expiresAfter: "2026-12-08", approvedBy: "Seth, 2026-11-24" },
     );
     assert.ok(Object.isFrozen(ONE_TIME_PR_ALLOWANCE) && Object.isFrozen(only));
     const budget = readBusiness("scripts/ci/orch-1083-initial-bundle-budget.mjs");
@@ -257,29 +276,50 @@ describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => 
     assert.match(movement, /normalLimit: BASELINE_MOVEMENT_THRESHOLD_BYTES/);
   });
 
-  test("PR #4594 on its branch gets the 23,000 B cap; the measured +22,357 B passes only there", () => {
-    const entry = decide(prEnv(HEAD, "refs/pull/4594/merge"));
+  test("PR #4601 on its branch gets the 3,300 B cap; the measured +3,048 B passes only there", () => {
+    const entry = decide(prEnv(HEAD, "refs/pull/4601/merge"));
     assert.equal(entry, ONE_TIME_PR_ALLOWANCE[0]);
-    const granted = verdictFor(entry, 22_357);
+    const granted = verdictFor(entry, 3_048);
     assert.equal(granted.ok, true);
     assert.equal(granted.normalOk, false);
     assert.equal(granted.normalThreshold, 1_024);
-    assert.equal(verdictFor(entry, 23_001).ok, false, "the cap is a cap, not an exemption");
-    assert.equal(verdictFor(null, 22_357).ok, false);
+    assert.equal(verdictFor(entry, 3_301).ok, false, "the cap is a cap, not an exemption");
+    assert.equal(verdictFor(null, 3_048).ok, false);
+  });
+
+  test("an optional `eager` cap is scoped exactly like `common`; absent means the normal 25,000 B", () => {
+    const normal = { common: 12_000, eager: 25_000 };
+    const venue = ONE_TIME_PR_ALLOWANCE[1];
+    const grant = (env, today = "2026-11-24") =>
+      effectivePerPrAllowance(
+        resolveOneTimeAllowance({
+          env, today, baselineCommit: SHA, subjectsSinceBaseline: none,
+          normalLimit: BASELINE_MOVEMENT_THRESHOLD_BYTES,
+        }).entry,
+        normal,
+      );
+    assert.deepEqual(effectivePerPrAllowance(ONE_TIME_PR_ALLOWANCE[0], normal), normal);
+    assert.deepEqual(effectivePerPrAllowance(venue, normal), { common: 162_000, eager: 165_000 });
+    assert.deepEqual(grant(prEnv("4490-venue-features", "refs/pull/4600/merge")), { common: 162_000, eager: 165_000 });
+    assert.equal(grant(prEnv(HEAD, "refs/pull/4600/merge")).eager, 25_000);
+    assert.equal(grant(prEnv("other", "refs/pull/4600/merge")).eager, 25_000);
+    assert.equal(grant(prEnv("4490-venue-features", "refs/pull/4600/merge"), "2026-12-09").eager, 25_000);
+    assert.equal(effectivePerPrAllowance({ ...venue, eager: 25_000 }, normal).eager, 25_000);
+    assert.equal(effectivePerPrAllowance(null, normal).eager, 25_000);
   });
 
   test("every other branch, pull request or missing value keeps 1,024 B", () => {
     const strangers = [
       prEnv("3697-host-ads", "refs/pull/4600/merge"),
       prEnv(HEAD, "refs/pull/4600/merge"),
-      prEnv("3697-host-ads", "refs/pull/4594/merge"),
-      prEnv(`${HEAD}-2`, "refs/pull/4594/merge"),
-      prEnv("", "refs/pull/4594/merge"),
-      prEnv(HEAD, "refs/pull/45940/merge"),
+      prEnv("3697-host-ads", "refs/pull/4601/merge"),
+      prEnv(`${HEAD}-2`, "refs/pull/4601/merge"),
+      prEnv("", "refs/pull/4601/merge"),
+      prEnv(HEAD, "refs/pull/46010/merge"),
       {},
-      { GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4594/merge" },
+      { GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4601/merge" },
       { GITHUB_EVENT_NAME: "push", GITHUB_REF: `refs/heads/${HEAD}` },
-      { GITHUB_EVENT_NAME: "merge_group", GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4594/merge" },
+      { GITHUB_EVENT_NAME: "merge_group", GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4601/merge" },
     ];
     for (const env of strangers) {
       const entry = decide(env, merged);
@@ -293,15 +333,15 @@ describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => 
   test("on main it lives only until the baseline includes the merge", () => {
     assert.equal(decide(mainPush, merged), ONE_TIME_PR_ALLOWANCE[0]);
     assert.equal(decide(mainPush, none), null);
-    assert.equal(decide(mainPush, () => ["Mentions (#4594) mid-subject (#3901)", "x (#45941)"]), null);
+    assert.equal(decide(mainPush, () => ["Mentions (#4601) mid-subject (#3901)", "x (#46011)"]), null);
     assert.equal(decide(mainPush, () => { throw new Error("not a git repository"); }), null);
   });
 
   test("dead after its end date and inside a test harness", () => {
-    assert.equal(decide(prEnv(HEAD, "refs/pull/4594/merge"), none, "2026-12-08"), ONE_TIME_PR_ALLOWANCE[0]);
-    assert.equal(decide(prEnv(HEAD, "refs/pull/4594/merge"), none, "2026-12-09"), null);
+    assert.equal(decide(prEnv(HEAD, "refs/pull/4601/merge"), none, "2026-12-08"), ONE_TIME_PR_ALLOWANCE[0]);
+    assert.equal(decide(prEnv(HEAD, "refs/pull/4601/merge"), none, "2026-12-09"), null);
     assert.equal(decide(mainPush, merged, "2026-12-09"), null);
-    assert.equal(decide({ ...prEnv(HEAD, "refs/pull/4594/merge"), NODE_TEST_CONTEXT: "child-v8" }), null);
+    assert.equal(decide({ ...prEnv(HEAD, "refs/pull/4601/merge"), NODE_TEST_CONTEXT: "child-v8" }), null);
     assert.equal(decide({ ...mainPush, NODE_TEST_CONTEXT: "child-v8" }, merged), null);
   });
 
@@ -323,7 +363,7 @@ describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => 
       if (args[0] === "log" && args[1] === "-1") return `${subject}\n`;
       throw new Error(`unexpected git ${args.join(" ")}`);
     };
-    const squash = "Trip partial payments (#4594)";
+    const squash = "RSVP guests in event blasts (#4601)";
     assert.deepEqual(gitSubjectsSince(SHA, { git: fakeGit({ hasCommit: true }) }), ["older (#1)", "newer (#2)"]);
     assert.deepEqual(
       gitSubjectsSince(SHA, { git: fakeGit({ hasCommit: false, shallow: true, head: "b".repeat(40), subject: squash }) }),
@@ -338,12 +378,12 @@ describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => 
 
   test("the movement gate itself prints the refusal in one line and keeps 1,024 B (harness and stranger)", () => {
     const baseline = JSON.parse(readBusiness("scripts/ci/bundle-baseline.json"));
-    const dir = mkdtempSync(join(tmpdir(), "issue4522-movement-"));
+    const dir = mkdtempSync(join(tmpdir(), "issue4596-movement-"));
     const js = join(dir, "_expo/static/js/web");
     mkdirSync(js, { recursive: true });
     const common = `__common-${"a".repeat(32)}.js`;
     const entry = `index-${"b".repeat(32)}.js`;
-    writeFileSync(join(js, common), "x".repeat(baseline.common.raw + 22_357));
+    writeFileSync(join(js, common), "x".repeat(baseline.common.raw + 3_048));
     writeFileSync(join(js, entry), "y".repeat(1_000));
     writeFileSync(
       join(dir, "index.html"),
@@ -354,8 +394,8 @@ describe("#4522 the one-time #4594 entry, as the movement gate reads it", () => 
         encoding: "utf8",
         env: { ...process.env, ORCH_1083_WEB_BUILD: dir, ...env },
       });
-    // Inside node --test the harness guard refuses even PR #4594 on its branch.
-    const harness = run(prEnv(HEAD, "refs/pull/4594/merge"));
+    // Inside node --test the harness guard refuses even PR #4601 on its branch.
+    const harness = run(prEnv(HEAD, "refs/pull/4601/merge"));
     assert.equal(harness.status, 1);
     assert.match(harness.stdout, /one-time allowance not applied \(normal \+1,024 B threshold stands\) .*test harness/);
     assert.match(harness.stderr, /above the shared 1,024 B movement threshold/);

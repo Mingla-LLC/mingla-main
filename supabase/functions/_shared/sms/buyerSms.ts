@@ -47,7 +47,8 @@ export type SmsTemplateKey =
   | "S20D"
   | "S20L"
   | "S20VL"
-  | "S20DL";
+  | "S20DL"
+  | "S21";
 
 export type BuyerSmsNoun = "ticket" | "booking" | "pass" | "receipt";
 
@@ -291,6 +292,9 @@ function render(key: SmsTemplateKey, s: NormalizedSlots): string {
     // Issue #4271 — the host texted the guest a door pay link.
     case "S19":
       return `Mingla: Pay for ${s.title} here: ${s.link}`;
+    // #4490 spec 08 O5 (T16): a guest's paid item sold out; what the venue did.
+    case "S21":
+      return `Mingla: ${s.venue}: ${s.title} sold out after you paid. ${s.stateWord}. ${s.link}`;
     // Issue #4422 — an event the guest or buyer holds has changed.
     case "S20":
       return `Mingla: ${s.title} moved to ${s.date} ${s.time}. See the details: ${s.link}`;
@@ -354,6 +358,7 @@ function usedSecondarySlots(
   if (key === "S1G") return ["brand"];
   if (key === "S4G") return ["lead"];
   if (key === "S16") return ["sender"];
+  if (key === "S21") return ["venue"];
   return [];
 }
 

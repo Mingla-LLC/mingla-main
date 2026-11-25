@@ -405,6 +405,17 @@ $fn$;
 -- #4522 (20281202044522_issue_4522_plan_v2_model.sql) re-defines
 -- biz_apply_trip_draft_graph ("Use this plan for all packages" and the v2
 -- plan price check), so it is put back and restored the same way.
+-- [TEST-MOD-APPROVED #4490] #4490 P3
+-- (20281203144490_issue_4490_p3_packages_deposits.sql) re-defines
+-- issue_1388_guard_state_transition (an active venue-booking commitment may
+-- move window or change guests inside a governed booking change), so it is
+-- put back and restored the same way.
+-- [TEST-MOD-APPROVED #4490] #4490 Round 4J
+-- (20281203404490_issue_4490_gaps_stay_features.sql) re-defines
+-- biz_manage_stay_inventory, issue_1388_manage_request, issue_1389_cancel,
+-- issue_1389_cancel_preview and issue_1389_prepare_payment (Stays checks key
+-- on the venue's features, not its type), so they are put back verbatim from
+-- section B and restored and md5-checked the same way. No assertion changed.
 -- #4571 W3 (20281130034571) re-defines team_agent_call (set_owners takes
 -- watcher_emails; my_day carries calls_due), so it is put back from section B
 -- (read from the migration file itself, not copied) and restored the same way.
@@ -425,6 +436,12 @@ SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS 
                  'public.issue_3720_update_product_signal(uuid,integer,text,text,timestamp with time zone,text,text)'::regprocedure,
                  'public.issue_3720_save_product_avengers_review(uuid,integer,text,text,text,text[],text,text,text,text,text,text)'::regprocedure,
                  'public.biz_apply_trip_draft_graph(uuid,jsonb,timestamp with time zone,uuid)'::regprocedure,
+                 'public.issue_1388_guard_state_transition()'::regprocedure,
+                 'public.biz_manage_stay_inventory(text,uuid,jsonb,bigint,uuid)'::regprocedure,
+                 'public.issue_1388_manage_request(text,uuid,bigint,text,uuid)'::regprocedure,
+                 'public.issue_1389_cancel(uuid,text,text,text,uuid)'::regprocedure,
+                 'public.issue_1389_cancel_preview(uuid,uuid[],bigint,uuid)'::regprocedure,
+                 'public.issue_1389_prepare_payment(uuid,text,bigint,uuid)'::regprocedure,
                  'public.team_agent_call(text,text,jsonb,text)'::regprocedure);
 
 BEGIN;
@@ -2309,6 +2326,2201 @@ BEGIN
 
   v_result := public.biz_get_trip_draft_graph(p_event_id);
   RETURN public.biz_trip_command_finish(p_operation_id, v_result);
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_1388_guard_state_transition()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stay_history_immutable' USING ERRCODE = '55000';
+  END IF;
+  IF TG_TABLE_NAME = 'stay_quotes' THEN
+    IF OLD.status <> NEW.status AND NOT (
+      (OLD.status = 'building' AND NEW.status = 'active')
+      OR (
+        OLD.status = 'active'
+        AND NEW.status IN ('expired', 'consumed')
+      )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_reservation_groups' THEN
+    IF OLD.state <> NEW.state AND NOT (
+       (
+         OLD.state = 'instant_payment_pending'
+         AND NEW.state IN (
+           'finalizing', 'cancelled', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'request_pending'
+         AND NEW.state IN (
+           'approved_payment_required',
+           'declined',
+           'request_expired',
+           'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'approved_payment_required'
+         AND NEW.state IN (
+           'finalizing',
+           'request_expired',
+           'cancelled',
+           'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'finalizing'
+         AND NEW.state IN ('confirmed', 'reconciliation_required')
+       )
+       OR (
+         OLD.state = 'confirmed'
+         AND NEW.state IN (
+           'partially_cancelled', 'cancelled', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'partially_cancelled'
+         AND NEW.state IN ('cancelled', 'reconciliation_required')
+       )
+       OR (
+         OLD.state = 'reconciliation_required'
+         AND NEW.state IN (
+           'finalizing',
+           'confirmed',
+           'partially_cancelled',
+           'cancelled'
+         )
+       )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_reservation_lines' THEN
+    IF OLD.state <> NEW.state AND NOT (
+       (
+         OLD.state = 'payment_pending'
+         AND NEW.state IN (
+           'confirmed', 'cancelled', 'expired', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'request_pending'
+         AND NEW.state IN (
+           'approved_payment_required',
+           'declined',
+           'expired',
+           'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'approved_payment_required'
+         AND NEW.state IN (
+           'confirmed', 'cancelled', 'expired', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'confirmed'
+         AND NEW.state IN ('cancelled', 'reconciliation_required')
+       )
+       OR (
+         OLD.state = 'reconciliation_required'
+         AND NEW.state IN ('confirmed', 'cancelled')
+       )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_inventory_holds' THEN
+    IF NEW.id <> OLD.id
+       OR NEW.group_id <> OLD.group_id
+       OR NEW.created_at <> OLD.created_at THEN
+      RAISE EXCEPTION 'stay_hold_identity_immutable' USING ERRCODE = '55000';
+    END IF;
+    IF OLD.state <> NEW.state AND NOT (
+      (
+        OLD.state = 'active'
+        AND NEW.state IN (
+          'converted', 'released', 'expired', 'reconciliation_required'
+        )
+      )
+      OR (
+        OLD.state = 'reconciliation_required'
+        AND NEW.state IN ('converted', 'released')
+      )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_inventory_commitments' THEN
+    IF NEW.id <> OLD.id
+       OR NEW.group_id <> OLD.group_id
+       OR NEW.reservation_line_id <> OLD.reservation_line_id
+       OR NEW.resource_type <> OLD.resource_type
+       OR NEW.offering_id <> OLD.offering_id
+       OR NEW.room_date IS DISTINCT FROM OLD.room_date
+       OR NEW.place_window_id IS DISTINCT FROM OLD.place_window_id
+       OR NEW.quantity <> OLD.quantity
+       OR NEW.exclusive_unit_id IS DISTINCT FROM OLD.exclusive_unit_id
+       OR NEW.created_at <> OLD.created_at THEN
+      RAISE EXCEPTION 'stay_commitment_identity_immutable'
+        USING ERRCODE = '55000';
+    END IF;
+    IF OLD.state <> NEW.state
+       AND NOT (OLD.state = 'active' AND NEW.state = 'released') THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.biz_manage_stay_inventory(p_action text, p_venue_id uuid, p_payload jsonb DEFAULT '{}'::jsonb, p_expected_version bigint DEFAULT NULL::bigint, p_request_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_venue public.venue_listings%ROWTYPE;
+  v_settings public.stay_settings%ROWTYPE;
+  v_offering public.stay_offerings%ROWTYPE;
+  v_action text := lower(pg_catalog.btrim(COALESCE(p_action, '')));
+  v_offering_id uuid;
+  v_currency character(3);
+  v_item jsonb;
+  v_job public.stay_bulk_jobs%ROWTYPE;
+  v_success integer := 0;
+  v_failed integer := 0;
+  v_index integer := 0;
+  v_error text;
+  v_rule public.stay_place_schedule_rules%ROWTYPE;
+  v_window public.stay_place_windows%ROWTYPE;
+  v_date date;
+  v_end_date date;
+  v_start timestamptz;
+  v_end timestamptz;
+  v_start_resolution text;
+  v_end_resolution text;
+  v_local_window_start timestamp;
+  v_local_window_end timestamp;
+  v_local_slot_start timestamp;
+  v_local_slot_end timestamp;
+  v_next_version integer;
+  v_current_price public.stay_price_versions%ROWTYPE;
+  v_current_policy public.stay_policy_versions%ROWTYPE;
+  v_current_fee public.stay_fee_versions%ROWTYPE;
+  v_media_id uuid;
+  v_request_hash text;
+  v_requires_finance boolean;
+  v_requires_inventory boolean;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO v_venue
+  FROM public.venue_listings
+  WHERE id = p_venue_id
+  FOR UPDATE;
+  IF NOT FOUND OR v_venue.venue_category <> 'stay' THEN
+    RAISE EXCEPTION 'stay_venue_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  v_requires_finance := v_action IN (
+    'set_price',
+    'set_policy',
+    'replace_fees',
+    'resolve_currency_reconciliation'
+  )
+     OR (
+       v_action = 'create_offering'
+       AND (
+         p_payload ? 'price'
+         OR jsonb_array_length(COALESCE(p_payload->'fees', '[]'::jsonb)) > 0
+       )
+     )
+     OR (
+       v_action = 'bulk_create'
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(COALESCE(p_payload->'items', '[]'::jsonb)) item
+         WHERE item ? 'price'
+            OR jsonb_array_length(COALESCE(item->'fees', '[]'::jsonb)) > 0
+       )
+     )
+     OR (
+       v_action = 'upsert_room_nights'
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(COALESCE(p_payload->'nights', '[]'::jsonb)) night
+         WHERE night ? 'priceOverrideMinor'
+       )
+     )
+     OR (
+       v_action = 'upsert_place_windows'
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(
+           COALESCE(p_payload->'windows', '[]'::jsonb)
+         ) window_item
+         WHERE window_item ? 'priceOverrideMinor'
+       )
+     );
+  v_requires_inventory := v_action NOT IN (
+    'get',
+    'set_price',
+    'set_policy',
+    'replace_fees',
+    'resolve_currency_reconciliation'
+  );
+
+  IF v_action = 'get' THEN
+    IF NOT public.issue_1387_has_brand_capability(
+      v_venue.brand_id, v_uid, 'read'
+    ) THEN
+      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+    END IF;
+  ELSE
+    IF v_requires_inventory AND NOT public.issue_1387_has_brand_capability(
+      v_venue.brand_id, v_uid, 'inventory'
+    ) THEN
+      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+    END IF;
+    IF v_requires_finance AND NOT public.issue_1387_has_brand_capability(
+      v_venue.brand_id, v_uid, 'finance'
+    ) THEN
+      RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+
+  IF p_request_id IS NOT NULL THEN
+    PERFORM set_config('mingla.request_id', p_request_id::text, true);
+  END IF;
+
+  IF v_action = 'resolve_currency_reconciliation' THEN
+    RETURN public.issue_1387_resolve_currency_reconciliation(
+      v_venue.brand_id,
+      (p_payload->>'reconciliationId')::uuid,
+      p_payload->>'decision',
+      NULLIF(p_payload->>'fxSnapshotId', '')::uuid,
+      COALESCE(p_payload->'ranges', '[]'::jsonb),
+      COALESCE(p_payload->'stayItems', '[]'::jsonb),
+      p_request_id
+    );
+  ELSIF v_action = 'get' THEN
+    RETURN public.issue_1387_stay_inventory_snapshot(p_venue_id);
+  ELSIF v_action = 'save_settings' THEN
+    INSERT INTO public.stay_settings (
+      venue_id, brand_id, property_kind, timezone, default_booking_mode,
+      check_in_time, check_out_time, instant_payment_hold_minutes,
+      request_response_hours, approved_payment_minutes, booking_horizon_days,
+      booking_state, house_rules, created_by, updated_by
+    ) VALUES (
+      p_venue_id,
+      v_venue.brand_id,
+      NULLIF(lower(pg_catalog.btrim(p_payload->>'propertyKind')), ''),
+      COALESCE(NULLIF(pg_catalog.btrim(p_payload->>'timezone'), ''), 'UTC'),
+      COALESCE(
+        NULLIF(lower(pg_catalog.btrim(p_payload->>'defaultBookingMode')), ''),
+        'request'
+      ),
+      COALESCE(NULLIF(p_payload->>'checkInTime', '')::time, '15:00'::time),
+      COALESCE(NULLIF(p_payload->>'checkOutTime', '')::time, '11:00'::time),
+      COALESCE((p_payload->>'instantPaymentHoldMinutes')::smallint, 15),
+      COALESCE((p_payload->>'requestResponseHours')::smallint, 24),
+      COALESCE((p_payload->>'approvedPaymentMinutes')::smallint, 30),
+      COALESCE((p_payload->>'bookingHorizonDays')::smallint, 365),
+      COALESCE(NULLIF(lower(p_payload->>'bookingState'), ''), 'draft'),
+      NULLIF(p_payload->>'houseRules', ''),
+      v_uid,
+      v_uid
+    )
+    ON CONFLICT (venue_id) DO UPDATE
+      SET property_kind = EXCLUDED.property_kind,
+          timezone = EXCLUDED.timezone,
+          default_booking_mode = EXCLUDED.default_booking_mode,
+          check_in_time = EXCLUDED.check_in_time,
+          check_out_time = EXCLUDED.check_out_time,
+          instant_payment_hold_minutes = EXCLUDED.instant_payment_hold_minutes,
+          request_response_hours = EXCLUDED.request_response_hours,
+          approved_payment_minutes = EXCLUDED.approved_payment_minutes,
+          booking_horizon_days = EXCLUDED.booking_horizon_days,
+          booking_state = EXCLUDED.booking_state,
+          house_rules = EXCLUDED.house_rules,
+          version = public.stay_settings.version + 1,
+          updated_by = v_uid,
+          updated_at = now()
+      WHERE p_expected_version IS NOT NULL
+        AND public.stay_settings.version = p_expected_version;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF v_action = 'create_offering' THEN
+    v_offering_id := public.issue_1387_create_offering_internal(
+      v_venue.brand_id, p_venue_id, p_payload, v_uid
+    );
+  ELSIF v_action = 'update_offering' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    UPDATE public.stay_offerings
+      SET name = COALESCE(NULLIF(pg_catalog.btrim(p_payload->>'name'), ''), name),
+          summary = COALESCE(p_payload->>'summary', summary),
+          description = COALESCE(p_payload->>'description', description),
+          confirmation_mode = CASE WHEN p_payload ? 'confirmationMode'
+            THEN NULLIF(
+              lower(pg_catalog.btrim(p_payload->>'confirmationMode')), ''
+            )
+            ELSE confirmation_mode END,
+          inventory_basis = COALESCE(
+            NULLIF(lower(p_payload->>'inventoryBasis'), ''),
+            inventory_basis
+          ),
+          unit_naming_mode = COALESCE(
+            NULLIF(lower(p_payload->>'unitNamingMode'), ''),
+            unit_naming_mode
+          ),
+          quantity = CASE WHEN p_payload ? 'quantity'
+            THEN NULLIF(p_payload->>'quantity', '')::integer ELSE quantity END,
+          capacity = CASE WHEN p_payload ? 'capacity'
+            THEN NULLIF(p_payload->>'capacity', '')::integer ELSE capacity END,
+          min_guests = COALESCE(
+            (p_payload->>'minGuests')::integer, min_guests
+          ),
+          max_guests = COALESCE((p_payload->>'maxGuests')::integer, max_guests),
+          max_adults = CASE WHEN p_payload ? 'maxAdults'
+            THEN NULLIF(p_payload->>'maxAdults', '')::integer ELSE max_adults END,
+          max_children = CASE WHEN p_payload ? 'maxChildren'
+            THEN NULLIF(p_payload->>'maxChildren', '')::integer
+            ELSE max_children END,
+          place_pricing_basis = CASE WHEN p_payload ? 'placePricingBasis'
+            THEN NULLIF(lower(p_payload->>'placePricingBasis'), '')
+            ELSE place_pricing_basis END,
+          min_notice_minutes = COALESCE(
+            (p_payload->>'minNoticeMinutes')::integer, min_notice_minutes
+          ),
+          max_advance_days = CASE WHEN p_payload ? 'maxAdvanceDays'
+            THEN NULLIF(p_payload->>'maxAdvanceDays', '')::integer
+            ELSE max_advance_days END,
+          buffer_before_minutes = COALESCE(
+            (p_payload->>'bufferBeforeMinutes')::integer,
+            buffer_before_minutes
+          ),
+          buffer_after_minutes = COALESCE(
+            (p_payload->>'bufferAfterMinutes')::integer,
+            buffer_after_minutes
+          ),
+          amenities = CASE WHEN p_payload ? 'amenities' THEN ARRAY(
+            SELECT jsonb_array_elements_text(p_payload->'amenities')
+          ) ELSE amenities END,
+          safety_rules = CASE WHEN p_payload ? 'safetyRules' THEN ARRAY(
+            SELECT jsonb_array_elements_text(p_payload->'safetyRules')
+          ) ELSE safety_rules END,
+          accessibility_features = CASE
+            WHEN p_payload ? 'accessibilityFeatures' THEN ARRAY(
+              SELECT jsonb_array_elements_text(p_payload->'accessibilityFeatures')
+            ) ELSE accessibility_features END,
+          access_scope = COALESCE(
+            NULLIF(lower(pg_catalog.btrim(p_payload->>'accessScope')), ''),
+            access_scope
+          ),
+          version = version + 1,
+          updated_by = v_uid,
+          updated_at = now()
+      WHERE id = v_offering_id
+        AND venue_id = p_venue_id
+        AND version = p_expected_version;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF v_action = 'replace_units' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering
+    FROM public.stay_offerings
+    WHERE id = v_offering_id
+      AND venue_id = p_venue_id
+      AND inventory_basis = 'exclusive_units'
+      AND unit_naming_mode = 'named'
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_named_unit_not_allowed' USING ERRCODE = '22023';
+    END IF;
+    IF v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    IF jsonb_typeof(COALESCE(p_payload->'units', '[]'::jsonb)) <> 'array'
+       OR jsonb_array_length(COALESCE(p_payload->'units', '[]'::jsonb))
+          > v_offering.quantity THEN
+      RAISE EXCEPTION 'stay_unit_quantity_exceeded' USING ERRCODE = '22023';
+    END IF;
+    UPDATE public.stay_units
+      SET status = 'archived', updated_by = v_uid, updated_at = now(),
+          version = version + 1
+      WHERE offering_id = v_offering_id AND status <> 'archived';
+    FOR v_item IN
+      SELECT value
+      FROM jsonb_array_elements(COALESCE(p_payload->'units', '[]'::jsonb))
+    LOOP
+      INSERT INTO public.stay_units (
+        offering_id, brand_id, venue_id, name, external_reference,
+        created_by, updated_by
+      ) VALUES (
+        v_offering_id, v_venue.brand_id, p_venue_id,
+        pg_catalog.btrim(v_item->>'name'),
+        NULLIF(pg_catalog.btrim(v_item->>'externalReference'), ''),
+        v_uid, v_uid
+      );
+    END LOOP;
+    UPDATE public.stay_offerings
+      SET version = version + 1, updated_by = v_uid, updated_at = now()
+      WHERE id = v_offering_id;
+  ELSIF v_action = 'change_status' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering
+    FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id
+    FOR UPDATE;
+    IF NOT FOUND OR v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    IF lower(p_payload->>'status') = 'live' THEN
+      SELECT * INTO v_settings
+      FROM public.stay_settings s
+      WHERE s.venue_id = p_venue_id AND s.booking_state = 'active';
+      IF NOT FOUND OR NOT EXISTS (
+        SELECT 1 FROM public.stay_price_versions p
+        WHERE p.offering_id = v_offering_id AND p.effective_to IS NULL
+      ) OR NOT EXISTS (
+        SELECT 1 FROM public.stay_policy_versions p
+        WHERE p.offering_id = v_offering_id AND p.effective_to IS NULL
+      ) OR (
+        SELECT count(*) FROM public.stay_offering_media m
+        WHERE m.offering_id = v_offering_id
+          AND m.status = 'ready' AND m.is_cover
+      ) <> 1 THEN
+        RAISE EXCEPTION 'stay_publish_incomplete' USING ERRCODE = 'P0001';
+      END IF;
+      IF pg_catalog.btrim(v_offering.description) = ''
+         OR v_venue.claim_status <> 'verified' THEN
+        RAISE EXCEPTION 'stay_publish_incomplete' USING ERRCODE = 'P0001';
+      END IF;
+      IF v_offering.kind = 'room' AND NOT EXISTS (
+        SELECT 1 FROM public.stay_room_nights n
+        WHERE n.offering_id = v_offering_id
+          AND NOT n.stop_sell
+          AND n.sellable_quantity > 0
+          AND n.local_date >=
+            (now() AT TIME ZONE v_settings.timezone)::date
+      ) THEN
+        RAISE EXCEPTION 'stay_publish_incomplete' USING ERRCODE = 'P0001';
+      END IF;
+      IF v_offering.kind = 'place' AND NOT EXISTS (
+        SELECT 1 FROM public.stay_place_windows w
+        WHERE w.offering_id = v_offering_id
+          AND NOT w.stop_sell
+          AND COALESCE(w.sellable_units, w.sellable_capacity, 0) > 0
+          AND w.ends_at > now()
+      ) THEN
+        RAISE EXCEPTION 'stay_publish_incomplete' USING ERRCODE = 'P0001';
+      END IF;
+      IF v_offering.unit_naming_mode = 'named' AND (
+        SELECT count(*) FROM public.stay_units u
+        WHERE u.offering_id = v_offering_id AND u.status = 'active'
+      ) <> v_offering.quantity THEN
+        RAISE EXCEPTION 'stay_publish_incomplete' USING ERRCODE = 'P0001';
+      END IF;
+      IF NOT public.pg_brand_can_collect(v_venue.brand_id)
+         OR NOT EXISTS (
+           SELECT 1 FROM public.brands b
+           WHERE b.id = v_venue.brand_id AND b.default_currency IS NOT NULL
+         ) THEN
+        RAISE EXCEPTION 'paid_currency_not_ready' USING ERRCODE = 'P0001';
+      END IF;
+    END IF;
+    UPDATE public.stay_offerings
+      SET status = lower(p_payload->>'status'),
+          archived_at = CASE WHEN lower(p_payload->>'status') = 'archived'
+            THEN now() ELSE NULL END,
+          version = version + 1,
+          updated_by = v_uid,
+          updated_at = now()
+      WHERE id = v_offering_id;
+  ELSIF v_action = 'set_policy' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_offering_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    SELECT * INTO v_current_policy
+    FROM public.stay_policy_versions
+    WHERE offering_id = v_offering_id AND effective_to IS NULL
+    FOR UPDATE;
+    v_next_version := COALESCE(v_current_policy.version_number, 0) + 1;
+    IF v_current_policy.id IS NOT NULL THEN
+      UPDATE public.stay_policy_versions SET effective_to = now()
+      WHERE id = v_current_policy.id;
+    END IF;
+    INSERT INTO public.stay_policy_versions (
+      offering_id, brand_id, venue_id, version_number,
+      cancellation_policy, free_cancel_cutoff_minutes,
+      late_refund_basis_points, no_show_refund_basis_points,
+      operator_cancel_refund_basis_points, request_terms, house_rules,
+      terms, created_by
+    ) VALUES (
+      v_offering_id, v_venue.brand_id, p_venue_id, v_next_version,
+      pg_catalog.btrim(p_payload->>'cancellationPolicy'),
+      COALESCE((p_payload->>'freeCancelCutoffMinutes')::integer, 0),
+      COALESCE((p_payload->>'lateRefundBasisPoints')::integer, 0),
+      COALESCE((p_payload->>'noShowRefundBasisPoints')::integer, 0),
+      COALESCE(
+        (p_payload->>'operatorCancelRefundBasisPoints')::integer, 10000
+      ),
+      NULLIF(p_payload->>'requestTerms', ''),
+      NULLIF(p_payload->>'houseRules', ''),
+      COALESCE(p_payload->'terms', '{}'::jsonb), v_uid
+    );
+    UPDATE public.stay_offerings
+      SET version = version + 1, updated_by = v_uid, updated_at = now()
+      WHERE id = v_offering_id;
+  ELSIF v_action = 'set_price' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_offering_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    v_currency := public.issue_1387_assert_authoring_currency(
+      v_venue.brand_id,
+      upper(p_payload->>'currencyCode')::character(3)
+    );
+    SELECT * INTO v_current_price
+    FROM public.stay_price_versions
+    WHERE offering_id = v_offering_id AND effective_to IS NULL
+    FOR UPDATE;
+    v_next_version := COALESCE(v_current_price.version_number, 0) + 1;
+    IF v_current_price.id IS NOT NULL THEN
+      UPDATE public.stay_price_versions SET effective_to = now()
+      WHERE id = v_current_price.id;
+    END IF;
+    INSERT INTO public.stay_price_versions (
+      offering_id, brand_id, venue_id, version_number, amount_minor,
+      currency_code, pricing_unit, supersedes_version_id, created_by
+    ) VALUES (
+      v_offering_id, v_venue.brand_id, p_venue_id, v_next_version,
+      (p_payload->>'amountMinor')::bigint, v_currency,
+      CASE
+        WHEN v_offering.kind = 'room' THEN 'room_night'
+        WHEN v_offering.place_pricing_basis = 'per_booking'
+          THEN 'place_booking'
+        WHEN v_offering.place_pricing_basis = 'per_unit'
+          THEN 'place_unit'
+        ELSE 'place_guest'
+      END,
+      v_current_price.id, v_uid
+    );
+    UPDATE public.stay_offerings
+      SET version = version + 1, updated_by = v_uid, updated_at = now()
+      WHERE id = v_offering_id;
+  ELSIF v_action = 'replace_fees' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_offering_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    FOR v_current_fee IN
+      SELECT * FROM public.stay_fee_versions
+      WHERE offering_id = v_offering_id AND effective_to IS NULL
+      FOR UPDATE
+    LOOP
+      UPDATE public.stay_fee_versions SET effective_to = now()
+      WHERE id = v_current_fee.id;
+    END LOOP;
+    FOR v_item IN
+      SELECT value FROM jsonb_array_elements(
+        COALESCE(p_payload->'fees', '[]'::jsonb)
+      )
+    LOOP
+      SELECT COALESCE(max(f.version_number), 0) + 1
+      INTO v_next_version
+      FROM public.stay_fee_versions f
+      WHERE f.offering_id = v_offering_id
+        AND f.fee_key = lower(pg_catalog.btrim(v_item->>'feeKey'));
+      IF lower(v_item->>'calculation') LIKE 'fixed_%' THEN
+        v_currency := public.issue_1387_assert_authoring_currency(
+          v_venue.brand_id,
+          upper(v_item->>'currencyCode')::character(3)
+        );
+      ELSE
+        v_currency := NULL;
+      END IF;
+      INSERT INTO public.stay_fee_versions (
+        offering_id, brand_id, venue_id, fee_key, label, version_number,
+        fee_kind, calculation, amount_minor, basis_points, currency_code,
+        display_mode, refund_treatment, created_by
+      ) VALUES (
+        v_offering_id, v_venue.brand_id, p_venue_id,
+        lower(pg_catalog.btrim(v_item->>'feeKey')),
+        pg_catalog.btrim(v_item->>'label'), v_next_version,
+        COALESCE(NULLIF(lower(v_item->>'feeKind'), ''), 'mandatory_fee'),
+        lower(v_item->>'calculation'),
+        NULLIF(v_item->>'amountMinor', '')::bigint,
+        NULLIF(v_item->>'basisPoints', '')::integer,
+        v_currency,
+        COALESCE(NULLIF(lower(v_item->>'displayMode'), ''), 'separate'),
+        COALESCE(
+          NULLIF(lower(v_item->>'refundTreatment'), ''), 'same_as_line'
+        ),
+        v_uid
+      );
+    END LOOP;
+    UPDATE public.stay_offerings
+      SET version = version + 1, updated_by = v_uid, updated_at = now()
+      WHERE id = v_offering_id;
+  ELSIF v_action = 'attach_media' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_offering_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    IF COALESCE((p_payload->>'isCover')::boolean, false) THEN
+      UPDATE public.stay_offering_media SET is_cover = false, updated_at = now()
+      WHERE offering_id = v_offering_id AND is_cover;
+    END IF;
+    v_media_id := public.issue_1387_attach_media_internal(
+      v_offering_id,
+      v_venue.brand_id,
+      p_venue_id,
+      p_payload,
+      COALESCE(
+        (p_payload->>'sortOrder')::integer,
+        (SELECT COALESCE(max(m.sort_order), -1) + 1
+         FROM public.stay_offering_media m
+         WHERE m.offering_id = v_offering_id)
+      ),
+      v_uid
+    );
+    UPDATE public.stay_offerings
+      SET version = version + 1, updated_by = v_uid, updated_at = now()
+      WHERE id = v_offering_id;
+  ELSIF v_action = 'reorder_media' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_offering_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    IF jsonb_array_length(COALESCE(p_payload->'mediaIds', '[]'::jsonb)) <> (
+      SELECT count(*) FROM public.stay_offering_media m
+      WHERE m.offering_id = v_offering_id
+    ) OR (
+      SELECT count(DISTINCT (value #>> '{}')::uuid)
+      FROM jsonb_array_elements(COALESCE(p_payload->'mediaIds', '[]'::jsonb))
+    ) <> jsonb_array_length(COALESCE(p_payload->'mediaIds', '[]'::jsonb)) THEN
+      RAISE EXCEPTION 'stay_media_set_changed' USING ERRCODE = 'PT409';
+    END IF;
+    SET CONSTRAINTS public.stay_offering_media_sort_unique DEFERRED;
+    v_index := 0;
+    FOR v_item IN
+      SELECT value FROM jsonb_array_elements(p_payload->'mediaIds')
+    LOOP
+      UPDATE public.stay_offering_media
+        SET sort_order = v_index, updated_at = now()
+        WHERE id = (v_item #>> '{}')::uuid
+          AND offering_id = v_offering_id;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'stay_media_set_changed' USING ERRCODE = 'PT409';
+      END IF;
+      v_index := v_index + 1;
+    END LOOP;
+    UPDATE public.stay_offerings
+      SET version = version + 1, updated_by = v_uid, updated_at = now()
+      WHERE id = v_offering_id;
+  ELSIF v_action = 'remove_media' THEN
+    v_media_id := (p_payload->>'mediaId')::uuid;
+    SELECT o.* INTO v_offering
+    FROM public.stay_offerings o
+    JOIN public.stay_offering_media m ON m.offering_id = o.id
+    WHERE m.id = v_media_id AND o.venue_id = p_venue_id
+    FOR UPDATE OF o;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_media_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_offering.version <> p_expected_version THEN
+      RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM public.stay_offering_media m
+      JOIN public.stay_offerings o ON o.id = m.offering_id
+      WHERE m.id = v_media_id AND o.venue_id = p_venue_id
+        AND o.status = 'live' AND m.is_cover
+    ) THEN
+      RAISE EXCEPTION 'stay_live_cover_required' USING ERRCODE = 'P0001';
+    END IF;
+    DELETE FROM public.stay_offering_media m
+    USING public.stay_offerings o
+    WHERE m.id = v_media_id
+      AND o.id = m.offering_id
+      AND o.venue_id = p_venue_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_media_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    UPDATE public.stay_offerings
+      SET version = version + 1, updated_by = v_uid, updated_at = now()
+      WHERE id = v_offering.id;
+  ELSIF v_action = 'bulk_create' THEN
+    IF jsonb_typeof(p_payload->'items') <> 'array'
+       OR jsonb_array_length(p_payload->'items') NOT BETWEEN 1 AND 500 THEN
+      RAISE EXCEPTION 'stay_invalid_bulk_request' USING ERRCODE = '22023';
+    END IF;
+    v_request_hash := pg_catalog.encode(
+      extensions.digest(
+        pg_catalog.convert_to((p_payload->'items')::text, 'UTF8'),
+        'sha256'
+      ),
+      'hex'
+    );
+    INSERT INTO public.stay_bulk_jobs (
+      venue_id, brand_id, idempotency_key, requested_count,
+      request_payload, request_hash, request_id, created_by
+    ) VALUES (
+      p_venue_id, v_venue.brand_id,
+      pg_catalog.btrim(p_payload->>'idempotencyKey'),
+      jsonb_array_length(p_payload->'items'),
+      p_payload->'items', v_request_hash, p_request_id, v_uid
+    )
+    ON CONFLICT (venue_id, idempotency_key) DO NOTHING
+    RETURNING * INTO v_job;
+    IF v_job.id IS NULL THEN
+      SELECT * INTO v_job FROM public.stay_bulk_jobs
+      WHERE venue_id = p_venue_id
+        AND idempotency_key = pg_catalog.btrim(p_payload->>'idempotencyKey');
+      IF v_job.request_hash <> v_request_hash THEN
+        RAISE EXCEPTION 'stay_idempotency_conflict' USING ERRCODE = 'PT409';
+      END IF;
+      RETURN jsonb_build_object(
+        'job', to_jsonb(v_job),
+        'items', COALESCE((
+          SELECT jsonb_agg(to_jsonb(i) ORDER BY i.item_index)
+          FROM public.stay_bulk_job_items i WHERE i.job_id = v_job.id
+        ), '[]'::jsonb),
+        'replayed', true
+      );
+    END IF;
+    FOR v_item IN
+      SELECT value FROM jsonb_array_elements(p_payload->'items')
+    LOOP
+      BEGIN
+        v_offering_id := public.issue_1387_create_offering_internal(
+          v_venue.brand_id, p_venue_id, v_item, v_uid
+        );
+        INSERT INTO public.stay_bulk_job_items (
+          job_id, item_index, status, offering_id, result
+        ) VALUES (
+          v_job.id, v_index, 'succeeded', v_offering_id,
+          jsonb_build_object('offeringId', v_offering_id)
+        );
+        v_success := v_success + 1;
+      EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
+        INSERT INTO public.stay_bulk_job_items (
+          job_id, item_index, status, error_code, safe_error_message
+        ) VALUES (
+          v_job.id, v_index, 'failed',
+          CASE WHEN v_error LIKE 'stay_%' THEN split_part(v_error, ' ', 1)
+            ELSE 'stay_item_invalid' END,
+          CASE WHEN v_error LIKE 'stay_%'
+            THEN 'This item needs review.'
+            ELSE 'This item could not be created.' END
+        );
+        v_failed := v_failed + 1;
+      END;
+      v_index := v_index + 1;
+    END LOOP;
+    UPDATE public.stay_bulk_jobs
+      SET status = CASE WHEN v_failed = 0 THEN 'completed'
+        WHEN v_success = 0 THEN 'failed' ELSE 'completed_with_errors' END,
+          succeeded_count = v_success,
+          failed_count = v_failed,
+          completed_at = now()
+      WHERE id = v_job.id
+      RETURNING * INTO v_job;
+    RETURN jsonb_build_object(
+      'job', to_jsonb(v_job),
+      'items', (
+        SELECT jsonb_agg(to_jsonb(i) ORDER BY i.item_index)
+        FROM public.stay_bulk_job_items i WHERE i.job_id = v_job.id
+      ),
+      'replayed', false
+    );
+  ELSIF v_action = 'upsert_room_nights' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id AND kind = 'room';
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_room_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_settings
+    FROM public.stay_settings s
+    WHERE s.venue_id = p_venue_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_settings_required' USING ERRCODE = 'P0001';
+    END IF;
+    IF jsonb_array_length(COALESCE(p_payload->'nights', '[]'::jsonb)) > 366 THEN
+      RAISE EXCEPTION 'stay_date_range_too_large' USING ERRCODE = '22023';
+    END IF;
+    FOR v_item IN
+      SELECT value FROM jsonb_array_elements(
+        COALESCE(p_payload->'nights', '[]'::jsonb)
+      )
+    LOOP
+      IF (v_item->>'localDate')::date
+           < (now() AT TIME ZONE v_settings.timezone)::date
+         OR (v_item->>'localDate')::date
+           > (now() AT TIME ZONE v_settings.timezone)::date
+             + LEAST(
+               v_settings.booking_horizon_days,
+               COALESCE(
+                 v_offering.max_advance_days,
+                 v_settings.booking_horizon_days
+               )
+             ) THEN
+        RAISE EXCEPTION 'stay_date_outside_horizon' USING ERRCODE = '22023';
+      END IF;
+      IF v_item ? 'priceOverrideMinor'
+         AND NULLIF(v_item->>'priceOverrideMinor', '') IS NOT NULL THEN
+        v_currency := public.issue_1387_assert_authoring_currency(
+          v_venue.brand_id,
+          upper(v_item->>'currencyCode')::character(3)
+        );
+      ELSE
+        v_currency := NULL;
+      END IF;
+      INSERT INTO public.stay_room_nights (
+        offering_id, local_date, brand_id, venue_id, sellable_quantity,
+        price_override_minor, currency_code, stop_sell, minimum_nights,
+        maximum_nights, updated_by
+      ) VALUES (
+        v_offering_id, (v_item->>'localDate')::date,
+        v_venue.brand_id, p_venue_id,
+        COALESCE((v_item->>'sellableQuantity')::integer, v_offering.quantity),
+        NULLIF(v_item->>'priceOverrideMinor', '')::bigint,
+        v_currency,
+        COALESCE((v_item->>'stopSell')::boolean, false),
+        COALESCE((v_item->>'minimumNights')::integer, 1),
+        NULLIF(v_item->>'maximumNights', '')::integer,
+        v_uid
+      )
+      ON CONFLICT (offering_id, local_date) DO UPDATE
+        SET sellable_quantity = EXCLUDED.sellable_quantity,
+            price_override_minor = CASE
+              WHEN v_item ? 'priceOverrideMinor'
+              THEN EXCLUDED.price_override_minor
+              ELSE public.stay_room_nights.price_override_minor
+            END,
+            currency_code = CASE
+              WHEN v_item ? 'priceOverrideMinor'
+              THEN EXCLUDED.currency_code
+              ELSE public.stay_room_nights.currency_code
+            END,
+            stop_sell = EXCLUDED.stop_sell,
+            minimum_nights = EXCLUDED.minimum_nights,
+            maximum_nights = EXCLUDED.maximum_nights,
+            version = public.stay_room_nights.version + 1,
+            updated_by = v_uid,
+            updated_at = now()
+        WHERE v_item ? 'expectedVersion'
+          AND public.stay_room_nights.version =
+            (v_item->>'expectedVersion')::bigint;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+      END IF;
+    END LOOP;
+  ELSIF v_action = 'upsert_place_schedule' THEN
+    v_offering_id := (p_payload->>'offeringId')::uuid;
+    SELECT * INTO v_offering FROM public.stay_offerings
+    WHERE id = v_offering_id AND venue_id = p_venue_id AND kind = 'place';
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_place_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_settings
+    FROM public.stay_settings s
+    WHERE s.venue_id = p_venue_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_settings_required' USING ERRCODE = 'P0001';
+    END IF;
+    IF (p_payload->>'localStartDate')::date
+         < (now() AT TIME ZONE v_settings.timezone)::date
+       OR COALESCE(
+         NULLIF(p_payload->>'localEndDate', '')::date,
+         (p_payload->>'localStartDate')::date
+       ) > (now() AT TIME ZONE v_settings.timezone)::date
+           + LEAST(
+             v_settings.booking_horizon_days,
+             COALESCE(
+               v_offering.max_advance_days,
+               v_settings.booking_horizon_days
+             )
+           ) THEN
+      RAISE EXCEPTION 'stay_date_outside_horizon' USING ERRCODE = '22023';
+    END IF;
+    IF p_payload ? 'scheduleRuleId' THEN
+      DELETE FROM public.stay_place_windows w
+      WHERE w.schedule_rule_id = (p_payload->>'scheduleRuleId')::uuid
+        AND w.offering_id = v_offering_id;
+      UPDATE public.stay_place_schedule_rules
+        SET mode = lower(p_payload->>'mode'),
+            timezone = p_payload->>'timezone',
+            local_start_date = (p_payload->>'localStartDate')::date,
+            local_end_date = NULLIF(p_payload->>'localEndDate', '')::date,
+            weekdays = ARRAY(
+              SELECT value::text::smallint
+              FROM jsonb_array_elements(
+                COALESCE(p_payload->'weekdays', '[]'::jsonb)
+              )
+            ),
+            local_start_time = NULLIF(p_payload->>'localStartTime', '')::time,
+            local_end_time = NULLIF(p_payload->>'localEndTime', '')::time,
+            slot_duration_minutes =
+              NULLIF(p_payload->>'slotDurationMinutes', '')::integer,
+            slot_interval_minutes =
+              NULLIF(p_payload->>'slotIntervalMinutes', '')::integer,
+            full_day_start_time =
+              NULLIF(p_payload->>'fullDayStartTime', '')::time,
+            full_day_end_time =
+              NULLIF(p_payload->>'fullDayEndTime', '')::time,
+            dst_fold_policy = COALESCE(
+              NULLIF(lower(p_payload->>'dstFoldPolicy'), ''),
+              dst_fold_policy
+            ),
+            active = COALESCE((p_payload->>'active')::boolean, active),
+            version = version + 1,
+            updated_by = v_uid,
+            updated_at = now()
+        WHERE id = (p_payload->>'scheduleRuleId')::uuid
+          AND offering_id = v_offering_id
+          AND version = p_expected_version;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+      END IF;
+    ELSE
+      INSERT INTO public.stay_place_schedule_rules (
+        offering_id, brand_id, venue_id, mode, timezone,
+        local_start_date, local_end_date, weekdays,
+        local_start_time, local_end_time, slot_duration_minutes,
+        slot_interval_minutes, full_day_start_time, full_day_end_time,
+        dst_fold_policy, created_by, updated_by
+      ) VALUES (
+        v_offering_id, v_venue.brand_id, p_venue_id,
+        lower(p_payload->>'mode'),
+        p_payload->>'timezone',
+        (p_payload->>'localStartDate')::date,
+        NULLIF(p_payload->>'localEndDate', '')::date,
+        ARRAY(
+          SELECT value::text::smallint
+          FROM jsonb_array_elements(
+            COALESCE(p_payload->'weekdays', '[]'::jsonb)
+          )
+        ),
+        NULLIF(p_payload->>'localStartTime', '')::time,
+        NULLIF(p_payload->>'localEndTime', '')::time,
+        NULLIF(p_payload->>'slotDurationMinutes', '')::integer,
+        NULLIF(p_payload->>'slotIntervalMinutes', '')::integer,
+        NULLIF(p_payload->>'fullDayStartTime', '')::time,
+        NULLIF(p_payload->>'fullDayEndTime', '')::time,
+        COALESCE(NULLIF(lower(p_payload->>'dstFoldPolicy'), ''), 'reject'),
+        v_uid, v_uid
+      );
+    END IF;
+  ELSIF v_action = 'materialize_place_windows' THEN
+    SELECT * INTO v_rule
+    FROM public.stay_place_schedule_rules
+    WHERE id = (p_payload->>'scheduleRuleId')::uuid
+      AND venue_id = p_venue_id
+      AND active
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_schedule_rule_not_found' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT * INTO v_offering
+    FROM public.stay_offerings o
+    WHERE o.id = v_rule.offering_id AND o.venue_id = p_venue_id
+    FOR UPDATE;
+    SELECT * INTO v_settings
+    FROM public.stay_settings s
+    WHERE s.venue_id = p_venue_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_settings_required' USING ERRCODE = 'P0001';
+    END IF;
+    v_date := GREATEST(
+      v_rule.local_start_date,
+      (p_payload->>'fromDate')::date
+    );
+    v_end_date := LEAST(
+      COALESCE(v_rule.local_end_date, (p_payload->>'toDate')::date),
+      (p_payload->>'toDate')::date
+    );
+    IF v_end_date < v_date
+       OR v_end_date - v_date > LEAST(
+         v_settings.booking_horizon_days,
+         COALESCE(
+           v_offering.max_advance_days,
+           v_settings.booking_horizon_days
+         )
+       )
+       OR v_end_date > (now() AT TIME ZONE v_settings.timezone)::date
+         + LEAST(
+           v_settings.booking_horizon_days,
+           COALESCE(
+             v_offering.max_advance_days,
+             v_settings.booking_horizon_days
+           )
+         ) THEN
+      RAISE EXCEPTION 'stay_date_range_too_large' USING ERRCODE = '22023';
+    END IF;
+    DELETE FROM public.stay_place_windows w
+    WHERE w.schedule_rule_id = v_rule.id
+      AND w.local_date BETWEEN v_date AND v_end_date;
+    WHILE v_date <= v_end_date LOOP
+      IF (
+        v_rule.mode = 'fixed_slots' AND v_date = v_rule.local_start_date
+      ) OR (
+        v_rule.mode <> 'fixed_slots'
+        AND extract(dow FROM v_date)::smallint = ANY(v_rule.weekdays)
+      ) THEN
+        IF v_rule.mode = 'full_day' THEN
+          v_local_window_start := v_date + v_rule.full_day_start_time;
+          v_local_window_end := v_date + v_rule.full_day_end_time;
+          IF v_local_window_end <= v_local_window_start THEN
+            v_local_window_end := v_local_window_end + interval '1 day';
+          END IF;
+        ELSE
+          v_local_window_start := v_date + v_rule.local_start_time;
+          v_local_window_end := v_date + v_rule.local_end_time;
+          IF v_local_window_end <= v_local_window_start THEN
+            v_local_window_end := v_local_window_end + interval '1 day';
+          END IF;
+        END IF;
+        v_local_slot_start := v_local_window_start;
+        v_local_slot_end := CASE
+          WHEN v_rule.mode = 'repeating_windows' THEN
+            v_local_slot_start
+              + pg_catalog.make_interval(mins => v_rule.slot_duration_minutes)
+          ELSE v_local_window_end
+        END;
+        WHILE v_local_slot_end <= v_local_window_end LOOP
+        SELECT r.instant, r.resolution
+          INTO v_start, v_start_resolution
+        FROM public.issue_1387_resolve_local_timestamp(
+          v_local_slot_start::date, v_local_slot_start::time,
+          v_rule.timezone,
+          v_rule.dst_fold_policy
+        ) r;
+        SELECT r.instant, r.resolution
+          INTO v_end, v_end_resolution
+        FROM public.issue_1387_resolve_local_timestamp(
+          v_local_slot_end::date, v_local_slot_end::time,
+          v_rule.timezone, v_rule.dst_fold_policy
+        ) r;
+        INSERT INTO public.stay_place_windows (
+          offering_id, schedule_rule_id, brand_id, venue_id, local_date,
+          starts_at, ends_at, sellable_units, sellable_capacity,
+          dst_resolution, updated_by
+        ) VALUES (
+          v_rule.offering_id, v_rule.id, v_rule.brand_id, v_rule.venue_id,
+          v_date, v_start, v_end,
+          CASE WHEN v_offering.inventory_basis = 'exclusive_units'
+            THEN v_offering.quantity ELSE NULL END,
+          CASE WHEN v_offering.inventory_basis = 'shared_capacity'
+            THEN v_offering.capacity ELSE NULL END,
+          CASE WHEN v_start_resolution = 'unambiguous'
+                    AND v_end_resolution = 'unambiguous'
+            THEN 'unambiguous' ELSE v_rule.dst_fold_policy END,
+          v_uid
+        )
+        ON CONFLICT (offering_id, starts_at, ends_at) DO UPDATE
+          SET schedule_rule_id = EXCLUDED.schedule_rule_id,
+              sellable_units = EXCLUDED.sellable_units,
+              sellable_capacity = EXCLUDED.sellable_capacity,
+              dst_resolution = EXCLUDED.dst_resolution,
+              version = public.stay_place_windows.version + 1,
+              updated_by = v_uid,
+              updated_at = now();
+          EXIT WHEN v_rule.mode <> 'repeating_windows';
+          v_local_slot_start := v_local_slot_start
+            + pg_catalog.make_interval(mins => v_rule.slot_interval_minutes);
+          v_local_slot_end := v_local_slot_start
+            + pg_catalog.make_interval(mins => v_rule.slot_duration_minutes);
+        END LOOP;
+      END IF;
+      v_date := v_date + 1;
+    END LOOP;
+  ELSIF v_action = 'upsert_place_windows' THEN
+    IF jsonb_array_length(
+      COALESCE(p_payload->'windows', '[]'::jsonb)
+    ) > 500 THEN
+      RAISE EXCEPTION 'stay_date_range_too_large' USING ERRCODE = '22023';
+    END IF;
+    FOR v_item IN
+      SELECT value
+      FROM jsonb_array_elements(COALESCE(p_payload->'windows', '[]'::jsonb))
+    LOOP
+      SELECT w.* INTO v_window
+      FROM public.stay_place_windows w
+      JOIN public.stay_offerings o ON o.id = w.offering_id
+      WHERE w.id = (v_item->>'windowId')::uuid
+        AND w.venue_id = p_venue_id
+        AND o.kind = 'place'
+      FOR UPDATE OF w;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'stay_place_window_not_found' USING ERRCODE = 'P0002';
+      END IF;
+      IF v_window.version <> (v_item->>'expectedVersion')::bigint THEN
+        RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+      END IF;
+      SELECT * INTO v_offering
+      FROM public.stay_offerings o
+      WHERE o.id = v_window.offering_id;
+      IF v_item ? 'priceOverrideMinor'
+         AND NULLIF(v_item->>'priceOverrideMinor', '') IS NOT NULL THEN
+        v_currency := public.issue_1387_assert_authoring_currency(
+          v_venue.brand_id,
+          upper(v_item->>'currencyCode')::character(3)
+        );
+      ELSE
+        v_currency := NULL;
+      END IF;
+      UPDATE public.stay_place_windows
+        SET sellable_units = CASE
+              WHEN v_offering.inventory_basis = 'exclusive_units'
+              THEN COALESCE(
+                (v_item->>'sellableUnits')::integer,
+                sellable_units
+              )
+              ELSE NULL
+            END,
+            sellable_capacity = CASE
+              WHEN v_offering.inventory_basis = 'shared_capacity'
+              THEN COALESCE(
+                (v_item->>'sellableCapacity')::integer,
+                sellable_capacity
+              )
+              ELSE NULL
+            END,
+            stop_sell = COALESCE(
+              (v_item->>'stopSell')::boolean, stop_sell
+            ),
+            price_override_minor = CASE
+              WHEN v_item ? 'priceOverrideMinor'
+              THEN NULLIF(v_item->>'priceOverrideMinor', '')::bigint
+              ELSE price_override_minor
+            END,
+            currency_code = CASE
+              WHEN v_item ? 'priceOverrideMinor' THEN v_currency
+              ELSE currency_code
+            END,
+            version = version + 1,
+            updated_by = v_uid,
+            updated_at = now()
+        WHERE id = v_window.id;
+    END LOOP;
+  ELSE
+    RAISE EXCEPTION 'stay_invalid_action' USING ERRCODE = '22023';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'inventory', public.issue_1387_stay_inventory_snapshot(p_venue_id),
+    'offeringId', v_offering_id,
+    'requestId', p_request_id
+  );
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_1388_manage_request(p_action text, p_group_id uuid, p_expected_version bigint, p_idempotency_key text, p_request_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_action text := lower(pg_catalog.btrim(COALESCE(p_action, '')));
+  v_group public.stay_reservation_groups%ROWTYPE;
+  v_hold public.stay_inventory_holds%ROWTYPE;
+  v_settings public.stay_settings%ROWTYPE;
+  v_existing_event public.stay_reservation_events%ROWTYPE;
+  v_event_type text;
+  v_event_key text;
+  v_payment_deadline timestamptz;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
+  END IF;
+  IF v_action NOT IN ('approve_request', 'decline_request')
+     OR p_group_id IS NULL
+     OR p_expected_version IS NULL
+     OR char_length(pg_catalog.btrim(COALESCE(p_idempotency_key, '')))
+       NOT BETWEEN 8 AND 200 THEN
+    RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_group
+  FROM public.stay_reservation_groups
+  WHERE id = p_group_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'stay_group_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  IF NOT public.issue_1387_has_brand_capability(
+    v_group.brand_id, v_uid, 'inventory'
+  ) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  PERFORM 1 FROM public.brands WHERE id = v_group.brand_id FOR UPDATE;
+  SELECT * INTO v_settings
+  FROM public.stay_settings
+  WHERE venue_id = v_group.venue_id
+  FOR UPDATE;
+  SELECT * INTO v_group
+  FROM public.stay_reservation_groups
+  WHERE id = p_group_id
+  FOR UPDATE;
+  SELECT * INTO v_hold
+  FROM public.stay_inventory_holds
+  WHERE group_id = p_group_id
+  FOR UPDATE;
+
+  v_event_type := CASE v_action
+    WHEN 'approve_request' THEN 'stay_request_approved'
+    ELSE 'stay_request_declined'
+  END;
+  v_event_key := v_action || ':' || pg_catalog.btrim(p_idempotency_key);
+  SELECT * INTO v_existing_event
+  FROM public.stay_reservation_events
+  WHERE group_id = p_group_id AND idempotency_key = v_event_key;
+  IF FOUND THEN
+    IF v_existing_event.event_type NOT IN (
+      v_event_type,
+      'stay_request_expired'
+    ) THEN
+      RAISE EXCEPTION 'stay_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+    RETURN public.issue_1388_group_projection(p_group_id);
+  END IF;
+  IF v_hold.id IS NULL OR v_hold.state <> 'active' THEN
+    RAISE EXCEPTION 'stay_inventory_changed' USING ERRCODE = 'PT409';
+  END IF;
+
+  IF v_group.version <> p_expected_version THEN
+    RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_group.mode <> 'request' OR v_group.state <> 'request_pending' THEN
+    RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+  END IF;
+
+  IF v_group.request_deadline <= now() OR v_hold.expires_at <= now() THEN
+    UPDATE public.stay_reservation_groups
+    SET state = 'request_expired', version = version + 1, updated_at = now()
+    WHERE id = p_group_id;
+    UPDATE public.stay_reservation_lines
+    SET state = 'expired', version = version + 1, updated_at = now()
+    WHERE group_id = p_group_id AND state = 'request_pending';
+    UPDATE public.stay_inventory_holds
+    SET state = 'expired', version = version + 1, updated_at = now()
+    WHERE id = v_hold.id;
+    INSERT INTO public.stay_reservation_events (
+      group_id, event_type, actor_type, actor_user_id,
+      request_id, idempotency_key, safe_metadata
+    ) VALUES (
+      p_group_id, 'stay_request_expired', 'staff', v_uid,
+      p_request_id, v_event_key,
+      jsonb_build_object('expiredAt', now())
+    );
+    RETURN public.issue_1388_group_projection(p_group_id);
+  END IF;
+
+  IF v_action = 'approve_request' THEN
+    IF v_settings.booking_state <> 'active'
+       OR NOT public.pg_brand_can_collect(v_group.brand_id)
+       OR EXISTS (
+         SELECT 1 FROM public.brand_currency_reconciliations r
+         WHERE r.brand_id = v_group.brand_id AND r.status = 'pending'
+       ) THEN
+      RAISE EXCEPTION 'stay_bank_not_ready' USING ERRCODE = 'P0001';
+    END IF;
+    v_payment_deadline :=
+      now() + make_interval(mins => v_settings.approved_payment_minutes);
+    UPDATE public.stay_reservation_groups
+    SET state = 'approved_payment_required',
+        payment_deadline = v_payment_deadline,
+        version = version + 1,
+        updated_at = now()
+    WHERE id = p_group_id;
+    UPDATE public.stay_reservation_lines
+    SET state = 'approved_payment_required',
+        version = version + 1,
+        updated_at = now()
+    WHERE group_id = p_group_id AND state = 'request_pending';
+    UPDATE public.stay_inventory_holds
+    SET expires_at = v_payment_deadline,
+        reason = 'approved_payment',
+        version = version + 1,
+        updated_at = now()
+    WHERE id = v_hold.id AND state = 'active';
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'stay_inventory_changed' USING ERRCODE = 'PT409';
+    END IF;
+  ELSE
+    UPDATE public.stay_reservation_groups
+    SET state = 'declined', version = version + 1, updated_at = now()
+    WHERE id = p_group_id;
+    UPDATE public.stay_reservation_lines
+    SET state = 'declined', version = version + 1, updated_at = now()
+    WHERE group_id = p_group_id AND state = 'request_pending';
+    UPDATE public.stay_inventory_holds
+    SET state = 'released',
+        reason = 'request_declined',
+        version = version + 1,
+        updated_at = now()
+    WHERE id = v_hold.id AND state = 'active';
+  END IF;
+
+  INSERT INTO public.stay_reservation_events (
+    group_id, event_type, actor_type, actor_user_id,
+    request_id, idempotency_key, safe_metadata
+  ) VALUES (
+    p_group_id, v_event_type, 'staff', v_uid,
+    p_request_id, v_event_key,
+    jsonb_build_object('paymentDeadline', v_payment_deadline)
+  );
+  RETURN public.issue_1388_group_projection(p_group_id);
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_1389_cancel_preview(p_group_id uuid, p_selected_line_ids uuid[], p_expected_group_version bigint, p_request_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_group public.stay_reservation_groups%ROWTYPE;
+  v_attempt public.stay_payment_attempts%ROWTYPE;
+  v_actor_type text;
+  v_selected uuid[];
+  v_snapshot jsonb;
+  v_amount bigint;
+  v_preview_id uuid := gen_random_uuid();
+  v_hash text;
+  v_expires_at timestamptz := now() + interval '10 minutes';
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
+  END IF;
+  IF NOT public.issue_1389_flag_enabled('STAY_RESERVE_WRITES') THEN
+    RAISE EXCEPTION 'stay_rail_not_enabled' USING ERRCODE = 'P0001';
+  END IF;
+  IF p_group_id IS NULL
+     OR p_expected_group_version IS NULL
+     OR cardinality(p_selected_line_ids) NOT BETWEEN 1 AND 50
+     OR array_position(p_selected_line_ids, NULL) IS NOT NULL THEN
+    RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT array_agg(DISTINCT selected_id ORDER BY selected_id)
+  INTO v_selected
+  FROM unnest(p_selected_line_ids) selected_id;
+  IF cardinality(v_selected) <> cardinality(p_selected_line_ids) THEN
+    RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_group
+  FROM public.stay_reservation_groups
+  WHERE id = p_group_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'stay_group_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_group.user_id = v_uid THEN
+    v_actor_type := 'guest';
+  ELSIF public.is_admin_user() THEN
+    v_actor_type := 'admin';
+  ELSIF public.issue_1387_has_brand_capability(
+    v_group.brand_id,
+    v_uid,
+    'inventory'
+  ) THEN
+    v_actor_type := 'staff';
+  ELSE
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  IF v_group.version <> p_expected_group_version THEN
+    RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_group.state NOT IN ('confirmed', 'partially_cancelled') THEN
+    RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+  END IF;
+  IF (
+    SELECT count(*) FROM public.stay_reservation_lines line
+    WHERE line.group_id = p_group_id
+      AND line.id = ANY(v_selected)
+      AND line.state = 'confirmed'
+  ) <> cardinality(v_selected) THEN
+    RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM public.stay_reservation_lines room_line
+    JOIN public.stay_reservation_lines place_line
+      ON place_line.dependency_room_line_id = room_line.id
+    WHERE room_line.id = ANY(v_selected)
+      AND room_line.kind = 'room'
+      AND place_line.group_id = p_group_id
+      AND place_line.state = 'confirmed'
+      AND NOT (place_line.id = ANY(v_selected))
+  ) THEN
+    RAISE EXCEPTION 'stay_dependent_place_requires_room'
+      USING ERRCODE = '23514';
+  END IF;
+
+  SELECT * INTO v_attempt
+  FROM public.stay_payment_attempts
+  WHERE group_id = p_group_id AND state = 'succeeded'
+  ORDER BY succeeded_at DESC, id DESC
+  LIMIT 1;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'stay_payment_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  WITH eligible AS (
+    SELECT
+      allocation.id AS payment_allocation_id,
+      allocation.reservation_line_id,
+      allocation.component,
+      allocation.component_ref,
+      allocation.refund_treatment,
+      GREATEST(
+        0,
+        allocation.charged_minor
+          - allocation.refunded_minor
+          - COALESCE((
+            SELECT sum(refund_allocation.amount_minor)
+            FROM public.stay_refund_allocations refund_allocation
+            JOIN public.stay_refunds refund_row
+              ON refund_row.id = refund_allocation.refund_id
+            WHERE refund_allocation.payment_allocation_id = allocation.id
+              AND refund_row.state IN (
+                'submitted', 'processing', 'manual_reconciliation'
+              )
+          ), 0)
+      ) AS outstanding_minor,
+      CASE
+        WHEN allocation.refund_treatment = 'refundable' THEN 10000
+        WHEN allocation.refund_treatment = 'nonrefundable' THEN 0
+        WHEN v_actor_type IN ('staff', 'admin') THEN
+          COALESCE(
+            (line.policy_snapshot->>'operator_cancel_refund_basis_points')
+              ::integer,
+            10000
+          )
+        WHEN now() < public.issue_1389_line_start_at(line.id)
+          - make_interval(mins => COALESCE(
+            (line.policy_snapshot->>'free_cancel_cutoff_minutes')::integer,
+            0
+          )) THEN 10000
+        WHEN now() < public.issue_1389_line_start_at(line.id) THEN
+          COALESCE(
+            (line.policy_snapshot->>'late_refund_basis_points')::integer,
+            0
+          )
+        ELSE COALESCE(
+          (line.policy_snapshot->>'no_show_refund_basis_points')::integer,
+          0
+        )
+      END AS refund_basis_points
+    FROM public.stay_payment_allocations allocation
+    JOIN public.stay_reservation_lines line
+      ON line.id = allocation.reservation_line_id
+    WHERE allocation.payment_attempt_id = v_attempt.id
+      AND allocation.reservation_line_id = ANY(v_selected)
+  ),
+  calculated AS (
+    SELECT
+      eligible.*,
+      LEAST(
+        outstanding_minor,
+        (
+          outstanding_minor::numeric * refund_basis_points + 5000
+        )::bigint / 10000
+      ) AS refund_minor
+    FROM eligible
+  )
+  SELECT
+    COALESCE(jsonb_agg(jsonb_build_object(
+      'paymentAllocationId', payment_allocation_id,
+      'reservationLineId', reservation_line_id,
+      'component', component,
+      'componentRef', component_ref,
+      'refundTreatment', refund_treatment,
+      'refundBasisPoints', refund_basis_points,
+      'amountMinor', refund_minor::text
+    ) ORDER BY reservation_line_id, payment_allocation_id), '[]'::jsonb),
+    COALESCE(sum(refund_minor), 0)
+  INTO v_snapshot, v_amount
+  FROM calculated
+  WHERE refund_minor > 0;
+
+  v_hash := encode(
+    extensions.digest(
+      pg_catalog.convert_to(jsonb_build_object(
+        'previewId', v_preview_id,
+        'groupId', p_group_id,
+        'groupVersion', v_group.version,
+        'actorUserId', v_uid,
+        'selectedLineIds', to_jsonb(v_selected),
+        'amountMinor', v_amount::text,
+        'allocations', v_snapshot,
+        'expiresAt', v_expires_at
+      )::text, 'UTF8'),
+      'sha256'
+    ),
+    'hex'
+  );
+
+  INSERT INTO public.stay_cancel_previews (
+    id, group_id, actor_user_id, actor_type, selected_line_ids,
+    group_version, amount_minor, allocation_snapshot, preview_hash, expires_at
+  ) VALUES (
+    v_preview_id, p_group_id, v_uid, v_actor_type, v_selected,
+    v_group.version, v_amount, v_snapshot, v_hash, v_expires_at
+  );
+
+  RETURN jsonb_build_object(
+    'previewId', v_preview_id,
+    'previewHash', v_hash,
+    'groupId', p_group_id,
+    'groupVersion', v_group.version,
+    'selectedLineIds', to_jsonb(v_selected),
+    'amountMinor', v_amount::text,
+    'currencyCode', v_group.currency_code,
+    'allocations', v_snapshot,
+    'expiresAt', v_expires_at
+  );
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_1389_cancel(p_preview_id uuid, p_preview_hash text, p_idempotency_key text, p_reason text, p_request_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_preview public.stay_cancel_previews%ROWTYPE;
+  v_group public.stay_reservation_groups%ROWTYPE;
+  v_attempt public.stay_payment_attempts%ROWTYPE;
+  v_refund public.stay_refunds%ROWTYPE;
+  v_source public.source_refunds%ROWTYPE;
+  v_allocation jsonb;
+  v_fee_reversal bigint;
+  v_fee_remaining bigint;
+  v_existing_fee bigint;
+  v_all_active_selected boolean;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
+  END IF;
+  IF NOT public.issue_1389_flag_enabled('STAY_RESERVE_WRITES') THEN
+    RAISE EXCEPTION 'stay_rail_not_enabled' USING ERRCODE = 'P0001';
+  END IF;
+  IF p_preview_id IS NULL
+     OR p_preview_hash !~ '^[a-f0-9]{64}$'
+     OR char_length(pg_catalog.btrim(COALESCE(p_idempotency_key, '')))
+       NOT BETWEEN 8 AND 200
+     OR char_length(pg_catalog.btrim(COALESCE(p_reason, '')))
+       NOT BETWEEN 3 AND 500 THEN
+    RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'stay-cancel:' || p_preview_id::text,
+      1389
+    )
+  );
+  SELECT * INTO v_refund
+  FROM public.stay_refunds
+  WHERE idempotency_key = pg_catalog.btrim(p_idempotency_key);
+  IF FOUND THEN
+    RETURN jsonb_build_object(
+      'refundId', v_refund.id,
+      'groupId', v_refund.group_id,
+      'state', v_refund.state,
+      'amountMinor', v_refund.amount_minor::text,
+      'currencyCode', v_refund.currency_code
+    );
+  END IF;
+
+  SELECT * INTO v_preview
+  FROM public.stay_cancel_previews
+  WHERE id = p_preview_id
+  FOR UPDATE;
+  IF NOT FOUND
+     OR v_preview.actor_user_id <> v_uid
+     OR v_preview.preview_hash <> p_preview_hash THEN
+    RAISE EXCEPTION 'stay_cancel_preview_invalid' USING ERRCODE = '22023';
+  END IF;
+  IF v_preview.consumed_at IS NOT NULL OR v_preview.expires_at <= now() THEN
+    RAISE EXCEPTION 'stay_cancel_preview_expired' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_group
+  FROM public.stay_reservation_groups
+  WHERE id = v_preview.group_id
+  FOR UPDATE;
+  IF v_group.version <> v_preview.group_version
+     OR v_group.state NOT IN ('confirmed', 'partially_cancelled') THEN
+    RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+  END IF;
+  SELECT * INTO v_attempt
+  FROM public.stay_payment_attempts
+  WHERE group_id = v_group.id AND state = 'succeeded'
+  ORDER BY succeeded_at DESC, id DESC
+  LIMIT 1
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'stay_payment_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  PERFORM 1
+  FROM public.stay_payment_allocations allocation
+  WHERE allocation.payment_attempt_id = v_attempt.id
+    AND allocation.reservation_line_id = ANY(v_preview.selected_line_ids)
+  ORDER BY allocation.reservation_line_id, allocation.id
+  FOR UPDATE;
+  PERFORM 1
+  FROM public.stay_inventory_commitments commitment
+  WHERE commitment.group_id = v_group.id
+    AND commitment.reservation_line_id = ANY(v_preview.selected_line_ids)
+    AND commitment.state = 'active'
+  ORDER BY
+    commitment.resource_type,
+    commitment.offering_id,
+    commitment.room_date,
+    commitment.place_window_id,
+    commitment.exclusive_unit_id
+  FOR UPDATE;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.stay_reservation_lines room_line
+    JOIN public.stay_reservation_lines place_line
+      ON place_line.dependency_room_line_id = room_line.id
+    WHERE room_line.id = ANY(v_preview.selected_line_ids)
+      AND room_line.kind = 'room'
+      AND place_line.group_id = v_group.id
+      AND place_line.state = 'confirmed'
+      AND NOT (place_line.id = ANY(v_preview.selected_line_ids))
+  ) THEN
+    RAISE EXCEPTION 'stay_dependent_place_requires_room'
+      USING ERRCODE = '23514';
+  END IF;
+
+  SELECT COALESCE(sum(application_fee_reversal_minor), 0)
+  INTO v_existing_fee
+  FROM public.stay_refunds prior_refund
+  WHERE prior_refund.payment_attempt_id = v_attempt.id
+    AND prior_refund.state IN (
+      'submitted', 'processing', 'succeeded', 'manual_reconciliation'
+    );
+  v_fee_remaining := GREATEST(
+    0,
+    v_attempt.application_fee_minor - v_existing_fee
+  );
+  v_fee_reversal := CASE
+    WHEN v_preview.amount_minor = 0 THEN 0
+    WHEN v_preview.amount_minor >= (
+      SELECT COALESCE(sum(
+        allocation.charged_minor - allocation.refunded_minor
+      ), 0)
+      FROM public.stay_payment_allocations allocation
+      WHERE allocation.payment_attempt_id = v_attempt.id
+    ) THEN v_fee_remaining
+    ELSE LEAST(
+      v_fee_remaining,
+      (
+        v_attempt.application_fee_minor::numeric
+          * v_preview.amount_minor
+          + v_attempt.amount_minor / 2
+      )::bigint / v_attempt.amount_minor
+    )
+  END;
+
+  INSERT INTO public.stay_refunds (
+    group_id, payment_attempt_id, cancel_preview_id,
+    requested_by_type, requested_by_user_id, reason, state,
+    amount_minor, application_fee_reversal_minor, currency_code,
+    provider, idempotency_key
+  ) VALUES (
+    v_group.id, v_attempt.id, v_preview.id,
+    v_preview.actor_type, v_uid, pg_catalog.btrim(p_reason),
+    CASE WHEN v_preview.amount_minor = 0 THEN 'succeeded' ELSE 'submitted' END,
+    v_preview.amount_minor, v_fee_reversal, v_group.currency_code,
+    v_attempt.provider, pg_catalog.btrim(p_idempotency_key)
+  ) RETURNING * INTO v_refund;
+
+  IF v_preview.amount_minor > 0 THEN
+    WITH requested AS (
+      SELECT
+        (item->>'paymentAllocationId')::uuid AS payment_allocation_id,
+        (item->>'reservationLineId')::uuid AS reservation_line_id,
+        (item->>'amountMinor')::bigint AS amount_minor
+      FROM jsonb_array_elements(v_preview.allocation_snapshot) item
+    ),
+    floors AS (
+      SELECT
+        requested.*,
+        floor(
+          v_fee_reversal::numeric * requested.amount_minor
+          / v_preview.amount_minor
+        )::bigint AS fee_floor,
+        (
+          v_fee_reversal::numeric * requested.amount_minor
+          - floor(
+            v_fee_reversal::numeric * requested.amount_minor
+            / v_preview.amount_minor
+          ) * v_preview.amount_minor
+        ) AS remainder
+      FROM requested
+    ),
+    ranked AS (
+      SELECT
+        floors.*,
+        row_number() OVER (
+          ORDER BY remainder DESC, payment_allocation_id
+        ) AS remainder_rank,
+        v_fee_reversal - sum(fee_floor) OVER () AS extras
+      FROM floors
+    )
+    INSERT INTO public.stay_refund_allocations (
+      refund_id, payment_allocation_id, reservation_line_id,
+      amount_minor, organizer_liability_minor,
+      platform_fee_reversal_minor, state
+    )
+    SELECT
+      v_refund.id,
+      ranked.payment_allocation_id,
+      ranked.reservation_line_id,
+      ranked.amount_minor,
+      ranked.amount_minor - (
+        ranked.fee_floor
+        + CASE WHEN ranked.remainder_rank <= ranked.extras THEN 1 ELSE 0 END
+      ),
+      ranked.fee_floor
+        + CASE WHEN ranked.remainder_rank <= ranked.extras THEN 1 ELSE 0 END,
+      'submitted'
+    FROM ranked;
+
+    INSERT INTO public.source_refunds (
+      source_type, source_id, subject_id, brand_id, venue_id, refund_kind,
+      requested_by_type, requested_by_user_id, reason, provider, currency,
+      original_charge_cents, buyer_refund_requested_cents,
+      original_application_fee_cents, fee_reversal_required_cents,
+      fee_state, fee_leg_kind, financial_state,
+      organizer_refund_liability_cents, platform_fee_absorption_cents,
+      provider_payment_reference, provider_account_reference, idempotency_key
+    ) VALUES (
+      'stay_reservation', v_refund.id, v_group.id, v_group.brand_id,
+      v_group.venue_id, 'stay_cancellation',
+      CASE v_preview.actor_type
+        WHEN 'guest' THEN 'consumer'
+        WHEN 'admin' THEN 'admin'
+        ELSE 'brand_staff'
+      END,
+      v_uid, pg_catalog.btrim(p_reason), v_attempt.provider,
+      v_group.currency_code::text, v_attempt.amount_minor::integer,
+      v_refund.amount_minor::integer,
+      v_attempt.application_fee_minor::integer,
+      v_fee_reversal::integer,
+      CASE WHEN v_fee_reversal = 0 THEN 'not_required' ELSE 'queued' END,
+      CASE
+        WHEN v_fee_reversal = 0 THEN 'not_required'
+        WHEN v_attempt.provider = 'stripe'
+          THEN 'stripe_application_fee_refund'
+        ELSE 'paystack_ledger_allocation'
+      END,
+      'pending',
+      (v_refund.amount_minor - v_fee_reversal)::integer,
+      v_fee_reversal::integer,
+      v_attempt.provider_payment_ref,
+      v_attempt.connected_account_ref,
+      'stay-refund:' || v_refund.id
+    ) RETURNING * INTO v_source;
+
+    UPDATE public.stay_refunds
+    SET source_refund_id = v_source.id,
+        updated_at = now()
+    WHERE id = v_refund.id
+    RETURNING * INTO v_refund;
+
+    INSERT INTO public.source_refund_ledger_allocations (
+      refund_id, allocation_type, amount_cents, currency, provider,
+      state, idempotency_key
+    ) VALUES (
+      v_source.id, 'buyer_refund', v_source.buyer_refund_requested_cents,
+      v_source.currency, v_source.provider, 'prepared',
+      'source-refund-allocation:buyer:' || v_source.id
+    );
+    IF v_source.organizer_refund_liability_cents > 0 THEN
+      INSERT INTO public.source_refund_ledger_allocations (
+        refund_id, allocation_type, amount_cents, currency, provider,
+        state, idempotency_key
+      ) VALUES (
+        v_source.id, 'organizer_refund_liability',
+        v_source.organizer_refund_liability_cents,
+        v_source.currency, v_source.provider, 'prepared',
+        'source-refund-allocation:organizer:' || v_source.id
+      );
+    END IF;
+    IF v_source.platform_fee_absorption_cents > 0 THEN
+      INSERT INTO public.source_refund_ledger_allocations (
+        refund_id, allocation_type, amount_cents, currency, provider,
+        state, idempotency_key
+      ) VALUES (
+        v_source.id, 'platform_application_fee_reversal',
+        v_source.platform_fee_absorption_cents,
+        v_source.currency, v_source.provider, 'prepared',
+        'source-refund-allocation:platform:' || v_source.id
+      );
+    END IF;
+  END IF;
+
+  UPDATE public.stay_inventory_commitments
+  SET state = 'released',
+      released_at = now(),
+      release_reason = 'reservation_cancelled'
+  WHERE group_id = v_group.id
+    AND reservation_line_id = ANY(v_preview.selected_line_ids)
+    AND state = 'active';
+  UPDATE public.stay_reservation_lines
+  SET state = 'cancelled', version = version + 1, updated_at = now()
+  WHERE group_id = v_group.id
+    AND id = ANY(v_preview.selected_line_ids)
+    AND state = 'confirmed';
+
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.stay_reservation_lines line
+    WHERE line.group_id = v_group.id AND line.state = 'confirmed'
+  ) INTO v_all_active_selected;
+  UPDATE public.stay_reservation_groups
+  SET state = CASE
+        WHEN v_all_active_selected THEN 'cancelled'
+        ELSE 'partially_cancelled'
+      END,
+      version = version + 1,
+      updated_at = now()
+  WHERE id = v_group.id;
+  UPDATE public.stay_cancel_previews
+  SET consumed_at = now()
+  WHERE id = v_preview.id;
+
+  FOR v_allocation IN
+    SELECT jsonb_build_object(
+      'lineId', allocation.reservation_line_id,
+      'amountMinor', sum(allocation.amount_minor)::text
+    ) AS value
+    FROM public.stay_refund_allocations allocation
+    WHERE allocation.refund_id = v_refund.id
+    GROUP BY allocation.reservation_line_id
+    ORDER BY allocation.reservation_line_id
+  LOOP
+    INSERT INTO public.stay_money_ledger (
+      group_id, line_id, payment_attempt_id, refund_id, entry_type,
+      amount_minor, currency_code, idempotency_key, metadata
+    ) VALUES (
+      v_group.id,
+      (v_allocation->>'lineId')::uuid,
+      v_attempt.id,
+      v_refund.id,
+      CASE WHEN v_refund.amount_minor = 0
+        THEN 'refund_succeeded' ELSE 'refund_requested' END,
+      (v_allocation->>'amountMinor')::bigint,
+      v_group.currency_code,
+      'stay:refund_requested:' || v_refund.id || ':' ||
+        (v_allocation->>'lineId'),
+      jsonb_build_object('reason', 'reservation_cancelled')
+    ) ON CONFLICT (idempotency_key) DO NOTHING;
+  END LOOP;
+
+  INSERT INTO public.stay_reservation_events (
+    group_id, event_type, actor_type, actor_user_id, request_id,
+    idempotency_key, safe_metadata
+  ) VALUES (
+    v_group.id, 'stay_reservation_cancelled', v_preview.actor_type, v_uid,
+    p_request_id, 'cancel:' || pg_catalog.btrim(p_idempotency_key),
+    jsonb_build_object(
+      'refundId', v_refund.id,
+      'selectedLineIds', to_jsonb(v_preview.selected_line_ids),
+      'amountMinor', v_refund.amount_minor::text,
+      'currencyCode', v_refund.currency_code
+    )
+  );
+
+  RETURN jsonb_build_object(
+    'refundId', v_refund.id,
+    'groupId', v_group.id,
+    'state', v_refund.state,
+    'amountMinor', v_refund.amount_minor::text,
+    'currencyCode', v_refund.currency_code,
+    'group', public.issue_1388_group_projection(v_group.id)
+  );
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_1389_prepare_payment(p_group_id uuid, p_idempotency_key text, p_expected_group_version bigint, p_request_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_group public.stay_reservation_groups%ROWTYPE;
+  v_hold public.stay_inventory_holds%ROWTYPE;
+  v_attempt public.stay_payment_attempts%ROWTYPE;
+  v_provider text;
+  v_account text;
+  v_currency text;
+  v_take_rate integer;
+  v_app_fee bigint;
+  v_ordinal integer;
+  v_request_hash text;
+  v_cutover timestamptz;
+  v_readiness_revision bigint;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'unauthorized' USING ERRCODE = '42501';
+  END IF;
+  IF p_group_id IS NULL
+     OR p_expected_group_version IS NULL
+     OR char_length(pg_catalog.btrim(COALESCE(p_idempotency_key, '')))
+       NOT BETWEEN 8 AND 200 THEN
+    RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+  IF NOT public.issue_1389_flag_enabled('STAY_RESERVE_WRITES') THEN
+    RAISE EXCEPTION 'stay_rail_not_enabled' USING ERRCODE = 'P0001';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'stay-payment:' || p_group_id::text || ':' ||
+        pg_catalog.btrim(p_idempotency_key),
+      1389
+    )
+  );
+
+  SELECT * INTO v_group
+  FROM public.stay_reservation_groups
+  WHERE id = p_group_id
+  FOR UPDATE;
+  IF NOT FOUND OR v_group.user_id IS DISTINCT FROM v_uid THEN
+    RAISE EXCEPTION 'stay_group_not_found' USING ERRCODE = 'P0002';
+  END IF;
+
+  v_request_hash := encode(
+    extensions.digest(
+      pg_catalog.convert_to(jsonb_build_object(
+        'groupId', p_group_id,
+        'expectedVersion', p_expected_group_version
+      )::text, 'UTF8'),
+      'sha256'
+    ),
+    'hex'
+  );
+  SELECT * INTO v_attempt
+  FROM public.stay_payment_attempts
+  WHERE group_id = p_group_id
+    AND idempotency_key = pg_catalog.btrim(p_idempotency_key)
+  FOR UPDATE;
+  IF FOUND THEN
+    IF v_attempt.request_hash <> v_request_hash THEN
+      RAISE EXCEPTION 'stay_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+    RETURN public.issue_1389_attempt_projection(v_attempt.id);
+  END IF;
+
+  IF v_group.version <> p_expected_group_version THEN
+    RAISE EXCEPTION 'stay_version_conflict' USING ERRCODE = 'PT409';
+  END IF;
+  IF (
+    v_group.mode = 'instant'
+    AND v_group.state <> 'instant_payment_pending'
+  ) OR (
+    v_group.mode = 'request'
+    AND v_group.state <> 'approved_payment_required'
+  ) THEN
+    RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+  END IF;
+  IF v_group.mode = 'request' AND v_group.payment_deadline IS NULL THEN
+    RAISE EXCEPTION 'stay_payment_before_approval' USING ERRCODE = 'PT409';
+  END IF;
+
+  SELECT * INTO v_hold
+  FROM public.stay_inventory_holds
+  WHERE group_id = p_group_id
+  FOR UPDATE;
+  IF NOT FOUND OR v_hold.state <> 'active' OR v_hold.expires_at <= now() THEN
+    RAISE EXCEPTION 'stay_inventory_changed' USING ERRCODE = 'PT409';
+  END IF;
+
+  PERFORM 1 FROM public.brands WHERE id = v_group.brand_id FOR UPDATE;
+  SELECT
+    CASE WHEN pricing.payment_provider = 'paystack'
+      THEN 'paystack' ELSE 'stripe' END,
+    CASE WHEN pricing.payment_provider = 'paystack'
+      THEN pricing.paystack_subaccount_code
+      ELSE pricing.stripe_account_id END,
+    upper(pricing.pricing_currency),
+    pricing.effective_take_rate_bps
+  INTO v_provider, v_account, v_currency, v_take_rate
+  FROM public.resolve_brand_pricing_inputs(
+    v_group.brand_id,
+    v_group.venue_id
+  ) pricing
+  LIMIT 1;
+
+  SELECT b.payout_hold_cutover_at INTO v_cutover
+  FROM public.brands b WHERE b.id = v_group.brand_id;
+  SELECT b.discovery_currency_state_version INTO v_readiness_revision
+  FROM public.brands b
+  WHERE b.id = v_group.brand_id;
+
+  IF v_provider IS NULL
+     OR v_currency IS DISTINCT FROM v_group.currency_code::text
+     OR NOT public.pg_brand_can_collect(v_group.brand_id)
+     OR EXISTS (
+       SELECT 1 FROM public.brand_currency_reconciliations reconciliation
+       WHERE reconciliation.brand_id = v_group.brand_id
+         AND reconciliation.status = 'pending'
+     )
+     OR v_cutover IS NULL THEN
+    RAISE EXCEPTION 'stay_bank_not_ready' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_provider = 'stripe' AND (
+    v_account IS NULL
+    OR NOT public.issue_1389_flag_enabled('STAY_STRIPE_COMMERCE')
+  ) THEN
+    RAISE EXCEPTION 'stay_rail_not_enabled' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_provider = 'paystack' AND (
+    v_currency <> 'NGN'
+    OR NOT public.issue_1389_flag_enabled('STAY_PAYSTACK_COMMERCE')
+  ) THEN
+    RAISE EXCEPTION 'stay_rail_not_enabled' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_group.total_minor <= 0 OR v_group.total_minor > 2147483647 THEN
+    RAISE EXCEPTION 'stay_money_out_of_range' USING ERRCODE = '22003';
+  END IF;
+
+  v_app_fee := LEAST(
+    v_group.total_minor,
+    ((v_group.total_minor::numeric * COALESCE(v_take_rate, 0) + 5000)
+      / 10000)::bigint
+  );
+  SELECT COALESCE(max(attempt_ordinal), 0) + 1 INTO v_ordinal
+  FROM public.stay_payment_attempts
+  WHERE group_id = p_group_id;
+
+  INSERT INTO public.stay_payment_attempts (
+    group_id, provider, attempt_ordinal, connected_account_ref,
+    amount_minor, currency_code, application_fee_minor, state,
+    idempotency_key, request_hash, readiness_revision
+  ) VALUES (
+    p_group_id, v_provider, v_ordinal, v_account,
+    v_group.total_minor, v_group.currency_code, v_app_fee, 'created',
+    pg_catalog.btrim(p_idempotency_key), v_request_hash,
+    COALESCE(v_readiness_revision, 1)
+  ) RETURNING * INTO v_attempt;
+
+  INSERT INTO public.stay_payment_allocations (
+    payment_attempt_id, reservation_line_id, component, component_ref,
+    charged_minor, refund_treatment, snapshot
+  )
+  SELECT
+    v_attempt.id, line.id, 'base', 'base',
+    line.base_minor, 'same_as_line',
+    jsonb_build_object('policy', line.policy_snapshot)
+  FROM public.stay_reservation_lines line
+  WHERE line.group_id = p_group_id
+  ORDER BY line.id;
+
+  INSERT INTO public.stay_payment_allocations (
+    payment_attempt_id, reservation_line_id, component, component_ref,
+    charged_minor, refund_treatment, snapshot
+  )
+  SELECT
+    v_attempt.id,
+    reservation_line.id,
+    CASE quote_fee.fee_kind WHEN 'tax' THEN 'tax' ELSE 'fee' END,
+    quote_fee.id::text,
+    quote_fee.amount_minor,
+    quote_fee.refund_treatment,
+    quote_fee.snapshot
+  FROM public.stay_reservation_lines reservation_line
+  JOIN public.stay_quote_fee_lines quote_fee
+    ON quote_fee.quote_line_id = reservation_line.quote_line_id
+  WHERE reservation_line.group_id = p_group_id
+    AND NOT quote_fee.included_in_base
+    AND quote_fee.amount_minor > 0
+  ORDER BY reservation_line.id, quote_fee.id;
+
+  IF (
+    SELECT COALESCE(sum(allocation.charged_minor), 0)
+    FROM public.stay_payment_allocations allocation
+    WHERE allocation.payment_attempt_id = v_attempt.id
+  ) <> v_attempt.amount_minor THEN
+    RAISE EXCEPTION 'stay_payment_allocation_mismatch'
+      USING ERRCODE = '23514';
+  END IF;
+
+  INSERT INTO public.stay_reservation_events (
+    group_id, event_type, actor_type, actor_user_id, request_id,
+    idempotency_key, safe_metadata
+  ) VALUES (
+    p_group_id, 'stay_payment_prepared', 'guest', v_uid, p_request_id,
+    'payment-prepared:' || v_attempt.id,
+    jsonb_build_object(
+      'attemptId', v_attempt.id,
+      'provider', v_provider,
+      'amountMinor', v_attempt.amount_minor::text,
+      'currencyCode', v_attempt.currency_code
+    )
+  );
+
+  RETURN public.issue_1389_attempt_projection(v_attempt.id);
 END;
 $function$
 ;

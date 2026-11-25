@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="theme-color" content="#0f0f11" />
+    <title>%WEB_TITLE%</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <style id="mingla-preboot">
+      html,
+      body {
+        background-color: #0f0f11;
+        color: #a8a8ad;
+        color-scheme: dark;
+      }
+      .mingla-preboot{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:15px}
+      .mingla-preboot-ring{width:28px;height:28px;border-radius:50%;border:3px solid rgba(255,255,255,.14);border-top-color:rgba(255,255,255,.72);animation:mingla-preboot-spin .9s linear infinite}
+      #root:not(:empty) ~ .mingla-preboot{display:none}
+      @keyframes mingla-preboot-spin{to{transform:rotate(360deg)}}
+      @media (prefers-reduced-motion:reduce){.mingla-preboot-ring{animation:none}}
+    </style>
+  </head>
+
+  <body>
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+    <div class="mingla-preboot" role="status" aria-live="polite">
+      <div class="mingla-preboot-ring" aria-hidden="true"></div>
+      <span>Loading…</span>
+    </div>
+  </body>
+</html>

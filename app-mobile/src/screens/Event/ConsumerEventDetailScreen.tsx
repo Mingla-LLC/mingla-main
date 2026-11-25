@@ -211,6 +211,7 @@ import { toastManager } from "../../components/ui/Toast";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import { PresentedByFollowAndMessage } from "../../components/brandEnquiry/PresentedByFollowAndMessage";
+import { EventWhenYoudGo } from "../../components/expandedCard/EventWhenYoudGo";
 import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
 // runs alongside the existing analytics; no Mixpanel call exists at this site).
@@ -2101,21 +2102,31 @@ export default function ConsumerEventDetailScreen({
   // event (or RSVP) picked.
   const presentedByFollow =
     seed !== null ? (
-      <PresentedByFollowAndMessage
-        brandId={seed.brandId}
-        brandName={seed.brandName}
-        brandSlug={seed.brandSlug ?? null}
-        palette={palette}
-        theme={theme}
-        offering={{
-          id: seed.eventId,
-          title: seed.title,
-          kind: isRsvp ? "rsvp" : "event",
-          startsAt: seed.masterDateUtc ?? null,
-          endsAt: seed.masterEndAtUtc ?? null,
-          when: "upcoming",
-        }}
-      />
+      <>
+        <PresentedByFollowAndMessage
+          brandId={seed.brandId}
+          brandName={seed.brandName}
+          brandSlug={seed.brandSlug ?? null}
+          palette={palette}
+          theme={theme}
+          offering={{
+            id: seed.eventId,
+            title: seed.title,
+            kind: isRsvp ? "rsvp" : "event",
+            startsAt: seed.masterDateUtc ?? null,
+            endsAt: seed.masterEndAtUtc ?? null,
+            when: "upcoming",
+          }}
+        />
+        {/* #4490 W7 (b) — "When you'd go" for an event at a hosted venue,
+            right under the host. Drawn only when the page was opened from the
+            venue's What's on (hostedEventContext); nothing for any other event. */}
+        <EventWhenYoudGo
+          brandSlug={seed.brandSlug}
+          eventSlug={seed.eventSlug}
+          palette={palette}
+        />
+      </>
     ) : undefined;
 
   // ORCH-1167-R2 (change 4) — the floating Get-tickets bar is PERSISTENT on the

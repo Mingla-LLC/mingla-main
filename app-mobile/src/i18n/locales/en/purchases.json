@@ -7,6 +7,7 @@
     "empty": "Tickets you buy on Mingla show up here.",
     "dateTbd": "Date to be confirmed",
     "tonightAt": "Tonight · {{time}}",
+    "todayAt": "Today · {{time}}",
     "upcomingCount_one": "{{count}} upcoming",
     "upcomingCount_other": "{{count}} upcoming"
   },
@@ -219,6 +220,11 @@
     },
     "landed": {
       "title": "Is this your ticket?",
+      "titleNoun": {
+        "pass": "Is this your pass?",
+        "booking": "Is this your booking?",
+        "receipt": "Is this your receipt?"
+      },
       "bodyEmail": "It was bought with {{contact}}. To add it to this account, confirm that email with a 6-digit code.",
       "bodyPhone": "It was bought with {{contact}}. To add it to this account, confirm that number with a 6-digit code.",
       "send": "Send code to {{contact}}",
@@ -312,6 +318,7 @@
     "title": "{{title}}",
     "subtitle": "{{when}} · {{venue}}",
     "ticketLine": "{{ticketType}} · Ticket {{index}} of {{total}}",
+    "passLine": "{{ticketType}} · Pass {{index}} of {{total}}",
     "swipeNext": "Swipe for ticket {{next}} →",
     "brightness": "Brightness is turned up while this is open.",
     "close": "Close",

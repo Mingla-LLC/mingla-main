@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/venue-order-staff/__tests__/issue_4490_o5c_stock_actions.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-08-o5c-stock-actions",
+  "profile": "deno-2-unit"
+}

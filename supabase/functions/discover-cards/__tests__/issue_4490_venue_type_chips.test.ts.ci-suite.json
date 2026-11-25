@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/discover-cards/__tests__/issue_4490_venue_type_chips.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-venue-type-chips",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "env",
+    "read"
+  ]
+}

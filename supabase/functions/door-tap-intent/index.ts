@@ -14,6 +14,18 @@
 //
 // verify_jwt = false at the gateway; the bearer is verified in code and the
 // caller must be allowed to take door money for the event.
+//
+// #4490 spec 08 O2 — scope "till": the same native flow pays a Till payment.
+// venue-till `pay_tap_start` makes the pending payment and its carrier venue
+// order (priced by the server); create here starts the card_present
+// PaymentIntent for the carrier's total (direct charge on the connected
+// account, automatic capture, application fee = the carrier's Mingla fees),
+// metadata mingla_venue_order_id = carrier so the venue-order webhook also
+// finds it. complete records it through issue_4490_till_tap_record (the
+// finalizer's amount gate); the webhook for the same PaymentIntent then
+// answers "replayed". Idempotency keys till_tap:<clientRequestId>,
+// till_tap_cancel:<clientRequestId>, till_tap_sweep_cancel:<intentId>.
+// Event scope is unchanged.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
@@ -41,6 +53,14 @@ import {
   terminalAddressFor,
 } from "../_shared/doorTerminal.ts";
 import { doorErrorFromDb, isUuid } from "../_shared/doorPay.ts";
+import {
+  handleTillCancel,
+  handleTillComplete,
+  handleTillCreate,
+  handleTillLocation,
+  handleTillSeen,
+  sweepTillUnfinished,
+} from "./tillScope.ts";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 
 export interface DoorTapIntentDeps {
@@ -469,6 +489,7 @@ async function handleSweepUnfinished(
       "id, brand_id, event_id, stripe_payment_intent_id, stripe_account_id, created_by, events(title)",
     )
     .eq("status", "created")
+    .not("event_id", "is", null)
     .lt("created_at", new Date(now - UNFINISHED_AFTER_MS).toISOString())
     .gt("created_at", new Date(now - UNFINISHED_WITHIN_MS).toISOString())
     .is("outcome_seen_at", null)
@@ -559,6 +580,7 @@ async function handleSweepUnfinished(
     .from("door_tap_intents")
     .select("id, brand_id, event_id, created_by, events(title)")
     .eq("status", "recorded")
+    .not("event_id", "is", null)
     .lt("created_at", new Date(now - UNFINISHED_AFTER_MS).toISOString())
     .gt("created_at", new Date(now - UNFINISHED_WITHIN_MS).toISOString())
     .is("outcome_seen_at", null)
@@ -580,6 +602,12 @@ async function handleSweepUnfinished(
       );
     }
   }
+  // #4490 O2: Till taps nobody saw end (their own rows, their own words).
+  const till = await sweepTillUnfinished(supabase, stripe, notify, now);
+  tally.recorded += till.recorded;
+  tally.notified += till.notified;
+  tally.skipped += till.skipped;
+  tally.failed += till.failed;
   return jsonResponse({ swept: tally });
 }
 
@@ -727,6 +755,27 @@ export const createDoorTapIntentHandler = (
     if (body.action === "sweep_unfinished") return await handleSweepUnfinished(req, deps);
     const actorId = await deps.userIdFromAuthHeader(req);
     if (actorId === null) return jsonResponse({ error: "door_access_denied" }, 401);
+    if (body.scope === "till") {
+      switch (body.action) {
+        case "create":
+          return await handleTillCreate(
+            body,
+            actorId,
+            deps,
+            (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim(),
+          );
+        case "complete":
+          return await handleTillComplete(body, actorId, deps);
+        case "location":
+          return await handleTillLocation(body, actorId, deps);
+        case "cancel":
+          return await handleTillCancel(body, actorId, deps);
+        case "seen":
+          return await handleTillSeen(body, actorId, deps);
+        default:
+          return jsonResponse({ error: "invalid_request" }, 400);
+      }
+    }
     switch (body.action) {
       case "create":
         return await handleCreate(body, actorId, deps);

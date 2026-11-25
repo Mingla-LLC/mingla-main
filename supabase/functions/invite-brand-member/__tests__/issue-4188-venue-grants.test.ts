@@ -93,6 +93,7 @@ Deno.test("venue grants must match the operational venue category", () => {
   };
   assert(venueGrantMatchesCategory(stayGrant, "stay"));
   assert(!venueGrantMatchesCategory(stayGrant, "restaurant"));
+  // #4490 — a play venue takes restaurant.* / venue.* grants, never stay.*.
   assert(!venueGrantMatchesCategory(stayGrant, "play"));
   assert(
     !venueGrantMatchesCategory({
@@ -101,4 +102,33 @@ Deno.test("venue grants must match the operational venue category", () => {
       capabilities: ["restaurant.view_orders"],
     }, "stay"),
   );
+});
+
+// #4490 — venue.* capabilities and every non-stay venue type (20281203064490).
+Deno.test("#4490 venue capabilities validate and match every non-stay venue type", () => {
+  const result = validateInvite({
+    ...base,
+    venue_grants: [{
+      venue_id: "22222222-2222-4222-8222-222222222222",
+      access_profile: "custom",
+      capabilities: ["venue.manage_offers", "venue.check_in", "restaurant.view_orders"],
+    }],
+  });
+  assert(result.ok);
+  if (!result.ok) return;
+  const grant = result.payload.venue_grants[0];
+  for (const category of ["restaurant", "play", "creative_and_arts", "bar_lounge", "club", "cafe", "event_space", "coworking"]) {
+    assert(venueGrantMatchesCategory(grant, category), category);
+  }
+  assert(!venueGrantMatchesCategory(grant, "stay"));
+  assert(!venueGrantMatchesCategory({ ...grant, access_profile: "front_desk" }, "play"));
+  const unknown = validateInvite({
+    ...base,
+    venue_grants: [{
+      venue_id: "22222222-2222-4222-8222-222222222222",
+      access_profile: "custom",
+      capabilities: ["venue.everything"],
+    }],
+  });
+  assert(!unknown.ok);
 });

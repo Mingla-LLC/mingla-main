@@ -24,6 +24,12 @@ export interface GuestReservationInput {
   organicJourneyToken?: string | null;
   discountCode?: string | null;
   quoteDigest?: string | null;
+  /** #4490 P5 — a picked table, or two joined tables. */
+  tableIds?: string[] | null;
+  /** #4490 P5 — a seating area (the server gives the smallest free table there). */
+  spaceId?: string | null;
+  /** #4490 P5 — a party bigger than any table: a request, nothing to pay. */
+  requestLargeParty?: boolean;
 }
 
 export interface GuestReservationPreview {

@@ -24,13 +24,13 @@ import type { DraftVenueState } from "../../../store/draftVenueStore";
 import { provenanceFor } from "../../../store/draftVenueStore";
 import type { VenueCategory } from "../../../types/brand";
 import { removedAdoptedUrls } from "./ClaimStepPhotos";
+import { VENUE_TYPES } from "../../../types/venueFeatures";
 
-const CAT_LABEL: Record<VenueCategory, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-  stay: "Stay",
-};
+// #4490 click-test D10/D12 — one label per type, everywhere a host reads it
+// ("Play and games", never "Play"): the nine types' own labels.
+const CAT_LABEL: Record<VenueCategory, string> = Object.fromEntries(
+  VENUE_TYPES.map((t) => [t.key, t.label]),
+) as Record<VenueCategory, string>;
 
 // ─── Pure review-group builder (unit-tested — T-B7) ─────────────────────────
 

@@ -40,6 +40,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ClipboardList } from "lucide-react-native";
+import { router } from "expo-router";
 
 import {
   radius,
@@ -74,6 +75,11 @@ import {
   orderingSwitchState,
 } from "./venueOrderingSwitch";
 import type { OrderPadTab } from "./orderPad/venueOrderPad";
+import { tillHref } from "./till/tillRoute";
+import { stationHref } from "./station/stationRoute";
+import { STATION_COPY } from "./station/stationCopy";
+import { useStationsEntry } from "../../hooks/useStationsEntry";
+import type { VenueOrderEntry } from "./venueModules";
 import {
   VENUE_ORDER_VIEWS,
   availableZones,
@@ -100,14 +106,23 @@ export interface VenueOrdersModuleProps {
   brandId: string | null;
   /** The venue this module was opened from — its immutable operational scope. */
   venueId?: string | null;
+  /**
+   * #4490 spec 08 O1 — the shells' one switch (`venueOrderEntry`): "pad"
+   * (default; the Till is not running here) keeps the order pad and tabs card
+   * exactly as before; "till" sends New order and open tabs to the Till;
+   * "none" (the Till runs here, this person may not sell) offers neither.
+   */
+  orderEntry?: VenueOrderEntry;
   testID?: string;
 }
 
 export function VenueOrdersModule({
   brandId,
   venueId = null,
+  orderEntry = "pad",
   testID,
 }: VenueOrdersModuleProps): React.ReactElement {
+  const usesPad = orderEntry === "pad";
   const { rank } = useCurrentBrandRole(brandId);
   // OQ-4: acknowledging is not a money act, so ANY active member may do it.
   const canWorkQueue = rank > 0;
@@ -120,11 +135,13 @@ export function VenueOrdersModule({
   // no second table list for waiters, which is what makes a laminate and a pad
   // structurally unable to disagree about which one is table 12.
   const spotsQuery = useQrSpots(scopedBrandId, venueId);
-  const tabsQuery = useVenueTabs(scopedBrandId, venueId);
+  // [TRANSITIONAL] legacy tabs read only while the pad is in use; exits when every venue runs the Till.
+  const tabsQuery = useVenueTabs(usesPad ? scopedBrandId : null, usesPad ? venueId : null);
   const settingsQuery = useVenueOrderingSettings(venueId);
   const transition = useTransitionVenueOrder(scopedBrandId);
   const refundDecision = useDecideVenueOrderRefund(scopedBrandId);
   const setPaused = useSetVenueOrderingPaused(venueId);
+  const stationsEntry = useStationsEntry(scopedBrandId, venueId);
   const setEnabled = useSetVenueOrderingEnabled(venueId);
   // #3388 — ordering can only be switched on for a live (verified) venue.
   const venueQuery = useVenueListing(venueId);
@@ -237,7 +254,7 @@ export function VenueOrdersModule({
         </View>
         {/* D-11 — waiter mode. Taking an order is not a money act, so the floor
             here is the ack's floor: any active brand member. */}
-        {canWorkQueue && venueId !== null ? (
+        {canWorkQueue && venueId !== null && usesPad ? (
           <Button
             label="New order"
             onPress={() => {
@@ -250,9 +267,45 @@ export function VenueOrdersModule({
             testID="venue-orders-new-order"
           />
         ) : null}
+        {/* #4490 spec 08 O1 — with the Till running here, New order opens it. */}
+        {venueId !== null && orderEntry === "till" ? (
+          <Button
+            label="New order"
+            onPress={() => router.push(tillHref(venueId) as never)}
+            variant="primary"
+            size="md"
+            leadingIcon="cash"
+            testID="venue-orders-new-order-till"
+          />
+        ) : null}
       </View>
 
-      {/* D-2 AMENDED — tabs a waiter opened and is still serving. */}
+      {/* #4490 spec 08 O3 — the kitchen and bar screens for this venue. */}
+      {venueId !== null && stationsEntry ? (
+        <Button
+          label={STATION_COPY.openStations}
+          onPress={() => router.push(stationHref(venueId) as never)}
+          variant="secondary"
+          size="md"
+          leadingIcon="list"
+          testID="venue-orders-open-stations"
+        />
+      ) : null}
+
+      {/* #4490 spec 08 O1 — open tabs live in the Till's Open checks. */}
+      {venueId !== null && orderEntry === "till" ? (
+        <Button
+          label="Open checks"
+          onPress={() => router.push(`${tillHref(venueId)}?checks=1` as never)}
+          variant="secondary"
+          size="md"
+          testID="venue-orders-open-checks-till"
+        />
+      ) : null}
+
+      {/* D-2 AMENDED — tabs a waiter opened and is still serving.
+          [TRANSITIONAL] the legacy tabs card, pad venues only; exits when every venue runs the Till. */}
+      {usesPad ? (
       <VenueTabsCard
         brandId={scopedBrandId}
         venueId={venueId}
@@ -279,6 +332,7 @@ export function VenueOrdersModule({
           setPadOpen(true);
         }}
       />
+      ) : null}
 
       {/* ---- The venue's own switches. Ordering is OFF until they say so. ---- */}
       {venueId !== null ? (
@@ -482,6 +536,8 @@ export function VenueOrdersModule({
       {/* Issue #1792 — the order pad. Keyed on the tab it is resuming so the
           sheet remounts clean between "new order" and "another round on 12"
           rather than carrying the previous cart across. */}
+      {/* [TRANSITIONAL] the legacy order pad, pad venues only; exits when every venue runs the Till. */}
+      {usesPad ? (
       <VenueOrderPadSheet
         key={`${resumeTab?.sessionId ?? "new"}:${billTab?.sessionId ?? ""}`}
         visible={padOpen && canWorkQueue}
@@ -498,6 +554,7 @@ export function VenueOrdersModule({
         billTab={billTab}
         canOpenTabs={canDecideMoney}
       />
+      ) : null}
     </View>
   );
 }

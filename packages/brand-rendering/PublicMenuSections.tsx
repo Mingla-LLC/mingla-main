@@ -29,6 +29,7 @@ import type {
 } from "@mingla/offering-rendering";
 
 import type { PublicMenuGroup } from "./types";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 // issue #4518 — dish photos take the picture road (one fallback).
 import { OfferingRoutedImage } from "@mingla/offering-rendering/useOfferingImageUri";
@@ -61,12 +62,24 @@ export const formatMenuPrice = (
   if (priceCents === null) return null;
   const major = priceCents / menuMinorFactor(currency);
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
+    // #4490 fix 2 (N91): the page's own money style — the symbol ("₦10,000",
+    // not "NGN 10,000.00").
+    // Whole naira drop the ".00" (the venue page writes ₦10,000); other
+    // currencies keep their usual two places (£20.00).
+    const dropCents = currency.toUpperCase() === "NGN" && Number.isInteger(major);
+    // #4490 W3 fix 3 (W3-N24): Hermes prints "NGN 10,000" even with the
+    // narrow symbol; the shared glyph rule makes it "₦10,000" everywhere.
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+        currencyDisplay: "narrowSymbol",
+        ...(dropCents ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
+      }).format(major),
       currency,
-    }).format(major);
+    );
   } catch {
-    return `${currency} ${major.toFixed(2)}`;
+    return withCurrencyGlyph(`${currency} ${major.toFixed(2)}`, currency);
   }
 };
 

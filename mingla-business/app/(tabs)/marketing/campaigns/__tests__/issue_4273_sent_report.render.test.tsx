@@ -50,6 +50,9 @@ const mockReportFor = jest.fn();
 jest.mock("../../../../../src/hooks/marketing/useCampaignReport", () => ({
   useCampaignReport: (id: string | null) => mockReportFor(id),
 }));
+jest.mock("../../../../../src/hooks/marketing/useCampaignFailureReason", () => ({
+  useCampaignFailureReason: () => null,
+}));
 
 // The campaign list's boundaries (P2-3): data, brand, delete and the dialog.
 let mockListRows: unknown[] = [];

@@ -53,6 +53,7 @@ import {
 } from "react-native";
 
 import {
+  color as colorTokens,
   materials,
   radius as radiusTokens,
   scrim,
@@ -66,6 +67,7 @@ import {
 } from "../../theme/surfaceTokens";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { hideModalFocusBrackets } from "./hideModalFocusBrackets";
+import { Icon } from "./Icon";
 import { useEscapeLayer } from "./escapeLayerStack";
 import { useSheetGone } from "./useSheetGone";
 // #4508 T4 — the centred card's own toast layer (as SheetMobile and Modal
@@ -89,6 +91,7 @@ import {
   type SheetSnapValue,
 } from "./SheetMobile";
 
+
 // Re-export the type aliases so existing imports
 // `import { Sheet, SheetProps, SheetSnapValue } from '.../Sheet'`
 // resolve identically on web.
@@ -101,6 +104,8 @@ const MODAL_WIDTH = size.modal;
 /** #4420 `presentation="panel"`: the kit's right-side inspector. */
 const PANEL_WIDTH = size.sidePanel;
 const CARD_RADIUS = radiusTokens.xxl;
+/** The panel Close button: a 44 touch target. */
+const PANEL_CLOSE_SIZE = 44;
 const CARD_VIEWPORT_GUTTER = 64; // 32px breathing room on each side at narrow desktops.
 const CARD_MAX_HEIGHT_RATIO = 0.8;
 const CARD_BACKGROUND = materials.sheet.solidFill;
@@ -403,15 +408,31 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
                 competition ? null : styles.cardBodyInset,
                 competition ? null : styles.cardBodyGutter,
                 competition ? null : styles.cardBodyBreathing,
+                sidePanel && !dismissDisabled ? styles.cardBodyUnderClose : null,
               ]}
               testID={testID !== undefined ? `${testID}-desktop-body` : undefined}
             >
               {children}
             </View>
+            {/* #4490 I3: a side panel (inspector) always shows its own Close, so it is
+                never closable only by tapping the backdrop. Consumers need not add one. */}
+            {sidePanel && !dismissDisabled ? (
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                style={styles.panelClose}
+                testID={testID !== undefined ? `${testID}-panel-close` : undefined}
+              >
+                <Icon name="close" size={18} color={colorTokens.text1} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
-        {/* #4508 T4 / #4420 B4: toasts fired while this card is open draw
-            above it (the root host sits under this Modal's portal). */}
+        {/* #4508 T4 / #4420 B4 / #4490 D6: toasts fired while this card is open
+            draw above it (the root host sits under this Modal's portal), so
+            cover-picker toasts no longer show behind the sheet. SheetMobile,
+            Modal and ConfirmDialog mount the same host. */}
         <ToastHost layer="overlay" open={visible} />
       </View>
     </Modal>
@@ -454,6 +475,21 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     flexShrink: 1,
+  },
+  // Room for the panel's Close button so no heading runs under it.
+  cardBodyUnderClose: {
+    paddingTop: PANEL_CLOSE_SIZE + space[2],
+  },
+  panelClose: {
+    position: "absolute",
+    top: space[2],
+    right: space[2],
+    width: PANEL_CLOSE_SIZE,
+    height: PANEL_CLOSE_SIZE,
+    borderRadius: radiusTokens.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colorTokens.fill.inset,
   },
   opaqueBase: {
     backgroundColor: WEB_OPAQUE_BACKGROUND,

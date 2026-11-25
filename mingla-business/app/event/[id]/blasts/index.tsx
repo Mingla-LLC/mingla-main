@@ -16,6 +16,11 @@
  * "Composer ships next" toast on press.
  *
  * SPEC reference: SPEC §5.8. DESIGN reference: §7.8.
+ *
+ * #4596: the header count, card label and button count come from the server's
+ * one event audience owner (useEventAudienceCount): paid buyers plus going RSVP
+ * guests. The roster below lists names only. An RSVP event says GUESTS, a paid
+ * event BUYERS, an event with both PEOPLE.
  */
 
 import React, { useCallback, useMemo } from "react";
@@ -39,7 +44,13 @@ import {
   space,
   type,
 } from "../../../../src/constants/designSystem";
-import { useEventBuyers } from "../../../../src/hooks/marketing/useEventBuyers";
+import { useEventAudienceCount } from "../../../../src/hooks/marketing/useEventAudienceCount";
+import {
+  eventCardLabel,
+  eventHeaderCounts,
+  eventZeroReachCaption,
+  pendingReviewNote,
+} from "../../../../src/features/marketing/eventAudienceCopy";
 import type { BlastAudienceKind } from "../../../../src/components/marketing/BlastCustomersCta";
 
 export default function EventBlastsRoute(): React.ReactElement {
@@ -50,7 +61,7 @@ export default function EventBlastsRoute(): React.ReactElement {
   const eventId =
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
 
-  const buyersQuery = useEventBuyers(eventId);
+  const countQuery = useEventAudienceCount(eventId);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
@@ -68,14 +79,23 @@ export default function EventBlastsRoute(): React.ReactElement {
     [router],
   );
 
-  const buyers = buyersQuery.data;
+  const count = countQuery.data;
+  // Fix pass 3: the roster is the count's own list (same owner, same de-dup).
+  const roster = count?.roster;
+  const isRsvpEvent = countQuery.eventType === "rsvp";
   const headerCounts = useMemo(() => {
-    if (buyers === undefined) return null;
-    const { total, reachable_email } = buyers.reach;
-    return `${total} ${total === 1 ? "buyer" : "buyers"} · ${reachable_email} reachable`;
-  }, [buyers]);
+    if (count === undefined) return null;
+    return eventHeaderCounts(count.shape, count.peopleCount, count.reachableEmail);
+  }, [count]);
+  const pendingNote = count === undefined ? null : pendingReviewNote(count.pendingReviewCount);
+  const zeroCaption =
+    count !== undefined && count.reachableEmail === 0 && count.peopleCount > 0
+      ? eventZeroReachCaption(count.shape)
+      : null;
 
-  if (buyersQuery.isLoading && buyers === undefined) {
+  if (
+    countQuery.isLoading && count === undefined && !countQuery.isError
+  ) {
     return (
       <View style={[styles.host, { paddingTop: insets.top }]}>
         <View style={styles.barWrap}>
@@ -93,7 +113,7 @@ export default function EventBlastsRoute(): React.ReactElement {
     );
   }
 
-  if (buyersQuery.isError) {
+  if (countQuery.isError) {
     return (
       <View style={[styles.host, { paddingTop: insets.top }]}>
         <View style={styles.barWrap}>
@@ -107,7 +127,7 @@ export default function EventBlastsRoute(): React.ReactElement {
         <View style={styles.centerHost}>
           <EmptyState
             illustration="users"
-            title="Couldn't load buyers"
+            title={isRsvpEvent ? "Couldn't load guests." : "Couldn't load buyers"}
             description="Pull to retry, or come back in a moment."
           />
         </View>
@@ -115,7 +135,11 @@ export default function EventBlastsRoute(): React.ReactElement {
     );
   }
 
-  if (buyers !== undefined && buyers.rows.length === 0) {
+  if (
+    roster !== undefined &&
+    roster.length === 0 &&
+    (count === undefined || count.peopleCount === 0)
+  ) {
     return (
       <View style={[styles.host, { paddingTop: insets.top }]}>
         <View style={styles.barWrap}>
@@ -129,8 +153,12 @@ export default function EventBlastsRoute(): React.ReactElement {
         <View style={styles.centerHost}>
           <EmptyState
             illustration="users"
-            title="No buyers yet."
-            description="When tickets sell, buyers show up here."
+            title={isRsvpEvent ? "No guests yet." : "No buyers yet."}
+            description={
+              isRsvpEvent
+                ? "When people RSVP, they show up here."
+                : "When tickets sell, buyers show up here."
+            }
           />
         </View>
       </View>
@@ -149,34 +177,49 @@ export default function EventBlastsRoute(): React.ReactElement {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          zeroCaption !== null ? styles.scrollContentWithCaption : null,
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <GlassCard variant="base" padding={0}>
           {headerCounts !== null ? (
             <>
               <View style={styles.cardHeader}>
-                <Text style={styles.cardHeaderLabel}>BUYERS</Text>
+                <Text style={styles.cardHeaderLabel}>
+                  {count !== undefined ? eventCardLabel(count.shape) : "BUYERS"}
+                </Text>
                 <Text style={styles.cardHeaderCounts}>{headerCounts}</Text>
               </View>
               <View style={styles.cardDivider} />
             </>
           ) : null}
-          {buyers !== undefined
-            ? buyers.rows.map((buyer) => (
+          {roster !== undefined
+            ? roster.map((buyer) => (
                 <BuyerRow key={buyer.contact_key} buyer={buyer} />
               ))
             : null}
+          {pendingNote !== null ? (
+            <>
+              <View style={styles.cardDivider} />
+              <Text style={styles.pendingNote} testID="event-blasts-pending-review">
+                {pendingNote}
+              </Text>
+            </>
+          ) : null}
         </GlassCard>
       </ScrollView>
 
-      {buyers !== undefined ? (
+      {count !== undefined ? (
         <View style={styles.ctaWrap}>
           <BlastCustomersCta
             audienceKind="event"
             audienceTargetId={eventId ?? ""}
-            reachableCount={buyers.reach.reachable_email}
+            reachableCount={count.reachableEmail}
             onPress={handleBlast}
+            caption={zeroCaption}
+            testID="event-blasts-cta"
           />
         </View>
       ) : null}
@@ -223,6 +266,12 @@ const styles = StyleSheet.create({
     ...type.small,
     color: color.text2,
   },
+  pendingNote: {
+    ...type.small,
+    color: color.text3,
+    paddingHorizontal: space[4],
+    paddingVertical: space[3],
+  },
   cardDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: color.fill.pressed,
@@ -231,6 +280,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4], // page margin around the GlassCard
     paddingTop: space[2],
     paddingBottom: 140, // breathe room for sticky CTA (60pt + 8pt + safe-area + buffer)
+  },
+  // #4596 — room for the one caption line under a disabled button.
+  scrollContentWithCaption: {
+    paddingBottom: 172,
   },
   ctaWrap: {
     // CTA is glass — DO NOT set an opaque backgroundColor here. The glass

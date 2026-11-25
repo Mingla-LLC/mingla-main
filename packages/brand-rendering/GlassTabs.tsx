@@ -67,15 +67,33 @@ export interface GlassTabsProps<K extends string> {
 
 const FADE_WIDTH = 28;
 
+/**
+ * #4490 W3 fix 4 (W3-N34) — the pinned native copy floats over the page's
+ * scrolling content, so it is opaque (spec 06 §8: Android always; on iOS the
+ * Explorer has no blur behind it, and an opaque pill is legible either way).
+ * At 0.96 the Menu tab's section headings ("Rice", "Noodles") read through it
+ * at 375 pt. The in-flow strip keeps its lighter fill.
+ */
+export const glassTabFillAlpha = (args: { platform: string; pinned: boolean }): number => {
+  if (args.platform === "android") return 1;
+  return args.pinned ? 1 : 0.82;
+};
+
 const pillFillFor = (palette: ThemePalette, pinned: boolean): string => {
   if (palette.card.startsWith("#")) {
-    return hexToRgba(palette.card, Platform.OS === "android" ? 1 : pinned ? 0.96 : 0.82);
+    return hexToRgba(palette.card, glassTabFillAlpha({ platform: Platform.OS, pinned }));
   }
   if (palette.page.startsWith("#")) {
     return hexToRgba(palette.page, Platform.OS === "android" ? 1 : 0.9);
   }
   return palette.page;
 };
+
+/**
+ * #4490 W3 fix 3 — where the strip scrolls to show a pill whose left edge is
+ * at `x`: a 16 pt lead-in, never before the start.
+ */
+export const glassTabRevealX = (x: number): number => Math.max(0, x - 16);
 
 export function GlassTabs<K extends string>({
   items,
@@ -95,15 +113,28 @@ export function GlassTabs<K extends string>({
 }: GlassTabsProps<K>): React.ReactElement {
   const scrollRef = useRef<ScrollView>(null);
   const offsets = useRef<Partial<Record<K, number>>>({});
+  // #4490 W3 fix 3 (W3-N26/N30): the selected pill is brought fully into view
+  // as soon as its own layout is known, not only when the selection changes.
+  // A strip that mounts already on a far tab (a pinned copy, a page opened by
+  // "See all" on What's on) measured nothing when the effect ran, so it stayed
+  // scrolled at the start with the selected pill out of sight.
+  const revealedKey = useRef<K | null>(null);
   const [viewportWidth, setViewportWidth] = useState<number>(0);
   const [contentWidth, setContentWidth] = useState<number>(0);
   const [scrollX, setScrollX] = useState<number>(0);
 
+  const reveal = (key: K, animated: boolean): void => {
+    const x = offsets.current[key];
+    if (typeof x !== "number" || scrollRef.current === null) return;
+    revealedKey.current = key;
+    scrollRef.current.scrollTo({ x: glassTabRevealX(x), animated });
+  };
+
   useEffect(() => {
-    const x = offsets.current[activeKey];
-    if (typeof x === "number" && scrollRef.current !== null) {
-      scrollRef.current.scrollTo({ x: Math.max(0, x - 16), animated: true });
-    }
+    if (revealedKey.current === activeKey) return;
+    reveal(activeKey, true);
+    // reveal reads refs only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeKey]);
 
   const fill = pillFillFor(palette, pinned);
@@ -160,6 +191,9 @@ export function GlassTabs<K extends string>({
               ref={(node: GlassTabNode | null) => tabRef?.(item.key, node)}
               onLayout={(e: LayoutChangeEvent) => {
                 offsets.current[item.key] = e.nativeEvent.layout.x;
+                if (item.key === activeKey && revealedKey.current !== activeKey) {
+                  reveal(item.key, false);
+                }
               }}
               onPress={() => onSelect(item.key)}
               accessibilityRole="tab"
@@ -180,7 +214,12 @@ export function GlassTabs<K extends string>({
                   themeBoldFace(theme),
                   { color: active ? palette.page : palette.secondaryText },
                 ]}
-                numberOfLines={1}
+                // #4490 W3 fix 3 (W3-N26): on iOS the SELECTED pill printed
+                // "Overvi…" / "Tabl…" at 375 pt. A pill in this horizontal
+                // strip is as wide as its label, so it needs no line limit;
+                // without one, a rounding short-fall can never become an
+                // ellipsis. Web keeps its one-line rule.
+                {...(Platform.OS === "web" ? { numberOfLines: 1 } : {})}
               >
                 {item.label}
                 {item.count !== undefined ? (
@@ -222,7 +261,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tab: {
-    minHeight: 40,
+    // #4490: 44 touch floor (a phone browser has no hitSlop).
+    minHeight: 44,
     flexGrow: 1,
     flexShrink: 0,
     flexBasis: "auto",

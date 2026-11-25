@@ -44,16 +44,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { VenueClaimFeedbackSheet } from "../../../src/components/brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
-import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
-import { parseVenueModuleParam } from "../../../src/components/venue/venueModules";
+import { VenuePreviewAction } from "../../../src/components/venue/VenuePreviewAction";
+import {
+  parseVenueItemParam,
+  parseVenueModuleParam,
+} from "../../../src/components/venue/venueModules";
 // #2099 §F3 — EXTENSIONLESS on purpose: Metro resolves `.web` on web and
 // `.native` on iOS/Android, so the correction feature never enters a native
 // graph. TypeScript is served by the sibling `.d.ts` (the same shape
 // `useShareNetworkState.{web,native,d}.ts` already relies on).
 import PendingVenueIdentityCorrectionLauncher from "../../../src/components/venue/PendingVenueIdentityCorrectionLauncher";
-import { VenueSuiteShell } from "../../../src/components/venue/VenueSuiteShell";
+// #4490 — both workspaces load from the one Host venue owner (same names and
+// props as the shells; see LazyVenueSuites.tsx).
+import { StaySuiteShell, VenueSuiteShell } from "../../../src/components/venue/host/LazyVenueSuites";
+import { loadVenueHostScreens } from "../../../src/components/venue/host/venueHostOwner";
 import { Button } from "../../../src/components/ui/Button";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
@@ -89,6 +95,7 @@ import { useVenueListing } from "../../../src/hooks/useVenueListings";
 import { openExternal } from "../../../src/services/guestFunnelLink";
 import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import { listingStatusView } from "../../../src/utils/listingStatus";
+import { QueryClientContext } from "@tanstack/react-query";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { OptionalFeatureBoundary } from "../../../src/components/brandContact/OptionalFeatureBoundary";
 
@@ -122,6 +129,7 @@ export default function VenueManagementPage(): React.ReactElement {
     venueId?: string | string[];
     focus?: string | string[];
     module?: string | string[];
+    item?: string | string[];
   }>();
   const venueId = paramValue(params.venueId);
   const focus =
@@ -135,6 +143,8 @@ export default function VenueManagementPage(): React.ReactElement {
   // shell once its settings load (`shouldLeaveBookingModule`).
   const requestedModule = paramValue(params.module);
   const initialModule = parseVenueModuleParam(requestedModule);
+  // #4490 — `&item=<id>` opens that offer on arrival (`?module=offers`).
+  const initialItemId = parseVenueItemParam(params.item) ?? null;
 
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;
@@ -144,11 +154,53 @@ export default function VenueManagementPage(): React.ReactElement {
   const brand = useBrand(brandId).data ?? null;
   const pipeline = useVenuePipelineState(venueId);
 
-  const status = listingStatusView({
+  const listingStatus = listingStatusView({
     hasVenue: venue !== null,
     status: pipeline.data?.status ?? null,
     claimStatus: venue?.claimStatus,
   });
+  // #4490 fix 2 (N74): a stay venue Mingla approved is not "Live" until its
+  // stay itself sells (the Stay overview's own rule: booking state active and
+  // a live room or place). The header says the same thing as the overview.
+  // Read through the query cache only for a stay venue (no extra hook, so the
+  // route's module tests that mount without a query client are unchanged).
+  const routeQueryClient = React.useContext(QueryClientContext);
+  const stayVenueHeader = venue?.venueCategory === "stay";
+  const [stayLive, setStayLive] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    if (!stayVenueHeader || routeQueryClient === undefined || typeof venueId !== "string" || venueId.length === 0) {
+      setStayLive(null);
+      return undefined;
+    }
+    let cancelled = false;
+    // #4490 — from the Host venue owner the suites load from anyway (a
+    // separate import() of this service put it in two chunks, i.e. __common).
+    void loadVenueHostScreens()
+      .then(({ getStayInventory }) =>
+        routeQueryClient.fetchQuery({
+          queryKey: ["stay-inventory", venueId],
+          staleTime: 10_000,
+          queryFn: () => getStayInventory(venueId),
+        }),
+      )
+      .then((snap) => {
+        if (cancelled) return;
+        setStayLive(
+          snap.settings?.booking_state === "active" &&
+            (snap.offerings ?? []).some((offering) => offering.status === "live"),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setStayLive(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stayVenueHeader, routeQueryClient, venueId]);
+  const status =
+    stayVenueHeader && listingStatus.label === "Live on Mingla" && stayLive === false
+      ? { ...listingStatus, label: "Approved · not live yet", tone: "info" as const, hint: "Mingla approved your venue. Finish the Stay overview to start taking bookings." }
+      : listingStatus;
 
   // LOCKED DECISION 5 — suite store lifecycle moved to this page.
   const activate = useVenueSuiteStore((s) => s.activate);
@@ -184,6 +236,21 @@ export default function VenueManagementPage(): React.ReactElement {
   // #4453 — unsaved venue edits hold a brand switch. Android back keeps its own path (#3655).
   useUnsavedChangesGuard({ dirty: venueDirtyModules.size > 0, onRequestLeave: handleBack, hardwareBack: false });
 
+  // #4490 N11: keep the open module in the address. Moving by the side nav
+  // used to leave `?module=offers` behind, so a reload or a shared link opened
+  // the wrong module. `setParams` replaces the address (no extra history
+  // entry); an offer or member opened by `&item=` belongs to the module it was
+  // opened in, so it is dropped on a move.
+  const handleModuleChange = useCallback(
+    (module: string): void => {
+      router.setParams({
+        module: module === "overview" ? undefined : module,
+        item: undefined,
+      } as never);
+    },
+    [router],
+  );
+
   // ----- public-page actions (#1483) -----
   // `venue_public_view` is defined `WHERE claim_status = 'verified'`, so any
   // other claim state renders PublicVenueNotFound. The controls are therefore
@@ -210,6 +277,12 @@ export default function VenueManagementPage(): React.ReactElement {
       router.push(venuePublicPath({ brandSlug, venueSlug }) as never);
     }
   }, [brandSlug, venueSlug, router]);
+
+  // #4490 — the Host preview of a venue that is not public yet.
+  const handlePreviewPage = useCallback((): void => {
+    if (venueId === null) return;
+    router.push(`/venue/${venueId}/preview` as never);
+  }, [venueId, router]);
 
   // ----- claim-feedback loop (ORCH-1064, venue-keyed) -----
   const followUpAt = venue?.claimFollowUpAt ?? null;
@@ -416,6 +489,15 @@ export default function VenueManagementPage(): React.ReactElement {
                   testID="venue-page-share"
                 />
               </View>
+            ) : venue !== null && venueId !== null ? (
+              // #4490 — a venue that is not public yet (in review, say) has no
+              // public page to view, but its owner can see exactly the page
+              // guests will get, with booking switched off. It is deliberately
+              // separate from #1483's public/share controls.
+              <VenuePreviewAction
+                compact={!isWideDesktop}
+                onPress={handlePreviewPage}
+              />
             ) : (
               // Empty placeholder for layout balance (TopBar.tsx:71-73). The
               // controls are HIDDEN, never disabled.
@@ -481,6 +563,10 @@ export default function VenueManagementPage(): React.ReactElement {
           venueName={venue.name}
           venueApproved={venue.claimStatus === "verified"}
           overviewHeader={localReviewsPanel}
+          initialModule={initialModule ?? "overview"}
+          initialItemId={initialItemId}
+          requestedModule={requestedModule ?? null}
+          onModuleChange={handleModuleChange}
         />
       ) : (
         <VenueSuiteShell
@@ -491,6 +577,8 @@ export default function VenueManagementPage(): React.ReactElement {
           // shell's store sync propagates it to the pill row/rail. Stays never
           // reach this branch (Insights does not exist for stays in v1 — G-21).
           initialModule={initialModule ?? "overview"}
+          initialItemId={initialItemId}
+          onModuleChange={handleModuleChange}
           // #4420 (round-3 item 19) — Local reviews are their own Reviews
           // module now, not a panel at the top of Overview.
           reviewsPanel={renderLocalReviews("module")}

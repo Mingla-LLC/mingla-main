@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback, useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -31,6 +31,9 @@ import { useBrandMenus } from "../../hooks/useMenus";
 import { useVenueClaimOpenCountsByVenue } from "../../hooks/useVenueClaimFeedback";
 import { useVenueListings } from "../../hooks/useVenueListings";
 import { useBrandReservationSettingsList } from "../../hooks/useBrandReservationSettingsList";
+import { useBrand } from "../../hooks/useBrands";
+import { venuePublicPath, venuePublicUrl } from "../../constants/publicUrls";
+import { openExternal } from "../../services/guestFunnelLink";
 import { listingStatusView } from "../../utils/listingStatus";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -100,6 +103,31 @@ export function VenueCardList({
       router.push(`/venue/${venueId}` as never);
     },
     [router],
+  );
+
+  // #4490 P2 (hub) — Check-in opens the camera on a phone app and the
+  // Check-in module on web; Public page follows the venue page's rule
+  // (verified venues only, new tab on web, in-app on native).
+  const brandSlug = useBrand(brandId).data?.slug ?? null;
+  const handleCheckIn = useCallback(
+    (venueId: string): void => {
+      router.push(
+        (Platform.OS === "web" ? `/venue/${venueId}?module=checkin` : `/venue/${venueId}/check-in/scan`) as never,
+      );
+    },
+    [router],
+  );
+  const publicPageFor = useCallback(
+    (venue: { claimStatus?: string | null; slug: string }): (() => void) | undefined => {
+      if (venue.claimStatus !== "verified" || brandSlug === null || brandSlug.length === 0 || venue.slug.length === 0) {
+        return undefined;
+      }
+      return () => {
+        if (Platform.OS === "web") openExternal(venuePublicUrl({ brandSlug, venueSlug: venue.slug }));
+        else router.push(venuePublicPath({ brandSlug, venueSlug: venue.slug }) as never);
+      };
+    },
+    [brandSlug, router],
   );
 
   const scrollBottomPad = insets.bottom + 120;
@@ -255,6 +283,8 @@ export function VenueCardList({
                 menuItemCount={menuItemCountByVenue[venue.id] ?? 0}
                 reservationsEnabled={reservationsByVenue[venue.id] === true}
                 onOpen={() => handleOpenVenue(venue.id)}
+                onCheckIn={() => handleCheckIn(venue.id)}
+                onPublicPage={publicPageFor(venue)}
                 testID={`venue-card-${venue.id}`}
               />
             </View>

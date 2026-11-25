@@ -56,6 +56,7 @@
   "pill.experiences": "경험",
   "pill.trips": "여행",
   "pill.stays": "숙박",
+  "pill.venues": "장소",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "지우기",
   "filters.option_a11y": "{{label}}를 위해 도시를 설정하세요. {{count}}개 일치",
@@ -77,6 +78,7 @@
   "group.check_in": "체크인",
   "group.guests": "손님",
   "group.property_kind": "장소 유형",
+  "group.venue_type": "장소 유형",
   "group.any_suffix": "{{group}} · 언제든지",
   "when.any_day": "언제든지",
   "when.tomorrow": "내일",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}}개의 경험",
   "count.trips_other": "{{count}}개의 여행",
   "count.stays_other": "{{count}} 숙박",
+  "count.venues_other": "장소 {{count}}곳",
   "guests.value_other": "손님 {{count}}명",
-  "card.type.stops_other": "{{count}}명 중지"
+  "card.type.stops_other": "{{count}}명 중지",
+  "venues.empty_title": "아직 여기에서 예약할 수 있는 장소가 없어요.",
+  "venues.empty_body": "Mingla에서 예약할 수 있는 장소가 여기에 표시돼요.",
+  "venues.filtered_title": "이 필터에 맞는 장소가 없어요.",
+  "venues.error_title": "장소를 불러오지 못했어요.",
+  "venues.error_retry": "다시 시도"
 }

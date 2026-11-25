@@ -23,6 +23,19 @@
  * entryId/experienceId" a compile error rather than a silent drop (kills the
  * F-02/F-11 param-dropped-at-screen class).
  */
+// #4490 Explorer W1: purchase kinds a link may open (push, return page, claim).
+export const PURCHASE_DEEP_LINK_KINDS = [
+  'order',
+  'rsvp',
+  'reservation',
+  'venue_order',
+  'venue_booking',
+  'venue_membership',
+  'venue_waitlist',
+  'venue_till_sale',
+] as const;
+export type PurchaseDeepLinkKind = (typeof PURCHASE_DEEP_LINK_KINDS)[number];
+
 export type Destination =
   // ORCH-1080: a session Destination lands in the session's GROUP CHAT (Messages),
   // not Home. `card` (from `mingla://session/{id}?card={cardId}`) is carried through
@@ -46,7 +59,7 @@ export type Destination =
   | { kind: 'review'; experienceId: string }
   | {
       kind: 'purchase';
-      purchaseKind: 'order' | 'rsvp' | 'reservation' | 'venue_order';
+      purchaseKind: PurchaseDeepLinkKind;
       purchaseId: string;
       door: boolean;
       ticketId?: string;
@@ -270,7 +283,7 @@ export function parseDeepLink(url: string): Destination | null {
         const purchaseId = pathSegments[2];
         if (
           !purchaseId ||
-          !['order', 'rsvp', 'reservation', 'venue_order'].includes(purchaseKind)
+          !(PURCHASE_DEEP_LINK_KINDS as readonly string[]).includes(purchaseKind)
         ) return null;
         // #4541 R2.1 / R3.3 — a form request push names its form and event on
         // the purchase link 1.3.x already opens; this build opens the form
@@ -292,7 +305,7 @@ export function parseDeepLink(url: string): Destination | null {
         }
         return {
           kind: 'purchase',
-          purchaseKind: purchaseKind as 'order' | 'rsvp' | 'reservation' | 'venue_order',
+          purchaseKind: purchaseKind as PurchaseDeepLinkKind,
           purchaseId,
           door: params.door === '1',
           ...(params.ticket ? { ticketId: params.ticket } : {}),
@@ -613,6 +626,13 @@ export function executeDeepLink(
       break;
 
     case 'purchase': {
+      // #4490 Explorer W2 (N157 closed): venue bookings, plans and waitlist
+      // places open their own detail below. Till receipts open the Purchases
+      // list. [TRANSITIONAL] exits when spec 08 adds the Till receipt detail.
+      if (dest.purchaseKind === 'venue_till_sale') {
+        handlers.openRouterPath?.('/purchases');
+        break;
+      }
       const suffix = new URLSearchParams();
       if (dest.door) suffix.set('door', '1');
       if (dest.ticketId) suffix.set('ticket', dest.ticketId);

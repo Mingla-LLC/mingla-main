@@ -26,7 +26,7 @@
  *      pauses while the card is pressed or hovered.
  *
  * # Placement
- * Phone: top, under the status bar. Web >= 1024: bottom-right stack of at
+ * Phone: top, under the status bar. Web >= 1024: top-centre stack of at
  * most 3, 380 wide.
  */
 
@@ -54,6 +54,7 @@ import { Material } from "./Material";
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
 import { AUTO_DISMISS, resolveAutoDismissMs, type ToastKind } from "./toastTimings";
 import { nextToastEntryId, useToastStore } from "./toastStore";
+import { useToastTimer } from "./useToastTimer";
 import type { ToastAction, ToastEntry } from "./toastStore";
 
 export type { ToastKind };
@@ -148,58 +149,6 @@ export const Toast: React.FC<ToastProps> = ({
     <View pointerEvents="box-none" style={styles.inlineRoot}>
       <ToastItem entry={entry} placement="top" />
     </View>
-  );
-};
-
-/** Pause-able countdown that calls `onElapsed` once. */
-const useToastTimer = (
-  ms: number | null,
-  onElapsed: () => void,
-): { pause: () => void; resume: () => void } => {
-  const remainingRef = useRef<number | null>(ms);
-  const startedRef = useRef<number>(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const elapsedRef = useRef(onElapsed);
-  elapsedRef.current = onElapsed;
-
-  const clear = (): void => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-  const start = (): void => {
-    clear();
-    const remaining = remainingRef.current;
-    if (remaining === null) return;
-    startedRef.current = Date.now();
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      elapsedRef.current();
-    }, Math.max(0, remaining));
-  };
-
-  useEffect(() => {
-    remainingRef.current = ms;
-    start();
-    return clear;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ms]);
-
-  return useMemo(
-    () => ({
-      pause: (): void => {
-        if (timerRef.current === null || remainingRef.current === null) return;
-        clear();
-        remainingRef.current -= Date.now() - startedRef.current;
-      },
-      resume: (): void => {
-        if (timerRef.current !== null) return;
-        start();
-      },
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
   );
 };
 
@@ -306,7 +255,8 @@ const ToastWeb: React.FC<ToastItemProps> = ({ entry, placement }) => {
     };
   }, []);
 
-  const from = placement === "stack" ? -TRANSLATE_FROM / 2 : TRANSLATE_FROM;
+  // #4490: the desktop stack is top-centre too, so it drops in from above.
+  const from = placement === "stack" ? TRANSLATE_FROM / 2 : TRANSLATE_FROM;
   const webStyle = {
     transition: `transform ${ENTRY_DURATION}ms ${TOAST_OPEN_EASE_CSS}, opacity ${ENTRY_DURATION}ms ${TOAST_OPEN_EASE_CSS}`,
     transform: open ? "translateY(0px)" : `translateY(${from}px)`,
@@ -331,6 +281,7 @@ const ToastWeb: React.FC<ToastItemProps> = ({ entry, placement }) => {
     </View>
   );
 };
+
 
 interface ToastCardProps {
   entry: ToastEntry;

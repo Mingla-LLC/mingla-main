@@ -1,6 +1,6 @@
 import { infiniteQueryOptions, useInfiniteQuery } from "@tanstack/react-query";
 import { discoverKeys } from "./discoverQueryKeys";
-import { fetchDiscoverPage } from "../services/discoverFeedService";
+import { discoverVenueRetry, fetchDiscoverPage } from "../services/discoverFeedService";
 import type { DiscoverAnchorV2, DiscoverFiltersV2, DiscoverPageResponse } from "../types/discoverFeed";
 
 /**
@@ -22,6 +22,8 @@ export function discoverFeedQueryOptions(
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     staleTime: 60_000,
     gcTime: 30 * 60_000,
+    // #4490 W6 fix 2 (W6-D3): a Venues read is not retried after its 10 s budget.
+    ...(filters.kind === "venues" ? { retry: discoverVenueRetry } : {}),
   });
 }
 

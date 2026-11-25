@@ -135,35 +135,73 @@ export function assessCommonBaselineMovement(baselineRaw, measuredRaw, { oneTime
 //   - NEVER INSIDE A TEST HARNESS: the budget suites run these gates against
 //     synthetic exports and must keep meeting the normal limit on every branch.
 //
-// It raises ONLY `common`. The eager allowance and both PRODUCT CEILINGS are
-// untouched and still enforced first. Every run an entry applies to prints the
+// It raises `common`, and, only when an entry carries an optional `eager` cap
+// (issue #4490: eager includes __common, so shared code is counted in both),
+// the eager per-PR allowance of the orch-1083 gate, scoped by exactly the same
+// checks. An entry without `eager` leaves eager at its normal 25,000 B. Both
+// PRODUCT CEILINGS are untouched and still enforced first. Every run an entry applies to prints the
 // normal limit, the granted cap, the measured delta, the reason and the
 // approver, and every run it does NOT apply to says so in one line.
 //
-// orch-1083's `--self-test` pins this table to exactly the entry below. Adding
-// or editing an entry therefore fails `--self-test` until that pin is changed
+// orch-1083's `--self-test` pins this table to exactly the entries below. Adding
+// or editing an entry therefore fails `--self-test` until those pins are changed
 // in the same reviewed diff, which is the point: an exception is Seth's
 // decision, named, dated and visible, never a quiet edit.
 //
-// #4594: Seth approved the orch-1083 cap on 2026-11-24 and, the same day,
-// extended this same entry to the movement gate ("Decision from Seth
-// (2026-11-24): the two #4594 gates", on #4522).
+// #4601 (issue #4596): Seth approved in chat 2026-11-24 a one-time allowance
+// for this pull request, recorded on #4596. Its cap (3,300 B) sits under the
+// 12,000 B per-PR limit, which the PR already meets, so only the 1,024 B
+// baseline-movement gate uses it; orch-1083 refuses it as granting nothing.
+// It replaces the #4594 entry (#4522), which merged on 2026-11-24. The
+// independent #4600 / #4490 allowance remains beside it until that merge is
+// absorbed into the recorded baseline.
 // ═══════════════════════════════════════════════════════════════════════════
 export const ONE_TIME_PR_ALLOWANCE = Object.freeze([
   Object.freeze({
-    issue: 4522,
-    pr: 4594,
-    headRef: "4522-young-polish",
-    common: 23_000,
+    issue: 4596,
+    pr: 4601,
+    headRef: "4596-rsvp-event-blast-audience",
+    common: 3_300,
     expiresAfter: "2026-12-08",
     approvedBy: "Seth, 2026-11-24",
     reason:
-      "Trip partial payments, one calendar and add-ons (#4522, #4523, #3281): code genuinely " +
-      "shared by Host and buyer routes (trip balance helper, plan maths, instalments and add-ons " +
-      "services) lands in the shared chunk (+22,349 B measured against the #4589 baseline). The " +
-      "nested lazy load was already removed; splitting cohesive modules only to pass is not allowed.",
+      "RSVP guests in event blasts (#4596): the event-audience copy module is shared by the " +
+      "event Blasts route and the composer, so Metro hoists it into the shared chunk, and the " +
+      "boot-path Audiences tab gains server event discovery and reach (+3,048 B measured against " +
+      "the bundle baseline). Splitting cohesive modules only to pass is not allowed.",
+  }),
+  Object.freeze({
+    issue: 4490,
+    pr: 4600,
+    headRef: "4490-venue-features",
+    common: 162_000,
+    eager: 165_000,
+    expiresAfter: "2026-12-08",
+    approvedBy: "Seth, 2026-11-24",
+    reason:
+      "Venue features (#4490): the host and guest venue pages genuinely share about 161 KB of " +
+      "code (Till, Close the day, offers, venue models and services) that lands in the shared " +
+      "chunk (+161,172 B in __common and +163,802 B in the eager payload, measured against the #4589 baseline). Splitting cohesive modules only " +
+      "to pass is not allowed.",
   }),
 ]);
+
+/**
+ * The per-pull-request `__common` and eager caps a resolved entry grants.
+ * `entry` is what resolveOneTimeAllowance returned (null for a run it does not
+ * apply to: another PR, another branch, expired, a test harness). An absent or
+ * unusable `eager` on an entry means the normal eager allowance, never a grant.
+ * Pure; it never touches PR_DELTA_ALLOWANCE or the product ceilings.
+ */
+export function effectivePerPrAllowance(entry, normal) {
+  const common = entry && Number.isSafeInteger(entry.common) && entry.common > normal.common
+    ? entry.common
+    : normal.common;
+  const eager = entry && Number.isSafeInteger(entry.eager) && entry.eager > normal.eager
+    ? entry.eager
+    : normal.eager;
+  return { common, eager };
+}
 
 const MAIN_REF = "refs/heads/main";
 const MAIN_EVENTS = new Set(["push", "workflow_dispatch"]);
@@ -262,17 +300,16 @@ function runGit(args) {
  * Commit subjects reachable from HEAD but not from `commit`. Throws on any git
  * error, which resolveOneTimeAllowance treats as a refusal.
  *
- * Shallow checkouts: the main lanes that run the movement gate on a push
- * (bundle-baseline-ratchet, issue-2099 boot payload) check out ONE commit, so
- * the baseline commit is usually absent and the full range cannot be read.
- * Only then, and only in a shallow repository, this returns HEAD's own
- * subject: the baseline file in HEAD's tree names a commit measured before
- * that file was committed, so HEAD is always inside `commit..HEAD` and never
- * the baseline commit itself. A subset of the true range can only find FEWER
- * merge markers, so the fallback can never grant more than the full history
- * would. In practice it covers the push of the squash commit itself, which is
- * the run that banks the new baseline. A missing commit in a full clone is
- * still an error.
+ * The two main-side movement lanes keep full history so an intervening commit
+ * cannot hide an approved merge that the recorded baseline has not banked yet.
+ * Other callers may still be shallow. Only then, and only when the baseline
+ * commit is absent, this returns HEAD's own subject: the baseline file in
+ * HEAD's tree names a commit measured before that file was committed, so HEAD
+ * is always inside `commit..HEAD` and never the baseline commit itself. A
+ * subset of the true range can only find FEWER merge markers, so the fallback
+ * can never grant more than the full history would. It covers the immediate
+ * squash-commit push, but deliberately cannot prove an older merge after an
+ * intervening commit. A missing commit in a full clone is still an error.
  */
 export function gitSubjectsSince(commit, { git = runGit } = {}) {
   let present = true;

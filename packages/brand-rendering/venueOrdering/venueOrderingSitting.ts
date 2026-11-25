@@ -66,6 +66,53 @@ export function venueOrderSittingKey(input: {
 }
 
 /**
+ * N145 (#4490 07-D) — where an order's sitting is remembered. An order that
+ * goes to the counter from a scanned table ("I'll collect it", or a counter-
+ * only venue) is a counter sitting: it is remembered under the venue key, never
+ * over the table's own sitting, so the table link keeps the table's state and
+ * the guest can still order from it.
+ */
+export function venueOrderSittingKeyForOrder(input: {
+  venueId: string | null;
+  spotCode: string | null;
+  toCounter: boolean;
+}): string | null {
+  return venueOrderSittingKey({
+    venueId: input.venueId,
+    spotCode: input.toCounter ? null : input.spotCode,
+  });
+}
+
+/**
+ * N145 (#4490 07-D) — the status page of a counter order placed from a table.
+ * The table link keeps the table's own sitting, so the guest still needs a way
+ * back to the pickup order: this is its `/o/venue/<id>?bst=<token>` path, or
+ * null when there is no such order (or it has expired).
+ */
+export function venueOrderCounterStatusPath(
+  counter: VenueOrderSitting | null,
+): string | null {
+  if (counter === null) return null;
+  if (counter.orderId === null || counter.buyerStatusToken === null) return null;
+  return `/o/venue/${encodeURIComponent(counter.orderId)}?bst=${encodeURIComponent(
+    counter.buyerStatusToken,
+  )}`;
+}
+
+/**
+ * N145 (#4490) — which sitting the order on screen belongs to. A pickup order
+ * from a table is remembered apart from the table's sitting, so its cancel,
+ * retry and status reads must use the pickup order's own tokens.
+ */
+export function venueOrderActiveSitting(input: {
+  table: VenueOrderSitting | null;
+  counter: VenueOrderSitting | null;
+  viewingCounter: boolean;
+}): VenueOrderSitting | null {
+  return input.viewingCounter ? input.counter : input.table;
+}
+
+/**
  * Parse a stored sitting, returning null for anything expired, malformed or of
  * an unrecognised shape. Fails toward FORGETTING: a sitting we cannot read is a
  * sitting we do not have, and the guest is asked once more. The opposite

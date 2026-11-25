@@ -43,6 +43,7 @@ import type { MarketingChannelKind } from "../../../../src/components/marketing/
 import { color, materials, radius, space, type } from "../../../../src/constants/designSystem";
 import { useCampaignReport } from "../../../../src/hooks/marketing/useCampaignReport";
 import { useCampaignGroupView } from "../../../../src/hooks/marketing/useCampaignGroupView";
+import { useCampaignFailureReason } from "../../../../src/hooks/marketing/useCampaignFailureReason";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import {
   METHOD_LABEL,
@@ -60,6 +61,7 @@ import {
 } from "../../../../src/services/marketing/marketingCampaignGroupViewService";
 import type { CampaignReport } from "../../../../src/services/marketing/marketingReportService";
 import type { MessageStatus } from "../../../../src/types/marketing";
+import { campaignFailureCopy } from "../../../../src/features/marketing/campaignFailureCopy";
 
 // #4273 — the composer's panes load on demand, through their one owner: the
 // composer route's own chunk (it re-exports the sent-view wrappers). Importing
@@ -123,7 +125,10 @@ function maskEmail(email: string | null): string {
 }
 
 /** The status line for one method (headline + detail). */
-function statusCopy(member: CampaignGroupMember): { headline: string; detail: string | null } {
+function statusCopy(
+  member: CampaignGroupMember,
+  failureReason: string | null = null,
+): { headline: string; detail: string | null } {
   switch (member.status) {
     case "draft":
       return { headline: "Draft — not sent yet", detail: null };
@@ -137,7 +142,11 @@ function statusCopy(member: CampaignGroupMember): { headline: string; detail: st
     case "sent":
       return { headline: `Sent ${formatDateTime(member.sentAt)}`, detail: null };
     case "failed":
-      return { headline: "This didn't go out", detail: `Failed ${formatDateTime(member.updatedAt)}` };
+      // #4596: the reason on record, in words, replaces "Failed {date}".
+      return {
+        headline: "This didn't go out",
+        detail: campaignFailureCopy(failureReason) ?? `Failed ${formatDateTime(member.updatedAt)}`,
+      };
     case "cancelled":
       return { headline: "Cancelled — nothing was sent", detail: null };
     default: {
@@ -174,6 +183,11 @@ export default function CampaignReportRoute(): React.ReactElement {
     active !== null && active.channel !== "push" && sendStarted(active)
       ? active.campaignId
       : null,
+  );
+
+  // #4596 — why a failed method (push included) did not go out.
+  const failureReason = useCampaignFailureReason(
+    active !== null && active.status === "failed" ? active.campaignId : null,
   );
 
   const handleBack = useCallback(() => {
@@ -231,7 +245,7 @@ export default function CampaignReportRoute(): React.ReactElement {
   const primary = view.members.find((member) => member.isHead) ?? view.members[0] ?? active;
   const resolution = previewSourceFor(active, view.brand);
   const started = sendStarted(active);
-  const status = statusCopy(active);
+  const status = statusCopy(active, failureReason);
   const methodWord = METHOD_LABEL[active.channel].toLowerCase();
   const labelFor = (kind: MarketingChannelKind): string => {
     const member = tabs.find((row) => row.channel === kind);

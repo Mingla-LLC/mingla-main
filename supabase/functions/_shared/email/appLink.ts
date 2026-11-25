@@ -174,6 +174,14 @@ const { BRAND_ORANGE_BUTTON } = SHELL_TOKENS;
 export const MINGLA_APP_LINK_URL = "https://usemingla.com/download";
 
 /**
+ * #4490 — the button's words, for a caller that hands its CTA to a renderer as
+ * data (the venue booking emails lead with this label). The destination still
+ * comes only from `resolveAppCtaUrl`; nothing else in the edge runtime may
+ * spell the label itself.
+ */
+export const APP_CTA_LABEL = "Open in Mingla";
+
+/**
  * THE ONE PLACE the CTA's destination is decided. `renderAppCtaHtml` and
  * `appCtaTextLine` both call it and neither may name a URL of its own, which is
  * what keeps #2240's plain-text twin in lockstep with the HTML by construction

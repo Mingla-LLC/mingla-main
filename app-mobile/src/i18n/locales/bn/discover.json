@@ -56,6 +56,7 @@
   "pill.experiences": "অভিজ্ঞতা",
   "pill.trips": "ভ্রমন",
   "pill.stays": "থাকে",
+  "pill.venues": "ভেন্যু",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.option_a11y": "{{label}}, {{count}} matches",
@@ -77,6 +78,7 @@
   "group.check_in": "চেক ইন করুন",
   "group.guests": "Guests",
   "group.property_kind": "Type of place",
+  "group.venue_type": "Type of place",
   "group.any_suffix": "{{group}} · যে কোনো দিন",
   "when.any_day": "যে কোনো দিন",
   "when.tomorrow": "আগামীকাল",
@@ -209,8 +211,15 @@
   "count.trips_other": "{{count}}টি ট্রিপ",
   "count.stays_one": "{{count}}টি থাকার",
   "count.stays_other": "{{count}}টি অতিথি",
+  "count.venues_one": "{{count}}টি ভেন্যু",
+  "count.venues_other": "{{count}}টি ভেন্যু",
   "guests.value_one": "{{count}} guest",
   "guests.value_other": "{{count}} guests",
   "card.type.stops_one": "{{count}} STOP",
-  "card.type.stops_other": "{{count}} STOPS"
+  "card.type.stops_other": "{{count}} STOPS",
+  "venues.empty_title": "এখানে বুক করার মতো কোনো ভেন্যু এখনও নেই।",
+  "venues.empty_body": "Mingla-তে যে ভেন্যু বুক করা যায় সেগুলো এখানে দেখা যাবে।",
+  "venues.filtered_title": "এই ফিল্টারের সাথে কোনো ভেন্যু মেলে না।",
+  "venues.error_title": "ভেন্যু লোড করা যায়নি।",
+  "venues.error_retry": "আবার চেষ্টা করুন"
 }

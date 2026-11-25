@@ -56,6 +56,7 @@
   "pill.experiences": "अनुभव",
   "pill.trips": "यात्राएं",
   "pill.stays": "रहें",
+  "pill.venues": "जगहें",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "साफ़ करें",
   "filters.option_a11y": "{{label}}, {{count}} मिलान",
@@ -77,6 +78,7 @@
   "group.check_in": "चेक इन",
   "group.guests": "मेहमानों के लिए",
   "group.property_kind": "स्थान का प्रकार",
+  "group.venue_type": "स्थान का प्रकार",
   "group.any_suffix": "{{group}} · कोई भी",
   "when.any_day": "कोई भी दिन",
   "when.tomorrow": "कल",
@@ -209,8 +211,15 @@
   "count.trips_other": "{{count}} यात्राएं",
   "count.stays_one": "{{count}} ठहरें",
   "count.stays_other": "{{count}} ठहरें",
+  "count.venues_one": "{{count}} जगह",
+  "count.venues_other": "{{count}} जगहें",
   "guests.value_one": "{{count}} अतिथि",
   "guests.value_other": "{{count}} मेहमान",
   "card.type.stops_one": "{{count}} रुकें",
-  "card.type.stops_other": "{{count}} रुकता है"
+  "card.type.stops_other": "{{count}} रुकता है",
+  "venues.empty_title": "यहाँ अभी बुक करने के लिए कोई जगह नहीं है।",
+  "venues.empty_body": "Mingla पर बुक की जा सकने वाली जगहें यहाँ दिखेंगी।",
+  "venues.filtered_title": "इन फ़िल्टर से कोई जगह मेल नहीं खाती।",
+  "venues.error_title": "हम जगहें लोड नहीं कर सके।",
+  "venues.error_retry": "फिर से कोशिश करें"
 }

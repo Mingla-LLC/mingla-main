@@ -151,12 +151,23 @@ const EXPECTED_PLAN = Object.freeze({
   // no-client-service-role-rpc gate (issue-4541-no-client-service-role-rpc,
   // +2 batch:A executions: self-test and plain), then the forms-owner-no-nested-lazy
   // gate (issue-4541-forms-owner-no-nested-lazy, +2 more). Read off the plan command as above.
+  // [TEST-MOD-APPROVED #4490] Re-derived after #4490 added the locally declared
+  // Host wiring pins gate (issue-4490-host-wiring, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
+  // [TEST-MOD-APPROVED #4490] Re-derived after merging origin/main 886723868d (the
+  // #4514/#4541 gates beside the #4490 Host wiring pins gate). Read off the plan command.
   // [TEST-MOD #4522] Re-derived after merging main's two #4541 gates (+4
   // batch:A executions) beside the #4522 flex-claim guard and #4523 dates gate.
   // Read off the plan command as above.
-  executions: 1077,
-  loadsSeconds: [386.2, 386.2, 386.3],
-  counts: [358, 359, 360],
+  // [TEST-MOD-APPROVED #4490] Re-derived after merging origin/main 97a75873e2
+  // (#4522 flex-claim guard and #4523 dates gate beside the #4490 Host wiring pins gate). Read off the plan command.
+  // [TEST-MOD-APPROVED #4490] Re-derived after refreshing the cost table with
+  // the reviewed tool from four class-a-shard-aggregate artifacts (this PR's
+  // run 45483891659 and main 45442869898, 45429918736, 45414540026): shard 1
+  // ran 626 s against the 600 s bound while shards 2 and 3 ran about 270 s.
+  executions: 1079,
+  loadsSeconds: [296.8, 296.9, 296.8],
+  counts: [33, 531, 515],
 });
 
 const tempDir = (label) =>

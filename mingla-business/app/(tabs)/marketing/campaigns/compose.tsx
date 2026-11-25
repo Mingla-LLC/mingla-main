@@ -160,6 +160,7 @@ import {
   getOrCreateMarketingCircleAudience,
 } from "../../../../src/services/marketing/marketingCircleAudienceService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
+import { listEventAudiences } from "../../../../src/services/marketing/marketingAudienceService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
 import {
   BLAST_FORM_SMS_LINE,
@@ -189,6 +190,10 @@ import {
   audienceButtonName,
   audienceSourceDetail,
   combinedCountCaption,
+  COMBINED_ZERO_REACH_COPY,
+  canPickEventAudience,
+  eventAudienceShape,
+  eventRowName,
   leadBlastChannel,
   needsCombinedLane,
   blastFallbackSentence,
@@ -746,6 +751,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     channel,
   });
 
+  // #4596 — a combined audience (every event audience rides it) that reaches
+  // nobody on this method: Send / Schedule stay off and say why.
+  const combinedZeroReach =
+    sealedAudienceKind === "combined_sources" &&
+    bookQuote !== null &&
+    bookQuote.reachableCount === 0 &&
+    !(channel === "sms" && (bookQuote.unpricedCount ?? 0) > 0);
+
   const bookWeekBlastWarning =
     isBookAudience &&
     bookQuote?.allowance != null &&
@@ -872,6 +885,25 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             event_id: audienceParam.id,
             brand_id: brandId,
           });
+          const eventKey = `event:${audienceParam.id}`;
+          if (bookBlastEnabled) {
+            // #4596 — an event audience rides the combined lane: the lane
+            // effect below creates its combined audience (buyers plus going
+            // RSVP guests) and owns audienceId. No event_buyers row here.
+            const events = await listEventAudiences({
+              actor_id: accountId,
+              brand_id: brandId,
+            });
+            if (cancelled) return;
+            const event = events.find((row) => row.eventId === audienceParam.id);
+            const name = event === undefined
+              ? "Event guests and buyers"
+              : eventRowName(eventAudienceShape(event), event.title);
+            setAudienceName(name);
+            setPickedKeys([eventKey]);
+            setPickedNames({ [eventKey]: name });
+            return;
+          }
           const id = await ensureEventBuyersAudience({
             account_id: accountId,
             brand_id: brandId,
@@ -882,8 +914,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setAudienceName("Event buyers");
           setSealedAudienceKind(null);
           setIsBookAudience(false);
-          setPickedKeys([`event:${audienceParam.id}`]);
-          setPickedNames({ [`event:${audienceParam.id}`]: "Event buyers" });
+          setPickedKeys([eventKey]);
+          setPickedNames({ [eventKey]: "Event buyers" });
         }
       } catch (err) {
         if (!cancelled) {
@@ -898,7 +930,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [audienceParam, accountId, brandId, audienceId, manualGroupFlag.data]);
+  }, [audienceParam, accountId, brandId, audienceId, manualGroupFlag.data, bookBlastEnabled]);
 
   // Hydrate from ?template=[id]. Draft restore wins when both present.
   useEffect(() => {
@@ -2654,6 +2686,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             ? { selectedKeys: pickedKeys, onDone: handleAudienceDone }
             : undefined}
           actorId={accountId}
+          eventAudiencesAllowed={
+            roleResolved &&
+            currentBrandRole.accepted &&
+            canPickEventAudience(currentBrandRole.rank)
+          }
           bookBlastEnabled={bookBlastEnabled}
           manualGroupsEnabled={bookBlastEnabled && manualGroupFlag.data === true}
           circleAudienceEnabled={circleAudienceEnabled}
@@ -2761,7 +2798,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }
           quoteExpiresAt={isBookAudience ? bookQuote?.expiresAt : undefined}
           staleWarning={bookStaleWarning}
-          disabledReason={isBookAudience ? bookDisabledReason ?? reviewHold : null}
+          disabledReason={isBookAudience
+            ? combinedZeroReach
+              ? COMBINED_ZERO_REACH_COPY
+              : bookDisabledReason ?? reviewHold
+            : null}
           unpricedNote={
             isBookAudience
               ? unpricedSmsLine(groupFigures?.unpricedSmsCount ?? reviewSmsQuote?.unpricedCount) ?? undefined

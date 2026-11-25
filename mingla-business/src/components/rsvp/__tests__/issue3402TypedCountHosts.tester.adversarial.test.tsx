@@ -9,6 +9,8 @@ jest.mock("react-native", () => ({
   StyleSheet: { create: (styles: unknown) => styles, absoluteFillObject: {} },
   Platform: { OS: "ios", select: (choices: any) => choices.ios ?? choices.default },
   View: "View", Text: "Text", Pressable: "Pressable", TextInput: "TextInput", Image: "Image",
+  // TEST-MOD-APPROVED #4490 — NumberStepper reads the window width to stack on a phone.
+  useWindowDimensions: () => ({ width: 1024, height: 800, scale: 1, fontScale: 1 }),
 }));
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true, default: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined },
@@ -137,6 +139,8 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     // #4420 — the wizards' invite publish gate (pure; real module).
     if (exportName === "wizardInvitePublishGate") return jest.requireActual("../../invites/wizardInvitePublishGate");
     if (exportName === "useUnsavedChangesGuard") return jest.requireActual("../../../hooks/useUnsavedChangesGuard");
+    // [TEST-MOD-APPROVED #4490] 07-A: the wizards read whether the event is at a venue (server venue link); no venue in these hosts.
+    if (exportName === "useEventAtVenue") return { useEventAtVenue: () => false };
     throw new Error(`Unclassified host boundary: ${name}`);
   };
   const module = { exports: {} as Record<string, React.ComponentType<any>> };

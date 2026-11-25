@@ -64,29 +64,55 @@ function formatSpend(minor: number, currency: string): string {
   return `${symbol}${major}`;
 }
 
-export const BuyerRow: React.FC<BuyerRowProps> = ({ buyer, onPress }) => {
-  const consentLine = useMemo(() => {
-    if (buyer.consent.email_marketing_ok && buyer.consent.sms_marketing_ok) {
-      return { text: "marketing OK · SMS OK", tone: "ok" as const };
-    }
-    if (buyer.consent.email_marketing_ok) {
-      return { text: "marketing OK", tone: "ok" as const };
-    }
-    if (buyer.consent.unsubscribed_global_scope) {
-      return { text: "unsubscribed (all brands)", tone: "muted" as const };
-    }
-    if (buyer.consent.unsubscribed_brand_scope) {
-      return { text: "unsubscribed", tone: "muted" as const };
-    }
-    return { text: "transactional only", tone: "muted" as const };
-  }, [buyer.consent]);
+/**
+ * #4596 — a guest (or pending guest) has no order: their row says "Going",
+ * never an order count or an amount. Buyers and "both" keep the buyer line.
+ */
+export function buyerRowIsGuest(buyer: BuyerRowData): boolean {
+  return buyer.audience_role === "guest" || buyer.audience_role === "pending";
+}
 
+/** #4596 — the second line: contact plus "Going" for a guest, orders and spend for a buyer. */
+export function buyerRowMetaLine(buyer: BuyerRowData): string {
+  const contact = buyer.masked_email ?? buyer.masked_phone ?? "no contact";
+  if (buyerRowIsGuest(buyer)) return `${contact} · Going`;
+  return `${contact} · ${buyer.order_count} ${buyer.order_count === 1 ? "order" : "orders"} · ${formatSpend(
+    buyer.total_spend_minor,
+    buyer.total_spend_currency,
+  )}`;
+}
+
+/** #4596 — the marketing line, from the server's decision; pending review is never OK. */
+export function buyerRowConsentLine(buyer: BuyerRowData): { text: string; tone: "ok" | "muted" } {
+  if (buyer.consent.pending_review === true) {
+    return { text: "waiting on a duplicate check", tone: "muted" };
+  }
+  if (buyer.consent.email_marketing_ok && buyer.consent.sms_marketing_ok) {
+    return { text: "marketing OK · SMS OK", tone: "ok" };
+  }
+  if (buyer.consent.email_marketing_ok) {
+    return { text: "marketing OK", tone: "ok" };
+  }
+  if (buyer.consent.unsubscribed_global_scope) {
+    return { text: "unsubscribed (all brands)", tone: "muted" };
+  }
+  if (buyer.consent.unsubscribed_brand_scope) {
+    return { text: "unsubscribed", tone: "muted" };
+  }
+  return { text: "transactional only", tone: "muted" };
+}
+
+export const BuyerRow: React.FC<BuyerRowProps> = ({ buyer, onPress }) => {
+  const consentLine = useMemo(() => buyerRowConsentLine(buyer), [buyer]);
   const accessibilityLabel = useMemo(() => {
     const contact = buyer.masked_email ?? buyer.masked_phone ?? "no contact";
     const eventBit =
       buyer.last_event_name !== null
         ? `last event ${buyer.last_event_name} ${formatRelativeDate(buyer.last_purchase_at)}`
         : "no event history";
+    if (buyerRowIsGuest(buyer)) {
+      return `${buyer.display_name}, ${contact}, going, ${eventBit}, ${consentLine.text}`;
+    }
     return `${buyer.display_name}, ${contact}, ${buyer.order_count} ${
       buyer.order_count === 1 ? "order" : "orders"
     }, ${formatSpend(buyer.total_spend_minor, buyer.total_spend_currency)} total, ${eventBit}, ${consentLine.text}`;
@@ -98,11 +124,7 @@ export const BuyerRow: React.FC<BuyerRowProps> = ({ buyer, onPress }) => {
         {buyer.display_name}
       </Text>
       <Text style={styles.meta} numberOfLines={1} ellipsizeMode="tail">
-        {buyer.masked_email ?? buyer.masked_phone ?? "no contact"}
-        {" · "}
-        {buyer.order_count} {buyer.order_count === 1 ? "order" : "orders"}
-        {" · "}
-        {formatSpend(buyer.total_spend_minor, buyer.total_spend_currency)}
+        {buyerRowMetaLine(buyer)}
       </Text>
       <Text style={styles.subMeta} numberOfLines={1} ellipsizeMode="tail">
         {buyer.last_event_name !== null

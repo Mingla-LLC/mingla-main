@@ -120,7 +120,9 @@ Deno.test("S-2 venue booking: date strip, stepper, time chips and occasion picks
   const g = read("../../../mingla-business/src/components/venue/GuestVenueReservation.tsx");
   assertStringIncludes(g, "<OfferingDateStrip");
   assertStringIncludes(g, 'decrementLabel="Decrease party size"');
-  assertStringIncludes(g, "usePublicVenueAvailability(venueId, date, partySize)");
+  // #4490 P5-3: a big party asks availability at the table maximum, and a
+  // picked seat narrows it to that space; the call still reads the same state.
+  assertStringIncludes(g, "usePublicVenueAvailability(\n    venueId,\n    date,\n    big ? range.tableMax : partySize,\n    seatSpaceId,\n  )");
   assertStringIncludes(g, "submissionTruthRef.current.selectableSlotUtcValues.includes(");
   assertStringIncludes(g, "occasion: occasion.trim() || null");
   assertStringIncludes(g, "setOccasion((current) => (current.trim() === label ? \"\" : label))");

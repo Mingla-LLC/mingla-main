@@ -7,6 +7,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 
 type SelectionBody = {
+  action?: unknown;
+  venue_id?: unknown;
   event_id?: unknown;
   selection_ref?: unknown;
   url?: unknown;
@@ -142,6 +144,227 @@ const verifiedProviderSelection = async (
   return null;
 };
 
+// ---------------------------------------------------------------------------
+// #4490 07-A/L — copy_venue_cover: use the venue's cover for an event there.
+// The copy belongs to the event (a venue cover's object is deleted when the
+// host removes it), so an image/GIF is copied into event_covers/<brand>/<event>/
+// and then applied through the normal upload path. A video cover is returned
+// as-is: the 294490 widening of assert_event_cover_selection_source accepts the
+// linked venue's current, ready video.
+// ---------------------------------------------------------------------------
+
+type CoverRow = {
+  cover_media_url: string | null;
+  cover_media_type: string | null;
+  cover_media_poster_url: string | null;
+};
+
+const PUBLIC_MARK = "/storage/v1/object/public/";
+
+/** "…/storage/v1/object/public/<bucket>/<path>" → { bucket, path }, else null. */
+export const storageObjectOf = (
+  url: string | null,
+): { bucket: string; path: string } | null => {
+  if (url === null) return null;
+  const at = url.indexOf(PUBLIC_MARK);
+  if (at < 0) return null;
+  const rest = url.slice(at + PUBLIC_MARK.length).split("?")[0];
+  const slash = rest.indexOf("/");
+  if (slash <= 0) return null;
+  const path = decodeURIComponent(rest.slice(slash + 1));
+  if (path.length === 0 || path.includes("..")) return null;
+  return { bucket: rest.slice(0, slash), path };
+};
+
+/** The checks before any copy: who, which event, which venue. Pure for tests. */
+export const venueCoverRefusal = (input: {
+  rank: number;
+  managerRank: number;
+  event: {
+    brand_id: string | null;
+    venue_id: string | null;
+    event_type: string | null;
+    deleted_at: string | null;
+  } | null;
+  venue: ({ brand_id: string | null } & CoverRow) | null;
+  venueId: string;
+}): string | null => {
+  if (input.event === null || input.event.deleted_at !== null) {
+    return "event_not_found";
+  }
+  if (input.rank < input.managerRank) return "not_authorized";
+  if (input.venue === null || input.venue.brand_id !== input.event.brand_id) {
+    return "venue_not_found";
+  }
+  if (input.event.venue_id !== input.venueId) return "event_not_at_venue";
+  if (
+    input.venue.cover_media_url === null ||
+    !["image", "gif", "video"].includes(input.venue.cover_media_type ?? "")
+  ) {
+    return "venue_has_no_cover";
+  }
+  // N122 (P0): the copy runs with the service role, and a venue cover URL is
+  // host-supplied text. Only the brand's own venue cover objects
+  // (brand_covers/<event brand>/...) may ever be copied: the cover and, for a
+  // GIF, its poster. Anything else (a private bucket, another brand's folder)
+  // is refused before any download. A video is never copied (returned as is,
+  // and the SQL video branch checks it against a ready job of the brand).
+  if (input.venue.cover_media_type !== "video") {
+    const owned = (url: string | null): boolean => {
+      const o = storageObjectOf(url);
+      return o !== null && o.bucket === "brand_covers" &&
+        input.event !== null &&
+        input.event.brand_id !== null &&
+        o.path.startsWith(`${input.event.brand_id}/`);
+    };
+    if (!owned(input.venue.cover_media_url)) return "venue_cover_not_copyable";
+    if (
+      input.venue.cover_media_type === "gif" &&
+      !owned(input.venue.cover_media_poster_url)
+    ) {
+      return "venue_cover_not_copyable";
+    }
+  }
+  return null;
+};
+
+// deno-lint-ignore no-explicit-any
+type ServiceClient = any;
+
+const copyObject = async (
+  service: ServiceClient,
+  publicBase: string,
+  source: { bucket: string; path: string },
+  target: string,
+): Promise<string> => {
+  const download = await service.storage.from(source.bucket).download(
+    source.path,
+  );
+  if (download.error || !download.data) {
+    throw new Error("venue_cover_download_failed");
+  }
+  const blob = download.data as Blob;
+  const upload = await service.storage.from("event_covers").upload(
+    target,
+    blob,
+    {
+      contentType: blob.type || undefined,
+      upsert: false,
+    },
+  );
+  if (upload.error) throw new Error("venue_cover_upload_failed");
+  return `${publicBase}${PUBLIC_MARK}event_covers/${target}`;
+};
+
+const extOf = (path: string, fallback: string): string => {
+  const m = path.match(/\.([A-Za-z0-9]{2,5})$/);
+  return m ? m[1].toLowerCase() : fallback;
+};
+
+const handleCopyVenueCover = async (
+  service: ServiceClient,
+  supabaseUrl: string,
+  userId: string,
+  body: SelectionBody,
+): Promise<Response> => {
+  const eventId = asString(body.event_id);
+  const venueId = asString(body.venue_id);
+  if (!eventId || !venueId) {
+    return jsonResponse(400, { error: "cover_selection_invalid" });
+  }
+  const { data: event } = await service.from("events")
+    .select("id, brand_id, venue_id, event_type, deleted_at")
+    .eq("id", eventId).maybeSingle();
+  const { data: venue } = await service.from("venue_listings")
+    .select(
+      "id, brand_id, cover_media_url, cover_media_type, cover_media_poster_url",
+    )
+    .eq("id", venueId).maybeSingle();
+  let rank = 0;
+  let managerRank = 1;
+  if (event?.brand_id) {
+    const [r1, r2] = await Promise.all([
+      service.rpc("biz_brand_effective_rank", {
+        p_brand_id: event.brand_id,
+        p_user_id: userId,
+      }),
+      service.rpc("biz_role_rank", { p_role: "event_manager" }),
+    ]);
+    rank = typeof r1.data === "number" ? r1.data : 0;
+    managerRank = typeof r2.data === "number"
+      ? r2.data
+      : Number.MAX_SAFE_INTEGER;
+  }
+  const refusal = venueCoverRefusal({
+    rank,
+    managerRank,
+    event: event ?? null,
+    venue: venue ?? null,
+    venueId,
+  });
+  if (refusal !== null) {
+    const status = refusal === "not_authorized"
+      ? 403
+      : refusal === "event_not_found" || refusal === "venue_not_found"
+      ? 404
+      : 409;
+    return jsonResponse(status, { error: refusal });
+  }
+  const type = String(venue.cover_media_type);
+  if (type === "video") {
+    return jsonResponse(200, {
+      url: venue.cover_media_url,
+      type,
+      poster_url: venue.cover_media_poster_url,
+      provider: "upload",
+    });
+  }
+  const media = storageObjectOf(venue.cover_media_url);
+  if (media === null) {
+    return jsonResponse(409, { error: "venue_cover_not_copyable" });
+  }
+  const stem = `${event.brand_id}/${eventId}/venue-${crypto.randomUUID()}`;
+  // The copy's public URL uses the same public origin the venue cover was
+  // served from (the edge's own SUPABASE_URL can be an internal address).
+  const publicBase = String(venue.cover_media_url).slice(
+    0,
+    String(venue.cover_media_url).indexOf(PUBLIC_MARK),
+  ) || supabaseUrl;
+  try {
+    const url = await copyObject(
+      service,
+      publicBase,
+      media,
+      `${stem}.${extOf(media.path, type === "gif" ? "gif" : "jpg")}`,
+    );
+    let posterUrl = url;
+    if (type === "gif") {
+      const poster = storageObjectOf(venue.cover_media_poster_url);
+      if (poster === null) {
+        return jsonResponse(409, { error: "venue_cover_not_copyable" });
+      }
+      posterUrl = await copyObject(
+        service,
+        publicBase,
+        poster,
+        `${stem}-poster.${extOf(poster.path, "jpg")}`,
+      );
+    }
+    return jsonResponse(200, {
+      url,
+      type,
+      poster_url: posterUrl,
+      provider: "upload",
+    });
+  } catch (error) {
+    console.error(
+      "[event-cover-attest-selection] copy_venue_cover failed",
+      error,
+    );
+    return jsonResponse(502, { error: "venue_cover_copy_failed" });
+  }
+};
+
 export const handleEventCoverAttestSelection = async (
   req: Request,
 ): Promise<Response> => {
@@ -177,6 +400,17 @@ export const handleEventCoverAttestSelection = async (
     body = await req.json() as SelectionBody;
   } catch {
     return jsonResponse(400, { error: "invalid_json" });
+  }
+  if (body.action === "copy_venue_cover") {
+    const service = createClient(supabaseUrl, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    return await handleCopyVenueCover(
+      service,
+      supabaseUrl,
+      authData.user.id,
+      body,
+    );
   }
   const eventId = asString(body.event_id);
   const selectionRef = asString(body.selection_ref);

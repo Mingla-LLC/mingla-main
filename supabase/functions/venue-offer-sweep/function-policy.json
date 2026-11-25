@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "venue-offer-sweep",
+  "verify_jwt": true,
+  "gateway_reason": "Called only by the platform scheduler with the project service key; the handler also requires that exact bearer before calling the service-only sweep RPC.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

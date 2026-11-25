@@ -24,6 +24,29 @@ test("every ADD COLUMN clause contributes a definition", () => {
   const result = parseMigration("fixture.sql", "ALTER TABLE public.events ADD COLUMN one text, ADD COLUMN two text, ADD COLUMN three text, ADD COLUMN four text;");
   for (const name of ["one","two","three","four"]) assert.ok(result.definitions.has(`col:${name}`));
 });
+// TEST-MOD-APPROVED #4490 (08-O3 part A): a column declared in a file's own CREATE TABLE is credited.
+test("a file's own CREATE TABLE columns satisfy its own references; table constraints are not columns", () => {
+  const result = parseMigration("fixture.sql", "CREATE TABLE public.t (id uuid PRIMARY KEY, ready_at timestamptz, note text CHECK (note <> ''), CONSTRAINT t_ok CHECK (id IS NOT NULL), UNIQUE (id, ready_at));");
+  for (const name of ["id", "ready_at", "note"]) assert.ok(result.createdCols.has(`col:${name}`), name);
+  for (const name of ["constraint", "unique", "check"]) assert.ok(!result.createdCols.has(`col:${name}`), name);
+  // Own columns never become chain definitions (a skipped file's columns are not credited to others).
+  assert.ok(!result.definitions.has("col:ready_at"));
+});
+// TEST-MOD-APPROVED #4490 (08-O3 fix 1, O3-T6): the own-column credit never hides a read of a
+// skipped column on the table the skipped migration added it to; the real false positive stays clean.
+test("an own CREATE TABLE column does not hide a read of the skipped column on its own table (C-1)", () => {
+  const workflows = { fixture: loop };
+  const skip = { ...migrations, "002_skip.sql": "CREATE TABLE public.hidden(id int); ALTER TABLE public.base ADD COLUMN ready_at timestamptz;" };
+  const hole = { ...skip, "007_hole.sql": "CREATE TABLE public.own2 (id int, ready_at timestamptz); CREATE VIEW public.bad3 AS SELECT b.ready_at FROM public.base b;" };
+  assert.ok(analyseTrees({ workflows, migrations: hole }).violations.some(v => v.check === "C-1" && v.message.includes("007_hole.sql") && v.message.includes("ready_at")));
+  const own = { ...skip, "005_own.sql": "CREATE TABLE public.own (id int, ready_at timestamptz); CREATE VIEW public.own_view AS SELECT ready_at FROM public.own;" };
+  assert.deepEqual(analyseTrees({ workflows, migrations: own }).violations, []);
+  assert.deepEqual([...parseMigration("002_skip.sql", skip["002_skip.sql"]).addedColumnTables.get("col:ready_at")], ["base"]);
+});
+test("the real #4453 file that declares its own ready_at stays clean while #4490 skips ADD COLUMN ready_at", () => {
+  const result = analyseLanes();
+  assert.ok(!result.violations.some(v => v.message.includes("20281119004453")));
+});
 // #4514: CREATE TABLE columns of an APPLIED migration count as available; a skipped migration's never do.
 const fn = (col, tbl = "t") => `CREATE FUNCTION public.f() RETURNS int LANGUAGE sql AS $$ SELECT ${col} FROM public.${tbl} $$;`;
 test("a column from an applied CREATE TABLE is not blamed on a skipped ADD COLUMN of another table", () => {

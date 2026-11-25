@@ -42,10 +42,10 @@ import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
-import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+import { TimeField } from "../ui/TimeField";
+import { WeekdayChips } from "../ui/WeekdayChips";
 import type { Menu } from "../../services/menusService";
 import {
-  DAY_LABELS,
   normalizeTimeInput,
   serviceWindowSummary,
   validateServiceWindow,
@@ -185,7 +185,9 @@ export function MenuCategorySheet({
   const [description, setDescription] = useState<string>("");
   const [windowStart, setWindowStart] = useState<string>("");
   const [windowEnd, setWindowEnd] = useState<string>("");
-  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  // #4490 N71: the picked ISO days; none picked = every day. Chips start off,
+  // so tapping Mon–Thu means "Mon to Thu", not "every day but Mon–Thu".
+  const [days, setDays] = useState<number[]>([]);
   const [pickerMode, setPickerMode] = useState<TimePickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
@@ -228,7 +230,11 @@ export function MenuCategorySheet({
       normalizeTimeInput(category?.serviceWindowStart ?? "") ?? "",
     );
     setWindowEnd(normalizeTimeInput(category?.serviceWindowEnd ?? "") ?? "");
-    setDays(category?.serviceDays ?? [1, 2, 3, 4, 5, 6, 7]);
+    setDays(
+      category?.serviceDays != null && category.serviceDays.length < 7
+        ? category.serviceDays
+        : [],
+    );
   }, [visible, category]);
 
   const showDelete = isEdit && canDelete && onDelete !== undefined;
@@ -236,7 +242,7 @@ export function MenuCategorySheet({
     () => ({
       start: windowStart.trim().length > 0 ? windowStart.trim() : null,
       end: windowEnd.trim().length > 0 ? windowEnd.trim() : null,
-      days: days.length === 7 ? null : days,
+      days: days.length === 0 || days.length === 7 ? null : days,
     }),
     [windowStart, windowEnd, days],
   );
@@ -325,18 +331,6 @@ export function MenuCategorySheet({
     (next: string): void => {
       onClearSaveFailure?.();
       setWindowEnd(next);
-    },
-    [onClearSaveFailure],
-  );
-
-  const toggleDay = useCallback(
-    (isoDay: number): void => {
-      onClearSaveFailure?.();
-      setDays((current) =>
-        current.includes(isoDay)
-          ? current.filter((d) => d !== isoDay)
-          : [...current, isoDay].sort((a, b) => a - b),
-      );
     },
     [onClearSaveFailure],
   );
@@ -481,6 +475,10 @@ export function MenuCategorySheet({
               value={name}
               onChangeText={handleNameChange}
               onBlur={() => setNameBlurred(true)}
+              // #4490 N12: Enter saves.
+              onSubmitEditing={() => {
+                if (canSave) handleSave();
+              }}
               placeholder="e.g. Starters, Drinks"
               accessibilityLabel="Category name"
               accessibilityHint={menuTextAccessibilityHint(
@@ -534,11 +532,12 @@ export function MenuCategorySheet({
             <View style={styles.windowCol}>
               <Field label="From">
                 {Platform.OS === "web" ? (
-                  <WebDateTimeInput
-                    type="time"
+                  // #4490 N12/N71: the workspace's own 24-hour time field (typeable).
+                  <TimeField
+                    label=""
                     value={windowStart}
                     onChangeValue={handleWindowStartChange}
-                    ariaLabel="Service start time"
+                    accessibilityLabel="Service start time"
                     hasError={windowError !== null}
                     testID="menu-category-window-start"
                   />
@@ -574,11 +573,12 @@ export function MenuCategorySheet({
             <View style={styles.windowCol}>
               <Field label="Until">
                 {Platform.OS === "web" ? (
-                  <WebDateTimeInput
-                    type="time"
+                  // #4490 N12/N71: the workspace's own 24-hour time field (typeable).
+                  <TimeField
+                    label=""
                     value={windowEnd}
                     onChangeValue={handleWindowEndChange}
-                    ariaLabel="Service end time"
+                    accessibilityLabel="Service end time"
                     hasError={windowError !== null}
                     testID="menu-category-window-end"
                   />
@@ -621,24 +621,20 @@ export function MenuCategorySheet({
               testID="menu-category-window-clear"
             />
           ) : null}
-          <View style={styles.dayRow} accessibilityLabel="Service days">
-            {DAY_LABELS.map((label, index) => {
-              const isoDay = index + 1;
-              const on = days.includes(isoDay);
-              return (
-                <Button
-                  key={label}
-                  label={label}
-                  onPress={() => toggleDay(isoDay)}
-                  variant={on ? "primary" : "secondary"}
-                  size="sm"
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: on }}
-                  style={styles.dayChip}
-                  testID={`menu-category-day-${isoDay}`}
-                />
-              );
-            })}
+          <View accessibilityLabel="Service days">
+          <WeekdayChips
+            label="Days (none picked = every day)"
+            value={days.map((d) => d - 1)}
+            onChange={(next) => {
+              onClearSaveFailure?.();
+              const iso = next.map((d) => d + 1).sort((a, b) => a - b);
+              setDays(iso.length === 7 ? [] : iso);
+            }}
+            showSummary={false}
+            dayTestID={(day) => `menu-category-day-${day + 1}`}
+            fullTarget
+            testID="menu-category-days"
+          />
           </View>
           <Text
             style={styles.windowSummary}
@@ -671,28 +667,6 @@ export function MenuCategorySheet({
             </View>
           ) : null}
 
-          <Button
-            label={
-              saveFailureMessage !== null
-                ? "Try again"
-                : isEdit
-                  ? "Save category"
-                  : "Add category"
-            }
-            onPress={handleSave}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={saving}
-            disabled={!canSave}
-            accessibilityLabel={
-              saveFailureMessage !== null
-                ? "Try saving category again"
-                : undefined
-            }
-            style={styles.saveBtn}
-            testID="menu-category-save"
-          />
 
           {showDelete ? (
             <Button
@@ -708,6 +682,31 @@ export function MenuCategorySheet({
             />
           ) : null}
         </ScrollView>
+        {/* #4490 N12: the primary button is pinned in the sheet footer. */}
+        <View style={styles.footer}>
+            <Button
+              label={
+                saveFailureMessage !== null
+                  ? "Try again"
+                  : isEdit
+                    ? "Save category"
+                    : "Add category"
+              }
+              onPress={handleSave}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={saving}
+              disabled={!canSave}
+              accessibilityLabel={
+                saveFailureMessage !== null
+                  ? "Try saving category again"
+                  : undefined
+              }
+              style={styles.saveBtn}
+              testID="menu-category-save"
+            />
+        </View>
       </View>
 
       {pickerMode !== null && Platform.OS === "ios" ? (
@@ -846,6 +845,11 @@ function Field({ label, children }: FieldProps): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  footer: {
+    paddingTop: space[3],
+    borderTopWidth: 1,
+    borderTopColor: color.line,
+  },
   body: {
     flex: 1,
     paddingHorizontal: space[4],
@@ -989,7 +993,7 @@ const styles = StyleSheet.create({
     color: color.errorText,
   },
   saveBtn: {
-    marginTop: space[6],
+    marginTop: 0,
   },
   deleteBtn: {
     marginTop: space[2],

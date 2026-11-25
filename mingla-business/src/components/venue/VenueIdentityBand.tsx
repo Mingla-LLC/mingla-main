@@ -31,6 +31,7 @@ import type { VenueCategory } from "../../types/brand";
 import type { ListingStatusView } from "../../utils/listingStatus";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { ListingStatusChip } from "./ListingStatusChip";
+import { VENUE_TYPES } from "../../types/venueFeatures";
 
 const COVER_SIZE = 52;
 
@@ -75,12 +76,11 @@ const hashHueFromString = (s: string): number => {
  * category exactly the way the operator chose it. Exhaustive by type: adding a
  * `VenueCategory` member fails the build here until it is labelled.
  */
-const CATEGORY_LABEL: Record<VenueCategory, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-  stay: "Stay",
-};
+// #4490 click-test D10/D12 — one label per type, everywhere a host reads it
+// ("Play and games", never "Play"): the nine types' own labels.
+const CATEGORY_LABEL: Record<VenueCategory, string> = Object.fromEntries(
+  VENUE_TYPES.map((t) => [t.key, t.label]),
+) as Record<VenueCategory, string>;
 
 export interface VenueIdentityBandProps {
   venue: VenueListing;

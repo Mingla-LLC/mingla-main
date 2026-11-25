@@ -12,7 +12,12 @@ export type ClaimLinkKind =
   | "reservation"
   | "stay_group"
   | "venue_order"
-  | "ticket";
+  | "ticket"
+  // #4490 Explorer W1: venue offer bookings, memberships, waitlist places, Till receipts.
+  | "venue_booking"
+  | "venue_membership"
+  | "venue_waitlist"
+  | "venue_till_sale";
 
 /** Redirect subjects: a waitlist offer's checkout, or (#4422) an event's
  * public page on host.usemingla.com. The database allow-lists each target. */

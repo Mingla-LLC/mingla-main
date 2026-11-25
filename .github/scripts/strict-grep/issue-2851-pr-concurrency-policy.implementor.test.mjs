@@ -1281,7 +1281,11 @@ const DENIED_FULL_SHA256 = [
   // bundle-baseline ratchet lane gained the exact main-push Business export
   // proof and shared movement verdict. The lane remains outside PR
   // cancellation and its concurrency classification is unchanged.
-  "e459d639489abf863f8dc8fa91d5c69c7754bd4440ae3aeca5ef94f376660880",
+  // [TEST-MOD-APPROVED #3493] Re-derived after the ratchet lane retained full
+  // checkout history so an approved one-time allowance remains discoverable
+  // across intervening main commits. The lane remains outside PR cancellation
+  // and its concurrency classification is unchanged.
+  "ff6075c3138b4a27688c2cc887dd10257610213f0fda6508b8dbcbcb65653d3f",
   // [TEST-MOD-APPROVED #2948] Index 2 is the edge-function deploy workflow —
   // named through DENIED's `liveWorkflow` helper above, never as a literal,
   // because a workflow filename in this file becomes a provider reference and

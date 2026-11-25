@@ -56,6 +56,7 @@
   "pill.experiences": "Kwarewa",
   "pill.trips": "Tafiya",
   "pill.stays": "Tafiya",
+  "pill.venues": "Wurare",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.option_a11y": "{{label}}, {{count}} matches",
@@ -77,6 +78,7 @@
   "group.check_in": "Duba",
   "group.guests": "Baƙi",
   "group.property_kind": "Type of place",
+  "group.venue_type": "Type of place",
   "group.any_suffix": "{{group}} · Kowa",
   "when.any_day": "Kowace rana",
   "when.tomorrow": "Gobe",
@@ -209,8 +211,15 @@
   "count.trips_other": "{{count}} tafiya",
   "count.stays_one": "{{count}} tsaya",
   "count.stays_other": "{{count}} zauna",
+  "count.venues_one": "{{count}} wuri",
+  "count.venues_other": "{{count}} wurare",
   "guests.value_one": "{{count}} bako",
   "guests.value_other": "{{count}} guests",
   "card.type.stops_one": "{{count}} STOP",
-  "card.type.stops_other": "{{count}} TSAYA"
+  "card.type.stops_other": "{{count}} TSAYA",
+  "venues.empty_title": "Babu wuraren da za a yi booking a nan tukuna.",
+  "venues.empty_body": "Wuraren da za ka iya yi booking a Mingla za su bayyana a nan.",
+  "venues.filtered_title": "Babu wurin da ya dace da waɗannan matattara.",
+  "venues.error_title": "Ba mu iya loda wurare ba.",
+  "venues.error_retry": "Sake gwadawa"
 }

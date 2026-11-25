@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-outbox-drain/__tests__/issue_4490_balance_paid_skip.implementor.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-4490-balance-paid-skip",
+  "profile": "deno-1.46-notification"
+}

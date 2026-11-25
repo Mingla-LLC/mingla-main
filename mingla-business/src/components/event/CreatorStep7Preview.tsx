@@ -94,11 +94,12 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   brand,
   onTapMiniCard,
   onConnectStripe,
+  atVenue = false,
 }) => {
   // META-ORCH-1076 — provider-neutral payout readiness: a connected Paystack
   // brand publishes paid tickets just like a Stripe-active brand.
   const stripeStatus: BrandStripeStatus = payoutGateStatus(brand);
-  const publishability = computePublishability(draft, stripeStatus);
+  const publishability = computePublishability(draft, stripeStatus, { atVenue });
 
   const handleMiniCardPress = useCallback((): void => {
     onTapMiniCard();

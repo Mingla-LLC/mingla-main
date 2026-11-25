@@ -19,6 +19,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import { Icon, type IconName } from "../ui/Icon";
+import { campaignFailureCopy } from "../../features/marketing/campaignFailureCopy";
 import {
   LIST_METHOD_LABEL,
   type CampaignListGroup,
@@ -121,17 +122,30 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
         return (
           <Text style={styles.metaText}>Saved {timeAgo(campaign.updated_at)}</Text>
         );
-      case "failed":
+      case "failed": {
         // #4541 R4.3: a scheduled Blast whose form closed first sent nothing.
-        return group.members.some((row) => row.failure_reason === "form_closed") ? (
-          <Text style={[styles.metaText, styles.failedText]} testID="campaign-not-sent-form-closed">
-            Not sent: form closed
+        if (group.members.some((row) => row.failure_reason === "form_closed")) {
+          return (
+            <Text style={[styles.metaText, styles.failedText]} testID="campaign-not-sent-form-closed">
+              Not sent: form closed
+            </Text>
+          );
+        }
+        // #4596: any other reason on record is said in words, never as a code.
+        const reasonCopy = campaignFailureCopy(
+          group.members.find((row) => row.status === "failed" && (row.failure_reason ?? null) !== null)
+            ?.failure_reason,
+        );
+        return reasonCopy !== null ? (
+          <Text style={[styles.metaText, styles.failedText]} testID="campaign-not-sent-reason">
+            {reasonCopy}
           </Text>
         ) : (
           <Text style={[styles.metaText, styles.failedText]}>
             Failed {formatDate(campaign.updated_at)}
           </Text>
         );
+      }
       case "cancelled":
         return <Text style={styles.metaText}>Cancelled</Text>;
     }

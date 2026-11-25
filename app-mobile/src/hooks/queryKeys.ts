@@ -71,7 +71,11 @@ export type PurchaseKind =
   | "rsvp"
   | "reservation"
   | "venue_order"
-  | "stay";
+  | "stay"
+  // #4490 Explorer W2 — venue bookings, plans and waitlist places.
+  | "venue_booking"
+  | "venue_membership"
+  | "venue_waitlist";
 
 export const purchaseKeys = {
   all: ["purchases"] as const,
@@ -82,6 +86,11 @@ export const purchaseKeys = {
     [...purchaseKeys.all, "identifiers", userId] as const,
   lastClaim: (userId: string) =>
     [...purchaseKeys.all, "lastClaim", userId] as const,
+  // #4490 Explorer W2 — the owner's live read of one venue booking or plan
+  // (pass QR included); under the purchases prefix so every purchase refresh
+  // and logout clears it.
+  venueLive: (userId: string, kind: PurchaseKind, id: string) =>
+    [...purchaseKeys.all, "venueLive", userId, kind, id] as const,
   // #4548 — the host's Guest pack for an event this account holds. OFFLINE
   // CONTRACT: persisted with the rest of the cache (the user id in the key makes
   // it auth-scoped), so the note and labels show offline; links need a

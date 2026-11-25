@@ -200,7 +200,9 @@ const styles = StyleSheet.create({
   value: { fontSize: 15.5, fontWeight: "700", lineHeight: 21 },
   detail: { fontSize: 13.5, lineHeight: 19, marginTop: 3 },
   caption: { fontSize: 12.5, lineHeight: 17, marginTop: 4 },
-  action: { minHeight: 24, paddingTop: 2, flexShrink: 0 },
+  // #4490: a 44 touch target (a phone browser has no hitSlop); the negative margin keeps the
+  // row exactly as tall as before.
+  action: { minHeight: 44, minWidth: 44, marginVertical: -10, paddingTop: 2, justifyContent: "center", alignItems: "flex-end", flexShrink: 0 },
   actionText: { fontSize: 13.5, fontWeight: "700" },
   trailing: { flexShrink: 0, paddingTop: 1 },
   tags: { fontSize: 13, lineHeight: 19, marginTop: 14, letterSpacing: 0.2 },

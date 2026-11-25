@@ -42,6 +42,11 @@
 
 import React from "react";
 import {
+  flyerColumnStickyTop,
+  flyerMaxHeight,
+  PREMIUM_DESK_PAGE_TOP,
+} from "./flyerColumnStickyTop";
+import {
   Animated,
   Platform,
   ScrollView,
@@ -68,6 +73,7 @@ import { OFFERING_PREMIUM_HEADER_ROW } from "./offeringFrameMetrics";
 import {
   OfferingGlassBackdrop,
   glassBlurActive,
+  glassFillAlpha,
   useOfferingGlass,
 } from "./OfferingGlassContext";
 import {
@@ -138,6 +144,18 @@ export const MOTION_Z = 5;
 /** The lowest zIndex any floating CTA bar uses; MOTION_Z must stay below it. */
 export const FLOATING_CTA_MIN_Z = 6;
 export const DESKTOP_MOTION_Z = 4;
+
+/**
+ * #4490 W3 fix 4 (W3-N34a) — where the phone header band is fully solid: its
+ * usual point (the cover has scrolled away), or the end of the page when the
+ * page cannot scroll that far, so the band is never left mid-fade with the
+ * cover's title reading through the compact title. A page that cannot scroll
+ * at all keeps the usual point (the band never shows).
+ */
+export function premiumSolidThreshold(args: { base: number; maxScroll: number | null }): number {
+  if (args.maxScroll === null || args.maxScroll <= 0) return args.base;
+  return Math.min(args.base, Math.max(1, args.maxScroll - 2));
+}
 
 export interface ParallaxCoverShellProps {
   palette: ThemePalette;
@@ -499,12 +517,69 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   const [solidHeader, setSolidHeader] = React.useState(false);
   const solidRef = React.useRef(false);
   const [premiumCoverHeight, setPremiumCoverHeight] = React.useState(0);
+  // #4490 N116 — the desktop flyer column sticks at 96 from the top of the
+  // scroll area. The scroll area is already the window minus the Privacy & ad
+  // choices strip (I-PRIVACY-BAR-NEVER-OCCLUDES: #root ends above it), so when
+  // the column is taller than what is left, stick it higher so its foot (the
+  // docked action bar) stays above the strip instead of being clipped by it.
+  const [deskScrollHeight, setDeskScrollHeight] = React.useState(0);
+  const [deskColHeight, setDeskColHeight] = React.useState(0);
+  const [deskColWidth, setDeskColWidth] = React.useState(0);
+  const [deskFlyerHeight, setDeskFlyerHeight] = React.useState(0);
+  const flyerStickyTop = flyerColumnStickyTop(deskScrollHeight, deskColHeight);
+  const flyerCap = flyerMaxHeight({
+    scrollHeight: deskScrollHeight,
+    columnHeight: deskColHeight,
+    flyerWidth: deskColWidth,
+    flyerHeight: deskFlyerHeight,
+  });
+  // #4490 N121 — a short window narrows the whole 4:5 flyer (same aspect, centred)
+  // instead of cropping it, so whatever sits at its foot (the photo's own caption,
+  // the event title block) keeps its full padding and is never cut at the edge.
+  const flyerWidthCap = flyerCap !== null ? Math.round((flyerCap * 4) / 5) : null;
+  const onDeskFlyerLayout = React.useCallback((event: LayoutChangeEvent): void => {
+    setDeskFlyerHeight(event.nativeEvent.layout.height);
+  }, []);
+  const onDeskScrollLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      setDeskScrollHeight(event.nativeEvent.layout.height);
+      onScrollViewLayout?.(event);
+    },
+    [onScrollViewLayout],
+  );
+  const onDeskColLayout = React.useCallback((event: LayoutChangeEvent): void => {
+    setDeskColHeight(event.nativeEvent.layout.height);
+    setDeskColWidth(event.nativeEvent.layout.width);
+  }, []);
   const headerHeight = safeAreaTop + PREMIUM_HEADER_ROW;
+  // #4490 W3 fix 4 (W3-N34a): how far the phone page can actually scroll. A
+  // short page (Harbour Palms on Entry) ended BEFORE the band's fade point, so
+  // the header stayed mid-fade at the bottom of the page and the cover's title
+  // read through the compact title. The band now goes solid by the page's end.
+  const [premiumViewportHeight, setPremiumViewportHeight] = React.useState(0);
+  const [premiumContentHeight, setPremiumContentHeight] = React.useState(0);
+  const onPremiumScrollLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      setPremiumViewportHeight(event.nativeEvent.layout.height);
+      onScrollViewLayout?.(event);
+    },
+    [onScrollViewLayout],
+  );
+  const onPremiumContentSize = React.useCallback((_w: number, h: number): void => {
+    setPremiumContentHeight(h);
+  }, []);
   const solidThreshold = isDesktop
     ? PREMIUM_DESKTOP_SOLID_AT
-    : premiumCoverHeight > 0
-      ? Math.max(120, premiumCoverHeight - SEAM - headerHeight)
-      : 300;
+    : premiumSolidThreshold({
+        base:
+          premiumCoverHeight > 0
+            ? Math.max(120, premiumCoverHeight - SEAM - headerHeight)
+            : 300,
+        maxScroll:
+          premiumViewportHeight > 0 && premiumContentHeight > 0
+            ? premiumContentHeight - premiumViewportHeight
+            : null,
+      });
   const handlePremiumScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
       const y = event.nativeEvent.contentOffset.y;
@@ -614,12 +689,23 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             // Phone web is fully opaque (issue #4420 audit): at 0.9 the
             // section heading and steppers scrolling under it ghosted through
             // beside the title (same rule as glassFillAlpha).
+            // #4490 W3 fix 3 (W3-N26): native follows the one glass rule
+            // (glassFillAlpha: Android always opaque, spec 06 §8; iOS opaque
+            // unless a blur sits behind it). At 0.93 / 0.97 with no blur the
+            // venue page's "Closed now / Opens 12:00" and price lines read
+            // through the header beside the title at 375 pt.
             backgroundColor: palette.page.startsWith("#")
               ? hexToRgba(
                   palette.page,
-                  headerBlurred
-                    ? 0.72
-                    : Platform.OS === "web" ? (isDesktop ? 0.78 : 1) : Platform.OS === "android" ? 0.97 : 0.93,
+                  // Phone web never blurs the band (desktopBlur(0) below), so it
+                  // stays opaque whatever the material says; only desktop web
+                  // lowers it, further when its blur is on (#4420 A-2).
+                  Platform.OS === "web" ? (isDesktop ? (headerBlurred ? 0.72 : 0.78) : 1)
+                    : glassFillAlpha({
+                        platform: Platform.OS,
+                        blurred: headerBlurred,
+                        desktopWeb: false,
+                      }),
                 )
               : palette.page,
           },
@@ -796,25 +882,28 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           showsVerticalScrollIndicator={false}
           onScroll={handlePremiumScroll}
           scrollEventThrottle={16}
-          onLayout={onScrollViewLayout}
+          onLayout={onDeskScrollLayout}
         >
           <View style={styles.premiumDeskPage}>
             <View style={styles.premiumDeskCols}>
               <View
                 style={webStyle({
                   position: "sticky",
-                  top: 96,
+                  top: flyerStickyTop,
                   width: "40%",
                   maxWidth: PREMIUM_FLYER_MAX,
                   flexShrink: 0,
                   gap: 12,
                 })}
+                onLayout={onDeskColLayout}
                 testID={testID !== undefined ? `${testID}-flyer-col` : undefined}
               >
                 <View
+                  onLayout={onDeskFlyerLayout}
                   style={[
                     styles.premiumFlyer,
                     { borderColor: palette.panelBorder },
+                    flyerWidthCap !== null ? { width: flyerWidthCap, alignSelf: "center" } : null,
                     webStyle({ boxShadow: "0 34px 80px -28px rgba(0,0,0,0.85)" }),
                   ]}
                 >
@@ -892,7 +981,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           showsVerticalScrollIndicator={false}
           onScroll={handlePremiumScroll}
           scrollEventThrottle={16}
-          onLayout={onScrollViewLayout}
+          onLayout={onPremiumScrollLayout}
+          onContentSizeChange={onPremiumContentSize}
           {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
         >
           <View
@@ -953,7 +1043,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           showsVerticalScrollIndicator={false}
           onScroll={handlePremiumScroll}
           scrollEventThrottle={16}
-          onLayout={onScrollViewLayout}
+          onLayout={onPremiumScrollLayout}
+          onContentSizeChange={onPremiumContentSize}
           {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
         >
           <View
@@ -1498,7 +1589,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 1160,
     alignSelf: "center",
-    paddingTop: 84,
+    paddingTop: PREMIUM_DESK_PAGE_TOP,
     paddingHorizontal: 40,
     paddingBottom: 140,
   },

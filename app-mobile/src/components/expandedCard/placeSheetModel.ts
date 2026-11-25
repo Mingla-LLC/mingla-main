@@ -157,7 +157,8 @@ export function basicsTiles(input: BasicsInput, now: Date, labels: BasicsLabels)
 // "When you'd go" — the chosen time
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type WhenKey = 'now' | 'tonight' | 'tomorrow' | 'scheduled';
+/** #4490 W7: `event` is the event page's chip (the event's own start). */
+export type WhenKey = 'now' | 'tonight' | 'tomorrow' | 'scheduled' | 'event';
 
 export interface WhenChip {
   readonly key: WhenKey;

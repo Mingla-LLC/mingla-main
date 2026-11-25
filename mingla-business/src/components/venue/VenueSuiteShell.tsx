@@ -41,8 +41,9 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "./host/venueHostOwner";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
-import { useNavigation } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -55,17 +56,35 @@ import {
   useMyVenueAccess,
   type MyVenueAccess,
 } from "../../hooks/useMyVenueAccess";
+import { useVenueReservationSettings } from "../../hooks/useVenueReservationSettings";
+import { useSetVenueFeature, useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { VenueFeatureError } from "../../services/venueFeaturesService";
 import {
-  useSetReservationsEnabled,
-  useVenueReservationSettings,
-} from "../../hooks/useVenueReservationSettings";
+  VENUE_FEATURE_KEYS,
+  backfilledFeatureSet,
+  builtPreset,
+  featureSetFrom,
+  type VenueFeatureKey,
+  type VenueTypeKey,
+} from "../../types/venueFeatures";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { VenueModule } from "../../types/venueReservation";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { filterVenueModulesForCapabilities } from "./venueCapabilityGate";
+import { QueryClientContext } from "@tanstack/react-query";
+import { venueFeatureKeys } from "../../hooks/venueFeatureKeys";
+import { FeatureSetupNeedsCard } from "./features/FeatureSetupNeedsCard";
+import { featureSetupNeeds, type SetupRefusal, type SetupTarget } from "./features/featureSetupModel";
+import {
+  filterVenueModulesForCapabilities,
+  scopedStaffManagesOffers,
+  withCloseAccess,
+  withStationsAccess,
+  withTillAccess,
+} from "./venueCapabilityGate";
+import { venueWriteErrorCopy } from "./features/venueFeaturesCopy";
 
 /** Lazy ConfirmDialog / Toast — both pull reanimated and red node/web suites
  * that mount VenueSuiteShell (e.g. #2737 shellScroll render proof). */
@@ -77,10 +96,7 @@ const LazyToast = React.lazy(async () => {
   const mod = await import("../ui/Toast");
   return { default: mod.Toast };
 });
-import {
-  VenueAvailabilityModule,
-  type VenueAvailabilityLeaveHandle,
-} from "./VenueAvailabilityModule";
+import type { VenueAvailabilityLeaveHandle } from "./VenueAvailabilityModule";
 import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
 import { VenueMenuModule } from "./VenueMenuModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
@@ -96,10 +112,18 @@ import {
   type VenueModuleLeaveHandle,
 } from "./venueLeaveContract";
 import { deriveVenueRailModules } from "./venueRail";
+import { useTillReleased } from "../../hooks/useTillReleased";
+import { tillHref, TillLauncher } from "./till/TillLauncher";
+import { stationHref, StationsLauncher } from "./station/StationsLauncher";
+import { closeHref, DayCloseLauncher } from "./close/DayCloseLauncher";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
-  deriveVenueModules,
-  shouldLeaveBookingModule,
+  deriveVenueNav,
+  hasNoStoredFeatures,
+  resolveTablesAlias,
+  shouldLeaveHiddenModule,
+  venueOrderEntry,
+  venueUsesSpaces,
   withVenueReviewsModule,
 } from "./venueModules";
 
@@ -131,9 +155,69 @@ const LazyVenueInsightsModule = React.lazy(async () => {
  * (The #1550 rule: hosts own code-splitting.)
  */
 const LazyVenueOrdersModule = React.lazy(async () => {
-  const mod = await import("./VenueOrdersModule");
-  return { default: mod.VenueOrdersModule };
+  return { default: (await loadVenueHostScreens()).VenueOrdersModule };
 });
+
+/**
+ * #4490 — the classic Availability module shares its Table times with
+ * "Availability & pricing", so it loads from the same Host venue owner.
+ */
+const LazyVenueAvailabilityModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueAvailabilityModule };
+});
+
+/**
+ * #4490 — every feature module loads through the ONE Host venue owner
+ * (host/venueHostOwner.ts): Spaces and Availability & pricing pull Sheet,
+ * pickers and the site plan, none of which the eager shell needs, and one
+ * owner keeps what the modules share out of the eager web __common chunk.
+ */
+const LazyVenueSpacesModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueSpacesModule };
+});
+const LazyVenueAvailabilityPricingModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueAvailabilityPricingModule };
+});
+// #4490 P2 — Offers (with the Entry editor), Today, Check-in and the Overview
+// day header, each its own host-owned lazy boundary (Sheet, Modal, pickers,
+// the QR encoder and the web camera never reach the eager shell).
+const LazyVenueOffersModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueOffersModule };
+});
+const LazyVenueTodayModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueTodayModule };
+});
+const LazyVenueCheckInModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueCheckInModule };
+});
+const LazyVenueGuestListModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueGuestListModule };
+});
+// #4490 P4 — Requests and Calendar (private hire), own lazy boundaries.
+const LazyVenueRequestsModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueRequestsModule };
+});
+const LazyVenueCalendarModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueCalendarModule };
+});
+// #4490 P6 — Members (plans and the plan editor inside), own lazy boundary.
+const LazyVenueMembersModule = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueMembersModule };
+});
+const LazyEventsHereCard = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).EventsHereCard };
+});
+const LazyVenueTodayOverview = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueTodayOverview };
+});
+
+/** All built features on: scoped staff's loading frame never shows "no pages". */
+const PENDING_SCOPED_FEATURES = featureSetFrom(
+  Object.fromEntries(VENUE_FEATURE_KEYS.map((key) => [key, true])) as Record<
+    VenueFeatureKey,
+    boolean
+  >,
+);
 
 // #4188 post-merge production regression — keep the fail-closed access answer
 // referentially stable while the permission RPC is loading or unavailable.
@@ -143,6 +227,7 @@ const LazyVenueOrdersModule = React.lazy(async () => {
 const PENDING_VENUE_ACCESS: MyVenueAccess = {
   scoped: true,
   capabilities: [],
+  canSell: false,
 };
 
 export interface VenueSuiteShellProps {
@@ -168,6 +253,14 @@ export interface VenueSuiteShellProps {
    * the Reviews module is.
    */
   renderReviewsSummary?: (openReviews: () => void) => React.ReactNode;
+  /** #4490 — `&item=<id>`: open that offer on arrival (with `?module=offers`). */
+  initialItemId?: string | null;
+  /**
+   * #4490 N11: told every time the open module changes after the first
+   * paint, so the page can keep `?module=` in the address (reload, Back and a
+   * shared link open the same module).
+   */
+  onModuleChange?: (module: VenueModule) => void;
 }
 
 export function VenueSuiteShell({
@@ -178,6 +271,8 @@ export function VenueSuiteShell({
   overviewHeader = null,
   reviewsPanel = null,
   renderReviewsSummary,
+  initialItemId = null,
+  onModuleChange,
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -197,34 +292,151 @@ export function VenueSuiteShell({
   // requested module is lost by the time the retry succeeds. (A refetch that
   // fails after a successful load keeps the last `data`, so that answer holds.)
   const settingsResolved = settingsQuery.data !== undefined;
-  const setEnabled = useSetReservationsEnabled(brandId, venueId);
   const venueAccessQuery = useMyVenueAccess(venueId);
+  // #4490 P2 — a brand scanner reads as scoped with venue.check_in (useMyVenueAccess).
   const venueAccess = venueAccessQuery.data ?? PENDING_VENUE_ACCESS;
+
+  // #4490 — the nav derives from venue_features
+  // (I-4490-VENUE-FEATURES-GATE-SUITE). Until the features read answers, the venue reads as its backfill
+  // (the old reservations switch), so the loading frame shows today's list and
+  // never flashes a different workspace.
+  const featuresQuery = useVenueFeatures(brandId, venueId);
+  const setFeature = useSetVenueFeature(brandId, venueId);
+  // #4490 spec 08 O1 — the Till's release switch (fails closed).
+  const tillReleased = useTillReleased();
+  // A failed features read falls back to the backfill rule (the old
+  // reservations switch), which is exactly what the server derives for a
+  // venue without stored rows — so it counts as resolved once the settings
+  // answer, and the #3389 bounce still works when only the features read fails.
+  const featuresResolved =
+    featuresQuery.data !== undefined || (featuresQuery.isError && settingsResolved);
+  const features = useMemo(
+    () =>
+      featuresQuery.data?.features ??
+      (venueAccess.scoped && !settingsResolved
+        ? PENDING_SCOPED_FEATURES
+        : backfilledFeatureSet({ reservationsEnabled })),
+    [featuresQuery.data, reservationsEnabled, settingsResolved, venueAccess.scoped],
+  );
+  const tableReservationsOn = features.table_reservations.enabled;
+  // #4490 click-test D12 — features, not types: the "Take table reservations"
+  // invitation shows only while the feature is off AND the venue's type
+  // usually starts with it (restaurant, bar and lounge, club). A play venue
+  // is not asked to set tables.
+  // Type unknown (the features read failed) keeps the old invitation.
+  const featuresCategory = featuresQuery.data?.venueCategory ?? null;
+  const showReservationsInvite =
+    !tableReservationsOn &&
+    (featuresCategory === null ||
+      builtPreset(featuresCategory as VenueTypeKey).includes("table_reservations"));
+  const requestSpacesInStore = useVenueSuiteStore((s) => s.requestSpaces);
+  // #4490 N20/N61: what the add-venue Features step asked for and the server
+  // refused (cache only: written by the create call), plus anything switched
+  // on that still waits for a space.
+  // #4490 fix 2: read from the cache through the context, not useQuery, so a
+  // shell mounted without a query client (the module render tests) still
+  // renders; the create call writes this before the venue page opens.
+  const shellQueryClient = React.useContext(QueryClientContext);
+  const startRefusedQuery = {
+    data:
+      shellQueryClient === undefined
+        ? undefined
+        : shellQueryClient.getQueryData<SetupRefusal[]>(venueFeatureKeys.startRefused(venueId ?? "")),
+  };
+  const setupNeeds = useMemo(
+    () =>
+      featuresQuery.data === undefined
+        ? []
+        : featureSetupNeeds({
+            features: featuresQuery.data.features,
+            activeSpaceCount: featuresQuery.data.activeSpaceCount,
+            refused: startRefusedQuery.data ?? null,
+          }),
+    [featuresQuery.data, startRefusedQuery.data],
+  );
+  const setupNeedsSpace = setupNeeds.some((n) => n.target === "spaces");
+  const spacesRequestedVenueId = useVenueSuiteStore((s) => s.spacesRequestedVenueId);
+  const navInput = useMemo(
+    () => ({
+      features,
+      activeSpaceCount: featuresQuery.data?.activeSpaceCount ?? 0,
+      // #4490 N61/N62: no stored rows → the nav follows the type's preset.
+      venueCategory: featuresQuery.data?.venueCategory ?? null,
+      noStoredFeatures: featuresQuery.data !== undefined && hasNoStoredFeatures(featuresQuery.data.features),
+      spacesRequested:
+        (venueId !== null && spacesRequestedVenueId === venueId) ||
+        // #4490 N20: a chosen feature waiting for a space opens Spaces.
+        setupNeedsSpace ||
+        scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities),
+      tillReleased: tillReleased && venueId !== null,
+    }),
+    [
+      features,
+      featuresQuery.data,
+      tillReleased,
+      setupNeedsSpace,
+      spacesRequestedVenueId,
+      venueAccess.capabilities,
+      venueAccess.scoped,
+      venueId,
+    ],
+  );
+  const usesSpaces = venueUsesSpaces(navInput);
+  // #4490 spec 08 O1 — the pad/Till switch (one rule: venueOrderEntry).
+  const orderEntry = venueOrderEntry({
+    tillReleased: tillReleased && venueId !== null,
+    tillFeatureOn: features.till.enabled,
+    canSell: venueAccess.canSell === true,
+  });
 
   const hasReviews = reviewsPanel !== null && reviewsPanel !== undefined;
   const visibleModules = useMemo(
     () => withVenueReviewsModule(
-      filterVenueModulesForCapabilities(
-        deriveVenueModules(
-          venueAccess.scoped && !settingsResolved ? true : reservationsEnabled,
+      withCloseAccess(
+        withStationsAccess(
+          withTillAccess(
+            filterVenueModulesForCapabilities(
+              deriveVenueNav(navInput),
+              venueAccess.scoped,
+              venueAccess.capabilities,
+            ),
+            venueAccess.canSell === true,
+          ),
+          venueAccess.canKitchen === true,
         ),
-        venueAccess.scoped,
-        venueAccess.capabilities,
+        venueAccess.canManageMoney === true,
       ),
       hasReviews,
     ),
-    [
-      hasReviews,
-      reservationsEnabled,
-      settingsResolved,
-      venueAccess.scoped,
-      venueAccess.capabilities,
-    ],
+    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities, venueAccess.canSell, venueAccess.canKitchen,
+      venueAccess.canManageMoney],
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
+  const lastToldModuleRef = useRef<VenueModule>(initialModule);
+  useEffect(() => {
+    if (lastToldModuleRef.current === activeModule) return;
+    lastToldModuleRef.current = activeModule;
+    onModuleChange?.(activeModule);
+  }, [activeModule, onModuleChange]);
+  // #4490 P4 — the Calendar opens a hold or a request in Requests.
+  const [requestItem, setRequestItem] = useState<string | null>(null);
   const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
   const settingsRef = useRef<VenueSettingsLeaveHandle | null>(null);
+  const offersRef = useRef<VenueModuleLeaveHandle | null>(null);
+  // #4490 P5 — Spaces holds the floor editor (unsaved layouts guard leaving).
+  const spacesRef = useRef<VenueModuleLeaveHandle | null>(null);
+  // #4490 P6 — Members holds the plan editor; Offers › Membership opens it on a new plan.
+  const membersRef = useRef<VenueModuleLeaveHandle | null>(null);
+  const [membersView, setMembersView] = useState<"members" | "plans" | "new_plan">("members");
+  useEffect(() => {
+    // Opening Members from the rail later starts on the members list again.
+    if (activeModule !== "members") setMembersView("members");
+  }, [activeModule]);
+  const [spacesView, setSpacesView] = useState<"list" | "site" | "tables" | undefined>(
+    initialModule === "tables" ? "tables" : undefined,
+  );
+  const [spacesSpaceId, setSpacesSpaceId] = useState<string | null>(null);
   const leaveHandlesRef = useRef<
     Partial<Record<VenueModule, VenueModuleLeaveHandle>>
   >({});
@@ -247,6 +459,9 @@ export function VenueSuiteShell({
         return leaveHandlesRef.current[module] ?? null;
       }
       if (module === "settings") return settingsRef.current;
+      if (module === "offers") return offersRef.current;
+      if (module === "spaces") return spacesRef.current;
+      if (module === "members") return membersRef.current;
       return null;
     },
     [],
@@ -254,6 +469,23 @@ export function VenueSuiteShell({
 
   const selectModule = useCallback(
     (nextModule: VenueModule, restoreFocus?: () => void): void => {
+      // #4490 spec 08 O1 — the Till is a full-screen route outside the rail:
+      // the rail item opens it; the workspace (and any unsaved edit in it)
+      // stays where it was underneath.
+      if (nextModule === "till" && venueId !== null) {
+        router.push(tillHref(venueId) as never);
+        return;
+      }
+      // #4490 spec 08 O3 — Kitchen and bar is a full-screen route too.
+      if (nextModule === "stations" && venueId !== null) {
+        router.push(stationHref(venueId) as never);
+        return;
+      }
+      // #4490 spec 08 O5 part B — Close the day is a full-screen route too.
+      if (nextModule === "close" && venueId !== null) {
+        router.push(closeHref(venueId) as never);
+        return;
+      }
       if (nextModule === activeModule) return;
 
       if (activeModule === "availability" && availabilityRef.current !== null) {
@@ -278,8 +510,35 @@ export function VenueSuiteShell({
       }
       setActiveModule(nextModule);
     },
-    [activeModule, getLeaveHandle],
+    [activeModule, getLeaveHandle, venueId],
   );
+
+  // #4490 spec 08 O1 — `?module=till` (a link or a reload) opens the Till
+  // itself once it is shown here; the address is replaced so Back from the
+  // Till never lands on a page that sends it straight back.
+  const tillDeepLinkRef = useRef(initialModule === "till");
+  useEffect(() => {
+    if (!tillDeepLinkRef.current || venueId === null) return;
+    if (!visibleModules.includes("till")) return;
+    tillDeepLinkRef.current = false;
+    router.replace(tillHref(venueId) as never);
+  }, [venueId, visibleModules]);
+  // #4490 spec 08 O3 — `?module=stations` opens the station screen the same way.
+  const stationsDeepLinkRef = useRef(initialModule === "stations");
+  useEffect(() => {
+    if (!stationsDeepLinkRef.current || venueId === null) return;
+    if (!visibleModules.includes("stations")) return;
+    stationsDeepLinkRef.current = false;
+    router.replace(stationHref(venueId) as never);
+  }, [venueId, visibleModules]);
+  // #4490 spec 08 O5 part B — `?module=close` opens Close the day the same way.
+  const closeDeepLinkRef = useRef(initialModule === "close");
+  useEffect(() => {
+    if (!closeDeepLinkRef.current || venueId === null) return;
+    if (!visibleModules.includes("close")) return;
+    closeDeepLinkRef.current = false;
+    router.replace(closeHref(venueId) as never);
+  }, [venueId, visibleModules]);
 
   const leaveSection =
     pendingLeaveRef.current !== null
@@ -442,20 +701,34 @@ export function VenueSuiteShell({
     </>
   );
 
-  // Guard: if the toggle flips OFF while on a booking module, snap to overview.
-  // #3389 — only once the settings have loaded, so a `?module=tables` deep
+  // Guard: if a feature flips OFF while its module is open, snap to overview.
+  // #3389 — only once the features have loaded, so a `?module=tables` deep
   // link is not bounced on the loading frame of a venue that takes bookings.
+  // #4490 — features, not the reservations toggle, decide (shouldLeaveHiddenModule).
+  // #4490 P5 (reconciliation 35) — `?module=tables` opens Spaces › Tables once
+  // tables live in spaces. Runs before the hidden-module bounce below.
+  const tablesAlias = featuresResolved
+    ? resolveTablesAlias({ activeModule, usesSpaces, visible: visibleModules })
+    : null;
   useEffect(() => {
+    if (tablesAlias === null) return;
+    setSpacesView("tables");
+    setActiveModule(tablesAlias.module);
+  }, [tablesAlias]);
+
+  useEffect(() => {
+    if (venueAccess.scoped) return; // scoped staff fall to their first module below
+    if (tablesAlias !== null) return;
     if (
-      shouldLeaveBookingModule({
+      shouldLeaveHiddenModule({
         activeModule,
-        reservationsEnabled,
-        settingsResolved,
+        visible: visibleModules,
+        featuresResolved,
       })
     ) {
       selectModule("overview");
     }
-  }, [activeModule, reservationsEnabled, settingsResolved, selectModule]);
+  }, [activeModule, featuresResolved, selectModule, tablesAlias, venueAccess.scoped, visibleModules]);
 
   // #4420 — a `?module=reviews` link to a venue with no reviews panel (not
   // verified, or no place) lands on Overview instead of an empty module.
@@ -481,14 +754,28 @@ export function VenueSuiteShell({
     syncStore({ activeModule, visibleModules, selectModule, requestLeave });
   }, [syncStore, activeModule, visibleModules, selectModule, requestLeave]);
 
+  // #4490 — the Overview card turns on the Table reservations FEATURE (and
+  // Waitlist with it, as the old single switch did) through the feature RPC;
+  // the server mirrors the legacy reservations column.
+  const [turnOnError, setTurnOnError] = useState<string | null>(null);
   const handleTurnOnReservations = useCallback((): void => {
-    setEnabled.mutate(true, {
-      onSuccess: () => {
-        // Toggle-ON lands on Settings (the real 2.0 action; Tables is ComingSoon).
-        setActiveModule("settings");
+    setTurnOnError(null);
+    setFeature.mutate(
+      { key: "table_reservations", enabled: true, cascade: true },
+      {
+        onSuccess: (result) => {
+          if (!result.state.features.waitlist.enabled) {
+            setFeature.mutate({ key: "waitlist", enabled: true, cascade: true });
+          }
+          setActiveModule("settings");
+        },
+        onError: (error) => {
+          const e = error instanceof VenueFeatureError ? error : null;
+          setTurnOnError(venueWriteErrorCopy("feature", e?.code ?? "unknown", e?.detail ?? null));
+        },
       },
-    });
-  }, [setEnabled]);
+    );
+  }, [setFeature]);
 
   // Overview mounts the VenueIntelligenceModule, which OWNS its own ScrollView
   // (with its own `insets.bottom + 120` clearance) — so the shell must NOT wrap
@@ -515,6 +802,18 @@ export function VenueSuiteShell({
   );
 
   const renderWorkspace = (): React.ReactElement => {
+    // #4490 spec 08 O1 — a Till-only login lands here (never a blank shell).
+    if (activeModule === "till" && venueId !== null) {
+      return <TillLauncher venueId={venueId} />;
+    }
+    // #4490 spec 08 O3 — a kitchen-only login lands here (never a blank shell).
+    if (activeModule === "stations" && venueId !== null) {
+      return <StationsLauncher venueId={venueId} />;
+    }
+    // #4490 spec 08 O5 part B — never a blank shell for Close the day.
+    if (activeModule === "close" && venueId !== null) {
+      return <DayCloseLauncher venueId={venueId} />;
+    }
     if (activeModule === "overview") {
       // ORCH-1186-B — the Overview slot is now the venue INTELLIGENCE dashboard
       // (the listing recap relocated to Settings by Leg 1). The reservations-
@@ -528,9 +827,51 @@ export function VenueSuiteShell({
       // #4420 B8 + round-3 item 12 — the invitation and the page's Local
       // reviews panel now scroll WITH the dashboard (as its header) instead of
       // being pinned above it, and the invitation is one compact row.
+      // #4490 — any selling feature (Entry, group packages, private hire).
+      const sellsOffers =
+        features.entry.enabled ||
+        features.group_packages.enabled ||
+        features.private_hire.enabled ||
+        features.by_the_hour.enabled ||
+        features.memberships.enabled;
+      const openSetupTarget = (target: SetupTarget): void => {
+        if ((target === "spaces" || target === "tables") && venueId !== null) requestSpacesInStore(venueId);
+        selectModule(target);
+      };
       const header = (
         <>
-          {!reservationsEnabled ? (
+          {setupNeeds.length > 0 && !venueAccess.scoped ? (
+            <View style={styles.setupNeeds}>
+              <FeatureSetupNeedsCard needs={setupNeeds} onOpen={openSetupTarget} />
+            </View>
+          ) : null}
+          {sellsOffers && !venueAccess.scoped ? (
+            <React.Suspense fallback={null}>
+              <LazyVenueTodayOverview
+                brandId={brandId}
+                venueId={venueId}
+                activeSpaceCount={featuresQuery.data?.activeSpaceCount ?? 0}
+                features={features}
+                canManageOffers={!venueAccess.scoped || scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities)}
+                onOpenModule={(next) => {
+                  if (visibleModules.includes(next)) selectModule(next);
+                }}
+                showRequests={visibleModules.includes("requests")}
+              />
+            </React.Suspense>
+          ) : null}
+          {/* #4490 fix 2 (N76) — Events here on: start an event at this venue. */}
+          {features.events_here.enabled && !venueAccess.scoped && venueId !== null ? (
+            <React.Suspense fallback={null}>
+              <View style={styles.setupNeeds}>
+                <LazyEventsHereCard
+                  venueId={venueId}
+                  onOpenCalendar={visibleModules.includes("calendar") ? () => selectModule("calendar") : undefined}
+                />
+              </View>
+            </React.Suspense>
+          ) : null}
+          {showReservationsInvite ? (
             <GlassCard
               variant="base"
               padding={space[4]}
@@ -553,9 +894,18 @@ export function VenueSuiteShell({
                 onPress={handleTurnOnReservations}
                 variant="primary"
                 size="sm"
-                loading={setEnabled.isPending}
+                loading={setFeature.isPending}
                 testID="venue-overview-turn-on-reservations"
               />
+              {turnOnError !== null ? (
+                <Text
+                  style={styles.invitationError}
+                  accessibilityLiveRegion="polite"
+                  testID="venue-overview-turn-on-error"
+                >
+                  {turnOnError}
+                </Text>
+              ) : null}
             </GlassCard>
           ) : null}
           {hasReviews && renderReviewsSummary !== undefined
@@ -569,7 +919,12 @@ export function VenueSuiteShell({
           {/* META-ORCH-1255(C) D-D: venue-scoped so the RPC resolves THIS
               venue's place signals + timezone (the legacy brand place pointer
               is inert for new venues). */}
-          <VenueIntelligenceModule brandId={brandId} venueId={venueId} header={header} />
+          <VenueIntelligenceModule
+            brandId={brandId}
+            venueId={venueId}
+            header={header}
+            showReservationMetrics={tableReservationsOn}
+          />
         </View>
       );
     }
@@ -585,7 +940,161 @@ export function VenueSuiteShell({
           ref={settingsRef}
           brandId={brandId}
           venueId={venueId}
+          hoursLiveInAvailability={usesSpaces && visibleModules.includes("availability")}
         />
+      );
+    }
+    // #4490 P2 — Offers (Entry editor inside), Today and Check-in.
+    const openModule = (next: VenueModule): void => {
+      if (visibleModules.includes(next)) selectModule(next);
+    };
+    if (activeModule === "offers") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueOffersModule
+            ref={offersRef}
+            brandId={brandId}
+            venueId={venueId}
+            onOpenModule={openModule}
+            initialOfferId={initialModule === "offers" ? initialItemId : null}
+            onOpenMembers={(view) => {
+              setMembersView(view);
+              if (visibleModules.includes("members")) selectModule("members");
+            }}
+          />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "today") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueTodayModule brandId={brandId} venueId={venueId} onOpenModule={openModule} showRequests={visibleModules.includes("requests")} />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "requests") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueRequestsModule
+            key={requestItem ?? "requests"}
+            brandId={brandId}
+            venueId={venueId}
+            onOpenModule={openModule}
+            initialGroupId={requestItem ?? (initialModule === "requests" ? initialItemId : null)}
+          />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "calendar") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueCalendarModule
+            brandId={brandId}
+            venueId={venueId}
+            onOpenRequest={
+              visibleModules.includes("requests")
+                ? (groupId) => {
+                    setRequestItem(groupId);
+                    selectModule("requests");
+                  }
+                : undefined
+            }
+          />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "checkin") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueCheckInModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "guestlist") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueGuestListModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      );
+    }
+    // #4490 P6 — Members (plans, the plan editor, one member).
+    if (activeModule === "members") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueMembersModule
+            key={membersView}
+            ref={membersRef}
+            brandId={brandId}
+            venueId={venueId}
+            initialView={membersView}
+            initialMemberId={initialModule === "members" ? initialItemId : null}
+            onOpenModule={openModule}
+          />
+        </React.Suspense>
+      );
+    }
+    // #4490 — Spaces (P1-8).
+    if (activeModule === "spaces") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueSpacesModule
+            key={`${spacesView ?? "spaces"}:${spacesSpaceId ?? ""}`}
+            ref={spacesRef}
+            brandId={brandId}
+            venueId={venueId}
+            initialView={spacesView}
+            initialSpaceId={spacesSpaceId}
+            onOpenSettings={visibleModules.includes("settings") ? () => selectModule("settings") : undefined}
+          />
+        </React.Suspense>
       );
     }
     // ORCH-1186-C — the always-visible command-band DISPLAY-ONLY menu builder
@@ -627,22 +1136,69 @@ export function VenueSuiteShell({
             </View>
           }
         >
-          <LazyVenueOrdersModule brandId={brandId} venueId={venueId} />
+          <LazyVenueOrdersModule brandId={brandId} venueId={venueId} orderEntry={orderEntry} />
         </React.Suspense>
       );
     }
     // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
     // The whole booking band is now real operator UI (no ComingSoon left).
     if (activeModule === "tables") {
+      // #4490 P5 — wait for the features before choosing the old module or the alias.
+      if (!featuresResolved || tablesAlias !== null) {
+        return (
+          <View style={styles.lazyModuleFallback}>
+            <ActivityIndicator />
+          </View>
+        );
+      }
       return <VenueTablesModule brandId={brandId} venueId={venueId} />;
     }
     if (activeModule === "availability") {
+      // #4490 — in the feature layout the module is "Availability & pricing":
+      // hours with several windows, special days, close a day, and the
+      // unchanged Table times (VenueAvailabilityModule) when table
+      // reservations are on. The classic layout keeps the old module as-is.
+      if (usesSpaces) {
+        return (
+          <React.Suspense
+            fallback={
+              <View style={styles.lazyModuleFallback}>
+                <ActivityIndicator />
+              </View>
+            }
+          >
+            <LazyVenueAvailabilityPricingModule
+              ref={availabilityRef}
+              brandId={brandId}
+              venueId={venueId}
+              tableReservationsOn={tableReservationsOn}
+              showTableTimes={
+                tableReservationsOn &&
+                (!venueAccess.scoped ||
+                  venueAccess.capabilities.includes("restaurant.manage_reservations"))
+              }
+              canEditHours={
+                !venueAccess.scoped ||
+                scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities)
+              }
+            />
+          </React.Suspense>
+        );
+      }
       return (
-        <VenueAvailabilityModule
-          ref={availabilityRef}
-          brandId={brandId}
-          venueId={venueId}
-        />
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueAvailabilityModule
+            ref={availabilityRef}
+            brandId={brandId}
+            venueId={venueId}
+          />
+        </React.Suspense>
       );
     }
     if (activeModule === "reservations") {
@@ -651,6 +1207,16 @@ export function VenueSuiteShell({
           brandId={brandId}
           venueId={venueId}
           scrollBottomPad={scrollBottomPad}
+          floorPlanOn={featuresQuery.data?.features.floor_plan.enabled === true}
+          onEditFloor={
+            visibleModules.includes("spaces")
+              ? (spaceId) => {
+                  setSpacesView("tables");
+                  setSpacesSpaceId(spaceId);
+                  selectModule("spaces");
+                }
+              : undefined
+          }
         />
       );
     }
@@ -671,7 +1237,7 @@ export function VenueSuiteShell({
       <View style={styles.accessState} testID="venue-access-unavailable">
         <Text style={styles.accessTitle}>No venue pages assigned</Text>
         <Text style={styles.accessBody}>
-          Ask a brand owner or admin to assign the restaurant pages you need.
+          Ask a brand owner or admin to give you access to this venue.
         </Text>
         {venueAccessQuery.isError ? (
           <Button
@@ -703,6 +1269,7 @@ export function VenueSuiteShell({
           workspaceSelfScrolls={workspaceSelfScrolls}
           scrollBottomPad={scrollBottomPad}
           railTestIdPrefix="venue-rail-"
+          railLabel="Venue sections"
           testID="venue-suite-shell-desktop"
         >
           {renderWorkspace()}
@@ -741,6 +1308,7 @@ export function VenueSuiteShell({
 }
 
 const styles = StyleSheet.create({
+  setupNeeds: { marginBottom: space[4] },
   accessState: {
     flex: 1,
     alignItems: "center",
@@ -790,6 +1358,10 @@ const styles = StyleSheet.create({
   invitationBody: {
     ...type.small,
     color: color.text2,
+  },
+  invitationError: {
+    ...type.caption,
+    color: color.errorText,
   },
 });
 

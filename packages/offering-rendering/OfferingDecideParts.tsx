@@ -14,13 +14,16 @@
 
 import React from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type StyleProp,
   type ViewStyle,
+  useWindowDimensions,
 } from "react-native";
 
 import { accentFill, accentOutline, themeFontFace } from "./themeAccentStyle";
@@ -109,7 +112,27 @@ export interface OfferingStepperProps {
   valueLabel?: string;
   fontFamily?: string;
   testID?: string;
+  /**
+   * #4490 N32: the count is a typed number box too (number pad), for ranges
+   * where − / + alone means dozens of taps (private hire up to 500, groups
+   * of 60+). A typed number outside [min, max] is clamped on blur or Enter,
+   * and `onClamp` is told so the page can say why in plain words.
+   */
+  typeable?: boolean;
+  onClamp?: (typed: number, clamped: number) => void;
 }
+
+/** Digits only, a number in [min, max] or null when empty (pure). */
+export const clampTypedStepperValue = (
+  raw: string,
+  min: number,
+  max: number,
+): { typed: number | null; value: number | null } => {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 0) return { typed: null, value: null };
+  const typed = parseInt(digits, 10);
+  return { typed, value: Math.min(max, Math.max(min, typed)) };
+};
 
 /** − n + (`.stepper`): outlined minus, ink-filled plus, tabular count. */
 export const OfferingStepper = ({
@@ -123,9 +146,27 @@ export const OfferingStepper = ({
   valueLabel,
   fontFamily,
   testID,
+  typeable = false,
+  onClamp,
 }: OfferingStepperProps) => {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const commit = (): void => {
+    if (draft === null) return;
+    const { typed, value: next } = clampTypedStepperValue(draft, min, max);
+    setDraft(null);
+    if (typed === null || next === null) return;
+    if (next !== value) onChange(next);
+    // After onChange, so a page that clears its note on change keeps this one.
+    if (typed !== next) onClamp?.(typed, next);
+  };
   const canDec = value > min;
   const canInc = value < max;
+  // #4490: hitSlop does nothing in a phone browser, so the 36 buttons are drawn 44 there.
+  const { width } = useWindowDimensions();
+  const touch =
+    Platform.OS === "web" && width > 0 && width < 1024
+      ? { width: 44, height: 44, borderRadius: 22 }
+      : null;
   return (
     <View style={styles.stepper} testID={testID}>
       <Pressable
@@ -137,6 +178,7 @@ export const OfferingStepper = ({
         hitSlop={6}
         style={[
           styles.stepBtn,
+          touch,
           { borderColor: palette.panelBorder },
           !canDec ? styles.stepDisabled : null,
         ]}
@@ -144,18 +186,39 @@ export const OfferingStepper = ({
       >
         <StepGlyph color={palette.primaryText} plus={false} />
       </Pressable>
-      <Text
-        style={[
-          styles.stepValue,
-          { color: palette.primaryText },
-          fontFamily !== undefined ? themeFontFace(fontFamily) : null,
-        ]}
-        accessibilityLiveRegion="polite"
-        accessibilityLabel={valueLabel ?? String(value)}
-        testID={testID !== undefined ? `${testID}-value` : undefined}
-      >
-        {value}
-      </Text>
+      {typeable ? (
+        <TextInput
+          value={draft ?? String(value)}
+          onChangeText={(text) => setDraft(text.replace(/\D/g, "").slice(0, String(max).length))}
+          onFocus={() => setDraft(String(value))}
+          onBlur={commit}
+          onSubmitEditing={commit}
+          keyboardType="number-pad"
+          inputMode="numeric"
+          selectTextOnFocus
+          accessibilityLabel={valueLabel ?? String(value)}
+          style={[
+            styles.stepValue,
+            styles.stepInput,
+            { color: palette.primaryText, borderColor: palette.panelBorder },
+            fontFamily !== undefined ? themeFontFace(fontFamily) : null,
+          ]}
+          testID={testID !== undefined ? `${testID}-value` : undefined}
+        />
+      ) : (
+        <Text
+          style={[
+            styles.stepValue,
+            { color: palette.primaryText },
+            fontFamily !== undefined ? themeFontFace(fontFamily) : null,
+          ]}
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={valueLabel ?? String(value)}
+          testID={testID !== undefined ? `${testID}-value` : undefined}
+        >
+          {value}
+        </Text>
+      )}
       <Pressable
         onPress={canInc ? () => onChange(value + 1) : undefined}
         disabled={!canInc}
@@ -165,6 +228,7 @@ export const OfferingStepper = ({
         hitSlop={6}
         style={[
           styles.stepBtn,
+          touch,
           styles.stepPlus,
           { backgroundColor: palette.primaryText },
           !canInc ? styles.stepDisabled : null,
@@ -545,9 +609,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
+  stepInput: {
+    width: 64,
+    height: 36,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 0,
+  },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
-    minHeight: 42,
+    // #4490 P3: the 44 px touch floor (start times and choices are chips).
+    minHeight: 44,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 999,

@@ -28,6 +28,11 @@ export interface StepBodyProps {
   eventEndsAtIso?: string | null;
   draft: DraftEvent;
   /**
+   * #4490 07-A — the event is at one of the brand's venues (server venue link
+   * or a venue intent), so Event type (was Party Type) is optional. Absent = not at a venue.
+   */
+  atVenue?: boolean;
+  /**
    * #4548 — the Guest pack block, rendered under the address on the Where step.
    * The owner builds it (it loads with its own chunk), so this step carries no
    * guest pack code of its own and the eager boot payload does not grow.

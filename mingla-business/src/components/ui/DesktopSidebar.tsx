@@ -139,6 +139,10 @@ const LOGO_WEB_SOURCE = { uri: "/brand/mingla-business-logo.svg" };
 const HostLogo: React.FC<{ width: number }> = ({ width }) => {
   const scale = width / LOGO_ART.w;
   const full = LOGO_MASTER * scale;
+  // #4490 N63: if the served vector fails to load (a busy server, a cold
+  // cache), fall back to the bundled PNG master so the box is never empty.
+  const [webFailed, setWebFailed] = React.useState(false);
+  const useWeb = Platform.OS === "web" && !webFailed;
   return (
     <View
       style={[styles.logoCrop, { width, height: Math.round(LOGO_ART.h * scale) }]}
@@ -147,7 +151,8 @@ const HostLogo: React.FC<{ width: number }> = ({ width }) => {
       testID="desktop-sidebar-logo"
     >
       <Image
-        source={Platform.OS === "web" ? LOGO_WEB_SOURCE : MINGLA_BUSINESS_LOGO}
+        source={useWeb ? LOGO_WEB_SOURCE : MINGLA_BUSINESS_LOGO}
+        onError={useWeb ? () => setWebFailed(true) : undefined}
         style={{ position: "absolute", width: full, height: full, left: -LOGO_ART.x * scale, top: -LOGO_ART.y * scale }}
         resizeMode="contain"
         accessibilityIgnoresInvertColors

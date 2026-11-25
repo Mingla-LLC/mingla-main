@@ -38,8 +38,16 @@ describe("template coverage", () => {
   // with the app closed): 28. Retest 4 P3-C adds business.door_tap_paid_unseen (a door
   // tap charged while nobody watched it end): 29.
   // #4238 W6b adds the nine business.ad_* Host ad notices: 38.
-  test("38 business types include payout, Community, support, Brand groups, discounts, the door taps and the ad notices", () => {
-    expect(TYPES).toHaveLength(38);
+  // TEST-MOD-APPROVED #4490 (spec 08 O2): three Till card notices (late
+  // payment, a Till tap paid while unseen, a Till tap not finished): 41.
+  // TEST-MOD-APPROVED #4490 (spec 08 O3 part A2): "Ready to take out" for the
+  // person who sent a Till round (§11 T5): 42.
+  test("42 business types include payout, Community, support, Brand groups, discounts, the door taps, the Till taps, the Till ready notice and the ad notices", () => {
+    expect(TYPES).toHaveLength(42);
+    expect(isBusinessNotificationType("business.venue_order_ready")).toBe(true);
+    expect(isBusinessNotificationType("business.venue_till_paid_late")).toBe(true);
+    expect(isBusinessNotificationType("business.venue_till_tap_paid_unseen")).toBe(true);
+    expect(isBusinessNotificationType("business.venue_till_tap_not_completed")).toBe(true);
     expect(isBusinessNotificationType("business.ad_credit_low")).toBe(true);
     expect(isBusinessNotificationType("business.door_tap_not_completed")).toBe(true);
     expect(isBusinessNotificationType("business.door_tap_paid_unseen")).toBe(true);

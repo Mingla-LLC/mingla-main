@@ -56,6 +56,7 @@
   "pill.experiences": "Впечатления",
   "pill.trips": "Поездки",
   "pill.stays": "Пребывания",
+  "pill.venues": "Заведения",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Очистить",
   "filters.option_a11y": "{{label}}, {{count}} совпадений",
@@ -77,6 +78,7 @@
   "group.check_in": "Заселения",
   "group.guests": "Гостей",
   "group.property_kind": "Типа места",
+  "group.venue_type": "Типа места",
   "group.any_suffix": "{{group}} · В любой",
   "when.any_day": "В любой день",
   "when.tomorrow": "Завтра",
@@ -219,6 +221,10 @@
   "count.stays_few": "{{count}} пребывания",
   "count.stays_many": "{{count}} пребывания",
   "count.stays_other": "{{count}} остается",
+  "count.venues_one": "{{count}} заведение",
+  "count.venues_few": "{{count}} заведения",
+  "count.venues_many": "{{count}} заведений",
+  "count.venues_other": "{{count}} заведений",
   "guests.value_one": "{{count}} гость",
   "guests.value_few": "{{count}} гостей",
   "guests.value_many": "{{count}} гостей",
@@ -226,5 +232,10 @@
   "card.type.stops_one": "{{count}} СТОП",
   "card.type.stops_few": "{{count}} СТОП",
   "card.type.stops_many": "{{count}} ОСТАНОВКИ",
-  "card.type.stops_other": "{{count}} ОСТАНОВОК"
+  "card.type.stops_other": "{{count}} ОСТАНОВОК",
+  "venues.empty_title": "Здесь пока нет заведений для бронирования.",
+  "venues.empty_body": "Здесь появятся заведения, которые можно забронировать в Mingla.",
+  "venues.filtered_title": "Нет заведений, подходящих под эти фильтры.",
+  "venues.error_title": "Не удалось загрузить заведения.",
+  "venues.error_retry": "Попробовать снова"
 }

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4490",
+  "target": {
+    "kind": "function",
+    "name": "venue-order-staff"
+  },
+  "basePolicySha256": "e770e6f1f0be3c3dc862dc4376865c34cc9d2635483d3ffe17b9ef80100e471f",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "AD_CONVERSION_TOKENS",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUSINESS_WEB_ORIGIN",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "d8a8e30fb334fff4f35a1ca36c7ee928638bfa239ca9a0dfc6d8d95cb852bb56",
+  "reason": "#4490 venue order links: the visit-link origin reads BUSINESS_WEB_ORIGIN (production-origin fallback remains) and its module imports the venue manage key ring (AD_CONVERSION_TOKENS), which is optional because an absent ring yields no link."
+}

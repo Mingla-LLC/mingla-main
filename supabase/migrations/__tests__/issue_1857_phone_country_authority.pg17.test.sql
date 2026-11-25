@@ -9,7 +9,7 @@ DECLARE
 BEGIN
   IF to_regprocedure('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)') IS NULL
      OR to_regprocedure('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)') IS NULL
-     OR to_regprocedure('public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)') IS NULL
+     OR to_regprocedure('public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)') IS NULL
      OR to_regprocedure('public.pg_finalize_guest_reservation(uuid,text)') IS NULL THEN
     RAISE EXCEPTION 'issue_1857_expected_signature_missing';
   END IF;
@@ -20,9 +20,9 @@ BEGIN
       WHERE n.nspname='public' AND p.proname='pg_create_guest_reservation')<>1 THEN
     RAISE EXCEPTION 'issue_1857_guest_reservation_overload_count_changed';
   END IF;
-  IF has_function_privilege('anon','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)','EXECUTE')
-     OR has_function_privilege('authenticated','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)','EXECUTE')
-     OR NOT has_function_privilege('service_role','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)','EXECUTE') THEN
+  IF has_function_privilege('anon','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)','EXECUTE')
+     OR has_function_privilege('authenticated','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)','EXECUTE')
+     OR NOT has_function_privilege('service_role','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'issue_1857_guest_reservation_acl_changed';
   END IF;
 
@@ -104,8 +104,17 @@ BEGIN
     -- explicitly venue-scoped reservation managers while preserving #4063's
     -- required-phone validation and the sealed SECURITY DEFINER definition.
     ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '47541188f7264c097396e8d712ca91ea'),
-    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', '97adc49789e7e254744ff9b60efbe9ba'),
-    ('public.pg_finalize_guest_reservation(uuid,text)', '51b79bcbec509bfd5f3a115f87af472d'),
+    -- [TEST-MOD-APPROVED #4490] #4490 P5 last-writes both: the guest writer takes
+    -- an optional table pick / seating area (two trailing defaulted args) under a
+    -- venue table lock; the phone-country validation and grants are unchanged.
+    -- [TEST-MOD-APPROVED #4490] fix round 1 (20281203214490) last-writes the guest
+    -- writer: the slot is checked on its service day (a past-midnight time belongs
+    -- to the evening before); phone-country validation and grants are unchanged.
+    -- [TEST-MOD-APPROVED #4490] spec 07 B (20281203304490) last-writes the same
+    -- signature so every positive table hold (not only per-guest holds) requires
+    -- payment. Phone-country validation, SECURITY DEFINER and grants are unchanged.
+    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)', '2ee2090a42f7c9787b15c403be591484'),
+    ('public.pg_finalize_guest_reservation(uuid,text)', '277c7c86ee9d901dbbddf1c3991727f0'),
     -- 20270327001773_issue_1773_reservation_stay_ingest.sql is the legitimate current last writer of these two definitions.
     ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', 'eddd993b656af66cd75f588a5df64b5f'),
     ('public.issue_1770_enqueue_source()', 'b6f76457afc333703f59d065cd4224ba')

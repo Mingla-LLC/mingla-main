@@ -56,6 +56,7 @@
   "pill.experiences": "Experiences",
   "pill.trips": "Trips",
   "pill.stays": "Stays",
+  "pill.venues": "Заклади",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.option_a11y": "{{label}}, {{count}} збігів",
@@ -77,6 +78,7 @@
   "group.check_in": "Реєстрація",
   "group.guests": "Гості",
   "group.property_kind": "Тип місця",
+  "group.venue_type": "Тип місця",
   "group.any_suffix": "{{group}} · Будь-який",
   "when.any_day": "Будь-який день",
   "when.tomorrow": "Завтра",
@@ -219,6 +221,10 @@
   "count.stays_few": "{{count}} перебування",
   "count.stays_many": "{{count}} перебування",
   "count.stays_other": "{{count}} перебування",
+  "count.venues_one": "{{count}} заклад",
+  "count.venues_few": "{{count}} заклади",
+  "count.venues_many": "{{count}} закладів",
+  "count.venues_other": "{{count}} закладів",
   "guests.value_one": "{{count}} гість",
   "guests.value_few": "{{count}} гості",
   "guests.value_many": "{{count}} гості",
@@ -226,5 +232,10 @@
   "card.type.stops_one": "{{count}} СТОП",
   "card.type.stops_few": "{{count}} ЗУПИНКИ",
   "card.type.stops_many": "{{count}} ЗУПИНКИ",
-  "card.type.stops_other": "{{count}} ЗУПИНКИ"
+  "card.type.stops_other": "{{count}} ЗУПИНКИ",
+  "venues.empty_title": "Тут поки немає закладів для бронювання.",
+  "venues.empty_body": "Тут з’являться заклади, які можна забронювати в Mingla.",
+  "venues.filtered_title": "Немає закладів, що відповідають цим фільтрам.",
+  "venues.error_title": "Не вдалося завантажити заклади.",
+  "venues.error_retry": "Спробувати ще раз"
 }

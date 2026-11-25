@@ -588,12 +588,23 @@ class MixpanelService {
     cardTitle: string;
     category: string;
     source: "home" | "saved" | "calendar";
+    /** #4490 Explorer W5 (deck only). */
+    positionInDeck?: number;
+    isHostedVenue?: boolean;
+    deckLead?: "hosted_venue" | "experience" | null;
   }): void {
     this.track("Card Expanded", {
       card_id: props.cardId,
       card_title: props.cardTitle,
       category: props.category,
       source: props.source,
+      ...(props.positionInDeck === undefined
+        ? {}
+        : {
+            position_in_deck: props.positionInDeck,
+            is_hosted_venue: props.isHostedVenue ?? false,
+            deck_lead: props.deckLead ?? null,
+          }),
     });
     this.checkAndFireMilestone("first_expand", "First Card Expanded", "first_expand_at");
   }
@@ -668,6 +679,10 @@ class MixpanelService {
     category: string;
     position_in_deck: number;
     is_curated: boolean;
+    /** #4490 Explorer W5. */
+    is_hosted_venue?: boolean;
+    deck_lead?: "hosted_venue" | "experience" | null;
+    venue_id?: string | null;
   }): void {
     this.timeEvent("Card Saved");
     this.timeEvent("Card Dismissed");
@@ -681,6 +696,9 @@ class MixpanelService {
     is_curated: boolean;
     position_in_deck?: number;
     source?: string;
+    /** #4490 Explorer W5. */
+    is_hosted_venue?: boolean;
+    deck_lead?: "hosted_venue" | "experience" | null;
   }): void {
     this.track("Card Saved", props);
     this.incrementUserProperty("total_saves");
@@ -694,6 +712,9 @@ class MixpanelService {
     category: string;
     is_curated: boolean;
     position_in_deck?: number;
+    /** #4490 Explorer W5. */
+    is_hosted_venue?: boolean;
+    deck_lead?: "hosted_venue" | "experience" | null;
   }): void {
     this.track("Card Dismissed", props);
   }

@@ -316,8 +316,104 @@ const expectedAfter4452 = (base) => {
     .replace(`${I4452_ANCHOR}\n`, `${I4452_ANCHOR}\n${I4452_BLOCK}\n`);
 };
 
+// #4490 — fifteenth binding amendment. Exactly SIX intended-public venue reads
+// (the public venue page, its four booking-pane reads and the deck card facts),
+// each with its justification comment, directly after the #4452 preview reader;
+// the retired four-argument pg_venue_available_slots line becomes the live
+// five-argument signature in place (#4490 added the space argument); and the
+// intended-public count advances by six. Applied LAST, like #4452: a base that
+// already carries it is first rewound, run through the chain, and moved
+// forward again.
+const I4490_OLD_HEADER = I4452_NEW_HEADER;
+const I4490_NEW_HEADER =
+  "# Signature count: 216 (intended-public 42, internally-gated 108, predicate/read-helper 63, PostGIS 3).";
+const I4490_ANCHOR = I4452_SIGNATURES[1];
+const I4490_SIGNATURES = [
+  "pg_public_venue_page(p_brand_slug text, p_venue_slug text)",
+  "pg_venue_offer_availability(p_offering_id uuid, p_from date, p_to date, p_guests integer, p_price_option_id uuid)",
+  "pg_venue_hire_options(p_offering_id uuid, p_window_id uuid, p_guests integer)",
+  "pg_venue_hour_day(p_offering_id uuid, p_date date, p_guests integer, p_price_option_id uuid)",
+  "pg_venue_available_tables(p_venue_id uuid, p_date date, p_party_size integer, p_slot_start timestamp with time zone, p_space_id uuid)",
+  "pg_deck_venue_facts(p_place_ids uuid[])",
+];
+const I4490_BLOCK = [
+  "# #4490: the public venue page; verified venues of live brands only; the page's own facts (spaces, hours, switched-on features, live offers and plans with their prices, upcoming public events); no contact, owner or buyer data.",
+  I4490_SIGNATURES[0],
+  "# #4490: day rows for one live offer of a verified venue of a live brand (open, full or closed, and the price per day); no buyer, booking or hold identity.",
+  I4490_SIGNATURES[1],
+  "# #4490: hire windows and prices for one live private-hire offer of a verified venue of a live brand; no buyer or booking identity.",
+  I4490_SIGNATURES[2],
+  "# #4490: hour slots for one live by-the-hour or hire offer of a verified venue; free or taken only, no buyer or booking identity.",
+  I4490_SIGNATURES[3],
+  "# #4490: free tables for one slot of a verified venue (table ids, names and seats, the guest table picker); no reservation or guest identity.",
+  I4490_SIGNATURES[4],
+  "# #4490 Explorer W3: deck card facts for at most 100 place ids; only verified venues of live, non-internal brands; slugs, names, venue type, switched-on features, live \"from\" prices the public venue page already lists, and whether an event is on today; no contact, owner, address or buyer data.",
+  I4490_SIGNATURES[5],
+].join("\n");
+const I4490_SLOTS_PRIOR = "pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid)";
+const I4490_SLOTS_NEXT = "pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid, p_space_id uuid)";
+// The four-argument line STAYS, directly above the five-argument one, with this
+// comment: the pre-#1931 and pre-#2117 replay lanes skip the #4490 P5 migration
+// that replaces the reader, so those lanes still hold the four-argument
+// definer and the anon gate there must find it allowlisted. In the full chain
+// it is gone (the gate prints it as a stale line, never a failure).
+const I4490_SLOTS_KEPT = [
+  I4490_SLOTS_PRIOR,
+  "# #4490 P5: the same public slot reader with the optional space filter. The 4-argument line above",
+  "# stays because the pre-#1931 and pre-#2117 replay lanes skip the #4490 P5 migration that",
+  "# replaces it; in the full chain only this 5-argument signature exists.",
+  I4490_SLOTS_NEXT,
+].join("\n");
+const I4490_NAMES = [
+  "pg_public_venue_page(",
+  "pg_venue_offer_availability(",
+  "pg_venue_hire_options(",
+  "pg_venue_hour_day(",
+  "pg_venue_available_tables(",
+  "pg_deck_venue_facts(",
+];
+const has4490Lookalike = (text) =>
+  I4490_NAMES.some((name) => text.includes(name)) || text.includes("# #4490") || text.includes(I4490_SLOTS_NEXT);
+const rewind4490 = (base) => {
+  if (
+    I4490_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I4490_ANCHOR}\n${I4490_BLOCK}\n`) &&
+    countExactLine(base, I4490_SLOTS_NEXT) === 1 &&
+    countExactLine(base, I4490_SLOTS_PRIOR) === 1 &&
+    base.includes(`\n${I4490_SLOTS_KEPT}\n`) &&
+    countExactLine(base, I4490_NEW_HEADER) === 1
+  ) {
+    return swapLine(
+      base.replace(`${I4490_ANCHOR}\n${I4490_BLOCK}\n`, `${I4490_ANCHOR}\n`).replace(I4490_NEW_HEADER, I4490_OLD_HEADER),
+      I4490_SLOTS_KEPT,
+      I4490_SLOTS_PRIOR,
+    );
+  }
+  if (has4490Lookalike(base) || countExactLine(base, I4490_NEW_HEADER) !== 0) {
+    throw new Error("base contains a partial or lookalike #4490 venue reader");
+  }
+  return base;
+};
+const expectedAfter4490 = (base) => {
+  if (has4490Lookalike(base)) throw new Error("base contains a partial or lookalike #4490 venue reader");
+  if (countExactLine(base, I4490_OLD_HEADER) !== 1) {
+    throw new Error("base #4490 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I4490_ANCHOR) !== 1) {
+    throw new Error("base #4490 insertion anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I4490_SLOTS_PRIOR) !== 1) {
+    throw new Error("base #4490 table-slots line is absent or duplicated");
+  }
+  return swapLine(
+    base.replace(I4490_OLD_HEADER, I4490_NEW_HEADER).replace(`${I4490_ANCHOR}\n`, `${I4490_ANCHOR}\n${I4490_BLOCK}\n`),
+    I4490_SLOTS_PRIOR,
+    I4490_SLOTS_KEPT,
+  );
+};
+
 // The count header every later amendment leaves in place.
-const CURRENT_HEADER = I4452_NEW_HEADER;
+const CURRENT_HEADER = I4490_NEW_HEADER;
 
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
@@ -558,8 +654,8 @@ const expectedAfter4318Cities = (base) => {
 };
 
 export const expectedAllowlist = (input) => {
-  const base = rewind4318Fast(rewind4452(input));
-  return expectedAfter4452(expectedAfter4318Fast(expectedAfter4318Cities(expectedAfter4318(expectedAfter4137(
+  const base = rewind4318Fast(rewind4452(rewind4490(input)));
+  return expectedAfter4490(expectedAfter4452(expectedAfter4318Fast(expectedAfter4318Cities(expectedAfter4318(expectedAfter4137(
     expectedAfter2829(
       expectedAfter3872Public(
         expectedAfter4111(
@@ -571,7 +667,7 @@ export const expectedAllowlist = (input) => {
         ),
       ),
     ),
-  )))));
+  ))))));
 };
 
 export const validate = ({ baseAllowlist, currentAllowlist }) => {
@@ -584,7 +680,7 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, #4318 /links week and places readers, the #4318 /links live-cities reader, and the #4452 site page readers",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, #4111 brand-page enquiry readers, #3872 R3/R4 public creator, Local and referral readers, #2829 W4 public trip-guide reader, #4137 Blog readers, #4318 /links week and places readers, the #4318 /links live-cities reader, the #4452 site page readers, and the #4490 venue page and deck readers",
     );
   }
   for (const signature of [
@@ -603,6 +699,8 @@ export const validate = ({ baseAllowlist, currentAllowlist }) => {
     I4318F_PLACES_SIGNATURE,
     I4318C_SIGNATURE,
     ...I4452_SIGNATURES,
+    ...I4490_SIGNATURES,
+    I4490_SLOTS_NEXT,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -618,6 +716,7 @@ const fixtureBase = () => [
   I3872_ANCHOR,
   I3281_ANCHOR,
   "place_discovery_range_for_viewer(p_place_pool_id uuid)",
+  I4490_SLOTS_PRIOR,
   I4137_PREDICATE_ANCHOR,
   I3872P_ANCHOR,
   "",
@@ -793,6 +892,22 @@ const runSelfTest = () => {
     ["#4452 moved away from its anchor", head.replace(`${I4452_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4452_BLOCK}\n`), false],
     ["#4452 plus a forged neighbour", head.replace(`${I4452_BLOCK}\n`, `${I4452_BLOCK}\nforged_neighbour_function()\n`), false],
     ["#4452 count not corrected", head.replace(CURRENT_HEADER, I4452_OLD_HEADER), false],
+    // #4490 — six venue readers with their comments, the table-slots swap and the count.
+    ["#4490 block missing", head.replace(`${I4490_BLOCK}\n`, ""), false],
+    ["#4490 block missing, count kept", head.replace(`${I4490_BLOCK}\n`, "").replace(CURRENT_HEADER, I4490_OLD_HEADER), false],
+    ["#4490 page reader dropped", head.replace(`\n${I4490_SIGNATURES[0]}\n`, "\n"), false],
+    ["#4490 deck reader dropped", head.replace(`\n${I4490_SIGNATURES[5]}\n`, "\n"), false],
+    ["#4490 comment substituted", head.replace("# #4490: the public venue page;", "# #4490: approved somehow;"), false],
+    ["#4490 signature changed", head.replace(`\n${I4490_SIGNATURES[2]}\n`, "\npg_venue_hire_options(p_offering_id uuid, p_window_id uuid)\n"), false],
+    ["#4490 lookalike overload", `${head}pg_venue_hour_day(p_offering_id uuid)\n`, false],
+    ["#4490 moved away from its anchor", head.replace(`${I4490_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4490_BLOCK}\n`), false],
+    ["#4490 plus a forged neighbour", head.replace(`${I4490_BLOCK}\n`, `${I4490_BLOCK}\nforged_neighbour_function()\n`), false],
+    ["#4490 count not corrected", head.replace(CURRENT_HEADER, I4490_OLD_HEADER), false],
+    ["#4490 table-slots line not swapped", head.replace(`\n${I4490_SLOTS_NEXT}\n`, `\n${I4490_SLOTS_PRIOR}\n`), false],
+    ["#4490 table-slots line kept beside the new one", head.replace(`\n${I4490_SLOTS_NEXT}\n`, `\n${I4490_SLOTS_PRIOR}\n${I4490_SLOTS_NEXT}\n`), false],
+    ["#4490 table-slots line dropped", head.replace(`\n${I4490_SLOTS_NEXT}\n`, "\n"), false],
+    ["#4490 kept four-argument line dropped", head.replace(`\n${I4490_SLOTS_PRIOR}\n`, "\n"), false],
+    ["#4490 kept-line comment substituted", head.replace("# #4490 P5: the same public slot reader", "# #4490 P5: approved somehow"), false],
   ];
   for (const [name, candidate, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate }).length === 0;
@@ -802,7 +917,7 @@ const runSelfTest = () => {
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled }).length !== 0) {
-    throw new Error("self-test settled base with all twelve amendments failed");
+    throw new Error("self-test settled base with every amendment failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n` }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -821,7 +936,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week and places readers + #4318 /links live-cities reader + #4452 site page readers PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + #3872 R3/R4 public readers + #2829 W4 public trip-guide reader + #4137 Blog readers + #4318 /links week and places readers + #4318 /links live-cities reader + #4452 site page readers + #4490 venue page and deck readers PASS\n",
   );
 };
 

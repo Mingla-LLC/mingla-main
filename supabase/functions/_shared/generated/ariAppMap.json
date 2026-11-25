@@ -183,6 +183,18 @@
       "capability_keys": []
     },
     {
+      "pattern": "/b/[brandSlug]/v/[venueSlug]/book/[offerId]",
+      "params": [
+        "brandSlug",
+        "venueSlug",
+        "offerId"
+      ],
+      "title": "Book",
+      "title_source": "path",
+      "file": "mingla-business/app/b/[brandSlug]/v/[venueSlug]/book/[offerId].tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/booking/[orderId]/cancel",
       "params": [
         "orderId"
@@ -1369,6 +1381,26 @@
       ]
     },
     {
+      "pattern": "/paid/plan/[subscriptionId]",
+      "params": [
+        "subscriptionId"
+      ],
+      "title": "Plan",
+      "title_source": "path",
+      "file": "mingla-business/app/paid/plan/[subscriptionId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/paid/visit/[groupId]",
+      "params": [
+        "groupId"
+      ],
+      "title": "Visit",
+      "title_source": "path",
+      "file": "mingla-business/app/paid/visit/[groupId].tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/partner/brands",
       "params": [],
       "title": "Brands",
@@ -1425,6 +1457,16 @@
       "capability_keys": []
     },
     {
+      "pattern": "/pay/till/[code]",
+      "params": [
+        "code"
+      ],
+      "title": "Till",
+      "title_source": "path",
+      "file": "mingla-business/app/pay/till/[code].tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/pending-brand-invite",
       "params": [],
       "title": "Pending brand invite",
@@ -1469,6 +1511,16 @@
       "title": "Promoting",
       "title_source": "path",
       "file": "mingla-business/app/promoting/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/receipt/till/[paymentId]",
+      "params": [
+        "paymentId"
+      ],
+      "title": "Till",
+      "title_source": "path",
+      "file": "mingla-business/app/receipt/till/[paymentId].tsx",
       "capability_keys": []
     },
     {
@@ -1727,6 +1779,78 @@
       "capability_keys": []
     },
     {
+      "pattern": "/venue/[venueId]/check-in/scan",
+      "params": [
+        "venueId"
+      ],
+      "title": "Scan",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/check-in/scan.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/[venueId]/close",
+      "params": [
+        "venueId"
+      ],
+      "title": "Close",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/close.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/[venueId]/offer/[offerId]",
+      "params": [
+        "venueId",
+        "offerId"
+      ],
+      "title": "Offer",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/offer/[offerId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/[venueId]/preview",
+      "params": [
+        "venueId"
+      ],
+      "title": "Venue preview",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/preview.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/[venueId]/station/[station]",
+      "params": [
+        "venueId",
+        "station"
+      ],
+      "title": "Station",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/station/[station].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/[venueId]/till",
+      "params": [
+        "venueId"
+      ],
+      "title": "Till",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/till.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/venue/[venueId]/till-settings",
+      "params": [
+        "venueId"
+      ],
+      "title": "Till settings",
+      "title_source": "path",
+      "file": "mingla-business/app/venue/[venueId]/till-settings.tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/venue/create",
       "params": [],
       "title": "Venue create",
@@ -1742,6 +1866,48 @@
       "file": "mingla-business/app/venue/deck-readiness.tsx",
       "capability_keys": [
         "venues-go-live-readiness"
+      ]
+    },
+    {
+      "pattern": "/visit/[groupId]",
+      "params": [
+        "groupId"
+      ],
+      "title": "Visit",
+      "title_source": "path",
+      "file": "mingla-business/app/visit/[groupId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/visit/list/[token]",
+      "params": [
+        "token"
+      ],
+      "title": "List",
+      "title_source": "path",
+      "file": "mingla-business/app/visit/list/[token].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/visit/plan/[subscriptionId]",
+      "params": [
+        "subscriptionId"
+      ],
+      "title": "Plan",
+      "title_source": "path",
+      "file": "mingla-business/app/visit/plan/[subscriptionId].tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/visit/waitlist/[id]",
+      "params": [
+        "id"
+      ],
+      "title": "Waitlist",
+      "title_source": "path",
+      "file": "mingla-business/app/visit/waitlist/[id].tsx",
+      "capability_keys": [
+        "venues-waitlist-text"
       ]
     },
     {

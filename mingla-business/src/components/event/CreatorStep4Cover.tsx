@@ -32,6 +32,7 @@ import type { CoverTarget } from "../ui/coverTarget";
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 import { useBrand } from "../../hooks/useBrands";
+import { VenueCoverButton, type VenueCoverPatch } from "../ui/VenueCoverButton";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
@@ -217,6 +218,12 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
   // the ExperienceCoverStep fix; the CoverPicker is shared). Only depends on the
   // event row id + brand + apply mode.
   const coverRowId = serverRowId ?? localDraftRowId;
+
+  // #4490 07-L — "Use {Venue}'s cover": applied like a device upload.
+  const applyVenueCover = useCallback(
+    (patch: VenueCoverPatch): void => handleCoverChange({ ...patch, coverGallery: draft.coverGallery }),
+    [draft.coverGallery, handleCoverChange],
+  );
   // The picker may only open against a real server row. While the row is being
   // prepared (or has failed to prepare) the button says so instead of opening a
   // sheet that can only produce a 400.
@@ -296,6 +303,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
           }
           testID="cover-step-add-cover"
         />
+        <VenueCoverButton rowId={coverRowId} noun="event" disabled={!coverReady} onApply={applyVenueCover} />
         {/* issue #3040 — the server row could not be created. This used to be a
             `console.warn` and an inert sheet; it is now a real, named error
             with a control the user can actually reach. */}

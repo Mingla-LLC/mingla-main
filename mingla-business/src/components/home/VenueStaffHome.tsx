@@ -17,6 +17,11 @@ import {
   type,
 } from "../../constants/designSystem";
 import { useVenueListings } from "../../hooks/useVenueListings";
+import {
+  listVenueStaffVenues,
+  venueStaffCardIcon,
+  venueStaffCardType,
+} from "./venueStaffHomeModel";
 import type { Brand } from "../../store/currentBrandStore";
 
 import { Button } from "../ui/Button";
@@ -133,10 +138,9 @@ export function VenueStaffHome({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const venuesQuery = useVenueListings(brandId);
+  // #4490 (08-O3 fix 2): every venue the member holds a grant at, any type.
   const venues = useMemo(
-    () => (venuesQuery.data ?? []).filter(
-      (venue) => venue.venueCategory === "stay" || venue.venueCategory === "restaurant",
-    ),
+    () => listVenueStaffVenues(venuesQuery.data),
     [venuesQuery.data],
   );
 
@@ -205,7 +209,7 @@ export function VenueStaffHome({
               >
                 <View style={styles.cardIcon}>
                   <Icon
-                    name={venue.venueCategory === "stay" ? "home" : "notebook"}
+                    name={venueStaffCardIcon(venue)}
                     size={20}
                     color={color.text1}
                   />
@@ -213,7 +217,7 @@ export function VenueStaffHome({
                 <View style={styles.cardCopy}>
                   <Text style={styles.cardTitle}>{venue.name}</Text>
                   <Text style={styles.cardMeta}>
-                    {venue.venueCategory === "stay" ? "Stay" : "Restaurant"}
+                    {venueStaffCardType(venue)}
                     {venue.city ? ` · ${venue.city}` : ""}
                   </Text>
                 </View>

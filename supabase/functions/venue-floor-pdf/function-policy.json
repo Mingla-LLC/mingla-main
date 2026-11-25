@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "venue-floor-pdf",
+  "verify_jwt": false,
+  "gateway_reason": "Floor PDFs (kitchen and bar tickets, Till receipts, test tickets) answer their own 401 body: every request verifies the bearer in code and passes the verified user to the service-only issue_4490_floor_pdf_source, which checks the venue gate and kitchen or selling rights at that venue before anything is printed; objects stay in a private bucket behind 60-second signed URLs.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "app.qr_token_pepper"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

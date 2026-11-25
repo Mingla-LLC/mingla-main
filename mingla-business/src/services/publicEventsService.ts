@@ -903,7 +903,14 @@ const asVenueCategory = (value: unknown): VenueCategory | null => {
     value === "restaurant" ||
     value === "play" ||
     value === "creative_and_arts" ||
-    value === "stay"
+    value === "stay" ||
+    // #4490 — the five added venue types are labels, not behaviour. Without
+    // them here a bar or a club would read as "uncategorised".
+    value === "bar_lounge" ||
+    value === "club" ||
+    value === "cafe" ||
+    value === "event_space" ||
+    value === "coworking"
   ) {
     return value;
   }

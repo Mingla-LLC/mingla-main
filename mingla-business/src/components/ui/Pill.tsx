@@ -32,6 +32,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 
 export type PillVariant = "live" | "draft" | "warn" | "accent" | "error" | "info" | "ok" | "muted";
 
@@ -177,42 +178,9 @@ const styles = StyleSheet.create({
 // #4420 Chip and Segmented
 // ---------------------------------------------------------------------------
 
-export interface ChipProps {
-  label: string;
-  selected?: boolean;
-  disabled?: boolean;
-  error?: boolean;
-  count?: number;
-  onPress?: () => void;
-  testID?: string;
-  style?: StyleProp<ViewStyle>;
-}
-
-/** Filter / tag chip. On = the selected material with its rim. */
-export const Chip: React.FC<ChipProps> = ({ label, selected = false, disabled = false, error = false, count, onPress, testID, style }) => (
-  <Pressable
-    onPress={disabled ? undefined : onPress}
-    disabled={disabled || onPress === undefined}
-    accessibilityRole={onPress !== undefined ? "button" : "text"}
-    accessibilityState={{ selected, disabled }}
-    accessibilityLabel={count !== undefined ? `${label}, ${count}` : label}
-    testID={testID}
-    style={[
-      chipStyles.chip,
-      selected ? chipStyles.on : null,
-      error ? chipStyles.error : null,
-      disabled ? chipStyles.disabled : null,
-      style,
-    ]}
-  >
-    <Text style={[chipStyles.label, selected ? chipStyles.labelOn : null]} numberOfLines={1}>
-      {label}
-    </Text>
-    {count !== undefined ? (
-      <Text style={[chipStyles.count, selected ? chipStyles.countOn : null]}>{count}</Text>
-    ) : null}
-  </Pressable>
-);
+// Chip lives in its own module (no reanimated) so a screen that only needs a
+// chip does not load the animated pill (#4490); re-exported here for callers.
+export { Chip, type ChipProps } from "./Chip";
 
 export interface SegmentedOption<K extends string = string> {
   key: K;
@@ -246,14 +214,18 @@ export function Segmented<K extends string = string>({
   testID,
   style,
 }: SegmentedProps<K>): React.ReactElement {
+  // #4490: hitSlop does nothing in a phone browser, so the 36 segment is drawn 44 there.
+  const touchFloor = useTouchFloor();
+  // A stretched segmented control is a plain row, not a horizontal scroll view: on web the
+  // scroll view's content ignored the track width, so a long third label ("Not charged")
+  // was cut off at the right edge of a 390 phone. Labels wrap to two lines instead.
+  const Row: React.ElementType = full ? View : ScrollView;
+  const rowProps = full
+    ? { style: [chipStyles.segRow, chipStyles.segRowFull] }
+    : { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: chipStyles.segRow };
   return (
     <View style={[chipStyles.segTrack, style]} testID={testID} accessibilityRole="tablist" accessibilityLabel={accessibilityLabel}>
-      <ScrollView
-        horizontal
-        scrollEnabled={!full}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[chipStyles.segRow, full ? chipStyles.segRowFull : null]}
-      >
+      <Row {...rowProps}>
         {options.map((option) => {
           const on = option.key === value;
           return (
@@ -267,9 +239,9 @@ export function Segmented<K extends string = string>({
               accessibilityState={{ selected: on, disabled: option.disabled === true }}
               accessibilityLabel={option.count !== undefined ? `${option.label}, ${option.count}` : option.label}
               testID={option.testID}
-              style={[chipStyles.seg, full ? chipStyles.segFull : null, on ? chipStyles.segOn : null, option.disabled ? chipStyles.disabled : null]}
+              style={[chipStyles.seg, touchFloor > 0 ? { minHeight: touchFloor } : null, full ? chipStyles.segFull : null, on ? chipStyles.segOn : null, option.disabled ? chipStyles.disabled : null]}
             >
-              <Text style={[chipStyles.segLabel, on ? chipStyles.labelOn : null]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+              <Text style={[chipStyles.segLabel, full ? chipStyles.segLabelFull : null, on ? chipStyles.labelOn : null]} numberOfLines={full ? 2 : 1} adjustsFontSizeToFit={!full} minimumFontScale={0.85}>
                 {option.label}
               </Text>
               {option.count !== undefined ? (
@@ -278,35 +250,15 @@ export function Segmented<K extends string = string>({
             </Pressable>
           );
         })}
-      </ScrollView>
+      </Row>
     </View>
   );
 }
 
 const chipStyles = StyleSheet.create({
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[1],
-    minHeight: 36,
-    paddingHorizontal: space[3],
-    borderRadius: radiusTokens.full,
-    backgroundColor: color.fill.tile,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: color.line,
-    alignSelf: "flex-start",
-  },
-  on: {
-    backgroundColor: materials.selected.solidFill,
-    borderColor: materials.selected.rim.edge,
-    borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
-  },
-  error: { borderColor: color.errorLine },
   disabled: { opacity: 0.4 },
-  label: { ...type.chip, color: color.text2 },
   labelOn: { color: color.textStrong },
   count: { ...type.caption, color: color.text3 },
-  countOn: { color: color.textSelectedChipMeta },
   segTrack: {
     borderRadius: radiusTokens.full,
     backgroundColor: color.fill.inset,
@@ -333,6 +285,7 @@ const chipStyles = StyleSheet.create({
     borderTopColor: materials.selected.rim.top ?? materials.selected.rim.edge,
   },
   segLabel: { ...type.chip, color: color.text2, flexShrink: 1 },
+  segLabelFull: { textAlign: "center" },
   segCountOn: { color: color.textSelectedMeta },
 });
 

@@ -41,6 +41,7 @@ import { Icon } from '../ui/Icon';
 import { toastManager } from '../ui/Toast';
 import { weatherService } from '../../services/weatherService';
 import { useVenueReservable } from '../../hooks/useVenueReservable';
+import { venueWeatherKeys } from '../../hooks/useVenueForecast';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
 import type { BusinessEventCard } from '../../types/mergedDiscover';
 import type { ExpandedCardData } from '../../types/expandedCardTypes';
@@ -64,10 +65,8 @@ export interface ExplorerVenue {
   readonly hours: readonly BrandHourEntry[];
 }
 
-export const venueWeatherKeys = {
-  all: ['venueWeather'] as const,
-  at: (lat: number, lng: number) => [...venueWeatherKeys.all, lat.toFixed(3), lng.toFixed(3)] as const,
-};
+// #4490 W7: the forecast key now lives with the shared `useVenueForecast` hook.
+export { venueWeatherKeys };
 
 /** Bar height above the safe area: top padding + button + top border. */
 export const VENUE_EXPLORER_BAR_HEIGHT = PINNED_BAR.paddingTop + PINNED_BAR.buttonHeight + 1;

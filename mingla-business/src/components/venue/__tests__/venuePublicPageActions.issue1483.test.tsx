@@ -256,6 +256,13 @@ jest.mock("../../stay/StaySuiteShell", () => ({
   __esModule: true,
   StaySuiteShell: (): null => null,
 }));
+// #4490 — the route now loads both suites through the one Host venue owner.
+// This exact structural stand-in keeps the locked #1483 harness import-light.
+jest.mock("../host/LazyVenueSuites", () => ({
+  __esModule: true,
+  StaySuiteShell: (): null => null,
+  VenueSuiteShell: (): null => null,
+}));
 jest.mock("../VenueSuiteShell", () => ({
   __esModule: true,
   VenueSuiteShell: (): null => null,

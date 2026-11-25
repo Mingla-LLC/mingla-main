@@ -57,6 +57,10 @@ import {
   resolveReferrerFromSupabase,
 } from "../_shared/attribution.ts";
 import {
+  paystackRefusedEmail,
+  venueOrderEmailUndeliverable,
+} from "../_shared/venueOrderPricing.ts";
+import {
   applyVenueDiscountQuote,
   computeVenueOrderMoney,
   priceCart,
@@ -80,6 +84,7 @@ import {
   loadVenueTimezone,
   markVenueOrderFailed,
   resolveOrderContext,
+  routeGuestOrder,
 } from "../_shared/venueOrderCore.ts";
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 // Issue #1791 — the T0 leg of the notification triple for the one order shape
@@ -289,7 +294,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (!resolved.ok) {
     return fail(resolved.failure.code, { venue: resolved.failure.venue });
   }
-  const ctx = resolved.context;
+  // #4490 07-D — the ordering mode: a scanned spot may become a counter order.
+  const routed = routeGuestOrder(resolved.context, body.pickup === true);
+  if (!routed.ok) return fail(routed.code);
+  const ctx = routed.context;
 
   const discountAttemptScopes = discountCode === null ? [] : await Promise.all(
     [
@@ -483,7 +491,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       )
       .eq("id", bodySessionId)
       .maybeSingle();
-    if (data && String(data.venue_id) === ctx.servingVenueId) {
+    if (
+      data && String(data.venue_id) === ctx.servingVenueId &&
+      // #4490 07-D — a counter order never continues a table sitting.
+      !(routed.routedToCounter && data.qr_spot_id !== null)
+    ) {
       session = data as Record<string, unknown>;
     }
   }
@@ -604,6 +616,13 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       // rather than stacking (D-9).
       tipsEnabled: ctx.settings.tips_enabled === true,
       counterPickupEnabled: ctx.settings.counter_pickup_enabled === true,
+      // N126 (#4490 07-D): the venue's ordering mode as it is NOW, so a review
+      // built before the host changed it shows what this order will do.
+      orderMode: ctx.settings.table_service_enabled === false
+        ? "counter"
+        : ctx.settings.counter_pickup_enabled === true
+        ? "both"
+        : "table",
       discounts: discountQuote.applied.map((entry) => ({
         id: entry.discountId,
         kind: entry.kind,
@@ -633,6 +652,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (buyerName.length < 2) return fail("buyer_name_required");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
     return fail("buyer_email_invalid");
+  }
+  // N139: a reserved test domain is refused by the provider; say so first.
+  if (movesMoney && venueOrderEmailUndeliverable(buyerEmail)) {
+    return fail("buyer_email_undeliverable");
   }
   if (buyerPhoneE164 === null) {
     return buyerPhone.message === null
@@ -1137,12 +1160,14 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         pricingBreakdown,
       });
     } catch (err) {
-      await markVenueOrderFailed(
-        supabase,
-        orderId,
-        String((err as Error)?.message ?? err),
+      const message = String((err as Error)?.message ?? err);
+      await markVenueOrderFailed(supabase, orderId, message);
+      // N139: a refused email gets words the guest can act on.
+      return fail(
+        paystackRefusedEmail(message)
+          ? "buyer_email_undeliverable"
+          : "payment_intent_create_failed",
       );
-      return fail("payment_intent_create_failed");
     }
   }
 

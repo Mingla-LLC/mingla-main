@@ -121,6 +121,9 @@ const styles = StyleSheet.create({
     gap: space[1],
     paddingHorizontal: space[6],
     paddingTop: space[2],
+    // #4490 click-test D13 — clear room below the pill so it never sits on
+    // the venue rail's first group label ("Venue") at 1024 wide.
+    paddingBottom: space[3],
   },
 });
 

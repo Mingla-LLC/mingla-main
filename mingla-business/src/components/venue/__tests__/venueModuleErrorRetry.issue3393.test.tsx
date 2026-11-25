@@ -23,6 +23,13 @@ let mockVenueAccessQuery: {
   refetch: () => Promise<void>;
 };
 
+// #4490 — the shell reads venue features. These harnesses drive the nav from the
+// mocked reservation settings, so the features read "fails" here and the shell
+// falls back to the server's backfill rule (features follow the old switch).
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({ data: undefined, isError: true, isLoading: false }),
+  useSetVenueFeature: () => ({ mutate: jest.fn(), isPending: false }),
+}));
 jest.mock("../../../hooks/useMyVenueAccess", () => ({
   useMyVenueAccess: () => mockVenueAccessQuery,
 }));

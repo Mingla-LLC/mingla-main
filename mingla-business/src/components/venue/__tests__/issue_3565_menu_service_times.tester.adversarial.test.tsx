@@ -105,6 +105,9 @@ jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => ({ rank: 100 }),
 }));
 
+// TEST-MOD-APPROVED #4490 07-D: the Menu module now opens with the ordering-mode card (its own
+// settings query); registered like the module's other hooks, the card is inert here.
+jest.mock("../OrderingModeCard", () => ({ OrderingModeCard: (): null => null }));
 jest.mock("../../../hooks/useMenus", () => ({
   useBrandMenus: () => ({ data: mockMenus, isLoading: false, isError: false }),
   useUpsertMenu: () => ({ mutate: mockMutate, isPending: false }),
@@ -284,7 +287,8 @@ describe("#3565 adversarial service-window truth", () => {
 
   test("all-day day subsets remain explicit and save the exact ISO days", () => {
     renderCategory(menu({ id: "lunch", name: "Lunch" }));
-    for (const isoDay of [2, 4, 6, 7]) {
+    // TEST-MOD-APPROVED #4490 N71: chips start off (every day); tapping a day picks it.
+    for (const isoDay of [1, 3, 5]) {
       call(byTestID(`menu-category-day-${isoDay}`), "onPress");
     }
     expect(textOf(byTestID("menu-category-window-summary"))).toBe(

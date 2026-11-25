@@ -30,7 +30,11 @@ import {
   mapVenueWriteError,
 } from "../services/venuesService";
 import { getAdminStayVenue } from "../services/stayAdminService";
+// #4490 — what the venue offers, as features (read-only).
+import { getAdminVenueFeatures } from "../services/venueFeaturesAdminService";
+import { buildVenueFeatureSections } from "../components/venue/venueFeatureSections";
 import { formatDate, formatDateTime } from "../lib/formatters";
+import { venueCategoryLabel } from "../lib/venueCategoryLabels";
 
 function money(cents, currency) {
   if (cents == null) return "—";
@@ -65,7 +69,18 @@ const RESERVATION_STATUS_OPTIONS = [
   { value: "waitlisted", label: "Waitlisted" },
 ];
 
-const CATEGORY_VARIANT = { restaurant: "info", play: "brand", creative_and_arts: "warning", stay: "success" };
+const CATEGORY_VARIANT = {
+  restaurant: "info",
+  play: "brand",
+  creative_and_arts: "warning",
+  stay: "success",
+  // #4490 — the five added types (a label and a starting preset only).
+  bar_lounge: "info",
+  club: "brand",
+  cafe: "warning",
+  event_space: "default",
+  coworking: "success",
+};
 const CLAIM_VARIANT = {
   verified: "success",
   pending_review: "warning",
@@ -110,14 +125,17 @@ function RowAction({ onClick, children }) {
 
 function venueSections(data, cb) {
   if (data.stay) {
-    return buildStayVenueSections(data.stay, {
-      onPause: (offering) => cb?.dispatch?.({
-        kind: "stayPauseOffering",
-        targetId: offering.id,
-        label: offering.name,
-        expectedVersion: offering.version,
+    return [
+      ...buildStayVenueSections(data.stay, {
+        onPause: (offering) => cb?.dispatch?.({
+          kind: "stayPauseOffering",
+          targetId: offering.id,
+          label: offering.name,
+          expectedVersion: offering.version,
+        }),
       }),
-    });
+      ...buildVenueFeatureSections(data.features),
+    ];
   }
   const v = data.venue || {};
   const rs = data.settings;
@@ -128,7 +146,7 @@ function venueSections(data, cb) {
     fields: [
       field("Name", v.name),
       field("Slug", v.slug ? `/${v.slug}` : null),
-      field("Category", null, () => (v.venue_category ? <Badge variant={CATEGORY_VARIANT[v.venue_category] || "default"}>{v.venue_category}</Badge> : muted("—"))),
+      field("Category", null, () => (v.venue_category ? <Badge variant={CATEGORY_VARIANT[v.venue_category] || "default"}>{venueCategoryLabel(v.venue_category)}</Badge> : muted("—"))),
       field("Claim status", null, () => (v.claim_status ? <Badge variant={CLAIM_VARIANT[v.claim_status] || "default"} dot>{v.claim_status}</Badge> : muted("—"))),
       field("Address", v.address),
       field("City", v.city),
@@ -325,6 +343,9 @@ function venueSections(data, cb) {
           ),
   });
 
+  // #4490 — features, spaces and offers, right after the venue itself.
+  sections.splice(1, 0, ...buildVenueFeatureSections(data.features));
+
   return sections;
 }
 
@@ -348,12 +369,18 @@ export function VenueDetailView({ venueId, onBack }) {
         setError("No venue found for this ID.");
         return;
       }
+      // #4490 — a failed features read is a visible, non-blocking section
+      // message (null), never a page error.
+      const featuresPromise = getAdminVenueFeatures(venueId).catch((e) => {
+        console.warn("[VenueDetailView] features degraded:", e?.message || e);
+        return null;
+      });
       if (venue.venue_category === "stay") {
-        const stay = await getAdminStayVenue(venueId);
-        setData({ venue, stay });
+        const [stay, features] = await Promise.all([getAdminStayVenue(venueId), featuresPromise]);
+        setData({ venue, stay, features });
         return;
       }
-      const [settings, tables, capacityRules, blackouts, waitlist, reservations] = await Promise.all([
+      const [settings, tables, capacityRules, blackouts, waitlist, reservations, features] = await Promise.all([
         getVenueReservationSettings(venueId),
         getVenueTables(venueId),
         getVenueCapacityRules(venueId),
@@ -363,8 +390,9 @@ export function VenueDetailView({ venueId, onBack }) {
           console.warn("[VenueDetailView] reservations degraded:", e?.message || e);
           return { rows: [], total: 0, counts: {} };
         }),
+        featuresPromise,
       ]);
-      setData({ venue, settings, tables, capacityRules, blackouts, waitlist, reservations });
+      setData({ venue, settings, tables, capacityRules, blackouts, waitlist, reservations, features });
     } catch (err) {
       const msg = err?.message || "";
       if (msg.includes("not_authorized")) setError("You are not authorized to view this venue.");
@@ -381,7 +409,7 @@ export function VenueDetailView({ venueId, onBack }) {
 
   const v = data?.venue || {};
   const badges = [];
-  if (v.venue_category) badges.push({ label: v.venue_category, variant: CATEGORY_VARIANT[v.venue_category] || "default" });
+  if (v.venue_category) badges.push({ label: venueCategoryLabel(v.venue_category), variant: CATEGORY_VARIANT[v.venue_category] || "default" });
   if (v.claim_status) badges.push({ label: v.claim_status, variant: CLAIM_VARIANT[v.claim_status] || "default" });
 
   const a = activeAction;

@@ -131,13 +131,15 @@ describe("#1509 adversarial — the ways someone would try to make this stop com
     // unchanged, and so is its strength: the forged baseline still sits one
     // allowance under the ceiling and the build still sits just over it, so a
     // gate that consulted the baseline instead of the constant would pass this
-    // and the assertion below would fail.
+    // and the assertion below would fail. REPOINTED again by issue #4490
+    // [TEST-MOD-APPROVED #4490] — Seth raised the ceiling to 2,940,000 on
+    // 2026-11-24; same positions relative to it.
     const ciDir = cloneCiDir((dir) => {
       const b = JSON.parse(readFileSync(join(dir, "bundle-baseline.json"), "utf8"));
-      b.common.raw = 2_799_000; // just under the 2,800,000 ceiling
+      b.common.raw = 2_939_000; // just under the 2,940,000 ceiling
       writeFileSync(join(dir, "bundle-baseline.json"), JSON.stringify(b, null, 2));
     });
-    const r = run(makeBuild({ commonRaw: 2_810_000 }), { ciDir });
+    const r = run(makeBuild({ commonRaw: 2_950_000 }), { ciDir });
     assert.equal(r.status, 1, "the product ceiling must hold regardless of the baseline");
     assert.match(r.stderr, /PRODUCT CEILING/);
     assert.match(r.stderr, /Do NOT raise it to land this PR/);
@@ -149,10 +151,11 @@ describe("#1509 adversarial — the ways someone would try to make this stop com
     //
     // REPOINTED by issue #3493 [TEST-MOD-APPROVED #3493] — the figure must stay
     // ABOVE HARD_CEILING.common.raw, which moved 2,600,000 -> 2,800,000. Same
-    // impossible baseline, same required verdict.
+    // impossible baseline, same required verdict. REPOINTED by issue #4490
+    // [TEST-MOD-APPROVED #4490] — the ceiling is now 2,940,000.
     const ciDir = cloneCiDir((dir) => {
       const b = JSON.parse(readFileSync(join(dir, "bundle-baseline.json"), "utf8"));
-      b.common.raw = 2_900_000;
+      b.common.raw = 3_000_000;
       writeFileSync(join(dir, "bundle-baseline.json"), JSON.stringify(b, null, 2));
     });
     const r = spawnSync(process.execPath, [join(ciDir, GATE_NAME), "--self-test"], {

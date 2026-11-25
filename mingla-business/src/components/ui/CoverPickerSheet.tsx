@@ -88,6 +88,8 @@ const COVER_TOAST_ERROR_SIGNALS: readonly string[] = [
   "too large",
   "30 mb",
   "needs a server",
+  // #4490 D6 — the plain-words blocker ("Save this first, then add a photo.").
+  "save this first",
   "try again",
 ];
 

@@ -677,7 +677,7 @@ const updateExperience = writeTool(
       type: "string",
       enum: ["total", "per_day", "per_start"],
       description:
-        "How spots are counted. per_day is refused when the open window fits more than one start (spots_scope_requires_start_time).",
+        "How spots are counted: total, per_day (every start that day shares the day's spots) or per_start (each start has its own spots).",
     },
     booking_spacing_minutes: {
       type: "integer",
@@ -693,7 +693,7 @@ const updateExperience = writeTool(
       type: "array",
       maxItems: 20,
       description:
-        "The complete list of price options, replacing the stored list. Read them with get_experience first and send every option with all its fields. Keep each existing option's id; an option without an id is a new option, and a stored option left out is removed. Each: name, price_cents, price_basis (person|group|block); group needs group_max 2–50; block needs block_minutes in 15/30/45/60 plus min_blocks/max_blocks. Non-person basis requires pricing_mode=whole. Once the experience has bookings, existing options may be renamed, hidden or have their spots changed, but not re-priced or removed (price_change_with_sales).",
+        "The complete list of price options, replacing the stored list. Read them with get_experience first and send every option with all its fields. Keep each existing option's id; an option without an id is a new option, and a stored option left out is removed. Each: name, price_cents, price_basis (person|group|block); every option needs a non-blank name (experience_price_name_required); group needs group_max of 2 or more (no 50-person cap); block needs block_minutes in 15-minute steps from 15 to 1440 plus min_blocks/max_blocks. Non-person basis requires pricing_mode=whole. Once the experience has bookings, existing options may be renamed, hidden or have their spots changed, but not re-priced or removed (price_change_with_sales).",
       // Every option should carry name, price_cents and price_basis: the
       // server re-prices a partial option to 0/person. Not a schema
       // `required` (an approval bound before this rule could then never
@@ -708,16 +708,32 @@ const updateExperience = writeTool(
             description:
               "The stored option's id from get_experience. Omit only for a new option.",
           },
-          name: { type: "string" },
+          name: {
+            type: "string",
+            description:
+              'Required and never blank: the price name guests see. There is no default "Standard".',
+          },
           price_cents: { type: "integer", minimum: 0 },
           price_basis: {
             type: "string",
             enum: ["person", "group", "block"],
           },
-          block_minutes: { type: "integer", enum: [15, 30, 45, 60] },
+          block_minutes: {
+            type: "integer",
+            minimum: 15,
+            maximum: 1440,
+            description:
+              "Block length in minutes: a multiple of 15, from 15 up to a full day (1440).",
+          },
           min_blocks: { type: "integer", minimum: 1 },
           max_blocks: { type: "integer", minimum: 1 },
-          group_max: { type: "integer", minimum: 2, maximum: 50 },
+          group_max: {
+            type: "integer",
+            minimum: 2,
+            maximum: 32767,
+            description:
+              "Largest group this price covers (2 or more; no 50-person cap).",
+          },
           capacity: { type: "integer", minimum: 1, nullable: true },
           is_hidden: { type: "boolean" },
         },

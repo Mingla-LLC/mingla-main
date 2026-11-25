@@ -17,6 +17,22 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
+import {
+  assignTable,
+  fetchReservationVersion,
+  fetchVenueFloorPlan,
+  manageVenueTable,
+  saveVenueFloorPlan,
+  suggestTables,
+  toVenueFloorError,
+  VenueFloorError,
+  type FloorPlaceWrite,
+  type TableFields,
+  type TableSuggestions,
+  type VenueFloorPlan,
+  type VenueFloorTable,
+} from "../services/venueFloorService";
+import { venueFeatureKeys } from "./venueFeatureKeys";
 import type {
   VenueTable,
   VenueTableUpsert,
@@ -210,6 +226,143 @@ export function useSetVenueTableActive(
         void queryClient.invalidateQueries({
           queryKey: venueTablesKeys.list(brandId, venueId),
         });
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// #4490 P5-2 — tables in spaces and the floor plan (server RPCs).
+// Kept in this registered auth-scoped hook file (orch-1004).
+// ---------------------------------------------------------------------------
+
+/** Everything a table or floor write can change. */
+function invalidateFloorReaders(
+  queryClient: ReturnType<typeof useQueryClient>,
+  brandId: string,
+  venueId: string,
+): void {
+  void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.floorAll(brandId, venueId) });
+  void queryClient.invalidateQueries({ queryKey: venueTablesKeys.list(brandId, venueId) });
+  void queryClient.invalidateQueries({ queryKey: ["venueReservations", brandId, venueId] });
+}
+
+/** The floor at a moment (`at` ISO, or null = now). */
+export function useVenueFloorPlan(
+  brandId: string | null,
+  venueId: string | null,
+  at: string | null,
+  options: { refetchMs?: number | false } = {},
+): UseQueryResult<VenueFloorPlan> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && brandId.length > 0 && venueId !== null && venueId.length > 0;
+  return useQuery<VenueFloorPlan>({
+    queryKey: enabled ? venueFeatureKeys.floor(brandId, venueId, at ?? "") : (["venueFloor", "disabled"] as const),
+    enabled,
+    staleTime: 15_000,
+    refetchInterval: options.refetchMs ?? false,
+    // Keep the floor on screen while another moment loads (no flash, no lost buttons).
+    placeholderData: (previous) => previous,
+    queryFn: () => (enabled ? fetchVenueFloorPlan(venueId, at) : Promise.reject(new Error("disabled"))),
+  });
+}
+
+export function useManageVenueTable(
+  brandId: string | null,
+  venueId: string | null,
+): UseMutationResult<
+  VenueFloorTable | null,
+  VenueFloorError,
+  { action: "create" | "update" | "archive"; tableId?: string; fields?: TableFields }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input) => {
+      if (venueId === null) throw new VenueFloorError("venue_required");
+      try {
+        return await manageVenueTable({ venueId, ...input });
+      } catch (e) {
+        throw toVenueFloorError(e);
+      }
+    },
+    onSettled: () => {
+      if (brandId !== null && venueId !== null) invalidateFloorReaders(queryClient, brandId, venueId);
+    },
+  });
+}
+
+export function useSaveVenueFloorPlan(
+  brandId: string | null,
+  venueId: string | null,
+): UseMutationResult<
+  VenueFloorPlan,
+  VenueFloorError,
+  { spaceId: string; tables: FloorPlaceWrite[]; planShape?: Record<string, unknown>; expectedVersion: number }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input) => {
+      if (venueId === null) throw new VenueFloorError("venue_required");
+      try {
+        return await saveVenueFloorPlan({ venueId, ...input });
+      } catch (e) {
+        throw toVenueFloorError(e);
+      }
+    },
+    onSettled: () => {
+      if (brandId !== null && venueId !== null) {
+        invalidateFloorReaders(queryClient, brandId, venueId);
+        // The space's version and plan shape changed.
+        void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.spaces(brandId, venueId) });
+      }
+    },
+  });
+}
+
+export function useTableSuggestions(
+  brandId: string | null,
+  venueId: string | null,
+  booking: { reservationId: string; reservedFor: string; partySize: number } | null,
+): UseQueryResult<TableSuggestions> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null && venueId !== null && booking !== null;
+  return useQuery<TableSuggestions>({
+    queryKey: enabled
+      ? venueFeatureKeys.tableSuggestions(brandId, venueId, `${booking.reservationId}:${booking.reservedFor}:${booking.partySize}`)
+      : (["venueTableSuggestions", "disabled"] as const),
+    enabled,
+    staleTime: 10_000,
+    queryFn: () =>
+      enabled
+        ? suggestTables({
+            venueId,
+            reservedFor: booking.reservedFor,
+            partySize: booking.partySize,
+            reservationId: booking.reservationId,
+          })
+        : Promise.reject(new Error("disabled")),
+  });
+}
+
+/** Give a booking a table (or two joined), move it, or clear it (empty list). */
+export function useAssignTable(
+  brandId: string | null,
+  venueId: string | null,
+): UseMutationResult<{ version: number }, VenueFloorError, { reservationId: string; tableIds: string[]; expectedVersion: number | null }> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input) => {
+      try {
+        const expectedVersion = input.expectedVersion ?? (await fetchReservationVersion(input.reservationId));
+        return await assignTable({ reservationId: input.reservationId, tableIds: input.tableIds, expectedVersion });
+      } catch (e) {
+        throw toVenueFloorError(e);
+      }
+    },
+    onSettled: () => {
+      if (brandId !== null && venueId !== null) {
+        invalidateFloorReaders(queryClient, brandId, venueId);
+        void queryClient.invalidateQueries({ queryKey: ["venueTableSuggestions", brandId, venueId] });
       }
     },
   });

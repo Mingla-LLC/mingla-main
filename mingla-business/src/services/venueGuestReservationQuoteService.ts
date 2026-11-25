@@ -87,6 +87,9 @@ export async function previewGuestVenueReservation(
           occasion: input.occasion ?? null,
           guestNotes: input.guestNotes ?? null,
           discountCode: input.discountCode ?? null,
+          ...(input.tableIds != null && input.tableIds.length > 0 ? { tableIds: input.tableIds } : {}),
+          ...(input.spaceId != null ? { spaceId: input.spaceId } : {}),
+          ...(input.requestLargeParty === true ? { requestLargeParty: true } : {}),
         },
       },
     );

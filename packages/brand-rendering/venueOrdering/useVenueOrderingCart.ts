@@ -129,6 +129,8 @@ function reducer(state: State, action: Action): State {
       };
     }
     case "VIEW":
+      // #4490 W3 fix 4 (W3-N36): an empty basket never opens the review.
+      if (action.view === "review" && state.lines.length === 0) return state;
       return { ...state, view: action.view, openItemId: null };
     case "OPEN_ITEM":
       return { ...state, openItemId: action.itemId };
@@ -159,6 +161,9 @@ function reducer(state: State, action: Action): State {
       return state;
   }
 }
+
+/** The basket's state machine, exported for its pure tests (#4490 W3-N36). */
+export const venueOrderingCartStateReducer = reducer;
 
 export interface VenueOrderingCartApi {
   state: VenueOrderingCartState;

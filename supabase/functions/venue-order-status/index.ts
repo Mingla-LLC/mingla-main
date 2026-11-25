@@ -22,6 +22,13 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 import { venueOrderErrorCopy } from "../_shared/venueOrderPricing.ts";
+import {
+  confirmVenueOrderPaystackOnReturn,
+  venueOrderReturnCheckPlan,
+  isVenueOrderPaystackReference,
+  type VenueOrderReturnCheck,
+} from "../_shared/venueOrderWebhook.ts";
+import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import {
@@ -109,6 +116,64 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
 
+  // N140 (#4490): an unpaid Paystack order is checked with Paystack on every
+  // read while it is pending (the guest's return and the page's poll) and
+  // finalized through the webhook's own path when the charge succeeded.
+  let paymentCheck: VenueOrderReturnCheck | null = null;
+  if (
+    order.payment_status === "pending" &&
+    order.provider === "paystack" &&
+    isVenueOrderPaystackReference(order.paystack_reference)
+  ) {
+    // N143: one Paystack call per reference per 30 s at most, and none after
+    // a terminal "not_paid" (declined / abandoned) until a new payment starts
+    // (a new reference). The last answer rides in the order's metadata.
+    const reference = String(order.paystack_reference);
+    const meta = (order.metadata !== null && typeof order.metadata === "object"
+      ? order.metadata
+      : {}) as Record<string, unknown>;
+    // N144: a guest reopening the payment ("Try again") starts the check over:
+    // the reopened checkout reuses this reference, so the remembered
+    // "not_paid" is forgotten and nothing is asked of Paystack until they return.
+    const plan = venueOrderReturnCheckPlan(
+      meta.paystack_return_check,
+      reference,
+      Date.now(),
+      includePaymentContinuation,
+    );
+    if (plan.forget) {
+      const { paystack_return_check: _forgotten, ...rest } = meta;
+      await supabase.from("venue_orders").update({ metadata: rest })
+        .eq("id", order.id).eq("payment_status", "pending");
+    }
+    if (!plan.verify) {
+      paymentCheck = plan.answer;
+    } else {
+      try {
+        paymentCheck = await confirmVenueOrderPaystackOnReturn(
+          supabase,
+          reference,
+          paystackVerifyTransaction,
+        );
+      } catch (err) {
+        console.error("[venue-order-status] paystack verify on return failed", String(err));
+        paymentCheck = "in_progress";
+      }
+      if (paymentCheck !== "confirmed") {
+        await supabase.from("venue_orders").update({
+          metadata: { ...meta, paystack_return_check: { reference, result: paymentCheck, at: new Date().toISOString() } },
+        }).eq("id", order.id).eq("payment_status", "pending");
+      }
+    }
+    if (paymentCheck === "confirmed") {
+      const { data: fresh } = await supabase.from("venue_orders")
+        .select("payment_status").eq("id", order.id).maybeSingle();
+      if (fresh && typeof fresh.payment_status === "string") {
+        order.payment_status = fresh.payment_status;
+      }
+    }
+  }
+
   const [{ data: brand }, { data: venue }] = await Promise.all([
     supabase.from("brands").select("slug").eq("id", order.brand_id)
       .maybeSingle(),
@@ -128,6 +193,49 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     String(order.fulfillment_status),
   ) && order.refund_requested_at === null && order.money_path === "mingla";
 
+  // #4490 spec 08 O5 (T16): a line that sold out after the guest paid, and
+  // what the venue did about it (swapped, refunded, or still deciding). Read
+  // only for a flagged order (the flag exists only once migration
+  // 20281203724490 is in, so an older database never sees this read).
+  const orderMeta = (order.metadata !== null && typeof order.metadata === "object"
+    ? order.metadata
+    : {}) as Record<string, unknown>;
+  let soldOut: Array<Record<string, unknown>> = [];
+  if (orderMeta.sold_out_after_payment === true) {
+    const { data: lines, error: linesError } = await supabase
+      .from("venue_order_items")
+      .select("id, item_name_at_order, quantity, sold_out_resolution, sold_out_refund_minor, swapped_to_item_id, line_no")
+      .eq("venue_order_id", order.id)
+      .not("sold_out_at", "is", null)
+      .order("line_no", { ascending: true });
+    if (linesError) {
+      console.error("[venue-order-status] sold-out lines read failed", linesError.code ?? "unknown");
+    } else {
+      const swapIds = (lines ?? []).map((l: Record<string, unknown>) => l.swapped_to_item_id)
+        .filter((id: unknown): id is string => typeof id === "string");
+      const names = new Map<string, string>();
+      if (swapIds.length > 0) {
+        const { data: swaps } = await supabase.from("venue_order_items")
+          .select("id, item_name_at_order").in("id", swapIds);
+        for (const row of (swaps ?? []) as Array<Record<string, unknown>>) {
+          names.set(String(row.id), String(row.item_name_at_order));
+        }
+      }
+      soldOut = ((lines ?? []) as Array<Record<string, unknown>>).map((l) => ({
+        itemName: String(l.item_name_at_order),
+        quantity: Number(l.quantity),
+        soldOutAfterPayment: true,
+        resolution: l.sold_out_resolution === "swap" || l.sold_out_resolution === "refund"
+          ? l.sold_out_resolution
+          : null,
+        swappedToName: typeof l.swapped_to_item_id === "string"
+          ? names.get(l.swapped_to_item_id) ?? null
+          : null,
+        refundedMinor: typeof l.sold_out_refund_minor === "number" ? l.sold_out_refund_minor : null,
+      }));
+    }
+  }
+
   const paymentContinuation = includePaymentContinuation
     ? await resolveVenueOrderPaymentContinuation(
       order as unknown as VenueOrderContinuationRow,
@@ -145,6 +253,8 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     brandSlug: typeof brand?.slug === "string" ? brand.slug : null,
     venueSlug: typeof venue?.slug === "string" ? venue.slug : null,
     paymentStatus: String(order.payment_status),
+    // N140: null when no provider check applies (paid, Stripe, free).
+    paymentCheck,
     fulfillmentStatus: String(order.fulfillment_status),
     placedAt: order.created_at,
     acknowledgedAt: order.acknowledged_at,
@@ -158,6 +268,7 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     spotLabel: order.spot_label_at_order,
     canCancel,
     canRequestRefund,
+    soldOut,
     ...(includePaymentContinuation ? { paymentContinuation } : {}),
     // Every charge the guest paid, itemised — the venue's service charge stays
     // its own line and the tip stays outside every fee
