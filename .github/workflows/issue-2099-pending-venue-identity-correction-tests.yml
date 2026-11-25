@@ -297,7 +297,12 @@ jobs:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     steps:
+      # #3493 — the push lane must see every squash subject since the recorded
+      # baseline. Otherwise a later main commit can hide the approved merge
+      # whose one-time allowance is still waiting to be banked.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20.19.4
