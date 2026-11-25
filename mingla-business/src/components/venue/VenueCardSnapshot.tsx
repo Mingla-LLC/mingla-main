@@ -1,26 +1,22 @@
 /** Lazy operational snapshot below a Hub venue card (#4490). */
 import React from "react";
 import { StyleSheet, View } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 
 import { radius as radiusTokens, color } from "../../constants/designSystem";
-import { useStayStaffReservationList } from "../../hooks/useStayStaffReservations";
-import { useVenueAvailabilityConfig } from "../../hooks/useVenueAvailability";
+import { useAuth } from "../../context/AuthContext";
 import { useVenueDay } from "../../hooks/useVenueDay";
-import { useVenueRequests } from "../../hooks/useVenueHire";
-import { useVenueReservations } from "../../hooks/useVenueReservations";
-import { useVenueWaitlist } from "../../hooks/useVenueWaitlist";
 import { StatRow } from "../ui/StatRow";
 import { Skeleton } from "../ui/Skeleton";
-import { resolveVenueTimeZone } from "./reservationCalendarModel";
 import {
   doorSnapshot,
   requestSnapshot,
   setupSnapshot,
   staySnapshot,
   tableSnapshot,
-  type VenueCardSnapshotKind,
   type VenueCardSnapshotMetric,
 } from "./venueCardSnapshotModel";
+import type { VenueCardSnapshotKind } from "./venueCardSnapshotKind";
 
 export interface VenueCardSnapshotProps {
   kind: VenueCardSnapshotKind;
@@ -67,7 +63,15 @@ function RequestsSnapshot({
   venueId,
   testID,
 }: Pick<VenueCardSnapshotProps, "brandId" | "venueId" | "testID">): React.ReactElement {
-  const query = useVenueRequests(brandId, venueId, "all");
+  const { isAuthReady } = useAuth();
+  const query = useQuery({
+    queryKey: ["venueCardSnapshot", "requests", brandId, venueId] as const,
+    enabled: isAuthReady,
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+    queryFn: async () =>
+      (await import("./venueCardSnapshotReads")).readRequestSnapshot(venueId),
+  });
   if (query.isLoading) return <LoadingSnapshot testID={testID} />;
   return <SnapshotRow items={requestSnapshot(query.data)} testID={testID} />;
 }
@@ -76,7 +80,15 @@ function StaySnapshot({
   venueId,
   testID,
 }: Pick<VenueCardSnapshotProps, "venueId" | "testID">): React.ReactElement {
-  const query = useStayStaffReservationList(venueId);
+  const { isAuthReady } = useAuth();
+  const query = useQuery({
+    queryKey: ["venueCardSnapshot", "stay", venueId] as const,
+    enabled: isAuthReady,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    queryFn: async () =>
+      (await import("./venueCardSnapshotReads")).readStaySnapshot(venueId),
+  });
   if (query.isLoading) return <LoadingSnapshot testID={testID} />;
   return <SnapshotRow items={staySnapshot(query.data)} testID={testID} />;
 }
@@ -86,21 +98,25 @@ function TablesSnapshot({
   venueId,
   testID,
 }: Pick<VenueCardSnapshotProps, "brandId" | "venueId" | "testID">): React.ReactElement {
-  const reservations = useVenueReservations(brandId, venueId);
-  const waitlist = useVenueWaitlist(brandId, venueId);
-  const availability = useVenueAvailabilityConfig(brandId, venueId);
-  if (reservations.isLoading || waitlist.isLoading || availability.isLoading) {
-    return <LoadingSnapshot testID={testID} />;
-  }
-  const timeZone = availability.isError
-    ? undefined
-    : resolveVenueTimeZone(availability.data?.ianaTimezone).timeZone;
+  const { isAuthReady } = useAuth();
+  const query = useQuery({
+    queryKey: ["venueCardSnapshot", "tables", brandId, venueId] as const,
+    enabled: isAuthReady,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    queryFn: async () =>
+      (await import("./venueCardSnapshotReads")).readTableSnapshot(
+        brandId,
+        venueId,
+      ),
+  });
+  if (query.isLoading) return <LoadingSnapshot testID={testID} />;
   return (
     <SnapshotRow
       items={tableSnapshot({
-        reservations: reservations.data,
-        waitlist: waitlist.data,
-        timeZone,
+        reservations: query.data?.reservations,
+        waitlist: query.data?.waitlist,
+        timeZone: query.data?.timeZone,
       })}
       testID={testID}
     />

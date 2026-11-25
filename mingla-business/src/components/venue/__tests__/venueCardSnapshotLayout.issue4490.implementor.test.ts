@@ -12,11 +12,21 @@ const snapshot = fs.readFileSync(
 describe("#4490 venue card layout and action integration", () => {
   test("every populated card owns the same snapshot and action slots", () => {
     expect(card).toContain('React.lazy(() => import("./VenueCardSnapshot"))');
+    expect(card).toContain('from "./venueCardSnapshotKind"');
     expect(card).toContain("<LazyVenueCardSnapshot");
     expect(card).toContain("<View style={styles.actions}>");
     expect(card).not.toContain("const sells = features?.entry.enabled === true");
     expect(snapshot).toContain("slot: { height: 92 }");
     expect(list).toContain('alignSelf: "stretch"');
+  });
+
+  test("operational read graphs stay behind an on-intent import", () => {
+    expect(snapshot).toContain('await import("./venueCardSnapshotReads")');
+    expect(snapshot).not.toContain('from "../../hooks/useStayStaffReservations"');
+    expect(snapshot).not.toContain('from "../../hooks/useVenueHire"');
+    expect(snapshot).not.toContain('from "../../hooks/useVenueReservations"');
+    expect(snapshot).not.toContain('from "../../hooks/useVenueWaitlist"');
+    expect(snapshot).not.toContain('from "../../hooks/useVenueAvailability"');
   });
 
   test("the contextual actions open real workspace destinations", () => {

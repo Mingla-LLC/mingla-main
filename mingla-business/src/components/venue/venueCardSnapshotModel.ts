@@ -12,58 +12,12 @@ import type {
   Reservation,
   WaitlistEntry,
 } from "../../types/venueReservation";
-import type {
-  VenueFeatureKey,
-  VenueFeatureSet,
-} from "../../types/venueFeatures";
-import {
-  venueDayKeyForInstant,
-  venueTodayKey,
-} from "./reservationCalendarModel";
 import { dayNumbers } from "./features/today/todayModel";
-
-export type VenueCardSnapshotKind =
-  | "door"
-  | "requests"
-  | "stay"
-  | "tables"
-  | "setup";
 
 export interface VenueCardSnapshotMetric {
   key: string;
   label: string;
   value: string;
-}
-
-const DOOR_FEATURES: readonly VenueFeatureKey[] = [
-  "entry",
-  "group_packages",
-  "by_the_hour",
-  "guest_list",
-  "memberships",
-];
-
-const on = (
-  features: VenueFeatureSet | null,
-  key: VenueFeatureKey,
-): boolean => features?.[key].enabled === true;
-
-/**
- * Priority is deliberate: a Stay keeps its own reservations inbox; a venue
- * with a real door keeps the original door snapshot; private hire then beats
- * table reservations because requests are the action that can expire.
- */
-export function venueCardSnapshotKind(
-  features: VenueFeatureSet | null,
-  venueCategory: string | null,
-): VenueCardSnapshotKind {
-  if (venueCategory === "stay" || on(features, "stays")) return "stay";
-  if (DOOR_FEATURES.some((key) => on(features, key))) return "door";
-  if (on(features, "private_hire")) return "requests";
-  if (on(features, "table_reservations") || on(features, "waitlist")) {
-    return "tables";
-  }
-  return "setup";
 }
 
 const unknown = (key: string, label: string): VenueCardSnapshotMetric => ({
@@ -147,25 +101,44 @@ export function staySnapshot(
 }
 
 function reservationIsToday(
-  reservation: Reservation,
+  reservation: Pick<Reservation, "reservedFor" | "status">,
   timeZone: string,
   today: string,
 ): boolean {
   try {
-    return venueDayKeyForInstant(reservation.reservedFor, timeZone) === today;
+    return dayKey(reservation.reservedFor, timeZone) === today;
   } catch {
     return false;
   }
 }
 
+const dayKey = (instantIso: string, timeZone: string): string => {
+  const instant = new Date(instantIso);
+  if (!Number.isFinite(instant.getTime())) throw new Error("invalid_instant");
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(instant);
+  const value = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+};
+
 export function tableSnapshot(input: {
-  reservations: readonly Reservation[] | undefined;
-  waitlist: readonly WaitlistEntry[] | undefined;
+  reservations:
+    | readonly Pick<Reservation, "reservedFor" | "status">[]
+    | undefined;
+  waitlist: readonly Pick<WaitlistEntry, "status">[] | undefined;
   timeZone: string | undefined;
   now?: Date;
 }): readonly VenueCardSnapshotMetric[] {
   const timeZone = input.timeZone;
-  const today = timeZone === undefined ? null : venueTodayKey(timeZone, input.now);
+  const today =
+    timeZone === undefined
+      ? null
+      : dayKey((input.now ?? new Date()).toISOString(), timeZone);
   const todayReservations =
     input.reservations === undefined || today === null || timeZone === undefined
       ? undefined

@@ -42,7 +42,7 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { ListingStatusChip } from "./ListingStatusChip";
-import { venueCardSnapshotKind } from "./venueCardSnapshotModel";
+import { venueCardSnapshotKind } from "./venueCardSnapshotKind";
 
 const COVER_W = 76;
 const COVER_H = 92;

@@ -11,8 +11,8 @@ import {
   setupSnapshot,
   staySnapshot,
   tableSnapshot,
-  venueCardSnapshotKind,
 } from "../venueCardSnapshotModel";
+import { venueCardSnapshotKind } from "../venueCardSnapshotKind";
 
 describe("#4490 Hub venue-card operational snapshots", () => {
   test("the feature mix chooses a truthful, useful queue and keeps door priority", () => {
