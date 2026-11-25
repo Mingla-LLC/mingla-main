@@ -19,6 +19,8 @@ export interface EmailSendInput {
   title: string;
   body: string; // plain paragraphs separated by \n\n
   cta?: { label: string; url: string };
+  /** #4490 Explorer W1: a second link under the button. */
+  secondaryCta?: { label: string; url: string };
   idempotencyKey?: string;
   beforeProviderIo?: () => Promise<void>;
   attachments?: Array<{ filename: string; content: string }>;
@@ -35,6 +37,50 @@ export interface EmailSendInput {
   };
   /** Issue #3827 — Reply-To header. Absent, none is set (as before). */
   replyTo?: string;
+}
+
+const RESEND_EMAILS_URL = "https://api.resend.com/emails";
+
+/**
+ * #4490 — where an email is posted. Always Resend, except on a LOCAL stack
+ * (the function's own SUPABASE_URL is a loopback or docker host) when
+ * LOCAL_RESEND_API_URL names a loopback stand-in that hands the message to the
+ * stack's mail catcher. Anywhere else the override is ignored.
+ */
+export function resendEmailsUrl(
+  env: (name: string) => string | undefined,
+): string {
+  const override = (env("LOCAL_RESEND_API_URL") ?? "").trim().replace(
+    /\/+$/,
+    "",
+  );
+  if (!override) return RESEND_EMAILS_URL;
+  let supabaseHost = "";
+  let overrideHost = "";
+  try {
+    supabaseHost = new URL(env("SUPABASE_URL") ?? "").hostname;
+    overrideHost = new URL(override).hostname;
+  } catch {
+    return RESEND_EMAILS_URL;
+  }
+  const local = (host: string): boolean =>
+    ["kong", "localhost", "127.0.0.1", "host.docker.internal"].includes(host);
+  return local(supabaseHost) && local(overrideHost)
+    ? `${override}/emails`
+    : RESEND_EMAILS_URL;
+}
+
+// The two names resendEmailsUrl reads. resendEnv is this module's one
+// dynamic getter; supabase/functions/_shared/adapters/emailAdapter.ts.function-policy.json
+// declares it and allows only these literal names (function secret contract).
+const resendEnv = (name: string): string | undefined => Deno.env.get(name);
+
+function localResendEnv(): (name: string) => string | undefined {
+  const values: Record<string, string | undefined> = {
+    LOCAL_RESEND_API_URL: resendEnv("LOCAL_RESEND_API_URL"),
+    SUPABASE_URL: resendEnv("SUPABASE_URL"),
+  };
+  return (name) => values[name];
 }
 
 export const emailAdapter = {
@@ -69,6 +115,7 @@ export const emailAdapter = {
           title: input.title,
           paragraphs: input.body.split("\n\n"),
           cta: input.cta ?? null,
+          secondaryCta: input.secondaryCta ?? null,
         },
       });
     } catch {
@@ -82,7 +129,7 @@ export const emailAdapter = {
 
     try {
       await input.beforeProviderIo?.();
-      const res = await fetch("https://api.resend.com/emails", {
+      const res = await fetch(resendEmailsUrl(localResendEnv()), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,

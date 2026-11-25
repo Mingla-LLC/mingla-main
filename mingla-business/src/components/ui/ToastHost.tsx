@@ -117,14 +117,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     alignItems: "center",
   },
-  // I-PRIVACY-BAR-NEVER-OCCLUDES: on web the host is fixed inside the app root,
-  // which ends at the privacy strip's top edge, so this bottom clears it.
+  // #4490 N2/N13: the desktop stack sits top-centre. Bottom-right put every
+  // success toast on top of the primary button (wizard Continue, sheet footer
+  // Add / Save) for its whole four seconds. Top-centre covers no action: page
+  // headers keep their buttons at the edges, and sheets open from the right.
+  // I-PRIVACY-BAR-NEVER-OCCLUDES (#4420 merge): a top-pinned stack never reaches the
+  // privacy strip at the bottom of the app root.
   stack: {
     position: "absolute",
-    right: space[6],
-    bottom: space[6],
+    top: space[6],
+    left: 0,
+    right: 0,
     gap: space[2],
-    alignItems: "flex-end",
+    alignItems: "center",
   },
 });
 

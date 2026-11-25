@@ -134,6 +134,11 @@ jest.mock("../../../hooks/useVenueListings", () => ({
         : { id: "venue-3393", claimStatus: mockClaimStatus },
   }),
 }));
+// TEST-MOD-APPROVED #4490 (08-O3 part A): the Orders queue now asks whether to
+// show the "Kitchen and bar" entry (useStationsEntry reads auth, features and
+// access); this suite renders the module without those providers.
+let mockStationsEntry = false;
+jest.mock("../../../hooks/useStationsEntry", () => ({ __esModule: true, useStationsEntry: () => mockStationsEntry }));
 jest.mock("../../../hooks/useVenueOrderingSettings", () => ({
   __esModule: true,
   useVenueOrderingSettings: () => ({
@@ -468,6 +473,9 @@ describe("#3387 — the guest is told why, not the generic failure", () => {
         guestReservationFailureCopy("deposit_amount_unconfigured"),
       ),
     ).resolves.toMatch(/smaller party or contact the venue/);
+    expect(guestReservationFailureCopy("amount_too_large")).toBe(
+      "This table's deposit is above what one payment can take. Ask the venue.",
+    );
   });
 
   test("the public reservation form uses that mapping on a failed create", () => {

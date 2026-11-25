@@ -410,6 +410,8 @@ interface BrandHourRow {
   open_time: string | null;
   close_time: string | null;
   is_closed: boolean;
+  /** #4490 — 0..3; absent on rows read before the column existed. */
+  window_ordinal?: number | null;
 }
 
 /**
@@ -419,6 +421,10 @@ interface BrandHourRow {
  * (20260613000000:98-110) admits the authenticated owner. Always returns all 7
  * weekdays (Mon=0 … Sun=6), filling any missing weekday as a closed day so the
  * editor renders a stable 7-row table.
+ *
+ * #4490 — a day can hold up to four windows (`window_ordinal` 0..3). Window 0
+ * stays in openTime/closeTime; windows 1..3 come back as `extraWindows`, so a
+ * single-window week reads exactly as before.
  */
 export async function fetchBrandHours(
   brandId: string,
@@ -428,7 +434,7 @@ export async function fetchBrandHours(
 ): Promise<BrandHourEntry[]> {
   let query = supabase
     .from("brand_hours")
-    .select("weekday, open_time, close_time, is_closed")
+    .select("weekday, open_time, close_time, is_closed, window_ordinal")
     .eq("brand_id", brandId);
   if (venueId != null && venueId.length > 0) {
     query = query.eq("venue_id", venueId);
@@ -437,20 +443,34 @@ export async function fetchBrandHours(
     .order("weekday")
     .returns<BrandHourRow[]>();
   if (error !== null) throw error;
-  const byWeekday = new Map<number, BrandHourRow>();
-  for (const row of data ?? []) byWeekday.set(row.weekday, row);
+  const byWeekday = new Map<number, BrandHourRow[]>();
+  for (const row of data ?? []) {
+    const list = byWeekday.get(row.weekday) ?? [];
+    list.push(row);
+    byWeekday.set(row.weekday, list);
+  }
   const result: BrandHourEntry[] = [];
   for (let weekday = 0; weekday <= 6; weekday++) {
-    const row = byWeekday.get(weekday);
-    if (row === undefined) {
+    const rows = (byWeekday.get(weekday) ?? []).sort(
+      (a, b) => (a.window_ordinal ?? 0) - (b.window_ordinal ?? 0),
+    );
+    const first = rows[0];
+    if (first === undefined) {
       result.push({ weekday, openTime: null, closeTime: null, isClosed: true });
     } else {
-      result.push({
+      const entry: BrandHourEntry = {
         weekday,
-        openTime: row.open_time,
-        closeTime: row.close_time,
-        isClosed: row.is_closed,
-      });
+        openTime: first.open_time,
+        closeTime: first.close_time,
+        isClosed: first.is_closed,
+      };
+      if (!first.is_closed && rows.length > 1) {
+        entry.extraWindows = rows.slice(1).map((row) => ({
+          openTime: row.open_time,
+          closeTime: row.close_time,
+        }));
+      }
+      result.push(entry);
     }
   }
   return result;

@@ -34,6 +34,7 @@ interface WaitlistRow {
   guest_email: string | null;
   party_size: number;
   preferred_zone: WaitlistEntry["preferredZone"];
+  preferred_space_id?: string | null;
   quoted_wait_minutes: number | null;
   status: WaitlistEntry["status"];
   notify_via: WaitlistEntry["notifyVia"];
@@ -42,10 +43,16 @@ interface WaitlistRow {
   converted_reservation_id: string | null;
   consumer_user_id: string | null;
   created_at: string;
+  source?: "staff" | "guest" | null;
+  desired_date?: string | null;
+  desired_from?: string | null;
+  desired_to?: string | null;
+  left_by_guest_at?: string | null;
+  offered_slot_at?: string | null;
 }
 
 const WAITLIST_COLUMNS =
-  "id, brand_id, venue_id, guest_name, guest_phone_e164, guest_email, party_size, preferred_zone, quoted_wait_minutes, status, notify_via, notified_at, expires_at, converted_reservation_id, consumer_user_id, created_at";
+  "id, brand_id, venue_id, guest_name, guest_phone_e164, guest_email, party_size, preferred_zone, preferred_space_id, quoted_wait_minutes, status, notify_via, notified_at, expires_at, converted_reservation_id, consumer_user_id, created_at, source, desired_date, desired_from, desired_to, left_by_guest_at, offered_slot_at";
 
 const mapRow = (row: WaitlistRow): WaitlistEntry => ({
   id: row.id,
@@ -56,6 +63,7 @@ const mapRow = (row: WaitlistRow): WaitlistEntry => ({
   guestEmail: row.guest_email,
   partySize: row.party_size,
   preferredZone: row.preferred_zone,
+  preferredSpaceId: row.preferred_space_id ?? null,
   quotedWaitMinutes: row.quoted_wait_minutes,
   status: row.status,
   notifyVia: row.notify_via,
@@ -64,7 +72,50 @@ const mapRow = (row: WaitlistRow): WaitlistEntry => ({
   convertedReservationId: row.converted_reservation_id,
   consumerUserId: row.consumer_user_id,
   createdAt: row.created_at,
+  source: row.source === "guest" ? "guest" : "staff",
+  desiredDate: row.desired_date ?? null,
+  desiredFrom: row.desired_from ?? null,
+  desiredTo: row.desired_to ?? null,
+  leftByGuestAt: row.left_by_guest_at ?? null,
+  offeredSlotAt: row.offered_slot_at ?? null,
 });
+
+/**
+ * #4490 P5 — tell a waiting guest a table is ready (no SMS needed): the entry
+ * moves to notified; the server emails a guest who joined online
+ * (`venue_waitlist_ready`) and their waitlist page shows "A table is ready".
+ */
+export function useOfferWaitlistTable(
+  brandId: string | null,
+  venueId: string | null,
+): UseMutationResult<void, Error, string> {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (id: string): Promise<void> => {
+      if (brandId === null) throw new Error("brand_required");
+      const now = new Date();
+      const { error } = await supabase
+        .from("venue_waitlist")
+        .update({
+          status: "notified",
+          notified_at: now.toISOString(),
+          expires_at: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq("id", id)
+        .eq("brand_id", brandId)
+        .eq("status", "waiting");
+      if (error !== null) throw error as unknown as Error;
+    },
+    onSettled: () => {
+      if (brandId !== null && venueId !== null) {
+        void queryClient.invalidateQueries({
+          queryKey: venueWaitlistKeys.list(brandId, venueId),
+        });
+      }
+    },
+  });
+}
 
 export const venueWaitlistKeys = {
   // META-ORCH-1255 — venue-scoped, brandId-first (brand-prefix invalidation safe).
@@ -159,6 +210,7 @@ export function useAddToWaitlist(
         guest_email: input.guestEmail,
         party_size: input.partySize,
         preferred_zone: input.preferredZone,
+        ...(input.preferredSpaceId != null ? { preferred_space_id: input.preferredSpaceId } : {}),
         quoted_wait_minutes: input.quotedWaitMinutes,
         status: "waiting",
       });

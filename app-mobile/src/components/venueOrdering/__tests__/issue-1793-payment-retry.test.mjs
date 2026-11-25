@@ -8,6 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { presentVenueOrderPayment } from "../venueOrderPaymentPresentation.ts";
+import { venueOrderActiveSitting } from "../../../../../packages/brand-rendering/venueOrdering/venueOrderingSitting.ts";
+import { venueOrderStatusPollDelay } from "../../../../../packages/brand-rendering/venueOrdering/venueOrderingPoll.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, "..", "..", "..", "..", "..");
@@ -25,7 +27,10 @@ test("T-1793-R8 — native cancel keeps the stable basket key and accepts the re
     hook,
     /created\.kind === "free_completed" \|\| !created\.resumed/,
   );
-  assert.match(hook, /sitting\?\.buyerStatusToken \?\? ""/);
+  // TEST-MOD-APPROVED #4490: a resumed order's token now comes from the sitting
+  // it belongs to (the table's, or a pickup order's own, N145); the resume
+  // behaviour this guards is unchanged.
+  assert.match(hook, /[sS]itting(\([\s\S]*?\))?\?\.buyerStatusToken \?\? ""\)/);
   assert.match(service, /resumed: data\.resumed === true/);
 });
 
@@ -72,6 +77,74 @@ test("T-1793-R11 — first PaymentSheet cancel then second Pay presents the same
     [second.orderId, second.paymentIntentId],
     ["order_same", "pi_same"],
   );
+});
+
+// [TEST-MOD-APPROVED #4490] The #4490 app parity cases live here so the
+// existing test:issue-1793 script runs them without changing the sealed
+// app-mobile/package.json authority.
+// Issue #4490 (N143 / N144 / N145, Explorer app) — the app matches buyer web:
+// a pickup order from a table is kept apart and linked from the table menu,
+// its own tokens drive its status / cancel / retry, an unpaid order offers
+// "Cancel order" (never a refund) and a real "Try again", and the app stops
+// asking once a payment is declined.
+// Fails-on-revert: table tokens on a pickup order fail A-1/A-2; removing the
+// link fails A-3; a fixed interval or no decline stop fails A-4.
+
+
+const parityHook = read("app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts");
+const paritySlots = read("app-mobile/src/components/venueOrdering/ConsumerVenueOrderingSlots.tsx");
+const parityPane = read("packages/brand-rendering/venueOrdering/VenueOrderStatusPane.tsx");
+
+const seat = (id) => ({
+  sessionId: `s-${id}`, orderId: `o-${id}`, buyerStatusToken: `bst-${id}`,
+  guestCancelToken: `gct-${id}`, tip: { bps: 0, flatCents: null }, partySizeClaimed: null,
+  buyerName: "Tayo", expiresAt: Date.now() + 60_000,
+});
+
+test("A-1 a pickup order on screen uses its own sitting, the table its own", () => {
+  const table = seat("table");
+  const counter = seat("counter");
+  assert.equal(venueOrderActiveSitting({ table, counter, viewingCounter: true }), counter);
+  assert.equal(venueOrderActiveSitting({ table, counter, viewingCounter: false }), table);
+});
+
+test("A-2 the app's status, cancel and retry read the active sitting's tokens", () => {
+  assert.match(parityHook, /const token = activeSitting\?\.guestCancelToken \?\? null;/);
+  assert.match(parityHook, /const token = activeSitting\?\.buyerStatusToken \?\? null;\n\s+if \(orderId === null \|\| token === null\) return;/);
+  assert.doesNotMatch(parityHook, /const token = sitting\?\.(guestCancelToken|buyerStatusToken)/);
+  // a pickup order is remembered apart from the table and put on screen
+  assert.match(parityHook, /else setCounterSitting\(/);
+  assert.match(parityHook, /setViewingCounter\(toCounter\);/);
+});
+
+test("A-3 the table menu links to the pickup order; Try again is wired", () => {
+  assert.match(paritySlots, /Your pickup order · See status/);
+  assert.match(paritySlots, /onPress=\{ordering\.openCounterOrder\}/);
+  assert.match(paritySlots, /if \(!ordering\.hasCounterOrder\) return chip;/);
+  assert.match(paritySlots, /onRetryPayment=\{ordering\.retryPayment\}/);
+  // the shared pane: an unpaid order offers Cancel order, never a refund
+  assert.match(parityPane, /"Cancel order"/);
+});
+
+test("A-4 unpaid reads back off (5 s, 10 s, 20 s, stop) and a decline stops at once", () => {
+  const pending = { paymentStatus: "pending", paymentCheck: "in_progress" };
+  assert.deepEqual([0, 1, 2, 3].map((n) => venueOrderStatusPollDelay(pending, n, 4000)), [5000, 10000, 20000, null]);
+  assert.equal(venueOrderStatusPollDelay({ paymentStatus: "pending", paymentCheck: "not_paid" }, 0, 4000), null);
+  assert.match(parityHook, /venueOrderStatusPollDelay\(live, pendingReadsRef\.current, STATUS_POLL_INTERVAL_MS\)/);
+  assert.doesNotMatch(parityHook, /setInterval\(\(\) => \{\n\s+void fetchVenueOrderStatus/);
+  assert.match(parityHook, /if \(status\.paymentCheck === "not_paid"\) return;/);
+});
+
+// N149 (#4490): the pickup link uses design-system tokens and a 44 pt target.
+// Fails-on-revert: hardcoded 14/20/8 or a hitSlop-only target fails A-5.
+test("A-5 the pickup link uses tokens and a 44 pt tap target", () => {
+  const block = paritySlots.slice(paritySlots.indexOf("const counterStyles"));
+  assert.match(block, /minHeight: touchTargets\.minimum/);
+  assert.match(block, /\.\.\.typography\.sm/);
+  assert.match(block, /fontWeight: fontWeights\.bold/);
+  assert.match(block, /gap: spacing\.sm/);
+  assert.doesNotMatch(block.slice(0, block.indexOf("});")), /fontSize: \d|lineHeight: \d|gap: \d/);
+  assert.match(paritySlots, /style=\{counterStyles\.target\}/);
 });
 
 test("#3645 — a 'review the new price' refusal fetches the preview again before the next Pay", () => {

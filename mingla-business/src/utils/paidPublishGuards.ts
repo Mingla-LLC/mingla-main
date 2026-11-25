@@ -268,6 +268,18 @@ export const PAID_TICKET_PRICE_REQUIRED_COPY =
  *     `console.error`, which is inside this function so it cannot be forgotten at a
  *     call site.
  */
+/**
+ * #4490 fix 3 (N101) — the event takes its venue space and that space is
+ * already hired or blocked while it runs (`event_space_taken`, raised when the
+ * event goes live or its place changes). Plain words and a way forward: the
+ * Where step, where the host picks another space or lets it stay open.
+ */
+export const EVENT_SPACE_TAKEN_COPY =
+  "That space is already hired or blocked then. Pick another space, or let it stay open to others.";
+
+export const isEventSpaceTakenRefusal = (raw: string | null | undefined): boolean =>
+  typeof raw === "string" && /(?:^|[^a-z0-9_])event_space_taken(?:$|[^a-z0-9_])/.test(raw);
+
 const UNMAPPED_GUARD_TOKEN_SHAPE = /^[a-z][a-z0-9_]{2,63}$/;
 
 export const describeUnmappedPublishGuard = (
@@ -283,6 +295,7 @@ export const describeUnmappedPublishGuard = (
   if (/(?:^|[^a-z0-9_])paid_ticket_price_required(?:$|[^a-z0-9_])/.test(s)) {
     return PAID_TICKET_PRICE_REQUIRED_COPY;
   }
+  if (isEventSpaceTakenRefusal(s)) return EVENT_SPACE_TAKEN_COPY;
   // Requirement 3 — always logged, before anything is shown.
   console.error("[#2333] unmapped publish guard", s);
   if (UNMAPPED_GUARD_TOKEN_SHAPE.test(s)) {
@@ -303,6 +316,7 @@ export const describeUnmappedEditGuard = (
   raw: string | null | undefined,
 ): string => {
   const s = typeof raw === "string" ? raw.trim() : "";
+  if (isEventSpaceTakenRefusal(s)) return EVENT_SPACE_TAKEN_COPY;
   console.error("[#2333] unmapped edit guard", s);
   if (UNMAPPED_GUARD_TOKEN_SHAPE.test(s)) {
     return `We couldn't save these changes — the server reported "${s}". Your published event was not changed. Contact support and quote that code.`;

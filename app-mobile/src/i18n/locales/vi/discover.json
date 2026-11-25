@@ -56,6 +56,7 @@
   "pill.experiences": "Trải nghiệm",
   "pill.trips": "Chuyến đi",
   "pill.stays": "Lưu trú",
+  "pill.venues": "Địa điểm",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Xóa",
   "filters.option_a11y": "{{label}}, {{count}} khớp",
@@ -77,6 +78,7 @@
   "group.check_in": "Nhận phòng",
   "group.guests": "Khách",
   "group.property_kind": "Loại địa điểm",
+  "group.venue_type": "Loại địa điểm",
   "group.any_suffix": "{{group}} · Any",
   "when.any_day": "Any day",
   "when.tomorrow": "Tomorrow",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} trải nghiệm",
   "count.trips_other": "{{count}} chuyến đi",
   "count.stays_other": "{{count}} lượt lưu trú",
+  "count.venues_other": "{{count}} địa điểm",
   "guests.value_other": "{{count}} khách",
-  "card.type.stops_other": "{{count}} DỪNG"
+  "card.type.stops_other": "{{count}} DỪNG",
+  "venues.empty_title": "Chưa có địa điểm nào để đặt ở đây.",
+  "venues.empty_body": "Các địa điểm bạn có thể đặt trên Mingla sẽ hiển thị ở đây.",
+  "venues.filtered_title": "Không có địa điểm nào khớp với các bộ lọc đó.",
+  "venues.error_title": "Chúng tôi không tải được địa điểm.",
+  "venues.error_retry": "Thử lại"
 }

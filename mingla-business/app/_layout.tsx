@@ -144,6 +144,9 @@ import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 import { syncBusinessMediaLanguage } from "../src/i18n";
 import { installFieldFocusCss } from "../src/components/ui/fieldFocusCss";
+import { installAppBackgroundCss } from "../src/components/ui/appBackgroundCss";
+import { NativeTabletColumn } from "../src/components/ui/NativeTabletColumn";
+import { usePhonePortraitLock } from "../src/hooks/usePhonePortraitLock";
 import { installWebDocumentCss } from "../src/utils/webDocumentCss";
 // #4518 — buyer pictures take the second road on web (one fallback each).
 import { OfferingMediaRouteContext } from "@mingla/offering-rendering/offeringMediaRoute";
@@ -313,6 +316,8 @@ function RootLayoutInner(): React.ReactElement {
   }, [pathname]);
   // #4420: one focus ring per multiline field on web (fieldFocusCss.web.ts).
   useEffect(() => {
+    // #4490 D29 — html/body paint the app canvas, never browser white.
+    installAppBackgroundCss();
     installFieldFocusCss();
   }, []);
   useEffect(() => {
@@ -884,7 +889,9 @@ function RootLayoutInner(): React.ReactElement {
           outside (tabs); a passthrough everywhere else (phones, native,
           public buyer routes, auth, door / scanner). */}
       <HostDesktopShell>
-        <Stack screenOptions={{ headerShown: false }} />
+        {/* #4490 O3B: native tablets keep the phone layout in a centred
+            column (floor screens full width); web and phones pass through. */}
+        <NativeTabletColumn><Stack screenOptions={{ headerShown: false }} /></NativeTabletColumn>
       </HostDesktopShell>
       {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
       <TapToPayTerminalHost />
@@ -909,6 +916,8 @@ const authRoutingStyles = StyleSheet.create({
 export default function RootLayout(): React.ReactElement {
   // issue #1023 — DEV-ONLY `motion=<slug>` link switch (no-op in production).
   useMotionDeepLink();
+  // #4490 O3B: phones (shortest side < 600) stay portrait; tablets rotate.
+  usePhonePortraitLock();
   const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   const versionForegroundStateRef = useRef(new VersionForegroundStateMachine());
   const updateRequiredRef = useRef(false);

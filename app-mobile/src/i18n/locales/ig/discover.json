@@ -56,6 +56,7 @@
   "pill.experiences": "ahụmahụ",
   "pill.trips": "Njem",
   "pill.stays": "Nọrọ",
+  "pill.venues": "Ebe",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.option_a11y": "{{label}}, {{count}} matches",
@@ -77,6 +78,7 @@
   "group.check_in": "Nbanye",
   "group.guests": "Ndị ọbịa",
   "group.property_kind": "Type of place",
+  "group.venue_type": "Type of place",
   "group.any_suffix": "{{group}} · Ọ bụla",
   "when.any_day": "Ụbọchị ọ bụla",
   "when.tomorrow": "Echi",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} ahụmahụ",
   "count.trips_other": "{{count}} njem",
   "count.stays_other": "{{count}} stays",
+  "count.venues_other": "{{count}} ebe",
   "guests.value_other": "{{count}} guests",
-  "card.type.stops_other": "{{count}} Nkwụsị "
+  "card.type.stops_other": "{{count}} Nkwụsị ",
+  "venues.empty_title": "Enweghị ebe ị ga-edebe ebe a ugbu a.",
+  "venues.empty_body": "Ebe ị nwere ike idebe na Mingla ga-apụta ebe a.",
+  "venues.filtered_title": "Ọ dịghị ebe dabara na nzacha ndị ahụ.",
+  "venues.error_title": "Anyị enweghị ike ibudata ebe.",
+  "venues.error_retry": "Nwaa ọzọ"
 }

@@ -50,8 +50,7 @@ export const SCAN_ROOTS = [
 
 /** Counted ratchet. Only ever lowered. */
 export const ALLOWLIST = {
-  // #4490 (venue features, another chat's in-flight work) owns the venue menu sheet; its rows stay listed until #4490 lands.
-  "mingla-business/src/components/venue/MenuCategorySheet.tsx": 1,
+  // #4490 removed the venue menu sheet's browser time input, so its row is gone (ratchet lowered to empty).
 };
 
 /**

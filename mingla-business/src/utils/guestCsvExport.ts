@@ -19,6 +19,7 @@
 import { Platform, Share } from "react-native";
 
 import { currencyCodeOrNull } from "./currency";
+import { csvCell, csvTextCell } from "./csvCell";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import { isCompOrder } from "./compOrders";
@@ -41,20 +42,16 @@ export type ExportGuestRow =
   | { kind: "order"; id: string; order: OrderRecord; sortKey: string }
   | { kind: "door"; id: string; sale: DoorSaleRecord; sortKey: string };
 
-const csvEscape = (value: string | null): string => {
-  // #2411 — a zero-money online order legitimately has no currency. Preserve
-  // that truth as an empty CSV cell; never stringify null or invent a code.
-  const normalized = value ?? "";
-  if (
-    normalized.includes(",") ||
-    normalized.includes("\"") ||
-    normalized.includes("\n") ||
-    normalized.includes("\r")
-  ) {
-    return `"${normalized.replace(/"/g, "\"\"")}"`;
-  }
-  return normalized;
-};
+// The cell owner is utils/csvCell (#4490 08-O5 fix 1 moved this body there
+// unchanged, so the day-close export quotes exactly the same way).
+//
+// #4490 08-O5 fix 2: every text column goes through csvTextCell, so a guest's
+// typed name, a note or a link label that starts with = + - @ is written as
+// text, never run as a spreadsheet formula. The four number columns (Quantity,
+// Gross, Refunded, Net) stay csvCell, so a negative amount stays a number.
+const NUMBER_COLUMNS: ReadonlySet<number> = new Set([5, 11, 13, 15]);
+const csvRow = (fields: readonly (string | null)[]): string =>
+  fields.map((f, i) => (NUMBER_COLUMNS.has(i) ? csvCell(f) : csvTextCell(f))).join(",");
 
 const formatYmd = (iso: string): string => {
   const d = new Date(iso);
@@ -272,7 +269,7 @@ export const serializeGuestsToCsv = (
         bookedCell(o.bookedStartAt),
         orderDayCell(o, dayLabels),
       ];
-      lines.push(fields.map(csvEscape).join(","));
+      lines.push(csvRow(fields));
     } else if (row.kind === "order") {
       const o = row.order;
       const grossPaid = o.totalGbpAtPurchase;
@@ -301,7 +298,7 @@ export const serializeGuestsToCsv = (
         bookedCell(o.bookedStartAt),
         orderDayCell(o, dayLabels),
       ];
-      lines.push(fields.map(csvEscape).join(","));
+      lines.push(csvRow(fields));
     } else {
       // Cycle 12 — door sale row.
       const s = row.sale;
@@ -334,7 +331,7 @@ export const serializeGuestsToCsv = (
         "",
         "",
       ];
-      lines.push(fields.map(csvEscape).join(","));
+      lines.push(csvRow(fields));
     }
   }
 

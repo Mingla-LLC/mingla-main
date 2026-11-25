@@ -25,6 +25,7 @@ import type {
 } from "../../services/venueDetailsEditService";
 import { composeE164, phoneEntryHint } from "../../utils/phone";
 import { phoneCountryIsoFromPlaceCountry } from "../../utils/phoneCountryIsoFromPlaceCountry";
+import { VENUE_TYPES } from "../../types/venueFeatures";
 
 export type VenueIdentityEditMode = "direct" | "request" | "locked";
 
@@ -44,12 +45,11 @@ export function canEditVenueContact(
 
 export const VENUE_NAME_MAX = 80;
 
-export const VENUE_CATEGORY_LABEL: Record<VenueCategory, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & Arts",
-  stay: "Stay",
-};
+// #4490 click-test D10/D12 — one label per type, everywhere a host reads it
+// ("Play and games", never "Play"): the nine types' own labels.
+export const VENUE_CATEGORY_LABEL: Record<VenueCategory, string> = Object.fromEntries(
+  VENUE_TYPES.map((t) => [t.key, t.label]),
+) as Record<VenueCategory, string>;
 
 export interface VenueIdentityDraft {
   name: string;

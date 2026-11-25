@@ -64,6 +64,8 @@ const VENUE_ACCESS_PROFILES = new Set([
   "front_desk",
   "restaurant_manager",
   "kitchen_bar",
+  // #4490 spec 08 O1 — server: 20281203504490.
+  "till_device",
   "custom",
 ]);
 const VENUE_CAPABILITIES = new Set([
@@ -76,6 +78,30 @@ const VENUE_CAPABILITIES = new Set([
   "restaurant.manage_menu",
   "restaurant.manage_qr",
   "restaurant.manage_reservations",
+  // #4490 — venue capabilities (server: 20281203064490).
+  "venue.manage_offers",
+  "venue.manage_bookings",
+  "venue.view_bookings",
+  "venue.check_in",
+  "venue.manage_money",
+  // #4490 P6 — members (server: 20281203194490).
+  "venue.manage_members",
+  // #4490 spec 08 O1 — the Till (server: 20281203504490).
+  "venue.sell",
+  "venue.kitchen",
+  "venue.till_device",
+]);
+
+/** #4490 — every venue type except Stay takes restaurant.* and venue.* grants. */
+const NON_STAY_VENUE_CATEGORIES = new Set([
+  "restaurant",
+  "play",
+  "creative_and_arts",
+  "bar_lounge",
+  "club",
+  "cafe",
+  "event_space",
+  "coworking",
 ]);
 
 function json(body: unknown, status = 200): Response {
@@ -175,13 +201,14 @@ export function venueGrantMatchesCategory(
       grant.access_profile === "custom") &&
       grant.capabilities.every((capability) => capability.startsWith("stay."));
   }
-  if (venueCategory === "restaurant") {
+  if (NON_STAY_VENUE_CATEGORIES.has(venueCategory)) {
     return (
       grant.access_profile === "restaurant_manager" ||
       grant.access_profile === "kitchen_bar" ||
+      grant.access_profile === "till_device" ||
       grant.access_profile === "custom"
     ) && grant.capabilities.every((capability) =>
-      capability.startsWith("restaurant.")
+      capability.startsWith("restaurant.") || capability.startsWith("venue.")
     );
   }
   return false;

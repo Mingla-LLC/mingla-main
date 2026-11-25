@@ -39,6 +39,8 @@ const shellSource = read("app/index.tsx");
 const shell = strip(shellSource);
 const welcomeSource = read("src/components/signIn/WelcomeScreen.tsx");
 const welcome = strip(welcomeSource);
+// [TEST-MOD-APPROVED #4490] W2-N26: the welcome's option rules moved here.
+const welcomeModel = strip(read("src/components/signIn/welcomeClaimModel.ts"));
 const authSource = read("src/hooks/useAuthSimple.ts");
 // #3524's two email members are STATELESS, so they are module functions in the
 // email service rather than hook members. `useAuthSimple.ts` is pinned
@@ -249,10 +251,15 @@ assert.ok(
   "the two email props are OPTIONAL, so every existing render site of this "
     + "screen compiles and behaves identically",
 );
+// [TEST-MOD-APPROVED #4490] W2-N26: the ordinary email option now stays
+// beside a claim card (welcomeClaimModel); it hides only while the purchase
+// email's code panel is open. Absent props still hide it.
 assert.ok(
-  /emailSignInAvailable\s*&&\s*!claimEmailPreferred\s*\?/.test(welcome),
+  /\{signInOptions\.email\s*\?/.test(welcome) &&
+    /email:\s*input\.emailSignInAvailable\s*&&\s*!\(claimEmail\s*&&\s*input\.claimEmailCodeOpen\)/
+      .test(welcomeModel),
   "and with them absent the ordinary email option is not rendered, while a "
-    + "purchase-preferred email challenge can temporarily take its place",
+    + "purchase-email code panel can temporarily take its place",
 );
 assert.ok(
   /KeyboardAvoidingView/.test(welcome),

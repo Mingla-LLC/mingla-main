@@ -16,7 +16,7 @@
  * and writes it through the gated refund-terms owner.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -45,6 +45,8 @@ import type {
 import {
   EXPERIENCE_BLOCK_MINUTES,
   emptyPriceOption,
+  priceOptionNameIssue,
+  experienceBlockPillLabel,
   perStopTotalMinor,
 } from "./experienceWizardTypes";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
@@ -220,7 +222,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
     setPriceOptions((prev) => [
       ...prev,
       emptyPriceOption({
-        name: `Option ${prev.length + 1}`,
+        // #4490 — the host names every price; no "Option N" stand-in.
+        name: "",
         priceMajor: "",
         priceBasis: "person",
         capacity: unlimited ? null : parseInt(capacity, 10) || null,
@@ -625,11 +628,14 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
 }) => {
   const cid = option.clientId;
   const priceLocked = option.soldCount > 0;
+  // #4490 — the group size field keeps what the host typed (no clamp while
+  // typing, no 50 cap); the number it stands for is validated instead.
+  const [groupText, setGroupText] = useState<string>(String(option.groupMax));
   const unitError =
     showErrors &&
     option.priceBasis === "group" &&
-    (option.groupMax < 2 || option.groupMax > 50)
-      ? "Group size must be 2–50 people."
+    !(Number.isFinite(option.groupMax) && option.groupMax >= 2)
+      ? "Group size must be at least 2 people."
       : showErrors &&
           option.priceBasis === "block" &&
           option.maxBlocks < option.minBlocks
@@ -669,18 +675,17 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
         ) : null}
       </View>
 
-      {index > 0 ? (
-        <>
-          <Text style={styles.fieldLabel}>Name</Text>
-          <Input
-            variant="text"
-            value={option.name}
-            onChangeText={(v) => onPatch(cid, { name: v })}
-            placeholder="e.g. Private hire"
-            accessibilityLabel={`Price ${index + 1} name`}
-          />
-        </>
-      ) : null}
+      {/* #4490 — every price is named by the host, the first one too. */}
+      <Text style={styles.fieldLabel}>Name</Text>
+      <Input
+        variant="text"
+        value={option.name}
+        onChangeText={(v) => onPatch(cid, { name: v })}
+        placeholder="e.g. Private hire"
+        accessibilityLabel={`Price ${index + 1} name`}
+        error={showErrors ? priceOptionNameIssue(option) : null}
+        testID={`experience-price-option-${index}-name`}
+      />
 
       <Text style={styles.fieldLabel}>Price</Text>
       <Input
@@ -741,14 +746,12 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
           <Text style={styles.fieldLabel}>Up to N people</Text>
           <Input
             variant="number"
-            value={String(option.groupMax)}
+            value={groupText}
             onChangeText={(v) => {
-              const parsed = parseInt(v.replace(/[^\d]/g, ""), 10);
-              onPatch(cid, {
-                groupMax: Number.isFinite(parsed)
-                  ? Math.min(50, Math.max(2, parsed))
-                  : 2,
-              });
+              const digits = v.replace(/[^\d]/g, "");
+              setGroupText(digits);
+              const parsed = parseInt(digits, 10);
+              onPatch(cid, { groupMax: Number.isFinite(parsed) ? parsed : 0 });
             }}
             placeholder="4"
             accessibilityLabel="Maximum people per group"
@@ -761,7 +764,7 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
       {option.priceBasis === "block" ? (
         <>
           <Text style={styles.fieldLabel}>Block length</Text>
-          <View style={styles.basisToggle} accessibilityRole="tablist">
+          <View style={styles.blockToggle} accessibilityRole="tablist">
             {EXPERIENCE_BLOCK_MINUTES.map((m) => {
               const active = option.blockMinutes === m;
               return (
@@ -776,7 +779,7 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
                   accessibilityRole="tab"
                   accessibilityState={{ selected: active, disabled: priceLocked }}
                   accessibilityLabel={`${m} minute blocks`}
-                  style={[styles.basisSeg, active && styles.basisSegActive]}
+                  style={[styles.blockSeg, active && styles.basisSegActive]}
                 >
                   <Text
                     style={[
@@ -784,7 +787,7 @@ const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
                       active && styles.basisSegTextActive,
                     ]}
                   >
-                    {m}m
+                    {experienceBlockPillLabel(m)}
                   </Text>
                 </Pressable>
               );
@@ -988,6 +991,24 @@ const styles = StyleSheet.create({
     backgroundColor: color.accentLine,
     borderWidth: 1,
     borderColor: color.accentLine,
+  },
+  // #4490 — ten block lengths wrap onto a second row on a phone.
+  blockToggle: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[1],
+    backgroundColor: color.fill.inset,
+    borderRadius: radius.md,
+    padding: 2,
+  },
+  blockSeg: {
+    minWidth: 56,
+    flexGrow: 1,
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm,
+    paddingHorizontal: space[1],
   },
   basisSegText: {
     fontSize: type.caption.fontSize,

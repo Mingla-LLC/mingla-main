@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/invite-brand-member/__tests__/issue-4490-till-grants.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-invite-till-grants",
+  "profile": "deno-2-unit"
+}

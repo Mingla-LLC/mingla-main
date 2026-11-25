@@ -56,6 +56,7 @@ import {
 // for why 200 % is the requirement rather than a concession to it.
 import { BUTTON_MAX_FONT_SCALE } from "../../constants/dynamicType";
 
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { Spinner } from "./Spinner";
@@ -315,7 +316,9 @@ export const Button = forwardRef<
     opacity: opacity.value,
   }));
 
-  const containerHeight = SIZE_HEIGHT[size];
+  // #4490: a phone-width browser has no hitSlop, so the small button is drawn 44 there.
+  const touchFloor = useTouchFloor();
+  const containerHeight = Math.max(SIZE_HEIGHT[size], touchFloor);
   const containerRadius =
     shape === "pill" ? radiusTokens.full : radiusTokens.md;
   const iconSize = SIZE_ICON[size];

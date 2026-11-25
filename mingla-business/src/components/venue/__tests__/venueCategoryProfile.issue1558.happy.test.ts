@@ -53,16 +53,22 @@ const ALL_KEYS: readonly VenueCategoryKey[] = [
   "play",
   "creative_and_arts",
   "stay",
+  // [TEST-MOD-APPROVED #4490] — five more venue types (label and preset only).
+  "bar_lounge",
+  "club",
+  "cafe",
+  "event_space",
+  "coworking",
   "uncategorised",
 ];
 
 describe("#1558 — the profile table is TOTAL, proven by compile error", () => {
-  test("every key resolves to a complete profile (5 arms, none empty)", () => {
+  test("every key resolves to a complete profile (10 arms, none empty)", () => {
     // Positive control: the shipped table satisfies the total Record.
     const total: Record<VenueCategoryKey, VenueCategoryProfile> =
       VENUE_CATEGORY_PROFILES;
     expect(Object.keys(total).sort()).toEqual([...ALL_KEYS].sort());
-    expect(Object.keys(total)).toHaveLength(5);
+    expect(Object.keys(total)).toHaveLength(ALL_KEYS.length);
 
     let inspected = 0;
     for (const key of ALL_KEYS) {
@@ -74,8 +80,8 @@ describe("#1558 — the profile table is TOTAL, proven by compile error", () => 
       expect(profile.overview.length).toBeGreaterThan(0);
       inspected += 1;
     }
-    // Vacuity guard: the loop must actually have run over all five.
-    expect(inspected).toBe(5);
+    // Vacuity guard: the loop must actually have run over every key.
+    expect(inspected).toBe(ALL_KEYS.length);
   });
 
   test("PROOF: an incomplete category map does not compile", () => {
@@ -203,7 +209,7 @@ describe("#1558 — a hotel keeps time differently, and that is DATA", () => {
       }
       checked += 1;
     }
-    expect(checked).toBe(5); // vacuity guard
+    expect(checked).toBe(ALL_KEYS.length); // vacuity guard
     // Both branches must be exercised, or the loop proves nothing.
     const models = ALL_KEYS.map((k) => VENUE_CATEGORY_PROFILES[k].timekeeping);
     expect(models).toContain("tradingHours");
@@ -267,7 +273,7 @@ describe("#1558 — the gates that used to be hardcoded booleans", () => {
       );
       checked += 1;
     }
-    expect(checked).toBe(5);
+    expect(checked).toBe(ALL_KEYS.length);
     expect(VENUE_CATEGORY_PROFILES.stay.bookingBody).toBe("stay");
     expect(VENUE_CATEGORY_PROFILES.uncategorised.bookingBody).toBe("table");
   });

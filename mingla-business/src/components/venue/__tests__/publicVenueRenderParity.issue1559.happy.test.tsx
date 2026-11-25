@@ -34,6 +34,17 @@
  *
  * APPEND-ONLY — new file; modifies/deletes no existing test.
  *
+ * [TEST-MOD-APPROVED #4490 H1] — the baseline for `restaurant-desktop-full` moves:
+ * the reserve bar is no longer a `position: fixed` dock (it scrolled with the page
+ * and ended up over the cover photo); it is in the flyer column under Share and
+ * Directions. Only that one case changed; the six others are byte for byte the same.
+ *
+ * [TEST-MOD-APPROVED #4490 fix 3] — re-recorded with MINGLA_1559_WRITE_BASELINE=1
+ * for fix round 1's intended look: theme faces carry a system fallback stack
+ * (N39: "Inter_700Bold, system-ui, …") and the address card has an "Open in
+ * maps →" button (N34). Measured: every changed line in all seven cases is one
+ * of those two; nothing else moved.
+ *
  * ---------------------------------------------------------------------------
  * [TEST-MOD-APPROVED #1595] — THE BASELINE MOVES BY 22 CHARACTERS, IN ONE PLACE
  * ---------------------------------------------------------------------------
@@ -278,6 +289,12 @@ interface CaseData {
   stayDetail: Record<string, unknown> | null;
   stayState: "loading" | "ready" | "unavailable" | "error";
   tab: string | undefined;
+  /**
+   * [TEST-MOD-APPROVED #4490] The RAW `pg_public_venue_page` wire payload for a
+   * feature-driven case. Absent on the seven recorded cases: a null payload is
+   * today's page, and their baselines are untouched.
+   */
+  featuresWire?: Record<string, unknown> | null;
 }
 const caseData: { current: CaseData } = {
   current: {
@@ -509,6 +526,17 @@ jest.mock("../../../hooks/usePublicEvents", () => ({
     data: caseData.current.discoveryPrice,
   }),
   usePublicBrandBySlug: () => ({ data: null }),
+}));
+// [TEST-MOD-APPROVED #4490] Harness registration only — ADDITION, no assertion
+// changed. The route now reads what the venue sells; this stub hands it the
+// REAL parser's output for the case's wire payload (null = today's page).
+jest.mock("../../../hooks/usePublicVenueFeatures", () => ({
+  __esModule: true,
+  usePublicVenueFeatures: () => {
+    const { parsePublicVenueFeatures } = require("@mingla/brand-rendering/venueFeaturePage");
+    const wire = caseData.current.featuresWire ?? null;
+    return { data: wire === null ? null : parsePublicVenueFeatures(wire), isLoading: false };
+  },
 }));
 jest.mock("../../../hooks/useMenus", () => ({
   __esModule: true,
@@ -983,5 +1011,241 @@ describe("#1559 public venue render parity — the move changes nothing a guest 
     // diff cannot see, so it is asserted directly.
     expect(themeFontRequests.length).toBeGreaterThanOrEqual(CASES.length);
     expect(themeFontRequests).toContain("Inter_500Medium");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [TEST-MOD-APPROVED #4490] FEATURES, NOT VENUE TYPES — an ADDITION.
+//
+// Nothing above changed: the seven recorded cases render with a NULL features
+// payload, which is today's page, and still match their baselines byte for
+// byte. What is added is the proof for the other direction:
+//   1. a venue whose features say what its category used to say renders the
+//      SAME recorded tree (Gogi, the stays): "no feature changes" = identical;
+//   2. a venue that does not sell tables never shows a table button, row or tab,
+//      whatever its category and whatever the reserve gate says;
+//   3. several windows a day, special days, "Ways to come" and "What's on".
+// ---------------------------------------------------------------------------
+
+const wireHours = (
+  rows: { weekday: number; open: string | null; close: string | null; ordinal?: number }[],
+): Record<string, unknown>[] =>
+  rows.map((r) => ({
+    weekday: r.weekday,
+    window_ordinal: r.ordinal ?? 0,
+    open_time: r.open,
+    close_time: r.close,
+    is_closed: r.open === null,
+  }));
+
+const WEEKLY_AS_FIXTURE = wireHours(
+  HOURS.map((h) => ({ weekday: h.weekday, open: h.openTime, close: h.closeTime })),
+);
+
+const wire = (
+  features: string[],
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> => ({
+  version: 3,
+  currencyCode: "GBP",
+  minorUnitExponent: 2,
+  vat: null,
+  features,
+  spaces: [],
+  offers: [],
+  memberships: [],
+  tables: features.includes("table_reservations")
+    ? { partyMax: 12, pickATable: null, holdFromMinor: null, minSpendFromMinor: null, largePartyRequest: null, guestWaitlist: null }
+    : null,
+  events: { upcoming: [] },
+  hours: { weekly: WEEKLY_AS_FIXTURE, specialDays: [] },
+  ...extra,
+});
+
+const withFeatures = (
+  base: CaseData,
+  featuresWire: Record<string, unknown> | null,
+): CaseData => ({ ...base, featuresWire });
+
+// Every case renders while the file is being collected, exactly like the seven
+// above: the ordering and Stay bodies sit behind React.lazy, and once a test
+// callback has run their chunks have resolved and would mount for real.
+describe("#4490 feature-driven public venue page", () => {
+  // React's `useId` counter keeps climbing across renders in one file, so a
+  // tree rendered later carries different «r…» ids. They are the only
+  // difference allowed; the rest of the tree must match exactly.
+  const noIds = (tree: string): string => tree.replace(/«r[0-9a-z]+»/g, "«id»");
+  const baselineOf = (name: string): string => {
+    const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8")) as Record<string, string>;
+    return noIds(baseline[name]);
+  };
+  const caseNamed = (name: string): ParityCase => {
+    const found = CASES.find((c) => c.name === name);
+    if (found === undefined) throw new Error(`no case ${name}`);
+    return found;
+  };
+  const renderWith = (name: string, data: CaseData): string => {
+    const base = caseNamed(name);
+    return renderCase({ ...base, data });
+  };
+
+  const SAME_AS_RECORDED: [string, string[]][] = [
+    ["restaurant-phone-full", ["table_reservations", "menu", "table_ordering"]],
+    ["restaurant-desktop-full", ["table_reservations", "menu", "table_ordering"]],
+    ["restaurant-phone-menu-tab", ["table_reservations", "menu", "table_ordering"]],
+    ["stay-phone-full", ["stays"]],
+    ["stay-desktop-reservations-tab", ["stays"]],
+  ];
+  const sameTrees = new Map<string, string>();
+  for (const [name, features] of SAME_AS_RECORDED) {
+    const base = caseNamed(name);
+    sameTrees.set(name, renderWith(name, withFeatures(base.data, wire(features))));
+  }
+
+  const GAMELAND_EVENTS = [1, 2, 3, 4].map((n) => ({
+    id: `00000000-0000-4000-8000-00000000000${n}`,
+    kind: "event",
+    title: `Karaoke night ${n}`,
+    startsAt: `2026-11-2${n}T17:00:00+00:00`,
+    spaceName: "The Lounge Side",
+    fromMinor: 500000,
+    href: `/e/smokerhythm/karaoke-${n}`,
+  }));
+  const gameland = (features: string[], extra: Record<string, unknown> = {}): CaseData => ({
+    venue: { ...baseVenue("play"), timezone: "Africa/Lagos" },
+    menu: MENU,
+    // The reserve gate says "reservable": the page must still not offer tables.
+    reservable: RESERVABLE,
+    reservableState: "ready",
+    discoveryPrice: null,
+    stayDetail: null,
+    stayState: "ready",
+    tab: undefined,
+    featuresWire: wire(features, {
+      spaces: [{ id: "s1", name: "The Lounge Side", setting: "covered", capacityStanding: 150 }],
+      events: { upcoming: GAMELAND_EVENTS },
+      ...extra,
+    }),
+  });
+  const glTree = renderWith("restaurant-phone-full", gameland(["events_here"]));
+  const glWaysTree = renderWith("restaurant-phone-full", gameland(["events_here", "menu"]));
+
+  const restaurant = caseNamed("restaurant-phone-full");
+  const gogiPlusEvents = renderWith(
+    "restaurant-phone-full",
+    withFeatures(
+      restaurant.data,
+      wire(["table_reservations", "menu", "table_ordering", "events_here"], {
+        events: { upcoming: GAMELAND_EVENTS.slice(0, 1) },
+      }),
+    ),
+  );
+  const notReservable = renderWith("restaurant-phone-full", {
+    ...withFeatures(restaurant.data, wire(["table_reservations", "menu"])),
+    reservable: { reservable: false, venueId: null, currency: null },
+  });
+  const malformed = renderWith(
+    "restaurant-phone-full",
+    withFeatures(restaurant.data, { not: "the documented shape" }),
+  );
+
+  const weekly = wireHours([
+    { weekday: 0, open: "09:00", close: "17:00" },
+    { weekday: 1, open: "09:00", close: "17:00" },
+    // Wednesday (the fixed clock's day): lunch and dinner.
+    { weekday: 2, open: "12:00", close: "15:00", ordinal: 0 },
+    { weekday: 2, open: "18:00", close: "23:30", ordinal: 1 },
+    { weekday: 3, open: "09:00", close: "22:30" },
+    { weekday: 4, open: "10:00", close: "23:00" },
+    { weekday: 5, open: "22:00", close: "03:00" }, // past midnight
+    { weekday: 6, open: null, close: null },
+  ]);
+  const london = (specialDays: Record<string, unknown>[]): CaseData => ({
+    ...withFeatures(restaurant.data, wire(["table_reservations", "menu"], { hours: { weekly, specialDays } })),
+    venue: { ...(restaurant.data.venue as Record<string, unknown>), timezone: "Europe/London" },
+  });
+  const openTree = renderWith("restaurant-phone-full", london([]));
+  const closedTree = renderWith(
+    "restaurant-phone-full",
+    london([
+      { local_date: "2026-08-05", label: "Staff day", is_closed: true, windows: [] },
+      { local_date: "2026-12-25", label: "Christmas Day", is_closed: true, windows: [] },
+      { local_date: "2026-12-31", label: null, is_closed: false, windows: [{ open: "18:00", close: "03:00" }] },
+    ]),
+  );
+
+  test.each(SAME_AS_RECORDED.map(([name]) => name))(
+    "%s: the features that match its old category render the recorded tree byte for byte",
+    (name) => {
+      expect(noIds(sameTrees.get(name) ?? "")).toBe(baselineOf(name));
+    },
+  );
+
+  test("a venue that does not sell tables never shows a table button, row or tab", () => {
+    for (const forbidden of [
+      "Tables through Mingla",
+      "Find a table",
+      "Reserve a table",
+      "Book a visit",
+      "Finding open tables",
+      "issue-2729-reserve-cta",
+    ]) {
+      expect(glTree.includes(forbidden) ? forbidden : "absent").toBe("absent");
+    }
+    // Its features are events: an Overview and a What's on tab, no Reservations.
+    expect(glTree).toContain('"accessibilityLabel": "What\'s on"');
+    expect(glTree).not.toContain('"accessibilityLabel": "Reservations"');
+    expect(glTree).not.toContain('"accessibilityLabel": "Menu"'); // the menu feature is off
+  });
+
+  test("What's on lists the next three events with their time in the venue's zone and a See all row", () => {
+    expect(glTree).toContain("WHAT'S ON");
+    expect(glTree).toContain("Karaoke night 1");
+    expect(glTree).toContain("Karaoke night 3");
+    expect(glTree).not.toContain("Karaoke night 4"); // only three on the Overview
+    expect(glTree).toContain("Sat 21 Nov · 18:00 · The Lounge Side"); // 17:00 UTC is 18:00 in Lagos
+    expect(glTree).toContain("See all 4");
+    expect(glTree).toContain("Tickets");
+    // The page has a What's on tab only, so Ways to come has nothing to list
+    // (no empty card).
+    expect(glTree).not.toContain("WAYS TO COME");
+  });
+
+  test("Ways to come appears when a venue has a tab to point to", () => {
+    expect(glWaysTree).toContain("WAYS TO COME");
+    expect(glWaysTree).toContain("issue-4490-way-menu");
+  });
+
+  test("a venue that sells tables keeps its Reserve bar and says Tables through Mingla", () => {
+    expect(gogiPlusEvents).toContain("Tables through Mingla");
+    expect(gogiPlusEvents).toContain("Reserve a table");
+    // The "Reservations" label stays while tables are all it sells.
+    expect(gogiPlusEvents).toContain('"accessibilityLabel": "Reservations"');
+  });
+
+  test("a reservable gate that says no removes the Reservations tab and the button (no dead end)", () => {
+    expect(notReservable).not.toContain("Tables through Mingla");
+    expect(notReservable).not.toContain("issue-2729-reserve-cta");
+    expect(notReservable).not.toContain('"accessibilityLabel": "Reservations"');
+  });
+
+  test("several windows a day and special days show on the hours card; a closed special day is not Open now", () => {
+    expect(openTree).toContain("12:00–15:00, 18:00–23:30");
+    expect(openTree).toContain("22:00–03:00");
+    expect(openTree).not.toContain("SPECIAL DAYS");
+    // 12:00 UTC is 13:00 in London on Wed 5 Aug 2026: inside the lunch window.
+    expect(openTree).toContain("Open · until 15:00");
+
+    expect(closedTree).toContain("SPECIAL DAYS");
+    expect(closedTree).toContain("Wed 5 Aug");
+    expect(closedTree).toContain("Staff day");
+    expect(closedTree).toContain("Fri 25 Dec");
+    expect(closedTree).toContain("Thu 31 Dec");
+    expect(closedTree).toContain("18:00–03:00");
+    expect(closedTree).not.toContain("Open · until 15:00");
+  });
+
+  test("a failed or malformed features payload is today's page, not an error", () => {
+    expect(noIds(malformed)).toBe(baselineOf("restaurant-phone-full"));
   });
 });

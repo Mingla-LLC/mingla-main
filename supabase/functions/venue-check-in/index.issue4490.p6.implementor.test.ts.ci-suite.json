@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/venue-check-in/index.issue4490.p6.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-venue-check-in-p6",
+  "profile": "deno-2-unit"
+}

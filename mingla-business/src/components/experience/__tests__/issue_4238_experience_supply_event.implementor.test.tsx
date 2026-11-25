@@ -39,6 +39,11 @@ const mockRpc = jest.fn<(name: string, args: Record<string, unknown>) => Promise
 const mockFrom = jest.fn<(table: string) => unknown>();
 
 const mockLogAppsFlyerEvent = jest.fn<(name: string, values: Record<string, unknown>) => void>();
+// #4490 — the Where step's venue/space link has its own data (react-query);
+// these wizard harnesses mount no QueryClient, so it renders nothing here.
+jest.mock("../../venue/features/EventVenueSpacePicker", () => ({
+  EventVenueSpacePicker: () => null,
+}));
 jest.mock("../../../services/appsFlyerService", () => ({
   logAppsFlyerEvent: (name: string, values: Record<string, unknown>) =>
     mockLogAppsFlyerEvent(name, values),
@@ -221,6 +226,7 @@ import {
   ExperienceCreatorWizard,
   type ExperienceWizardInitialDraft,
 } from "../ExperienceCreatorWizard";
+import { emptyPriceOption } from "../experienceWizardTypes";
 
 const host = (tree: Renderer, type: string): TestInstance[] =>
   tree.root.findAll((node) => node.type === type);
@@ -271,6 +277,10 @@ const seed = (priced: boolean): ExperienceWizardInitialDraft => ({
   pricingMode: "whole",
   stops: [stop(1), stop(2)] as never,
   wholePriceMajor: priced ? "25.00" : "0.00",
+  // #4490 — every price is named by the host (a blank name blocks Continue).
+  priceOptions: [
+    emptyPriceOption({ name: "General admission", priceMajor: priced ? "25.00" : "0.00", priceBasis: "person" }),
+  ],
   isFree: !priced,
   capacity: "20",
   unlimited: false,

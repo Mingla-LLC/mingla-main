@@ -9,6 +9,7 @@
  * card list and the hub gate refresh immediately).
  */
 
+import { venueFeatureKeys } from "./venueFeatureKeys";
 import {
   useMutation,
   useQuery,
@@ -46,6 +47,9 @@ export function useVenueListings(
     queryKey: enabled ? venueListingKeys.byBrand(brandId) : DISABLED_LIST_KEY,
     enabled,
     staleTime: 15_000,
+    // #4490 I1: Admin verifying a venue changes its status elsewhere; the "In review"
+    // pill must clear when the host comes back to this tab, without a reload.
+    refetchOnWindowFocus: "always",
     queryFn: () =>
       enabled ? fetchVenueListings(brandId) : Promise.resolve([]),
   });
@@ -62,6 +66,9 @@ export function useVenueListing(
       : (["venueListings", "detail", "disabled"] as const),
     enabled,
     staleTime: 15_000,
+    // #4490 I1: Admin verifying a venue changes its status elsewhere; the "In review"
+    // pill must clear when the host comes back to this tab, without a reload.
+    refetchOnWindowFocus: "always",
     queryFn: () =>
       enabled ? fetchVenueListing(venueId) : Promise.resolve(null),
   });
@@ -84,13 +91,39 @@ export function useCreateVenueListing(): UseMutationResult<
       // The wizard surfaces the error inline (SlugCollisionError → name step,
       // duplicate-place / sanitized copy → submit error). Nothing swallowed.
     },
-    onSuccess: (_venueId, input) => {
+    onSuccess: (venueId, input) => {
       void queryClient.invalidateQueries({
         queryKey: venueListingKeys.byBrand(input.brandId),
       });
       void queryClient.invalidateQueries({
         queryKey: brandPlacePipelineKeys.byBrand(input.brandId),
       });
+      // #4490 — a new venue starts with its features: the add-venue Features
+      // step's own choice when it sent one (D9), else the type's preset
+      // (built features only; never switches anything off). Best effort: a
+      // refusal (e.g. a team member below admin) leaves every switch to
+      // Settings › Venue type and features, so it never blocks the create.
+      // Returned so `mutateAsync` resolves once the switches are written and
+      // the venue page opens with the right sections.
+      // Loaded on demand: the features service stays out of the eager bundle.
+      return import("../services/venueFeaturesService")
+        .then((mod) =>
+          input.startingFeatures !== undefined
+            ? mod.applyStartingFeaturesReport(venueId, input.startingFeatures)
+            : mod.applyFeaturePreset(venueId, input.venueCategory).then((r) => ({
+                state: r.state,
+                refused: r.skipped
+                  .filter((x) => x.reason.startsWith("requires:"))
+                  .map((x) => ({ key: x.key, code: "feature_requires", detail: x.reason.slice("requires:".length) })),
+              })),
+        )
+        .then(({ state, refused }) => {
+          queryClient.setQueryData(venueFeatureKeys.features(input.brandId, venueId), state);
+          // #4490 N20: the success screen and Overview read what was not
+          // switched on, so the host is told instead of finding out later.
+          queryClient.setQueryData(venueFeatureKeys.startRefused(venueId), refused);
+        })
+        .catch(() => undefined);
     },
   });
 }

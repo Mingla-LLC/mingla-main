@@ -8,7 +8,8 @@
 import { formatPhoneNational } from "@mingla/phone-input/phoneNumber";
 
 import { COUNTRIES } from "../../constants/countries";
-import type { ClaimedEntry } from "../../services/attendanceClaimService";
+import type { ClaimedEntry, PendingClaim } from "../../services/attendanceClaimService";
+import { linkedClaimedEntry } from "../../services/pendingClaimPolicy";
 import type { ClaimIdentifier } from "../../services/claimContactService";
 import { formatStartsAtLabel } from "../../utils/zoneLabel";
 
@@ -16,9 +17,19 @@ import { formatStartsAtLabel } from "../../utils/zoneLabel";
 export function claimedEntryPath(entry: ClaimedEntry): string {
   if (
     entry.routeKind === "order" || entry.routeKind === "rsvp" ||
-    entry.routeKind === "reservation" || entry.routeKind === "venue_order"
+    entry.routeKind === "reservation" || entry.routeKind === "venue_order" ||
+    // #4490 Explorer W2 (N157 closed): venue bookings, plans and waitlist
+    // places open their own Purchases detail (the pass, the plan, the place).
+    entry.routeKind === "venue_booking" || entry.routeKind === "venue_membership" ||
+    entry.routeKind === "venue_waitlist"
   ) {
     return `/purchases/${entry.routeKind}/${encodeURIComponent(entry.routeId)}`;
+  }
+  // #4490 Explorer W1: Till receipts open the Purchases list.
+  // [TRANSITIONAL] list, not detail: exits when spec 08 adds the Till receipt
+  // detail (then route it like the venue kinds above).
+  if (entry.routeKind === "venue_till_sale") {
+    return "/purchases";
   }
   if (entry.routeKind === "held_ticket") {
     return `/purchases/order/${encodeURIComponent(entry.routeId)}`;
@@ -138,4 +149,70 @@ const EXAMPLE_NATIONAL: Record<ClaimPhoneCountry, string> = {
 export function claimPhonePlaceholder(country: string | null | undefined): string | undefined {
   if (!isClaimPhoneCountry(country)) return undefined;
   return formatPhoneNational(country, EXAMPLE_NATIONAL[country]).trim();
+}
+
+/**
+ * #4490 W2-N24 — the landed question uses the noun the server sent for the
+ * claim (a venue pass is "Is this your pass?"); a ticket keeps its words.
+ */
+export function claimLinkLandedTitleKey(noun: string | null): string {
+  return noun === "pass" || noun === "booking" || noun === "receipt"
+    ? `missing.landed.titleNoun.${noun}`
+    : "missing.landed.title";
+}
+
+export type OnboardingClaimHandoff = {
+  /** Where the app goes when onboarding ends; null = stay on Home. */
+  path: string | null;
+  /** The opened purchase's kind (log only); null when nothing opens. */
+  kind: ClaimedEntry["kind"] | null;
+  /** Why (log only, never personal): no_link, nothing_attached, linked, several_unmatched. */
+  reason: "no_link" | "nothing_attached" | "linked" | "several_unmatched";
+};
+
+/**
+ * #4490 W2-N31 — a new account made from a claim link's welcome card: when
+ * onboarding ends, open THAT purchase's detail. `linked` is the claim the link
+ * resolved to (welcome card or onboarding's pending claim); `attached` is the
+ * claimed rows of the sweep that attached them. Several found and none
+ * matching the link opens the Purchases list (the others stay reachable
+ * there). No link: nothing changes (Home and the found-purchase banner).
+ */
+export function onboardingClaimHandoff(
+  linked: PendingClaim | null,
+  attached: readonly ClaimedEntry[] | null,
+): OnboardingClaimHandoff {
+  if (linked === null) return { path: null, kind: null, reason: "no_link" };
+  if (attached === null || attached.length === 0) {
+    return { path: null, kind: null, reason: "nothing_attached" };
+  }
+  const entry = linkedClaimedEntry(attached, linked);
+  if (entry === null) return { path: "/purchases", kind: null, reason: "several_unmatched" };
+  return { path: claimedEntryPath(entry), kind: entry.kind, reason: "linked" };
+}
+
+/**
+ * #4490 N157 — where the found-purchase banner's View goes: one purchase, or
+ * the one the claim link was for when the sweep attached several, opens its
+ * own detail; anything else opens the Purchases list.
+ */
+export function bannerDestination(
+  claimed: readonly ClaimedEntry[],
+  linkedClaim: PendingClaim | null = null,
+): string {
+  const entry = linkedClaimedEntry(claimed, linkedClaim);
+  return entry ? claimedEntryPath(entry) : "/purchases";
+}
+
+/** W2-N31 — the banner's View handler: hide the banner, then open the target. */
+export function openFoundBannerTarget(input: {
+  claimed: readonly ClaimedEntry[];
+  linkedClaim: PendingClaim | null;
+  dismiss: () => void;
+  push: (path: string) => void;
+}): string {
+  const path = bannerDestination(input.claimed, input.linkedClaim);
+  input.dismiss();
+  input.push(path);
+  return path;
 }

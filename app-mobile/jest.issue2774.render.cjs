@@ -139,6 +139,80 @@ module.exports = {
     // "Experiences here" prices, the pinned Save / Schedule / Share /
     // Reserve-or-Directions bar acting on the deck card, the state Close.
     "**/__tests__/issue_4347_venue_explorer_model.implementor.test.ts",
+    // issue #4490 — the deck place sheet's main button follows what the venue
+    // sells (features), not its type.
+    "**/__tests__/issue_4490_deck_venue_cta.implementor.test.ts",
+    // issue #4490 Explorer W3 — deck chips (shared deckVenueChip), the venue
+    // page panes (model, seam, analytics, wiring) and the mounted pane states.
+    "**/__tests__/issue_4490_w3_deck_venue_chip.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_venue_panes.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_venue_panes.implementor.render.test.tsx",
+    // issue #4490 W3 fix 1 — the tester's adversarial pins and the fix suite
+    // (plans with their period, ended events, free entry, sold out today, the
+    // collab hand-off from the card sheet, the buyer web of this build).
+    "**/__tests__/issue_4490_w3.tester.adversarial.test.ts",
+    "**/__tests__/issue_4490_w3_fix1.implementor.test.ts",
+    // issue #4490 W3 fix 2 — the Buy hand-off per build profile (injected
+    // backend) and the groups "from" in one unit.
+    "**/__tests__/issue_4490_w3_fix2.implementor.test.ts",
+    // issue #4490 W3 fix 3 — the first device pass: venue times without Intl
+    // parts (Hermes), ₦ on every engine, each tab's own action, offline vs a
+    // server failure, panes per tab, the tab strip and header at 375 pt.
+    "**/__tests__/issue_4490_w3_fix3.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_fix3.implementor.render.test.tsx",
+    // issue #4490 W3 fix 4 — the second device pass: the Menu tab's order
+    // sheet (empty basket, Close, its own window, the bar), the table verb,
+    // ₦ typical spend, links over the shared deck, the 10 s pane budget.
+    "**/__tests__/issue_4490_w3_fix4.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_fix4.implementor.render.test.tsx",
+    // issue #4490 W3 fix 5 — the third device pass: the Menu tab's order bar
+    // docked at the bottom edge, the note field keeping focus, Pay clear of
+    // the keyboard's Done bar.
+    "**/__tests__/issue_4490_w3_fix5.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_fix5.implementor.render.test.tsx",
+    // issue #4490 Explorer W5 — deck analytics for hosted venues (is_hosted_venue,
+    // deck_lead, venue_id, position_in_deck; venue_checkout_finished).
+    "**/__tests__/issue_4490_w5_deck_analytics.implementor.test.ts",
+    // issue #4490 W5 fix 2 (W5-D1) — the deck's expand / save / dismiss analytics
+    // run behind one guard (an analytics failure never stops the action), and
+    // the whole Explorer app reads no undeclared name (the missing import that
+    // broke every deck card on the device).
+    "**/__tests__/issue_4490_w5_deck_handlers.implementor.test.ts",
+    "**/__tests__/issue_4490_w5_no_undeclared_names.implementor.test.cjs",
+    // issue #4490 Explorer W6a — Venues in Discover: the kind, the venue card
+    // (model, route with ?tab=, mounted variant), Type of place chips, wiring.
+    "**/__tests__/issue_4490_w6a_discover_venues.implementor.render.test.tsx",
+    // issue #4490 W6 fix 2 — the device pass's Discover P3s: the lead line wraps
+    // (no price cut mid-number), one body state at a time with the pills kept,
+    // no stale count while new filters load, the 10 s Venues read budget.
+    "**/__tests__/issue_4490_w6_fix2_discover.implementor.render.test.tsx",
+    // issue #4490 Explorer W6b — "Places on Mingla" deck chips: resolvePills,
+    // saved categories, the hook's parse and keys, the mounted row, sheet wiring.
+    "**/__tests__/issue_4490_w6b_places_on_mingla.implementor.render.test.tsx",
+    // issue #4490 W6b fix 3 — a venue-type chip change gives the solo deck a new
+    // key (it refetches as a category change does); a chip-only deck with
+    // nothing open ends with hasMore:false (the empty state, not a loader).
+    "**/__tests__/issue_4490_w6b_deck_refetch.implementor.test.ts",
+    // issue #4490 W7 — "When you'd go" on every venue surface: the pure model
+    // (chips, hide rules, Leave by, 7-day reach, On the day, checkout line,
+    // Hermes) and the rendered blocks (event page, pass, checkout line).
+    "**/__tests__/issue_4490_w7_when_you_go_model.implementor.test.ts",
+    "**/__tests__/issue_4490_w7_when_you_go.implementor.render.test.tsx",
+    // issue #4490 Explorer W4 — native checkout per offer: the reducer (steps,
+    // keys, words), the venue recovery pointer and payment leg, sign-out
+    // clearing the pointer, the sheet's pure model and the sheet itself.
+    "**/__tests__/issue_4490_w4_venue_checkout_flow.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_venue_checkout_recovery.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_signout_clears_venue_checkout.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_checkout_model.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_checkout_service.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_checkout_sheet.implementor.render.test.tsx",
+    "**/__tests__/issue_4490_w4_purchases_pay.implementor.test.ts",
+    // #4490 06-W4 fix 1: option rows priced by the server for the chosen day, the plan Review, sign in again mid-checkout.
+    "**/__tests__/issue_4490_w4_fix1.implementor.render.test.tsx",
+    "**/__tests__/issue_4490_w4_fix1.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_fix2.implementor.render.test.tsx",
+    "**/__tests__/issue_4490_w4_fix2.implementor.test.ts",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

@@ -12,6 +12,11 @@ export interface DiscoverLoadInput {
   feedFailed: boolean;
   visibleKindCount: number;
   itemCount: number;
+  /**
+   * #4490 W6 fix 2 (W6-D3): the facets on screen are the previous filters'
+   * (keepPreviousData) while the new ones load, so the count is not claimed.
+   */
+  facetsStale?: boolean;
 }
 
 export interface DiscoverLoadState {
@@ -23,13 +28,32 @@ export interface DiscoverLoadState {
 }
 
 export function discoverLoadState(input: DiscoverLoadInput): DiscoverLoadState {
-  const facetsWaiting = input.anchorSet && !input.facetsLoaded && !input.facetsFailed;
+  // #4490 W6 fix 2 (W6-D2): one body state at a time. A failed read shows the
+  // error alone: no skeleton, no "nothing matches", no empty city under it.
+  const failed = input.facetsFailed || input.feedFailed;
+  const facetsStale = input.facetsStale === true;
+  const facetsWaiting =
+    input.anchorSet && ((!input.facetsLoaded && !input.facetsFailed) || facetsStale);
   const feedWaiting = input.anchorSet && !input.feedLoaded && !input.feedFailed;
-  const cityEmpty = input.facetsLoaded && input.visibleKindCount === 0;
+  const cityEmpty = !failed && input.facetsLoaded && !facetsStale && input.visibleKindCount === 0;
   return {
     countPending: facetsWaiting,
-    showSkeleton: (facetsWaiting || feedWaiting) && input.itemCount === 0,
+    showSkeleton: !failed && (facetsWaiting || feedWaiting) && input.itemCount === 0,
     cityEmpty,
-    filteredEmpty: !facetsWaiting && !feedWaiting && !cityEmpty && input.itemCount === 0,
+    filteredEmpty: !failed && !facetsWaiting && !feedWaiting && !cityEmpty && input.itemCount === 0,
   };
+}
+
+/**
+ * #4490 W6 fix 2 (W6-D2): the kind pills come from the facets; a failed facets
+ * read has no data, which hid every pill (the guest could not even switch
+ * kind). The pills keep the last kinds this city showed until a read answers.
+ */
+export function discoverPillKinds<T>(
+  current: T | undefined,
+  last: { anchorKey: string; kinds: T } | null,
+  anchorKey: string,
+): T | undefined {
+  if (current !== undefined) return current;
+  return last !== null && last.anchorKey === anchorKey ? last.kinds : undefined;
 }

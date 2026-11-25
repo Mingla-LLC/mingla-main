@@ -47,6 +47,7 @@ import {
   type,
 } from "../../constants/designSystem";
 
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
@@ -347,6 +348,7 @@ const StepList: React.FC<StepListProps> = ({ steps, currentIndex, onStepPress, f
 
 /** Phone: progress segments, tappable chips and the "n / N" Steps sheet. */
 const StepChips: React.FC<StepperProps> = (props) => {
+  const touchFloor = useTouchFloor();
   const { steps, currentIndex, onStepPress, furthestValidIndex, sheetTitle = "Steps", testID, style } = props;
   const [sheetOpen, setSheetOpen] = useState(false);
   // #4420: keep the current step's chip in view, on mount and on every step change.
@@ -408,6 +410,7 @@ const StepChips: React.FC<StepperProps> = (props) => {
                 }}
                 style={[
                   styles.chip,
+                  touchFloor > 0 ? { minHeight: touchFloor } : null,
                   state === "current" ? styles.chipOn : null,
                   state === "error" ? styles.chipError : null,
                   !reachable ? styles.chipLocked : null,
@@ -425,7 +428,7 @@ const StepChips: React.FC<StepperProps> = (props) => {
           accessibilityRole="button"
           accessibilityLabel={`${sheetTitle}, ${Math.min(currentIndex + 1, steps.length)} of ${steps.length}`}
           testID={testID !== undefined ? `${testID}-count` : undefined}
-          style={styles.countButton}
+          style={[styles.countButton, touchFloor > 0 ? { minHeight: touchFloor } : null]}
         >
           <Text style={styles.countLabel}>
             {Math.min(currentIndex + 1, steps.length)} / {steps.length}

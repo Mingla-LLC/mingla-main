@@ -90,6 +90,8 @@ export interface VenueDetailsEditorProps {
   canMutate: boolean;
   /** The brand's country, the phone picker's last start fallback. */
   brandCountryCode?: string | null;
+  /** [TRANSITIONAL] blocked on #4514 — host-provided “Add a form” row; exits when #4514 ships the shared offer-form attach row. */
+  formAttachRow?: React.ReactNode;
 }
 
 const countryForIso = (iso: string | undefined): PhoneCountry | null =>
@@ -112,6 +114,7 @@ export function VenueDetailsEditor({
   venueId,
   canMutate,
   brandCountryCode = null,
+  formAttachRow,
 }: VenueDetailsEditorProps): React.ReactElement {
   const detailsQuery = useVenueDetailsForHost(venueId);
   const venue = detailsQuery.data ?? null;
@@ -733,6 +736,7 @@ export function VenueDetailsEditor({
           ) : null}
         </View>
       ) : null}
+      {mode === "view" && canMutate && formAttachRow !== undefined ? formAttachRow : null}
 
       {mode === "view" && canMutate && (identityMode === "locked" || isStay) ? (
         <View style={styles.fallback} testID="venue-details-fallback">

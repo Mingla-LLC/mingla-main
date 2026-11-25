@@ -246,6 +246,13 @@ jest.mock("../../ui/EventCoverMedia", () => ({
 }));
 
 jest.mock("../../ui/Toast", () => ({ __esModule: true, Toast: (): null => null }));
+// #4490 — the route now loads both suites through the one Host venue owner.
+// This exact structural stand-in keeps the locked #1483 harness import-light.
+jest.mock("../host/LazyVenueSuites", () => ({
+  __esModule: true,
+  StaySuiteShell: (): null => null,
+  VenueSuiteShell: (): null => null,
+}));
 jest.mock("../../stay/StaySuiteShell", () => ({
   __esModule: true,
   StaySuiteShell: (): null => null,

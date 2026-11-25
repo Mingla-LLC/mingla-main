@@ -20,9 +20,11 @@ import {
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useVenueListing } from "../../hooks/useVenueListings";
+import { useVenueSpaces } from "../../hooks/useVenueSpaces";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
+import { PickerSheetHead } from "../ui/PickerSheetHead";
 import { Sheet } from "../ui/Sheet";
 import type {
   VenueTableZone,
@@ -49,6 +51,10 @@ export interface WaitlistAddSheetProps {
   saving: boolean;
   /** issue #3380 — the venue, so the phone picker starts on its country. */
   venueId?: string | null;
+  /** #4490 fix 3 (N112) — with the venue, the seating chips are its own spaces. */
+  brandId?: string | null;
+  /** #4490 fix 3 — a refused add, said in the sheet. */
+  error?: string | null;
   testID?: string;
 }
 
@@ -58,11 +64,14 @@ export function WaitlistAddSheet({
   onSave,
   saving,
   venueId = null,
+  brandId = null,
+  error = null,
   testID,
 }: WaitlistAddSheetProps): React.ReactElement {
   const [guestName, setGuestName] = useState<string>("");
   const [partySize, setPartySize] = useState<number>(2);
   const [zone, setZone] = useState<VenueTableZone | null>(null);
+  const [spaceId, setSpaceId] = useState<string | null>(null);
   const [quotedWait, setQuotedWait] = useState<string>("");
   // issue #3380 — country picker starting on the venue's (then brand's)
   // country; `mobile`, because this number receives the "table's ready" text.
@@ -72,12 +81,15 @@ export function WaitlistAddSheet({
     startCountries: [venueForPhone?.countryCode, brandForPhone?.countryCode],
   });
   const resetPhone = phone.reset;
+  // #4490 fix 3 (N112) — the venue's own spaces; the generic words only when it has none.
+  const spaces = useVenueSpaces(brandId ?? brandForPhone?.id ?? null, venueId).data ?? [];
 
   useEffect(() => {
     if (!visible) return;
     setGuestName("");
     setPartySize(2);
     setZone(null);
+    setSpaceId(null);
     setQuotedWait("");
     resetPhone();
   }, [visible, resetPhone]);
@@ -92,10 +104,11 @@ export function WaitlistAddSheet({
       guestPhoneE164: phone.isEmpty ? null : phone.e164,
       guestEmail: null,
       partySize,
-      preferredZone: zone,
+      preferredZone: spaces.length > 0 ? null : zone,
+      preferredSpaceId: spaces.length > 0 ? spaceId : null,
       quotedWaitMinutes: parseIntOrNull(quotedWait),
     });
-  }, [canSave, guestName, phone.isEmpty, phone.e164, partySize, zone, quotedWait, onSave]);
+  }, [canSave, guestName, phone.isEmpty, phone.e164, partySize, zone, spaceId, spaces.length, quotedWait, onSave]);
 
   return (
     <Sheet
@@ -105,7 +118,7 @@ export function WaitlistAddSheet({
       testID={testID ?? "waitlist-add-sheet"}
     >
       <View style={styles.body}>
-        <Text style={styles.heading}>Add to waitlist</Text>
+        <PickerSheetHead title="Add to waitlist" onClose={onClose} testID="waitlist-add-head" />
         <ScrollView
           style={styles.scrollFlex}
           contentContainerStyle={styles.scroll}
@@ -144,28 +157,41 @@ export function WaitlistAddSheet({
             </Pressable>
           </View>
 
-          <Text style={styles.groupLabel}>Preferred seating (optional)</Text>
+          <Text style={styles.groupLabel}>{spaces.length > 0 ? "Preferred space (optional)" : "Preferred seating (optional)"}</Text>
           <View style={styles.chipRow}>
-            {ZONES.map((z) => {
-              const active = z.value === zone;
-              return (
-                <Pressable
-                  key={z.value}
-                  onPress={() => setZone(active ? null : z.value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={`Preferred seating ${z.label}`}
-                  style={[styles.chip, active ? styles.chipActive : null]}
-                  testID={`waitlist-zone-${z.value}`}
-                >
-                  <Text
-                    style={[styles.chipLabel, active ? styles.chipLabelActive : null]}
-                  >
-                    {z.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            {spaces.length > 0
+              ? spaces.map((s) => {
+                  const active = s.id === spaceId;
+                  return (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => setSpaceId(active ? null : s.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Preferred space ${s.name}`}
+                      style={[styles.chip, active ? styles.chipActive : null]}
+                      testID={`waitlist-space-${s.id}`}
+                    >
+                      <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>{s.name}</Text>
+                    </Pressable>
+                  );
+                })
+              : ZONES.map((z) => {
+                  const active = z.value === zone;
+                  return (
+                    <Pressable
+                      key={z.value}
+                      onPress={() => setZone(active ? null : z.value)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Preferred seating ${z.label}`}
+                      style={[styles.chip, active ? styles.chipActive : null]}
+                      testID={`waitlist-zone-${z.value}`}
+                    >
+                      <Text style={[styles.chipLabel, active ? styles.chipLabelActive : null]}>{z.label}</Text>
+                    </Pressable>
+                  );
+                })}
           </View>
 
           <Text style={styles.groupLabel}>Quoted wait (minutes, optional)</Text>
@@ -186,6 +212,11 @@ export function WaitlistAddSheet({
             testID="waitlist-phone"
           />
 
+          {error !== null ? (
+            <Text style={styles.error} accessibilityLiveRegion="polite" testID="waitlist-add-error">
+              {error}
+            </Text>
+          ) : null}
           <Button
             label="Add to waitlist"
             onPress={handleSave}
@@ -208,11 +239,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: space[4],
     paddingTop: space[2],
-  },
-  heading: {
-    ...type.h1,
-    color: color.text1,
-    marginBottom: space[2],
   },
   // ORCH-1193: bound the scroll viewport to the fixed-height panel so the CTA
   // scrolls into view instead of overflowing past the panel's overflow:hidden.
@@ -277,6 +303,11 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: space[6],
+  },
+  error: {
+    ...type.small,
+    color: color.errorText,
+    marginTop: space[4],
   },
 });
 

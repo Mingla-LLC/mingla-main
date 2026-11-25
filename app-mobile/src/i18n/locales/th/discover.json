@@ -56,6 +56,7 @@
   "pill.experiences": "ประสบการณ์",
   "pill.trips": "การเดินทาง",
   "pill.stays": "การเข้าพัก",
+  "pill.venues": "สถานที่",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "ล้าง",
   "filters.option_a11y": "{{label}}, {{count}} ตรงกัน",
@@ -77,6 +78,7 @@
   "group.check_in": "เช็คอิน",
   "group.guests": "แขก",
   "group.property_kind": "ประเภทสถานที่",
+  "group.venue_type": "ประเภทสถานที่",
   "group.any_suffix": "{{group}} · ใดก็ได้",
   "when.any_day": "วันใดก็ได้",
   "when.tomorrow": "พรุ่งนี้",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} ประสบการณ์",
   "count.trips_other": "{{count}} การเดินทาง",
   "count.stays_other": "{{count}} การเข้าพัก",
+  "count.venues_other": "{{count}} สถานที่",
   "guests.value_other": "{{count}} แขก",
-  "card.type.stops_other": "{{count}} หยุด"
+  "card.type.stops_other": "{{count}} หยุด",
+  "venues.empty_title": "ยังไม่มีสถานที่ให้จองที่นี่",
+  "venues.empty_body": "สถานที่ที่คุณจองได้บน Mingla จะแสดงที่นี่",
+  "venues.filtered_title": "ไม่มีสถานที่ที่ตรงกับตัวกรองเหล่านั้น",
+  "venues.error_title": "เราโหลดสถานที่ไม่ได้",
+  "venues.error_retry": "ลองอีกครั้ง"
 }

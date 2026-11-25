@@ -76,6 +76,13 @@ export const VENUE_ORDER_ERRORS = {
     guest: "That email doesn't look right.",
     staff: "That email doesn't look right.",
   },
+  // N139 (#4490): an address the payment provider will refuse (a reserved
+  // test domain), or one the provider did refuse. Said in words, never raw.
+  buyer_email_undeliverable: {
+    status: 400,
+    guest: "Use an email address you can get receipts at. Addresses ending in .test, .invalid, .example or .localhost can't be used.",
+    staff: "Use an email address the guest can get receipts at.",
+  },
   buyer_phone_required: {
     status: 400,
     guest: "We need a phone number to text you when it's ready.",
@@ -359,6 +366,11 @@ export interface MenuItemRow {
   currency: string;
   is_available: boolean;
   discounts_allowed?: boolean;
+  /**
+   * #4490 spec 08 O5: units left; NULL (or absent, before migration
+   * 20281203724490) = not tracked.
+   */
+  stock_count?: number | null;
 }
 
 export interface MenuModifierRow {
@@ -667,6 +679,12 @@ export interface VenueOrderMoneyInput {
   serviceFeeBps?: number;
   /** NG only — country_vat_config bps. */
   vatRateBps?: number | null;
+  /**
+   * #4490 spec 08 O2: a Till card payment carries its share of the check's
+   * service charge as an exact amount (never re-derived from bps, unlike
+   * billToPhone's `serviceChargeBps: 0`). Inside the fee basis, as always.
+   */
+  serviceChargeCentsOverride?: number;
 }
 
 export interface VenueOrderMoney {
@@ -717,10 +735,9 @@ export function computeVenueOrderMoney(
 ): VenueOrderMoney {
   // (2) the venue's own service charge — VENUE revenue, so it IS inside the fee
   // basis. This is the deliberate contrast with a tip (D-9 / P-19).
-  const serviceChargeCents = feeFromBps(
-    input.subtotalCents,
-    input.serviceChargeBps,
-  );
+  const serviceChargeCents = input.serviceChargeCentsOverride !== undefined
+    ? input.serviceChargeCentsOverride
+    : feeFromBps(input.subtotalCents, input.serviceChargeBps);
   // (3) THE FEE BASIS.
   const feeBasisCents = input.subtotalCents + serviceChargeCents;
 
@@ -954,4 +971,19 @@ function hhmmToMinutes(value: string): number | null {
     return null;
   }
   return h * 60 + m;
+}
+
+/**
+ * N139 (#4490) — reserved domains no payment provider delivers to (RFC 2606 /
+ * 6761). Paystack refuses them with a 400, so they are refused before any
+ * payment call, in words the guest can act on.
+ */
+export function venueOrderEmailUndeliverable(email: string): boolean {
+  const domain = email.trim().toLowerCase().split("@")[1] ?? "";
+  return /(^|\.)(test|invalid|example|localhost|local)$/.test(domain);
+}
+
+/** N139 — a provider refusal that is about the email address. */
+export function paystackRefusedEmail(message: string): boolean {
+  return /email/i.test(message);
 }

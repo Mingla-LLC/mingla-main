@@ -128,6 +128,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   keepTestID,
   saveDisabled = false,
 }) => {
+  const stackActions = Math.max(confirmLabel.length, cancelLabel.length) > 18;
   const [typedValue, setTypedValue] = useState("");
   const [isHolding, setIsHolding] = useState(false);
   const progress = useSharedValue(0);
@@ -340,7 +341,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </View>
         ) : (
           <View style={styles.actions}>
-            <View style={styles.actionFlex}>
+            <View style={[styles.actionFlex, stackActions && styles.actionStacked]}>
               <Button
                 ref={cancelFocusRef}
                 label={cancelLabel}
@@ -353,7 +354,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               />
             </View>
             {variant === "holdToConfirm" ? (
-              <View style={styles.actionFlex}>
+              <View style={[styles.actionFlex, stackActions && styles.actionStacked]}>
                 <Pressable
                   ref={confirmFocusRef}
                   onPressIn={confirmBlocked ? undefined : handleHoldStart}
@@ -375,7 +376,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 </Pressable>
               </View>
             ) : (
-              <View style={styles.actionFlex}>
+              <View style={[styles.actionFlex, stackActions && styles.actionStacked]}>
                 <Button
                   ref={confirmFocusRef}
                   label={confirmLabel}
@@ -454,6 +455,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: 140,
   },
+  // #4490 N1: a long label ("Turn off Table reservations") gets the full row,
+  // so it keeps the button's side padding instead of running edge to edge.
+  actionStacked: { flexBasis: "100%" },
   holdButton: {
     height: size.btn.md,
     paddingHorizontal: space[4],

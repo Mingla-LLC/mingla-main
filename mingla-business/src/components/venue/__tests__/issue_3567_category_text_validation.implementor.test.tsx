@@ -227,9 +227,14 @@ describe("#3567 category text validation", () => {
       ).toBeUndefined();
 
       if (platform === "web") {
+        // TEST-MOD-APPROVED #4490 N12/N71: web uses the workspace TimeField
+        // (typeable 24-hour), not the browser's native time input.
         expect(
           currentTree().root.findAllByType("MockWebDateTimeInput"),
-        ).toHaveLength(2);
+        ).toHaveLength(0);
+        expect(
+          currentTree().root.findAllByProps({ testID: "menu-category-window-start-input" }).length,
+        ).toBeGreaterThan(0);
       } else {
         expect(byTestID("menu-category-window-start").props).toMatchObject({
           accessibilityRole: "button",

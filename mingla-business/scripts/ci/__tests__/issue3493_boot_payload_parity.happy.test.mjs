@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   BASELINE_MOVEMENT_THRESHOLD_BYTES,
   ONE_TIME_PR_ALLOWANCE,
+  effectivePerPrAllowance,
   assessCommonBaselineMovement,
   gitSubjectsSince,
   resolveOneTimeAllowance,
@@ -242,8 +243,8 @@ describe("#4596 the one-time #4601 entry, as the movement gate reads it", () => 
   const verdictFor = (entry, delta) =>
     assessCommonBaselineMovement(2_744_094, 2_744_094 + delta, entry ? { oneTimeCap: entry.common } : {});
 
-  test("one table: exactly the #4601 entry, frozen, capped at 3,300 B and dated", () => {
-    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 1);
+  test("one table: the #4601 entry first (then #4600), frozen, capped and dated", () => {
+    assert.equal(ONE_TIME_PR_ALLOWANCE.length, 2); // #4596 first, then #4490
     const [only] = ONE_TIME_PR_ALLOWANCE;
     assert.deepEqual(
       { issue: only.issue, pr: only.pr, headRef: only.headRef, common: only.common, expiresAfter: only.expiresAfter, approvedBy: only.approvedBy },
@@ -266,6 +267,27 @@ describe("#4596 the one-time #4601 entry, as the movement gate reads it", () => 
     assert.equal(granted.normalThreshold, 1_024);
     assert.equal(verdictFor(entry, 3_301).ok, false, "the cap is a cap, not an exemption");
     assert.equal(verdictFor(null, 3_048).ok, false);
+  });
+
+  test("an optional `eager` cap is scoped exactly like `common`; absent means the normal 25,000 B", () => {
+    const normal = { common: 12_000, eager: 25_000 };
+    const venue = ONE_TIME_PR_ALLOWANCE[1];
+    const grant = (env, today = "2026-11-24") =>
+      effectivePerPrAllowance(
+        resolveOneTimeAllowance({
+          env, today, baselineCommit: SHA, subjectsSinceBaseline: none,
+          normalLimit: BASELINE_MOVEMENT_THRESHOLD_BYTES,
+        }).entry,
+        normal,
+      );
+    assert.deepEqual(effectivePerPrAllowance(ONE_TIME_PR_ALLOWANCE[0], normal), normal);
+    assert.deepEqual(effectivePerPrAllowance(venue, normal), { common: 162_000, eager: 165_000 });
+    assert.deepEqual(grant(prEnv("4490-venue-features", "refs/pull/4600/merge")), { common: 162_000, eager: 165_000 });
+    assert.equal(grant(prEnv(HEAD, "refs/pull/4600/merge")).eager, 25_000);
+    assert.equal(grant(prEnv("other", "refs/pull/4600/merge")).eager, 25_000);
+    assert.equal(grant(prEnv("4490-venue-features", "refs/pull/4600/merge"), "2026-12-09").eager, 25_000);
+    assert.equal(effectivePerPrAllowance({ ...venue, eager: 25_000 }, normal).eager, 25_000);
+    assert.equal(effectivePerPrAllowance(null, normal).eager, 25_000);
   });
 
   test("every other branch, pull request or missing value keeps 1,024 B", () => {

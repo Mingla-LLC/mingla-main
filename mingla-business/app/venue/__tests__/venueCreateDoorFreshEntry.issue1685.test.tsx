@@ -47,6 +47,8 @@ const replaceCalls: string[] = [];
 
 jest.mock("expo-router", () => ({
   __esModule: true,
+  // TEST-MOD-APPROVED #4490 D4 — the X reads what is behind the wizard.
+  useNavigation: () => ({ getState: () => ({ index: 0, routes: [{ name: "venue/create" }] }) }),
   useLocalSearchParams: () => nav.params,
   useRouter: () => ({
     back: jest.fn(),

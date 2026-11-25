@@ -131,6 +131,15 @@ jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
  * staff reservation hooks. Neither is a #1532 claim. Same treatment the #1484
  * desktop-shell suite already gives them.
  */
+// [TEST-MOD-APPROVED #4490] fix round 5 (spec 07 13): the Stay shell imports the
+// venue Reservations and Waitlist screens statically (bundle: same as the venue
+// route), so they are stubbed here like VenueMenuModule.
+jest.mock("../../venue/VenueReservationsModule", () => ({
+  VenueReservationsModule: (): null => null,
+}));
+jest.mock("../../venue/VenueWaitlistModule", () => ({
+  VenueWaitlistModule: (): null => null,
+}));
 jest.mock("../../venue/VenueMenuModule", () => {
   const RN = jest.requireActual("react-native");
   const ReactLocal = jest.requireActual("react");
@@ -268,6 +277,18 @@ jest.mock("../../../hooks/useMyVenueAccess", () => ({
     isFetched: true,
     isError: false,
   }),
+}));
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+}));
+jest.mock("../../venue/features/VenueTypeAndFeaturesPanel", () => ({
+  VenueTypeAndFeaturesPanel: () => null,
 }));
 
 import { space } from "../../../constants/designSystem";

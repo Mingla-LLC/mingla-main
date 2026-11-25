@@ -58,8 +58,18 @@ export interface VenueOrderingConfig {
   tipsEnabled: boolean;
   tipPresetsBps: number[] | null;
   counterPickupEnabled: boolean;
+  /**
+   * #4490 07-D — false: a scanned spot orders as a counter order. Absent (a
+   * config built before 07-D) means table service, exactly as before.
+   */
+  tableServiceEnabled?: boolean;
+  /** #4490 07-D — derived by the server from the two switches. */
+  orderMode?: VenueOrderingMode;
   prepTimeMinutes: number | null;
 }
+
+/** #4490 07-D — how guests get their order. */
+export type VenueOrderingMode = "table" | "counter" | "both";
 
 /**
  * One chosen option on a line. `priceDeltaCents` is a MENU FACT read off the
@@ -143,6 +153,8 @@ export interface VenueOrderCodeOutcome {
 }
 
 export interface VenueOrderPreview {
+  /** N126 — the server's ordering mode at preview time (absent on older servers). */
+  orderMode?: VenueOrderingMode;
   currency: string;
   listSubtotalCents: number;
   discountCents: number;
@@ -180,6 +192,12 @@ export type VenueOrderFulfillmentStatus =
 
 /** The live order, as `venue-order-status` reports it. */
 export interface VenueOrderLiveStatus {
+  /**
+   * N140 (#4490) — the server's provider check while unpaid: "in_progress"
+   * (verifying; never offer a second payment), "not_paid" (the guest may try
+   * again), "confirmed" (paid). Absent/null when no check applies.
+   */
+  paymentCheck?: "confirmed" | "in_progress" | "not_paid" | null;
   orderId: string;
   buyerName: string;
   brandSlug: string | null;

@@ -13,3 +13,7 @@ export { DoorModeScreen } from "./DoorModeScreen";
 export { TapToPaySaleScreen } from "./tap/TapToPaySaleScreen";
 export { TapToPaySetupScreen } from "./tap/TapToPaySetupScreen";
 export { F4TapToPayCard } from "./tap/F4TapToPayCard";
+// #4490 — the Till's Tap to Pay (TillTapPanel) runs the same Terminal flow and
+// tap edge client, loaded through this chunk too.
+export { TapToPaySaleFlow } from "../../services/terminal/tapToPayFlow";
+export { createTillTapServer } from "../../services/terminal/doorTapEdge";

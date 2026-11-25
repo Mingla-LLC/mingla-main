@@ -40,14 +40,11 @@ import {
   previewPendingVenueIdentityCorrection,
 } from "../../services/adminClaimsService";
 
+import { VENUE_CATEGORY_LABELS } from "../../lib/venueCategoryLabels";
+
 const SLUG_PATTERN = /^[a-z0-9]{1,32}$/;
 
-const CORRECTION_CATEGORY_LABELS = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-  stay: "Stay",
-};
+const CORRECTION_CATEGORY_LABELS = VENUE_CATEGORY_LABELS;
 
 /** Safe operator copy for every server code family. Never surfaces SQL or values. */
 const CODE_COPY = {

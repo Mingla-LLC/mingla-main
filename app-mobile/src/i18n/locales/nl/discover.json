@@ -56,6 +56,7 @@
   "pill.experiences": "Ervaringen",
   "pill.trips": "Reizen",
   "pill.stays": "Verblijven",
+  "pill.venues": "Locaties",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Wissen",
   "filters.option_a11y": "{{label}}, {{count}} komt overeen",
@@ -77,6 +78,7 @@
   "group.check_in": "Inchecken",
   "group.guests": "Gasten",
   "group.property_kind": "Type plaats",
+  "group.venue_type": "Type plaats",
   "group.any_suffix": "{{group}} · Elke",
   "when.any_day": "Elke dag",
   "when.tomorrow": "Morgen",
@@ -209,8 +211,15 @@
   "count.trips_other": "{{count}} reizen",
   "count.stays_one": "{{count}} verblijf",
   "count.stays_other": "{{count}} verblijven",
+  "count.venues_one": "{{count}} locatie",
+  "count.venues_other": "{{count}} locaties",
   "guests.value_one": "{{count}} gast",
   "guests.value_other": "{{count}} gasten",
   "card.type.stops_one": "{{count}} STOPPEN",
-  "card.type.stops_other": "{{count}} STOPT"
+  "card.type.stops_other": "{{count}} STOPT",
+  "venues.empty_title": "Hier zijn nog geen locaties om te boeken.",
+  "venues.empty_body": "Locaties die je op Mingla kunt boeken, verschijnen hier.",
+  "venues.filtered_title": "Geen locaties passen bij die filters.",
+  "venues.error_title": "We konden de locaties niet laden.",
+  "venues.error_retry": "Opnieuw proberen"
 }

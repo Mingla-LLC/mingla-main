@@ -71,6 +71,9 @@ jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => ({ rank: 100 }),
 }));
 
+// TEST-MOD-APPROVED #4490 07-D: the Menu module now opens with the ordering-mode card (its own
+// settings query); registered like the module's other hooks, the card is inert here.
+jest.mock("../OrderingModeCard", () => ({ OrderingModeCard: (): null => null }));
 jest.mock("../../../hooks/useMenus", () => ({
   useBrandMenus: () => ({
     data: mockMenus,
@@ -265,7 +268,13 @@ describe("#3561 category-save recovery", () => {
     });
     setServiceTime("menu-category-window-start", "22:00");
     setServiceTime("menu-category-window-end", "02:00");
-    act(() => call(button("Sun"), "onPress"));
+    // TEST-MOD-APPROVED #4490 N71: the shared day chips start off (every day);
+    // picking Mon to Sat saves those six days.
+    const day = (iso: number): TestNode =>
+      tree.root
+        .findAllByProps({ testID: `menu-category-day-${iso}` })
+        .filter((node) => typeof node.props.onPress === "function")[0] as TestNode;
+    for (const iso of [1, 2, 3, 4, 5, 6]) act(() => call(day(iso), "onPress"));
 
     act(() => call(button("Add category"), "onPress"));
     const first = mutationCall(0);
@@ -298,7 +307,8 @@ describe("#3561 category-save recovery", () => {
     expect(input("menu-category-desc").props.value).toBe(
       "Everything after ten",
     );
-    expect(button("Sun").props.variant).toBe("secondary");
+    expect(day(7).props.accessibilityState).toEqual(expect.objectContaining({ checked: false }));
+    expect(day(1).props.accessibilityState).toEqual(expect.objectContaining({ checked: true }));
     expect(button("Try again").props.accessibilityLabel).toBe(
       "Try saving category again",
     );

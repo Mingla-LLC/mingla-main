@@ -58,9 +58,14 @@ import { useTranslation } from 'react-i18next';
 import {
   ExperienceTypesSection,
   CategoriesSection,
+  PlacesOnMinglaSection,
   TravelModeSection,
   LoadingShimmer,
 } from "./PreferencesSheet/PreferencesSections";
+// #4490 Explorer W6b: "Places on Mingla" venue-type chips.
+import { placesOnMinglaKeys, useHostedVenueTypes } from '../hooks/useHostedVenueTypes';
+import { useUserLocation } from '../hooks/useUserLocation';
+import { VENUE_TYPE_LABELS } from '@mingla/brand-rendering/venueTypeLabels';
 import {
   TravelLimitSection,
   LocationInputSection,
@@ -70,7 +75,7 @@ import { ToggleSection } from './PreferencesSheet/ToggleSection';
 import { useFeatureGate } from '../hooks/useFeatureGate';
 import { CustomPaywallScreen } from './CustomPaywallScreen';
 import type { GatedFeature } from '../hooks/useFeatureGate';
-import { normalizeCategoryArray } from '../utils/categoryUtils';
+import { normalizeCategoryArray, VENUE_TYPE_ICONS } from '../utils/categoryUtils';
 import { colors } from '../constants/designSystem';
 // META-ORCH-0991 Wave C — the `visible`-prop bottom-sheet path now renders
 // inside the shared gorhom primitive (header + scrolling body + sticky Apply
@@ -584,6 +589,29 @@ export default function PreferencesSheet({
 
   // All categories always visible — curated pills are independent of category pills
   const filteredCategories = categories;
+
+  // #4490 Explorer W6b: the venue types bookable on Mingla within this travel
+  // limit, around the location being edited (GPS: the device's last known
+  // place; custom: the picked place). Hidden while loading, on error and when
+  // empty; nothing else in the sheet waits for it.
+  const deviceLocation = useUserLocation(user?.id, "solo");
+  const venueTypeLocation = useMemo(() => {
+    if (!useGpsLocation) return selectedCoords;
+    const lat = deviceLocation.data?.lat;
+    const lng = deviceLocation.data?.lng;
+    return typeof lat === "number" && typeof lng === "number" ? { lat, lng } : null;
+  }, [useGpsLocation, selectedCoords, deviceLocation.data?.lat, deviceLocation.data?.lng]);
+  const hostedVenueTypes = useHostedVenueTypes(venueTypeLocation, travelMode, constraintValue, !!visible);
+  // #4490 W6 fix 1 (W6-N5): a saved type not offered here stays visible
+  // (selected) so it can be removed; see placesOnMinglaKeys.
+  const placesOnMinglaTypes = useMemo(
+    () => placesOnMinglaKeys(hostedVenueTypes.isError ? undefined : hostedVenueTypes.data, selectedCategories).map((key) => ({
+      key,
+      label: VENUE_TYPE_LABELS[key],
+      icon: VENUE_TYPE_ICONS[key] ?? 'location',
+    })),
+    [hostedVenueTypes.data, hostedVenueTypes.isError, selectedCategories],
+  );
 
   // Memoized callbacks — side effects kept outside updater to stay StrictMode-safe
   const handleIntentToggle = useCallback((id: string) => {
@@ -1364,6 +1392,14 @@ export default function PreferencesSheet({
               onCategoryToggle={handleCategoryToggle}
               minMessage={minSelectionMessage}
             />
+            {placesOnMinglaTypes.length > 0 ? (
+              <PlacesOnMinglaSection
+                title={t('preferences:places_on_mingla_title', 'Places on Mingla')}
+                types={placesOnMinglaTypes}
+                selectedCategories={selectedCategories}
+                onCategoryToggle={handleCategoryToggle}
+              />
+            ) : null}
           </ToggleSection>
           </View>
 

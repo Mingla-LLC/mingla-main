@@ -176,6 +176,8 @@ const BUSINESS_TOKENS: LocationInputTokens = {
   // tinted, bordered pill), visually distinct from the muted suggestion/status
   // rows. Consumer bundles omit `action` → the shared field falls back to the
   // muted styling → byte-identical consumer render.
+  // #4490 N15 (orange on an orange-brown fill read poorly) is met by #4522
+  // W-11's readable accent text on the lighter warm tint (merge of main).
   action: {
     text: dsColor.accentText, // readable brand orange on dark (#4522 W-11); the pill keeps the warm tint
     bg: dsColor.accentTint, // subtle warm pill fill, light enough for the text on it to read

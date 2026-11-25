@@ -1903,7 +1903,9 @@ export function hostPublishGaps(row: FlowEventRow): string[] {
   const draft = row.draft;
   if (!row.title.trim()) gaps.push("a name");
   if (!row.description) gaps.push("a description");
-  if (row.party_types.length === 0) gaps.push("an event type");
+  // #4490 07-A: Event type (was Party Type) is optional for an event at a venue
+  // (the server publish gate reads events.venue_id the same way).
+  if (row.party_types.length === 0 && row.venue_id === null) gaps.push("an event type");
   const when = (draft.when ?? {}) as Record<string, unknown>;
   if (!when.endsAt) gaps.push("an end time");
   const format = draft.format;

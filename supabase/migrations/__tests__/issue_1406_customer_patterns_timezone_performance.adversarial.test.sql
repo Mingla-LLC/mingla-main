@@ -948,8 +948,14 @@ BEGIN
   -- measured on a PG17 full replay of d3527e3b93 (matches main's CI batch);
   -- dropping exactly that index measures 90 / 0c4a5b0bc6ad79ab0337f55fcf540fe8
   -- again. The seven fingerprinted functions are unchanged by #4579.
-  IF v_index_count <> 91
-    OR v_index_fingerprint <> '08b137db6aca8637cbaba2d5aa286e72'
+  -- [TEST-MOD-APPROVED #4490] 20281203024490_issue_4490_p1_event_venue adds
+  -- events_venue_id_idx (partial, venue_id IS NOT NULL; the venue's events
+  -- lookup) on top of #4579's index. Count 91 -> 92,
+  -- hash 08b137db6aca8637cbaba2d5aa286e72 -> 2241709009ca02e3a5616ef5de0fcfbb,
+  -- measured on a PG17 full replay of the #4490 branch after merging 97a75873e2;
+  -- dropping exactly that index measures 91 / 08b137db6aca8637cbaba2d5aa286e72 again.
+  IF v_index_count <> 92
+    OR v_index_fingerprint <> '2241709009ca02e3a5616ef5de0fcfbb'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

@@ -206,3 +206,100 @@ Deno.test("publish requires a positive optimistic version before any RPC", async
   assertEquals(response.status, 422);
   assertEquals(created, false);
 });
+
+Deno.test("#4490: an unreadable row id is a plain invalid-input refusal, not a server error", async () => {
+  const response = await handleManageStayInventory(
+    new Request("http://local/manage-stay-inventory", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token" },
+      body: JSON.stringify({
+        action: "update_offering",
+        venueId,
+        expectedVersion: 2,
+        payload: { offeringId: " not-a-uuid ", name: "Suite" },
+      }),
+    }),
+    {
+      createRpcClient: () => ({
+        rpc: () =>
+          Promise.resolve({
+            data: null,
+            error: { code: "22023", message: "stay_invalid_payload" },
+          }),
+      }),
+    },
+  );
+  const body = await response.json();
+  assertEquals(response.status, 422);
+  assertEquals(body.code, "stay_invalid_payload");
+});
+
+Deno.test("#4490 R4J-N21: a list field sent as an object, string or null is a plain 422 before any RPC", async () => {
+  const cases: Record<string, unknown>[] = [
+    { windows: { windowId: "x" } },
+    { windows: "x" },
+    { windows: null },
+    { nights: { date: "2030-01-01" } },
+    { fees: "none" },
+    { units: 3 },
+    { mediaIds: "not-a-list" },
+    { items: [{ name: "Suite", fees: { a: 1 } }] },
+    { windows: ["not-an-object"] },
+  ];
+  for (const payload of cases) {
+    let created = false;
+    const response = await handleManageStayInventory(
+      new Request("http://local/manage-stay-inventory", {
+        method: "POST",
+        headers: { authorization: "Bearer test-token" },
+        body: JSON.stringify({
+          action: "upsert_place_windows",
+          venueId,
+          payload,
+        }),
+      }),
+      {
+        createRpcClient: () => {
+          created = true;
+          throw new Error("must not create");
+        },
+      },
+    );
+    const body = await response.json();
+    assertEquals(response.status, 422, JSON.stringify(payload));
+    assertEquals(body.code, "stay_invalid_payload");
+    assertEquals(body.message, "stay invalid payload");
+    assertEquals(created, false);
+  }
+  // Lists (and no payload at all) still reach the RPC.
+  let calls = 0;
+  for (
+    const payload of [
+      { windows: [] },
+      { windows: [{ windowId: venueId }] },
+      undefined,
+    ]
+  ) {
+    const response = await handleManageStayInventory(
+      new Request("http://local/manage-stay-inventory", {
+        method: "POST",
+        headers: { authorization: "Bearer test-token" },
+        body: JSON.stringify({
+          action: "upsert_place_windows",
+          venueId,
+          payload,
+        }),
+      }),
+      {
+        createRpcClient: () => ({
+          rpc: () => {
+            calls += 1;
+            return Promise.resolve({ data: { ok: true }, error: null });
+          },
+        }),
+      },
+    );
+    assertEquals(response.status, 200);
+  }
+  assertEquals(calls, 3);
+});

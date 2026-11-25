@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  Linking,
   Platform,
   Modal,
   Pressable,
@@ -17,6 +18,10 @@ import { colors, fontWeights } from "../../constants/designSystem";
 import { s } from "../../utils/responsive";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import { RecommendationsProvider } from "../../contexts/RecommendationsContext";
+import {
+  closeSheetOnIncomingLink,
+  incomingLinkOpensPage,
+} from "../deckCard/deckNavigation";
 
 interface CollabDeckSheetProps {
   visible: boolean;
@@ -138,6 +143,25 @@ export function CollabDeckSheet({
   React.useEffect(() => {
     if (!visible && Platform.OS !== "ios") flushAfterClose();
   }, [visible, flushAfterClose]);
+  /*
+    #4490 W3 fix 4 (W3-N33) — a link opened while the shared deck is up (a
+    venue, an event or a purchase link from a message, a QR scan, a
+    notification): expo-router opens its page, but under this full-screen
+    modal. While the deck is visible, a link that opens a page closes it, the
+    same way the card sheet does (W3-N29); links the shell handles ("/") leave
+    the deck alone.
+  */
+  React.useEffect(() => {
+    if (!visible) return undefined;
+    return closeSheetOnIncomingLink(
+      Linking,
+      () => {
+        setShowPrefsSheet(false);
+        onClose();
+      },
+      incomingLinkOpensPage,
+    );
+  }, [visible, onClose]);
 
   if (!sessionId) {
     return null;

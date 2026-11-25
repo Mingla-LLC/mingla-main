@@ -73,7 +73,26 @@ jest.mock("../../../hooks/useVenueWaitlist", () => ({
   useNotifyWaitlist: () => ({ mutate: () => undefined, isPending: false, isError: false }),
   useConvertWaitlist: () => ({ mutate: () => undefined, isPending: false, isError: false }),
   useMarkWaitlistLost: () => ({ mutate: () => undefined, isPending: false, isError: false }),
+  // #4490 P5 — staff tell a waiting guest a table is ready.
+  useOfferWaitlistTable: () => ({ mutate: () => undefined, isPending: false, isError: false }),
 }));
+// #4490 — the Waitlist reads the venue's features (guest join switch), edit
+// access and spaces through React Query hooks; this suite renders with no
+// QueryClient, so they are stubbed like every other data hook here: no
+// features answer yet, no spaces, no venue-scoped grant.
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({ data: undefined, isLoading: false, isError: false }),
+  useSetVenueFeature: () => ({ mutate: () => undefined, isPending: false, isError: false }),
+}));
+jest.mock("../../../hooks/useVenueSpaces", () => ({
+  useVenueSpaces: () => ({ data: [], isLoading: false, isError: false }),
+}));
+jest.mock("../../../hooks/useMyVenueAccess", () => ({
+  useMyVenueAccess: () => ({ data: undefined, isFetched: true, isLoading: false, isError: false }),
+}));
+// #4490 — the Waitlist's status pill pulls in react-native-reanimated, like
+// Button below; a waiting guest's pill is not on the empty-state path.
+jest.mock("../../ui/Pill", () => ({ Pill: () => null }));
 jest.mock("../../../hooks/useMenus", () => ({
   useBrandMenus: () => ({ data: [], isLoading: false, isError: false }),
   useUpsertMenu: () => ({ mutate: () => undefined, isPending: false, isError: false }),

@@ -48,6 +48,11 @@ const NOTE_KIND: Record<PurchaseKind, string> = {
   reservation: "reservation",
   stay: "stay",
   venue_order: "venue_order",
+  // #4490 Explorer W2 — venue items are never shared (decision 4); the
+  // owner-side note reads as a booking if one ever carries a flag.
+  venue_booking: "reservation",
+  venue_membership: "reservation",
+  venue_waitlist: "reservation",
 };
 
 export function PurchaseShareNote({

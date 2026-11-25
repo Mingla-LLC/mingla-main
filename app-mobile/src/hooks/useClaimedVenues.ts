@@ -1,22 +1,30 @@
 import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
+import {
+  parseDeckVenueFacts,
+  type DeckVenueFacts,
+  type DeckVenuePriceFrom,
+} from "@mingla/brand-rendering/deckVenueChip";
+import type { VenueFeatureKey } from "@mingla/brand-rendering/venueFeaturePage";
 
 import { supabase } from "../services/supabase";
 
 /**
  * #4347 wave 1 — which deck places are CLAIMED host venues, and where their
- * public venue page lives.
+ * public venue page lives. #4490 Explorer W3 — and what each venue card says.
  *
- * THE SIGNAL. `venue_public_view` is the existing anon-granted view the brand
- * page already reads (`useBrandBySlug.getPublicBrandVenues`). It lists ONLY
- * `venue_listings` rows with `claim_status = 'verified'`, and carries the
- * `place_pool_id`, the venue `slug` and the brand's `brand_slug` / `brand_name`
- * — every field the host chip and the `/b/{brandSlug}/v/{venueSlug}` route need.
- * Nothing on the deck payload says "claimed", and `pg_venue_reservable_for_place`
- * is one RPC per place (and only knows reservable brands), so it is not used.
+ * THE SIGNAL. `pg_deck_venue_facts` (SECURITY DEFINER, granted to anon and
+ * authenticated, at most 100 ids) answers one row per claimed place of a
+ * VERIFIED venue of a live, non-internal brand (I-4174-EXPLORER-EXCLUDES-INTERNAL-BRANDS), carrying the card
+ * facts from the single server owner `issue_4490_venue_card_facts`: the slugs
+ * and names the `/b/{brandSlug}/v/{venueSlug}` route needs, the switched-on
+ * features, whether anything is bookable, the live "from" price per feature
+ * and whether something is on today. It replaced the `venue_public_view` read
+ * (rule 8: replaced, not duplicated). A venue of an internal brand stops
+ * showing as claimed on the deck (intended, #4174).
  *
  * NOT N+1. The deck's place ids are read in fixed chunks of `CHUNK` with one
- * `.in()` per chunk, keyed by the chunk's ids. The chunks only change when the
+ * RPC per chunk, keyed by the chunk's ids. The chunks only change when the
  * deck itself reloads, so a session of swiping costs a handful of reads per
  * deck load, never one per card. A failed chunk degrades to "not claimed" for
  * its cards (no chip, the pool sheet opens as before): the venue page is an
@@ -27,6 +35,16 @@ export interface ClaimedVenue {
   readonly brandSlug: string;
   readonly brandName: string;
   readonly venueSlug: string;
+  readonly venueId: string;
+  readonly venueName: string;
+  readonly venueType: string | null;
+  readonly features: readonly VenueFeatureKey[];
+  readonly isBookable: boolean;
+  readonly priceFrom: DeckVenuePriceFrom;
+  readonly currency: { readonly code: string; readonly exponent: number };
+  readonly onToday: { readonly startsAt: string | null; readonly live: boolean };
+  /** The whole parsed row, for `deckVenueChips`. */
+  readonly facts: DeckVenueFacts;
 }
 
 const UUID_RE =
@@ -41,9 +59,7 @@ export const claimedVenueKeys = {
 
 interface ClaimedVenueRow {
   place_pool_id: string | null;
-  slug: string | null;
-  brand_slug: string | null;
-  brand_name: string | null;
+  facts: unknown;
 }
 
 /** The distinct, valid place ids of a deck, in fixed chunks. Pure. */
@@ -68,31 +84,37 @@ export function claimedVenueChunks(
 /** A row the route can use: every slug present. Anything less is not claimed. */
 export function toClaimedVenue(row: ClaimedVenueRow): ClaimedVenue | null {
   const placePoolId = row.place_pool_id;
-  const venueSlug = typeof row.slug === "string" ? row.slug.trim() : "";
-  const brandSlug = typeof row.brand_slug === "string" ? row.brand_slug.trim() : "";
-  if (typeof placePoolId !== "string" || venueSlug.length === 0 || brandSlug.length === 0) {
-    return null;
-  }
+  if (typeof placePoolId !== "string") return null;
+  const facts = parseDeckVenueFacts(row.facts);
+  if (facts === null) return null;
   return {
     placePoolId,
-    brandSlug,
-    venueSlug,
-    brandName: typeof row.brand_name === "string" ? row.brand_name.trim() : "",
+    brandSlug: facts.brandSlug,
+    venueSlug: facts.venueSlug,
+    brandName: facts.brandName,
+    venueId: facts.venueId,
+    venueName: facts.venueName,
+    venueType: facts.venueType,
+    features: facts.features,
+    isBookable: facts.isBookable,
+    priceFrom: facts.priceFrom,
+    currency: { code: facts.currencyCode, exponent: facts.minorUnitExponent },
+    onToday: { startsAt: facts.onTodayStartsAt, live: facts.onTodayLive },
+    facts,
   };
 }
 
 async function fetchClaimedVenueChunk(ids: readonly string[]): Promise<ClaimedVenue[]> {
-  const { data, error } = await supabase
-    .from("venue_public_view")
-    .select("place_pool_id, slug, brand_slug, brand_name")
-    .in("place_pool_id", ids as string[]);
+  const { data, error } = await supabase.rpc("pg_deck_venue_facts", {
+    p_place_ids: ids as string[],
+  });
   if (error !== null) {
     // Surfaced, not swallowed: the cards degrade to "not claimed" (the pool
     // sheet still opens), and the reason is in the log.
-    console.warn("[useClaimedVenues] venue_public_view read failed:", error.message);
+    console.warn("[useClaimedVenues] pg_deck_venue_facts read failed:", error.message);
     throw error;
   }
-  return ((data ?? []) as ClaimedVenueRow[])
+  return ((Array.isArray(data) ? data : []) as ClaimedVenueRow[])
     .map(toClaimedVenue)
     .filter((venue): venue is ClaimedVenue => venue !== null);
 }

@@ -1,3 +1,11 @@
+-- TEST-MOD-APPROVED #4490 (08-O3 part A): the #2099 pending-venue seal moved to 1af08ee1… (the Till pay-link
+-- texts lane, 20281203574490, has a venue_id column); pin owner 20281203594490.
+-- TEST-MOD-APPROVED #4490 (08-O5 part A): the #2099 pending-venue seal moved to 7523789e… (the PIN lanes,
+-- 20281203684490, have venue_id columns); pin owner 20281203694490.
+-- TEST-MOD-APPROVED #4490 (08-O5 fix 1): the #2099 pending-venue seal moved to ddb56bf5… (the opening hours
+-- history, 20281203734490, has a venue_id column); pin owner 20281203744490.
+-- TEST-MOD-APPROVED #4490 (08-O5 part B): the #2099 pending-venue seal moved to ea9536d8… (the daily close
+-- lanes, 20281203704490, have venue_id columns); pin owner 20281203714490.
 -- Tester-owned #2855 adversarial transaction fragment.
 -- A schema hash review approves only the lane's existence, never nonzero use:
 -- every reviewed lane remains disallowed and must be empty before correction.
@@ -80,7 +88,9 @@ BEGIN
      OR p->>'code'<>'DEPENDENCY_NOT_EMPTY'
      OR NOT COALESCE(
        p->>'schema_fingerprint' IN (
-         '957efbc24ad78cc3ae5e0d5bf79162c8caa6b36c39d215721dde27b47d07a47a'
+         -- [TEST-MOD-APPROVED #4490] guest list repin (20281203424490): the guest list lanes (20281203394490) advance the reviewed pin.
+         -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20281203524490): the Till lanes (20281203504490) advance the reviewed pin.
+         'ddb56bf5b2b14f26485be131f6ab0c614d03df9dd493d2332069f16851664464'
        ),
        false
      )
@@ -120,7 +130,8 @@ BEGIN
   IF p->>'ok'<>'true' OR p->>'eligible'<>'true' OR p->>'code' IS NOT NULL
      OR NOT COALESCE(
        p->>'schema_fingerprint' IN (
-         '957efbc24ad78cc3ae5e0d5bf79162c8caa6b36c39d215721dde27b47d07a47a'
+         -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20281203524490): the Till lanes (20281203504490) advance the reviewed pin.
+         'ddb56bf5b2b14f26485be131f6ab0c614d03df9dd493d2332069f16851664464'
        ),
        false
      )

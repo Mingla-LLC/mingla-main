@@ -72,6 +72,7 @@ interface ItemRow {
   item_name_at_order: string;
   quantity: number;
   notes: string | null;
+  prep_state?: string | null;
   venue_order_item_modifiers: ModifierRow[] | null;
 }
 
@@ -98,13 +99,15 @@ interface OrderRow {
   refund_requested_at: string | null;
   refund_decision: "approved" | "declined" | null;
   escalation_level: number;
+  /** #4490 O5 part C: metadata->sold_out_after_payment (a JSON path, any database). */
+  sold_out?: boolean | null;
   venue_order_items: ItemRow[] | null;
 }
 
 // A single string literal — supabase-js infers the row shape from the LITERAL
 // type of the select string, and a `+` concatenation erases it.
 const ORDER_COLUMNS =
-  "id, brand_id, venue_id, session_id, fulfillment_status, payment_status, source, spot_label_at_order, pickup_code, zone_at_order, buyer_name, currency, total_cents, tip_cents, created_at, acknowledged_at, acknowledged_by_user_id, ready_at, delivered_at, refund_requested_at, refund_decision, escalation_level, venue_order_items(id, line_no, item_name_at_order, quantity, notes, venue_order_item_modifiers(modifier_name_at_order))";
+  "id, brand_id, venue_id, session_id, fulfillment_status, payment_status, source, spot_label_at_order, pickup_code, zone_at_order, buyer_name, currency, total_cents, tip_cents, created_at, acknowledged_at, acknowledged_by_user_id, ready_at, delivered_at, refund_requested_at, refund_decision, escalation_level, sold_out:metadata->sold_out_after_payment, venue_order_items(id, line_no, item_name_at_order, quantity, notes, prep_state, venue_order_item_modifiers(modifier_name_at_order))";
 
 const mapLine = (row: ItemRow): VenueOrderLine => ({
   id: row.id,
@@ -115,11 +118,15 @@ const mapLine = (row: ItemRow): VenueOrderLine => ({
   modifiers: (row.venue_order_item_modifiers ?? []).map(
     (m) => m.modifier_name_at_order,
   ),
+  voided: row.prep_state === "voided",
 });
 
 const mapRow = (row: OrderRow): VenueOrder => {
+  // #4490 O5 part C: a voided line (a sold-out line swapped or refunded) is
+  // not part of what the kitchen makes.
   const lines = (row.venue_order_items ?? [])
     .map(mapLine)
+    .filter((l) => l.voided !== true)
     .sort((a, b) => a.lineNo - b.lineNo);
   return {
     id: row.id,
@@ -146,6 +153,7 @@ const mapRow = (row: OrderRow): VenueOrder => {
     refundRequestedAt: row.refund_requested_at,
     refundDecision: row.refund_decision,
     escalationLevel: Number(row.escalation_level ?? 0),
+    soldOutAfterPayment: row.sold_out === true,
   };
 };
 
@@ -158,6 +166,12 @@ export const venueOrdersKeys = {
     venueId: string,
   ): readonly ["venueOrders", string, string] =>
     ["venueOrders", brandId, venueId] as const,
+  /** #4490 spec 08 O3: a kitchen or bar screen's board (useStationBoard). */
+  station: (
+    venueId: string,
+    station: string,
+  ): readonly ["venueOrders", "station", string, string] =>
+    ["venueOrders", "station", venueId, station] as const,
 };
 
 export const fetchVenueOrders = async (
@@ -171,7 +185,14 @@ export const fetchVenueOrders = async (
     .from("venue_orders")
     .select(ORDER_COLUMNS)
     .eq("brand_id", brandId)
-    .gte("created_at", since);
+    .gte("created_at", since)
+    // #4490 spec 08 §11 T2: the queue lists only orders a kitchen should make:
+    // never a held Till round or a Till payment carrier, never a tab settlement,
+    // and a guest checkout only once it is paid (or refunded) — an unpaid or
+    // failed online checkout is not an order yet (N146).
+    .not("fulfillment_status", "in", "(held,payment_only)")
+    .or("metadata->>tab_settlement.is.null,metadata->>tab_settlement.neq.true")
+    .or("money_path.eq.venue_collected,payment_status.in.(paid,partial_refund,refunded)");
   if (venueId !== null) query = query.eq("venue_id", venueId);
   const { data, error } = await query
     .order("created_at", { ascending: false })

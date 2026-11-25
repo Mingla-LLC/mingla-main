@@ -32,6 +32,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "./host/venueHostOwner";
 import {
   AccessibilityInfo,
   AppState,
@@ -78,6 +79,7 @@ import {
   type MenuItemReorderIntent,
 } from "../../hooks/menuItemReorder";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
+import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { Menu, MenuItem } from "../../services/menusService";
 import { randomId } from "../../utils/randomId";
 import { MenuCategorySheet } from "./MenuCategorySheet";
@@ -91,6 +93,18 @@ import {
   type MenuTextSaveFailure,
 } from "./menuTextValidation";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
+// #4490 spec 08 O5 part C — stock counts (shown only while the Till is
+// released; a venue that never sets a count sees nothing new).
+import { useTillReleased } from "../../hooks/useTillReleased";
+import type { MenuStockState } from "./stock/MenuStockLoader";
+import { stockPill } from "./stock/stockModel";
+
+/** "19:58" on this device's clock (no Intl parts; rule 10 is money only). */
+function clockTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 const STACKED_ITEM_ROW_WIDTH = 720;
@@ -135,6 +149,19 @@ const LazyVenueSpotsSheet = React.lazy(async () => {
   const mod = await import("./VenueSpotsSheet");
   return { default: mod.VenueSpotsSheet };
 });
+// #4490 — the ordering-mode card and the stock reads load the same way: their
+// hooks reach the auth context and the Supabase client at module scope, and
+// each renders only for a real venue (and stock only while the Till is
+// released), so a menu with no venue never loads them.
+const LazyOrderingModeCard = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).OrderingModeCard };
+});
+const LazyMenuStockLoader = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).MenuStockLoader };
+});
+const LazyMenuItemStockSection = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).MenuItemStockSection };
+});
 
 export interface VenueMenuModuleProps {
   brandId: string | null;
@@ -172,6 +199,13 @@ export function VenueMenuModule({
   // The stored value is untouched.
   const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
 
+  // #4490 O5 part C: counts are read only while the Till is released; the
+  // Stock section shows where the Till is on for this venue (or the item is
+  // still counted, so a count can always be cleared).
+  const tillReleased = useTillReleased();
+  const [stockState, setStockState] = useState<MenuStockState>({ tillOnHere: false, stockById: undefined });
+  const tillOnHere = tillReleased && venueId !== null && stockState.tillOnHere;
+  const stockById = tillReleased ? stockState.stockById : undefined;
   const menusQuery = useBrandMenus(brandId, venueId);
   const refetchMenus = menusQuery.refetch;
   const menus = useMemo(() => menusQuery.data ?? [], [menusQuery.data]);
@@ -216,6 +250,14 @@ export function VenueMenuModule({
   // #1789 — the row currently being 86'd, so one tap cannot fire twice.
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
   const [spotsSheetOpen, setSpotsSheetOpen] = useState<boolean>(false);
+  // #4490 fix 2 (N80): the sheet's code loads ahead, so "QR spots & printing"
+  // opens at once (it took seconds with no sign of life on a slow load).
+  useEffect(() => {
+    void import("./VenueSpotsSheet").catch(() => undefined);
+  }, []);
+  const suiteSelectModule = useVenueSuiteStore((s) => s.selectModule);
+  const suiteRequestSpaces = useVenueSuiteStore((s) => s.requestSpaces);
+  const suiteModules = useVenueSuiteStore((s) => s.visibleModules);
   const [itemReorderFeedback, setItemReorderFeedback] =
     useState<MenuItemReorderFeedback | null>(null);
   const activeItemReorderRef = useRef<string | null>(null);
@@ -408,9 +450,15 @@ export function VenueMenuModule({
     setItemSaveFailure(null);
   }, [optionsSaving, optionsDirty]);
 
+  // #4490 N19: one item save at a time. A second tap (or a second "Add item"
+  // opened while the first save was still going) used to call mutate again,
+  // and react-query only runs the per-call callbacks of the LAST call, so the
+  // first item could vanish with no error.
+  const itemSaveInFlight = useRef(false);
   const handleSaveItem = useCallback(
     (input: MenuItemSheetSaveInput): void => {
       if (itemSheetMenuId === null) return;
+      if (itemSaveInFlight.current || upsertItem.isPending) return;
       setSaveError(false);
       setItemSaveFailure(null);
       // #3645 — `menu_items.currency` cannot be empty, and `currency` here is
@@ -433,6 +481,7 @@ export function VenueMenuModule({
         editingItem !== null
           ? editingItem.sortOrder
           : (parentMenu?.items.length ?? 0);
+      itemSaveInFlight.current = true;
       upsertItem.mutate(
         {
           id: editingItem?.id,
@@ -457,6 +506,9 @@ export function VenueMenuModule({
           },
           onError: (error) =>
             setItemSaveFailure(classifyMenuTextSaveFailure(error, "item")),
+          onSettled: () => {
+            itemSaveInFlight.current = false;
+          },
         },
       );
     },
@@ -997,6 +1049,13 @@ export function VenueMenuModule({
         {visibilityCopy.intro}
       </Text>
 
+      {/* #4490 07-D — how guests get their order (table, counter or both). */}
+      {venueId !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyOrderingModeCard venueId={venueId} canMutate={canMutate} />
+        </React.Suspense>
+      ) : null}
+
       {/*
         #1789 (#1767 Phase 1) — the way into the Spots inventory. It lives here
         because the Menu module is the one command-band module every venue has,
@@ -1142,6 +1201,23 @@ export function VenueMenuModule({
                   ) : (
                     <Text style={styles.itemPrice}>—</Text>
                   )}
+                  {(() => {
+                    const stock = stockById?.get(item.id);
+                    const pill = stock === undefined ? null : stockPill(stock.stockCount, stock.warnAt);
+                    // Plain text, not the kit Pill: the row stays free of the
+                    // animated pill's native chain (the menu's render proofs).
+                    return pill === null ? null : (
+                      <Text
+                        style={[
+                          styles.stockBadge,
+                          pill.tone === "err" ? styles.stockBadgeOut : pill.tone === "warn" ? styles.stockBadgeWarn : null,
+                        ]}
+                        testID={`venue-menu-item-stock-${item.id}`}
+                      >
+                        {pill.label}
+                      </Text>
+                    );
+                  })()}
                   {/*
                     #1789 (SPEC #1788 P-15) — ONE-TAP 86, on the row.
                     The flag always existed; reaching it took ~5 taps behind the
@@ -1282,11 +1358,15 @@ export function VenueMenuModule({
           {canMutate ? (
             <Pressable
               onPress={() => openAddItem(menu.id)}
+              // #4490 N19: waits for the previous item save to finish.
+              disabled={upsertItem.isPending}
               accessibilityRole="button"
               accessibilityLabel={`Add item to ${menu.name}`}
+              accessibilityState={{ disabled: upsertItem.isPending }}
               style={({ pressed }) => [
                 styles.addItemRow,
                 pressed && styles.pressed,
+                upsertItem.isPending && styles.addItemBusy,
               ]}
               testID={`venue-menu-add-item-${menu.id}`}
             >
@@ -1326,16 +1406,39 @@ export function VenueMenuModule({
         canDelete={canMutate}
       />
       {spotsSheetOpen ? (
-        <React.Suspense fallback={null}>
+        <React.Suspense
+          fallback={
+            <Text style={styles.spotsLoading} accessibilityLiveRegion="polite" testID="venue-spots-opening">
+              Opening QR spots…
+            </Text>
+          }
+        >
           <LazyVenueSpotsSheet
+            venueId={venueId ?? null}
             visible
             onClose={() => setSpotsSheetOpen(false)}
+            onOpenOrderingMode={
+              venueId !== null ? () => setSpotsSheetOpen(false) : undefined
+            }
             brandId={brandId}
             canMutate={canMutate}
+            onOpenSpaces={
+              venueId !== null && suiteModules.includes("spaces")
+                ? () => {
+                    suiteRequestSpaces(venueId);
+                    suiteSelectModule?.("spaces");
+                  }
+                : undefined
+            }
           />
         </React.Suspense>
       ) : null}
 
+      {tillReleased && venueId !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyMenuStockLoader brandId={brandId} venueId={venueId} onChange={setStockState} />
+        </React.Suspense>
+      ) : null}
       <MenuItemSheet
         visible={itemSheetOpen}
         onClose={closeItemSheet}
@@ -1353,6 +1456,23 @@ export function VenueMenuModule({
         onDelete={canMutate ? handleDeleteItem : undefined}
         deleting={deleteItem.isPending}
         canDelete={canMutate}
+        stockSection={
+          itemSheetOpen && editingItem !== null && venueId !== null &&
+          (tillOnHere || stockById?.has(editingItem.id) === true) ? (
+            <React.Suspense fallback={null}>
+              <LazyMenuItemStockSection
+                brandId={brandId}
+                venueId={venueId}
+                menuItemId={editingItem.id}
+                stockCount={stockById?.get(editingItem.id)?.stockCount ?? null}
+                stockWarnAt={stockById?.get(editingItem.id)?.warnAt ?? null}
+                stockOutAt={stockById?.get(editingItem.id)?.outAt ?? null}
+                canMutate={canMutate}
+                formatTime={clockTime}
+              />
+            </React.Suspense>
+          ) : undefined
+        }
         optionsSection={
           itemSheetOpen ? (
             <React.Suspense fallback={null}>
@@ -1454,6 +1574,8 @@ function TextControl({
 }
 
 const styles = StyleSheet.create({
+  spotsLoading: { ...type.caption, color: color.text3, textAlign: "center", paddingVertical: space[2] },
+  addItemBusy: { opacity: 0.5 },
   host: {
     paddingHorizontal: space[4],
     paddingTop: space[4],
@@ -1548,6 +1670,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     flexWrap: "wrap",
     rowGap: space[1],
+  },
+  // #4490 O5 part C: "{n} left" / "Sold out" beside the price.
+  stockBadge: {
+    ...type.caption,
+    color: color.text2,
+  },
+  stockBadgeWarn: {
+    color: color.warningText,
+  },
+  stockBadgeOut: {
+    color: color.errorText,
   },
   itemStatusGroup: {
     flexDirection: "row",

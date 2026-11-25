@@ -24,8 +24,10 @@ import React, {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { loadVenueHostScreens } from "./host/venueHostOwner";
 import {
   ActivityIndicator,
   Pressable,
@@ -46,16 +48,19 @@ import {
 } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useVenueListing } from "../../hooks/useVenueListings";
+import { useTillReleased } from "../../hooks/useTillReleased";
+import { useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { tillSettingsHref } from "./close/closeRoute";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrandHours, useUpsertBrandHours } from "../../hooks/useBrandHours";
 import { useBrandPlaceAuthoringContext } from "../../hooks/useBrandPlacePipelineState";
 import {
-  useSetReservationsEnabled,
   useUpdateReservationFee,
   useVenueReservationSettings,
 } from "../../hooks/useVenueReservationSettings";
 import type { BrandHourEntry } from "../../types/brand";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { hoursWeekIssue, sameHoursWeek } from "../../utils/venueBrandHours";
 import {
   formatCurrency,
   majorFromMinor,
@@ -78,6 +83,7 @@ import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
+import { Tabs } from "../ui/Tabs";
 import { SaveCommitBar } from "./SaveCommitBar";
 import {
   brandPayoutReadiness,
@@ -87,6 +93,26 @@ import {
 import type { VenueModuleLeaveHandle } from "./venueLeaveContract";
 import { venueScrollBottomPad } from "./venueShellScroll";
 import { VenueDetailsEditor } from "./VenueDetailsEditor";
+
+/**
+ * #4490 — Settings › Venue type and features loads on demand (switches,
+ * dependency confirms, the type picker): Settings itself is eager in the shell.
+ */
+const LazyVenueTypeAndFeaturesPanel = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).VenueTypeAndFeaturesPanel };
+});
+const LazyBookingTermsSection = React.lazy(async () => {
+  return { default: (await loadVenueHostScreens()).BookingTermsSection };
+});
+
+/** #4490 — Settings tabs (spec 02 §3 `set`). */
+type SettingsTab = "type" | "terms" | "details" | "team";
+const SETTINGS_TABS: ReadonlyArray<{ key: SettingsTab; label: string }> = [
+  { key: "type", label: "Venue type and features" },
+  { key: "terms", label: "Terms and tax" },
+  { key: "details", label: "Details and photos" },
+  { key: "team", label: "Team" },
+];
 
 const ItemDiscountControls = React.lazy(() =>
   import("../discounts/ItemDiscountControls").then((module) => ({
@@ -129,19 +155,33 @@ export interface VenueSettingsModuleProps {
   venueId?: string | null;
   /** Route the operator to payout onboarding when the paid-fee gate blocks. */
   testID?: string;
+  /**
+   * #4490 — the venue uses the feature layout, where opening hours are edited
+   * in Availability & pricing; Settings then links there instead of holding a
+   * second editor.
+   */
+  hoursLiveInAvailability?: boolean;
 }
 
 export const VenueSettingsModule = forwardRef<
   VenueSettingsLeaveHandle,
   VenueSettingsModuleProps
 >(function VenueSettingsModule(
-  { brandId, venueId = null, testID },
+  { brandId, venueId = null, testID, hoursLiveInAvailability = false },
   forwardedRef,
 ): React.ReactElement {
   const router = useRouter();
+  const [tab, setTab] = useState<SettingsTab>("type");
+  const selectModule = useVenueSuiteStore((s) => s.selectModule);
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
+  // #4490 spec 08 O5 part B — Settings › Selling in person (brand admins and
+  // above, with the Till released and Sell in person on at this venue).
+  const tillReleased = useTillReleased();
+  const venueFeatures = useVenueFeatures(brandId, venueId);
+  const sellingInPerson = tillReleased && venueId !== null && rank >= BRAND_ROLE_RANK.brand_admin
+    && venueFeatures.data?.features.till.enabled === true;
   const setDirtyModule = useVenueSuiteStore((s) => s.setDirtyModule);
   // META-ORCH-1255 — the place pointer lives on the VENUE row (one owner per
   // truth); brands.place_pool_id is legacy-inert.
@@ -152,7 +192,6 @@ export const VenueSettingsModule = forwardRef<
   const settings = settingsQuery.data ?? null;
   const reservationsEnabled = settings?.reservationsEnabled ?? false;
 
-  const setEnabled = useSetReservationsEnabled(brandId, venueId);
   const updateFee = useUpdateReservationFee(brandId, venueId);
 
   const currency = normalizeCurrency(brand?.defaultCurrency);
@@ -219,25 +258,6 @@ export const VenueSettingsModule = forwardRef<
     "idle" | "saving" | "saved" | "failed"
   >("idle");
   const [switchError, setSwitchError] = useState<string | null>(null);
-
-  const handleToggleReservations = useCallback(
-    (next: boolean): void => {
-      if (!canMutate) return;
-      setSwitchStatus("saving");
-      setSwitchError(null);
-      setEnabled.mutate(next, {
-        onSuccess: () => {
-          setSwitchStatus("saved");
-          setTimeout(() => setSwitchStatus("idle"), 1500);
-        },
-        onError: () => {
-          setSwitchStatus("failed");
-          setSwitchError("Couldn't turn this on. Try again.");
-        },
-      });
-    },
-    [canMutate, setEnabled],
-  );
 
   const handleToggleFee = useCallback(
     (next: boolean): void => {
@@ -308,16 +328,25 @@ export const VenueSettingsModule = forwardRef<
   // Hydrate the local draft from server data; re-sync when server data changes
   // (and the user has no in-flight edits).
   const serverHours = hoursQuery.data ?? null;
+  // #4490 click-test E1 — the draft follows every server read until the host
+  // edits here. Before, it copied the FIRST read only: hours saved elsewhere
+  // (Availability & pricing, from its leave dialog) landed after Settings had
+  // mounted on the stale cache, and Settings then showed "1 unsaved change ·
+  // Opening hours" for hours that were already saved.
+  const hoursEditedRef = useRef(false);
   useEffect(() => {
-    if (serverHours !== null && hoursDraft === null) {
+    if (serverHours === null) return;
+    if (hoursDraft === null || (!hoursEditedRef.current && !sameHoursWeek(hoursDraft, serverHours))) {
       setHoursDraft(serverHours);
     }
   }, [serverHours, hoursDraft]);
 
   const hoursDirty = useMemo<boolean>(() => {
+    // In the feature layout hours are edited in Availability & pricing only.
+    if (hoursLiveInAvailability) return false;
     if (hoursDraft === null || serverHours === null) return false;
-    return JSON.stringify(hoursDraft) !== JSON.stringify(serverHours);
-  }, [hoursDraft, serverHours]);
+    return !sameHoursWeek(hoursDraft, serverHours);
+  }, [hoursDraft, hoursLiveInAvailability, serverHours]);
 
   const hoursInvalid = useMemo<boolean>(() => {
     if (hoursDraft === null) return false;
@@ -331,10 +360,12 @@ export const VenueSettingsModule = forwardRef<
       // claimed late-night venue can SAVE its real hours post-approve.
       if (o === c) return true;
     }
-    return false;
+    // #4490 — extra windows must be complete and must not overlap.
+    return hoursWeekIssue(hoursDraft) !== null;
   }, [hoursDraft]);
 
   const handleHoursChange = useCallback((next: BrandHourEntry[]): void => {
+    hoursEditedRef.current = true;
     setHoursDraft(next);
     setHoursSaved(false);
     setHoursError(false);
@@ -364,6 +395,7 @@ export const VenueSettingsModule = forwardRef<
         new Promise((resolve, reject) => {
           upsertHours.mutate(hoursDraft, {
             onSuccess: () => {
+              hoursEditedRef.current = false;
               setHoursDraft(null);
               resolve();
             },
@@ -431,6 +463,7 @@ export const VenueSettingsModule = forwardRef<
       isValid: () => settingsValid,
       save: handleSaveSettings,
       discard: () => {
+        hoursEditedRef.current = false;
         setHoursDraft(serverHours);
         setHoursError(false);
         if (feeAmountCents > 0) {
@@ -504,49 +537,65 @@ export const VenueSettingsModule = forwardRef<
         showsVerticalScrollIndicator={false}
         testID="venue-settings-scroll"
       >
-      {/* 1 — Reservations (canonical toggle home). */}
-      <Section title="Reservations">
-        <View style={styles.rowBetween}>
-          <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Take table reservations</Text>
-            <Text style={styles.rowSub}>
-              Turn on the reservation suite for this venue. Free to switch on.
-            </Text>
-          </View>
-          <BrandSwitch
-            value={reservationsEnabled}
-            onValueChange={handleToggleReservations}
-            disabled={!canMutate || setEnabled.isPending}
-            accessibilityLabel="Reservations toggle"
-            testID="venue-settings-reservations-toggle"
-          />
-        </View>
-        {switchStatus === "saving" ? (
-          <Text style={styles.rowSub} accessibilityLiveRegion="polite">
-            Saving…
-          </Text>
-        ) : null}
-        {switchStatus === "saved" ? (
-          <Text
-            style={styles.hoursSaved}
-            accessibilityLiveRegion="polite"
-            testID="venue-settings-switch-saved"
-          >
-            Saved
-          </Text>
-        ) : null}
-        {switchStatus === "failed" && switchError !== null ? (
-          <Text
-            style={styles.hoursError}
-            accessibilityLiveRegion="polite"
-            testID="venue-settings-switch-error"
-          >
-            {switchError}
-          </Text>
-        ) : null}
-      </Section>
+      {/* #4490 — Settings tabs. The old "Take table reservations" switch is
+          now the Table reservations feature (Venue type and features). */}
+      <Tabs
+        items={SETTINGS_TABS}
+        value={tab}
+        onChange={setTab}
+        testID="venue-settings-tabs"
+      />
 
-      {reservationsEnabled ? (
+      {tab === "type" ? (
+        <React.Suspense fallback={<ActivityIndicator color={color.accent} />}>
+          <LazyVenueTypeAndFeaturesPanel brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      ) : null}
+      {tab === "type" && sellingInPerson && venueId !== null ? (
+        <Section title="Selling in person">
+          <Text style={styles.rowSub}>
+            Tips, paper for printing, station screens and target times, auto-lock and the receipt footer for the Till.
+          </Text>
+          <Button
+            label="Open Selling in person"
+            onPress={() => router.push(tillSettingsHref(venueId) as never)}
+            variant="secondary"
+            size="sm"
+            style={styles.inlineBtn}
+            testID="venue-settings-selling-in-person"
+          />
+        </Section>
+      ) : null}
+
+      {/* #4490 P2-4 — venue-level terms every offer uses (VAT, hold, horizon, pause). */}
+      {tab === "terms" ? (
+        <React.Suspense fallback={null}>
+          <LazyBookingTermsSection brandId={brandId} venueId={venueId} canEdit={canMutate} />
+        </React.Suspense>
+      ) : null}
+
+      {tab === "terms" && !reservationsEnabled ? (
+        <Section title="Table reservations">
+          <Text style={styles.rowSub}>
+            Fees and cancellation terms for table bookings show here when Table
+            reservations is on.
+          </Text>
+          <Button
+            label="Go to Venue type and features"
+            onPress={() => setTab("type")}
+            variant="secondary"
+            size="sm"
+            style={styles.inlineBtn}
+            testID="venue-settings-terms-go-features"
+          />
+        </Section>
+      ) : null}
+
+      {tab === "terms" && reservationsEnabled ? (
+        <Text style={styles.bandCaption}>TABLE RESERVATIONS</Text>
+      ) : null}
+
+      {tab === "terms" && reservationsEnabled ? (
         <>
           {/* 2 — Reservation fee (optional; free default). NO billing/tax form. */}
           <Section title="Reservation fee">
@@ -702,7 +751,8 @@ export const VenueSettingsModule = forwardRef<
       ) : null}
 
       {/* ── Band 2 — VENUE PROFILE (the editable home, ORCH-1186-A). ───────── */}
-      <Text style={styles.bandCaption}>VENUE PROFILE</Text>
+      {tab === "details" ? (
+      <>
 
       {/* 4 — Opening hours (real editor; brand_hours is the single owner). */}
       <Section title="Opening hours">
@@ -710,7 +760,16 @@ export const VenueSettingsModule = forwardRef<
           These are the hours guests see — and the baseline for reservation
           slots.
         </Text>
-        {hoursQuery.isError ? (
+        {hoursLiveInAvailability ? (
+          <Button
+            label="Edit in Availability & pricing"
+            onPress={() => selectModule?.("availability")}
+            variant="secondary"
+            size="sm"
+            style={styles.inlineBtn}
+            testID="venue-settings-hours-in-availability"
+          />
+        ) : hoursQuery.isError ? (
           <Text style={styles.hoursError} testID="venue-settings-hours-error">
             Couldn&apos;t load your hours. Pull to refresh and try again.
           </Text>
@@ -733,6 +792,7 @@ export const VenueSettingsModule = forwardRef<
                 onChange={handleHoursChange}
                 showErrors={hoursDirty}
                 disabled={!canMutate || upsertHours.isPending}
+                allowWindows
               />
             </React.Suspense>
           </View>
@@ -804,6 +864,10 @@ export const VenueSettingsModule = forwardRef<
         </Section>
       ) : null}
 
+      </>
+      ) : null}
+
+      {tab === "team" ? (
       <Section title="Team & permissions">
         <Text style={styles.rowSub}>
           Choose exactly who can open this venue and which operational pages
@@ -825,6 +889,7 @@ export const VenueSettingsModule = forwardRef<
           style={styles.inlineBtn}
         />
       </Section>
+      ) : null}
 
       {/* ORCH-1190 #7 — the "Reach your guests / Message your guests" blast entry
           (ORCH-1186-D Leg 4) MOVED OUT of Settings to a top-of-Overview button
@@ -839,7 +904,10 @@ export const VenueSettingsModule = forwardRef<
       ) : null}
       </ScrollView>
 
-      {canMutate ? (
+      {/* #4490 — the Save bar belongs to the tabs that hold drafts (Terms and
+          tax, Details and photos); feature switches save on their own. It also
+          stays while anything is unsaved, so a draft is never stranded. */}
+      {canMutate && (tab === "terms" || tab === "details" || settingsDirty) ? (
         <View style={styles.saveBar} testID="venue-settings-save-bar">
           <SaveCommitBar
             label="Save settings"

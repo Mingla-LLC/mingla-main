@@ -67,7 +67,8 @@ const stripComments = (s: string): string =>
 const ERROR_MESSAGES = [
   "Photo library permission is needed to add a cover.",
   "Covers must be 30 MB or smaller.",
-  "This needs a server record before media upload.",
+  // TEST-MOD-APPROVED #4490 D6 — the blocker is now said in plain words.
+  "Save this first, then add a photo.",
   "Uploaded, but this cover could not be displayed.",
   "Cover upload failed. Try again.",
   "Finishing sign-in before upload. Try again in a moment.",

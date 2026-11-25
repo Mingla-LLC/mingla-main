@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/discover-cards/__tests__/issue_4490_hosted_lead.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-hosted-lead",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "env",
+    "read"
+  ]
+}

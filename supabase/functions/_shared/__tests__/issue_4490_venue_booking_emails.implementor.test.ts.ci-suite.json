@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4490_venue_booking_emails.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-venue-booking-emails",
+  "profile": "deno-2-unit"
+}

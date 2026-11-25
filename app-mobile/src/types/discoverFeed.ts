@@ -1,8 +1,12 @@
+import type { VenueTypeChipKey } from "@mingla/brand-rendering/venueTypeLabels";
+
 export const DISCOVER_KIND_ORDER = [
   "events",
   "experiences",
   "trips",
   "stays",
+  // #4490 Explorer W6a: appended last, so the existing pill order holds.
+  "venues",
 ] as const;
 
 export type DiscoverKind = (typeof DISCOVER_KIND_ORDER)[number];
@@ -61,11 +65,17 @@ export interface DiscoverStayFiltersV2 {
   propertyKinds?: DiscoverStayPropertyKind[];
 }
 
+/** #4490 Explorer W6a: venues filtered by venue type (the eight chip keys). */
+export interface DiscoverVenueFilters {
+  venueTypes?: VenueTypeChipKey[];
+}
+
 export type DiscoverFiltersV2 =
   | { kind: "events"; f: DiscoverEventFilters }
   | { kind: "experiences"; f: DiscoverExperienceFilters }
   | { kind: "trips"; f: DiscoverTripFiltersV2 }
-  | { kind: "stays"; f: DiscoverStayFiltersV2 };
+  | { kind: "stays"; f: DiscoverStayFiltersV2 }
+  | { kind: "venues"; f: DiscoverVenueFilters };
 
 export interface DiscoverFacetOption {
   id: string;
@@ -85,7 +95,8 @@ export interface DiscoverFacetGroup {
     | "leavingFrom"
     | "checkIn"
     | "propertyKind"
-    | "guests";
+    | "guests"
+    | "venueType";
   multi: boolean;
   options: DiscoverFacetOption[];
 }
@@ -108,7 +119,8 @@ export interface DiscoverFacetsResponse {
     currency: string;
     label: string | null;
   };
-  kinds: Record<DiscoverKind, { total: number; available: boolean }>;
+  /** A server without the Venues kind (or with VENUE_DISCOVER off) omits `venues`. */
+  kinds: Partial<Record<DiscoverKind, { total: number; available: boolean }>>;
   selected: {
     kind: DiscoverKind;
     total: number;
@@ -124,7 +136,7 @@ export interface DiscoverFacetsResponse {
 
 export interface DiscoverMinglaCard {
   source: "mingla";
-  kind: "event" | "rsvp" | "experience" | "trip" | "stay";
+  kind: "event" | "rsvp" | "experience" | "trip" | "stay" | "venue";
   id: string;
   brand: {
     id: string;
@@ -150,6 +162,11 @@ export interface DiscoverMinglaCard {
     unit: "each" | "per_night";
   } | null;
   route: { pathname: string; params: Record<string, string> };
+  /**
+   * #4490 Explorer W6a: a venue card's facts (issue_4490_venue_card_facts, the
+   * one owner of what a venue card says); parsed with parseDeckVenueFacts.
+   */
+  venue?: unknown;
 }
 
 export interface DiscoverTicketmasterCard {
@@ -183,6 +200,7 @@ export function emptyDiscoverFilters(kind: DiscoverKind): DiscoverFiltersV2 {
   if (kind === "events") return { kind, f: {} };
   if (kind === "experiences") return { kind, f: {} };
   if (kind === "trips") return { kind, f: {} };
+  if (kind === "venues") return { kind, f: {} };
   return { kind, f: { guests: 2 } };
 }
 

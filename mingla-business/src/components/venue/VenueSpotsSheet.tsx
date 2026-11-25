@@ -58,6 +58,15 @@ export interface VenueSpotsSheetProps {
   brandId: string | null;
   /** Manager-plus. RLS enforces the same floor server-side. */
   canMutate: boolean;
+  /**
+   * #4490 N72: opened from a venue, the sheet lists that venue's spots only
+   * (and "Print all" counts only them). Null keeps the brand-wide list.
+   */
+  venueId?: string | null;
+  /** #4490 fix 2 (N80): the empty state's way forward (Spaces, where tables are added). */
+  onOpenSpaces?: () => void;
+  /** #4490 07-D — back to Menu's "How guests get their order" card. */
+  onOpenOrderingMode?: () => void;
   testID?: string;
 }
 
@@ -66,6 +75,9 @@ export function VenueSpotsSheet({
   onClose,
   brandId,
   canMutate,
+  venueId = null,
+  onOpenSpaces,
+  onOpenOrderingMode,
   testID,
 }: VenueSpotsSheetProps): React.ReactElement {
   const spotsQuery = useQrSpots(visible ? brandId : null);
@@ -86,8 +98,11 @@ export function VenueSpotsSheet({
     return map;
   }, [venues]);
   const groups = useMemo(
-    () => groupSpotsByVenue(spotsQuery.data ?? [], venues),
-    [spotsQuery.data, venues],
+    () =>
+      groupSpotsByVenue(spotsQuery.data ?? [], venues).filter(
+        (group) => venueId === null || group.venueId === venueId,
+      ),
+    [spotsQuery.data, venues, venueId],
   );
   const printableTotal = useMemo(
     () => groups.reduce((sum, group) => sum + group.activeCount, 0),
@@ -180,6 +195,15 @@ export function VenueSpotsSheet({
           One list for the whole brand. Tables and rooms appear here on their
           own — print the codes and put them where guests sit.
         </Text>
+        {onOpenOrderingMode !== undefined ? (
+          <Button
+            label="How guests get their order"
+            variant="secondary"
+            size="sm"
+            onPress={onOpenOrderingMode}
+            testID="venue-spots-ordering-mode"
+          />
+        ) : null}
 
         {actionError !== null ? (
           <Text style={styles.errorNote} testID="venue-spots-error">
@@ -205,9 +229,22 @@ export function VenueSpotsSheet({
             <GlassCard variant="base" style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>No spots yet</Text>
               <Text style={styles.emptyBody}>
-                Add a table, or name a room, and its QR spot appears here on its
-                own. You never keep two lists.
+                A QR spot is a code you print and put where guests sit, so they
+                can open your menu and order from there. Each table you add in
+                Spaces gets its spot here by itself, ready to print.
               </Text>
+              {onOpenSpaces !== undefined ? (
+                <Button
+                  label="Add tables in Spaces"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    onClose();
+                    onOpenSpaces();
+                  }}
+                  testID="venue-spots-open-spaces"
+                />
+              ) : null}
             </GlassCard>
           ) : (
             groups.map((group) => (
@@ -418,7 +455,8 @@ export function VenueSpotsSheet({
             }
             onPress={() => {
               if (brandId === null) return;
-              print(bulkPrintRequest(brandId, null), null);
+              // #4490 N72: from a venue, "Print all" prints that venue only.
+              print(bulkPrintRequest(brandId, venueId), null);
             }}
             variant="primary"
             size="lg"

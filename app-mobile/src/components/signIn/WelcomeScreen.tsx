@@ -40,9 +40,14 @@ import { WelcomeVideoBackground } from "./WelcomeVideoBackground";
 import {
   sendPendingClaimEmailCode,
   verifyPendingClaimEmailCode,
+  type ClaimNoun,
   type PendingClaim,
 } from "../../services/attendanceClaimService";
 import { formatStartsAtLabel } from "../../utils/zoneLabel";
+import {
+  WELCOME_DISMISS_CLAIM_LABEL,
+  welcomeSignInOptions,
+} from "./welcomeClaimModel";
 import { postHogService } from "../../services/postHogService";
 
 const googleIcon = require("../../../assets/google_icon.png");
@@ -79,6 +84,10 @@ interface WelcomeScreenProps {
   /** #4063 — safe claim-link summary. The address is already server-masked. */
   ticketClaim?: PendingClaim | null;
   ticketClaimResolving?: boolean;
+  /** #4490 W2-N33 — the link's noun while it resolves; null = spinner only. */
+  ticketClaimResolvingNoun?: ClaimNoun | null;
+  /** #4490 W2-N26 — "Use a different account" under the claim card. */
+  onDismissTicketClaim?: () => void;
 }
 
 /** One resend per 30 seconds, with a visible countdown. A guest tapping resend
@@ -105,6 +114,8 @@ export default function WelcomeScreen({
   followInvite = null,
   ticketClaim = null,
   ticketClaimResolving = false,
+  ticketClaimResolvingNoun = null,
+  onDismissTicketClaim,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -204,11 +215,15 @@ export default function WelcomeScreen({
   const isAnyAuthInProgress =
     isGoogleSignInInProgress || isAppleSignInInProgress || emailBusy;
 
-  const claimEmailPreferred = Boolean(
-    ticketClaim && !ticketClaim.expired &&
-      ticketClaim.preferredProof === "email" && ticketClaim.emailMasked &&
-      !claimEmailFallback,
-  );
+  // #4490 W2-N26 part 4: the normal options always sit beside a claim card.
+  const signInOptions = welcomeSignInOptions({
+    ticketClaim,
+    platform: Platform.OS,
+    emailSignInAvailable,
+    claimEmailFallback,
+    claimEmailCodeOpen: claimEmailChallengeId !== null,
+  });
+  const claimEmailPreferred = signInOptions.claimEmail;
 
   const sendClaimEmailCode = async (): Promise<void> => {
     if (!ticketClaim || emailBusy) return;
@@ -634,11 +649,12 @@ export default function WelcomeScreen({
           {ticketClaimResolving ? (
             <View style={styles.claimResolving} testID="welcome-ticket-claim-resolving">
               <ActivityIndicator color="#ffffff" />
-              <Text style={styles.claimResolvingText}>
-                {t("auth:welcome.opening.ticket", {
-                  defaultValue: "Opening your ticket…",
-                })}
-              </Text>
+              {/* W2-N33: the noun only when the link said which one. */}
+              {ticketClaimResolvingNoun ? (
+                <Text style={styles.claimResolvingText}>
+                  {t(`auth:welcome.opening.${ticketClaimResolvingNoun}`)}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 
@@ -682,32 +698,63 @@ export default function WelcomeScreen({
             </Text>
           ) : null}
 
+          {signInOptions.dismissClaim && onDismissTicketClaim ? (
+            <TouchableOpacity
+              onPress={() => {
+                HapticFeedback.light();
+                onDismissTicketClaim();
+              }}
+              style={styles.emailGhost}
+              disabled={emailBusy}
+              accessibilityRole="button"
+              accessibilityLabel={WELCOME_DISMISS_CLAIM_LABEL}
+              accessibilityState={{ disabled: emailBusy }}
+              testID="welcome-ticket-claim-dismiss"
+            >
+              <Text style={styles.emailGhostText}>{WELCOME_DISMISS_CLAIM_LABEL}</Text>
+            </TouchableOpacity>
+          ) : null}
+
           {claimEmailPreferred ? (
             claimEmailChallengeId === null ? (
-              <TouchableOpacity
-                onPress={() => void sendClaimEmailCode()}
-                style={[styles.claimEmailButton, emailBusy && styles.buttonDisabled]}
-                disabled={emailBusy}
-                accessibilityRole="button"
-                accessibilityLabel={`Continue with ${ticketClaim!.emailMasked}`}
-                accessibilityState={{ disabled: emailBusy, busy: emailBusy }}
-                testID="welcome-claim-email-send"
-              >
-                {emailBusy ? (
-                  <ActivityIndicator size="small" color="#111827" />
-                ) : (
+              <>
+                <TouchableOpacity
+                  onPress={() => void sendClaimEmailCode()}
+                  style={[styles.claimEmailButton, emailBusy && styles.buttonDisabled]}
+                  disabled={emailBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Continue with ${ticketClaim!.emailMasked}`}
+                  accessibilityState={{ disabled: emailBusy, busy: emailBusy }}
+                  testID="welcome-claim-email-send"
+                >
+                  {emailBusy ? (
+                    <ActivityIndicator size="small" color="#111827" />
+                  ) : (
+                    <Text
+                      style={styles.claimEmailButtonText}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                    >
+                      {t("auth:welcome.continueWithEmailAddress", {
+                        email: ticketClaim!.emailMasked,
+                        defaultValue: `Continue with ${ticketClaim!.emailMasked}`,
+                      })}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                {/* #4490 (device pass 2): a failed code send (for example the
+                    email service down) said nothing here; the code panel and
+                    the fallback each show the error, this step did not. */}
+                {emailError ? (
                   <Text
-                    style={styles.claimEmailButtonText}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                    style={styles.emailError}
+                    accessibilityLiveRegion="polite"
+                    testID="welcome-claim-email-send-error"
                   >
-                    {t("auth:welcome.continueWithEmailAddress", {
-                      email: ticketClaim!.emailMasked,
-                      defaultValue: `Continue with ${ticketClaim!.emailMasked}`,
-                    })}
+                    {emailError}
                   </Text>
-                )}
-              </TouchableOpacity>
+                ) : null}
+              </>
             ) : (
               <View style={styles.emailPanel} testID="welcome-claim-email-panel">
                 <Text style={styles.emailPanelHeading}>
@@ -881,7 +928,7 @@ export default function WelcomeScreen({
             straight here mid-claim, and a route push would have to carry and
             restore the pending claim across a navigation it does not own.
           */}
-          {emailSignInAvailable && !claimEmailPreferred ? (
+          {signInOptions.email ? (
             <Animated.View
               style={[
                 styles.buttonAnimWrapper,

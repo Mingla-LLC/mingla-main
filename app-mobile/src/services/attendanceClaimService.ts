@@ -8,6 +8,15 @@ import {
   type AttendanceClaimCredential,
 } from "../utils/attendanceClaimDeepLink";
 import { withExplorerReactivationIntent } from "../utils/explorerReactivation";
+import {
+  accountPendingClaimAction,
+  parseStoredPendingClaim,
+  pendingClaimRecord,
+  stampedRecordMustClear,
+  welcomeClaimDecision,
+  type AccountPendingClaimAction,
+  type StoredPendingClaim,
+} from "./pendingClaimPolicy";
 
 export { isAttendanceClaimUrl } from "../utils/attendanceClaimDeepLink";
 
@@ -25,6 +34,8 @@ export type PendingClaim = {
   phoneLast4: string | null;
   preferredProof: ClaimPreferredProof;
   expired: boolean;
+  /** #4490 N157 — the claim kind the link points at (resolve's `kind`). */
+  kind?: string | null;
 };
 
 export type ClaimedEntry = {
@@ -35,7 +46,12 @@ export type ClaimedEntry = {
     | "reservation"
     | "stay_group"
     | "venue_order"
-    | "ticket";
+    | "ticket"
+    // #4490 Explorer W1: venue offer bookings, memberships, waitlist places, Till receipts.
+    | "venue_booking"
+    | "venue_membership"
+    | "venue_waitlist"
+    | "venue_till_sale";
   id: string;
   routeKind:
     | "order"
@@ -43,7 +59,11 @@ export type ClaimedEntry = {
     | "reservation"
     | "stay"
     | "venue_order"
-    | "held_ticket";
+    | "held_ticket"
+    | "venue_booking"
+    | "venue_membership"
+    | "venue_waitlist"
+    | "venue_till_sale";
   routeId: string;
   offeringType:
     | "event"
@@ -82,6 +102,10 @@ const CLAIM_KINDS = new Set<ClaimedEntry["kind"]>([
   "stay_group",
   "venue_order",
   "ticket",
+  "venue_booking",
+  "venue_membership",
+  "venue_waitlist",
+  "venue_till_sale",
 ]);
 const CLAIM_ROUTE_KINDS = new Set<ClaimedEntry["routeKind"]>([
   "order",
@@ -90,6 +114,10 @@ const CLAIM_ROUTE_KINDS = new Set<ClaimedEntry["routeKind"]>([
   "stay",
   "venue_order",
   "held_ticket",
+  "venue_booking",
+  "venue_membership",
+  "venue_waitlist",
+  "venue_till_sale",
 ]);
 const CLAIM_OFFERING_TYPES = new Set<ClaimedEntry["offeringType"]>([
   "event",
@@ -211,10 +239,7 @@ export class AttendanceClaimError extends Error {
 const KEY = "mingla_attendance_claim_v1";
 const TTL_MS = 24 * 60 * 60 * 1000;
 const CLAIM_LINK_KEY = "mingla.claimLink.pending.v1";
-const CLAIM_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CLAIM_LINK_CODE = /^[0-9A-Za-z]{10}$/;
-
-type StoredClaimLink = { code: string; savedAt: number };
 
 function claimNoun(value: unknown): ClaimNoun | null {
   return value === "ticket" || value === "pass" || value === "booking" ||
@@ -255,22 +280,71 @@ export function pendingClaimCodeFromUrl(url: string): string | null {
   return null;
 }
 
-export async function savePendingClaimCode(code: string): Promise<void> {
+async function readPendingClaimRecord(): Promise<StoredPendingClaim | null> {
+  const parsed = parseStoredPendingClaim(await secureGetItem(CLAIM_LINK_KEY), Date.now());
+  if (parsed.kind === "ok") return parsed.record;
+  if (parsed.kind === "drop") await clearPendingClaimIntent();
+  return null;
+}
+
+async function writePendingClaimRecord(record: StoredPendingClaim): Promise<void> {
+  await secureSetItem(CLAIM_LINK_KEY, JSON.stringify(record));
+}
+
+/**
+ * Saves the /c code. #4490 W2-N26: `accountId` is the account signed in at
+ * that moment (null when signed out), so a code an account carried is never
+ * shown on a later signed-out welcome.
+ */
+export async function savePendingClaimCode(
+  code: string,
+  accountId: string | null = null,
+): Promise<void> {
   const normalized = code.trim().toUpperCase();
   if (!CLAIM_LINK_CODE.test(normalized)) return;
-  await secureSetItem(
-    CLAIM_LINK_KEY,
-    JSON.stringify({ code: normalized, savedAt: Date.now() } satisfies StoredClaimLink),
-  );
+  await writePendingClaimRecord(pendingClaimRecord(normalized, accountId, Date.now()));
+}
+
+/** Keeps the last good resolve beside the code, for an offline welcome. */
+export async function cachePendingClaim(claim: PendingClaim): Promise<void> {
+  const record = await readPendingClaimRecord();
+  if (record === null || record.code !== claim.code.toUpperCase()) return;
+  await writePendingClaimRecord({ ...record, claim });
 }
 
 export async function clearPendingClaimIntent(): Promise<void> {
   await secureDeleteItem(CLAIM_LINK_KEY);
 }
 
+/**
+ * #4490 W2-N26 part 2 — called whenever the signed-in account or its
+ * onboarding state changes: in the app it clears the code, in onboarding it
+ * stamps it with that account (see accountPendingClaimAction).
+ */
+export async function settlePendingClaimForAccount(
+  userId: string | null | undefined,
+  onboardingActive: boolean,
+): Promise<AccountPendingClaimAction> {
+  if (!userId) return "none";
+  const record = await readPendingClaimRecord();
+  const action = accountPendingClaimAction({
+    signedInUserId: userId,
+    onboardingActive,
+    record,
+  });
+  if (action === "clear") await clearPendingClaimIntent();
+  if (action === "stamp" && record) {
+    await writePendingClaimRecord({ ...record, accountId: userId });
+  }
+  return action;
+}
+
 export type ClaimLinkResolution =
   | { status: "claim"; claim: PendingClaim }
   | { status: "redirect"; url: string }
+  // #4490 W2-N26: Mingla answered and there is no claimable purchase behind
+  // the code (cancelled, unconfirmed, unknown). Not the same as unreachable.
+  | { status: "not_found" }
   | { status: "unavailable" };
 
 export type PendingClaimEmailError =
@@ -469,6 +543,9 @@ export async function resolvePendingClaimCode(
   ) {
     return { status: "redirect", url: payload.url };
   }
+  if (payload?.ok === true && payload.status === "not_found") {
+    return { status: "not_found" };
+  }
   const noun = claimNoun(payload?.noun);
   if (
     payload?.ok !== true || noun === null ||
@@ -488,29 +565,59 @@ export async function resolvePendingClaimCode(
       phoneLast4: typeof payload.phoneLast4 === "string" ? payload.phoneLast4 : null,
       preferredProof: preferredProof(payload.preferredProof),
       expired: payload.status === "expired",
+      kind: typeof payload.kind === "string" ? payload.kind : null,
     },
   };
 }
 
+/**
+ * Onboarding's read (ticket-first prefill). The account is signed in here, so
+ * a stamp is expected; it is not a reason to forget the code.
+ */
 export async function getPendingClaimIntent(): Promise<PendingClaim | null> {
-  const raw = await secureGetItem(CLAIM_LINK_KEY);
-  if (!raw) return null;
-  try {
-    const stored = JSON.parse(raw) as Partial<StoredClaimLink>;
-    if (
-      typeof stored.code === "string" && CLAIM_LINK_CODE.test(stored.code) &&
-      typeof stored.savedAt === "number" &&
-      Date.now() - stored.savedAt <= CLAIM_LINK_TTL_MS
-    ) {
-      const resolution = await resolvePendingClaimCode(stored.code.toUpperCase());
-      if (resolution.status === "claim") return resolution.claim;
-      if (resolution.status === "unavailable") return null;
-    }
-  } catch {
-    // Corrupt/expired pointers are removed below. No claim detail is logged.
-  }
+  const record = await readPendingClaimRecord();
+  if (record === null) return null;
+  const resolution = await resolvePendingClaimCode(record.code);
+  if (resolution.status === "claim") return resolution.claim;
+  if (resolution.status === "unavailable") return null;
   await clearPendingClaimIntent();
   return null;
+}
+
+export type WelcomePendingClaim = {
+  claim: PendingClaim | null;
+  /** True when the card is the last good copy because Mingla was unreachable. */
+  cached: boolean;
+};
+
+/**
+ * #4490 W2-N26 part 1 and 3 — the signed-out welcome's read. A code carried
+ * by an account that has since left is forgotten without a network call; any
+ * other saved code is checked against Mingla before its card shows.
+ */
+export async function loadWelcomePendingClaim(): Promise<WelcomePendingClaim> {
+  const record = await readPendingClaimRecord();
+  if (record === null) return { claim: null, cached: false };
+  if (stampedRecordMustClear(record)) {
+    await clearPendingClaimIntent();
+    return { claim: null, cached: false };
+  }
+  const resolution = await resolvePendingClaimCode(record.code);
+  const decision = welcomeClaimDecision(
+    record,
+    resolution.status === "claim"
+      ? resolution
+      : { status: resolution.status },
+  );
+  if (decision.action === "clear") {
+    await clearPendingClaimIntent();
+    return { claim: null, cached: false };
+  }
+  if (decision.action === "show") {
+    await writePendingClaimRecord({ ...record, claim: decision.claim });
+    return { claim: decision.claim, cached: false };
+  }
+  return { claim: decision.claim, cached: true };
 }
 
 /**

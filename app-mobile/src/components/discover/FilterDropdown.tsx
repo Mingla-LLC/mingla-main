@@ -5,6 +5,7 @@ import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import type { DiscoverFacetGroup, DiscoverFiltersV2, DiscoverPriceBands } from "../../types/discoverFeed";
 import { formatPriceBandLabel } from "../../utils/discoverPriceBandLabel";
 import { setDiscoverGuests, updateDiscoverFilter } from "./discoverFilterState";
+import { venueTypeLabel } from "@mingla/brand-rendering/venueTypeLabels";
 import { PARTY_TYPES } from "../../constants/eventTaxonomy";
 import { discoverOptionLabel, groupEventTypeOptions, visibleEventTypeOptions, type EventTypeGroupId } from "./eventTypeGroups";
 
@@ -32,6 +33,8 @@ export function FilterDropdown({ visible, groups, filters, resultCount, priceBan
     when: "when", price: "price", partyType: "party_type", vibe: "vibe", music: "music",
     goodFor: "good_for", destination: "destination", leavingFrom: "leaving_from",
     checkIn: "check_in", propertyKind: "property_kind", guests: "guests",
+    // #4490 Explorer W6a: "Type of place".
+    venueType: "venue_type",
   })[id];
   const optionKey = (group: DiscoverFacetGroup, id: string): string | null => {
     if (group.id === "when") return `when.${id}`;
@@ -44,13 +47,18 @@ export function FilterDropdown({ visible, groups, filters, resultCount, priceBan
     if (group.id === "propertyKind") return `property.${id}`;
     return null;
   };
+  // #4490 Explorer W6a: venue type chips say the taxonomy's own words (one owner).
+  const optionLabel = (group: DiscoverFacetGroup, id: string): string | null => {
+    if (group.id === "venueType") return venueTypeLabel(id);
+    return null;
+  };
   const renderOption = (group: DiscoverFacetGroup, option: DiscoverFacetGroup["options"][number], index: number): React.ReactElement => {
-    const field = ({ when: "when", price: "price", partyType: "partyTypes", vibe: "vibeTags", music: "musicGenres", goodFor: "goodFor", destination: "destination", leavingFrom: "leavingFrom", checkIn: "checkIn", propertyKind: "propertyKinds" } as Record<string, string>)[group.id];
+    const field = ({ when: "when", price: "price", partyType: "partyTypes", vibe: "vibeTags", music: "musicGenres", goodFor: "goodFor", destination: "destination", leavingFrom: "leavingFrom", checkIn: "checkIn", propertyKind: "propertyKinds", venueType: "venueTypes" } as Record<string, string>)[group.id];
     const value = (draft.f as Record<string, unknown>)[field];
     const selected = value === option.id || (Array.isArray(value) && value.includes(option.id));
     const disabled = option.count === 0 && !selected;
     const key = optionKey(group, option.id);
-    let label = option.label ?? discoverOptionLabel(t, key, option.id);
+    let label = optionLabel(group, option.id) ?? option.label ?? discoverOptionLabel(t, key, option.id);
     if (group.id === "price" && option.id.startsWith("band_") && priceBands) {
       label = formatPriceBandLabel(Number(option.id.slice(-1)) - 1, priceBands, (key, values) => t(key, values));
     }

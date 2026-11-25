@@ -71,3 +71,15 @@ src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/store/currentBrandS
 # →useBrandListShim; none touched by this PR). Baselined per the gate's "not yours
 # to fix → baseline with rationale" instruction. Cycle-breaking refactor tracked separately.
 src/hooks/useBrandListShim.ts | src/hooks/useBrands.ts | src/hooks/useCurrentBrandRole.ts
+# Issue #4490 [venue owners]: intentional, through a DYNAMIC import only. The
+# venue and Stay workspaces live inside the one Host venue owner chunk
+# (host/venueHostScreens.ts) and open their modules through its loader
+# (host/venueHostOwner.ts, `import("./venueHostScreens")`). The loader resolves
+# the chunk the shell is already part of, so nothing is evaluated twice; the
+# alternative (static imports in the shells) would load every feature module
+# in the shells' render suites. Remove when the shells stop being lazy hosts.
+src/components/stay/StaySuiteShell.tsx | src/components/venue/VenueMenuModule.tsx | src/components/venue/host/venueHostOwner.ts | src/components/venue/host/venueHostScreens.ts
+src/components/stay/StaySuiteShell.tsx | src/components/venue/VenueReservationsModule.tsx | src/components/venue/host/venueHostOwner.ts | src/components/venue/host/venueHostScreens.ts
+src/components/stay/StaySuiteShell.tsx | src/components/venue/host/venueHostOwner.ts | src/components/venue/host/venueHostScreens.ts
+src/components/venue/VenueSettingsModule.tsx | src/components/venue/VenueSuiteShell.tsx | src/components/venue/host/venueHostOwner.ts | src/components/venue/host/venueHostScreens.ts
+src/components/venue/VenueSuiteShell.tsx | src/components/venue/host/venueHostOwner.ts | src/components/venue/host/venueHostScreens.ts

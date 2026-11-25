@@ -76,15 +76,26 @@ import type {
   PublicVenueActionBarContext,
   PublicVenueAnalyticsEvent,
   PublicVenueBookingSlotContext,
+  PublicVenueEntrySlotContext,
   PublicVenueOrderingSlotContext,
   PublicVenueReservationSheetContext,
   PublicVenueThemedContext,
   PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
+// #4490 Explorer W3 — the shared one-argument tab parser (every `?tab=` the
+// buyer web page accepts) and the plan row type for the Plans pane.
+import {
+  venueTabFromParam,
+  type VenueFeaturePlanView,
+} from "@mingla/brand-rendering/venueFeaturePage";
 
 import { VenueReserveSheet } from "../../../../src/components/expandedCard/VenueReserveSheet";
+import { rememberHostedEventRow } from "../../../../src/components/expandedCard/hostedEventContext";
 import { ConsumerStayGuestExperience } from "../../../../src/components/stay/ConsumerStayGuestExperience";
 import { usePublicVenue } from "../../../../src/hooks/usePublicVenue";
+import { usePublicVenueFeatures } from "../../../../src/hooks/usePublicVenueFeatures";
+import { VenuePaneBoundary } from "../../../../src/components/venueOffers/venuePaneBoundary";
+import type { VenuePaneKind } from "../../../../src/components/venueOffers/venuePaneModel";
 // issue #2468 — DEEP specifier (this route never imports a package barrel);
 // `import type` is erased, so it adds nothing to the bundle.
 import type {
@@ -103,6 +114,7 @@ import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueSe
 import { colors } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { useCanonicalShareArrival } from "../../../../src/hooks/useCanonicalShareArrival";
+import { useReturnToStartOnSignOut } from "../../../../src/hooks/useReturnToStartOnSignOut";
 // DEEP specifier (the #1560 rule above): suites mock the offering barrel.
 import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
 import {
@@ -149,6 +161,19 @@ const LazyVenueExplorerBar = React.lazy(async () => {
   const mod = require("../../../../src/components/venuePage/VenueExplorerLayer") as typeof import("../../../../src/components/venuePage/VenueExplorerLayer");
   return { default: mod.VenueExplorerBar };
 });
+/**
+ * #4490 Explorer W3 — the native Entry / Groups / Private hire / By the hour /
+ * Plans panes. Deferred require for the same reason as the Explorer layer:
+ * the panes pull the in-app browser, analytics and React Query, which suites
+ * that mount this route must not load; a load failure shows the pane's own
+ * "Try again" line (VenuePaneBoundary), never a blank tab.
+ */
+const LazyVenueOfferPane = React.lazy(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("../../../../src/components/venueOffers/VenueOfferPane") as typeof import("../../../../src/components/venueOffers/VenueOfferPane");
+  return { default: mod.VenueOfferPane };
+});
+
 /** Mirrors VENUE_EXPLORER_BAR_HEIGHT (pinned bar: 10 + 48 + 1) without importing the layer. */
 const EXPLORER_BAR_HEIGHT = 59;
 
@@ -215,6 +240,11 @@ const toVenueViewModel = (
 
 export default function ConsumerPublicVenueRoute(): React.ReactElement {
   const router = useRouter();
+  // #4490 06-W4 fix 2 (W4-D1): the account this page was opened with signed
+  // out (forced, mid-checkout): back to the welcome screen instead of sitting
+  // on "Loading venue…" with the cache cleared. A kept checkout comes back here
+  // after signing in again as the same account.
+  useReturnToStartOnSignOut();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
@@ -252,6 +282,16 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     typeof venueSlug === "string" ? venueSlug : null,
   );
   const venue = query.data ?? null;
+  // #4490 Explorer W3 — what the venue sells (features, offers, plans,
+  // events). The page waits for it, as buyer web does: today's tabs for a
+  // moment on a venue that sells entry would land `?tab=entry` on Overview.
+  // A failed read falls back to today's page (never worse).
+  const featuresQuery = usePublicVenueFeatures(
+    typeof brandSlug === "string" ? brandSlug : null,
+    typeof venueSlug === "string" ? venueSlug : null,
+  );
+  const features = featuresQuery.data ?? null;
+  const featuresPending = venue !== null && featuresQuery.isLoading;
   const routeState = classifyPublicVenueRouteState({
     hasData: venue !== null,
     isLoading: query.isLoading,
@@ -570,6 +610,91 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     },
     [brandSlug, venueSlug],
   );
+  // #4490 Explorer W3 — "What's on" rows open the event in the app (`/e/…`,
+  // `/exp/…`, `/t/…`: the shared parser only lets those paths through).
+  const handleOpenEvent = useCallback(
+    (href: string): void => {
+      if (!/^\/(e|exp|t)\/[^\s/]+\/[^\s/]+$/.test(href)) return;
+      // #4490 W7 (b): this row is at a hosted venue, so the event page draws
+      // "When you'd go" at the event's start (see hostedEventContext).
+      rememberHostedEventRow(href, features?.events, {
+        lat: venue?.lat,
+        lng: venue?.lng,
+        timeZone: venue?.timezone,
+        driveTime: deckHandoff?.card?.travelTime ?? null,
+      });
+      router.push(href as never);
+    },
+    [router, features, venue, deckHandoff],
+  );
+
+  // #4490 Explorer W3 — one native pane per bookable tab; the deck's mode
+  // rides along for `venue_tapped_to_book`.
+  const paneMode: "solo" | "collab" =
+    deckHandoff === null || deckHandoff.currentMode === "solo" ? "solo" : "collab";
+  const renderPane = useCallback(
+    (
+      kind: VenuePaneKind,
+      context: PublicVenueEntrySlotContext & { plans?: readonly VenueFeaturePlanView[] },
+    ): React.ReactNode =>
+      venue === null || typeof brandSlug !== "string" || typeof venueSlug !== "string" ? null : (
+        <VenuePaneBoundary
+          // W3 fix 3 (W3-N23): one pane instance per tab. The shared page
+          // mounts each tab's body in the same slot, so without a key a
+          // refused hand-off on Entry stayed on Groups and Private hire.
+          key={`venue-pane-${kind}`}
+          textColor={context.palette.secondaryText}
+          borderColor={context.palette.panelBorder}
+          onError={(error) => handleExplorerError(`offer-pane-${kind}`, error)}
+        >
+          <React.Suspense
+            fallback={
+              <View style={styles.paneLoading}>
+                <ActivityIndicator color={context.palette.secondaryText} />
+              </View>
+            }
+          >
+            <LazyVenueOfferPane
+              kind={kind}
+              context={context}
+              brandSlug={brandSlug}
+              venueSlug={venueSlug}
+              venueId={venue.id}
+              timezone={venue.timezone}
+              mode={paneMode}
+              venueName={venue.name}
+              lat={venue.lat}
+              lng={venue.lng}
+              deckCategory={deckHandoff?.card?.category ?? null}
+              venueCategory={venue.venueCategory ?? null}
+            />
+          </React.Suspense>
+        </VenuePaneBoundary>
+      ),
+    [brandSlug, deckHandoff, handleExplorerError, paneMode, venue, venueSlug],
+  );
+  const renderEntryBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode => renderPane("entry", context),
+    [renderPane],
+  );
+  const renderGroupsBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode => renderPane("groups", context),
+    [renderPane],
+  );
+  const renderHireBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode => renderPane("hire", context),
+    [renderPane],
+  );
+  const renderHourBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode => renderPane("by_the_hour", context),
+    [renderPane],
+  );
+  const renderPlansBody = useCallback(
+    (context: PublicVenueEntrySlotContext & { plans: readonly VenueFeaturePlanView[] }): React.ReactNode =>
+      renderPane("plans", context),
+    [renderPane],
+  );
+
   const handleOpenExperience = useCallback(
     (experience: { brandSlug: string; eventSlug: string }): void => {
       if (!experience.brandSlug || !experience.eventSlug) return;
@@ -692,6 +817,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
         <VenueReserveSheet
           visible={context.visible}
           onClose={context.onClose}
+          // W3 fix 4 (W3-N32): headed with the button's own words.
+          title={context.title}
           venueId={reservableVenueId}
           brandId={venue.brandId}
           venueName={venue.name}
@@ -720,7 +847,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   // carries the same Close the page has (back to the deck, or the brand page).
   const stateClose = <VenueStateClose onPress={handleClose} topInset={insets.top} />;
 
-  if (routeState === "cold-loading") {
+  if (routeState === "cold-loading" || featuresPending) {
     return <StateView title="Loading venue…" loading close={stateClose} />;
   }
   if (routeState === "cold-error") {
@@ -782,18 +909,19 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
         venue.reservability.state === "error" ? "error" : "ready"
       }
       // #1789 (SPEC #1788 P-46) — a scanned table/room QR carries
-      // `?tab=menu&spot={code}&src=qr`. Before this, the ternary accepted ONE
-      // value and every scan landed on Overview. `PublicVenueTabs` already
-      // falls back to "overview" when the Menu tab is not visible for this
-      // venue (`tabs.includes(initialTab)`), so a scan never lands on an empty
-      // tab.
-      initialTab={
-        requestedTab === "menu"
-          ? "menu"
-          : requestedTab === "reservations"
-            ? "reservations"
-            : "overview"
-      }
+      // `?tab=menu&spot={code}&src=qr`. #4490 Explorer W3 — every tab the
+      // buyer web page accepts (menu, reservations, entry, groups, hire,
+      // by_the_hour, plans, rooms, whats_on) through the ONE shared parser.
+      // `PublicVenueTabs` falls back to "overview" when the tab is not
+      // visible for this venue, so a link never lands on an empty tab.
+      initialTab={venueTabFromParam(requestedTab) ?? "overview"}
+      features={features}
+      onOpenEvent={handleOpenEvent}
+      entryBody={renderEntryBody}
+      groupsBody={renderGroupsBody}
+      hireBody={renderHireBody}
+      hourBody={renderHourBody}
+      plansBody={renderPlansBody}
       refreshState={
         routeState === "populated-error"
           ? "error"
@@ -854,6 +982,10 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
               menuWindows={venue.menuWindows}
               timezone={venue.timezone}
               countryCode={venue.countryCode}
+              // W3 fix 4 (W3-N36): ordering owns the Menu tab's bottom edge.
+              onBottomBarChange={context.onBottomBarChange}
+              // W3 fix 5 (W3-N37): the order bar docks at the Menu tab's edge.
+              onOrderBarChange={context.onOrderBarChange}
             />
           </React.Suspense>
         ),
@@ -947,4 +1079,5 @@ const styles = StyleSheet.create({
   coldRetryWrap: {
     marginTop: 6,
   },
+  paneLoading: { minHeight: 88, alignItems: "center", justifyContent: "center" },
 });

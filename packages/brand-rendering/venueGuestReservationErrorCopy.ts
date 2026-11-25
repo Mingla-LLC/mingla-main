@@ -9,5 +9,8 @@ export function guestReservationFailureCopy(errorCode: string): string | null {
   if (errorCode === "deposit_amount_unconfigured") {
     return DEPOSIT_UNCONFIGURED_COPY;
   }
+  if (errorCode === "amount_too_large") {
+    return "This table's deposit is above what one payment can take. Ask the venue.";
+  }
   return null;
 }

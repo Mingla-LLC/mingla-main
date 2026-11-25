@@ -359,11 +359,13 @@ describe("#4347 claimed venues", () => {
   });
 
   test("V-2 only a row with both slugs is a venue the deck can route to", () => {
+    // [TEST-MOD-APPROVED #4490] Explorer W3: rows are now {place_pool_id, facts}
+    // from pg_deck_venue_facts; the same routing rule is pinned.
     expect(
-      toClaimedVenue({ place_pool_id: "p", slug: "itan-garden", brand_slug: "itan-kitchen", brand_name: "Ìtàn Kitchen" }),
-    ).toEqual({ placePoolId: "p", brandSlug: "itan-kitchen", venueSlug: "itan-garden", brandName: "Ìtàn Kitchen" });
-    expect(toClaimedVenue({ place_pool_id: "p", slug: "", brand_slug: "b", brand_name: null })).toBeNull();
-    expect(toClaimedVenue({ place_pool_id: null, slug: "v", brand_slug: "b", brand_name: null })).toBeNull();
+      toClaimedVenue({ place_pool_id: "p", facts: { venueId: "v1", venueSlug: "itan-garden", brandSlug: "itan-kitchen", brandName: "Ìtàn Kitchen" } }),
+    ).toMatchObject({ placePoolId: "p", brandSlug: "itan-kitchen", venueSlug: "itan-garden", brandName: "Ìtàn Kitchen" });
+    expect(toClaimedVenue({ place_pool_id: "p", facts: { venueId: "v1", venueSlug: "", brandSlug: "b", brandName: null } })).toBeNull();
+    expect(toClaimedVenue({ place_pool_id: null, facts: { venueId: "v1", venueSlug: "v", brandSlug: "b", brandName: null } })).toBeNull();
   });
 });
 
@@ -374,7 +376,9 @@ describe("#4347 claimed venue routing (wiring)", () => {
     const src: string = fs.readFileSync(path.join(__dirname, "../../SwipeableCards.tsx"), "utf8");
     const fn = src.slice(src.indexOf("const handleCardExpand = async () => {"), src.indexOf("const handleCloseExpandedModal"));
     // #4347 rework — through leaveDeckTo, so the collab modal can close first.
-    const route = fn.indexOf("leaveDeckTo(\n        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}`");
+    // [TEST-MOD-APPROVED #4490] Explorer W3: the path now ends with the card's
+    // lead tab (`?tab=`), so the route is matched up to the venue slug.
+    const route = fn.indexOf("leaveDeckTo(\n        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}");
     const sheet = fn.indexOf("setIsExpandedModalVisible(true)");
     expect(route).toBeGreaterThan(0);
     expect(sheet).toBeGreaterThan(route);

@@ -51,7 +51,14 @@ export type VenueCategory =
   | "restaurant"
   | "play"
   | "creative_and_arts"
-  | "stay";
+  | "stay"
+  // #4490 — five more venue types (a label and a starting preset only;
+  // features decide what a venue shows). Server CHECK: 20281203004490.
+  | "bar_lounge"
+  | "club"
+  | "cafe"
+  | "event_space"
+  | "coworking";
 
 /**
  * The profile key space. `uncategorised` is the NAMED arm for a venue whose
@@ -80,6 +87,10 @@ export type VenueCategoryKey = VenueCategory | "uncategorised";
 export type VenueSectionId =
   | "priceLede"
   | "about"
+  // #4490 — what a venue sells (rows that open a tab) and what is on there.
+  // Both render nothing unless the venue's features give them something.
+  | "waysToCome"
+  | "whatsOn"
   | "location"
   | "hours"
   | "stayPolicy";
@@ -124,6 +135,8 @@ export interface VenueCategoryProfile {
 const SECTION_ID_PRESENCE: Record<VenueSectionId, true> = {
   priceLede: true,
   about: true,
+  waysToCome: true,
+  whatsOn: true,
   location: true,
   hours: true,
   stayPolicy: true,
@@ -145,7 +158,7 @@ const NON_STAY_SHAPE = {
   timekeeping: "tradingHours",
   bookingBody: "table",
   tabs: ["overview", "menu", "reservations"],
-  overview: ["priceLede", "about", "location", "hours"],
+  overview: ["priceLede", "about", "waysToCome", "whatsOn", "location", "hours"],
 } as const;
 
 /**
@@ -192,6 +205,39 @@ export const VENUE_CATEGORY_PROFILES: Record<
     // forks.
     tabs: ["overview", "reservations"],
     overview: ["priceLede", "about", "location", "stayPolicy"],
+  },
+  // #4490 — the five new types start on the neutral non-stay profile. What a
+  // venue offers (tabs, the booking bar) is derived from its features by the
+  // feature-driven public page, not from these rows.
+  bar_lounge: {
+    key: "bar_lounge",
+    noun: "bar and lounge",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  club: {
+    key: "club",
+    noun: "club",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  cafe: {
+    key: "cafe",
+    noun: "cafe",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  event_space: {
+    key: "event_space",
+    noun: "event space",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
+  },
+  coworking: {
+    key: "coworking",
+    noun: "coworking space",
+    reserveAction: "Book a visit",
+    ...NON_STAY_SHAPE,
   },
   /**
    * `venue_category IS NULL`. It gets a NAME rather than falling into the

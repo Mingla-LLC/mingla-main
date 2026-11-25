@@ -160,6 +160,18 @@ describe("issue #1027 Thread B — When step renders visible native web date/tim
     }
   });
 
+  // TEST-MOD-APPROVED #4490 (N136): the Doors / Ends times are the 24-hour
+  // TimeField on web (the date row is #4523's Mingla calendar), not
+  // native browser date/time inputs ("mm/dd/yyyy" typing did not take). The
+  // #1027 promise is kept: a visible control whose change commits the draft.
+  const fieldWith = (id: string): { props: Record<string, unknown> } => {
+    const node = tree!.root.findAll(
+      (n: { props: Record<string, unknown> }) => n.props.testID === id && typeof n.props.onChangeValue === "function",
+    )[0];
+    expect(node).toBeDefined();
+    return node;
+  };
+
   test("T1a — the Date row is the Mingla calendar (no <input type='date'>); picking a day commits draft.date + endsAtUtc (#4523)", async () => {
     await mount();
     expect(inputsOfType("date")).toHaveLength(0);
@@ -177,36 +189,21 @@ describe("issue #1027 Thread B — When step renders visible native web date/tim
     expect(datePatch).toHaveProperty("endsAtUtc");
   });
 
-  test("T1b — Doors + Ends are real <input type='time'> whose change commits (the dead-time-rows symptom)", async () => {
+  test("T1b — Doors + Ends are the 24-hour time field (no native time input) and commit", async () => {
     await mount();
-    const timeInputs = inputsOfType("time");
-    expect(timeInputs.length).toBeGreaterThanOrEqual(2);
-
-    const doors = timeInputs.find(
-      (n) => n.props["data-testid"] === "creator-when-doors-web",
-    );
-    const ends = timeInputs.find(
-      (n) => n.props["data-testid"] === "creator-when-ends-web",
-    );
-    expect(doors).toBeDefined();
-    expect(ends).toBeDefined();
-    // Neither is a hidden/dead control.
-    expect((doors?.props.style as Record<string, unknown>).pointerEvents).toBeUndefined();
-    expect((ends?.props.style as Record<string, unknown>).pointerEvents).toBeUndefined();
-
+    expect(
+      inputsOfType("time").filter((n) =>
+        ["creator-when-doors-web", "creator-when-ends-web"].includes(String(n.props["data-testid"])),
+      ),
+    ).toHaveLength(0);
+    const doors = fieldWith("creator-when-doors-web");
+    const ends = fieldWith("creator-when-ends-web");
     await TestRenderer.act(async () => {
-      (doors?.props.onChange as (e: { target: { value: string } }) => void)({
-        target: { value: "20:30" },
-      });
+      (doors.props.onChangeValue as (v: string) => void)("20:30");
     });
-    expect(updates.find((p) => p.doorsOpen !== undefined)?.doorsOpen).toBe(
-      "20:30",
-    );
-
+    expect(updates.find((p) => p.doorsOpen !== undefined)?.doorsOpen).toBe("20:30");
     await TestRenderer.act(async () => {
-      (ends?.props.onChange as (e: { target: { value: string } }) => void)({
-        target: { value: "23:45" },
-      });
+      (ends.props.onChangeValue as (v: string) => void)("23:45");
     });
     expect(updates.find((p) => p.endsAt !== undefined)?.endsAt).toBe("23:45");
   });

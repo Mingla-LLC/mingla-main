@@ -56,6 +56,7 @@
   "pill.experiences": "Erlebnisse",
   "pill.trips": "Reisen",
   "pill.stays": "Aufenthalte",
+  "pill.venues": "Orte",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Löschen",
   "filters.option_a11y": "{{label}}, {{count}} fest. Treffer",
@@ -77,6 +78,7 @@
   "group.check_in": "Check-in",
   "group.guests": "Gäste",
   "group.property_kind": "Art des Ortes",
+  "group.venue_type": "Art des Ortes",
   "group.any_suffix": "{{group}} · Jeder",
   "when.any_day": "Jeder Tag",
   "when.tomorrow": "Morgen",
@@ -209,8 +211,15 @@
   "count.trips_other": "{{count}} Reisen",
   "count.stays_one": "{{count}} Aufenthalt",
   "count.stays_other": "{{count}} Aufenthalte",
+  "count.venues_one": "{{count}} Ort",
+  "count.venues_other": "{{count}} Orte",
   "guests.value_one": "{{count}} Gast",
   "guests.value_other": "{{count}} Gäste",
   "card.type.stops_one": "{{count}} STOP",
-  "card.type.stops_other": "{{count}} STOPPT"
+  "card.type.stops_other": "{{count}} STOPPT",
+  "venues.empty_title": "Hier gibt es noch keine Orte zum Buchen.",
+  "venues.empty_body": "Orte, die du auf Mingla buchen kannst, erscheinen hier.",
+  "venues.filtered_title": "Keine Orte passen zu diesen Filtern.",
+  "venues.error_title": "Wir konnten die Orte nicht laden.",
+  "venues.error_retry": "Erneut versuchen"
 }

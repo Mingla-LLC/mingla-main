@@ -27,7 +27,8 @@ describe("issue #1384 consumer runtime-parity seam", () => {
     (runtime) => {
       expect({ runtime, value: canonicalDiscoveryPriceLabel(sourceOnly) }).toEqual({
         runtime,
-        value: expect.stringMatching(/NGN/),
+        // [TEST-MOD-APPROVED #4490] W3 fix 4 (W3-N31): Naira reads ₦.
+        value: expect.stringMatching(/₦/),
       });
       expect(canonicalDiscoveryPriceLabel({
         ...sourceOnly,

@@ -461,6 +461,10 @@ export function parseMigration(name, rawSql) {
     `\\bCREATE\\s+(?:UNLOGGED\\s+|TEMP\\s+|TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`,
     "gi",
   );
+  // #4490 (spec 08 O3) merged with #4514: `createdCols` (this file's own CREATE
+  // TABLE columns, from createTableColumns) also serve the #4490 own-column credit
+  // in C-1 below, refused when the file names a table to which a skipped migration
+  // ADDs the same column (see `addedColumnTables`).
   // #4514: columns declared inside a CREATE TABLE list are kept apart from
   // `definitions`. They only ever count as available when the lane APPLIES the
   // migration (see analyseTrees); a skipped migration's CREATE TABLE columns
@@ -482,9 +486,12 @@ export function parseMigration(name, rawSql) {
   // spell `ADD COLUMN`, exactly as the single-clause form already required
   // (a bare `ADD x` is never read, so `ADD CONSTRAINT` cannot pose as a column).
   const alterRe = new RegExp(
-    `\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s[^;]*`,
+    `\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?(${QUALIFIED})\\s[^;]*`,
     "gi",
   );
+  // #4490 (08-O3 fix 1): which tables this file ADDs each column to, so the
+  // own-column credit above can be refused when a file names such a table.
+  const addedColumnTables = new Map();
   const colRe = new RegExp(
     `\\bADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${IDENT})`,
     "gi",
@@ -492,7 +499,12 @@ export function parseMigration(name, rawSql) {
   while ((m = alterRe.exec(top))) {
     let c;
     colRe.lastIndex = 0;
-    while ((c = colRe.exec(m[0]))) definitions.add(`col:${bareName(c[1])}`);
+    while ((c = colRe.exec(m[0]))) {
+      const object = `col:${bareName(c[1])}`;
+      definitions.add(object);
+      if (!addedColumnTables.has(object)) addedColumnTables.set(object, new Set());
+      addedColumnTables.get(object).add(bareName(m[1]));
+    }
   }
 
   // Every identifier this file mentions where PostgreSQL resolves names at
@@ -505,7 +517,7 @@ export function parseMigration(name, rawSql) {
     while ((hit = idRe.exec(region))) referenced.add(hit[0].toLowerCase());
   }
 
-  return { name, definitions, createdCols, referenced, bodiesUnchecked, unresolved };
+  return { name, definitions, createdCols, addedColumnTables, referenced, bodiesUnchecked, unresolved };
 }
 
 // ---------------------------------------------------------------------------
@@ -812,6 +824,8 @@ export function analyseTrees({ workflows, migrations }) {
     // C-1 — replay the chain twice and diff what the filtered chain is missing.
     const trueChain = new Set();
     const filteredChain = new Set();
+    // #4490 (08-O3 fix 1): the tables each skipped migration ADDs a column to.
+    const skippedColumnTables = new Map();
     for (const name of migrationNames) {
       const info = parsed.get(name);
       if (!skipped.has(name)) {
@@ -819,6 +833,13 @@ export function analyseTrees({ workflows, migrations }) {
           if (filteredChain.has(object)) continue;
           // A CREATE OR REPLACE in this very file is a definition, not a reference.
           if (info.definitions.has(object)) continue;
+          // #4490 (08-O3): nor is a column this file declares in its own CREATE
+          // TABLE — unless the file also names a table to which a skipped
+          // migration adds that column (it may be reading the skipped one).
+          if (
+            info.createdCols.has(object) &&
+            ![...(skippedColumnTables.get(object) ?? [])].some((table) => info.referenced.has(table))
+          ) continue;
           const identifier = object.slice(object.indexOf(":") + 1);
           if (!info.referenced.has(identifier)) continue;
           violations.push({
@@ -834,6 +855,11 @@ export function analyseTrees({ workflows, migrations }) {
         }
         for (const object of info.definitions) filteredChain.add(object);
         for (const object of info.createdCols) filteredChain.add(object);
+      } else {
+        for (const [object, tables] of info.addedColumnTables) {
+          if (!skippedColumnTables.has(object)) skippedColumnTables.set(object, new Set());
+          for (const table of tables) skippedColumnTables.get(object).add(table);
+        }
       }
       for (const object of info.definitions) trueChain.add(object);
     }
@@ -887,6 +913,22 @@ function selfTest() {
   const broken = { ...migrations, "004_bad.sql": "CREATE VIEW public.bad AS SELECT id FROM public.hidden;" };
   if (!analyseTrees({ workflows, migrations: broken }).violations.some(v => v.check === "C-1")) throw new Error("missing prerequisite accepted");
   if (!analyseTrees({ workflows, migrations: {} }).violations.length) throw new Error("empty migration tree accepted");
+  // #4490 (08-O3): a file's own CREATE TABLE column is its own definition.
+  const ownColumn = {
+    ...migrations,
+    "002_skip.sql": "CREATE TABLE public.hidden(id int); ALTER TABLE public.base ADD COLUMN ready_at timestamptz;",
+    "005_own.sql": "CREATE TABLE public.own (id int, ready_at timestamptz, CONSTRAINT own_ok CHECK (id > 0)); CREATE VIEW public.own_view AS SELECT ready_at FROM public.own;",
+  };
+  if (analyseTrees({ workflows, migrations: ownColumn }).violations.length) throw new Error("own CREATE TABLE column rejected");
+  const { "005_own.sql": _own, ...withoutOwn } = ownColumn;
+  const foreignColumn = { ...withoutOwn, "006_bad.sql": "CREATE VIEW public.bad2 AS SELECT ready_at FROM public.base;" };
+  if (!analyseTrees({ workflows, migrations: foreignColumn }).violations.some(v => v.check === "C-1")) throw new Error("skipped ADD COLUMN reader accepted");
+  // #4490 (08-O3 fix 1): a file's own same-named column never hides a read of
+  // the skipped column on the table the skipped migration added it to.
+  const hole = { ...withoutOwn, "007_hole.sql": "CREATE TABLE public.own2 (id int, ready_at timestamptz); CREATE VIEW public.bad3 AS SELECT b.ready_at FROM public.base b;" };
+  if (!analyseTrees({ workflows, migrations: hole }).violations.some(v => v.check === "C-1")) throw new Error("own column hid a skipped column read");
+  const holeFn = { ...withoutOwn, "007_hole.sql": "CREATE TABLE public.own2 (id int, ready_at timestamptz); CREATE FUNCTION public.bad4() RETURNS timestamptz LANGUAGE sql AS $$ SELECT b.ready_at FROM public.base b $$;" };
+  if (!analyseTrees({ workflows, migrations: holeFn }).violations.some(v => v.check === "C-1")) throw new Error("own column hid a skipped column read in a sql body");
   console.log("#2492 self-test PASS");
 }
 

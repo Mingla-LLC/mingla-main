@@ -217,7 +217,11 @@ import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
 import { useAuth } from "../../context/AuthContext";
 import type { CoverTarget } from "./coverTarget";
-import { coverTargetHasUploadIdentity } from "./coverTarget";
+import {
+  coverTargetHasUploadIdentity,
+  coverTargetIsVenue,
+  coverTargetUploadsToBrandStorage,
+} from "./coverTarget";
 // issue #868 [cover-gallery] — the ADDITIONAL image/GIF gallery item type
 // (shared package is the single owner of the offering-render prop contract).
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
@@ -904,7 +908,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             onShowToast("Covers must be 30 MB or smaller.");
             return;
           case "missing_server_event_id":
-            onShowToast("This needs a server record before media upload.");
+            onShowToast("Save this first, then add a photo.");
             return;
           case "display_failed":
             onShowToast("Uploaded, but this cover could not be displayed.");
@@ -1283,7 +1287,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
       // #4238 — an ad_creative photo has no events row either: same brand-keyed
       // storage and no row write; the ad builder keeps the emitted patch.
-      if (target.kind === "venue" || target.kind === "ad_creative") {
+      if (coverTargetUploadsToBrandStorage(target)) {
         // META-ORCH-1255(C) D-C: venue device upload → brand_covers bucket
         // (brand-keyed storage path) but NO brands-row patch — the emitted
         // patch is persisted by the host to venue_listings via syncHeroMedia.
@@ -2106,7 +2110,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           showUploadError(error);
           return;
         }
-      } else if (target.kind === "venue") {
+      } else if (coverTargetIsVenue(target)) {
         // META-ORCH-1255(C) D-C: same anti-injection URL validation as the
         // brand path, ZERO brands-row write (host persists to the venue row).
         try {
@@ -2165,7 +2169,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           showUploadError(error);
           return;
         }
-      } else if (target.kind === "venue") {
+      } else if (coverTargetIsVenue(target)) {
         // META-ORCH-1255(C) D-C: validate only — never patch the brands row.
         try {
           coverFromProviderRef({

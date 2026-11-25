@@ -250,10 +250,168 @@ export const clearNativeCheckoutRecoveryFor = (
 
 export const purgeNativeCheckoutRecovery = async (): Promise<void> => {
   await clearNativeCheckoutRecovery();
+  // #4490 Explorer W4 (Constitution rule 6): sign-out also deletes the venue
+  // checkout pointer (its own key, below).
+  await clearVenueCheckoutRecovery();
   reportedPurchaseOrders.clear();
   reportedRecoverySessions.clear();
   reportedPendingSessions.clear();
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #4490 Explorer W4 — the venue checkout recovery pointer (spec 06 W4 rule 4).
+//
+// Its OWN SecureStore key and its OWN strict parser: the ticket pointer above
+// accepts one fixed shape and rejects extra fields, and is untouched. The
+// venue pointer carries ids and an expiry only: no token, no URL, no amount,
+// no name or email. It is written before the payment page opens, read on app
+// start and on Purchases focus (`venueOfferCheckoutRunner`), cleared on a
+// confirmed / failed / expired answer, and deleted on sign-out
+// (`purgeNativeCheckoutRecovery`).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VENUE_RECOVERY_KEY = "mingla_venue_checkout_recovery_v1";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type VenueCheckoutRecoveryKind = "venue_offer" | "venue_membership";
+
+export interface VenueCheckoutRecoveryPointer {
+  version: 1;
+  kind: VenueCheckoutRecoveryKind;
+  /** The booking group id (offer) or the subscription id (plan). */
+  id: string;
+  accountId: string;
+  provider: NativeCheckoutRecoveryProvider;
+  createdAt: number;
+  expiresAt: number;
+}
+
+const VENUE_POINTER_KEYS: ReadonlySet<string> = new Set([
+  "version",
+  "kind",
+  "id",
+  "accountId",
+  "provider",
+  "createdAt",
+  "expiresAt",
+]);
+
+export const parseVenueCheckoutRecoveryPointer = (
+  raw: string | null,
+): VenueCheckoutRecoveryPointer | null => {
+  if (raw === null) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  if (Object.keys(row).some((key) => !VENUE_POINTER_KEYS.has(key))) return null;
+  if (
+    row.version !== 1 ||
+    (row.kind !== "venue_offer" && row.kind !== "venue_membership") ||
+    typeof row.id !== "string" ||
+    !UUID_RE.test(row.id) ||
+    !isBoundedString(row.accountId, 128) ||
+    (row.provider !== "stripe" && row.provider !== "paystack") ||
+    typeof row.createdAt !== "number" ||
+    !Number.isFinite(row.createdAt) ||
+    typeof row.expiresAt !== "number" ||
+    !Number.isFinite(row.expiresAt) ||
+    row.expiresAt <= row.createdAt ||
+    row.expiresAt - row.createdAt > RECOVERY_TTL_MS
+  ) {
+    return null;
+  }
+  return row as unknown as VenueCheckoutRecoveryPointer;
+};
+
+/**
+ * The pointer for one payment. `expiresAt` is the booking's `holdUntil`,
+ * capped by the 24-hour TTL (no hold, e.g. a balance or a plan month: the
+ * TTL). Null when the hold has already run out (nothing left to recover).
+ */
+export const createVenueCheckoutRecoveryPointer = (input: {
+  kind: VenueCheckoutRecoveryKind;
+  id: string;
+  accountId: string;
+  provider: NativeCheckoutRecoveryProvider;
+  holdUntil: string | null;
+  now?: number;
+}): VenueCheckoutRecoveryPointer | null => {
+  const createdAt = input.now ?? Date.now();
+  const cap = createdAt + RECOVERY_TTL_MS;
+  const hold = input.holdUntil === null ? Number.NaN : Date.parse(input.holdUntil);
+  const expiresAt = Number.isFinite(hold) ? Math.min(hold, cap) : cap;
+  if (expiresAt <= createdAt) return null;
+  return {
+    version: 1,
+    kind: input.kind,
+    id: input.id,
+    accountId: input.accountId,
+    provider: input.provider,
+    createdAt,
+    expiresAt,
+  };
+};
+
+export const persistVenueCheckoutRecovery = (
+  pointer: VenueCheckoutRecoveryPointer,
+): Promise<boolean> =>
+  onRecoveryKey(async () => {
+    if (!isSecureStoreAvailable()) return false;
+    try {
+      await secureSetItem(VENUE_RECOVERY_KEY, JSON.stringify(pointer));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+/** The live pointer; an unreadable or expired one is deleted and reads as none. */
+export const readVenueCheckoutRecovery = (
+  now: number = Date.now(),
+): Promise<VenueCheckoutRecoveryPointer | null> =>
+  onRecoveryKey(async () => {
+    try {
+      const raw = await secureGetItem(VENUE_RECOVERY_KEY);
+      const parsed = parseVenueCheckoutRecoveryPointer(raw);
+      if (raw !== null && (parsed === null || parsed.expiresAt <= now)) {
+        await secureDeleteItem(VENUE_RECOVERY_KEY);
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  });
+
+export const clearVenueCheckoutRecovery = (): Promise<void> =>
+  onRecoveryKey(async () => {
+    try {
+      await secureDeleteItem(VENUE_RECOVERY_KEY);
+    } catch {
+      // Secure-store failure cannot be allowed to break sign-out or confirmation.
+    }
+  });
+
+/** Delete the venue pointer ONLY if it is for this booking or plan. */
+export const clearVenueCheckoutRecoveryFor = (id: string): Promise<void> =>
+  onRecoveryKey(async () => {
+    try {
+      const parsed = parseVenueCheckoutRecoveryPointer(
+        await secureGetItem(VENUE_RECOVERY_KEY),
+      );
+      if (parsed !== null && parsed.id !== id) return;
+      await secureDeleteItem(VENUE_RECOVERY_KEY);
+    } catch {
+      // Secure-store failure cannot be allowed to break confirmation.
+    }
+  });
 
 export type NativePurchaseAnalyticsInput = {
   orderId: string;

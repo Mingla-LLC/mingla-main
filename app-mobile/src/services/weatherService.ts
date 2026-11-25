@@ -157,6 +157,13 @@ function getWmoIcon(code: number, isDay: number): string {
   return `01${suffix}`;
 }
 
+/**
+ * #4490 W7 — days of hourly forecast asked of Open-Meteo (today and the six
+ * after; was 3). Same free API, a larger payload. One owner: the request, the
+ * cache key and every "forecast shows from {day}" rule read this constant.
+ */
+export const FORECAST_DAYS = 7;
+
 class WeatherService {
   private weatherCache = new Map<string, { data: WeatherData; ts: number }>();
   private WEATHER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -173,17 +180,18 @@ class WeatherService {
    * `hourlyForecast: []`, and caches on `lat_lng` with no date in the key.
    *
    * #4347 wave 2 — THAT FEATURE NOW EXISTS, in the shape described here: the
-   * same request also asks for `hourly=…` (3 days), `hourlyForecast` carries
+   * same request also asks for `hourly=…` (7 days since #4490 W7), `hourlyForecast` carries
    * it, and the hour-selection rule is `forecastAt` in
    * expandedCard/placeSheetModel.ts. The `current` block is unchanged, and the
-   * lat_lng cache key stays correct because the hourly series is absolute.
+   * lat_lng_days cache key stays correct because the hourly series is absolute.
    */
   async getWeatherForecast(
     lat: number,
     lng: number
   ): Promise<WeatherData | null> {
     // Check cache
-    const cacheKey = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
+    // #4490 W7: the day count is part of the key, so a 3-day entry can never answer a 7-day ask.
+    const cacheKey = `${lat.toFixed(3)}_${lng.toFixed(3)}_${FORECAST_DAYS}d`;
     const cached = this.weatherCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < this.WEATHER_CACHE_TTL) {
       return cached.data;
@@ -195,10 +203,10 @@ class WeatherService {
         `longitude=${lng}`,
         `current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,uv_index,precipitation,is_day`,
         // #4347 wave 2 — the HOURLY forecast, so "When you'd go" can say what
-        // it will be like at the time you pick (3 days covers Now / Tonight /
-        // Tomorrow and a near scheduled time).
+        // it will be like at the time you pick. #4490 W7: 7 days, so a booking
+        // or an event up to a week out still gets its weather.
         `hourly=temperature_2m,weather_code,precipitation,precipitation_probability,is_day`,
-        `forecast_days=3`,
+        `forecast_days=${FORECAST_DAYS}`,
         `temperature_unit=fahrenheit`,
         `wind_speed_unit=mph`,
         `precipitation_unit=inch`,

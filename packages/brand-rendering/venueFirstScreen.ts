@@ -31,6 +31,7 @@
  * Both arms are still arms: a fifth pricing model or a third timekeeping model
  * does not compile until it says how it prices and how it keeps time.
  */
+import type { PublicVenueTab } from "./publicVenueTabState";
 import {
   stayClockLabel,
   type VenueCategoryProfile,
@@ -201,6 +202,8 @@ const VENUE_PRICE_CELL: Record<
             maxMinor: discoveryPrice.maxMinor,
             currencyCode: discoveryPrice.currencyCode,
             exponent: discoveryPrice.minorUnitExponent,
+            // W3 fix 4 (W3-N31): ₦ like the rest of the page, no stray code.
+            display: "venue",
           }),
           note: "a head",
         },
@@ -348,8 +351,11 @@ export function buildVenueAnswerBar(
 // The fact rows (#4420 D-V1) — the same answers, read as a list
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** What a fact row's one action does. The screen owns the handlers. */
-export type VenueFactAction = "hours" | "map" | "reserve";
+/**
+ * What a fact row's one action does. The screen owns the handlers. `lead` is
+ * #4490's: the lead row's button opens the tab the venue's features chose.
+ */
+export type VenueFactAction = "hours" | "map" | "reserve" | "lead";
 
 /** One fact row, as data. `icon` names an `OfferingFactIcon`. */
 export interface VenueFactView {
@@ -358,6 +364,9 @@ export interface VenueFactView {
   readonly value: string;
   readonly detail: string | null;
   readonly action: VenueFactAction | null;
+  /** #4490 — the lead row's button label and the tab it opens. */
+  readonly actionLabel?: string;
+  readonly actionTab?: PublicVenueTab;
 }
 
 export interface VenueFactsInput {
@@ -374,6 +383,23 @@ export interface VenueFactsInput {
   hasMap: boolean;
   /** Stays: how many room types are on sale (null = unknown). */
   roomTypeCount: number | null;
+  /**
+   * #4490 — the page's lead (the one thing its features sell). `undefined` =
+   * today's behaviour (the category decides the booking row). `null` = the
+   * venue's features sell nothing the page can book: no booking row. An object
+   * replaces the booking row; `keepPriceRow: false` also drops the "Typically"
+   * spend row, because the lead row carries the price.
+   */
+  featureLead?: {
+    row: {
+      value: string;
+      detail: string | null;
+      actionLabel: string;
+      icon: "calendar" | "price";
+    } | null;
+    tab: PublicVenueTab;
+    keepPriceRow: boolean;
+  } | null;
 }
 
 const capitalise = (s: string): string =>
@@ -508,6 +534,25 @@ export function venueFacts(input: VenueFactsInput): VenueFactView[] {
   const priceRow = price === null ? null : priceFact(price, input);
   if (input.profile.bookingBody === "stay") {
     return [priceRow, timeRow, where].filter(
+      (f): f is VenueFactView => f !== null,
+    );
+  }
+  if (input.featureLead !== undefined) {
+    const lead = input.featureLead;
+    const leadRow: VenueFactView | null =
+      lead === null || lead.row === null
+        ? null
+        : {
+            key: "booking",
+            icon: lead.row.icon,
+            value: lead.row.value,
+            detail: lead.row.detail,
+            action: lead.tab === "reservations" ? "reserve" : "lead",
+            actionLabel: lead.row.actionLabel,
+            actionTab: lead.tab,
+          };
+    const keptPrice = lead !== null && !lead.keepPriceRow ? null : priceRow;
+    return [timeRow, where, keptPrice, leadRow].filter(
       (f): f is VenueFactView => f !== null,
     );
   }

@@ -48,6 +48,47 @@ import {
 } from "../_shared/issue4382SupportNotifications.ts";
 // #4383: the Admin push categories (one list, the destination module).
 import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
+// #4490 — venue booking emails: the words and the private link at send time.
+import {
+  isVenueBookingCategory,
+  isVenueHostCategory,
+  venueBookingEmailFacts,
+} from "../_shared/email/templates/venueBookingEmails.ts";
+import { rederiveVenueOfferBookingToken } from "../_shared/venueOfferBookingToken.ts";
+// #4490 P6 — member emails: the member page link built at send time.
+import { isVenueMembershipCategory } from "../_shared/email/templates/venueMembershipEmails.ts";
+import { isVenueWaitlistCategory } from "../_shared/email/templates/venueWaitlistEmails.ts";
+import {
+  venueClaimFor,
+  type VenueClaimKind,
+  venueFlagOn,
+} from "../_shared/venueAppHandoff.ts";
+import {
+  buildVenueMemberUrl,
+  rederiveVenueMemberToken,
+} from "../_shared/venueMembershipToken.ts";
+import {
+  buildVenueVisitUrl,
+  resolveVenueVisitOrigin,
+} from "../_shared/venueOfferVisitLink.ts";
+import {
+  buildTillReceiptUrl,
+  rederiveTillReceiptToken,
+} from "../_shared/venueTillReceiptToken.ts";
+import { TILL_RECEIPT_CATEGORY } from "../_shared/email/tillReceiptEmail.ts";
+
+/** The names the visit-link origin reads, each read literally (function secret contract, #2241). */
+function visitOriginEnv(name: string): string | undefined {
+  switch (name) {
+    case "BUSINESS_WEB_ORIGIN":
+      return Deno.env.get("BUSINESS_WEB_ORIGIN");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -260,6 +301,239 @@ export async function resolveReservationConfirmationDispatch(
   }
 }
 
+/**
+ * #4490 — a venue booking email (confirmed, cancelled, refund): the words from
+ * the booking itself, and the guest's private booking link, both resolved at
+ * send time. The link is re-derived from the booking id (the stored token hash
+ * confirms it) and rides only in this request's body to notify-dispatch, which
+ * accepts it from the service role alone and re-validates its shape; it is
+ * never written to the outbox, the payload, the inbox or the ledger. Any
+ * failure omits the link and the email still sends. The email goes only to
+ * the booking's own guest email (the trigger addressed the row to it).
+ */
+/**
+ * #4490 P3 fix: a "balance due" / "balance overdue" reminder read at send time
+ * shows nothing left to pay (the guest paid in between): skip it.
+ */
+export function venueBalanceAlreadyPaid(
+  categoryKey: string,
+  facts: Record<string, unknown>,
+): boolean {
+  return (categoryKey === "venue_balance_due" ||
+    categoryKey === "venue_balance_overdue") &&
+    facts.balance_minor === 0;
+}
+
+export async function resolveVenueBookingDispatch(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+  env: (name: string) => string | undefined = visitOriginEnv,
+  ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
+): Promise<{ facts: Record<string, unknown>; visitUrl: string | null }> {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const groupId = String(payload.venue_group_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(groupId)) return { facts: {}, visitUrl: null };
+  let facts: Record<string, unknown> = {};
+  try {
+    const { data: projection } = await admin.rpc(
+      "issue_4490_booking_projection",
+      { p_group_id: groupId, p_qr_pepper: null },
+    );
+    facts = venueBookingEmailFacts(projection, payload);
+  } catch {
+    facts = {};
+  }
+  // #4490 P4: a message to the venue's own people never carries the guest's
+  // private booking link.
+  if (isVenueHostCategory(String(row.category_key ?? ""))) {
+    return { facts, visitUrl: null };
+  }
+  const contact = typeof row.contact === "string" ? row.contact : "";
+  if (!EMAIL_RE.test(contact)) return { facts, visitUrl: null };
+  try {
+    const { data: group } = await admin.from("stay_reservation_groups")
+      .select("buyer_token_hash").eq("id", groupId).maybeSingle();
+    const token = await rederiveVenueOfferBookingToken({
+      groupId,
+      storedHashHex: typeof group?.buyer_token_hash === "string"
+        ? group.buyer_token_hash
+        : null,
+      ring,
+    });
+    if (token === null) {
+      console.warn("[notify-outbox-drain] venue_visit_link_omitted", {
+        outbox_id: row.id ?? null,
+        reason: "token_not_derivable",
+      });
+      return { facts, visitUrl: null };
+    }
+    return {
+      facts,
+      visitUrl: buildVenueVisitUrl({
+        origin: resolveVenueVisitOrigin(env),
+        groupId,
+        token,
+      }),
+    };
+  } catch {
+    console.warn("[notify-outbox-drain] venue_visit_link_omitted", {
+      outbox_id: row.id ?? null,
+      reason: "visit_link_failed",
+    });
+    return { facts, visitUrl: null };
+  }
+}
+
+/**
+ * #4490 Explorer W1: the "Open in Mingla" claim link for a guest's venue
+ * message, minted when it is sent and only while VENUE_APP_HANDOFF is on.
+ * Messages to the venue's own people never get one. Null = no app link (the
+ * message goes exactly as before).
+ */
+export async function resolveVenueAppLink(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+): Promise<{ url: string; display: string } | null> {
+  const category = String(row.category_key ?? "");
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  let subject: { kind: VenueClaimKind; id: string } | null = null;
+  if (isVenueBookingCategory(category) && !isVenueHostCategory(category)) {
+    subject = {
+      kind: "venue_booking",
+      id: String(payload.venue_group_id ?? ""),
+    };
+  } else if (isVenueMembershipCategory(category)) {
+    subject = {
+      kind: "venue_membership",
+      id: String(payload.subscription_id ?? ""),
+    };
+  } else if (isVenueWaitlistCategory(category)) {
+    subject = { kind: "venue_waitlist", id: String(payload.waitlist_id ?? "") };
+  } else if (category === TILL_RECEIPT_CATEGORY) {
+    // #4490 spec 08 O1 (T20): a Till receipt's "Open in Mingla" (the sale).
+    subject = { kind: "venue_till_sale", id: String(payload.till_sale_id ?? "") };
+  }
+  if (subject === null || !/^[0-9a-f-]{36}$/i.test(subject.id)) return null;
+  const claim = await venueClaimFor(
+    admin,
+    await venueFlagOn(admin, "VENUE_APP_HANDOFF"),
+    subject.kind,
+    subject.id,
+  );
+  if (claim.shortUrl === null || claim.code === null) return null;
+  return { url: claim.shortUrl, display: `usemingla.com/c/${claim.code}` };
+}
+
+/**
+ * #4490 P6: the member page link for a member email, built when it is sent
+ * (re-derived from the member id and checked against the stored hash). Null
+ * when no working link can be built: the email then goes without a button.
+ */
+export async function resolveVenueMemberDispatch(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+  env: (name: string) => string | undefined = visitOriginEnv,
+  ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
+): Promise<string | null> {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const subscriptionId = String(payload.subscription_id ?? "");
+  const contact = typeof row.contact === "string" ? row.contact : "";
+  if (!/^[0-9a-f-]{36}$/i.test(subscriptionId) || !EMAIL_RE.test(contact)) {
+    return null;
+  }
+  try {
+    const { data: member } = await admin.from(
+      "venue_membership_subscriptions",
+    ).select("member_token_hash").eq("id", subscriptionId).maybeSingle();
+    const token = await rederiveVenueMemberToken({
+      subscriptionId,
+      storedHashHex: typeof member?.member_token_hash === "string"
+        ? member.member_token_hash
+        : null,
+      ring,
+    });
+    if (token === null) {
+      console.warn("[notify-outbox-drain] venue_member_link_omitted", {
+        outbox_id: row.id ?? null,
+        reason: "token_not_derivable",
+      });
+      return null;
+    }
+    return buildVenueMemberUrl({
+      origin: resolveVenueVisitOrigin(env),
+      subscriptionId,
+      token,
+    });
+  } catch {
+    console.warn("[notify-outbox-drain] venue_member_link_omitted", {
+      outbox_id: row.id ?? null,
+      reason: "member_link_failed",
+    });
+    return null;
+  }
+}
+
+/**
+ * #4490 spec 08 O1 (T20): a Till receipt, read when it is SENT. The receipt
+ * (snapshot plus refunds since) goes into the payload for the itemised email;
+ * the private link is re-derived from the payment id and checked against the
+ * stored hash. Null link when none can be built: the receipt still goes.
+ */
+export async function resolveTillReceiptDispatch(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+  env: (name: string) => string | undefined = visitOriginEnv,
+  ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
+): Promise<{ receipt: Record<string, unknown> | null; url: string | null }> {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const paymentId = String(payload.till_payment_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(paymentId)) return { receipt: null, url: null };
+  const { data, error } = await admin.rpc(
+    "issue_4490_till_receipt_link_facts",
+    { p_payment_id: paymentId },
+  );
+  // A failed read retries the row (the email must carry its lines).
+  if (error) throw new Error("till_receipt_lookup_failed");
+  const facts = (data as Record<string, unknown> | null) ?? {};
+  const receipt = facts.receipt && typeof facts.receipt === "object"
+    ? facts.receipt as Record<string, unknown>
+    : null;
+  try {
+    const token = await rederiveTillReceiptToken({
+      paymentId,
+      storedHashHex: typeof facts.tokenHashHex === "string"
+        ? facts.tokenHashHex
+        : null,
+      ring,
+    });
+    if (token === null) {
+      console.warn("[notify-outbox-drain] till_receipt_link_omitted", {
+        outbox_id: row.id ?? null,
+        reason: "token_not_derivable",
+      });
+      return { receipt, url: null };
+    }
+    return {
+      receipt,
+      url: buildTillReceiptUrl({
+        origin: resolveVenueVisitOrigin(env),
+        paymentId,
+        token,
+      }),
+    };
+  } catch {
+    console.warn("[notify-outbox-drain] till_receipt_link_omitted", {
+      outbox_id: row.id ?? null,
+      reason: "receipt_link_failed",
+    });
+    return { receipt, url: null };
+  }
+}
+
 interface GenericBuyerLinkRequest {
   kind: BuyerLinkKind;
   sourceId: string;
@@ -295,7 +569,11 @@ export function genericBuyerLinkRequest(
     const sourceId = from("reservation_id");
     return sourceId ? { kind: "reservation", sourceId } : null;
   }
-  if (category === "buyer_venue_order_receipt") {
+  if (
+    category === "buyer_venue_order_receipt" ||
+    // #4490 spec 08 O5 (T16): the same claim subject, built at send time.
+    category === "buyer_venue_order_sold_out"
+  ) {
     const sourceId = from("venue_order_id");
     return sourceId ? { kind: "venue_order", sourceId } : null;
   }
@@ -324,14 +602,24 @@ export function purchaseReminderDeepLink(
   const payload = (row.payload as Record<string, unknown> | null) ?? {};
   const category = String(row.category_key ?? "");
   const route = category === "buyer_event_reminder"
-    ? { kind: "order", id: payload.order_id }
+    ? { kind: "order", id: payload.order_id, door: true }
     : category === "buyer_reservation_reminder"
-    ? { kind: "reservation", id: payload.reservation_id }
+    ? { kind: "reservation", id: payload.reservation_id, door: true }
+    // #4490 Explorer W2: a guest's venue message opens that booking, plan or
+    // waitlist place in Purchases (never the venue's own people's messages).
+    : isVenueBookingCategory(category) && !isVenueHostCategory(category)
+    ? { kind: "venue_booking", id: payload.venue_group_id, door: false }
+    : isVenueMembershipCategory(category)
+    ? { kind: "venue_membership", id: payload.subscription_id, door: false }
+    : isVenueWaitlistCategory(category)
+    ? { kind: "venue_waitlist", id: payload.waitlist_id, door: false }
     : null;
   if (route === null || typeof route.id !== "string") return null;
   const id = route.id.trim();
   if (!PURCHASE_ROUTE_ID.test(id)) return null;
-  return `com.mingla.app.v2://purchases/${route.kind}/${id}?door=1`;
+  return `com.mingla.app.v2://purchases/${route.kind}/${id}${
+    route.door ? "?door=1" : ""
+  }`;
 }
 
 export async function resolveGenericBuyerMessageLink(
@@ -497,6 +785,37 @@ export async function processGenericOutcome(
       contact = confirmation.contact;
       reservationManageUrl = confirmation.manageUrl;
     }
+    let venueVisitUrl: string | null = null;
+    if (isVenueBookingCategory(String(row.category_key ?? ""))) {
+      const venue = await resolveVenueBookingDispatch(admin, row);
+      Object.assign(payload, venue.facts);
+      venueVisitUrl = venue.visitUrl;
+      // #4490 P3 fix: a balance reminder whose balance was paid before it
+      // went out is not sent ("N0 is left to pay").
+      if (
+        venueBalanceAlreadyPaid(String(row.category_key ?? ""), venue.facts)
+      ) {
+        await admin.from("notification_outbox").update({
+          status: "done",
+          processed_at: new Date().toISOString(),
+          next_attempt_at: null,
+          last_error: "balance_already_paid",
+        }).eq("id", id);
+        return "done";
+      }
+    }
+    if (isVenueMembershipCategory(String(row.category_key ?? ""))) {
+      venueVisitUrl = await resolveVenueMemberDispatch(admin, row);
+    }
+    let tillReceiptUrl: string | null = null;
+    if (row.category_key === TILL_RECEIPT_CATEGORY) {
+      const till = await resolveTillReceiptDispatch(admin, row);
+      if (till.receipt !== null) payload.receipt = till.receipt;
+      tillReceiptUrl = till.url;
+    }
+    // #4490 Explorer W1: the app link leads the email and rides in the text.
+    const venueApp = await resolveVenueAppLink(admin, row);
+    if (venueApp !== null) payload.venue_app_link_display = venueApp.display;
     const deepLink = typeof payload.deep_link === "string"
       ? payload.deep_link
       : purchaseReminderDeepLink(row);
@@ -518,6 +837,11 @@ export async function processGenericOutcome(
         ...(reservationManageUrl
           ? { reservation_manage_url: reservationManageUrl }
           : {}),
+        // #4490 — in transit only; see resolveVenueBookingDispatch.
+        ...(venueVisitUrl ? { venue_visit_url: venueVisitUrl } : {}),
+        ...(venueApp ? { venue_app_url: venueApp.url } : {}),
+        // #4490 spec 08 O1 — in transit only; see resolveTillReceiptDispatch.
+        ...(tillReceiptUrl ? { till_receipt_url: tillReceiptUrl } : {}),
       }),
     });
     const envelope = await readBoundedSuccessEnvelope(res);

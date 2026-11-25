@@ -29,7 +29,21 @@ const ORIGINAL_PATH =
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
 const CURRENT_PIN_PATH =
-  "supabase/migrations/20280403074261_issue_4261_pending_venue_repin.sql";
+  "supabase/migrations/20281203744490_issue_4490_ops_o5_fix1_pending_venue_repin.sql";
+// [TEST-MOD-APPROVED #4490] 08-O5 fix 1: the current pin owner is the O5 fix 1 repin
+// (20281203744490), which advances the pin over the opening hours history added by
+// 20281203734490; it stays disallowed. It carries the P1 owner's rewrites.
+// [TEST-MOD-APPROVED #4490] 08-O5 part B: the current pin owner is the O5 part B repin
+// (20281203714490), which advances the pin over the daily close lanes added by
+// 20281203704490 (closes, cash movements); they stay disallowed. It carries the
+// P1 owner's rewrites.
+// [TEST-MOD-APPROVED #4490] 08-O5 part A: the current pin owner is the O5 part A repin
+// (20281203694490), which advances the pin over the PIN lanes added by
+// 20281203684490 (sessions, attempts, approvals); they stay disallowed. It carries
+// the P1 owner's rewrites.
+// [TEST-MOD-APPROVED #4490] 08-O3 part A: the current pin owner is the O3 repin
+// (20281203594490), which advances the pin over the Till pay-link texts lane added
+// by 20281203574490; it stays disallowed. It carries the P1 owner's rewrites.
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -53,8 +67,23 @@ const NEW_PIN =
 // group-chat plan venue dependencies, which stay disallowed and are advanced by
 // their later owners (now #4261's repin, which replaces #4188's and reads one
 // value on every runner that applies it).
+// [TEST-MOD-APPROVED #4490] #4490's repin now owns the pin: it advances it over
+// the venue feature lanes (spaces, combinations, features), which stay
+// disallowed, and reads one value on the Supabase CLI stack and the bare PG17
+// batch image.
+// [TEST-MOD-APPROVED #4490] P2: the current pin owner is the P2 repin
+// (20281203104490), which advances the pin over the venue offer lanes
+// (booking settings, pools, overrides, price options, offer spaces, passes,
+// check-in log); they stay disallowed. It carries the P1 owner's rewrites.
+// [TEST-MOD-APPROVED #4490] guest list: the current pin owner is the guest
+// list repin (20281203424490), which advances the pin over the guest list
+// lanes added by 20281203394490 (terms, promoters, entries); they stay
+// disallowed. It carries the P1 owner's rewrites like the P2 owner did.
+// [TEST-MOD-APPROVED #4490] 08-O1: the current pin owner is the O1 repin
+// (20281203524490), which advances the pin over the Till lanes added by
+// 20281203504490; they stay disallowed. It carries the P1 owner's rewrites.
 const CURRENT_HASHES = [
-  "957efbc24ad78cc3ae5e0d5bf79162c8caa6b36c39d215721dde27b47d07a47a",
+  "ddb56bf5b2b14f26485be131f6ab0c614d03df9dd493d2332069f16851664464",
 ] as const;
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
@@ -440,7 +469,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
-  const currentPinName = "20280403074261_issue_4261_pending_venue_repin.sql";
+  const currentPinName = "20281203744490_issue_4490_ops_o5_fix1_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),
@@ -450,9 +479,9 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   assert.equal(
     count(d4, currentPinName),
     2,
-    "D4 must replay the current group-chat plan pin owner twice",
+    "D4 must replay the current venue-feature pin owner twice",
   );
-  const tokens = [...d4.matchAll(/202(?:7|8)\d+_issue_(?:2099|2855|4188|4261)[^\s"]+\.sql/g)]
+  const tokens = [...d4.matchAll(/202(?:7|8)\d+_issue_(?:2099|2855|4188|4261|4490)[^\s"]+\.sql/g)]
     .map((match) => match[0]);
   assert.deepEqual(tokens, [
     originalName,

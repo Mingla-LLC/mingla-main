@@ -53,6 +53,7 @@ import {
   DESKTOP_WIZARD_FORM_MAX_WIDTH,
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
+import { useEventAtVenue } from "../../hooks/useEventAtVenue";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 import {
@@ -334,6 +335,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const liveDraft =
     useDraftEventStore((s) => s.drafts.find((d) => d.id === initialDraft.id)) ??
     initialDraft;
+  // #4490 07-A — Party Type is optional for an event at a venue.
+  const atVenue = useEventAtVenue(liveDraft.id, liveDraft.brandId, "event");
+  const venueOpts = useMemo(() => ({ atVenue }), [atVenue]);
   // #4548 — the guest pack's working copy lives for as long as this wizard does.
   const guestPackSessionId = guestPackEventIdForDraft(liveDraft.id);
   useEffect(
@@ -623,8 +627,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
   // ORCH-1150 — RSVP is moneyless: no Stripe/payout gate.
   const stepErrors: ValidationError[] = useMemo(
-    () => validateRsvpStep(currentStep, liveDraft),
-    [currentStep, liveDraft],
+    () => validateRsvpStep(currentStep, liveDraft, venueOpts),
+    [currentStep, liveDraft, venueOpts],
   );
 
   // #4420 B7 — the clickable stepper. Indices are ordinals among the VISIBLE
@@ -636,10 +640,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   );
   const furthestValidOrdinal = useMemo((): number => {
     const firstInvalid = visibleStepDefs.findIndex(
-      ({ index }) => validateRsvpStep(index, liveDraft).length > 0,
+      ({ index }) => validateRsvpStep(index, liveDraft, venueOpts).length > 0,
     );
     return firstInvalid === -1 ? visibleStepDefs.length - 1 : firstInvalid;
-  }, [visibleStepDefs, liveDraft]);
+  }, [visibleStepDefs, liveDraft, venueOpts]);
   const visibleStepperSteps = useMemo<StepperStep[]>(
     () => visibleStepDefs.map(({ definition, index }) => {
       const firstError =
@@ -960,7 +964,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       if (inviteNavigation?.phase === "error") inviteNavigation.retry();
       if (inviteNavigation?.phase !== "ready") return;
     }
-    const errs = validateRsvpStep(currentStep, liveDraft);
+    const errs = validateRsvpStep(currentStep, liveDraft, venueOpts);
     if (errs.length > 0) {
       setShowStepErrors(true);
       // #3645 — never a silent refusal: the step moves to its first invalid
@@ -989,7 +993,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       return;
     }
     advance();
-  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation, handleShowToast]);
+  }, [currentStep, liveDraft, venueOpts, inviteEnabled, inviteNavigation, handleShowToast]);
 
   // ---- Publish gate (no Stripe — RSVP is moneyless) ----
 
@@ -1021,7 +1025,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       handleShowToast(packResult.message);
       return;
     }
-    const errs = validateRsvpPublish(liveDraft);
+    const errs = validateRsvpPublish(liveDraft, venueOpts);
     if (errs.length > 0) {
       setPendingErrors(errs);
       setErrorsSheetVisible(true);
@@ -1072,7 +1076,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [liveDraft, handleShowToast, persistedInvite, inviteEnabled,
+  }, [liveDraft, venueOpts, handleShowToast, persistedInvite, inviteEnabled,
     inviteRollbackReady, inviteFlag.data, chipInReadinessKnown,
     chipInPayoutReady, openChipInChoice]);
 
@@ -1286,6 +1290,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const renderStepBody = (): React.ReactElement => {
     const baseProps = {
       draft: liveDraft,
+      atVenue,
       updateDraft: handleUpdate,
       errors: stepErrors,
       showErrors: showStepErrors,

@@ -56,6 +56,7 @@
   "pill.experiences": "Pengalaman",
   "pill.trips": "Perjalanan",
   "pill.stays": "Penginapan",
+  "pill.venues": "Tempat",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.option_a11y": "{{label}}, {{count}} matches",
@@ -77,6 +78,7 @@
   "group.check_in": "Daftar masuk",
   "group.guests": "Tetamu",
   "group.property_kind": "Jenis tempat",
+  "group.venue_type": "Jenis tempat",
   "group.any_suffix": "{{group}} · Mana-mana",
   "when.any_day": "Mana-mana hari",
   "when.tomorrow": "Esok",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} pengalaman",
   "count.trips_other": "{{count}} perjalanan",
   "count.stays_other": "{{count}} stays",
+  "count.venues_other": "{{count}} tempat",
   "guests.value_other": "{{count}} guests",
-  "card.type.stops_other": "{{count}} BERHENTI"
+  "card.type.stops_other": "{{count}} BERHENTI",
+  "venues.empty_title": "Belum ada tempat untuk ditempah di sini.",
+  "venues.empty_body": "Tempat yang boleh anda tempah di Mingla akan dipaparkan di sini.",
+  "venues.filtered_title": "Tiada tempat yang sepadan dengan penapis itu.",
+  "venues.error_title": "Kami tidak dapat memuatkan tempat.",
+  "venues.error_retry": "Cuba lagi"
 }

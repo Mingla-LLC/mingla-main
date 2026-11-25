@@ -264,6 +264,13 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/pay/",
       // #4420 — token-authorized staff-made Stay payment link.
       "/stay/pay/",
+      // #4490 — a guest's venue booking and pass (booking-token-authorized).
+      // TEST-MOD-APPROVED #4490: the reviewed set gains /visit/ (reconciliation conflict 20).
+      "/visit/",
+      // TEST-MOD-APPROVED #4490 (Explorer W1): the app payment return page (no booking data).
+      "/paid/",
+      // TEST-MOD-APPROVED #4490 (spec 08 O1): a guest's Till receipt (receipt-token-authorized).
+      "/receipt/",
       // #4514 — a brand form's personal link (token in the URL fragment).
       "/form/",
     ]);

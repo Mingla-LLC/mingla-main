@@ -1,3 +1,5 @@
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+
 export interface CanonicalDiscoveryPrice {
   priceRangeStatus:
     | "active"
@@ -75,12 +77,18 @@ export function formatMinorAmount(
   currency: string,
   exponent: number,
 ): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
+  // #4490 W3 fix 4 (W3-N31): Naira reads ₦ on place cards and the card
+  // sheet's price line too (spec 06 decision 14; Hermes prints "NGN 20,000.00").
+  // The shared glyph rule (#3341) touches no other currency.
+  return withCurrencyGlyph(
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: exponent,
+      maximumFractionDigits: exponent,
+    }).format(amount / 10 ** exponent),
     currency,
-    minimumFractionDigits: exponent,
-    maximumFractionDigits: exponent,
-  }).format(amount / 10 ** exponent);
+  );
 }
 
 function formatRange(

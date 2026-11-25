@@ -40,6 +40,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Platform,
+  useWindowDimensions,
+  type LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -56,6 +58,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 
 // Same row fill as the RSVP step it came from — Android gets the opaque
 // fallback (ANDROID_GLASS_USES_OPAQUE_FALLBACK; #1028 tracks the composite).
@@ -136,14 +139,54 @@ const reselectOnWebPointer = (
   });
 };
 
+/**
+ * #4490 (N3/N49): below this own width the label takes its own line above the
+ * − / value / + controls. Side by side, the controls need about 184 and the
+ * row padding 32, so under ~360 the label column was squeezed until it broke
+ * inside words ("Smalles/t group") or, at 390, printed one letter per line and
+ * pushed + off the edge.
+ */
+export const NUMBER_STEPPER_STACK_BELOW = 360;
+
+/** Before the first layout, guess from the window so a phone never flashes the squeezed row. */
+const STACK_GUESS_WINDOW_BELOW = 600;
+
+/**
+ * #4490 (N3/N49): two steppers that belong together (smallest / largest group,
+ * how many times / fee, from / to). Each cell asks for 280 and wraps onto its
+ * own line when the pair has less than ~572, so neither stepper is ever
+ * squeezed. Use this instead of a hand-rolled two-column row.
+ */
+export const NumberStepperPair: React.FC<{
+  children: React.ReactNode;
+  testID?: string;
+}> = ({ children, testID }) => (
+  <View style={pairStyles.row} testID={testID}>
+    {React.Children.toArray(children).map((child, i) => (
+      <View key={i} style={pairStyles.cell}>
+        {child}
+      </View>
+    ))}
+  </View>
+);
+
+const pairStyles = StyleSheet.create({
+  row: { flexDirection: "row", flexWrap: "wrap", columnGap: space[3] },
+  cell: { flexGrow: 1, flexShrink: 1, flexBasis: 280, minWidth: 0 },
+});
+
 export interface NumberStepperProps {
   label: string;
   value: number;
   min: number;
   max: number;
+  /** Tap/accessibility step. Defaults to 1. */
+  step?: number;
   onChange: (next: number) => void;
   /** Suffixed: `-adjust` (label), `-dec`, `-value` (field), `-inc`. */
   testID?: string;
+  /** Force the label onto its own line. Default: by the stepper's own width. */
+  stacked?: boolean;
 }
 
 export const NumberStepper: React.FC<NumberStepperProps> = ({
@@ -151,9 +194,22 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
   value,
   min,
   max,
+  step = 1,
   onChange,
   testID,
+  stacked: stackedProp,
 }) => {
+  const { width: windowWidth } = useWindowDimensions();
+  const [rowWidth, setRowWidth] = useState<number | null>(null);
+  const onRowLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    setRowWidth((prev) => (prev === w ? prev : w));
+  }, []);
+  const stacked =
+    stackedProp ??
+    (rowWidth !== null
+      ? rowWidth < NUMBER_STEPPER_STACK_BELOW
+      : windowWidth < STACK_GUESS_WINDOW_BELOW);
   const maxDigits = String(Math.max(0, Math.trunc(max))).length;
 
   // Non-null only while the field is being edited; mirrored in a ref so the
@@ -193,11 +249,11 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           ? null
           : parseTypedCount(editTextRef.current);
       const base = typed === null ? value : clampCount(typed, min, max);
-      const next = stepCount(base, direction, 1, min, max);
+      const next = stepCount(base, direction, step, min, max);
       if (editTextRef.current !== null) setEditing(String(next));
       if (next !== value) onChange(next);
     },
-    [max, min, onChange, setEditing, value],
+    [max, min, onChange, setEditing, step, value],
   );
 
   const startHold = useCallback(
@@ -206,8 +262,8 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
       let running = clampCount(value, min, max);
       let repeats = 0;
       const tick = (): void => {
-        const { intervalMs, step } = holdRepeatStep(repeats);
-        const next = stepCount(running, direction, step, min, max);
+        const repeat = holdRepeatStep(repeats);
+        const next = stepCount(running, direction, repeat.step * step, min, max);
         if (next === running) {
           holdTimerRef.current = null;
           return;
@@ -216,11 +272,11 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
         repeats += 1;
         if (editTextRef.current !== null) setEditing(String(next));
         onChangeRef.current(next);
-        holdTimerRef.current = setTimeout(tick, intervalMs);
+        holdTimerRef.current = setTimeout(tick, repeat.intervalMs);
       };
       tick();
     },
-    [max, min, setEditing, stopHold, value],
+    [max, min, setEditing, step, stopHold, value],
   );
 
   const commitTyped = useCallback(() => {
@@ -255,10 +311,17 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
 
   const shownText = editText ?? String(value);
   const isNative = Platform.OS !== "web";
+  // #4490: hitSlop does nothing in a phone browser, so the 36 controls are drawn 44 there.
+  const touchFloor = useTouchFloor();
+  const touchStyle = touchFloor > 0 ? { width: touchFloor, height: touchFloor } : null;
   const fieldLabel = `Type ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
 
   return (
-    <View style={styles.row}>
+    <View
+      style={[styles.row, stacked && styles.rowStacked]}
+      onLayout={onRowLayout}
+      testID={testID ? `${testID}-row` : undefined}
+    >
       <View
         accessible={isNative}
         accessibilityRole={isNative ? "adjustable" : undefined}
@@ -270,12 +333,12 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           isNative ? [{ name: "increment" }, { name: "decrement" }] : undefined
         }
         onAccessibilityAction={isNative ? handleAccessibilityAction : undefined}
-        style={styles.labelCol}
+        style={stacked ? styles.labelStacked : styles.labelCol}
         testID={testID ? `${testID}-adjust` : undefined}
       >
         <Text style={styles.label}>{label}</Text>
       </View>
-      <View style={styles.controls}>
+      <View style={[styles.controls, stacked && styles.controlsStacked]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Decrease ${label}`}
@@ -286,7 +349,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           onLongPress={() => startHold(-1)}
           onPressOut={stopHold}
           delayLongPress={HOLD_DELAY_MS}
-          style={[styles.btn, !canDec && styles.btnDisabled]}
+          style={[styles.btn, touchStyle, !canDec && styles.btnDisabled]}
           testID={testID ? `${testID}-dec` : undefined}
         >
           <Text style={styles.btnText}>−</Text>
@@ -305,7 +368,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           selectTextOnFocus
           maxLength={maxDigits}
           accessibilityLabel={fieldLabel}
-          style={styles.field}
+          style={[styles.field, touchFloor > 0 ? { height: touchFloor } : null]}
           testID={testID ? `${testID}-value` : undefined}
         />
         <Pressable
@@ -318,7 +381,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           onLongPress={() => startHold(1)}
           onPressOut={stopHold}
           delayLongPress={HOLD_DELAY_MS}
-          style={[styles.btn, !canInc && styles.btnDisabled]}
+          style={[styles.btn, touchStyle, !canInc && styles.btnDisabled]}
           testID={testID ? `${testID}-inc` : undefined}
         >
           <Text style={styles.btnText}>+</Text>
@@ -342,7 +405,15 @@ const styles = StyleSheet.create({
     borderColor: color.line,
     marginBottom: space[2],
   },
-  labelCol: { flex: 1, marginRight: space[2] },
+  rowStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    gap: space[2],
+  },
+  labelCol: { flex: 1, minWidth: 0, marginRight: space[2] },
+  labelStacked: { alignSelf: "stretch" },
+  controlsStacked: { alignSelf: "flex-start" },
   label: {
     fontSize: type.small.fontSize,
     fontWeight: "500",
@@ -369,6 +440,11 @@ const styles = StyleSheet.create({
   },
   field: {
     minWidth: 64,
+    // #4490 — on web a TextInput keeps the browser's intrinsic input width
+    // (~20 characters), which squeezed the label into one letter per line in
+    // a 390-wide sheet. Six digits (100,000) fit in 96, and 96 leaves the label
+    // room to read on one line ("Guests that day" wrapped to three at 120).
+    maxWidth: 96,
     height: 36,
     paddingHorizontal: space[2],
     paddingVertical: 0,

@@ -329,7 +329,7 @@ const SITE_READS: ReadonlyMap<string, (typeof SITE_AGENT_TOOLS)[number]> =
   );
 
 const EVENT_COLUMNS =
-  "id,title,status,timezone,description,party_types,city,cover_media_url,online_url,created_at,theme";
+  "id,title,status,timezone,description,party_types,city,cover_media_url,online_url,created_at,venue_id,theme";
 
 function eventRowOf(data: unknown): FlowEventRow {
   const row = data as Record<string, unknown>;
@@ -356,6 +356,7 @@ function eventRowOf(data: unknown): FlowEventRow {
     cover_media_url: text(row.cover_media_url),
     online_url: text(row.online_url),
     created_at: text(row.created_at),
+    venue_id: text(row.venue_id),
     draft,
   };
 }

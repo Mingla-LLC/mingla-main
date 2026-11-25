@@ -127,15 +127,21 @@ describe("ORCH-1186-A T11 — VenueStep4Hours is a thin wrapper over the shared 
     // still binds the draft store (wizard parity) and keeps the step copy.
     expect(wizard).toContain("useDraftVenueStore");
     expect(wizard).toContain("Opening hours");
-    expect(wizard).toContain("Default: Mon–Sat 9–5, Sun closed.");
+    // TEST-MOD-APPROVED #4490 D5/D20 — the helper now reads 24-hour and the
+    // step uses the multi-window editor.
+    // TEST-MOD-APPROVED #4490 N37 — no fixed starting-hours line that goes stale.
+    expect(wizard).toContain("Set the days and times you open.");
+    expect(wizard).toContain("allowWindows");
   });
 
   it("T11 — the editor itself is controlled (no store coupling inside it)", () => {
     const editor = read(join(SRC, "BrandHoursEditor.tsx"));
     expect(editor).not.toContain("useDraftVenueStore");
     expect(editor).toContain("onChange");
-    // web time-control branch + bulk-chip hitSlop fix (design D.3/D.9/D.10).
-    expect(editor).toContain('Platform.OS === "web"');
+    // TEST-MOD-APPROVED #4490 D21 — one time control on every platform (the
+    // shared TimeField; behaviour in venueShellAndHours.issue4490), no web branch.
+    expect(editor).toContain("<TimeField");
+    expect(editor).not.toContain('type: "time"');
     expect(editor).toContain("hitSlop");
   });
 });

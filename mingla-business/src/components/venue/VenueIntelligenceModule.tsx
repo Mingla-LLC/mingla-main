@@ -110,12 +110,19 @@ export interface VenueIntelligenceModuleProps {
    * screen and nothing below it could be reached.
    */
   header?: React.ReactNode;
+  /**
+   * #4490 click-test D12 — reservation metrics (covers, no-show rate) show
+   * only when the venue takes table reservations. Default true keeps every
+   * existing caller unchanged.
+   */
+  showReservationMetrics?: boolean;
 }
 
 export function VenueIntelligenceModule({
   brandId,
   venueId = null,
   header = null,
+  showReservationMetrics = true,
 }: VenueIntelligenceModuleProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -471,12 +478,14 @@ export function VenueIntelligenceModule({
           )}
         </GlassCard>
 
-        <VenueReservationsCard
-          query={reservationsQuery}
-          onRetry={() => {
-            void reservationsQuery.refetch();
-          }}
-        />
+        {showReservationMetrics ? (
+          <VenueReservationsCard
+            query={reservationsQuery}
+            onRetry={() => {
+              void reservationsQuery.refetch();
+            }}
+          />
+        ) : null}
 
         {orderMetricsQuery.data?.authorized === false ? null : (
           <GlassCard

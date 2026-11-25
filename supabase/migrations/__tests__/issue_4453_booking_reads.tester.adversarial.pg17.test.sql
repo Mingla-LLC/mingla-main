@@ -60,8 +60,14 @@ INSERT INTO t5 VALUES ('owner', gen_random_uuid()), ('brand', gen_random_uuid())
 
 -- The slot engine is CALLED, never changed. For this proof only (rolled
 -- back), a stand-in: 18:00 UTC with 5 left, every day.
+-- [TEST-MOD-APPROVED #4490] #4490 (20281203164490, carried by
+-- 20281203214490) added a fifth parameter, p_space_id uuid DEFAULT NULL, to
+-- the engine (a floor/space filter for table slots). The stand-in keeps the
+-- engine's exact signature, so it replaces the engine instead of adding a
+-- second overload that makes named calls ambiguous.
 CREATE OR REPLACE FUNCTION public.pg_venue_available_slots(
-  p_date date, p_party_size int, p_venue_id uuid DEFAULT NULL, p_brand_id uuid DEFAULT NULL)
+  p_date date, p_party_size int, p_venue_id uuid DEFAULT NULL, p_brand_id uuid DEFAULT NULL,
+  p_space_id uuid DEFAULT NULL)
 RETURNS TABLE (slot_start_utc timestamptz, slot_local_label text, remaining int, is_full boolean)
 LANGUAGE sql STABLE AS $stub$
   SELECT ((p_date + time '18:00') AT TIME ZONE 'UTC'), '18:00', 5, false;

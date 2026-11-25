@@ -75,6 +75,7 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+import { tableHoldCharge, tablePickStatus } from "./tablePick.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
 import { mintClaimLink } from "../_shared/claimLink.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
@@ -168,6 +169,11 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         "mode",
         "discountCode",
         "quoteDigest",
+        // #4490 P5: pick a table (or two joined), a seating area, or ask for
+        // a party bigger than any table.
+        "tableIds",
+        "spaceId",
+        "requestLargeParty",
       ].includes(key)
     )
   ) {
@@ -290,6 +296,33 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     clientUserAgent: matchString(rawAdMatch.clientUserAgent, 1024) ??
       matchString(req.headers.get("user-agent"), 1024),
   };
+  // #4490 P5 — table pick / seating area / big-party request.
+  const uuidShape =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (
+    body.tableIds !== undefined && body.tableIds !== null &&
+    (!Array.isArray(body.tableIds) || body.tableIds.length < 1 ||
+      body.tableIds.length > 2 ||
+      body.tableIds.some((id) => typeof id !== "string" || !uuidShape.test(id)))
+  ) {
+    return jsonResponse({ error: "table_ids_invalid" }, 400);
+  }
+  const tableIds: string[] = Array.isArray(body.tableIds)
+    ? (body.tableIds as string[]).map((id) => id.toLowerCase())
+    : [];
+  if (
+    body.spaceId !== undefined && body.spaceId !== null &&
+    (typeof body.spaceId !== "string" || !uuidShape.test(body.spaceId))
+  ) {
+    return jsonResponse({ error: "space_id_invalid" }, 400);
+  }
+  const spaceId = typeof body.spaceId === "string"
+    ? body.spaceId.toLowerCase()
+    : null;
+  const requestLargeParty = body.requestLargeParty === true;
+  if (requestLargeParty && (tableIds.length > 0 || spaceId !== null)) {
+    return jsonResponse({ error: "reservation_payload_invalid" }, 400);
+  }
   const organicJourneyToken = typeof body.organicJourneyToken === "string" &&
       body.organicJourneyToken.trim()
     ? body.organicJourneyToken.trim()
@@ -440,14 +473,87 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   // for an unavailable slot.) We pass the venue-local date; the engine derives
   // the IANA tz. To avoid a tz round-trip here we ask the engine for the date
   // of the instant in BOTH the UTC-day and ±1 to catch the local-date boundary.
+  // #4490 P5: a party bigger than every table and joined pair may only send
+  // a request (status requested, nothing to pay) when the venue allows it.
+  if (requestLargeParty) {
+    const { data: partyMax } = await supabase.rpc(
+      "issue_4490_table_party_max",
+      { p_venue_id: venueId },
+    );
+    if (typeof partyMax === "number" && partySize <= partyMax) {
+      return jsonResponse({ error: "large_party_not_needed" }, 400);
+    }
+    return await completeFreeReservation(supabase, {
+      checkoutSessionId: crypto.randomUUID(),
+      brandId,
+      venueId,
+      reservedForIso,
+      partySize,
+      reservationSource,
+      createdVia,
+      userId,
+      buyerName,
+      buyerEmail,
+      buyerPhoneE164,
+      buyerPhoneCountryIso: phoneEvidence.countryIso,
+      occasion,
+      guestNotes,
+      marketingOptIn,
+      currency: settings.fee_currency?.trim().toUpperCase() || "XXX",
+      guestCancelToken: null,
+      buyerStatusToken: randomBuyerStatusToken(),
+      organicJourneyId,
+      attributionClickId,
+      adContext,
+      surface,
+      depositListCents: null,
+      discountCents: 0,
+      discountCode: null,
+      discountSnapshot: null,
+      persistCredential: false,
+      status: "requested",
+    });
+  }
+
   const slotOk = await reservedSlotIsAvailable(
     supabase,
     venueId,
     reservedForIso,
     partySize,
+    spaceId,
   );
   if (!slotOk) {
     return jsonResponse({ error: "slot_unavailable" }, 409);
+  }
+  // #4490 P5: the picked table (or joined pair) must be free and pickable at
+  // that time (the database checks again under the table lock).
+  let tableHoldCents = 0;
+  if (tableIds.length > 0) {
+    const pick = await tablePickStatus(
+      supabase,
+      venueId,
+      reservedForIso,
+      partySize,
+      tableIds,
+    );
+    if (pick !== "free") {
+      return jsonResponse(
+        { error: pick === "not_found" ? "table_not_found" : pick },
+        pick === "not_found" ? 404 : 409,
+      );
+    }
+    const { data: terms, error: termsError } = await supabase.rpc(
+      "issue_4490_table_pick_terms",
+      { p_venue_id: venueId, p_table_ids: tableIds, p_party_size: partySize },
+    );
+    if (termsError !== null) {
+      return jsonResponse({ error: "table_not_found" }, 404);
+    }
+    const hold = tableHoldCharge(
+      (terms as Record<string, unknown> | null)?.holdMinor,
+    );
+    if (hold.error !== null) return jsonResponse({ error: hold.error }, 409);
+    tableHoldCents = hold.amountMinor;
   }
 
   // ── (3) Evaluate the deposit_threshold capacity rule (fee may be REQUIRED). ──
@@ -476,7 +582,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     settings.fee_enabled && (settings.fee_amount_cents ?? 0) > 0
       ? Number(settings.fee_amount_cents)
       : 0;
-  const baseFeeCents = depositRequired
+  // #4490 P5: a table with its own per-guest hold charges that hold instead.
+  const baseFeeCents = tableHoldCents > 0
+    ? tableHoldCents
+    : depositRequired
     ? (depositRuleAmountCents ?? settingsFeeCents)
     : settingsFeeCents;
   const hasFee = baseFeeCents > 0;
@@ -545,6 +654,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       discountCode: null,
       discountSnapshot: null,
       persistCredential: guestCancelToken !== null,
+      tableIds,
+      spaceId,
     });
   }
 
@@ -864,6 +975,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         depositMoney.currency,
       ),
       persistCredential: true,
+      tableIds,
+      spaceId,
       releaseDiscountUses,
     });
   }
@@ -949,6 +1062,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       discountSnapshot: reservationDiscountSnapshot(discountQuote, "NGN"),
       expiresAt: sessionExpiresAt,
       organicJourneyId,
+      tableIds,
+      spaceId,
     });
     if (sessionId === null) {
       await releaseDiscountUses();
@@ -1090,6 +1205,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     ),
     expiresAt: sessionExpiresAt,
     organicJourneyId,
+    tableIds,
+    spaceId,
   });
   if (sessionId === null) {
     await releaseDiscountUses();
@@ -1483,6 +1600,10 @@ interface FreeReservationInput {
   discountSnapshot: Record<string, unknown> | null;
   persistCredential: boolean;
   releaseDiscountUses?: () => Promise<void>;
+  // #4490 P5
+  tableIds?: string[];
+  spaceId?: string | null;
+  status?: "confirmed" | "requested";
 }
 
 // Both ordinary no-deposit reservations and deposits discounted to zero finish
@@ -1513,8 +1634,12 @@ async function completeFreeReservation(
       p_guest_cancel_token: null,
       p_occasion: input.occasion,
       p_guest_notes: input.guestNotes,
-      p_status: "confirmed",
+      p_status: input.status ?? "confirmed",
       p_guest_phone_country_iso: buyerPhoneCountryIso,
+      p_table_ids: input.tableIds && input.tableIds.length > 0
+        ? input.tableIds
+        : null,
+      p_space_id: input.spaceId ?? null,
     },
   );
   if (createErr !== null || !created) {
@@ -1646,6 +1771,7 @@ async function reservedSlotIsAvailable(
   venueId: string,
   reservedForIso: string,
   partySize: number,
+  spaceId: string | null = null,
 ): Promise<boolean> {
   // The engine takes a venue-LOCAL date; we don't know the venue tz client-side,
   // so probe the UTC date and its neighbours (±1 day) to catch the local-date
@@ -1662,6 +1788,7 @@ async function reservedSlotIsAvailable(
       p_venue_id: venueId,
       p_date: d,
       p_party_size: partySize,
+      ...(spaceId ? { p_space_id: spaceId } : {}),
     });
     if (error !== null || !Array.isArray(data)) continue;
     const target = new Date(reservedForIso).getTime();
@@ -1706,6 +1833,9 @@ interface SessionInsert {
   discountCode: string | null;
   discountSnapshot: Record<string, unknown> | null;
   expiresAt: string;
+  // #4490 P5: the table pick / seating area the paid finalize mints with.
+  tableIds?: string[];
+  spaceId?: string | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1749,6 +1879,8 @@ async function insertReservationSession(
       status: "pending",
       expires_at: s.expiresAt,
       organic_journey_id: s.organicJourneyId,
+      table_ids: s.tableIds ?? [],
+      space_id: s.spaceId ?? null,
     })
     .select("id")
     .single();
@@ -1783,6 +1915,16 @@ function classifyRpcError(error: unknown, ctx: string): Response {
   }
   if (msg.includes("slot_unavailable")) {
     return jsonResponse({ error: "slot_unavailable" }, 409);
+  }
+  for (
+    const code of [
+      "table_taken",
+      "table_not_pickable",
+      "table_pick_unavailable",
+      "table_not_fit",
+    ]
+  ) {
+    if (msg.includes(code)) return jsonResponse({ error: code }, 409);
   }
   if (msg.includes("deposit_required")) {
     return jsonResponse({ error: "deposit_required" }, 422);

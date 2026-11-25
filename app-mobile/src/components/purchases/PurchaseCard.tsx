@@ -13,8 +13,8 @@ import type {
   PurchaseCoverMediaType,
   PurchaseTimelineItem,
 } from "../../utils/purchaseTimeline";
+import { purchaseMoneyText } from "../../utils/purchaseMoney";
 import {
-  formatPurchaseMoney,
   joinDistinct,
   purchaseCountLabel,
   purchaseKindLabel,
@@ -95,7 +95,10 @@ export function PurchaseCard({
   const kindLabel = purchaseKindLabel(item.kind);
   // #4473 — a shared stay has no dates; its list time is when it was shared.
   const undated = item.kind === "stay";
-  const dateLine = undated
+  // #4490 W2-N19 — a plan carries its own date line ("Paid until …").
+  const dateLine = item.whenText
+    ? item.whenText
+    : undated
     ? null
     : formatTicketTimeLine(item.startsAt, item.timezone, null);
   const countLabel = purchaseCountLabel(item);
@@ -108,7 +111,7 @@ export function PurchaseCard({
       (value) => (value?.trim().toLowerCase() ?? "") !== titleKey,
     ),
   );
-  const amount = formatPurchaseMoney(item.amountCents, item.currency);
+  const amount = purchaseMoneyText(item.amountCents, item.currency);
   const refundState = isRefundStatus(item.status);
   const cancelled = isCancelledStatus(item.status);
   const tile = undated ? null : purchaseDateTileParts(item.startsAt, item.timezone);

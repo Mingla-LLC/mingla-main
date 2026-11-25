@@ -12,12 +12,32 @@ export type ExperiencePricingMode = "whole" | "per_stop";
 /** issue #3281 R2 — sellable unit beside a price option. */
 export type ExperiencePriceBasis = "person" | "group" | "block";
 
-/** issue #3281 R2 — hire block length (minutes). */
-export type ExperienceBlockMinutes = 15 | 30 | 45 | 60;
+/**
+ * issue #3281 R2 — hire block length (minutes). #4490: longer blocks (up to a
+ * working day) so a lane, studio or room can be hired by the half day.
+ */
+export type ExperienceBlockMinutes =
+  | 15 | 30 | 45 | 60 | 90 | 120 | 180 | 240 | 360 | 480;
 
 export const EXPERIENCE_BLOCK_MINUTES: readonly ExperienceBlockMinutes[] = [
-  15, 30, 45, 60,
+  15, 30, 45, 60, 90, 120, 180, 240, 360, 480,
 ];
+
+/** #4490 — narrow a stored block length to a wizard choice (null = not one). */
+export const toExperienceBlockMinutes = (
+  value: number | null | undefined,
+): ExperienceBlockMinutes | null => {
+  const match = EXPERIENCE_BLOCK_MINUTES.find((m) => m === value);
+  return match === undefined ? null : match;
+};
+
+/** #4490 — compact block-length label for the wizard's choice row. */
+export const experienceBlockPillLabel = (minutes: number): string => {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+};
 
 /**
  * issue #3281 R2 — one host-authored price option (maps to a ticket_types row).
@@ -30,7 +50,7 @@ export interface ExperiencePriceOptionDraft {
   name: string;
   priceMajor: string;
   priceBasis: ExperiencePriceBasis;
-  /** When priceBasis === "group": party size cap (2–50). */
+  /** When priceBasis === "group": party size cap (at least 2; #4490 no 50 cap). */
   groupMax: number;
   /** When priceBasis === "block": length of one block. */
   blockMinutes: ExperienceBlockMinutes;
@@ -200,7 +220,8 @@ export const emptyPriceOption = (
 ): ExperiencePriceOptionDraft => ({
   clientId: seed?.clientId ?? newPriceOptionClientId(),
   ticketTypeId: seed?.ticketTypeId ?? null,
-  name: seed?.name ?? "Standard",
+  // #4490 — the host names every price; nothing is named Standard for them.
+  name: seed?.name ?? "",
   priceMajor: seed?.priceMajor ?? "",
   priceBasis: seed?.priceBasis ?? "person",
   groupMax: seed?.groupMax ?? 4,
@@ -239,7 +260,9 @@ export const priceOptionToPayload = (
   opt: ExperiencePriceOptionDraft,
 ): ExperiencePriceOptionPayload => {
   const base: ExperiencePriceOptionPayload = {
-    name: opt.name.trim().length > 0 ? opt.name.trim() : "Standard",
+    // #4490 — sent as typed; the server refuses a blank name
+    // (experience_price_name_required) and the step blocks Continue first.
+    name: opt.name.trim(),
     price_cents: priceMajorToCents(opt.priceMajor),
     price_basis: opt.priceBasis,
     capacity: opt.capacity,
@@ -248,7 +271,7 @@ export const priceOptionToPayload = (
   if (opt.priceBasis === "group") {
     return {
       ...base,
-      group_max: Math.min(50, Math.max(2, Math.round(opt.groupMax) || 2)),
+      group_max: Math.max(2, Math.round(opt.groupMax) || 2),
     };
   }
   if (opt.priceBasis === "block") {
@@ -270,18 +293,32 @@ export const priceOptionBasisLabel = (basis: ExperiencePriceBasis): string => {
   return "per person";
 };
 
-/** A price option is valid for Continue (paid or free amount; unit fields coherent). */
+/**
+ * #4490 — every price needs a name guests will recognise (the server refuses a
+ * blank one with experience_price_name_required). Shown under the Name field;
+ * blocks Continue and Publish.
+ */
+export const PRICE_NAME_REQUIRED_COPY = "Give this price a name guests will recognise.";
+
+export function priceOptionNameIssue(opt: Pick<ExperiencePriceOptionDraft, "name">): string | null {
+  return opt.name.trim().length === 0 ? PRICE_NAME_REQUIRED_COPY : null;
+}
+
+/** A price option is valid for Continue (named; paid or free amount; unit fields coherent). */
 export function priceOptionEntryIsValid(
   opt: ExperiencePriceOptionDraft,
   isFree: boolean,
 ): boolean {
+  // #4490 — a blank name blocks Continue for every option, hidden ones too
+  // (the server refuses a blank name at every index).
+  if (priceOptionNameIssue(opt) !== null) return false;
   if (opt.isHidden) return true;
   if (!isFree && !stopPriceEntryIsValid(opt.priceMajor)) return false;
   if (!isFree && priceMajorToCents(opt.priceMajor) <= 0 && opt.priceMajor.trim().length > 0) {
     // Typed zero is allowed as free; empty is allowed when isFree.
   }
   if (opt.priceBasis === "group") {
-    return opt.groupMax >= 2 && opt.groupMax <= 50;
+    return Number.isFinite(opt.groupMax) && opt.groupMax >= 2;
   }
   if (opt.priceBasis === "block") {
     if (!EXPERIENCE_BLOCK_MINUTES.includes(opt.blockMinutes)) return false;

@@ -35,6 +35,7 @@ import { BrandRenderingReact as React } from "../PublicVenueTabs";
 import {
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   type TextInputProps,
@@ -67,9 +68,15 @@ import {
   VENUE_ORDER_PARTY_SIZE_PROMPT,
   venueOrderBuyerFailure,
   venueOrderHandoverChip,
+  venueOrderLineRenderKeys,
   venueOrderTipPresets,
+  venueOrderingFulfilmentLine,
+  venueOrderingIsCounterPickup,
+  venueOrderingOffersPickup,
+  venueOrderingReviewConfig,
 } from "./venueOrderingRules";
 import { accentEdgeOnFill, accentFill } from "@mingla/offering-rendering/themeAccentStyle";
+import { OfferingStepper } from "@mingla/offering-rendering/OfferingDecideParts";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -131,6 +138,9 @@ export interface VenueOrderReviewPaneProps {
    * footer. The contents, the rules and the button are the same either way.
    */
   layout?: (body: React.ReactNode, payButton: React.ReactNode) => React.ReactNode;
+  /** #4490 07-D — "I'll collect it" at a scanned spot in Both. */
+  pickup?: boolean;
+  onPickupChange?: (pickup: boolean) => void;
 }
 
 /**
@@ -177,8 +187,18 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   renderPhoneField,
   phoneFailure = null,
   layout,
+  pickup = false,
+  onPickupChange,
 }) => {
+  // N126: the server's current mode (from the preview) wins over the mode
+  // the basket was built with.
+  // While a re-price is in flight (the open review re-reads the mode, and a
+  // mode change re-prices), the fresh config is shown, never an older preview.
+  const shown = previewStatus === "ready" ? venueOrderingReviewConfig(config, preview) : config;
+  const counterPickup = venueOrderingIsCounterPickup(shown, pickup);
+  const offersPickup = venueOrderingOffersPickup(shown) && onPickupChange !== undefined;
   const Input = TextInputComponent ?? TextInput;
+  const rowKeys = venueOrderLineRenderKeys(cart);
   const priced = previewStatus === "ready" && preview !== null;
   const money = (cents: number): string =>
     formatMenuPrice(cents, preview?.currency ?? "") ?? "—";
@@ -256,32 +276,55 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   );
   const body = (
     <>
+      {/* #4490 fix 2 (N94): the order has a title, a proper Back to menu
+          button and a Close, like every other sheet. */}
       <View style={styles.headRow}>
         <Pressable
           onPress={onBack}
           accessibilityRole="button"
           accessibilityLabel="Back to the menu"
-          style={styles.backBtn}
+          style={[styles.backBtn, { borderColor: palette.panelBorder }]}
+          testID="venue-order-back"
         >
-          <Text style={[styles.backLabel, { color: palette.accent }]}>
+          <Text style={[styles.backLabel, { color: palette.primaryText }]}>
             ‹ Menu
           </Text>
         </Pressable>
-        <Text style={[styles.headChip, { color: palette.tertiaryText }]}>
-          {venueOrderHandoverChip(config)}
+        <Text
+          style={[styles.headTitle, { color: palette.primaryText }]}
+          accessibilityRole="header"
+        >
+          Your order
         </Text>
+        <Pressable
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Close your order"
+          style={[styles.backBtn, { borderColor: palette.panelBorder }]}
+          testID="venue-order-close"
+        >
+          <Text style={[styles.backLabel, { color: palette.primaryText }]}>
+            Close
+          </Text>
+        </Pressable>
       </View>
+      <Text style={[styles.headChip, { color: palette.tertiaryText }]}>
+        {venueOrderHandoverChip(shown, pickup)}
+      </Text>
 
       {/* ── the basket ──────────────────────────────────────────────────── */}
       <View style={[styles.card, surface.card]}>
         {cart.map((line, index) => {
+          // W3-N40: a note edit re-keys the LINE (its identity includes the
+          // note) but never the ROW, so the note field keeps focus.
+          const rowKey = rowKeys[index];
           const pricedLine =
             preview?.lines.find(
               (candidate) => candidate.lineNo === index + 1,
             ) ?? null;
           return (
             <View
-              key={line.key}
+              key={rowKey}
               style={[
                 styles.lineRow,
                 index > 0 && {
@@ -407,30 +450,17 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
           <Text style={[styles.blockHelp, { color: palette.tertiaryText }]}>
             {VENUE_ORDER_PARTY_SIZE_HELP}
           </Text>
-          <Input
-            value={partySize === null ? "" : String(partySize)}
-            onChangeText={(value: string) => {
-              const digits = value.replace(/\D/g, "");
-              if (digits === "") {
-                onPartySizeChange(null);
-                return;
-              }
-              const parsed = Number(digits);
-              onPartySizeChange(
-                parsed >= 1 && parsed <= VENUE_ORDER_PARTY_SIZE_MAX
-                  ? parsed
-                  : null,
-              );
-            }}
-            keyboardType="number-pad"
-            placeholder="e.g. 4"
-            placeholderTextColor={palette.tertiaryText}
-            accessibilityLabel={VENUE_ORDER_PARTY_SIZE_PROMPT}
-            maxLength={3}
-            style={[
-              styles.input,
-              { borderColor: palette.panelBorder, color: palette.primaryText },
-            ]}
+          <OfferingStepper
+            palette={palette}
+            value={partySize ?? 0}
+            min={0}
+            max={VENUE_ORDER_PARTY_SIZE_MAX}
+            onChange={(next: number) => onPartySizeChange(next === 0 ? null : next)}
+            decrementLabel="One fewer"
+            incrementLabel="One more"
+            valueLabel={partySize === null ? "Not said" : `${partySize} ${partySize === 1 ? "person" : "people"}`}
+            typeable
+            testID="venue-order-party-size"
           />
         </View>
       ) : null}
@@ -472,10 +502,34 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         </Text>
       ) : null}
 
+      {/* ── #4490 07-D: where the order goes ─────────────────────────────── */}
+      <View style={[styles.card, surface.card, styles.block]}>
+        <Text
+          style={[styles.blockHelp, { color: palette.primaryText }]}
+          testID="venue-order-fulfilment-line"
+        >
+          {venueOrderingFulfilmentLine(shown, pickup)}
+        </Text>
+        {offersPickup ? (
+          <View style={styles.pickupRow}>
+            <Text style={[styles.blockHelp, styles.pickupLabel, { color: palette.primaryText }]}>
+              I'll collect it
+            </Text>
+            <Switch
+              value={pickup}
+              onValueChange={(value: boolean) => onPickupChange?.(value)}
+              disabled={submitting}
+              accessibilityLabel="I'll collect it"
+              testID="venue-order-pickup-switch"
+            />
+          </View>
+        ) : null}
+      </View>
+
       {/* ── who this order belongs to (P-22 gate 8) ─────────────────────── */}
       <View style={[styles.card, surface.card, styles.block]}>
         <Text style={[styles.blockTitle, { color: palette.primaryText }]}>
-          {config.spotState === "ok" ? "Who's ordering?" : "Who's collecting?"}
+          {counterPickup ? "Who's collecting?" : "Who's ordering?"}
         </Text>
         <Input
           value={buyer.name}
@@ -733,13 +787,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  backBtn: { minHeight: 34, justifyContent: "center" },
+  backBtn: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderRadius: 999, borderWidth: 1 },
   backLabel: { fontSize: 15, fontWeight: "800" },
+  headTitle: { flex: 1, textAlign: "center", fontSize: 17, fontWeight: "800" },
   headChip: { fontSize: 13, fontWeight: "700" },
   card: { borderRadius: 16, padding: 14 },
   block: { gap: 10 },
   blockTitle: { fontSize: 15, lineHeight: 20, fontWeight: "800" },
   blockHelp: { fontSize: 13, lineHeight: 18 },
+  pickupRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  pickupLabel: { flex: 1, fontWeight: "700" },
   lineRow: { paddingVertical: 10, gap: 8 },
   lineTop: {
     flexDirection: "row",

@@ -85,7 +85,7 @@ export const RULES = [
     has: [
       /<Stepper\s+layout="list"[\s\S]{0,260}furthestValidIndex=\{furthestValidOrdinal\}\s+onStepPress=\{handleStepPress\}/,
       /<Stepper\s+layout="chips"[\s\S]{0,260}furthestValidIndex=\{furthestValidOrdinal\}\s+onStepPress=\{handleStepPress\}/,
-      /const furthestValidOrdinal = useMemo\(\(\): number => \{\s*const firstInvalid = visibleStepDefs\.findIndex\(\s*\(\{ index \}\) => validateStep\(index, liveDraft\)\.length > 0,/,
+      /const furthestValidOrdinal = useMemo\(\(\): number => \{\s*const firstInvalid = visibleStepDefs\.findIndex\(\s*\(\{ index \}\) => validateStep\(index, liveDraft(?:, venueOpts)?\)\.length > 0,/, // #4490 07-A: the at-venue option rides along (Party Type optional at a venue)
       /index === currentStep && showStepErrors \? stepErrors\[0\]\?\.message : undefined/,
       'state: "error" as const, firstError',
       'previousLabel={isFirstStep ? undefined : isWideDesktop ? "Back" : previousStepLabel ?? "Back"}',

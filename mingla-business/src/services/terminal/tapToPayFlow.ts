@@ -299,8 +299,24 @@ const serverMessage = (error: unknown): string => {
 
 // ---- Flow -------------------------------------------------------------
 
-export interface TapToPaySaleFlowInput {
-  eventId: string;
+/**
+ * #4490 spec 08 O2 — what a tap pays for: an event door sale, or a Till
+ * payment (venue-till made the pending payment and its carrier; the server
+ * prices it, so the draft carries no lines).
+ */
+export type TapSaleScope =
+  | { kind: "event"; eventId: string }
+  | { kind: "till"; venueId: string; paymentId: string };
+
+/** The event door's callers pass `eventId` (event scope); a Till passes `scope`. */
+export type TapToPaySaleFlowScopeInput =
+  | { eventId: string; scope?: undefined }
+  | { scope: TapSaleScope; eventId?: undefined };
+
+export const tapSaleScopeOf = (input: TapToPaySaleFlowScopeInput): TapSaleScope =>
+  input.scope ?? { kind: "event", eventId: input.eventId as string };
+
+export type TapToPaySaleFlowInput = TapToPaySaleFlowScopeInput & {
   draft: TapToPayDraft;
   clientRequestId: string;
   terminal: TapToPayTerminalClient;
@@ -316,7 +332,7 @@ export interface TapToPaySaleFlowInput {
    * the app tells the host, so they don't take the money again.
    */
   onPaidAfterClose?: (outcome: { amount: TapAmount; saved: boolean }) => void;
-}
+};
 
 /**
  * No ready screen waits on an intent older than this. The age counts from the
@@ -590,8 +606,18 @@ export class TapToPaySaleFlow {
     const clientRequestId = this.clientRequestId;
     let created: DoorTapIntent;
     try {
-      created = await this.input.server.createIntent({
-        eventId: this.input.eventId,
+      const scope = tapSaleScopeOf(this.input);
+      created = await this.input.server.createIntent(scope.kind === "till" ? {
+        eventId: "",
+        eventDateId: null,
+        lines: [],
+        clientRequestId,
+        buyerPhone: null,
+        phoneCountryIso: null,
+        buyerName: null,
+        scope,
+      } : {
+        eventId: scope.eventId,
         eventDateId: this.input.draft.eventDateId,
         lines: this.input.draft.lines,
         clientRequestId,

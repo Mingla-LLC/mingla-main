@@ -272,6 +272,10 @@ jest.mock("../ui/GlassCard", () => ({
 jest.mock("../event/CreatorStep2When", () => ({ CreatorStep2When: (): null => null }));
 jest.mock("../experience/ExperienceCoverStep", () => ({ ExperienceCoverStep: (): null => null }));
 jest.mock("../experience/ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
+// [TEST-MOD-APPROVED #4490] fix round 2: the venue / space choice on the
+// Where step is its own lazy module (it reads venues); inert here, as in the
+// other Experience suites.
+jest.mock("../venue/features/EventVenueSpacePicker", () => ({ EventVenueSpacePicker: (): null => null }));
 jest.mock("../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: (): null => null,
 }));
@@ -342,6 +346,7 @@ import {
   ExperienceCreatorWizard,
   type ExperienceWizardInitialDraft,
 } from "../experience/ExperienceCreatorWizard";
+import { emptyPriceOption } from "../experience/experienceWizardTypes";
 
 // ---------------------------------------------------------------------------
 // compiled-creator loader (Event, RSVP, Trip)
@@ -587,6 +592,9 @@ function loadCompiledCreator(relative: string, exportName: string): React.Compon
     if (key === "useEventDateKeys") {
       return { useEventDateKeys: () => ({ data: undefined }) };
     } // #3281 sold-date keys; unused by these hosts
+    if (key === "useEventAtVenue") {
+      return { useEventAtVenue: () => false };
+    } // [TEST-MOD-APPROVED #4490] 07-A: whether the event is at a venue (server link); none in these hosts
     if (STEP_LEAF.test(key)) return { [key]: leaf(key) };
     throw new Error(`Unclassified creator boundary in ${exportName}: ${specifier}`);
   };
@@ -841,6 +849,10 @@ describe("#1780 A1 — on-screen Back waits for the invite pre-check", () => {
       isFree: true,
       capacity: "20",
       unlimited: false,
+      // TEST-MOD-APPROVED #4490 fix 3 — #4490 P1 dropped the forced "Standard"
+      // price name (the host names the price; a blank name blocks Continue), so
+      // this free draft brings its one named price, as a saved draft would.
+      priceOptions: [emptyPriceOption({ name: "Entry" })],
       pricingSwitches: { passTax: null, passMinglaFee: null, passServiceFee: null },
       when: {
         whenMode: "single",

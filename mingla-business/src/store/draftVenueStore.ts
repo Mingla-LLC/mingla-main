@@ -63,6 +63,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import type { VenueFeatureKey } from "../types/venueFeatures";
 import type { ThemeInput } from "@mingla/offering-rendering";
 
 import type { BrandHourEntry, VenueCategory } from "../types/brand";
@@ -175,6 +176,12 @@ export interface DraftVenueState {
   /** ORCH-1263 — claim c8 reservations intent (switch always starts OFF). */
   wantsReservations: boolean;
   /**
+   * #4490 click-test D9 — the Features step's switches. `null` (and
+   * `undefined` for an older persisted blob) = the chosen type's starting
+   * features, untouched. Optional, so no persist-version bump.
+   */
+  startingFeatures?: VenueFeatureKey[] | null;
+  /**
    * META-ORCH-1290 Leg B (D-1 folded create wizard) — the create path's own
    * photo gallery (s3) + cover choice (s4), collected IN the wizard now that the
    * post-submit deck-readiness leg is gone. Claim keeps its gallery/cover under
@@ -261,6 +268,7 @@ const initial: DraftVenueState = {
   discoveryPriceMinInput: "",
   discoveryPriceMaxInput: "",
   wantsReservations: false,
+  startingFeatures: null,
   galleryUrls: [],
   coverChoice: null,
   submissionVenueId: null,
@@ -343,6 +351,7 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   discoveryPriceMinInput: s.discoveryPriceMinInput ?? "",
   discoveryPriceMaxInput: s.discoveryPriceMaxInput ?? "",
   wantsReservations: s.wantsReservations,
+  startingFeatures: s.startingFeatures ?? null,
   // META-ORCH-1290 — `?? []`/`?? null` tolerates a pre-1290 persisted blob.
   galleryUrls: s.galleryUrls ?? [],
   coverChoice: s.coverChoice ?? null,

@@ -56,6 +56,7 @@
   "pill.experiences": "体验",
   "pill.trips": "行程",
   "pill.stays": "住宿",
+  "pill.venues": "场所",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "清除",
   "filters.option_a11y": "{{label}}， {{count}} 个匹配",
@@ -77,6 +78,7 @@
   "group.check_in": "入住",
   "group.guests": "客人",
   "group.property_kind": "地点类型",
+  "group.venue_type": "地点类型",
   "group.any_suffix": "{{group}} · 任何",
   "when.any_day": "任何一天",
   "when.tomorrow": "明天",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} 次体验",
   "count.trips_other": "{{count}} 次行程",
   "count.stays_other": "{{count}}入住",
+  "count.venues_other": "{{count}}个场所",
   "guests.value_other": "{{count}} 位客人",
-  "card.type.stops_other": "{{count}} 次停留"
+  "card.type.stops_other": "{{count}} 次停留",
+  "venues.empty_title": "这里还没有可预订的场所。",
+  "venues.empty_body": "你可以在 Mingla 上预订的场所会显示在这里。",
+  "venues.filtered_title": "没有符合这些筛选条件的场所。",
+  "venues.error_title": "无法加载场所。",
+  "venues.error_retry": "重试"
 }

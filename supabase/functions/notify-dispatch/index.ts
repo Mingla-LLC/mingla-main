@@ -36,6 +36,14 @@ import {
 // #3392 — the booking confirmation email's "Manage or cancel" button. Accepted
 // only from the service role, for that category, for that reservation.
 import { trustedReservationManageCta } from "../_shared/venueReservationManageLink.ts";
+import {
+  resolveVenueVisitOrigin,
+  trustedVenueMemberPayUrl,
+  trustedVenueVisitCta,
+} from "../_shared/venueOfferVisitLink.ts";
+// #4490 spec 08 O1 — the private Till receipt link (transit only).
+import { trustedTillReceiptUrl } from "../_shared/venueTillReceiptToken.ts";
+import { tillReceiptEmailCta } from "../_shared/email/tillReceiptEmail.ts";
 // #4111 — consent provenance for the automatic transactional consent row.
 import { transactionalConsentSourceForCategory } from "../_shared/issue4111EnquiryNotifications.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
@@ -51,6 +59,19 @@ import {
   LEGACY_QUIET_HOURS_CATEGORY,
   nextQuietHoursEnd,
 } from "../_shared/quietHours.ts";
+
+/** The names the visit-link origin reads, each read literally (function secret contract, #2241). */
+function visitOriginEnv(name: string): string | undefined {
+  switch (name) {
+    case "BUSINESS_WEB_ORIGIN":
+      return Deno.env.get("BUSINESS_WEB_ORIGIN");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
 
 // Phase-A compatibility reader for NOTIFICATION_RECIPIENT_HMAC_SECRET is
 // owned by resolveNotificationRecipientHmacSecret; the direct name remains
@@ -669,6 +690,17 @@ serve(async (req) => {
           }, 500);
         }
       }
+      // #4490 spec 08 O1 (T20): the private Till receipt link (transit only).
+      const tillReceiptUrl = trustedTillReceiptUrl({
+        serviceCaller: isExactServiceBearer(
+          authHeader,
+          SUPABASE_SERVICE_ROLE_KEY,
+        ),
+        categoryKey: payload.category_key,
+        payload: (payload.payload ?? {}) as Record<string, unknown>,
+        receiptUrl: payload.till_receipt_url,
+        origin: resolveVenueVisitOrigin(visitOriginEnv),
+      });
       const v2Input: DispatchV2Input = {
         user_id: payload.user_id ?? payload.userId ?? null,
         contact: payload.contact ?? null,
@@ -690,7 +722,34 @@ serve(async (req) => {
           categoryKey: payload.category_key,
           payload: (payload.payload ?? {}) as Record<string, unknown>,
           manageUrl: payload.reservation_manage_url,
+        }) ??
+          // #4490 — a venue booking's private "See your pass" link.
+          trustedVenueVisitCta({
+            serviceCaller: isExactServiceBearer(
+              authHeader,
+              SUPABASE_SERVICE_ROLE_KEY,
+            ),
+            categoryKey: payload.category_key,
+            payload: (payload.payload ?? {}) as Record<string, unknown>,
+            visitUrl: payload.venue_visit_url,
+            origin: resolveVenueVisitOrigin(visitOriginEnv),
+            // #4490 Explorer W1: "Open in Mingla" leads when a claim link came.
+            appUrl: payload.venue_app_url,
+          }) ??
+          // #4490 spec 08 O1: "See your receipt".
+          tillReceiptEmailCta(tillReceiptUrl),
+        // #4490 Explorer W2: the renewal text's web pay link (transit only).
+        venue_sms_pay_url: trustedVenueMemberPayUrl({
+          serviceCaller: isExactServiceBearer(
+            authHeader,
+            SUPABASE_SERVICE_ROLE_KEY,
+          ),
+          categoryKey: payload.category_key,
+          payload: (payload.payload ?? {}) as Record<string, unknown>,
+          visitUrl: payload.venue_visit_url,
+          origin: resolveVenueVisitOrigin(visitOriginEnv),
         }),
+        till_receipt_url: tillReceiptUrl,
       };
       if (!v2Input.idempotency_key) {
         return jsonResponse({
