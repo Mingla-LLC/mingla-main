@@ -22,6 +22,8 @@ import path from "node:path";
 
 const { act, create } = require("react-test-renderer") as typeof import("react-test-renderer");
 
+jest.mock("@react-native-async-storage/async-storage", () =>
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock"));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../services/supabase", () => ({ supabase: { functions: { invoke: async () => ({ data: null, error: null }) } } }));
 
