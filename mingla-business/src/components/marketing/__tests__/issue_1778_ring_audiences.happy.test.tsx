@@ -48,6 +48,14 @@ const from = jest.fn((table: string) => ({
       : { eq: audiencesEq },
 }));
 jest.mock("../../../services/supabase", () => ({ supabase: { from } }));
+// [TEST-MOD-APPROVED #4596] event rows come from the server's discovery RPC
+// (biz_marketing_event_audiences_v1), not the orders scan; mock its answer.
+jest.mock("../../../services/marketing/marketingAudienceService", () => ({
+  listEventAudiences: jest.fn(async () => [
+    { eventId: "event-1", title: "Launch", eventType: "event", name: "Buyers of Launch", startsAt: null,
+      buyerCount: 1, guestCount: 0, peopleCount: 1, pendingReviewCount: 0 },
+  ]),
+}));
 jest.mock("../../../services/marketing/marketingCampaignService", () => ({
   getOrCreateMarketingBookAudience: jest.fn(async () => ({
     audienceId: "book-audience",

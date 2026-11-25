@@ -8,7 +8,9 @@
  *
  * What the picker shows:
  *   - "All buyers of {brand}" — always shown when the brand has ≥1 paid order
- *   - "Buyers of {event}" — one row per event that has ≥1 paid order
+ *   - one row per event with a paid buyer or a going RSVP guest (#4596):
+ *     "Guests of {event}", "Buyers of {event}" or "People at {event}", with the
+ *     server's de-duplicated count (biz_marketing_event_audiences_v1)
  *
  * On select:
  *   - If a `marketing_audiences` row already exists for the chosen kind +
@@ -45,7 +47,14 @@ import { Skeleton } from "../ui/Skeleton";
 import { supabase } from "../../services/supabase";
 import { getOrCreateMarketingBookAudience } from "../../services/marketing/marketingCampaignService";
 import { getCombinedAudienceSummary } from "../../services/marketing/marketingCombinedAudienceService";
+import { listEventAudiences } from "../../services/marketing/marketingAudienceService";
 import {
+  eventAudienceShape,
+  eventRowMeaning,
+  eventRowMeta,
+  eventRowName,
+  pendingReviewNote,
+  type EventAudienceShape,
   followerRowStatus,
   pickerDoneLabel,
   sourceKeyForOption,
@@ -79,6 +88,18 @@ export interface AudienceOption {
   show_count?: boolean;
   /** #4273 — replaces the count line, e.g. "1 follower · also in Your Book". */
   count_label?: string;
+  /**
+   * #4596 — an event row's server facts. `buyer_count` holds peopleCount (the
+   * de-duplicated buyers plus going guests) for event rows.
+   */
+  event?: {
+    eventType: string | null;
+    shape: EventAudienceShape;
+    buyerCount: number;
+    guestCount: number;
+    peopleCount: number;
+    pendingReviewCount: number;
+  };
 }
 
 export interface CircleAudiencePickerState {
@@ -117,6 +138,11 @@ export interface AudiencePickerSheetProps {
     selectedKeys: readonly string[];
     onDone: (options: AudienceOption[]) => void;
   };
+  /**
+   * #4596 fix pass 2 — false hides event rows: the server refuses an event
+   * source below event_manager (see canPickEventAudience). Absent = shown.
+   */
+  eventAudiencesAllowed?: boolean;
 }
 
 interface OrderJoinRow {
@@ -147,6 +173,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   circleReach,
   onRetryCircleReach,
   multiSelect,
+  eventAudiencesAllowed,
 }) => {
   const isMulti = multiSelect !== undefined;
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set());
@@ -211,8 +238,15 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
             );
           }
         }
-        // 1) Pull paid orders for this brand. Same join shape as the
-        //    audience service uses — RLS-gated to the caller.
+        // #4596 — every event's audience comes from the server's one owner:
+        // paid buyers plus going RSVP guests, de-duplicated.
+        // Signed out (no actor) there is no host to ask for; the composer
+        // always passes one.
+        const eventAudiences = actorId == null || eventAudiencesAllowed === false
+          ? []
+          : await listEventAudiences({ actor_id: actorId, brand_id: brandId });
+        // 1) Pull paid orders for this brand (the brand rollup row only).
+        //    Same join shape as the audience service uses — RLS-gated.
         const { data: orderData, error: orderErr } = await supabase
           .from("orders")
           .select("event_id, events!inner ( id, title, brand_id )")
@@ -235,20 +269,8 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         const audiences = (existingAudiences ??
           []) as unknown as ExistingAudienceRow[];
 
-        // Aggregate: total brand buyers + per-event buyer counts.
-        let brandBuyerCount = 0;
-        const perEvent = new Map<string, { title: string; count: number }>();
-        for (const o of orders) {
-          brandBuyerCount += 1;
-          const eventId = o.events?.id ?? o.event_id;
-          const title = o.events?.title ?? "Untitled event";
-          const existing = perEvent.get(eventId);
-          if (existing === undefined) {
-            perEvent.set(eventId, { title, count: 1 });
-          } else {
-            existing.count += 1;
-          }
-        }
+        // Aggregate: total brand buyers (the rollup row's count).
+        const brandBuyerCount = orders.length;
 
         // Look up existing audience ids by kind+target.
         let existingBrandAudienceId: string | null = null;
@@ -361,16 +383,27 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           });
         }
 
-        // Per-event buyers options, sorted by buyer count desc then title.
+        // Per-event options (#4596), sorted by people count desc then title.
         const eventOptions: AudienceOption[] = [];
-        for (const [eventId, info] of perEvent.entries()) {
+        for (const event of eventAudiences) {
+          const shape = eventAudienceShape(event);
           eventOptions.push({
-            key: `event:${eventId}`,
-            name: `Buyers of ${info.title}`,
+            key: `event:${event.eventId}`,
+            name: eventRowName(shape, event.title),
             kind: "event_buyers",
-            target_id: eventId,
-            buyer_count: info.count,
-            existing_audience_id: existingEventAudienceIds.get(eventId) ?? null,
+            target_id: event.eventId,
+            buyer_count: event.peopleCount,
+            count_label: eventRowMeta(shape, event.peopleCount),
+            status_label: pendingReviewNote(event.pendingReviewCount) ?? undefined,
+            existing_audience_id: existingEventAudienceIds.get(event.eventId) ?? null,
+            event: {
+              eventType: event.eventType,
+              shape,
+              buyerCount: event.buyerCount,
+              guestCount: event.guestCount,
+              peopleCount: event.peopleCount,
+              pendingReviewCount: event.pendingReviewCount,
+            },
           });
         }
         eventOptions.sort((a, b) => {
@@ -402,6 +435,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     manualGroupsEnabled,
     circleAudienceEnabled,
     circleReach,
+    eventAudiencesAllowed,
   ]);
 
   /**
@@ -432,6 +466,11 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
       return { ...option, disabled: true, status_label: "No one in this group yet" };
     }
     if (option.kind === "all_brand_people" && option.buyer_count === 0) {
+      return { ...option, disabled: true };
+    }
+    // #4596 — an event whose going guests all wait on a duplicate check adds
+    // no one yet; the row says why instead of offering an empty tick.
+    if (option.kind === "event_buyers" && option.buyer_count === 0) {
       return { ...option, disabled: true };
     }
     return option;
@@ -515,7 +554,9 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         ? "Mingla reach"
         : option.kind === "manual_group"
           ? "Saved group"
-          : "Automatic buyer group";
+          : option.event !== undefined
+            ? eventRowMeaning(option.event.shape)
+            : "Automatic buyer group";
     const countLabel = option.count_label ?? `${option.buyer_count} ${peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}`;
     const showCount = option.show_count !== false;
     const spokenMeta = [showCount || option.count_label !== undefined ? countLabel : null, option.status_label]
@@ -557,7 +598,9 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           onClose();
         }}
         accessibilityRole="button"
-        accessibilityLabel={`Pick audience ${option.name} with ${option.buyer_count} buyers`}
+        accessibilityLabel={option.event !== undefined
+          ? `Pick audience ${option.name}. ${option.count_label ?? ""}.${option.status_label ? ` ${option.status_label}` : ""}`
+          : `Pick audience ${option.name} with ${option.buyer_count} buyers`}
         accessibilityState={{ selected: isSelected }}
         style={({ pressed }) => [
           styles.row,
@@ -569,13 +612,15 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           {option.name}
         </Text>
         <Text style={styles.rowMeta}>
-          {option.buyer_count}{" "}
-          {option.buyer_count === 1 ? "buyer" : "buyers"}
-          {" · "}
-          {option.kind === "brand_buyers"
-            ? "Brand rollup"
-            : "Event buyers"}
+          {option.event !== undefined && option.count_label !== undefined
+            ? option.count_label
+            : `${option.buyer_count} ${option.buyer_count === 1 ? "buyer" : "buyers"} · ${
+                option.kind === "brand_buyers" ? "Brand rollup" : "Event buyers"
+              }`}
         </Text>
+        {option.event !== undefined && option.status_label ? (
+          <Text style={styles.rowStatus}>{option.status_label}</Text>
+        ) : null}
       </Pressable>
     );
   };

@@ -2,9 +2,10 @@
  * ORCH-1186-B — venue intelligence read service.
  *
  * Single read path for the venue Overview intelligence dashboard. Wraps the
- * owner-only `venue_intelligence_overview(p_brand_id)` RPC, which computes all
- * aggregations SERVER-SIDE in the venue's local timezone (Constitution #12) and
- * per-currency (Constitution #10). This service only types + defends the shape;
+ * brand-member `venue_intelligence_overview(p_brand_id, p_venue_id)` RPC,
+ * which computes all aggregations SERVER-SIDE in the venue's local timezone
+ * (Constitution #12) and per-currency (Constitution #10). This service only
+ * types + defends the shape;
  * it does NO client-side bucketing or currency math.
  *
  * Error contract: THROWS on RPC error (React Query surfaces it) — matching the

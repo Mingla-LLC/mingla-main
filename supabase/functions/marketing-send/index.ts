@@ -1404,6 +1404,75 @@ interface DispatchOutcome {
    * later pass instead of finalizing it as reaching nobody.
    */
   retry_later?: boolean;
+  /**
+   * #4596 — the audience resolved to nobody reachable on this method and the
+   * campaign has no message rows yet: nothing was attempted. The campaign
+   * ends failed with failure_reason 'no_recipients', never a silent null.
+   */
+  no_recipients?: boolean;
+}
+
+// INVARIANT I-4596-NO-SILENT-ZERO: marketing-send never leaves a campaign failed with a null failure_reason; zero reachable is failure_reason no_recipients.
+/** #4596 — the reason written when a campaign reaches nobody. */
+export const NO_RECIPIENTS_REASON = "no_recipients";
+/** #4596 fix pass 2 — every message row was attempted and failed at the provider. */
+export const ALL_SENDS_FAILED_REASON = "all_sends_failed";
+const NO_RECIPIENTS_OUTCOME: DispatchOutcome = {
+  delivered: 0,
+  deferred: 0,
+  failed: 0,
+  preview_skipped: 0,
+  no_recipients: true,
+};
+
+/**
+ * #4596 — the failure_reason for a thrown send error: the code before the
+ * first ':' (never the rest, which can carry provider text). It must satisfy
+ * the column's CHECK from #4541 (`^[a-z0-9_]{1,64}$`), or the failure write
+ * itself would be refused; anything else is 'send_failed'.
+ */
+export function failureReasonCode(message: string): string {
+  const code = message.split(":")[0].trim();
+  return /^[a-z0-9_]{1,64}$/.test(code) ? code : "send_failed";
+}
+
+/**
+ * #4596 — true when this pass has nobody to send to AND the campaign has no
+ * message rows yet. A resumed pass (rows already written) is never refused
+ * here: its finalize recomputes the truth from those rows.
+ */
+export async function noRecipientsToReach(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+  reachable: number,
+): Promise<boolean> {
+  if (reachable > 0) return false;
+  const { data, error } = await supabase
+    .from("marketing_messages")
+    .select("id")
+    .eq("campaign_id", campaignId)
+    .limit(1);
+  if (error) throw new Error(`zero_guard_scan:${error.message}`);
+  return !Array.isArray(data) || data.length === 0;
+}
+
+/** #4596 — the event a blast belongs to, for its event-chat copy, or null. */
+export function eventChatEventId(
+  definition: AudienceQueryDefinition,
+): string | null {
+  if (definition.kind === "event_buyers") return definition.event_id;
+  if (
+    definition.kind === "combined_sources" &&
+    Array.isArray(definition.sources) &&
+    definition.sources.length === 1 &&
+    typeof definition.sources[0] === "string" &&
+    definition.sources[0].startsWith("event:")
+  ) {
+    const id = definition.sources[0].slice("event:".length);
+    return id.length > 0 ? id : null;
+  }
+  return null;
 }
 
 /** #4273 — how long a sealed SMS send waits before retrying an unreadable price table. */
@@ -1508,15 +1577,76 @@ export async function processClaimedCampaigns(
         succeeded += 1;
         continue;
       }
+      if (outcome.no_recipients === true) {
+        // #4596 — nobody to reach: no send loop ran and no finalize runs.
+        console.error(
+          `[marketing-send] campaign ${campaign.id} ${NO_RECIPIENTS_REASON}`,
+        );
+        const { error: zeroErr } = await supabase
+          .from("marketing_campaigns")
+          .update({
+            status: "failed",
+            failure_reason: NO_RECIPIENTS_REASON,
+            recipient_count: 0,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", campaign.id);
+        if (zeroErr) throw new Error(`no_recipients_write:${zeroErr.message}`);
+        const { error: zeroMarkerError } = await supabase.rpc(
+          "biz_record_marketing_book_send_failure_v1",
+          { p_campaign_id: campaign.id },
+        );
+        if (zeroMarkerError) {
+          console.error(
+            `[marketing-send] campaign ${campaign.id} Book failure marker failed: ${zeroMarkerError.message}`,
+          );
+        }
+        results.push({
+          campaign_id: campaign.id,
+          status: "failed",
+          reason: NO_RECIPIENTS_REASON,
+        });
+        failed += 1;
+        continue;
+      }
       deliveredTotal += outcome.delivered;
       deferredTotal += outcome.deferred;
       recipientFailedTotal += outcome.failed;
       previewSkippedTotal += outcome.preview_skipped;
-      const { error: finalizeErr } = await supabase.rpc(
+      const { data: finalStatus, error: finalizeErr } = await supabase.rpc(
         "mkt_finalize_campaign",
         { p_campaign_id: campaign.id },
       );
       if (finalizeErr) throw new Error(`finalize:${finalizeErr.message}`);
+      if (finalStatus === "failed") {
+        // #4596 — the finalizer fails a campaign that reached nobody (push
+        // included) without a reason. Say why, unless a reason is already set.
+        // Best-effort: the send itself is already final and must not be
+        // re-marked by a failed reason write, so this never throws.
+        // Fix pass 2: 'no_recipients' only when nobody was attempted (push,
+        // which finalizes on 0 delivered, or no message rows at all). Email
+        // or SMS whose rows all failed at the provider is 'all_sends_failed',
+        // which the host app shows with its usual "Failed {date}" wording.
+        try {
+          const reason = campaign.channel === "push" ||
+              await noRecipientsToReach(supabase, campaign.id, 0)
+            ? NO_RECIPIENTS_REASON
+            : ALL_SENDS_FAILED_REASON;
+          const { error: reasonErr } = await supabase
+            .from("marketing_campaigns")
+            .update({ failure_reason: reason })
+            .eq("id", campaign.id)
+            .eq("status", "failed")
+            .is("failure_reason", null);
+          if (reasonErr) throw new Error(reasonErr.message);
+        } catch (reasonError) {
+          console.error(
+            `[marketing-send] campaign ${campaign.id} failure reason write failed: ${
+              reasonError instanceof Error ? reasonError.message : String(reasonError)
+            }`,
+          );
+        }
+      }
       results.push({
         campaign_id: campaign.id,
         status: "succeeded",
@@ -1533,7 +1663,12 @@ export async function processClaimedCampaigns(
       );
       await supabase
         .from("marketing_campaigns")
-        .update({ status: "failed", updated_at: new Date().toISOString() })
+        .update({
+          status: "failed",
+          // #4596 — a code, never the raw message (it can hold provider text).
+          failure_reason: failureReasonCode(message),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", campaign.id);
       const { error: bookFailureError } = await supabase.rpc(
         "biz_record_marketing_book_send_failure_v1",
@@ -1887,6 +2022,17 @@ async function sendEmail(
   if (bodyHtml.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {
     throw new Error("offering_invite_volatile_link_invalid");
   }
+
+  // #4596 — the zero guard. After the #2291 empty-body guard (not instead of
+  // it), before the snapshot and the first message row.
+  if (
+    await noRecipientsToReach(
+      supabase,
+      campaign.id,
+      resolved.rows.filter((c) => c.email_marketing_ok && c.raw_email !== null)
+        .length,
+    )
+  ) return NO_RECIPIENTS_OUTCOME;
 
   // #4273 — the send snapshot: write-once, best-effort, never blocks a send.
   // After every guard above (a refused campaign writes none), before the first
@@ -2400,6 +2546,15 @@ async function sendSms(
   if (rawBody.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {
     throw new Error("offering_invite_volatile_link_invalid");
   }
+  // #4596 — the zero guard, after the empty-body guard, before any row.
+  if (
+    await noRecipientsToReach(
+      supabase,
+      campaign.id,
+      resolved.rows.filter((c) => c.sms_marketing_ok && c.raw_phone !== null)
+        .length,
+    )
+  ) return NO_RECIPIENTS_OUTCOME;
   const embedded = await loadEmbeddedEvents(
     supabase,
     campaign.channel_payload.embedded_events ?? [],
@@ -3060,9 +3215,9 @@ async function writeBlastIntoEventChat(
   audience: AudienceRow,
   contentInput: { subject: string; bodyHtml: string; bodyText: string },
 ): Promise<void> {
-  if (audience.query_definition.kind !== "event_buyers") return;
-
-  const eventId = audience.query_definition.event_id;
+  // #4596 — a single-event blast on the combined lane keeps its chat copy.
+  const eventId = eventChatEventId(audience.query_definition);
+  if (eventId === null) return;
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
     .select("id")

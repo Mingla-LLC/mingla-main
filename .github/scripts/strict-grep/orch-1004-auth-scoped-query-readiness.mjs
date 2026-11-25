@@ -139,6 +139,13 @@ const AUTH_SCOPED_HOOK_FILES = [
   "marketing/useCampaignGroupView.ts",
   "marketing/useBrandCustomers.ts",
   "marketing/useEventBuyers.ts",
+  // #4596 — the event Blasts count and roster (biz_marketing_event_audiences_v1,
+  // the event reach RPC and biz_marketing_event_roster_v1: auth.uid() rank
+  // checks). Folds isAuthReady into enabled.
+  "marketing/useEventAudienceCount.ts",
+  // #4596 — a failed method's failure_reason (marketing_campaigns, RLS on
+  // auth.uid() brand membership). Folds isAuthReady into enabled.
+  "marketing/useCampaignFailureReason.ts",
   "marketing/useMarketingOverview.ts",
   "marketing/useUserTemplates.ts",
   // ── ORCH-1202 DELTA-1 (20) — newly-fixed: folded isAuthReady into enabled.

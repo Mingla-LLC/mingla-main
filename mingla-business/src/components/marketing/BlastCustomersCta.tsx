@@ -17,13 +17,16 @@
  * `bottom: 0`.
  *
  * Disabled when reachableCount === 0 OR the `disabled` prop is true.
+ *
+ * #4596: an optional one-line caption under the button says why it is off
+ * (the only layout addition Seth accepted on #4596 A2).
  */
 
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { space } from "../../constants/designSystem";
+import { color, space, type } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Material } from "../ui/Material";
 
@@ -37,6 +40,8 @@ export interface BlastCustomersCtaProps {
   disabled?: boolean;
   onPress?: (audienceKind: BlastAudienceKind, audienceTargetId: string) => void;
   testID?: string;
+  /** #4596 — one line under the button, e.g. why it is disabled. */
+  caption?: string | null;
 }
 
 export const BlastCustomersCta: React.FC<BlastCustomersCtaProps> = ({
@@ -46,6 +51,7 @@ export const BlastCustomersCta: React.FC<BlastCustomersCtaProps> = ({
   disabled,
   onPress,
   testID,
+  caption,
 }) => {
   const insets = useSafeAreaInsets();
   const isDisabled = disabled === true || reachableCount === 0;
@@ -74,6 +80,11 @@ export const BlastCustomersCta: React.FC<BlastCustomersCtaProps> = ({
           accessibilityLabel={label}
           testID={testID}
         />
+        {caption !== undefined && caption !== null && caption.length > 0 ? (
+          <Text style={styles.caption} testID={testID === undefined ? undefined : `${testID}-caption`}>
+            {caption}
+          </Text>
+        ) : null}
       </View>
     </Material>
   );
@@ -87,5 +98,11 @@ const styles = StyleSheet.create({
   },
   row: {
     width: "100%",
+  },
+  caption: {
+    ...type.small,
+    color: color.text2,
+    textAlign: "center",
+    marginTop: space[2],
   },
 });

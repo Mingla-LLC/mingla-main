@@ -18,6 +18,7 @@
 jest.mock("../../supabase", () => ({
   supabase: {
     from: jest.fn(),
+    rpc: jest.fn(),
   },
 }));
 
@@ -485,9 +486,23 @@ describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
 
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();
+    (supabase.rpc as jest.Mock).mockReset();
   });
 
-  it("merges existing real rows with virtual rows for THIS brand's paid orders only", async () => {
+  // [TEST-MOD-APPROVED #4596] event discovery moved from a client paid-orders
+  // scan to the server's biz_marketing_event_audiences_v1 (paid buyers plus
+  // going RSVP guests). The orders mock became that RPC's answer; an RSVP-only
+  // event is now listed, named for its guests.
+  it("merges existing real rows with virtual rows for THIS brand's event audiences only", async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValueOnce({
+      data: [
+        { eventId: EVENT_UUID_A, title: "Event Alpha", eventType: "event", name: "Buyers of Event Alpha", startsAt: null,
+          buyerCount: 2, guestCount: 0, peopleCount: 2, pendingReviewCount: 0 },
+        { eventId: EVENT_UUID_B, title: "Event Beta", eventType: "rsvp", name: "Guests of Event Beta", startsAt: null,
+          buyerCount: 0, guestCount: 5, peopleCount: 5, pendingReviewCount: 1 },
+      ],
+      error: null,
+    });
     (supabase.from as jest.Mock)
       // Call 1: marketing_audiences (brand-filtered)
       .mockReturnValueOnce(
@@ -518,35 +533,7 @@ describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
           error: null,
         }),
       )
-      // Call 3: orders SELECT with events!inner + brand filter
-      .mockReturnValueOnce({
-        select: () => ({
-          in: () => ({
-            eq: () => ({
-              data: [
-                {
-                  event_id: EVENT_UUID_A,
-                  events: {
-                    id: EVENT_UUID_A,
-                    title: "Event Alpha",
-                    brand_id: BRAND_UUID,
-                  },
-                },
-                {
-                  event_id: EVENT_UUID_B,
-                  events: {
-                    id: EVENT_UUID_B,
-                    title: "Event Beta",
-                    brand_id: BRAND_UUID,
-                  },
-                },
-              ],
-              error: null,
-            }),
-          }),
-        }),
-      })
-      // Call 4: brands SELECT (single brand)
+      // Call 3: brands SELECT (single brand)
       .mockReturnValueOnce(
         chainEqThen({
           data: { id: BRAND_UUID, name: "Rooftop Club" },
@@ -579,10 +566,21 @@ describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
     );
     expect(eventB?.audience_id).toBeNull();
     expect(eventB?.last_used_at).toBeNull();
+    expect(eventB?.display_name).toBe("Guests of Event Beta");
+    // Fix pass 1: the Audiences tab reach starts from the server's people count.
+    expect(eventB?.people_count).toBe(5);
+    expect(eventA?.display_name).toBe("Buyers of Event Alpha");
+    expect(supabase.rpc).toHaveBeenCalledWith("biz_marketing_event_audiences_v1", {
+      p_actor_id: ACCOUNT_UUID,
+      p_brand_id: BRAND_UUID,
+    });
     expect(typeof listAudiencesForAccount).toBe("function");
   });
 
+  // [TEST-MOD-APPROVED #4596] the brand scope is now the server's: the
+  // discovery RPC is asked for THIS brand only and lists nothing else.
   it("#3682 never returns another brand's automatic buyer groups", async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValueOnce({ data: [], error: null });
     // Empty existing audiences → no campaigns last-used query.
     (supabase.from as jest.Mock)
       .mockReturnValueOnce(
@@ -591,26 +589,6 @@ describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
           error: null,
         }),
       )
-      .mockReturnValueOnce({
-        select: () => ({
-          in: () => ({
-            eq: () => ({
-              // Even if a foreign row slipped through the join, Step 4 drops it.
-              data: [
-                {
-                  event_id: OTHER_EVENT_UUID,
-                  events: {
-                    id: OTHER_EVENT_UUID,
-                    title: "Foreign Night",
-                    brand_id: OTHER_BRAND_UUID,
-                  },
-                },
-              ],
-              error: null,
-            }),
-          }),
-        }),
-      })
       .mockReturnValueOnce(
         chainEqThen({
           data: { id: BRAND_UUID, name: "Lantern Room" },
@@ -624,6 +602,11 @@ describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
     });
 
     expect(entries).toHaveLength(0);
+    expect(supabase.rpc).toHaveBeenCalledWith("biz_marketing_event_audiences_v1", {
+      p_actor_id: ACCOUNT_UUID,
+      p_brand_id: BRAND_UUID,
+    });
+    void OTHER_EVENT_UUID;
     expect(
       entries.some((e) => e.brand_id === OTHER_BRAND_UUID),
     ).toBe(false);

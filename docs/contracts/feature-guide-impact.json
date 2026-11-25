@@ -2027,7 +2027,16 @@
         "mingla-business/src/components/marketing/OverviewRecentCampaignRow.tsx",
         "mingla-business/src/components/marketing/marketingSubNavTabs.ts",
         "mingla-business/src/components/marketing/marketingTabActions.ts",
-        "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx"
+        "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx",
+        "mingla-business/src/features/marketing/campaignFailureCopy.ts",
+        "mingla-business/src/features/marketing/eventAudienceCopy.ts",
+        "mingla-business/src/hooks/marketing/useAudienceList.ts",
+        "mingla-business/src/hooks/marketing/useCampaignFailureReason.ts",
+        "mingla-business/src/hooks/marketing/useEventAudienceCount.ts",
+        "mingla-business/src/hooks/marketing/useEventBuyers.ts",
+        "mingla-business/src/services/marketing/eventRosterService.ts",
+        "mingla-business/src/services/marketing/marketingAudienceService.ts",
+        "supabase/migrations/20281205004596_issue_4596_event_audience_rsvp_guests.sql"
       ]
     },
     {
@@ -5724,7 +5733,9 @@
         "mingla-business/src/components/venue/insights/VenueInsightsModule.tsx",
         "mingla-business/src/components/venue/insights/insightsInstruments.ts",
         "mingla-business/src/components/venue/venueIntelligence.ts",
-        "mingla-business/src/components/venue/venueReviewsSummary.ts"
+        "mingla-business/src/components/venue/venueReviewsSummary.ts",
+        "mingla-business/src/services/venueIntelligenceService.ts",
+        "supabase/migrations/20281205004596_issue_4596_event_audience_rsvp_guests.sql"
       ]
     },
     {

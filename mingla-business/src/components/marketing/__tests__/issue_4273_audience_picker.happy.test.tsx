@@ -26,6 +26,14 @@ const mockFrom = jest.fn((table: string) => ({
       : { eq: async () => ({ data: [], error: null }) },
 }));
 jest.mock("../../../services/supabase", () => ({ supabase: { from: (table: string) => mockFrom(table) } }));
+// [TEST-MOD-APPROVED #4596] event rows come from the server's discovery RPC
+// (biz_marketing_event_audiences_v1), not the orders scan; mock its answer.
+jest.mock("../../../services/marketing/marketingAudienceService", () => ({
+  listEventAudiences: jest.fn(async () => [
+    { eventId: "e1", title: "Highlife", eventType: "event", name: "Buyers of Highlife", startsAt: null,
+      buyerCount: 1, guestCount: 0, peopleCount: 1, pendingReviewCount: 0 },
+  ]),
+}));
 jest.mock("../../../services/marketing/marketingCampaignService", () => ({
   getOrCreateMarketingBookAudience: jest.fn(async () => ({ audienceId: "book-audience", activeBookTotal: 3 })),
 }));
@@ -74,7 +82,7 @@ afterEach(async () => {
   });
 });
 
-async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest.fn(), selectedKeys: string[] = [], reach: unknown = REACH) {
+async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest.fn(), selectedKeys: string[] = [], reach: unknown = REACH, eventAudiencesAllowed?: boolean) {
   let tree: any;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
@@ -91,6 +99,7 @@ async function mount(onDone: (options: AudienceOption[]) => void, onClose = jest
         circleAudienceEnabled
         circleReach={reach as typeof REACH}
         multiSelect={{ selectedKeys, onDone }}
+        eventAudiencesAllowed={eventAudiencesAllowed}
       />,
     );
   });
@@ -107,6 +116,16 @@ const row = (tree: any, name: string) =>
       node.props.onPress,
   )[0];
 const done = (tree: any) => tree.root.findByProps({ testID: "audience-picker-done", accessibilityRole: "button" });
+
+describe("#4596 fix pass 2 event rows follow the server's rank rule", () => {
+  it("a role below event_manager sees no event row (the server would refuse it at quote)", async () => {
+    const hidden = text((await mount(jest.fn(), jest.fn(), [], REACH, false)).toJSON());
+    expect(hidden).not.toContain("Buyers of Highlife");
+    expect(hidden).toContain("All buyers of Harmattan");
+    const shown = text((await mount(jest.fn(), jest.fn(), [], REACH, true)).toJSON());
+    expect(shown).toContain("Buyers of Highlife");
+  });
+});
 
 describe("#4273 audience picker", () => {
   beforeEach(() => mockSummary.mockClear());
