@@ -347,7 +347,12 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
   for (const link of pageLinks(input.pages, paths)) {
     const at = placeLabel(link);
     if (link.href.startsWith("/")) {
-      if (!internalPathResolves(link.href, pagePaths, input)) links.push({ message: `${at}: “${link.href}” doesn't go to a page on your website`, page_path: link.page_path, section: "pages" });
+      const targetPath = link.href.split(/[?#]/)[0]!.replace(/^\/+|\/+$/g, "");
+      if (link.page_path !== null && targetPath === link.page_path) {
+        links.push({ message: `${at}: “${link.href}” links back to the same page, so the button appears to do nothing`, page_path: link.page_path, section: "pages" });
+      } else if (!internalPathResolves(link.href, pagePaths, input)) {
+        links.push({ message: `${at}: “${link.href}” doesn't go to a page on your website`, page_path: link.page_path, section: "pages" });
+      }
     } else if (/^mailto:/i.test(link.href)) {
       if (!/^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(link.href.split("?")[0]!)) links.push({ message: `${at}: “${link.href}” isn't a complete email address`, page_path: link.page_path, section: "pages" });
     } else if (/^tel:/i.test(link.href)) {

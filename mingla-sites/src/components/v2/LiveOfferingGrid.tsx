@@ -20,7 +20,7 @@ import { TrackedLink } from "../TrackedLink";
  */
 type GridBlock = Readonly<Record<string, unknown>>;
 
-const KIND_PLURAL: Readonly<Record<string, string>> = { all: "offerings", trip: "trips", event: "events", experience: "experiences" };
+const KIND_PLURAL: Readonly<Record<string, string>> = { all: "offerings", trip: "trips", event: "events", experience: "experiences", stay: "stays", venue: "venue offers" };
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -28,7 +28,7 @@ function text(value: unknown): string {
 
 function gridConfig(block: GridBlock): OfferingGridConfig {
   return {
-    kind: ["all", "trip", "event", "experience"].includes(text(block.kind)) ? (text(block.kind) as OfferingGridConfig["kind"]) : "all",
+    kind: ["all", "trip", "event", "experience", "stay", "venue"].includes(text(block.kind)) ? (text(block.kind) as OfferingGridConfig["kind"]) : "all",
     mode: ["upcoming", "past", "all"].includes(text(block.mode)) ? (text(block.mode) as OfferingGridConfig["mode"]) : "upcoming",
     offering_ids: Array.isArray(block.offering_ids) ? (block.offering_ids as Array<{ id: string }>) : undefined,
     limit: typeof block.limit === "number" ? block.limit : undefined,
@@ -83,6 +83,7 @@ export function LiveOfferingGrid({ block, live, context, clearHref, eyebrow }: {
     <section className="editorial-grid offering-grid" data-offering-source={live?.source ?? "none"}>
       {eyebrow}
       {heading ? <h2>{heading}</h2> : null}
+      {text(block.intro) ? <p className="offering-grid-intro">{text(block.intro)}</p> : null}
       {block.show_filters === true ? (
         <SiteSearchForm className="offering-filters" role="search" aria-label={`Search ${noun}`}>
           <label>Where<input type="text" name="where" maxLength={80} defaultValue={filters?.where ?? ""} /></label>

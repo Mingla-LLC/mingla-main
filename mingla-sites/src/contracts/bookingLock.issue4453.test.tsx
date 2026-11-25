@@ -114,8 +114,8 @@ describe("#4453 action fields in the block catalogue", () => {
   });
 
   it("blockActionLinks finds nested buttons and reads Studio blocks too", () => {
-    expect(blockActionLinks({ type: "hero", ctas: [{ label: "a", href: "/trips" }, { label: "b", href: "https://x.example" }] }))
-      .toEqual([{ field: "ctas[0].href", href: "/trips", intent: "booking" }, { field: "ctas[1].href", href: "https://x.example", intent: "booking" }]);
+    expect(blockActionLinks({ type: "hero", ctas: [{ label: "Follow us", href: "https://x.com/example" }, { label: "Book", href: "/trips" }] }))
+      .toEqual([{ field: "ctas[0].href", href: "https://x.com/example", intent: "informational" }, { field: "ctas[1].href", href: "/trips", intent: "booking" }]);
     expect(blockActionLinks({ blockType: "cta", label: "Directions", href: "/about" })).toEqual([{ field: "href", href: "/about", intent: "informational" }]);
     expect(blockActionLinks({ type: "cta", label: "Book a table", href: "/about" })[0]?.intent).toBe("booking");
     expect(blockActionLinks({ type: "offering_grid", cta_label: "See more", cta_href: "/trips" })[0]?.intent).toBe("booking");
@@ -296,10 +296,15 @@ describe("#4453 informational links stay; booking links go to Mingla", () => {
     expect(actionHrefProblem("https://wa.me/2348012345678", SCOPE, "booking")).toBe("outside_mingla");
   });
 
-  it("a hero button to any outside site is refused, whatever its label", () => {
+  it("a hero button follows its label: information may leave Mingla, booking may not", () => {
+    for (const [label, href] of [["Follow us", "https://www.instagram.com/example"], ["Directions", "https://maps.google.com/?q=x"]]) {
+      const artifact = gogiShaped() as any;
+      artifact.pages[0].blocks[0].ctas = [{ label, href }];
+      expect(() => assertArtifactV2(artifact), href).not.toThrow();
+    }
     for (const href of ["https://www.instagram.com/example", "https://maps.google.com/?q=x", "https://example.com/"]) {
       const artifact = gogiShaped() as any;
-      artifact.pages[0].blocks[0].ctas = [{ label: "Follow us", href }];
+      artifact.pages[0].blocks[0].ctas = [{ label: "Book", href }];
       expect(() => assertArtifactV2(artifact), href).toThrow("ARTIFACT_BLOCK_CONTENT_MISMATCH:hero.ctas");
     }
   });

@@ -1,6 +1,6 @@
 /*
  * #2829 W9a (T-W9) — the website plan's shared vocabulary: the 8 parts, the
- * seven offering options, the pages ticks ask for, the menu order (M1, incl.
+ * eight offering options, the pages ticks ask for, the menu order (M1, incl.
  * more than six → "More"), the empty-state words (verbatim from the design
  * contract's rules table), the tagline/bio split, the story wording, and
  * when an empty planned page is hidden from search (SC-29).
@@ -37,9 +37,9 @@ describe("#2829 W9a plan parts and options", () => {
     ]);
   });
 
-  it("offers seven options in one grid; only Stay depends on stay venues", () => {
+  it("offers eight options in one grid; only Stay depends on stay venues", () => {
     expect(PLAN_OFFERING_OPTIONS.map((option) => option.label)).toEqual([
-      "Trips", "Events", "Experiences", "Restaurant, bar or café", "Play", "Creative & arts", "Stay",
+      "Trips", "Events", "Experiences", "Coworking & workspaces", "Restaurant, bar or café", "Play", "Creative & arts", "Stay",
     ]);
     expect(PLAN_OFFERING_OPTIONS.filter((option) => option.stay).map((option) => option.key)).toEqual(["venue_stay"]);
   });

@@ -116,6 +116,12 @@ describe("#2829 offering words", () => {
     expect(formatOfferingPrice(offering({ min_price_minor: 1000, currency: null }))).toBe("Price on request");
     expect(formatOfferingPrice(offering({ min_price_minor: null, has_free_tier: true }))).toBe("Free");
   });
+
+  it("writes venue prices with their real cadence", () => {
+    expect(formatOfferingPrice(offering({ min_price_minor: 1500000, currency: "NGN", price_cadence: "hour" }))).toMatch(/₦15,000 an hour/);
+    expect(formatOfferingPrice(offering({ min_price_minor: 7200000, currency: "NGN", price_cadence: "month" }))).toMatch(/₦72,000 a month/);
+    expect(formatOfferingPrice(offering({ min_price_minor: 400000, currency: "NGN", price_cadence: "from" }))).toMatch(/From ₦4,000/);
+  });
 });
 
 describe("#2829 grid selection", () => {
@@ -172,6 +178,19 @@ describe("#2829 feed and snapshot contracts", () => {
     expect(() => assertOfferingsSnapshot([base, base])).toThrow("ARTIFACT_OFFERINGS_MISMATCH");
     expect(() => assertOfferingsSnapshot(Array.from({ length: 201 }, () => offering({ id: uid() })))).toThrow("ARTIFACT_OFFERINGS_MISMATCH");
     expect(normalizeSiteOffering({ ...base, has_free_tier: undefined })?.has_free_tier).toBe(false);
+  });
+
+  it("accepts canonical venue offer and membership buyer links only", () => {
+    const venue = offering({
+      kind: "venue", start_at: null, end_at: null, timezone: null,
+      public_url: "https://host.usemingla.com/b/althaven/v/althaven/book/11111111-1111-4111-8111-111111111111",
+      price_cadence: "hour",
+    });
+    expect(normalizeSiteOffering(venue)).toMatchObject({ kind: "venue", price_cadence: "hour" });
+    expect(offeringState(venue, new Date("2026-11-25T12:00:00Z"))).toMatchObject({ phase: "upcoming", bookable: true });
+    expect(normalizeSiteOffering({ ...venue, id: uid(), public_url: `${venue.public_url}?k=plan` })).not.toBeNull();
+    expect(normalizeSiteOffering({ ...venue, id: uid(), public_url: `${venue.public_url}?tab=stay` })).toBeNull();
+    expect(normalizeSiteOffering({ ...venue, id: uid(), public_url: "https://example.com/book" })).toBeNull();
   });
 
   it("an offering grid is either live or an original v1 grid, never both or neither", () => {

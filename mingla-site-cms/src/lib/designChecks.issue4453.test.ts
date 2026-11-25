@@ -89,3 +89,19 @@ describe("#4453 a check never says \"block\" to the owner", () => {
     for (const message of messages) expect(message).not.toMatch(/\bblocks?\b/i);
   });
 });
+
+describe("#4572 link checks", () => {
+  it("flags a button that links back to the page it is already on", () => {
+    const checks = runDesignChecks({
+      pages: [
+        { id: "home", slug: "", title: "Home", enabled: true, blocks: [{ blockType: "cta", heading: "Welcome", label: "Home", href: "/" }] },
+        { id: "about", slug: "about", title: "About", enabled: true, blocks: [{ blockType: "media_feature", heading: "Our story", cta_label: "Read this page", cta_href: "/about#top" }] },
+      ],
+      settings: { design: "atelier" }, navigation: { items: [] }, media: [], content: {},
+      evidence: { offerings: [], brand_texts: [] }, owner_texts: [],
+    });
+    const links = checks.find((check) => check.key === "links")!;
+    expect(links.status).toBe("warn");
+    expect(links.items.map((item) => item.message).join("\n")).toContain("links back to the same page");
+  });
+});

@@ -16,7 +16,7 @@ import {
 } from "../../../../packages/site-contracts/src/sitePlan.ts";
 
 /*
- * #2829 W9a — part 1, "What you'll offer": seven options in one grid (Stay
+ * #2829 W9a / #4572 — part 1, "What you'll offer": eight options in one grid (Stay
  * only while stay venues are switched on), the venue follow-up chips, and
  * the live menu line under the ticks. Each tick adds a page and a menu item;
  * unticking something that has live items asks first.

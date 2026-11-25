@@ -60,6 +60,7 @@ const OFFERING_LABELS: Readonly<Record<string, string>> = {
   trips: "Trips",
   events: "Events",
   experiences: "Experiences",
+  venue_coworking: "Coworking & workspaces",
   venue_food_drink: "Restaurant, bar or café",
   venue_play: "Play",
   venue_creative_arts: "Creative & arts",

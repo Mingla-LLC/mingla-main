@@ -33,53 +33,6 @@ export const BOOKING_SITE_MESSAGE =
 export const INFO_LINK_MESSAGE =
   "A button can link to your pages, your Mingla pages, a map, your social profiles, a file on your site, or your own WhatsApp, email or phone.";
 
-export const OWNER_CTA_LINK_MESSAGE =
-  "Use another page on this site, or paste a secure Mingla brand or event link from host.usemingla.com/b/ or host.usemingla.com/e/.";
-
-/**
- * #4572 — the small owner editor deliberately offers a narrower link surface
- * than Studio: a page of this site, or a Mingla brand/event page. It never
- * turns an arbitrary outside address into a button.
- */
-export function safeOwnerCtaUrl(value: unknown): true | string {
-  if (value == null || value === "") return true;
-  const safe = safeUrl(value);
-  if (safe !== true || typeof value !== "string" || value === "/") {
-    return OWNER_CTA_LINK_MESSAGE;
-  }
-  if (value.startsWith("/")) {
-    // URL parsers normalize backslashes in special URLs, so `/\\evil.com`
-    // must not slip through as an apparently relative owner link. Dot paths,
-    // encoded dot segments and a query/hash on `/` also normalize to the dead
-    // home target. A query/hash on a real page remains valid.
-    const rawPath = value.split(/[?#]/, 1)[0];
-    const normalizedPath = new URL(value, "https://site.invalid").pathname;
-    return !value.includes("\\") &&
-      normalizedPath !== "/" &&
-      normalizedPath === rawPath &&
-      actionHrefProblem(value, null, "booking") === null
-      ? true
-      : OWNER_CTA_LINK_MESSAGE;
-  }
-  try {
-    const url = new URL(value);
-    const parts = url.pathname.split("/").filter(Boolean);
-    const [root] = parts;
-    return url.protocol === "https:" &&
-      url.hostname === "host.usemingla.com" &&
-      url.port === "" &&
-      !url.username &&
-      !url.password &&
-      (root === "b" || root === "e") &&
-      parts.length >= 2 &&
-      actionHrefProblem(value, null, "booking") === null
-      ? true
-      : OWNER_CTA_LINK_MESSAGE;
-  } catch {
-    return OWNER_CTA_LINK_MESSAGE;
-  }
-}
-
 /*
  * #4453 PR 2 rework — any other button: a booking action when its label
  * (`labelField` beside it) reads as booking or paying, else informational

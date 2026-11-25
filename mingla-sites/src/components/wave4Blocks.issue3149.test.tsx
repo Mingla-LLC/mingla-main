@@ -458,10 +458,16 @@ describe("#3149 wave 4 the story is one composite", () => {
   const html = render([STORY]);
 
   it("crops the photograph round and prints the badge on it", () => {
-    expect(html).toContain('class="editorial-media editorial-media-circle"');
+    expect(html).toContain('class="editorial-media editorial-media-circle" style="position:relative"');
     expect(html).toContain(
       '<span class="media-badge"><strong>24/7</strong><span>ALWAYS ON</span></span>',
     );
+  });
+
+  it("anchors a badge to a rectangular section photo too", () => {
+    const rectangular = render([{ ...STORY, media_shape: "rectangle" }]);
+    expect(rectangular).toContain('class="editorial-media" style="position:relative"');
+    expect(rectangular).toContain('<span class="media-badge"><strong>24/7</strong>');
   });
 
   it("keeps the quotation INSIDE the section, with its bar and its source", () => {

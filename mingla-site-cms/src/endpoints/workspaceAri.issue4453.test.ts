@@ -190,7 +190,7 @@ describe("#4453 apply_site_change", () => {
     expect((await apply(site, { op: "set_section_media", page_id: site.homeId, section_id: hero, slot: "media", media_id: PHOTO_PROCESSING }, { cites: [] })).error.code).toBe("MEDIA_PROCESSING");
     // The same refusals as the owner's own edits.
     expect((await edit([{ key: "heading", value: "x".repeat(121) }])).error.code).toBe("VALUE_TOO_LONG");
-    expect((await edit([{ key: "ctas.0.href", value: "https://tickets.example/book" }])).error.code).toBe("FIELD_NOT_EDITABLE");
+    expect((await edit([{ key: "ctas.0.href", value: "https://tickets.example/book" }])).error.code).toBe("VALIDATION_FAILED");
     expect((await apply(site, { op: "edit_section", page_id: site.homeId, section_id: "nope", edits: [{ key: "heading", value: "Lagos" }] })).error.code).toBe("SECTION_NOT_FOUND");
     expect((await apply(site, { op: "edit_section", page_id: "44530000-0000-4000-8000-0000000000ff", section_id: hero, edits: [{ key: "heading", value: "Lagos" }] })).error.code).toBe("PAGE_NOT_FOUND");
     // A question form never offers a booking.

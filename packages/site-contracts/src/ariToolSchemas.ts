@@ -216,10 +216,10 @@ export function ariCopyFields(type: BlockType): { fields: string[]; listFields: 
   const listFields: Record<string, string[]> = {};
   for (const [key, field] of Object.entries(BLOCK_CATALOG[type].fields) as Array<[string, FieldSpec]>) {
     if (ARI_EXCLUDED_FIELDS[`${type}.${key}`]) continue;
-    if (field.kind === "text" || field.kind === "rich_text") fields.push(key);
+    if (field.kind === "text" || field.kind === "rich_text" || field.kind === "action_href") fields.push(key);
     if (field.kind === "list") {
       const inner = (Object.entries(field.item) as Array<[string, FieldSpec]>)
-        .filter(([child, spec]) => spec.kind === "text" && !ARI_EXCLUDED_FIELDS[`${type}.${key}.${child}`])
+        .filter(([child, spec]) => (spec.kind === "text" || spec.kind === "action_href") && !ARI_EXCLUDED_FIELDS[`${type}.${key}.${child}`])
         .map(([child]) => child);
       if (inner.length) listFields[key] = inner;
     }

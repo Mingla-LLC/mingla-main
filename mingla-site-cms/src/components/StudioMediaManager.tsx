@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   attachStudioMedia,
   canSelectStudioMedia,
@@ -35,7 +35,6 @@ function returnExpiredStudioSession(error: unknown): boolean {
 }
 
 export default function StudioMediaManager() {
-  const picker = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<StudioMediaProgress>(EMPTY);
   const [library, setLibrary] = useState<StudioMediaLibrary | null>(null);
@@ -129,7 +128,6 @@ export default function StudioMediaManager() {
   const dismiss = () => {
     setFile(null);
     setProgress(EMPTY);
-    if (picker.current) picker.current.value = "";
   };
 
   const selectedTarget =
@@ -259,28 +257,23 @@ export default function StudioMediaManager() {
         }}
       >
         <input
-          ref={picker}
           id="studio-media-picker"
           type="file"
+          className="studio-native-file-input"
+          aria-label="Choose an image or video from this device"
+          disabled={busy}
           accept={streamVideo
             ? "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/x-m4v,video/webm"
             : "image/jpeg,image/png,image/webp,video/mp4"}
-          hidden
           onChange={(event) => {
             const candidate = event.target.files?.item(0);
             if (candidate) void start(candidate);
+            // Let the same file be chosen again after a refusal or dismissal.
+            event.currentTarget.value = "";
           }}
         />
         <h2>Drop an image or video here</h2>
         <p>or choose one from this device</p>
-        <button
-          className="studio-primary-button"
-          type="button"
-          onClick={() => picker.current?.click()}
-          disabled={busy}
-        >
-          Choose a file
-        </button>
       </section>
 
       {file ? (
@@ -315,17 +308,6 @@ export default function StudioMediaManager() {
                 onClick={() => void start(file)}
               >
                 Retry
-              </button>
-            ) : null}
-            {["rejected", "replayed", "retryable_failed", "expired"].includes(
-              progress.phase,
-            ) ? (
-              <button
-                type="button"
-                className="studio-secondary-button"
-                onClick={() => picker.current?.click()}
-              >
-                Replace
               </button>
             ) : null}
             <button type="button" className="studio-text-button" onClick={dismiss}>

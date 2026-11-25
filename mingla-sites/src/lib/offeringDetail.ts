@@ -120,6 +120,9 @@ export async function offeringExtras(
   offering: SiteOffering,
   deps: { fetcher?: DetailFetcher; now?: () => number } = {},
 ): Promise<OfferingDetail | null> {
+  // Venue offers and memberships keep their canonical Mingla buyer pages;
+  // unlike trips/events/rooms, they have no Sites detail endpoint.
+  if (offering.kind === "venue") return null;
   const key = `${site.site_id}|${offering.kind}|${offering.slug}`;
   const now = (deps.now ?? Date.now)();
   const cached = cache.get(key);

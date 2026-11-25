@@ -100,6 +100,18 @@ describe("#2829 live offering grid", () => {
     expect(cardOf(html, "Albania")).toContain(">Book<");
   });
 
+  it("renders saved intro copy and venue offer cadence/deep links", async () => {
+    const venue = make({
+      kind: "venue", title: "Meeting room", slug: "11111111-1111-4111-8111-111111111111",
+      start_at: null, end_at: null, timezone: null, min_price_minor: 1500000, currency: "NGN", price_cadence: "hour",
+      public_url: "https://host.usemingla.com/b/althaven/v/althaven/book/11111111-1111-4111-8111-111111111111",
+    });
+    const html = await render({ heading: "Work your way", intro: "Flexible ways to work, meet and make.", kind: "venue", mode: "upcoming" }, await live([venue]));
+    expect(html).toContain("Flexible ways to work, meet and make.");
+    expect(html).toContain("₦15,000 an hour");
+    expect(html).toContain(`href="${venue.public_url}"`);
+  });
+
   it("server-side filters: inverted range and no match each offer Clear search", async () => {
     const block = { kind: "trip", mode: "upcoming", show_filters: true };
     const inverted = await render(block, await live(all, "live", { from: "2026-08-01", to: "2026-07-01" }));

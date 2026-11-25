@@ -191,6 +191,8 @@ describe("#2829 W9a What you'll offer", () => {
     expect(textOf(tree)).toContain("Home · Trips · Events · About · Contact");
     expect(byTestId(tree, "offer-venue_stay")).toHaveLength(0);
     expect(byTestId(render({ includeStay: true }).tree, "offer-venue_stay")).toHaveLength(1);
+    expect(byTestId(tree, "offer-venue_coworking")).toHaveLength(1);
+    expect(textOf(render({ selected: new Set(["venue_coworking"]) }).tree)).toContain("Home · Visit · About · Contact");
   });
 
   it("asks 'Which describes you best?' after a venue tick", () => {

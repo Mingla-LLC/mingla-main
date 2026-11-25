@@ -166,7 +166,7 @@ export const BLOCK_CATALOG = {
         label: "Buttons",
         item: {
           label: { kind: "text", max: 80, required: true, label: "Label" },
-          href: { kind: "action_href", booking: true, required: true, label: "Link" },
+          href: { kind: "action_href", labelField: "label", required: true, label: "Link" },
         },
       },
     },
@@ -228,7 +228,7 @@ export const BLOCK_CATALOG = {
        * request time (with the publication's snapshot as fallback), never from
        * copies in the artifact. `mode` marks a live grid.
        */
-      kind: { kind: "enum", values: ["all", "trip", "event", "experience", "stay"], label: "Show" },
+      kind: { kind: "enum", values: ["all", "trip", "event", "experience", "stay", "venue"], label: "Show" },
       mode: { kind: "enum", values: ["upcoming", "past", "all"], label: "Which dates" },
       offering_ids: {
         kind: "list",
@@ -246,9 +246,9 @@ export const BLOCK_CATALOG = {
        */
       intro: { kind: "text", max: 500, label: "Line under the heading" },
       cta_label: { kind: "text", max: 80, label: "Button label" },
-      cta_href: { kind: "action_href", booking: true, label: "Button link" },
+      cta_href: { kind: "action_href", labelField: "cta_label", label: "Button link" },
       empty_cta_label: { kind: "text", max: 80, label: "Button when there is nothing to show" },
-      empty_cta_href: { kind: "action_href", booking: true, label: "Its link" },
+      empty_cta_href: { kind: "action_href", labelField: "empty_cta_label", label: "Its link" },
       /*
        * The original (v1) grid: offerings chosen by id with their title and
        * link resolved at publish. Kept so earlier publications and gögi's

@@ -49,10 +49,12 @@ export const DETAIL_NOUN: Readonly<Record<OfferingKind, string>> = {
   event: "event",
   experience: "session",
   stay: "room",
+  venue: "offer",
 };
 
 /** The site path of an offering's detail page ("trips/lofoten"), never with a leading slash. */
 export function offeringDetailPath(routes: SiteRoutes, offering: Pick<SiteOffering, "kind" | "slug">): string | null {
+  if (offering.kind === "venue") return null;
   if (!isDetailSlug(offering.slug)) return null;
   return `${offeringBasePath(routes, offering.kind)}/${offering.slug}`;
 }
@@ -77,13 +79,13 @@ export function isDetailSlug(value: unknown): value is string {
  * ended ones do (they say so and are `noindex`).
  */
 export function offeringHasDetailPage(offering: SiteOffering, now: Date): boolean {
-  return isDetailSlug(offering.slug) && !offeringState(offering, now).cancelled;
+  return offering.kind !== "venue" && isDetailSlug(offering.slug) && !offeringState(offering, now).cancelled;
 }
 
 /** Listed in the sitemap: a detail page that is upcoming or open (not ended, not cancelled). */
 export function offeringDetailIndexable(offering: SiteOffering, now: Date): boolean {
   const state = offeringState(offering, now);
-  return isDetailSlug(offering.slug) && !state.cancelled && state.phase !== "ended";
+  return offering.kind !== "venue" && isDetailSlug(offering.slug) && !state.cancelled && state.phase !== "ended";
 }
 
 /**
