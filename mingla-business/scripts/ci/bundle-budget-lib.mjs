@@ -300,17 +300,16 @@ function runGit(args) {
  * Commit subjects reachable from HEAD but not from `commit`. Throws on any git
  * error, which resolveOneTimeAllowance treats as a refusal.
  *
- * Shallow checkouts: the main lanes that run the movement gate on a push
- * (bundle-baseline-ratchet, issue-2099 boot payload) check out ONE commit, so
- * the baseline commit is usually absent and the full range cannot be read.
- * Only then, and only in a shallow repository, this returns HEAD's own
- * subject: the baseline file in HEAD's tree names a commit measured before
- * that file was committed, so HEAD is always inside `commit..HEAD` and never
- * the baseline commit itself. A subset of the true range can only find FEWER
- * merge markers, so the fallback can never grant more than the full history
- * would. In practice it covers the push of the squash commit itself, which is
- * the run that banks the new baseline. A missing commit in a full clone is
- * still an error.
+ * The two main-side movement lanes keep full history so an intervening commit
+ * cannot hide an approved merge that the recorded baseline has not banked yet.
+ * Other callers may still be shallow. Only then, and only when the baseline
+ * commit is absent, this returns HEAD's own subject: the baseline file in
+ * HEAD's tree names a commit measured before that file was committed, so HEAD
+ * is always inside `commit..HEAD` and never the baseline commit itself. A
+ * subset of the true range can only find FEWER merge markers, so the fallback
+ * can never grant more than the full history would. It covers the immediate
+ * squash-commit push, but deliberately cannot prove an older merge after an
+ * intervening commit. A missing commit in a full clone is still an error.
  */
 export function gitSubjectsSince(commit, { git = runGit } = {}) {
   let present = true;

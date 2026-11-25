@@ -117,6 +117,24 @@ describe("#3493 every Business bundle input is measured identically", () => {
     );
   });
 
+  test("both main-side movement lanes retain merge history until the baseline catches up", () => {
+    assert.match(
+      RATCHET_WORKFLOW,
+      /actions\/checkout@[^\n]+\n\s+with:\n\s+persist-credentials: false\n\s+fetch-depth: 0/,
+      "the ratchet must see approved merges older than the current main tip",
+    );
+
+    const start = WORKFLOW.indexOf("  issue-2099-boot-payload-ceiling:");
+    const end = WORKFLOW.indexOf("  issue-2099-postgres-contract:", start);
+    assert.ok(start >= 0 && end > start, "boot-payload job is missing");
+    const job = WORKFLOW.slice(start, end);
+    assert.match(
+      job,
+      /actions\/checkout@v4\n\s+with:\n\s+fetch-depth: 0/,
+      "the issue-2099 push lane must use the same full-history verdict",
+    );
+  });
+
   test("the issue-specific lane reuses the verdict without its old scope skip", () => {
     const start = WORKFLOW.indexOf("  issue-2099-boot-payload-ceiling:");
     const end = WORKFLOW.indexOf("  issue-2099-postgres-contract:", start);
