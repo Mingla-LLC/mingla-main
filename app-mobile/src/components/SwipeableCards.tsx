@@ -100,7 +100,21 @@ import {
 } from "./deckCard/DeckCardChrome";
 import { deckKickerFor, useDeckFactLabels } from "./deckCard/useDeckFactLabels";
 import { useDeckTextScale, useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
-import { useClaimedVenues } from "../hooks/useClaimedVenues";
+import { useClaimedVenues, type ClaimedVenue } from "../hooks/useClaimedVenues";
+// #4490 Explorer W3 — the card's offer and event chips, worded from the
+// venue's server facts (deep specifier: never the package barrel).
+import { deckBrowsesToday, deckVenueChips, sessionBrowsesToday, type DeckVenueChips } from "@mingla/brand-rendering/deckVenueChip";
+import { venueMoneyText } from "./venueOffers/venueMoneyText";
+import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
+// #4490 W5 fix 2 (W5-D1): every deck analytics call goes through one guard, so
+// an analytics failure can never stop an expand, a save or a dismiss.
+import {
+  runDeckAnalytics,
+  trackDeckCardContentView,
+  trackDeckCardExpanded,
+  trackDeckCardSwiped,
+  trackDeckCardViewed,
+} from "./deckCard/deckCardAnalytics";
 import { leaveDeckTo } from "./deckCard/deckNavigation";
 import { deckHandoffSave, setDeckVenueHandoff } from "./venuePage/deckVenueHandoff";
 import { LinearGradient } from "expo-linear-gradient";
@@ -146,7 +160,6 @@ import type { BusinessEventCard } from "../types/mergedDiscover";
 import { hueFromId } from "../utils/hueFromId";
 import { experienceRecToBusinessEventCard as mapExperienceRecToBusinessEventCard } from "../utils/experienceRecToBusinessEventCard";
 import { mixpanelService } from "../services/mixpanelService";
-import { logAppsFlyerEvent } from "../services/appsFlyerService";
 // META-ORCH-1187 [Growth Analytics Hub] — behavior events mirror the existing
 // Mixpanel sites (parallel run; identical event-name strings for a 1:1 future
 // retirement mapping).
@@ -352,6 +365,7 @@ function placePlateForCard(
   now: Date,
   labels: DeckFactLabels,
   tileLabels: PlacePlateLabels,
+  offer: { readonly label: string; readonly value: string } | null = null,
 ): PlanPlateContent {
   const distanceLabel =
     card.distance != null ? parseAndFormatDistance(card.distance as any, measurementSystem) : null;
@@ -368,7 +382,22 @@ function placePlateForCard(
     now,
     labels,
     tileLabels,
+    offer,
   );
+}
+
+/**
+ * #4490 Explorer W3 — a claimed venue's chips for this deck render: the offer
+ * (the page's lead, server-priced) and the event chip. Null for a card that is
+ * not a claimed venue.
+ */
+function claimedVenueChipsFor(venue: ClaimedVenue | null | undefined, now: Date): DeckVenueChips | null {
+  return venue ? deckVenueChips(venue.facts, now, venueMoneyText) : null;
+}
+
+/** The plate's offer tile: the lead tab's name over its price, read once ("Entry" / "from ₦4,000"). */
+function offerTileFor(chips: DeckVenueChips | null): { label: string; value: string } | null {
+  return chips?.offerChip ? { label: chips.offerChip.tabLabel, value: chips.offerChip.tileValue } : null;
 }
 
 /** The pager's photos for any deck card (place, curated plan, host experience). */
@@ -1567,6 +1596,8 @@ export default function SwipeableCards({
     currentRec && !currentRec.cardType && currentRec.placePoolId
       ? claimedVenues.get(currentRec.placePoolId) ?? null
       : null;
+  // #4490 Explorer W3 — what this claimed venue's card says (offer + event).
+  const currentVenueChips = claimedVenueChipsFor(currentClaimedVenue, deckNow);
 
   // #4347 wave 1 — the top card's photo pager, for every card type. The list is
   // decided HERE (one owner) because the tap path that flips it lives here; the
@@ -2020,17 +2051,17 @@ export default function SwipeableCards({
   useEffect(() => {
     if (currentRec && currentRec.id !== lastViewedCardIdRef.current) {
       lastViewedCardIdRef.current = currentRec.id;
-      const view = {
-        card_id: currentRec.id,
-        card_title: currentRec.title,
-        category: currentRec.category,
-        position_in_deck: currentCardIndex,
-        is_curated: (currentRec as any).cardType === 'curated',
-      };
+      const viewedCard = currentRec;
+      const viewedPosition = currentCardIndex;
+      const viewedVenue = currentClaimedVenue;
       const trackCardViewed = async (): Promise<void> => {
-        mixpanelService.trackCardViewed(view);
-        // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
-        postHogService.capture("card_viewed", view);
+        // #4490 W5 fix 2: guarded (deckCardAnalytics); card_viewed, Mixpanel + PostHog.
+        trackDeckCardViewed({
+          card: viewedCard,
+          claimedVenue: viewedVenue,
+          positionInDeck: viewedPosition,
+          isCurated: (viewedCard as any).cardType === 'curated',
+        });
       };
       if (promotedCardIdRef.current === currentRec.id) {
         enqueuePostSwipeWork(trackCardViewed);
@@ -2038,7 +2069,7 @@ export default function SwipeableCards({
         void trackCardViewed();
       }
     }
-  }, [currentRec, currentCardIndex, enqueuePostSwipeWork]);
+  }, [currentRec, currentCardIndex, enqueuePostSwipeWork, currentClaimedVenue]);
 
   useEffect(() => {
     if (
@@ -2461,12 +2492,11 @@ export default function SwipeableCards({
         priceTier: currentRec.priceTier,
         isCurated: false,
       });
-      postHogService.capture("card_expanded", {
-        card_id: currentRec.id,
-        card_title: currentRec.title,
-        category: currentRec.category,
-        source: "home",
-        destination: "venue_page",
+      // #4490 Explorer W5 (guarded, W5 fix 2): card_expanded, destination venue_page.
+      trackDeckCardExpanded({
+        card: currentRec,
+        claimedVenue: currentClaimedVenue,
+        positionInDeck: currentCardIndex,
       });
       // #4347 wave 4 — hand the venue page THIS card and the deck's own save
       // path, so its Save / Schedule act exactly as the place sheet's would
@@ -2508,8 +2538,24 @@ export default function SwipeableCards({
         },
         userPreferences,
       });
+      // #4490 Explorer W3 — the page opens on the card's lead offer.
+      const leadTab = currentVenueChips?.offerChip?.tab ?? null;
+      const tappedVenue = currentClaimedVenue;
+      runDeckAnalytics('venue_tapped_to_book', () =>
+        captureVenueTappedToBook({
+          venueId: tappedVenue.venueId,
+          tab: leadTab,
+          offerKind: currentVenueChips?.offerChip?.offerKind ?? null,
+          source: 'deck_card',
+          positionInDeck: currentCardIndex,
+          isHostedVenue: tappedVenue.isBookable,
+          mode: currentMode === 'solo' ? 'solo' : 'collab',
+        }),
+      );
       leaveDeckTo(
-        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}`,
+        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}${
+          leadTab === null ? '' : `?tab=${encodeURIComponent(leadTab)}`
+        }`,
         { onExternalRoute, push: (path) => router.push(path as never) },
       );
       return;
@@ -2524,19 +2570,13 @@ export default function SwipeableCards({
       isCurated: (currentRec as any).cardType === 'curated',
     });
 
-    // Track card expanded in Mixpanel (ALL card types — curated was previously skipped)
-    mixpanelService.trackCardExpanded({
-      cardId: currentRec.id,
-      cardTitle: currentRec.title,
-      category: currentRec.category,
-      source: "home",
-    });
-    // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
-    postHogService.capture("card_expanded", {
-      card_id: currentRec.id,
-      card_title: currentRec.title,
-      category: currentRec.category,
-      source: "home",
+    // Track card expanded in Mixpanel + PostHog (ALL card types — curated was
+    // previously skipped). #4490 Explorer W5: position_in_deck, is_hosted_venue,
+    // deck_lead. Guarded (W5 fix 2): analytics never stops the sheet opening.
+    trackDeckCardExpanded({
+      card: currentRec,
+      claimedVenue: currentClaimedVenue,
+      positionInDeck: currentCardIndex,
     });
 
     // ORCH-1065: brand experiences expand to the business-event sheet →
@@ -2570,12 +2610,9 @@ export default function SwipeableCards({
       setSelectedCardForExpansion(currentRec as unknown as ExpandedCardData);
       return;
     }
-    logAppsFlyerEvent('af_content_view', {
-      af_content_type: currentRec.category,
-      af_content_id: currentRec.id,
-      af_price: (currentRec as any).estimatedCostPerPerson || 0,
-      source: 'home',
-      rating: currentRec.rating || 0,
+    trackDeckCardContentView({
+      ...currentRec,
+      estimatedCostPerPerson: (currentRec as any).estimatedCostPerPerson,
     });
 
     // #1669 [expanded-card-one-producer]: the deck used to hand-write this
@@ -2611,47 +2648,16 @@ export default function SwipeableCards({
     });
 
     // ── Analytics: save or dismiss ──
-    const isCurated = (card as any).cardType === 'curated';
-    if (direction === 'right') {
-      logAppsFlyerEvent('af_add_to_wishlist', {
-        af_content_type: card.category,
-        af_price: (card as any).estimatedCostPerPerson || 0,
-        af_content_id: card.id,
-      });
-      mixpanelService.trackCardSaved({
-        card_id: card.id,
-        card_title: card.title,
-        category: card.category,
-        is_curated: isCurated,
-        source: 'swipe',
-      });
-      // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
-      postHogService.capture("card_saved", {
-        card_id: card.id,
-        card_title: card.title,
-        category: card.category,
-        is_curated: isCurated,
-        source: 'swipe',
-      });
-
-    } else {
-      logAppsFlyerEvent('card_dismissed', {
-        af_content_type: card.category,
-      });
-      mixpanelService.trackCardDismissed({
-        card_id: card.id,
-        card_title: card.title,
-        category: card.category,
-        is_curated: isCurated,
-      });
-      // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
-      postHogService.capture("card_dismissed", {
-        card_id: card.id,
-        card_title: card.title,
-        category: card.category,
-        is_curated: isCurated,
-      });
-    }
+    // #4490 Explorer W5: position_in_deck, is_hosted_venue, deck_lead. Guarded
+    // (W5 fix 2, W5-D1): an analytics failure is logged and the save, the
+    // collab swipe record and the deck's advance below still run.
+    trackDeckCardSwiped({
+      direction,
+      card,
+      claimedVenue: !card.cardType && card.placePoolId ? claimedVenues.get(card.placePoolId) ?? null : null,
+      positionInDeck: currentRec?.id === card.id ? currentCardIndex : null,
+      isCurated: (card as any).cardType === 'curated',
+    });
 
     try {
       // Track interaction in Supabase (only if user is authenticated)
@@ -3436,6 +3442,7 @@ export default function SwipeableCards({
     deckNow,
     deckFactLabels,
     placeTileLabels,
+    offerTileFor(currentVenueChips),
   );
   const currentPresentation = { ...planPlatePresentation(currentPlacePlate), metaLines: 1 };
 
@@ -3459,6 +3466,14 @@ export default function SwipeableCards({
     : currentRec.cardType === 'curated'
       ? curatedSmartChip((currentRec as unknown as CuratedExperienceCard).stops, curatedStart)
       : null;
+  // #4490 Explorer W3 — one chip per card, in order: closed at arrival, then
+  // the claimed venue's event chip ("On tonight" / "On today", only while the
+  // deck browses today: rule 12), then nothing. A shared deck browses the
+  // session's dates (every participant's), not this user's own (§5 parity).
+  const deckShowsToday = isBoardSession
+    ? sessionBrowsesToday(allParticipantPrefs)
+    : deckBrowsesToday(userPreferences?.date_option);
+  const currentEventChip = currentVenueChips?.eventChip && deckShowsToday ? currentVenueChips.eventChip : null;
   const currentSmartChip = currentSmartChipModel
     ? {
         tone: currentSmartChipModel.tone,
@@ -3467,7 +3482,15 @@ export default function SwipeableCards({
             ? t('cards:deck.stop_closed_at_arrival', { number: currentSmartChipModel.stopNumber })
             : t('cards:deck.closed_at_arrival'),
       }
-    : null;
+    : currentEventChip !== null
+      ? {
+          tone: 'info' as const,
+          text:
+            currentEventChip === 'On tonight'
+              ? t('cards:deck.on_tonight', { defaultValue: 'On tonight' })
+              : t('cards:deck.on_today', { defaultValue: 'On today' }),
+        }
+      : null;
   const currentTapZoneBottomFor = (cardHeight: number): number =>
     tapZoneBottomY(
       cardHeight,
@@ -3528,6 +3551,8 @@ export default function SwipeableCards({
     currentClaimedVenue
       ? t('cards:deck.hosted_by', { name: currentClaimedVenue.brandName || currentClaimedVenue.brandSlug })
       : null,
+    // #4490 Explorer W3 — the offer the card leads with is spoken too.
+    currentVenueChips?.offerChip?.label ?? null,
     currentPagerCount >= 2
       ? t('cards:deck.photo_position', { index: currentPhotoIndex + 1, count: currentPagerCount })
       : null,
@@ -3683,6 +3708,10 @@ export default function SwipeableCards({
               // #4347 round 3 — a single place behind the top card shows the same
               // place plate it will have once promoted. Host experiences keep
               // their plate (Seth: leave them as they are).
+              // #4490 W3: the lead offer tile of a claimed venue behind the top card.
+              const nextOfferTile = offerTileFor(
+                claimedVenueChipsFor(nextCard.placePoolId ? claimedVenues.get(nextCard.placePoolId) : null, deckNow),
+              );
               const nextPlanPlate =
                 nextCard.cardType === 'curated'
                   ? curatedPlanPlate(nextCard as unknown as CuratedExperienceCard, {
@@ -3691,7 +3720,7 @@ export default function SwipeableCards({
                       photos: [],
                     })
                   : !nextCard.cardType
-                    ? placePlateForCard(nextCard, accountPreferences?.measurementSystem, deckNow, deckFactLabels, placeTileLabels)
+                    ? placePlateForCard(nextCard, accountPreferences?.measurementSystem, deckNow, deckFactLabels, placeTileLabels, nextOfferTile)
                     : null;
               const nextPresentation = nextPlanPlate
                 ? { ...planPlatePresentation(nextPlanPlate), metaLines: 1 }
@@ -4171,6 +4200,9 @@ export default function SwipeableCards({
             : null
         }
         onClose={handleCloseExpandedModal}
+        // #4490 W3 fix 1 — the sheet's venue routes leave the deck through the
+        // deck host's hand-off (collab: close the shared deck, then push).
+        onExternalRoute={onExternalRoute}
         isSaved={
           selectedCardForExpansion
             ? savedCards.some(

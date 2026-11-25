@@ -143,6 +143,12 @@ export interface MenuItemSheetProps {
    * item: a group cannot reference an item id that does not exist yet.
    */
   optionsSection?: React.ReactNode;
+  /**
+   * #4490 spec 08 O5 — "Track stock", the count and "Warn me at", rendered
+   * INSIDE this sheet by the parent (it owns the stock call). Absent where the
+   * Till is not on for the venue, and for an unsaved item.
+   */
+  stockSection?: React.ReactNode;
   testID?: string;
 }
 
@@ -207,6 +213,7 @@ export function MenuItemSheet({
   deleting = false,
   canDelete = false,
   optionsSection,
+  stockSection,
   testID,
 }: MenuItemSheetProps): React.ReactElement {
   const hasDiscountQueryClient =
@@ -516,6 +523,8 @@ export function MenuItemSheet({
               value={name}
               onChangeText={handleNameChange}
               onBlur={() => setNameBlurred(true)}
+              // #4490 N12: Enter saves (handleSave refuses while a save runs).
+              onSubmitEditing={handleSave}
               placeholder="e.g. Margherita"
               accessibilityLabel="Item name"
               accessibilityHint={menuTextAccessibilityHint(
@@ -683,7 +692,8 @@ export function MenuItemSheet({
             testID="menu-item-available"
           />
 
-          <Text style={styles.groupLabel}>Kitchen</Text>
+          {/* #4490 fix 2 (N79): bottles and drinks are made at the bar, not only the kitchen. */}
+          <Text style={styles.groupLabel}>Kitchen and bar</Text>
           <ToggleRow
             label="Let guests add a note (no ice, extra hot)"
             value={allowsNotes}
@@ -695,7 +705,7 @@ export function MenuItemSheet({
             testID="menu-item-allows-notes"
           />
           <Text style={styles.helper}>
-            Notes are capped so a kitchen ticket stays readable.
+            Off for things that need no note, like a sealed bottle. Notes are capped so a ticket stays readable.
           </Text>
           <Field label="Where it's made (optional)">
             <View style={styles.stationRow}>
@@ -724,6 +734,10 @@ export function MenuItemSheet({
               ))}
             </View>
           </Field>
+
+          {stockSection !== undefined ? (
+            <View testID="menu-item-stock-section">{stockSection}</View>
+          ) : null}
 
           {optionsSection !== undefined ? (
             <View testID="menu-item-options-section">{optionsSection}</View>
@@ -754,30 +768,6 @@ export function MenuItemSheet({
             </Text>
           ) : null}
 
-          <Button
-            label={
-              saveFailureMessage !== null
-                ? "Try again"
-                : isEdit
-                  ? "Save item"
-                  : "Add item"
-            }
-            onPress={handleSave}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={saving}
-            disabled={!canSave}
-            accessibilityLabel={
-              optionsDirty
-                ? `${isEdit ? "Save item" : "Add item"}. Unavailable. ${MENU_ITEM_OPTIONS_HOLD_NOTE}`
-                : saveFailureMessage !== null
-                  ? "Try saving item again"
-                  : undefined
-            }
-            style={styles.saveBtn}
-            testID="menu-item-save"
-          />
 
           {showDelete ? (
             <Button
@@ -793,6 +783,33 @@ export function MenuItemSheet({
             />
           ) : null}
         </ScrollView>
+        {/* #4490 N12: the primary button is pinned in the sheet footer. */}
+        <View style={styles.footer}>
+            <Button
+              label={
+                saveFailureMessage !== null
+                  ? "Try again"
+                  : isEdit
+                    ? "Save item"
+                    : "Add item"
+              }
+              onPress={handleSave}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={saving}
+              disabled={!canSave}
+              accessibilityLabel={
+                optionsDirty
+                  ? `${isEdit ? "Save item" : "Add item"}. Unavailable. ${MENU_ITEM_OPTIONS_HOLD_NOTE}`
+                  : saveFailureMessage !== null
+                    ? "Try saving item again"
+                    : undefined
+              }
+              style={styles.saveBtn}
+              testID="menu-item-save"
+            />
+        </View>
       </View>
 
       {showDelete ? (
@@ -966,6 +983,11 @@ function ToggleRow({
 }
 
 const styles = StyleSheet.create({
+  footer: {
+    paddingTop: space[3],
+    borderTopWidth: 1,
+    borderTopColor: color.line,
+  },
   body: {
     flex: 1,
     paddingHorizontal: space[4],
@@ -1078,7 +1100,7 @@ const styles = StyleSheet.create({
     marginTop: space[6],
   },
   saveBtn: {
-    marginTop: space[6],
+    marginTop: 0,
   },
   deleteBtn: {
     marginTop: space[2],

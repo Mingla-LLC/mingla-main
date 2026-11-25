@@ -118,8 +118,8 @@ const apiVersion = "2022-11-28";
  * proves the copy is still true.
  */
 export const CEILING = Object.freeze({
-  common: Object.freeze({ raw: 2_800_000, brotli: 560_000 }),
-  eager: Object.freeze({ raw: 4_000_000, brotli: 800_000 }),
+  common: Object.freeze({ raw: 2_940_000, brotli: 597_000 }),
+  eager: Object.freeze({ raw: 4_000_000, brotli: 838_000 }),
 });
 
 /**

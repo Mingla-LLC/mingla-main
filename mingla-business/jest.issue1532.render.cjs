@@ -31,6 +31,10 @@ module.exports = {
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",
   ],
   moduleNameMapper: {
+    // #4490 venue owners — jest-only lazy stand-ins for the two owner barrels:
+    // a suite loads only the screens it opens (see the stub's header).
+    "^\\./venueHostScreens$": path.join(businessRoot, "jest.issue4490.venue-host-owner-stub.cjs"),
+    "^\\./venueGuestScreens$": path.join(businessRoot, "jest.issue4490.venue-guest-owner-stub.cjs"),
     "^expo-haptics$": path.join(businessRoot, "jest.orch1147r2.haptics-stub.cjs"),
     "^expo-blur$": path.join(businessRoot, "jest.orch1147r2.blur-stub.cjs"),
     "^react-native-gesture-handler$": path.join(

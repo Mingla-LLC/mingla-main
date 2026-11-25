@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4490_o3a2_floor_alerts.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-o3a2-floor-alerts",
+  "profile": "deno-2-unit"
+}

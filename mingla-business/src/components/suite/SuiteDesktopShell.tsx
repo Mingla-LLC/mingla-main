@@ -51,6 +51,8 @@ import {
 } from "react-native";
 import type { PressableStateCallbackType, ViewStyle } from "react-native";
 
+import { SHELL_WEB_CLIP } from "./shellWebClip";
+
 import {
   radius,
   venueRailWidth,
@@ -84,7 +86,24 @@ export interface SuiteDesktopShellProps {
   scrollBottomPad: number;
   /** testID prefix for rail rows, e.g. `"venue-rail-"` → `venue-rail-overview`. */
   railTestIdPrefix: string;
+  /**
+   * #4490 — screen-reader name of a grouped rail (the suite names itself:
+   * "Venue sections"). Was hard-coded "Restaurant Hub sections", which was
+   * wrong for a play venue.
+   */
+  railLabel?: string;
   testID?: string;
+  /**
+   * #4490 J fix 2 (R4J-N4) — the STACKED presentation for a caller that wants
+   * its workspace to survive a resize across the desktop breakpoint. When set,
+   * the rail column is replaced by this header (the caller's pill band) and the
+   * host / centred / workspace views stack in one column. The workspace stays
+   * at the SAME element path as in the desktop presentation, so React keeps
+   * the open module (and its unsaved draft) mounted when the width crosses
+   * 1024px. Leaving it undefined renders the desktop layout byte-identically.
+   * The caller still owns the gate (I-DESKTOP-GATE-VIA-HOOK).
+   */
+  stackedHeader?: React.ReactNode;
 }
 
 interface FocusCapable {
@@ -128,9 +147,34 @@ export function SuiteDesktopShell({
   workspaceSelfScrolls,
   scrollBottomPad,
   railTestIdPrefix,
+  railLabel = "Sections",
   testID,
+  stackedHeader,
 }: SuiteDesktopShellProps): React.ReactElement {
   const grouped = modules.some((module) => module.group !== undefined);
+  if (stackedHeader !== undefined) {
+    return (
+      <View style={styles.stackedHost} testID={testID}>
+        <View style={styles.stackedColumn}>
+          <View style={styles.stackedHeader}>{stackedHeader}</View>
+          <View style={styles.stackedWorkspace}>
+            {workspaceSelfScrolls ? (
+              children
+            ) : (
+              <ScrollView
+                contentContainerStyle={[
+                  styles.desktopScroll,
+                  { paddingBottom: scrollBottomPad },
+                ]}
+              >
+                {children}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={styles.desktopHost} testID={testID}>
       <View style={styles.desktopCentered}>
@@ -140,14 +184,26 @@ export function SuiteDesktopShell({
             grouped ? styles.desktopRailGrouped : null,
           ]}
           accessibilityRole="tablist"
-          accessibilityLabel={grouped ? "Restaurant Hub sections" : undefined}
+          accessibilityLabel={grouped ? railLabel : undefined}
         >
-          <SuiteDesktopRail
-            modules={modules}
-            activeModule={activeModule}
-            onSelect={onSelect}
-            testIdPrefix={railTestIdPrefix}
-          />
+          {/* #4490 click-test D29 — the rail scrolls inside its own column.
+              A long rail (a venue with Offers, Bookings and Operations on)
+              used to spill below the window; the page root then became
+              scrollable, and focusing a rail row near the bottom scrolled
+              the whole app shell up (top bar gone, a band below). */}
+          <ScrollView
+            style={styles.railScroll}
+            contentContainerStyle={styles.railScrollContent}
+            showsVerticalScrollIndicator={false}
+            testID={`${railTestIdPrefix}scroll`}
+          >
+            <SuiteDesktopRail
+              modules={modules}
+              activeModule={activeModule}
+              onSelect={onSelect}
+              testIdPrefix={railTestIdPrefix}
+            />
+          </ScrollView>
         </View>
         <View style={styles.desktopWorkspace}>
           {workspaceSelfScrolls ? (
@@ -465,9 +521,14 @@ function GroupedSuiteDesktopRail({
 const styles = StyleSheet.create({
   desktopHost: {
     flex: 1,
+    // #4490 D29 — the shell is exactly the space it is given: nothing inside
+    // (rail or workspace) may grow it, so the page root can never scroll.
+    minHeight: 0,
+    ...SHELL_WEB_CLIP,
   },
   desktopCentered: {
     flex: 1,
+    minHeight: 0,
     flexDirection: "row",
     width: "100%",
     // ORCH-1184 — the workspace FILLS the page width (Seth's decision). The old
@@ -485,6 +546,7 @@ const styles = StyleSheet.create({
   },
   desktopRail: {
     width: venueRailWidth,
+    minHeight: 0,
     paddingTop: space[1],
     // Hairline divider separating the rail from the workspace, top-aligned with
     // the content. Subtle (matches the app's restrained desktop chrome), opaque
@@ -495,6 +557,13 @@ const styles = StyleSheet.create({
   },
   desktopRailGrouped: {
     paddingTop: 0,
+  },
+  railScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  railScrollContent: {
+    paddingBottom: space[4],
   },
   railInner: {
     gap: 2,
@@ -587,6 +656,7 @@ const styles = StyleSheet.create({
   },
   desktopWorkspace: {
     flex: 1,
+    minHeight: 0,
     // Balanced gutter between the rail and the workspace (paired with the rail's
     // `paddingRight: spacing.sm` + hairline → a coherent, symmetric seam).
     paddingLeft: space[6],
@@ -594,6 +664,12 @@ const styles = StyleSheet.create({
   desktopScroll: {
     // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
   },
+  // #4490 R4J-N4 — the stacked presentation: a plain column the caller's
+  // header sits above. Same view count and order as the desktop tree.
+  stackedHost: { flex: 1 },
+  stackedColumn: { flex: 1 },
+  stackedHeader: { flexShrink: 0 },
+  stackedWorkspace: { flex: 1 },
 });
 
 export default SuiteDesktopShell;

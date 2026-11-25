@@ -9,12 +9,16 @@ import {
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 
+import type { PendingClaim } from "../../services/attendanceClaimService";
 import type { ClaimSweepResult } from "../../services/claimSweep";
-import { claimedEntryPath } from "./missingTicketModel";
+// #4490 N157 / W2-N31: View's destination and handler live in the pure model.
+import { openFoundBannerTarget } from "./missingTicketModel";
 
 type Props = {
   result: ClaimSweepResult | null;
   onDismiss: () => void;
+  /** #4490 N157 — the purchase a claim link signed this person in for. */
+  linkedClaim?: PendingClaim | null;
 };
 
 function summary(result: ClaimSweepResult): string {
@@ -25,12 +29,7 @@ function summary(result: ClaimSweepResult): string {
   return `${result.count} new ${result.count === 1 ? "purchase" : "purchases"} found`;
 }
 
-function destination(result: ClaimSweepResult): string {
-  if (result.claimed.length !== 1) return "/purchases";
-  return claimedEntryPath(result.claimed[0]);
-}
-
-export function TicketFoundBanner({ result, onDismiss }: Props): React.ReactElement | null {
+export function TicketFoundBanner({ result, onDismiss, linkedClaim = null }: Props): React.ReactElement | null {
   const { t } = useTranslation("purchases");
   const router = useRouter();
   const translateY = useRef(new Animated.Value(-140)).current;
@@ -56,9 +55,12 @@ export function TicketFoundBanner({ result, onDismiss }: Props): React.ReactElem
     : t("toast.title.ticket", { count: result.count });
 
   const open = (): void => {
-    const path = destination(result);
-    onDismiss();
-    router.push(path as never);
+    openFoundBannerTarget({
+      claimed: result.claimed,
+      linkedClaim,
+      dismiss: onDismiss,
+      push: (path) => router.push(path as never),
+    });
   };
 
   return (

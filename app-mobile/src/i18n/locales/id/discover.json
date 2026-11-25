@@ -56,6 +56,7 @@
   "pill.experiences": "Pengalaman",
   "pill.trips": "Perjalanan",
   "pill.stays": "Penginapan",
+  "pill.venues": "Tempat",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Hapus",
   "filters.option_a11y": "{{label}}, {{count}} kecocokan",
@@ -77,6 +78,7 @@
   "group.check_in": "Check in",
   "group.guests": "Tamu",
   "group.property_kind": "Jenis tempat",
+  "group.venue_type": "Jenis tempat",
   "group.any_suffix": "{{group}} · Kapan saja",
   "when.any_day": "Setiap hari",
   "when.tomorrow": "Besok",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} pengalaman",
   "count.trips_other": "{{count}} perjalanan",
   "count.stays_other": "{{count}} penginapan",
+  "count.venues_other": "{{count}} tempat",
   "guests.value_other": "{{count}} tamu",
-  "card.type.stops_other": "{{count}} BERHENTI"
+  "card.type.stops_other": "{{count}} BERHENTI",
+  "venues.empty_title": "Belum ada tempat yang bisa dipesan di sini.",
+  "venues.empty_body": "Tempat yang bisa kamu pesan di Mingla akan muncul di sini.",
+  "venues.filtered_title": "Tidak ada tempat yang cocok dengan filter itu.",
+  "venues.error_title": "Kami tidak bisa memuat tempat.",
+  "venues.error_retry": "Coba lagi"
 }

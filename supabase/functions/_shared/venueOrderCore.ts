@@ -41,10 +41,56 @@ export interface OrderingSettings {
   service_charge_label: string;
   tips_enabled: boolean;
   counter_pickup_enabled: boolean;
+  /** #4490 07-D — false: a scanned spot orders as a counter order. */
+  table_service_enabled: boolean;
   staff_tabs_enabled: boolean;
 }
 
 export type ContextFailure = { code: VenueOrderErrorCode; venue?: string };
+
+/**
+ * #4490 07-D — the venue's ordering mode applied to a GUEST order.
+ *
+ * A scanned table spot becomes a counter order, placed EXACTLY as one (the
+ * spot was resolved for the venue above, then treated as absent: no spot on
+ * the session, a pickup code, a name, the counter rate scope), when:
+ *  - the venue has table service off (Collect at the counter), or
+ *  - the guest chose "I'll collect it" (`pickup: true`), allowed only in Both.
+ * A pickup request at a table-only venue is refused with the existing
+ * counter_pickup_unavailable code. Staff orders never pass through here.
+ */
+export function routeGuestOrder(
+  ctx: OrderContext,
+  pickupRequested: boolean,
+): { ok: true; context: OrderContext; routedToCounter: boolean } | {
+  ok: false;
+  code: VenueOrderErrorCode;
+} {
+  if (ctx.spotId === null) {
+    return { ok: true, context: ctx, routedToCounter: false };
+  }
+  const tableService = ctx.settings.table_service_enabled !== false;
+  const counter = ctx.settings.counter_pickup_enabled === true;
+  if (pickupRequested && !counter) {
+    return { ok: false, code: "counter_pickup_unavailable" };
+  }
+  if (tableService && !pickupRequested) {
+    return { ok: true, context: ctx, routedToCounter: false };
+  }
+  return {
+    ok: true,
+    routedToCounter: true,
+    context: {
+      ...ctx,
+      spotId: null,
+      spotLabel: null,
+      venueTableId: null,
+      stayUnitId: null,
+      zone: null,
+      servingMenuId: null,
+    },
+  };
+}
 
 /**
  * P-22 gates 1-3, fail-closed and in order.
@@ -139,7 +185,7 @@ export async function resolveOrderContext(
   const { data: settingsRow, error: settingsError } = await supabase
     .from("venue_ordering_settings")
     .select(
-      "ordering_enabled, paused_at, service_charge_bps, service_charge_label, tips_enabled, counter_pickup_enabled, staff_tabs_enabled",
+      "ordering_enabled, paused_at, service_charge_bps, service_charge_label, tips_enabled, counter_pickup_enabled, table_service_enabled, staff_tabs_enabled",
     )
     .eq("venue_id", servingVenueId)
     .maybeSingle();
@@ -178,6 +224,35 @@ export async function resolveOrderContext(
   };
 }
 
+/**
+ * #4490 spec 08 O5 (rule 13): THE orderable rule, the same expression as
+ * public.issue_4490_menu_item_orderable(is_available, stock_count) in
+ * migration 20281203724490: on, and not sold out. A NULL count means the item
+ * is not tracked and changes nothing; sold out never flips is_available.
+ */
+export function menuItemOrderable(
+  item: { is_available: boolean; stock_count?: number | null },
+): boolean {
+  const stock = item.stock_count;
+  return item.is_available === true &&
+    (stock === null || stock === undefined || stock > 0);
+}
+
+/**
+ * [TRANSITIONAL] #4490 spec 08 O5: merging deploys the functions before the
+ * migration that adds menu_items.stock_count (20281203724490) may be applied.
+ * Until it is, PostgREST answers 42703 for a select naming the column; the
+ * snapshot then reads without it (every item untracked, today's rule). Any
+ * other error is unchanged. Exit: the migration applied in production; then
+ * delete this and the fallback read in loadMenuSnapshot.
+ */
+export function isMissingStockColumn(
+  error: { code?: unknown; message?: unknown } | null | undefined,
+): boolean {
+  return error?.code === "42703" &&
+    /stock_count/.test(String(error?.message ?? ""));
+}
+
 export interface MenuSnapshot {
   itemsById: Map<string, MenuItemRow>;
   groupsByItemId: Map<string, MenuModifierGroupRow[]>;
@@ -209,12 +284,18 @@ export async function loadMenuSnapshot(
     return { itemsById, groupsByItemId, modifiersById, orderableItemIds };
   }
 
-  const { data: items, error: itemsError } = await supabase
+  const itemColumns =
+    "id, menu_id, brand_id, name, price_cents, currency, is_available, discounts_allowed";
+  let { data: items, error: itemsError } = await supabase
     .from("menu_items")
-    .select(
-      "id, menu_id, brand_id, name, price_cents, currency, is_available, discounts_allowed",
-    )
+    .select(`${itemColumns}, stock_count`)
     .in("id", input.menuItemIds);
+  if (isMissingStockColumn(itemsError)) {
+    ({ data: items, error: itemsError } = await supabase
+      .from("menu_items")
+      .select(itemColumns)
+      .in("id", input.menuItemIds));
+  }
   if (itemsError) {
     throw new Error(`menu_items_lookup_failed: ${itemsError.message}`);
   }
@@ -267,7 +348,7 @@ export async function loadMenuSnapshot(
     if (inWindow) openMenuIds.add(String(menu.id));
   }
   for (const [id, item] of itemsById) {
-    if (openMenuIds.has(String(item.menu_id)) && item.is_available === true) {
+    if (openMenuIds.has(String(item.menu_id)) && menuItemOrderable(item)) {
       orderableItemIds.add(id);
     }
   }

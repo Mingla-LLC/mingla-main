@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 209 (intended-public 36, internally-gated 108, predicate/read-helper 62, PostGIS 3).
+# Signature count: 216 (intended-public 42, internally-gated 108, predicate/read-helper 63, PostGIS 3).
 # (#1931 recomputed this line from the file itself AFTER its one appended signature, by
 #  counting non-comment, non-blank lines per section. The previous value of 194/25/109/57
 #  was already stale by two against the 192 lines then present; the count is not gate-
@@ -39,6 +39,18 @@ links_page_cities()
 site_public_content()
 # #4452: one high-entropy, one-hour preview token resolves one page draft (the blog_public_preview pattern); a malformed, unknown or expired token returns NULL and no staff identity.
 site_public_preview(p_token text)
+# #4490: the public venue page; verified venues of live brands only; the page's own facts (spaces, hours, switched-on features, live offers and plans with their prices, upcoming public events); no contact, owner or buyer data.
+pg_public_venue_page(p_brand_slug text, p_venue_slug text)
+# #4490: day rows for one live offer of a verified venue of a live brand (open, full or closed, and the price per day); no buyer, booking or hold identity.
+pg_venue_offer_availability(p_offering_id uuid, p_from date, p_to date, p_guests integer, p_price_option_id uuid)
+# #4490: hire windows and prices for one live private-hire offer of a verified venue of a live brand; no buyer or booking identity.
+pg_venue_hire_options(p_offering_id uuid, p_window_id uuid, p_guests integer)
+# #4490: hour slots for one live by-the-hour or hire offer of a verified venue; free or taken only, no buyer or booking identity.
+pg_venue_hour_day(p_offering_id uuid, p_date date, p_guests integer, p_price_option_id uuid)
+# #4490: free tables for one slot of a verified venue (table ids, names and seats, the guest table picker); no reservation or guest identity.
+pg_venue_available_tables(p_venue_id uuid, p_date date, p_party_size integer, p_slot_start timestamp with time zone, p_space_id uuid)
+# #4490 Explorer W3: deck card facts for at most 100 place ids; only verified venues of live, non-internal brands; slugs, names, venue type, switched-on features, live "from" prices the public venue page already lists, and whether an event is on today; no contact, owner, address or buyer data.
+pg_deck_venue_facts(p_place_ids uuid[])
 check_username_availability(check_username text)
 is_username_available(p_username text)
 # #1384: static active currency metadata is required before sign-in and carries no user or brand data.
@@ -274,6 +286,10 @@ pg_recurrence_is_terminated(p_rule jsonb, p_event_id uuid, p_now timestamp with 
 #  no provider locator, no error text, and `false` uniformly for an unknown id.
 issue_1931_event_ordinary_read_blocked(p_event_id uuid)
 pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid)
+# #4490 P5: the same public slot reader with the optional space filter. The 4-argument line above
+# stays because the pre-#1931 and pre-#2117 replay lanes skip the #4490 P5 migration that
+# replaces it; in the full chain only this 5-argument signature exists.
+pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid, p_space_id uuid)
 pg_venue_reservable_for_place(p_place_pool_id uuid)
 query_person_hero_places_by_signal(p_user_id uuid, p_person_id uuid, p_lat double precision, p_lng double precision, p_signal_ids text[], p_exclude_place_ids uuid[], p_initial_radius_m integer, p_max_radius_m integer, p_per_signal_limit integer, p_total_limit integer)
 query_servable_places_by_signal(p_signal_id text, p_filter_min numeric, p_lat double precision, p_lng double precision, p_radius_m double precision, p_exclude_place_ids uuid[], p_limit integer)

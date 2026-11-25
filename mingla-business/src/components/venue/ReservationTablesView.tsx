@@ -44,10 +44,13 @@ export function ReservationListTablesSwitch({
   value,
   onChange,
   full,
+  showFloor,
 }: {
-  value: "list" | "tables";
-  onChange: (next: "list" | "tables") => void;
+  value: "list" | "tables" | "floor";
+  onChange: (next: "list" | "tables" | "floor") => void;
   full: boolean;
+  /** #4490 P5 — a third "Floor" view while Floor plan is on. */
+  showFloor?: boolean;
 }): React.ReactElement {
   return (
     <View
@@ -56,20 +59,20 @@ export function ReservationListTablesSwitch({
       accessibilityLabel="Show reservations as a list or by table"
       testID="reservations-view-switch"
     >
-      {(["list", "tables"] as const).map((key) => {
+      {(showFloor === true ? (["list", "tables", "floor"] as const) : (["list", "tables"] as const)).map((key) => {
         const on = key === value;
         return (
           <Pressable
             key={key}
             onPress={() => onChange(key)}
             accessibilityRole="tab"
-            accessibilityLabel={key === "list" ? "List" : "Tables"}
+            accessibilityLabel={key === "list" ? "List" : key === "tables" ? "Tables" : "Floor"}
             accessibilityState={{ selected: on }}
             style={[styles.seg, full ? styles.segFull : null, on ? styles.segOn : null]}
             testID={`reservations-view-${key}`}
           >
             <Text style={[styles.segText, on ? styles.segTextOn : null]}>
-              {key === "list" ? "List" : "Tables"}
+              {key === "list" ? "List" : key === "tables" ? "Tables" : "Floor"}
             </Text>
           </Pressable>
         );

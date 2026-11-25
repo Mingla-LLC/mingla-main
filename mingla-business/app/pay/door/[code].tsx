@@ -35,6 +35,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
+import { GuestPayWordmark } from "../../../src/components/brand/GuestPayWordmark";
 import { Button } from "../../../src/components/ui/Button";
 import { DESKTOP_TEMPLATE_MAX_WIDTH } from "../../../src/components/ui/DesktopCanvas";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -301,7 +302,7 @@ export default function DoorPayGuestPage(): React.ReactElement {
         >
           <View style={isWideDesktop ? styles.pageWide : styles.page} testID="door-pay-guest-page">
             <View style={isWideDesktop ? styles.wordmarkWide : styles.wordmark}>
-              <Text style={styles.wordmarkText}>Mingla</Text>
+              <GuestPayWordmark />
             </View>
             {isWideDesktop ? (
               <View style={styles.statusGrid} testID="door-pay-guest-status-template">
@@ -700,7 +701,6 @@ const styles = StyleSheet.create({
   pageWide: { width: "100%", maxWidth: DESKTOP_TEMPLATE_MAX_WIDTH.status },
   wordmark: { alignItems: "center", paddingVertical: space[3], marginBottom: space[4] },
   wordmarkWide: { alignItems: "flex-start", marginBottom: space[7] },
-  wordmarkText: { ...type.h1, color: color.text1 },
   statusGrid: { flexDirection: "row", alignItems: "flex-start", gap: space[6] },
   statusMain: { flex: 1, minWidth: 0 },
   statusAside: { width: STATUS_SUMMARY_WIDTH, flexShrink: 0 },

@@ -124,7 +124,8 @@ describe("issue #3569 tester adversarial — web selected-state topology", () =>
     const checkboxes = openingTags(markup, 'role="checkbox"');
     expect(checkboxes).toHaveLength(7);
     for (const tag of checkboxes) {
-      expect(tag).toContain('aria-checked="true"');
+      // TEST-MOD-APPROVED #4490 N71: chips start off (none picked = every day).
+      expect(tag).toContain('aria-checked="false"');
       expectMinimumTarget(tag, css);
     }
   });

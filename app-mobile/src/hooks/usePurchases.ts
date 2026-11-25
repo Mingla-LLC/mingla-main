@@ -6,8 +6,11 @@ import { purchaseKeys } from "./queryKeys";
 import {
   fetchMyHeldTickets,
   fetchMyOrders,
+  fetchMyMemberships,
   fetchMyRsvps,
+  fetchMyVenueBookings,
   fetchMyVenueOrders,
+  fetchMyWaitlistEntries,
 } from "../services/purchasesService";
 import {
   buildPurchaseTimeline,
@@ -15,7 +18,10 @@ import {
   type PurchaseReservationSource,
   type PurchaseTimelineItem,
   type PurchaseTimeline,
+  type PurchaseVenueBookingSource,
+  type PurchaseVenueMembershipSource,
   type PurchaseVenueOrderSource,
+  type PurchaseVenueWaitlistSource,
 } from "../utils/purchaseTimeline";
 import type { PurchaseOrderRecord } from "../services/purchasesService";
 import {
@@ -90,6 +96,10 @@ export function mergeSharedSources(
       ...extra.venueOrders.filter((item) => !venueOrderIds.has(item.id)),
     ],
     stays: [...(owned.stays ?? []), ...(extra.stays ?? [])],
+    // #4490 Explorer W2 — venue items are never shared (decision 4).
+    venueBookings: owned.venueBookings ?? [],
+    venueMemberships: owned.venueMemberships ?? [],
+    venueWaitlist: owned.venueWaitlist ?? [],
   };
 }
 
@@ -110,6 +120,9 @@ async function fetchPurchaseDetail(
 ): Promise<PurchaseTimelineItem | null> {
   const owned = await fetchOwnedPurchaseDetail(userId, kind, id);
   if (owned) return owned;
+  // #4490 W2-N16: venue items are never shared (decision 4), so a venue id
+  // that is not this account's is a not-found, not a second read that can fail.
+  if (kind === "venue_booking" || kind === "venue_membership" || kind === "venue_waitlist") return null;
   // #4473 — not this account's own purchase: it may be shared with it.
   const shared = sharedPurchaseSources(await fetchMySharedPurchases());
   return findTimelineItem(buildPurchaseTimeline(shared, new Date()), kind, id);
@@ -123,6 +136,31 @@ async function fetchOwnedPurchaseDetail(
   // Owned stays open on /stay; only shared ones are Purchases items.
   if (kind === "stay") return null;
   const empty = { orders: [], rsvps: [], reservations: [], venueOrders: [] };
+  // #4490 Explorer W2 — the signed-in guest's venue bookings, plans and places.
+  if (kind === "venue_booking") {
+    const venueBookings = await fetchMyVenueBookings();
+    return findTimelineItem(
+      buildPurchaseTimeline({ ...empty, venueBookings }, new Date()),
+      kind,
+      id,
+    );
+  }
+  if (kind === "venue_membership") {
+    const venueMemberships = await fetchMyMemberships();
+    return findTimelineItem(
+      buildPurchaseTimeline({ ...empty, venueMemberships }, new Date()),
+      kind,
+      id,
+    );
+  }
+  if (kind === "venue_waitlist") {
+    const venueWaitlist = await fetchMyWaitlistEntries();
+    return findTimelineItem(
+      buildPurchaseTimeline({ ...empty, venueWaitlist }, new Date()),
+      kind,
+      id,
+    );
+  }
   if (kind === "order") {
     const [orders, held] = await Promise.all([
       fetchMyOrders(userId),
@@ -272,6 +310,34 @@ export function usePurchases(
         refetchOnMount: true,
         retry: false,
       },
+      {
+        // #4490 Explorer W2 — venue bookings (passes), incl. paid at the venue.
+        queryKey: [...purchaseKeys.list(safeUserId), "venueBookings"],
+        queryFn: fetchMyVenueBookings,
+        enabled: !!userId,
+        staleTime,
+        refetchOnWindowFocus: true,
+        refetchOnMount: true,
+        retry: false,
+      },
+      {
+        queryKey: [...purchaseKeys.list(safeUserId), "venueMemberships"],
+        queryFn: fetchMyMemberships,
+        enabled: !!userId,
+        staleTime,
+        refetchOnWindowFocus: true,
+        refetchOnMount: true,
+        retry: false,
+      },
+      {
+        queryKey: [...purchaseKeys.list(safeUserId), "venueWaitlist"],
+        queryFn: fetchMyWaitlistEntries,
+        enabled: !!userId,
+        staleTime,
+        refetchOnWindowFocus: true,
+        refetchOnMount: true,
+        retry: false,
+      },
     ],
   });
 
@@ -281,6 +347,9 @@ export function usePurchases(
     reservationsQuery,
     venueOrdersQuery,
     sharedQuery,
+    venueBookingsQuery,
+    venueMembershipsQuery,
+    venueWaitlistQuery,
   ] = queries;
   const reservations = mapReservations(reservationsQuery.data ?? []);
   const venueOrders = (venueOrdersQuery.data ?? []) as PurchaseVenueOrderSource[];
@@ -291,6 +360,9 @@ export function usePurchases(
         rsvps: rsvpsQuery.data ?? [],
         reservations,
         venueOrders,
+        venueBookings: (venueBookingsQuery.data ?? []) as PurchaseVenueBookingSource[],
+        venueMemberships: (venueMembershipsQuery.data ?? []) as PurchaseVenueMembershipSource[],
+        venueWaitlist: (venueWaitlistQuery.data ?? []) as PurchaseVenueWaitlistSource[],
       },
       (sharedQuery.data ?? []) as SharedPurchase[],
     ),

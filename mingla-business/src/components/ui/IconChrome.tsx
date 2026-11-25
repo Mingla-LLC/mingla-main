@@ -41,6 +41,7 @@ import {
   size as sizeTokens,
   type,
 } from "../../constants/designSystem";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
 import { color, themedStyles } from "../../theme/surfaceTokens";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 
@@ -112,7 +113,7 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
   badgeCap = 99,
   active = false,
   onPress,
-  size = DEFAULT_SIZE,
+  size: sizeProp = DEFAULT_SIZE,
   disabled = false,
   accessibilityLabel,
   hitSlop = DEFAULT_HIT_SLOP,
@@ -120,6 +121,8 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
   testID,
   style,
 }, forwardedRef) {
+  // #4490: no hitSlop on a phone-width browser, so the chrome button is drawn 44 there.
+  const size = Math.max(sizeProp, useTouchFloor());
   const pressableRef = useRef<View | null>(null);
   useImperativeHandle(forwardedRef, () => pressableRef.current as View, []);
   const scale = useSharedValue(1);

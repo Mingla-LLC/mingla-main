@@ -168,7 +168,13 @@ describe("events", () => {
     const where = src("src/components/event/CreatorStep3Where.tsx");
     expect(where).toContain("locationProviderPlaceId: details.placeId,");
     expect(where).toContain("locationProviderPlaceId: approx.placeId,");
-    expect(where.match(/locationGeo: null,\n\s*locationProviderPlaceId: null,/g)?.length).toBe(4);
+    // TEST-MOD-APPROVED #4490 — the invariant is "every write that clears the pin
+    // also clears the place id", not a fixed count: picking one of your own
+    // venues (#4490 fix 2) clears them in one more place.
+    const clearsPin = where.match(/locationGeo: null,/g)?.length ?? 0;
+    const clearsBoth = where.match(/locationGeo: null,\n\s*locationProviderPlaceId: null,/g)?.length ?? 0;
+    expect(clearsPin).toBeGreaterThanOrEqual(4);
+    expect(clearsBoth).toBe(clearsPin);
   });
 });
 

@@ -36,13 +36,24 @@ export interface ValidationError {
   message: string;
 }
 
+/**
+ * #4490 07-A — context the draft itself does not hold. `atVenue` is true when
+ * the event is linked to one of the brand's venues (or the creator was opened
+ * from a venue); it is read from the server's venue link, never persisted in
+ * the draft store. The server stays the authority at publish.
+ */
+export interface ValidationOptions {
+  atVenue?: boolean;
+}
+
 export const validateStep = (
   step: number,
   draft: DraftEvent,
+  opts: ValidationOptions = {},
 ): ValidationError[] => {
   switch (step) {
     case 0:
-      return validateBasics(draft);
+      return validateBasics(draft, opts);
     case 1:
       return validateWhen(draft);
     case 2:
@@ -73,10 +84,11 @@ export const validatePublish = (
     partnerEnabled: boolean;
     partnerStripeConnected: boolean;
   },
+  opts: ValidationOptions = {},
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
   for (let step = 0; step < 7; step++) {
-    errors.push(...validateStep(step, draft));
+    errors.push(...validateStep(step, draft, opts));
   }
   // Cross-step: any paid ticket → Stripe must be active.
   // Free-only events bypass this gate (spec AC#33).
@@ -108,7 +120,10 @@ export const validatePublish = (
 // ORCH-1150: exported so the forked RSVP validator (draftRsvpValidation.ts)
 // reuses the SAME party-type gate (steering #2 — KEEP Party Type for RSVP).
 // This is the ONLY change to this file; the event path is byte-identical.
-export const validateBasics = (d: DraftEvent): ValidationError[] => {
+export const validateBasics = (
+  d: DraftEvent,
+  opts: ValidationOptions = {},
+): ValidationError[] => {
   const errs: ValidationError[] = [];
   if (d.name.trim().length === 0) {
     errs.push({ fieldKey: "name", step: 0, message: "Event name is required." });
@@ -121,13 +136,16 @@ export const validateBasics = (d: DraftEvent): ValidationError[] => {
     });
   }
   // ORCH-0824: party types required (at least one); replaces the
-  // deprecated single-select `category` field.
+  // deprecated single-select `category` field. #4490 07-A: optional for an
+  // event at a venue (the server gates on events.venue_id the same way).
   if (d.partyTypes.length === 0) {
-    errs.push({
-      fieldKey: "partyTypes",
-      step: 0,
-      message: "Pick at least one event type.",
-    });
+    if (opts.atVenue !== true) {
+      errs.push({
+        fieldKey: "partyTypes",
+        step: 0,
+        message: "Pick at least one event type.",
+      });
+    }
   } else if (!d.partyTypes.every((s) => (PARTY_TYPE_SLUGS as readonly string[]).includes(s))) {
     // Defensive: persisted drafts from older builds with stale slugs.
     errs.push({
@@ -653,6 +671,7 @@ const validateSettings = (d: DraftEvent): ValidationError[] => {
 export const computePublishability = (
   draft: DraftEvent,
   brandStripeStatus: BrandStripeStatus,
+  opts: ValidationOptions = {},
 ): {
   isReady: boolean;
   hasPaidTickets: boolean;
@@ -660,7 +679,7 @@ export const computePublishability = (
   errorCount: number;
   status: DraftEventStatus | "ready" | "blocked-stripe" | "blocked-errors";
 } => {
-  const errors = validatePublish(draft, brandStripeStatus);
+  const errors = validatePublish(draft, brandStripeStatus, undefined, opts);
   const hasPaidTickets = draft.tickets.some(
     (t) => !t.isFree && (t.priceGbp ?? 0) > 0,
   );

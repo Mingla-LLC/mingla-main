@@ -25,8 +25,16 @@ import {
   useConvertWaitlist,
   useMarkWaitlistLost,
   useNotifyWaitlist,
+  useOfferWaitlistTable,
   useVenueWaitlist,
 } from "../../hooks/useVenueWaitlist";
+import { useSetVenueFeature, useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { useVenueEditAccess } from "../../hooks/useVenueEditAccess";
+import { useVenueAvailabilityConfig } from "../../hooks/useVenueAvailability";
+import { Switch } from "../ui/Switch";
+import { useVenueSpaces } from "../../hooks/useVenueSpaces";
+import { Pill } from "../ui/Pill";
+import { waitlistWantsLine } from "./features/floor/waitlistHostModel";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { Check, MessageSquare, X } from "lucide-react-native";
 import { Button } from "../ui/Button";
@@ -34,6 +42,11 @@ import { GlassCard } from "../ui/GlassCard";
 import { WaitlistAddSheet } from "./WaitlistAddSheet";
 import { WaitlistConvertSheet } from "./WaitlistConvertSheet";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
+
+const LazyToast = React.lazy(async () => {
+  const mod = await import("../ui/Toast");
+  return { default: mod.Toast };
+});
 import type {
   VenueTableZone,
   WaitlistAddInput,
@@ -50,17 +63,29 @@ const ZONE_LABEL: Record<VenueTableZone, string> = {
   patio: "Patio",
 };
 
+/** The toast after seating a waitlist guest (#4490 R4J-N25). */
+export function seatedToastCopy(name: string, reservationsLabel: string): string {
+  return `${name} is seated. They're in ${reservationsLabel} now.`;
+}
+
 export interface VenueWaitlistModuleProps {
   brandId: string | null;
   /** META-ORCH-1255 — the venue this module is scoped to. */
   venueId?: string | null;
   testID?: string;
+  /**
+   * #4490 R4J-N25 — the name of the screen a seated guest's booking appears
+   * in. A Stay calls it "Table reservations"; the ordinary shell keeps the
+   * default.
+   */
+  reservationsLabel?: string;
 }
 
 export function VenueWaitlistModule({
   brandId,
   venueId = null,
   testID,
+  reservationsLabel = "Reservations",
 }: VenueWaitlistModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
@@ -70,22 +95,64 @@ export function VenueWaitlistModule({
   const notify = useNotifyWaitlist(brandId, venueId);
   const convert = useConvertWaitlist(brandId, venueId);
   const markLost = useMarkWaitlistLost(brandId, venueId);
+  // #4490 P5 — guests join online; staff tell them a table is ready.
+  const offer = useOfferWaitlistTable(brandId, venueId);
+  const featuresQuery = useVenueFeatures(brandId, venueId);
+  const setFeature = useSetVenueFeature(brandId, venueId);
+  const access = useVenueEditAccess(brandId, venueId);
+  const waitlistFeature = featuresQuery.data?.features.waitlist ?? null;
+  const venueTimeZone = useVenueAvailabilityConfig(brandId, venueId).data?.ianaTimezone ?? undefined;
+  const guestJoinOn = waitlistFeature !== null && waitlistFeature.settings.guestJoin !== false;
+  const [settingError, setSettingError] = useState<string | null>(null);
+  const toggleGuestJoin = (next: boolean): void => {
+    if (waitlistFeature === null) return;
+    setSettingError(null);
+    setFeature.mutate(
+      {
+        key: "waitlist",
+        enabled: waitlistFeature.enabled,
+        cascade: false,
+        expectedVersion: waitlistFeature.version,
+        settings: { ...waitlistFeature.settings, guestJoin: next },
+      },
+      { onError: () => setSettingError("Couldn't change that. Try again.") },
+    );
+  };
 
   const [addOpen, setAddOpen] = useState<boolean>(false);
   const [converting, setConverting] = useState<WaitlistEntry | null>(null);
+  // #4490 fix 3 (N111) — every add and seat says it worked.
+  const [toast, setToast] = useState<string | null>(null);
+  // #4490 fix 3 (N112) — the venue's own spaces name a walk-in's seating.
+  const spaces = useVenueSpaces(brandId, venueId).data ?? [];
+  const spaceName = (id: string | null | undefined): string | null =>
+    id == null ? null : spaces.find((s) => s.id === id)?.name ?? null;
 
-  // The ACTIVE queue (waiting + notified), FIFO by created order.
+  // The ACTIVE queue (waiting + notified), FIFO by created order. #4490 P5 —
+  // a guest who asked for a later day sorts by that day.
   const queue = useMemo(
     () =>
+      (waitlistQuery.data ?? [])
+        .filter((w) => w.status === "waiting" || w.status === "notified")
+        .sort((a, b) => (a.desiredDate ?? "").localeCompare(b.desiredDate ?? "")),
+    [waitlistQuery.data],
+  );
+  const leftToday = useMemo(
+    () =>
       (waitlistQuery.data ?? []).filter(
-        (w) => w.status === "waiting" || w.status === "notified",
+        (w) => w.leftByGuestAt != null && Date.now() - Date.parse(w.leftByGuestAt) < 24 * 3600 * 1000,
       ),
     [waitlistQuery.data],
   );
 
   const handleAdd = useCallback(
     (input: WaitlistAddInput): void => {
-      add.mutate(input, { onSuccess: () => setAddOpen(false) });
+      add.mutate(input, {
+        onSuccess: () => {
+          setAddOpen(false);
+          setToast(`${input.guestName ?? "Guest"} is on the waitlist`);
+        },
+      });
     },
     [add],
   );
@@ -93,12 +160,18 @@ export function VenueWaitlistModule({
   const handleConvert = useCallback(
     (reservedFor: string, tableId: string | null): void => {
       if (converting === null) return;
+      const name = converting.guestName ?? "Guest";
       convert.mutate(
         { waitlistId: converting.id, reservedFor, tableId },
-        { onSuccess: () => setConverting(null) },
+        {
+          onSuccess: () => {
+            setConverting(null);
+            setToast(seatedToastCopy(name, reservationsLabel));
+          },
+        },
       );
     },
-    [convert, converting],
+    [convert, converting, reservationsLabel],
   );
 
   return (
@@ -113,6 +186,7 @@ export function VenueWaitlistModule({
           </Text>
         </View>
         {canMutate ? (
+          // #4490 fix 3 (N111) — the one add button (the empty state has none).
           <Button
             label="Add"
             onPress={() => setAddOpen(true)}
@@ -124,6 +198,26 @@ export function VenueWaitlistModule({
         ) : null}
       </View>
 
+      {waitlistFeature !== null && waitlistFeature.enabled && access.canSwitchFeatures ? (
+        <View style={styles.settingRow}>
+          <View style={styles.headerText}>
+            <Text style={styles.guest}>Guests can join online</Text>
+            <Text style={styles.subtitle}>
+              {guestJoinOn
+                ? "Your booking page offers the waitlist when a time is full, with no account needed."
+                : "Only your staff add people to the waitlist."}
+            </Text>
+          </View>
+          <Switch
+            value={guestJoinOn}
+            onValueChange={toggleGuestJoin}
+            disabled={setFeature.isPending}
+            accessibilityLabel="Guests can join online"
+            testID="venue-waitlist-guest-join"
+          />
+        </View>
+      ) : null}
+      {settingError !== null ? <Text style={styles.errorNote}>{settingError}</Text> : null}
       {waitlistQuery.isLoading ? (
         <Text style={styles.helper}>Loading waitlist…</Text>
       ) : waitlistQuery.isError ? (
@@ -134,9 +228,11 @@ export function VenueWaitlistModule({
         <VenueHubEmptyState
           icon="waitlist"
           title="Nobody's waiting"
-          body="When you're full, add walk-ins here and notify them when a table opens."
-          actionLabel={canMutate ? "Add to waitlist" : undefined}
-          onAction={canMutate ? () => setAddOpen(true) : undefined}
+          body={
+            canMutate
+              ? "When you're full, use Add to put walk-ins here and tell them when a table opens."
+              : "When the venue is full, walk-ins wait here until a table opens."
+          }
           testID="venue-waitlist-empty"
           wrapTestID="venue-waitlist-empty-wrap"
           actionTestID="venue-waitlist-empty-add"
@@ -146,8 +242,12 @@ export function VenueWaitlistModule({
           {queue.map((w, i) => {
             const parts: string[] = [`Party ${w.partySize}`];
             if (w.quotedWaitMinutes != null) parts.push(`~${w.quotedWaitMinutes}m`);
-            if (w.preferredZone != null) parts.push(ZONE_LABEL[w.preferredZone]);
+            const wantsSpace = spaceName(w.preferredSpaceId);
+            if (wantsSpace !== null) parts.push(wantsSpace);
+            else if (w.preferredZone != null) parts.push(ZONE_LABEL[w.preferredZone]);
             const notified = w.status === "notified";
+            const online = w.source === "guest";
+            const wants = waitlistWantsLine(w);
             return (
               <GlassCard
                 key={w.id}
@@ -162,8 +262,20 @@ export function VenueWaitlistModule({
                       {w.guestName ?? "Guest"}
                     </Text>
                     <Text style={styles.meta}>{parts.join(" · ")}</Text>
+                    {online || wants !== null ? (
+                      <View style={styles.tagRow}>
+                        {online ? <Pill variant="info">Joined online</Pill> : null}
+                        {wants !== null ? <Text style={styles.meta}>{wants}</Text> : null}
+                      </View>
+                    ) : null}
                     {notified ? (
-                      <Text style={styles.notified}>Notified ✓</Text>
+                      <Text style={styles.notified}>
+                        {w.offeredSlotAt != null
+                          ? `Told a table is free at ${new Date(w.offeredSlotAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: venueTimeZone })}`
+                          : w.notifiedAt != null
+                            ? `Told their table is ready at ${new Date(w.notifiedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: venueTimeZone })}`
+                            : "Told their table is ready"}
+                      </Text>
                     ) : null}
                   </View>
                 </View>
@@ -180,6 +292,19 @@ export function VenueWaitlistModule({
                       >
                         <MessageSquare size={15} color={color.text1} />
                         <Text style={styles.notifyLabel}>Notify</Text>
+                      </Pressable>
+                    ) : null}
+                    {!notified && (online || w.guestPhoneE164 == null) ? (
+                      <Pressable
+                        onPress={() => offer.mutate(w.id)}
+                        disabled={offer.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Tell ${w.guestName ?? "guest"} their table is ready`}
+                        style={styles.notifyBtn}
+                        testID={`venue-waitlist-ready-${w.id}`}
+                      >
+                        <MessageSquare size={15} color={color.text1} />
+                        <Text style={styles.notifyLabel}>Table ready</Text>
                       </Pressable>
                     ) : null}
                     <Pressable
@@ -217,6 +342,14 @@ export function VenueWaitlistModule({
         never rendered is still a silent failure — the same class as every other
         defect in this chain (#1518 -> #1529 -> #1537 -> #1541).
       */}
+      {offer.isError ? (
+        <Text style={styles.errorNote}>Couldn&apos;t tell them. Try again.</Text>
+      ) : null}
+      {leftToday.length > 0 ? (
+        <Text style={styles.helper} testID="venue-waitlist-left">
+          {`Left the waitlist today: ${leftToday.map((w) => w.guestName ?? "Guest").join(", ")}`}
+        </Text>
+      ) : null}
       {notify.isError ? (
         <Text style={styles.errorNote}>
           {isSmsMarketUnavailableError(notify.error)
@@ -230,6 +363,8 @@ export function VenueWaitlistModule({
         onSave={handleAdd}
         saving={add.isPending}
         venueId={venueId}
+        brandId={brandId}
+        error={add.isError ? "Couldn't add them. Check the details and try again." : null}
       />
       <WaitlistConvertSheet
         venueId={venueId}
@@ -239,7 +374,14 @@ export function VenueWaitlistModule({
         entry={converting}
         onConvert={handleConvert}
         converting={convert.isPending}
+        error={convert.isError ? "Couldn't seat them. Pick the time again and retry." : null}
+        timeZone={venueTimeZone}
       />
+      {toast !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyToast visible kind="success" message={toast} onDismiss={() => setToast(null)} testID="venue-waitlist-toast" />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }
@@ -327,7 +469,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: space[1],
-    height: size.btn.sm,
+    height: size.btn.md,
     paddingHorizontal: space[3],
     borderRadius: radius.full,
     borderWidth: 1,
@@ -342,7 +484,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: space[1],
-    height: size.btn.sm,
+    height: size.btn.md,
     paddingHorizontal: space[3],
     borderRadius: radius.full,
     borderWidth: 1,
@@ -354,13 +496,20 @@ const styles = StyleSheet.create({
     color: color.text1,
   },
   lostBtn: {
-    width: size.btn.sm,
-    height: size.btn.sm,
+    width: size.btn.md,
+    height: size.btn.md,
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: color.fill.inset,
   },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    minHeight: 44,
+  },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: 2 },
   errorNote: {
     ...type.small,
     color: color.danger,

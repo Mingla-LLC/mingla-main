@@ -59,11 +59,12 @@ interface HarnessProps {
   initial: number;
   min?: number;
   max?: number;
+  step?: number;
   spy: (n: number) => void;
 }
 
 /** A parent that owns the value, like RsvpStep5Setup + the draft store. */
-const Harness: React.FC<HarnessProps> = ({ initial, min = 1, max = 200, spy }) => {
+const Harness: React.FC<HarnessProps> = ({ initial, min = 1, max = 200, step, spy }) => {
   const [value, setValue] = useState(initial);
   return (
     <NumberStepper
@@ -71,6 +72,7 @@ const Harness: React.FC<HarnessProps> = ({ initial, min = 1, max = 200, spy }) =
       value={value}
       min={min}
       max={max}
+      step={step}
       onChange={(n) => {
         spy(n);
         setValue(n);
@@ -242,6 +244,16 @@ describe("NumberStepper — − / + taps (existing behaviour kept)", () => {
     await call(tree, `${TEST_ID}-inc`, "onPress");
     expect(spy).toHaveBeenLastCalledWith(121);
     expect(fieldText(tree)).toBe("121");
+    await act(() => tree.unmount());
+  });
+
+  test("#4490 table-deposit percentage moves in configured 5-point steps", async () => {
+    const spy = jest.fn();
+    const tree = await mount(<Harness initial={25} min={5} max={100} step={5} spy={spy} />);
+    await call(tree, `${TEST_ID}-inc`, "onPress");
+    expect(spy).toHaveBeenLastCalledWith(30);
+    await call(tree, `${TEST_ID}-dec`, "onPress");
+    expect(spy).toHaveBeenLastCalledWith(25);
     await act(() => tree.unmount());
   });
 });

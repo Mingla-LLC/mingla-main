@@ -39,6 +39,8 @@ import { jsonResponse, serviceClient } from "../_shared/ticketCheckout.ts";
 import {
   type EscalationRung,
   fireVenueOrderEscalation,
+  fireVenueOrderSoldOutEscalation,
+  tillRoundSenders,
 } from "../_shared/venueOrderNotify.ts";
 
 interface ScanRow {
@@ -54,6 +56,19 @@ interface ScanRow {
   total_cents: number;
   placed_at: string;
   unacked_seconds: number;
+}
+
+/** #4490 T16: issue_4490_sold_out_escalation_scan's rows. */
+interface SoldOutScanRow {
+  order_id: string;
+  brand_id: string;
+  venue_id: string;
+  venue_name: string;
+  spot_label: string | null;
+  pickup_code: string | null;
+  buyer_name: string | null;
+  item_names: string | null;
+  flagged_seconds: number;
 }
 
 /** Bounded batch — the sweep family's shape (notification-retry-sweeper: 50). */
@@ -102,6 +117,9 @@ serve(wrapEdgeHandler("venue-order-escalation-sweep", async (req) => {
 
   const rows = (Array.isArray(data) ? data : []) as ScanRow[];
   let notified = 0;
+  // #4490 spec 08 §11 T7: which rows are sent Till rounds, and who sent them
+  // (rung 1 tells them). A failed read only drops that extra person.
+  const tillRounds = await tillRoundSenders(supabase, rows.map((r) => r.order_id));
   const failures: string[] = [];
 
   for (const row of rows) {
@@ -124,6 +142,8 @@ serve(wrapEdgeHandler("venue-order-escalation-sweep", async (req) => {
         spotLabel: row.spot_label,
         pickupCode: row.pickup_code,
         buyerName: row.buyer_name,
+        tillRound: tillRounds.has(row.order_id),
+        takenByUserId: tillRounds.get(row.order_id) ?? null,
       });
       notified += 1;
     } catch (err) {
@@ -138,8 +158,47 @@ serve(wrapEdgeHandler("venue-order-escalation-sweep", async (req) => {
     }
   }
 
+  // #4490 spec 08 O5 (T16): guest orders that sold out after payment and are
+  // still not swapped or refunded after 10 minutes reach rung 1 once (their
+  // own scan; it never refunds and never pauses). Before migration
+  // 20281203724490 the scan does not exist: nothing to do.
+  let soldOutScanned = 0;
+  const soldOut = await supabase.rpc("issue_4490_sold_out_escalation_scan", {
+    p_now: new Date().toISOString(),
+    p_limit: BATCH_LIMIT,
+  });
+  if (soldOut.error) {
+    if (soldOut.error.code !== "PGRST202" && soldOut.error.code !== "42883") {
+      console.error("[venue-order-escalation-sweep] sold-out scan failed", soldOut.error.message);
+    }
+  } else {
+    const soldRows = (Array.isArray(soldOut.data) ? soldOut.data : []) as SoldOutScanRow[];
+    soldOutScanned = soldRows.length;
+    for (const row of soldRows) {
+      try {
+        await fireVenueOrderSoldOutEscalation(supabase, {
+          orderId: row.order_id,
+          brandId: row.brand_id,
+          venueId: row.venue_id,
+          venueName: row.venue_name,
+          itemNames: row.item_names,
+          flaggedSeconds: Number(row.flagged_seconds ?? 0),
+          spotLabel: row.spot_label,
+          pickupCode: row.pickup_code,
+          buyerName: row.buyer_name,
+        });
+        notified += 1;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn("[venue-order-escalation-sweep] sold-out push failed", row.order_id, message);
+        failures.push(`${row.order_id}:sold_out`);
+      }
+    }
+  }
+
   return jsonResponse({
     scanned: rows.length,
+    soldOutScanned,
     notified,
     failed: failures.length,
     failures,

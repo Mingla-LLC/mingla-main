@@ -10,5 +10,7 @@ module.exports = {
     "**/__tests__/reservationCalendar.issue2737.shellScroll.render.test.tsx",
     "**/__tests__/reservationCalendar.issue2737.offscreenDay.render.test.tsx",
     "**/__tests__/reservationCalendar.issue2737.detailVenueTime.render.test.tsx",
+    // #4490 R4J-N20: the Stay's scroll-with-list form of the same screen.
+    "**/__tests__/reservationCalendar.issue4490.chromeScroll.render.test.tsx",
   ],
 };

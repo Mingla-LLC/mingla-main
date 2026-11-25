@@ -22,7 +22,13 @@
  */
 
 import React from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  fontWeights,
+  spacing,
+  touchTargets,
+  typography,
+} from "../../constants/designSystem";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -34,8 +40,11 @@ import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import {
   isoDayFromMondayZero,
   venueOrderingCanOrder,
+  venueOrderingIsCounterPickup,
   venueOrderingMenuGroups,
   venueOrderingNotice,
+  venueOrderingOwnsBottomEdge,
+  venueOrderingSheetView,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueLocalClock } from "@mingla/brand-rendering/venueOpenState";
 import { VenueOrderingMenuList } from "@mingla/brand-rendering/venueOrdering/VenueOrderingMenuList";
@@ -48,6 +57,8 @@ import { VenueOrderReviewPane } from "@mingla/brand-rendering/venueOrdering/Venu
 import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
+import { KEYBOARD_SCROLL_BOTTOM_OFFSET } from "../../wrappers/keyboardConstants";
+import { consumerVenueOrderDock } from "./consumerVenueOrderDock";
 // issue #3380 — pure phone helpers only at module scope; the picker is required
 // where the review sheet renders it (see renderPhoneField).
 import {
@@ -114,6 +125,26 @@ export const ConsumerVenueOrderingSurface: React.FC<{
   timezone: string | null;
   /** issue #3380 — the venue's country, for the guest's phone picker. */
   countryCode?: string | null;
+  /**
+   * #4490 W3 fix 4 (W3-N36) — the page's bottom-edge handshake: true while
+   * ordering owns the Menu tab's edge (the guest can order, or an order sheet
+   * is up), so the venue's lead bar ("Buy entry") is not drawn on the menu.
+   */
+  onBottomBarChange?: (owned: boolean) => void;
+  /**
+   * #4490 W3 fix 5 (W3-N37) — the page docks the order bar at the Menu tab's
+   * bottom edge from this report (null: nothing to dock). When the host passes
+   * it, the bar is not drawn inline at the top of the menu: one bar on screen.
+   */
+  onOrderBarChange?: (
+    bar: {
+      title: string;
+      subtitle: string | null;
+      ctaLabel: string;
+      enabled: boolean;
+      onPress: () => void;
+    } | null,
+  ) => void;
 }> = ({
   palette,
   surface,
@@ -126,6 +157,8 @@ export const ConsumerVenueOrderingSurface: React.FC<{
   menuWindows,
   timezone,
   countryCode = null,
+  onBottomBarChange,
+  onOrderBarChange,
 }) => {
   const ordering = useConsumerVenueOrdering({
     brandSlug,
@@ -152,6 +185,60 @@ export const ConsumerVenueOrderingSurface: React.FC<{
     scanned: ordering.scanned,
   });
   const canOrder = venueOrderingCanOrder(ordering.config);
+  const ownsBottomEdge = venueOrderingOwnsBottomEdge({
+    canOrder,
+    sheetView: venueOrderingSheetView({
+      view: ordering.cart.state.view,
+      lineCount: ordering.cart.state.lines.length,
+    }),
+  });
+  React.useEffect(() => {
+    if (onBottomBarChange === undefined) return undefined;
+    onBottomBarChange(ownsBottomEdge);
+    return () => onBottomBarChange(false);
+  }, [ownsBottomEdge, onBottomBarChange]);
+  // #4490 W3 fix 5 (W3-N37): the order bar docks at the Menu tab's bottom
+  // edge (the page draws it), so a guest who adds an item far down a long
+  // menu still has the way to the basket on screen. Same words as buyer web.
+  const dock = consumerVenueOrderDock({
+    canOrder,
+    view: ordering.cart.state.view,
+    count: ordering.cart.count,
+    totalCents:
+      ordering.previewStatus === "ready" && ordering.preview !== null
+        ? ordering.preview.totalCents
+        : null,
+    currency: ordering.preview?.currency ?? null,
+    spotLabel:
+      ordering.config.spotState === "ok" &&
+      !venueOrderingIsCounterPickup(ordering.config, ordering.pickup)
+        ? ordering.config.spot?.label ?? null
+        : null,
+  });
+  const setView = ordering.cart.setView;
+  const openReview = React.useCallback(() => setView("review"), [setView]);
+  const dockTitle = dock?.title ?? null;
+  const dockSubtitle = dock?.subtitle ?? null;
+  const dockCta = dock?.ctaLabel ?? null;
+  React.useEffect(() => {
+    if (onOrderBarChange === undefined) return undefined;
+    onOrderBarChange(
+      dockTitle === null || dockCta === null
+        ? null
+        : {
+            title: dockTitle,
+            subtitle: dockSubtitle,
+            ctaLabel: dockCta,
+            enabled: true,
+            onPress: openReview,
+          },
+    );
+    return undefined;
+  }, [dockTitle, dockSubtitle, dockCta, openReview, onOrderBarChange]);
+  React.useEffect(() => {
+    if (onOrderBarChange === undefined) return undefined;
+    return () => onOrderBarChange(null);
+  }, [onOrderBarChange]);
   // #2735 — this lazy surface is a TOTAL menu renderer. Returning null here
   // cannot hand control back across the route's Suspense boundary: React would
   // remove the display-menu fallback and commit an empty body. An ordinary
@@ -172,7 +259,9 @@ export const ConsumerVenueOrderingSurface: React.FC<{
   return (
     <View style={styles.surface}>
       <ConsumerVenueOrderingNotice {...slotProps} />
-      <ConsumerVenueOrderingBar {...slotProps} />
+      {onOrderBarChange === undefined ? (
+        <ConsumerVenueOrderingBar {...slotProps} />
+      ) : null}
       {canOrder ? (
         <ConsumerVenueOrderingMenu
           {...slotProps}
@@ -213,10 +302,12 @@ export const ConsumerVenueOrderingNotice: React.FC<
     );
   }
   if (!venueOrderingCanOrder(ordering.config)) return null;
-  return (
+  const chip = (
     <VenueOrderingSpotChip
       label={
         ordering.config.spotState === "ok" &&
+        // #4490 07-D — a counter order at a scanned spot names the counter.
+        !venueOrderingIsCounterPickup(ordering.config, ordering.pickup) &&
         ordering.config.spot?.label !== null &&
         ordering.config.spot?.label !== undefined
           ? `Ordering for ${ordering.config.spot.label}`
@@ -225,7 +316,41 @@ export const ConsumerVenueOrderingNotice: React.FC<
       palette={palette}
     />
   );
+  if (!ordering.hasCounterOrder) return chip;
+  // N145 (#4490): a pickup order placed from this table keeps its own status;
+  // the table stays orderable and links to it (the same words as buyer web).
+  return (
+    <View style={counterStyles.row}>
+      {chip}
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="See your pickup order"
+        onPress={ordering.openCounterOrder}
+        style={counterStyles.target}
+      >
+        <Text style={[counterStyles.link, { color: palette.primaryText }]}>
+          Your pickup order · See status
+        </Text>
+      </Pressable>
+    </View>
+  );
 };
+
+// N149 (#4490): design-system tokens, and a 44 pt tap target (the text line
+// alone is 20 pt).
+const counterStyles = StyleSheet.create({
+  row: { gap: spacing.sm },
+  target: {
+    minHeight: touchTargets.minimum,
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
+  link: {
+    ...typography.sm,
+    fontWeight: fontWeights.bold,
+    textDecorationLine: "underline",
+  },
+});
 
 /**
  * The ORDERABLE menu — or the display-only one, unchanged, when this guest
@@ -313,8 +438,17 @@ export const ConsumerVenueOrderingSheet: React.FC<
     notesAllowedByItemId: Record<string, boolean | undefined>;
   }
 > = ({ ordering, palette, surface, notesAllowedByItemId, countryCode = null }) => {
-  const view = ordering.cart.state.view;
-  const visible = view === "review" || view === "status";
+  // #4490 W3 fix 4 (W3-N36): the sheet is up ONLY when the state says so: an
+  // empty basket never shows the review. It lives in its own native window
+  // (`wrapInRNModal`): mounted inline in the menu's scroll content, the shut
+  // sheet sat just under the menu, a swipe dragged it up while the state still
+  // said "browse" (so Close and ‹ Menu, which set "browse", did nothing), and
+  // the venue's docked bar was drawn over it.
+  const view = venueOrderingSheetView({
+    view: ordering.cart.state.view,
+    lineCount: ordering.cart.state.lines.length,
+  });
+  const visible = view !== null;
   return (
     <BaseBottomSheet
       visible={visible}
@@ -322,6 +456,7 @@ export const ConsumerVenueOrderingSheet: React.FC<
       snapPoints={["88%"]}
       theme="dark"
       scrollMode="scroll"
+      wrapInRNModal
       hidesBottomNav
       keyboardBehavior="interactive"
       backgroundStyle={{ backgroundColor: palette.page }}
@@ -371,6 +506,8 @@ export const ConsumerVenueOrderingSheet: React.FC<
           onPartySizeChange={ordering.cart.setPartySize}
           buyer={ordering.cart.state.buyer}
           onBuyerChange={ordering.cart.patchBuyer}
+          pickup={ordering.pickup}
+          onPickupChange={ordering.setPickup}
           onSetQuantity={ordering.cart.setQuantity}
           onSetNotes={ordering.cart.setNotes}
           // issue #3380 — the country picker instead of a free-text box.
@@ -402,12 +539,32 @@ export const ConsumerVenueOrderingSheet: React.FC<
           TextInputComponent={BottomSheetTextInput}
         />
       )}
+      {view === "review" ? <OrderSheetKeyboardSpacer /> : null}
     </BaseBottomSheet>
   );
 };
 
+/**
+ * #4490 W3 fix 5 (W3-N38): while the keyboard is up, its Done bar sits on top
+ * of it, over the sheet's bottom edge, and hid the lower third of "Pay ₦…".
+ * This spacer (the PlanFormSheet pattern, #4435) lets the review scroll the
+ * Pay button clear of the Done bar. It renders inside the sheet's own window,
+ * so it reads that window's keyboard state.
+ */
+export function OrderSheetKeyboardSpacer(): React.ReactElement | null {
+  // Required here, not at module scope (like the phone field): the menu, and
+  // the suites that mount it, must not load the keyboard library.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useKeyboardIsVisible } = require("../../wrappers/useKeyboardIsVisible") as typeof import("../../wrappers/useKeyboardIsVisible");
+  const keyboardUp = useKeyboardIsVisible();
+  return keyboardUp ? (
+    <View style={styles.keyboardSpacer} testID="venue-order-keyboard-spacer" />
+  ) : null;
+}
+
 const styles = StyleSheet.create({
   surface: { gap: 16 },
+  keyboardSpacer: { height: KEYBOARD_SCROLL_BOTTOM_OFFSET },
   sheetBody: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 8 },
   pending: { alignItems: "center", gap: 12, paddingVertical: 48 },
   pendingText: { fontSize: 15 },

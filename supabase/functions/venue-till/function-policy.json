@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "venue-till",
+  "verify_jwt": false,
+  "gateway_reason": "The Till's sent-receipt page and the scan-to-pay page (/pay/till/<code>: view, pay, confirm on return) are used without a Mingla account (O1 receipts, O2); the pay-code actions are rate-limited per IP and per code and answer one 404 for any unknown code. Every staff action verifies the bearer in code and passes the verified user to service-only Till RPCs that check venue.sell, money rights or brand rank.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "AD_CONVERSION_TOKENS",
+      "BUSINESS_WEB_ORIGIN",
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "OFFERING_INVITE_TOKEN_PEPPER",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "STRIPE_PUBLISHABLE_KEY",
+      "app.qr_token_pepper"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

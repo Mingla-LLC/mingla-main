@@ -21,6 +21,7 @@ export type {
   VenueOrderFulfillmentStatus,
   VenueOrderHandover,
   VenueOrderingConfig,
+  VenueOrderingMode,
   VenueOrderingSpot,
   VenueOrderingSpotState,
   VenueOrderingState,
@@ -48,7 +49,15 @@ export {
   venueOrderHandover,
   venueOrderHandoverChip,
   venueOrderingCanOrder,
+  venueOrderingOwnsBottomEdge,
+  venueOrderingSheetView,
+  venueOrderingFulfilmentLine,
   venueOrderingIsCounterPickup,
+  venueOrderingOffersPickup,
+  venueOrderingReviewConfig,
+  venueOrderSubmitFailure,
+  venueOrderPaymentView,
+  VENUE_ORDER_REVIEW_MODE_POLL_MS,
   venueOrderingItemOrderable,
   venueOrderingMenuGroups,
   venueOrderingModifierFailure,
@@ -85,7 +94,11 @@ export {
   venueOrderNameAfterHydration,
   venueOrderShouldAskPartySize,
   venueOrderSittingKey,
+  venueOrderSittingKeyForOrder,
+  venueOrderCounterStatusPath,
+  venueOrderActiveSitting,
   venueOrderTipAfterHydration,
 } from "./venueOrderingSitting";
 
 export { venueOrderingQueryKeys } from "./venueOrderingQueryKeys";
+export { venueOrderStatusPollDelay } from "./venueOrderingPoll";

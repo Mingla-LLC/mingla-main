@@ -5,13 +5,15 @@ import {
   isSubsetOf,
 } from "../_shared/eventTaxonomy.ts";
 
-export type DiscoverKind = "events" | "experiences" | "trips" | "stays";
+export type DiscoverKind = "events" | "experiences" | "trips" | "stays" | "venues";
 
 export type DiscoverFiltersV2 =
   | { kind: "events"; f: { when?: "tomorrow" | "weekend"; price?: string[]; partyTypes?: string[]; vibeTags?: string[]; musicGenres?: string[] } }
   | { kind: "experiences"; f: { when?: "tomorrow" | "weekend"; goodFor?: string[]; price?: string[] } }
   | { kind: "trips"; f: { destination?: string; leavingFrom?: string; when?: "this_month" | "next_month" } }
-  | { kind: "stays"; f: { checkIn?: "tonight" | "tomorrow" | "weekend"; guests?: number; propertyKinds?: string[] } };
+  | { kind: "stays"; f: { checkIn?: "tonight" | "tomorrow" | "weekend"; guests?: number; propertyKinds?: string[] } }
+  // #4490 Explorer W6a: bookable hosted venues, filtered by venue type.
+  | { kind: "venues"; f: { venueTypes?: string[] } };
 
 export interface DiscoverV2Request {
   contract: 2;
@@ -22,7 +24,16 @@ export interface DiscoverV2Request {
   size?: number;
   deviceTz?: string;
 }
-export const DISCOVER_KINDS = ["events", "experiences", "trips", "stays"] as const;
+export const DISCOVER_KINDS = ["events", "experiences", "trips", "stays", "venues"] as const;
+/**
+ * #4490 Explorer W6a: the venue types that are Discover / deck chips, in chip
+ * order (the venue taxonomy without "stay"). Mirrors
+ * public.issue_4490_venue_type_chip_keys() and packages/brand-rendering
+ * venueTypeLabels.ts (pinned by _shared/__tests__/issue_4490_venue_type_parity.test.ts).
+ */
+export const VENUE_TYPE_CHIP_KEYS = [
+  "restaurant", "bar_lounge", "club", "cafe", "play", "coworking", "event_space", "creative_and_arts",
+] as const;
 const EVENT_WHEN = ["tomorrow", "weekend"] as const;
 const TRIP_WHEN = ["this_month", "next_month"] as const;
 const STAY_CHECK_IN = ["tonight", "tomorrow", "weekend"] as const;
@@ -37,6 +48,7 @@ const FILTER_FIELDS: Record<DiscoverKind, readonly string[]> = {
   experiences: ["when", "goodFor", "price"],
   trips: ["destination", "leavingFrom", "when"],
   stays: ["checkIn", "guests", "propertyKinds"],
+  venues: ["venueTypes"],
 };
 
 function isNullableString(value: unknown): value is string | null {
@@ -108,6 +120,7 @@ export function validateDiscoverV2Request(value: unknown): string | null {
     (!isOptionalEnum(values.checkIn, STAY_CHECK_IN) ||
       (values.guests !== undefined && (!Number.isInteger(values.guests) || (values.guests as number) < 1 || (values.guests as number) > 8)) ||
       !isOptionalEnumArray(values.propertyKinds, STAY_PROPERTY_KINDS))) return "invalid_filters";
+  if (f.kind === "venues" && !isOptionalEnumArray(values.venueTypes, VENUE_TYPE_CHIP_KEYS)) return "invalid_filter:venueTypes";
 
   if (body.cursor !== undefined && body.cursor !== null && typeof body.cursor !== "string") return "invalid_cursor";
   if (body.size !== undefined && (!Number.isInteger(body.size) || (body.size as number) < 1 || (body.size as number) > 50)) return "invalid_page_size";

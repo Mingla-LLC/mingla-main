@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4490_gaps_ordering_mode.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4490-29-gaps-ordering-mode",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}

@@ -169,6 +169,10 @@ interface DeckPill {
 // ORCH-0597 (Slice 5): split brunch_lunch_casual into brunch + casual_food.
 // Legacy `brunch_lunch_casual` key retained for pre-OTA clients still sending the
 // old slug; backend CATEGORY_TO_SIGNAL serves the union until 2026-05-12.
+/** #4490 Explorer W6b: the eight venue-type chips, sent to discover-cards as they are. */
+export const VENUE_TYPE_PILL_RE =
+  /^venue_type:(restaurant|bar_lounge|club|cafe|play|coworking|event_space|creative_and_arts)$/;
+
 const PILL_TO_CATEGORY_NAME: Record<string, string> = {
   nature: 'Nature & Views',
   icebreakers: 'Icebreakers',
@@ -289,6 +293,9 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     // to guess from the id's shape (an `events.id` is uuid-shaped too, and
     // `place_reviews.place_pool_id` carries a live FK to `place_pool`).
     placePoolId: typeof card.id === 'string' ? card.id : undefined,
+    // #4490 Explorer W5: the server's additive lead tag (analytics only; the
+    // client order is untouched).
+    ...(card.deckLead === 'hosted_venue' ? { deckLead: 'hosted_venue' as const } : {}),
     priceTier: undefined,
     ...discoveryPrice,
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
@@ -378,6 +385,8 @@ function experienceCardToRecommendation(card: any): Recommendation {
     // Discriminator + brand attribution + experience fields — carried verbatim
     // for the renderer (read via runtime cast in SwipeableCards).
     cardType: 'experience',
+    // #4490 Explorer W5: the server's additive lead tag (analytics only).
+    ...(card?.deckLead === 'experience' ? { deckLead: 'experience' as const } : {}),
     id: String(card?.id ?? card?.eventId ?? ''),
     eventId: String(card?.eventId ?? card?.id ?? ''),
     experienceType: intentId,
@@ -607,6 +616,16 @@ export class DeckService {
     };
 
     for (const cat of cats) {
+      // #4490 Explorer W6b: a venue-type chip ("Places on Mingla") goes to the
+      // deck unchanged as a category pill, BEFORE the lowercase / "_"→space
+      // normalisation (which would send it to the curated filter list).
+      if (VENUE_TYPE_PILL_RE.test(cat)) {
+        if (!seenPillIds.has(cat)) {
+          seenPillIds.add(cat);
+          pills.push({ id: cat, type: 'category' });
+        }
+        continue;
+      }
       const normalized = cat.replace(/_/g, ' ').toLowerCase();
       const pillId = CATEGORY_PILL_MAP[normalized] ?? CATEGORY_PILL_MAP[cat.toLowerCase()];
       if (pillId) {

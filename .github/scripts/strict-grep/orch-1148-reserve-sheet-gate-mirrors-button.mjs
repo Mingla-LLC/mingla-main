@@ -55,10 +55,11 @@
  *                                      SHEET gate  -> check (2) fails.
  *   ORCH1148_SIMULATE_VENUEID_REVERT=1 deletes `venue_id !== null` from the
  *                                      BUTTON gate -> check (1) fails.
- * Both locate their target by REGEX, not by an exact multi-line literal. The
- * old literal anchor had already gone stale against `origin/main`, which means
- * the fails-on-revert proof it backed was silently asserting nothing — so a
- * target that cannot be found now exits 2 instead of being papered over.
+ * Both locate their target structurally rather than by an exact multi-line
+ * literal. The old literal anchor had already gone stale against `origin/main`,
+ * which means the fails-on-revert proof it backed was silently asserting
+ * nothing — so a target that cannot be found now exits 2 instead of being
+ * papered over.
  *
  * Exit codes: 0 pass · 1 violation · 2 fs error.
  * Self-test mode (`--self-test`) validates the matchers against inline fixtures.
@@ -119,7 +120,7 @@ function stripComments(src) {
  * back to the `{` that opens the conditional-render expression, returning the
  * condition text between that `{` and the `&&` that precedes the `(`.
  */
-function gateHeadFor(src, tagIdx) {
+function gateBoundsFor(src, tagIdx) {
   if (tagIdx === -1) return "";
   // The render-open `(` is the last `(` before the tag.
   const open = src.lastIndexOf("(", tagIdx);
@@ -131,7 +132,12 @@ function gateHeadFor(src, tagIdx) {
   // The conditional-render `{` is the last unmatched `{` before condEnd.
   const brace = src.lastIndexOf("{", condEnd);
   if (brace === -1) return "";
-  return src.slice(brace + 1, condEnd);
+  return { start: brace + 1, end: condEnd };
+}
+
+function gateHeadFor(src, tagIdx) {
+  const bounds = gateBoundsFor(src, tagIdx);
+  return bounds === "" ? "" : src.slice(bounds.start, bounds.end);
 }
 
 function checkGate(name, head) {
@@ -201,25 +207,22 @@ function run() {
   // mutually-exclusive `isNightOut && nightOut` to the SHEET gate head — the one
   // that also gates on `isReserveSheetOpen`, NOT the button gate).
   //
-  // Located by REGEX, not by an exact multi-line literal. The previous literal
-  // anchor had already gone stale on `origin/main`, so this harness was silently
-  // unrunnable and the fails-on-revert proof it backed asserted nothing.
+  // Located from the rendered tag's structural gate span, not from the gate's
+  // first condition. #4490 legitimately prefixed `deckCta.kind === 'reserve'`;
+  // anchoring on `venueReservable` made this mutation stale again.
   if (process.env.ORCH1148_SIMULATE_REVERT === "1") {
-    const SHEET_GATE_HEAD = /\{(\s*venueReservable\?\.reservable === true\s*&&)/;
-    if (!SHEET_GATE_HEAD.test(src)) {
+    const sheetIdx = src.indexOf(SHEET_TAG);
+    const sheetBounds = gateBoundsFor(src, sheetIdx);
+    if (sheetBounds === "") {
       console.error(
         "ORCH1148_SIMULATE_REVERT: could not find the sheet gate to revert — extraction anchors may have changed.",
       );
       process.exit(2);
     }
-    // The SHEET gate is the LAST such head in the file (the button's comes
-    // first, inside the <ActionButtons reserve={...}> slot).
-    const heads = [...src.matchAll(/\{(\s*venueReservable\?\.reservable === true\s*&&)/g)];
-    const last = heads[heads.length - 1];
     src =
-      src.slice(0, last.index) +
-      "{isNightOut && nightOut &&" +
-      src.slice(last.index + 1);
+      src.slice(0, sheetBounds.start) +
+      "isNightOut && nightOut && " +
+      src.slice(sheetBounds.start);
   }
 
   // Fails-on-revert harness 2 (#1605 P0-1): delete `venue_id !== null` from the

@@ -56,6 +56,7 @@
   "pill.experiences": "Deneyimler",
   "pill.trips": "Geziler",
   "pill.stays": "Konaklamalar",
+  "pill.venues": "Mekanlar",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Temizle",
   "filters.option_a11y": "{{label}}, {{count}} eşleşir",
@@ -77,6 +78,7 @@
   "group.check_in": "Giriş",
   "group.guests": "Misafirler",
   "group.property_kind": "Yer türü",
+  "group.venue_type": "Yer türü",
   "group.any_suffix": "{{group}} · Herhangi biri",
   "when.any_day": "Herhangi bir gün",
   "when.tomorrow": "Yarın",
@@ -209,8 +211,15 @@
   "count.trips_other": "{{count}} gezi",
   "count.stays_one": "{{count}} konaklama",
   "count.stays_other": "{{count}} konaklama",
+  "count.venues_one": "{{count}} mekan",
+  "count.venues_other": "{{count}} mekan",
   "guests.value_one": "{{count}} misafir",
   "guests.value_other": "{{count}} misafir",
   "card.type.stops_one": "{{count}} DUR",
-  "card.type.stops_other": "{{count}} DURAK"
+  "card.type.stops_other": "{{count}} DURAK",
+  "venues.empty_title": "Burada henüz rezervasyon yapılacak mekan yok.",
+  "venues.empty_body": "Mingla'da rezervasyon yapabileceğin mekanlar burada görünecek.",
+  "venues.filtered_title": "Bu filtrelerle eşleşen mekan yok.",
+  "venues.error_title": "Mekanları yükleyemedik.",
+  "venues.error_retry": "Tekrar dene"
 }

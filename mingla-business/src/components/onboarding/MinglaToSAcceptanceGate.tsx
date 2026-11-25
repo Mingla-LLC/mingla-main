@@ -45,6 +45,12 @@ interface MinglaToSAcceptanceGateProps {
   /** Fired when acceptance succeeds OR if already-accepted on mount */
   onPassed: () => void;
   /**
+   * N135 (#4490): when given, Escape and a tap outside close the sheet (the
+   * publish door: the host can back out without accepting). Absent, the sheet
+   * stays non-dismissible (payout onboarding).
+   */
+  onDismiss?: () => void;
+  /**
    * Optional context line under the title (defaults to a rail-neutral prompt).
    * Keep free of payout lies — #1180 scans this file.
    */
@@ -77,6 +83,7 @@ export function MinglaToSAcceptanceGate({
   onPassed,
   subtitle = "A quick read before you sell or connect payouts.",
   onShown,
+  onDismiss,
 }: MinglaToSAcceptanceGateProps): React.ReactElement | null {
   const acceptanceQuery = useMinglaToSAcceptance(brandId, userId);
   const acceptMutation = useAcceptMinglaToS();
@@ -116,7 +123,7 @@ export function MinglaToSAcceptanceGate({
 
   if (acceptanceQuery.isError) {
     return (
-      <Sheet visible onClose={() => undefined}>
+      <Sheet visible onClose={onDismiss ?? ((): void => undefined)}>
         <ScrollView style={styles.scrollArea} contentContainerStyle={styles.body} testID="tos-gate-error-scroll">
           <Text style={styles.title}>Couldn{"'"}t load Organiser Terms</Text>
           <Text style={styles.bodyText}>
@@ -139,7 +146,7 @@ export function MinglaToSAcceptanceGate({
   }
 
   return (
-    <Sheet visible onClose={() => undefined}>
+    <Sheet visible onClose={onDismiss ?? ((): void => undefined)}>
       <View style={styles.body}>
         {/* #4389 — everything but the agree row and the CTA scrolls, so at a
             large text size on a small phone the CTA stays inside the sheet. */}

@@ -256,7 +256,8 @@ const assertFullSlotContract = (root: TestInstance, time: string): void => {
   expect(chipStyle.backgroundColor).toBe(PALETTE.card);
   expect(chipStyle.backgroundColor).not.toBe(PALETTE.primaryText);
   expect(chipStyle.borderColor).toBe(PALETTE.panelBorder);
-  expect(chipStyle.minHeight).toBe(42);
+  // TEST-MOD-APPROVED #4490 P3-3: the shared chip meets the 44 px touch floor (was 42).
+  expect(chipStyle.minHeight).toBe(44);
   expect(chipStyle.justifyContent).toBe("center");
   expect(chipStyle.borderWidth).toBe(1);
   expect(chipStyle.paddingHorizontal).toBe(16);

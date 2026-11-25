@@ -26,6 +26,8 @@
 // discriminates the real flip ('finalized') from a webhook replay ('replayed'),
 // so a retried delivery cannot re-ring the pass.
 import { fireVenueOrderPlacedForOrder } from "./venueOrderNotify.ts";
+import { tillChannelFromPaystack } from "./venueTillCard.ts";
+import { isMissingTillPaymentColumn } from "./tillMigrationCompat.ts";
 
 type ServiceClient = any;
 
@@ -219,11 +221,21 @@ export async function handleVenueOrderPaystackCharge(
   reference: string,
   verified: Record<string, unknown>,
 ): Promise<VenueOrderFinalizeResult> {
-  const { data: order, error: lookupError } = await client
-    .from("venue_orders")
-    .select("id, brand_id")
-    .eq("paystack_reference", reference)
-    .maybeSingle();
+  const lookup = (columns: string) =>
+    client
+      .from("venue_orders")
+      .select(columns)
+      .eq("paystack_reference", reference)
+      .maybeSingle();
+  let { data: order, error: lookupError } = await lookup(
+    "id, brand_id, till_payment_id, metadata",
+  );
+  // [TRANSITIONAL] #4490 O2-T5: before the #4490 migrations reach production
+  // there is no till_payment_id; a guest order is then never a Till carrier.
+  // Exit: the migrations applied in production (see tillMigrationCompat.ts).
+  if (lookupError && isMissingTillPaymentColumn(lookupError)) {
+    ({ data: order, error: lookupError } = await lookup("id, brand_id"));
+  }
   if (lookupError) {
     throw new Error(`venue_order_paystack_lookup_failed: ${lookupError.message}`);
   }
@@ -237,6 +249,19 @@ export async function handleVenueOrderPaystackCharge(
   const fees = feesRaw === null || feesRaw === undefined ? null : Number(feesRaw);
   if (!Number.isSafeInteger(amount) || !/^[A-Z]{3}$/.test(currency)) {
     throw new Error("venue_order_provider_evidence_invalid");
+  }
+
+  // #4490 spec 08 O2: a Till carrier keeps the verified channel (a bank
+  // transfer confirms itself through charge.success) so the finalizer can
+  // write it on the Till payment ("Paid by bank transfer").
+  if (typeof order.till_payment_id === "string") {
+    const channel = tillChannelFromPaystack(verified.channel);
+    if (channel !== null) {
+      const metadata = (order.metadata ?? {}) as Record<string, unknown>;
+      await client.from("venue_orders")
+        .update({ metadata: { ...metadata, provider_channel: channel } })
+        .eq("id", order.id);
+    }
   }
 
   const { data, error } = await client.rpc("pg_venue_order_finalize_payment", {
@@ -268,4 +293,89 @@ export async function handleVenueOrderPaystackCharge(
     orderId: order.id,
     brandId: typeof order.brand_id === "string" ? order.brand_id : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// N140 (#4490) — confirm a Paystack venue order ON RETURN.
+//
+// A menu order used to be confirmed only by the webhook: a guest back from a
+// successful payment saw "Payment isn't finished" and was invited to pay
+// again until the webhook landed (never, locally). On return the status read
+// verifies the transaction by reference (the same verify the webhook uses)
+// and, on success, finalizes through the SAME handleVenueOrderPaystackCharge /
+// pg_venue_order_finalize_payment path: same amount and currency gate, and
+// idempotent with the webhook (FOR UPDATE + early return), so a return racing
+// the webhook pays the order once.
+// ---------------------------------------------------------------------------
+
+/** What the guest is told while an order is unpaid after a payment start. */
+export type VenueOrderReturnCheck = "confirmed" | "in_progress" | "not_paid";
+
+/** Paystack's verify status, in the three words the order page needs. */
+export function venueOrderReturnCheckFor(verifyStatus: string): VenueOrderReturnCheck {
+  const s = verifyStatus.toLowerCase();
+  if (s === "success") return "confirmed";
+  if (s === "failed" || s === "abandoned" || s === "reversed") return "not_paid";
+  return "in_progress";
+}
+
+export async function confirmVenueOrderPaystackOnReturn(
+  client: ServiceClient,
+  reference: string,
+  verify: (reference: string) => Promise<Record<string, unknown>>,
+): Promise<VenueOrderReturnCheck> {
+  const txn = await verify(reference);
+  const check = venueOrderReturnCheckFor(String(txn?.status ?? ""));
+  if (check !== "confirmed") return check;
+  const outcome = await handleVenueOrderPaystackCharge(client, reference, txn);
+  // A mismatch is never "paid": the order stays pending for staff review.
+  return outcome.matched && (outcome.status === "finalized" || outcome.status === "replayed")
+    ? "confirmed"
+    : "in_progress";
+}
+
+/** N143 — how long a "still confirming" answer is reused before asking Paystack again. */
+export const VENUE_ORDER_RETURN_CHECK_TTL_MS = 30_000;
+
+/**
+ * N143 (#4490) — the stored answer to reuse instead of calling Paystack, or
+ * null to call. A "not_paid" (declined / abandoned) answer for this reference
+ * is final until the guest starts a new payment (a new reference); an
+ * "in_progress" answer is reused for 30 s.
+ */
+/**
+ * N143 / N144 (#4490) — what one status read does about Paystack. A guest
+ * reopening the payment ("Try again") reuses the order's reference, so the
+ * remembered answer is forgotten and Paystack is not asked until they return;
+ * otherwise a remembered answer is reused and only a missing one is verified.
+ */
+export function venueOrderReturnCheckPlan(
+  stored: unknown,
+  reference: string,
+  nowMs: number,
+  reopening: boolean,
+): { verify: boolean; forget: boolean; answer: VenueOrderReturnCheck | null } {
+  if (reopening) {
+    return { verify: false, forget: stored !== undefined && stored !== null, answer: "in_progress" };
+  }
+  const cached = venueOrderCachedReturnCheck(stored, reference, nowMs);
+  return cached !== null
+    ? { verify: false, forget: false, answer: cached }
+    : { verify: true, forget: false, answer: null };
+}
+
+export function venueOrderCachedReturnCheck(
+  stored: unknown,
+  reference: string,
+  nowMs: number,
+): VenueOrderReturnCheck | null {
+  if (stored === null || typeof stored !== "object") return null;
+  const s = stored as Record<string, unknown>;
+  if (s.reference !== reference) return null;
+  if (s.result === "not_paid") return "not_paid";
+  const at = typeof s.at === "string" ? Date.parse(s.at) : NaN;
+  if (s.result === "in_progress" && Number.isFinite(at) && nowMs - at < VENUE_ORDER_RETURN_CHECK_TTL_MS) {
+    return "in_progress";
+  }
+  return null;
 }

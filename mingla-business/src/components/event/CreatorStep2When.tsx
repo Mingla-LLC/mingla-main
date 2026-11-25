@@ -108,6 +108,7 @@ import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
 import { DateField } from "../ui/DateField";
+import { TimeField } from "../ui/TimeField";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 import { CreatorStep2WhenRepeatPickerSheet } from "./CreatorStep2WhenRepeatPickerSheet";
@@ -1021,10 +1022,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>{opensLabel}</Text>
               {Platform.OS === "web" ? (
-                <WebDateTimeInput
-                  type="time"
+                // N136: the shared 24-hour TimeField, not a native time input.
+                <TimeField
+                  label=""
                   value={draft.doorsOpen ?? ""}
-                  ariaLabel="Pick door-open time"
+                  accessibilityLabel="Pick door-open time"
                   hasError={doorsError !== undefined}
                   testID="creator-when-doors-web"
                   onChangeValue={(v) => {
@@ -1063,10 +1065,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>Ends</Text>
               {Platform.OS === "web" ? (
-                <WebDateTimeInput
-                  type="time"
+                <TimeField
+                  label=""
                   value={draft.endsAt ?? ""}
-                  ariaLabel="Pick end time"
+                  accessibilityLabel="Pick end time"
                   hasError={endsError !== undefined}
                   testID="creator-when-ends-web"
                   onChangeValue={(v) => {

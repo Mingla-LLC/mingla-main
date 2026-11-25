@@ -449,6 +449,9 @@ module.exports = ({ config }) => {
       // `:modular_headers => true` for those 3 pods before resolution so every iOS
       // EAS build clears the Install pods phase. Compile-time only; no runtime change.
       "./plugins/withGooglePodsModularHeaders",
+      // #4490 O3B: iPad gets all four orientations, iPhone stays portrait
+      // (app.json orientation is "default" so tablets can rotate).
+      "./plugins/withFloorOrientations",
     ],
     extra: {
       ...config.extra,

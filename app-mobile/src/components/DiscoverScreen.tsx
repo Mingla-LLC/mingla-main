@@ -10,7 +10,7 @@ import { DiscoverCard } from "./discover/DiscoverCard";
 import { DiscoverEmptyState } from "./discover/DiscoverEmptyState";
 import { DiscoverGridSkeleton } from "./discover/DiscoverGridSkeleton";
 import { DiscoverHeader } from "./discover/DiscoverHeader";
-import { discoverLoadState } from "./discover/discoverLoadState";
+import { discoverLoadState, discoverPillKinds } from "./discover/discoverLoadState";
 import { canonicalDiscoverCardPath } from "./discover/discoverCardRoute";
 import { DISCOVER_GRID_GAP, DISCOVER_GRID_SIDE_PADDING, discoverGridCellWidth } from "./discover/discoverGridLayout";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -45,6 +45,9 @@ import type { ExpansionTarget } from "../types/expansion";
 import type { UserPreferences } from "../types/preferences";
 import { asRememberedDiscoverCity, deviceCityStillValid, discoverAnchorReady, discoverCityFromPreferences, discoverQueryAnchorKey, reconcileDiscoverCity, sameDiscoverAnchorCity, type DiscoverCitySource, type RememberedDiscoverCity } from "../utils/discoverEventsCache";
 import { dedupeDiscoverFeedCards } from "../utils/discoverFeedDedupe";
+import { discoverVenueAnalytics, discoverVenueCardModel, withVenueLeadTab } from "./discover/discoverVenueCard";
+import { venueTypeLabel } from "@mingla/brand-rendering/venueTypeLabels";
+import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
 
 interface DiscoverScreenProps {
   isTabVisible?: boolean;
@@ -60,6 +63,8 @@ interface DiscoverScreenProps {
 }
 
 const SEARCH_RADIUS_KM = 50;
+/** #4490 Explorer W6a: the kinds the Discover coach copy describes (Venues is not one). */
+const COACH_KIND_COUNT = DISCOVER_KIND_ORDER.filter((kind) => kind !== "venues").length;
 const PREFERENCES_GATE_MAX_WAIT_MS = 1_500;
 // Same freshness as useUserPreferences: a Discover revisit inside a minute
 // reuses the cached preferences row instead of reading it again.
@@ -76,7 +81,7 @@ function anchorKeyFor(city: DiscoverCity): string {
 function entityType(card: Extract<DiscoverCardV2, { source: "mingla" }>) {
   if (card.kind === "trip") return "trip" as const;
   if (card.kind === "experience") return "experience" as const;
-  if (card.kind === "stay") return "venue" as const;
+  if (card.kind === "stay" || card.kind === "venue") return "venue" as const;
   return "event" as const;
 }
 
@@ -315,7 +320,13 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   // ORCH-0839-A F-4: Discover stays server-authoritative. The V2 query hook
   // owns freshness; there is deliberately no local skipCache short-circuit.
   const feed = useDiscoverFeed(anchorKey, activeAnchor, appliedFilters);
-  const visibleKinds = useMemo(() => DISCOVER_KIND_ORDER.filter((kind) => (facets.data?.kinds[kind].total ?? 0) > 0), [facets.data?.kinds]);
+  // #4490 W6 fix 2 (W6-D2): a failed facets read keeps the city's last pills.
+  const lastKindsRef = useRef<{ anchorKey: string; kinds: NonNullable<typeof facets.data>["kinds"] } | null>(null);
+  useEffect(() => {
+    if (facets.data && !facets.isPlaceholderData) lastKindsRef.current = { anchorKey, kinds: facets.data.kinds };
+  }, [anchorKey, facets.data, facets.isPlaceholderData]);
+  const pillKinds = discoverPillKinds(facets.data?.kinds, lastKindsRef.current, anchorKey);
+  const visibleKinds = useMemo(() => DISCOVER_KIND_ORDER.filter((kind) => (pillKinds?.[kind]?.total ?? 0) > 0), [pillKinds]);
   const cityWatch = useDiscoverCityWatch({ cityKey: facets.data?.city.key ?? null, userId: user?.id ?? null, anchor: activeAnchor, label: facets.data?.city.label ?? city?.name ?? null });
 
   useEffect(() => {
@@ -345,11 +356,14 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }, [coachPills.isActive, facets.data, facets.error, facets.isLoading, skipCoachStep, visibleKinds.length]);
 
   useEffect(() => {
-    if (visibleKinds.length < 2 || visibleKinds.length === DISCOVER_KIND_ORDER.length) {
+    // #4490 Explorer W6a: the coach step names the four original kinds only
+    // (its copy predates Venues), so its choice is exactly as before.
+    const coachKinds = visibleKinds.filter((kind) => kind !== "venues");
+    if (coachKinds.length < 2 || coachKinds.length === COACH_KIND_COUNT) {
       setStepCopyOverride(4, null);
       return;
     }
-    const names = visibleKinds.map((kind) => t(`pill.${kind}`, kind));
+    const names = coachKinds.map((kind) => t(`pill.${kind}`, kind));
     const list = names.length === 2
       ? t("modals:coach.list_two", { a: names[0], b: names[1] })
       : t("modals:coach.list_three", { a: names[0], b: names[1], c: names[2] });
@@ -366,7 +380,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   );
   const savedIds = useMemo(() => new Set((saved.data ?? []).map((item) => item.id)), [saved.data]);
   const selectionCount = discoverFilterSelectionCount(appliedFilters);
-  const selectedLabels = selectedDiscoverFilterLabels(appliedFilters, facets.data?.groups ?? []);
+  const selectedLabels = selectedDiscoverFilterLabels(appliedFilters, facets.data?.groups ?? [], (groupId, optionId) => (groupId === "venueType" ? venueTypeLabel(optionId) : null));
   const filterLabel = selectedLabels.length > 0 ? t("filters.button_selected", { summary: selectedLabels.slice(0, 2).join(" · ") }) : t("filters.button", "Filters");
   const total = facets.data?.selected.total ?? 0;
   const loadState = discoverLoadState({
@@ -377,15 +391,18 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     feedFailed: Boolean(feed.error),
     visibleKindCount: visibleKinds.length,
     itemCount: items.length,
+    facetsStale: facets.isPlaceholderData,
   });
   const countLabel = loadState.countPending
+    ? ""
+    : facets.error
     ? ""
     : visibleKinds.length === 0
     ? t("count.nothing", "Nothing yet")
     : discoverCountIsCapped(facets.data?.selected.tm ?? null)
       ? t("count.capped", { count: total, defaultValue: `${total}+` })
       : t(`count.${selectedKind}`, { count: total, defaultValue: `${total}` });
-  const kindLabels: Record<DiscoverKind, string> = { events: t("pill.events", "Events"), experiences: t("pill.experiences", "Experiences"), trips: t("pill.trips", "Trips"), stays: t("pill.stays", "Stays") };
+  const kindLabels: Record<DiscoverKind, string> = { events: t("pill.events", "Events"), experiences: t("pill.experiences", "Experiences"), trips: t("pill.trips", "Trips"), stays: t("pill.stays", "Stays"), venues: t("pill.venues", "Venues") };
 
   const switchKind = useCallback((kind: DiscoverKind) => {
     if (kind === selectedKind) return;
@@ -456,12 +473,27 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       setExpansionTarget({ kind: "nightOut", data: expanded });
       return;
     }
-    const path = canonicalDiscoverCardPath(card);
+    const plainPath = canonicalDiscoverCardPath(card);
+    // #4490 Explorer W6a: a venue card opens its page on the lead offer's tab.
+    const path = plainPath === null ? null : withVenueLeadTab(card, plainPath);
     if (!path) {
       toastManager.show(t("error.open", "Couldn't open that page. Pull down to refresh and try again."), "error");
       return;
     }
     void captureConsumerOfferingEngagement({ brandId: card.brand.id, entityType: entityType(card), entityId: card.id }, "app_open");
+    // #4490 Explorer W6a: a venue card is a tap toward booking.
+    const venue = discoverVenueCardModel(card, new Date());
+    if (venue !== null) {
+      captureVenueTappedToBook({
+        venueId: venue.facts.venueId,
+        tab: venue.leadTab,
+        offerKind: venue.offerKind,
+        source: "discover",
+        positionInDeck: null,
+        isHostedVenue: venue.facts.isBookable,
+        mode: "solo",
+      });
+    }
     router.push(path as never);
   }, [router, t]);
 
@@ -492,7 +524,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       if (now - since < 1_000) continue;
       viewedRef.current.add(key);
       visibleSinceRef.current.delete(key);
-      mixpanelService.track("discover_card_viewed", { kind: layout.card.kind });
+      mixpanelService.track("discover_card_viewed", { kind: layout.card.kind, ...discoverVenueAnalytics(layout.card, new Date(now)) });
       if (layout.card.source === "mingla") {
         void captureConsumerOfferingEngagement({
           brandId: layout.card.brand.id,
@@ -587,15 +619,17 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       <DiscoverHeader ref={pillRowRef} title={t("title", "Discover")} cityUnsetLabel={t("city.set", "Set city")} cityLabel={city?.name ?? null} cityA11y={city ? t("city.a11y", { city: city.name }) : t("city.a11y_unset", "Set your city for Discover")} visibleKinds={visibleKinds} selectedKind={selectedKind} kindLabels={kindLabels} resultLabel={countLabel} filterLabel={filterLabel} filterCount={selectionCount} filterOpen={filterOpen} filterDisabled={Boolean(cityEmpty)} onCityPress={() => setCityPickerOpen(true)} onKindSelect={switchKind} onFilterPress={() => { setFilterOpen((open) => !open); }} pillTargetRef={coachPills.targetRef} filterTargetRef={coachFilters.targetRef} />
       <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={refresh} tintColor="#eb7825" title={isPullRefreshing ? t("loading.refreshing", "Refreshing events…") : undefined} titleColor="rgba(255,255,255,.72)" colors={["#eb7825"]} progressBackgroundColor="#1b1e24" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
         {loadState.showSkeleton ? <DiscoverGridSkeleton /> : null}
-        {facets.error || feed.error ? <DiscoverEmptyState mode="filters" title={t("error.title", "Something went wrong")} body={t("error.subtitle", "Pull down to retry, or check your connection.")} primaryLabel={t("error.retry", "Retry")} onPrimary={refresh} /> : null}
+        {facets.error || feed.error ? <DiscoverEmptyState mode="filters" title={selectedKind === "venues" ? t("venues.error_title", "We could not load venues.") : t("error.title", "Something went wrong")} body={t("error.subtitle", "Pull down to retry, or check your connection.")} primaryLabel={selectedKind === "venues" ? t("venues.error_retry", "Try again") : t("error.retry", "Retry")} onPrimary={refresh} /> : null}
         {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={onNearestCity} /> : null}
-        {filteredEmpty ? <DiscoverEmptyState mode="filters" title={t("empty.filtered_title_generic", "Nothing matches those filters")} body={t("empty.filtered_body", "Here's what is on instead.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
+        {filteredEmpty && selectedKind === "venues" && selectionCount === 0 ? <DiscoverEmptyState mode="filters" title={t("venues.empty_title", "No venues to book here yet.")} body={t("venues.empty_body", "Venues you can book on Mingla will show up here.")} primaryLabel={t("error.retry", "Retry")} onPrimary={refresh} /> : null}
+        {filteredEmpty && selectedKind === "venues" && selectionCount > 0 ? <DiscoverEmptyState mode="filters" title={t("venues.filtered_title", "No venues match those filters.")} body={t("empty.no_match_subtitle", "Adjust filters or reset to see more.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
+        {filteredEmpty && selectedKind !== "venues" ? <DiscoverEmptyState mode="filters" title={t("empty.filtered_title_generic", "Nothing matches those filters")} body={t("empty.filtered_body", "Here's what is on instead.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
         {items.length > 0 ? <>
           <View style={styles.grid} onLayout={(event) => { gridTopRef.current = event.nativeEvent.layout.y; evaluateViewability(); }}>
             {items.map((card) => {
               const key = `${card.source}:${card.id}`;
               return <View key={key} style={[styles.gridCell, { width: gridCellWidth }]} onLayout={(event) => { cardLayoutsRef.current.set(key, { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height, card }); evaluateViewability(); }}>
-                <DiscoverCard card={card} saved={savedIds.has(card.id)} onPress={() => { mixpanelService.track("discover_card_opened", { kind: card.kind }); openCard(card); }} onSave={() => { void toggleSave(card); }} />
+                <DiscoverCard card={card} saved={savedIds.has(card.id)} onPress={() => { mixpanelService.track("discover_card_opened", { kind: card.kind, ...discoverVenueAnalytics(card, new Date()) }); openCard(card); }} onSave={() => { void toggleSave(card); }} />
               </View>;
             })}
           </View>

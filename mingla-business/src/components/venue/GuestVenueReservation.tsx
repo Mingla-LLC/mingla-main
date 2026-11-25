@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { loadVenueGuestScreens } from "./guest/venueGuestOwner";
 import {
   QueryClient,
   QueryClientProvider,
@@ -72,6 +73,36 @@ import {
   OfferingStepper,
 } from "@mingla/offering-rendering/OfferingDecideParts";
 import { OfferingSubLabel } from "@mingla/offering-rendering/OfferingSectionTitle";
+import type { VenueFeatureTablesView } from "@mingla/brand-rendering/venueFeaturePage";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueMoney";
+import {
+  confirmGuestVenueReservation,
+} from "../../services/venueGuestReservationService";
+import type { GuestTableOption } from "../../services/venueTableGuestService";
+// #4490 P5 — the seat map and the waitlist form load only when a guest opens them.
+// Both come from the ONE Guest venue owner (guest/venueGuestOwner.ts).
+const VenueFloorPick = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).VenueFloorPick,
+}));
+const GuestWaitlistForm = React.lazy(async () => ({
+  default: (await loadVenueGuestScreens()).GuestWaitlistForm,
+}));
+const optionKey = (o: Pick<GuestTableOption, "tableIds">): string => [...o.tableIds].sort().join("+");
+import {
+  clearPending,
+  readPendingForVenue,
+  savePending,
+  type PendingTableBooking,
+} from "./offers/tablePendingReturn";
+import {
+  isBigParty,
+  optionTitle,
+  partyDetail,
+  partyRange,
+  pickMoneyLines,
+  tableGuestErrorCopy,
+  windowChoices,
+} from "./offers/tablePickModel";
 
 const DiscountReasonText = React.lazy(() =>
   import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
@@ -123,8 +154,30 @@ interface GuestVenueReservationProps {
    * the host preview) the form keeps its own in-body button.
    */
   onReservationBarChange?: (bar: PublicVenueReservationBar | null) => void;
+  /**
+   * #4490 P5 — the venue's tables block (party cap, pick a table, seating
+   * areas, big-party request, guest waitlist). Absent = today's flow, up to 12.
+   */
+  tables?: VenueFeatureTablesView | null;
+  /** #4490 P5 — for the floor's room shapes and the page the guest returns to. */
+  brandSlug?: string | null;
+  venueSlug?: string | null;
+  venueName?: string | null;
 }
 const INVALID_PHONE_COPY = "Enter a valid phone number.";
+
+/**
+ * #4490 fix 2 (N56) — the guest's private manage page for a free table
+ * booking: the id and token ride in the fragment (never sent to a server).
+ */
+export function guestReservationManageHref(
+  brandId: string,
+  reservationId: string | null | undefined,
+  token: string | null,
+): string | null {
+  if (typeof reservationId !== "string" || reservationId.length === 0 || token === null || token.length === 0) return null;
+  return `/reserve/${encodeURIComponent(brandId)}/manage#reservationId=${encodeURIComponent(reservationId)}&token=${encodeURIComponent(token)}`;
+}
 const INVALID_NAME_COPY = "Enter your name.";
 const INVALID_EMAIL_COPY = "Enter a valid email address.";
 const RESERVATION_FAILURE_COPY =
@@ -234,7 +287,28 @@ function GuestVenueReservationBody({
   initialTime = null,
   initialPartySize = null,
   onReservationBarChange,
+  tables = null,
+  brandSlug = null,
+  venueSlug = null,
+  venueName = null,
 }: GuestVenueReservationProps): React.ReactElement {
+  // #4490 P5 — the party cap is the venue's own (no more 12); above the
+  // largest table or joined pair the booking becomes a request.
+  const range = useMemo(() => partyRange(tables), [tables]);
+  const seatingAreas = tables?.seatingAreas ?? [];
+  const pickOn = tables?.pickATable === true;
+  const showSeating = seatingAreas.length > 1 || pickOn;
+  const [seat, setSeat] = useState<string>("any");
+  const [picked, setPicked] = useState<GuestTableOption | null>(null);
+  const [waitlistMode, setWaitlistMode] = useState<"tonight" | "notify" | null>(null);
+  const [bigTimeUtc, setBigTimeUtc] = useState<string | null>(null);
+  const [requested, setRequested] = useState(false);
+  const [pendingReturn, setPendingReturn] = useState<PendingTableBooking | null>(null);
+  const [pendingState, setPendingState] = useState<"idle" | "checking" | "pending" | "error">("idle");
+  const [completedTable, setCompletedTable] = useState<PendingTableBooking | null>(null);
+  useEffect(() => {
+    setPendingReturn(readPendingForVenue(venueId));
+  }, [venueId]);
   const dates = useMemo(dateOptions, []);
   // issue #4420 wave 2 (D-V3) — with the page's bar, the booking walks two
   // steps: pick (date, party, time, occasion), then your details.
@@ -276,7 +350,9 @@ function GuestVenueReservationBody({
     }),
     [palette],
   );
-  const [partySize, setPartySize] = useState(initialPartySize ?? 2);
+  const [partySize, setPartySize] = useState(Math.min(initialPartySize ?? 2, partyRange(tables).max));
+  const big = isBigParty(partySize, range);
+  const seatSpaceId = seat !== "any" && seat !== "pick" ? seat : null;
   const [date, setDate] = useState<string | null>(
     (initialDate && dates.some((option) => option.value === initialDate) ? initialDate : null) ?? dates[0]?.value ?? null,
   );
@@ -312,9 +388,16 @@ function GuestVenueReservationBody({
     phoneLast4: string | null;
     shortUrl: string | null;
     code: string | null;
+    /** #4490 fix 2 (N56): the guest's private manage page (web, free bookings). */
+    manageHref?: string | null;
   } | null>(null);
 
-  const availability = usePublicVenueAvailability(venueId, date, partySize);
+  const availability = usePublicVenueAvailability(
+    venueId,
+    date,
+    big ? range.tableMax : partySize,
+    seatSpaceId,
+  );
   const slots = availability.data ?? [];
   // #4453 milestone 5 — the site's chosen time, selected ONCE, and only while
   // Mingla's own slots show it open (a full or missing time is simply not picked).
@@ -335,16 +418,43 @@ function GuestVenueReservationBody({
     (slot) => slot.slotStartUtc === selectedUtc,
   );
   const selectedSlot =
-    !availability.isError && currentSelectedSlot?.isFull === false
+    !availability.isError && currentSelectedSlot?.isFull === false && !big
       ? currentSelectedSlot
-      : undefined;
+      : big && bigTimeUtc !== null
+        ? slots.find((slot) => slot.slotStartUtc === bigTimeUtc)
+        : undefined;
+  // #4490 P5 — the table map for the chosen time ("Pick my table").
+  const tablesQuery = useQuery({
+    queryKey: ["guestVenueTables", venueId, date, partySize, selectedSlot?.slotStartUtc ?? null],
+    enabled: seat === "pick" && !big && selectedSlot !== undefined && date !== null,
+    staleTime: 10_000,
+    queryFn: async () =>
+      (await loadVenueGuestScreens()).fetchGuestTables({
+        venueId,
+        date: date ?? "",
+        partySize,
+        slotStartUtc: selectedSlot?.slotStartUtc ?? "",
+        spaceId: null,
+      }),
+  });
+  const plansQuery = useQuery({
+    queryKey: ["guestVenueSpacePlans", brandSlug, venueSlug],
+    enabled: seat === "pick" && brandSlug !== null && venueSlug !== null,
+    staleTime: 60_000,
+    queryFn: async () =>
+      (await loadVenueGuestScreens()).fetchGuestSpacePlans({ brandSlug: brandSlug ?? "", venueSlug: venueSlug ?? "" }),
+  });
+  const pickedLive =
+    picked === null ? null : (tablesQuery.data ?? []).find((o) => optionKey(o) === optionKey(picked)) ?? null;
+  const pickReady = seat !== "pick" || big || (pickedLive !== null && pickedLive.status === "free");
+  const moneyLines = pickMoneyLines(pickedLive, partySize, (m) => formatVenueMoney(m, currency ?? "NGN", 2));
   const submissionTruthRef = useRef<{
     canSubmit: boolean;
     reservedForUtc: string | null;
     selectableSlotUtcValues: readonly string[];
   }>({ canSubmit: false, reservedForUtc: null, selectableSlotUtcValues: [] });
   submissionTruthRef.current = {
-    canSubmit: availabilitySettled && selectedSlot !== undefined && !submitting,
+    canSubmit: availabilitySettled && selectedSlot !== undefined && !submitting && pickReady,
     reservedForUtc: selectedSlot?.slotStartUtc ?? null,
     selectableSlotUtcValues: availabilitySettled
       ? slots.filter((slot) => !slot.isFull).map((slot) => slot.slotStartUtc)
@@ -378,7 +488,8 @@ function GuestVenueReservationBody({
   const contactInvalid = nameInvalid || emailInvalid;
 
   const previewEnabled =
-    selectedSlot !== undefined && !contactInvalid && normalizedPhone !== null;
+    selectedSlot !== undefined && !contactInvalid && normalizedPhone !== null && !big && pickReady;
+  const pickedIds = seat === "pick" && pickedLive !== null ? pickedLive.tableIds : null;
   const reservationPreview = useQuery({
     queryKey: [
       "venueReservationPreview",
@@ -389,6 +500,8 @@ function GuestVenueReservationBody({
       normalizedEmail,
       normalizedPhone,
       discountCode,
+      pickedIds?.join("+") ?? null,
+      seatSpaceId,
     ],
     enabled: previewEnabled,
     queryFn: () =>
@@ -407,6 +520,8 @@ function GuestVenueReservationBody({
         occasion: occasion.trim() || null,
         guestNotes: notes.trim() || null,
         discountCode,
+        tableIds: pickedIds,
+        spaceId: seatSpaceId,
       }),
     retry: false,
   });
@@ -465,6 +580,10 @@ function GuestVenueReservationBody({
   ]);
 
   useEffect(() => {
+    setPicked(null);
+  }, [date, partySize, selectedUtc, bigTimeUtc]);
+
+  useEffect(() => {
     if (phoneCountryChosen.current) return;
     setPhoneCountry(phoneStartCountry(countryCode, currency));
   }, [countryCode, currency]);
@@ -518,6 +637,38 @@ function GuestVenueReservationBody({
       currency,
     });
     try {
+      // #4490 P5 — a party bigger than any table sends a request: nothing to pay.
+      if (big) {
+        const requestResult = await createGuestVenueReservation({
+          venueId,
+          brandId,
+          reservedForUtc: submissionTruth.reservedForUtc,
+          partySize,
+          buyer: {
+            name: normalizedName,
+            email: normalizedEmail,
+            phone: normalizedPhone,
+            phoneCountryIso: phoneCountry,
+            marketingOptIn,
+          },
+          occasion: occasion.trim() || null,
+          guestNotes: notes.trim() || null,
+          attributionClickId: getStoredClickAttribution().clickId,
+          organicJourneyToken: getVenueOrganicJourneyToken({ brandId, venueId }),
+          requestLargeParty: true,
+        });
+        if (requestResult.kind === "free_completed") {
+          setRequested(true);
+          setCompleted({
+            email: requestResult.buyerContact?.email ?? null,
+            phoneLast4: requestResult.buyerContact?.phoneLast4 ?? null,
+            shortUrl: requestResult.claim?.shortUrl ?? null,
+            code: requestResult.claim?.code ?? null,
+          });
+          return;
+        }
+        throw new Error("large_party_failed");
+      }
       let checkoutPreview = activePreview;
       if (checkoutPreview === null) {
         const refreshedPreview = await reservationPreview.refetch();
@@ -547,6 +698,8 @@ function GuestVenueReservationBody({
         organicJourneyToken: getVenueOrganicJourneyToken({ brandId, venueId }),
         discountCode,
         quoteDigest: checkoutPreview.quoteDigest,
+        tableIds: pickedIds,
+        spaceId: seatSpaceId,
       });
       if (result.kind === "free_completed") {
         setCompleted({
@@ -554,6 +707,7 @@ function GuestVenueReservationBody({
           phoneLast4: result.buyerContact?.phoneLast4 ?? null,
           shortUrl: result.claim?.shortUrl ?? null,
           code: result.claim?.code ?? null,
+          manageHref: guestReservationManageHref(brandId, result.reservationId, result.guestCancelToken ?? null),
         });
         captureWeb("venue_reservation_completed", {
           surface: analyticsSurface,
@@ -571,6 +725,30 @@ function GuestVenueReservationBody({
       if (redirect === null || redirect.length === 0) {
         throw new Error("The payment page could not open. Try again.");
       }
+      // #4490 P5 — remember the booking on this device, so the guest can
+      // finish it from the venue page whatever the payment page returns to.
+      savePending({
+        reservationDraftId: result.reservationDraftId,
+        buyerStatusToken: result.buyerStatusToken,
+        brandId,
+        venueId,
+        venuePath: brandSlug !== null && venueSlug !== null ? `/b/${brandSlug}/v/${venueSlug}?tab=reservations` : null,
+        venueName,
+        summary: [
+          pickedLive !== null ? optionTitle(pickedLive) : null,
+          date !== null ? venueBarDayLabel(date) : null,
+          selectedSlot?.slotLocalLabel ?? null,
+          `${partySize} ${partySize === 1 ? "guest" : "guests"}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        holdLine:
+          moneyLines.holdTotal !== null
+            ? `${moneyLines.holdTotal}. Comes off your bill.`
+            : null,
+        minSpendLine: moneyLines.minSpend,
+        savedAt: Date.now(),
+      });
       setHandoff({ url: redirect });
     } catch (caught) {
       if (caught instanceof GuestReservationReviewError) {
@@ -597,9 +775,17 @@ function GuestVenueReservationBody({
       } else {
         // #3387 — a refusal the guest can act on gets its own sentence.
         // prettier-ignore -- #3393 source contract audits this exact refusal owner.
+        // #4490 P5 — a table refusal has its own words (and refreshes the map).
+        const tableCopy = tableGuestErrorCopy(errorCode);
+        if (tableCopy !== null) {
+          setError(tableCopy);
+          setPicked(null);
+          void tablesQuery.refetch();
+        } else {
         setError(
           guestReservationFailureCopy(errorCode) ?? RESERVATION_FAILURE_COPY,
         );
+        }
       }
       captureWeb("venue_reservation_failed", {
         surface: analyticsSurface,
@@ -612,6 +798,10 @@ function GuestVenueReservationBody({
     }
   };
 
+  const previewTotalLabel =
+    activePreview?.requiresPayment === true
+      ? formatMoney(activePreview.totalCents, activePreview.currency)
+      : null;
   // ── #4420 D-V3 — report the live bar to the page (Reservations tab). ──
   const barStep: "pick" | "details" =
     step === "details" && selectedSlot !== undefined ? "details" : "pick";
@@ -622,17 +812,21 @@ function GuestVenueReservationBody({
     partySize,
     occasion,
     noTables: availabilitySettled && slots.length === 0,
-    totalLabel:
-      activePreview?.requiresPayment === true
-        ? formatMoney(activePreview.totalCents, activePreview.currency)
-        : null,
+    totalLabel: previewTotalLabel,
     requiresPayment: activePreview?.requiresPayment ?? null,
     reviewing: reviewQuote !== null,
   });
   const barEnabled =
     barStep === "details"
       ? !submitting && !contactInvalid && availabilitySettled
-      : availabilitySettled && selectedSlot !== undefined;
+      : availabilitySettled && selectedSlot !== undefined && pickReady;
+  // #4490 P5 — a big party sends a request; a picked table names itself.
+  const barCta = big && barStep === "details" ? "Send request" : barCopy.ctaLabel;
+  const barSubtitle = big
+    ? `${partySize} guests · large party request · nothing to pay now`
+    : pickedLive !== null && barStep === "pick"
+      ? `${partySize} ${partySize === 1 ? "guest" : "guests"} · ${optionTitle(pickedLive)}`
+      : barCopy.subtitle;
   const barActionRef = useRef<() => void>(() => undefined);
   barActionRef.current =
     barStep === "details"
@@ -648,8 +842,8 @@ function GuestVenueReservationBody({
         ? null
         : {
             title: barCopy.title,
-            subtitle: barCopy.subtitle,
-            ctaLabel: barCopy.ctaLabel,
+            subtitle: barSubtitle,
+            ctaLabel: barCta,
             enabled: barEnabled,
             onPress: () => barActionRef.current(),
           },
@@ -658,8 +852,8 @@ function GuestVenueReservationBody({
     onReservationBarChange,
     barHidden,
     barCopy.title,
-    barCopy.subtitle,
-    barCopy.ctaLabel,
+    barSubtitle,
+    barCta,
     barEnabled,
   ]);
   useEffect(
@@ -683,8 +877,59 @@ function GuestVenueReservationBody({
     return (
       <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
         <Text style={[styles.title, { color: palette.primaryText }]}>
-          {BUYER_CLAIM_COPY.venue.title}
+          {requested ? "Request sent" : BUYER_CLAIM_COPY.venue.title}
         </Text>
+        {completedTable !== null ? (
+          <View testID="issue-4490-table-confirmed">
+            <Text style={[styles.yourTableTitle, { color: palette.primaryText }]}>{completedTable.summary}</Text>
+            {completedTable.holdLine !== null ? <Text style={[styles.body, { color: palette.secondaryText }]}>{completedTable.holdLine}</Text> : null}
+            {completedTable.minSpendLine !== null ? <Text style={[styles.body, { color: palette.secondaryText }]}>{completedTable.minSpendLine}</Text> : null}
+          </View>
+        ) : null}
+        {completedTable === null && date !== null ? (
+          // #4490 N56: the same recap every other offer's booking page shows:
+          // the day, time, party and table, and what the guest can do next.
+          <View testID="issue-4490-table-recap">
+            <Text style={[styles.yourTableTitle, { color: palette.primaryText }]}>
+              {[
+                venueBarDayLabel(date),
+                selectedSlot?.slotLocalLabel ?? null,
+                `${partySize} ${partySize === 1 ? "guest" : "guests"}`,
+                pickedLive !== null && pickedLive.names.length > 0 ? pickedLive.names.join(" + ") : null,
+                occasion.trim().length > 0 ? occasion.trim() : null,
+              ]
+                .filter((x): x is string => x !== null)
+                .join(" · ")}
+            </Text>
+            {!requested && completed.manageHref != null ? (
+              <View style={styles.manageRow}>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="Manage this booking"
+                  onPress={() => {
+                    if (typeof window !== "undefined") window.location.assign(completed.manageHref as string);
+                  }}
+                  style={[styles.manageButton, { borderColor: palette.secondaryText }]}
+                  testID="issue-4490-table-manage"
+                >
+                  <Text style={[styles.manageLabel, { color: palette.primaryText }]}>Manage booking</Text>
+                </Pressable>
+                <Text style={[styles.body, { color: palette.secondaryText }]}>
+                  {`The same link is in your confirmation email${completed.email !== null ? ` to ${completed.email}` : ""}.`}
+                </Text>
+              </View>
+            ) : !requested ? (
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                {`To change or cancel, use the link in your confirmation email${completed.email !== null ? ` to ${completed.email}` : ""}, or contact ${venueName ?? "the venue"}.`}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+        {requested ? (
+          <Text style={[styles.body, { color: palette.secondaryText }]} testID="issue-4490-big-party-sent">
+            {`${venueName ?? "The venue"} confirms large parties. Nothing to pay until they do. We'll email you their answer.`}
+          </Text>
+        ) : null}
         <BuyerClaimCard
           kind="booking"
           email={completed.email}
@@ -707,11 +952,97 @@ function GuestVenueReservationBody({
     );
   }
 
+  // #4490 P5 — no table at that time is never a dead end.
+  const isToday = date !== null && date === dates[0]?.value;
+  const waitlistOffers =
+    waitlistMode === null && (tables?.notifyMe === true || (tables?.guestWaitlist === true && isToday)) ? (
+      <View style={styles.waitlistButtons}>
+        {tables?.notifyMe === true && slots.length > 1 ? (
+          <Button
+            label="Tell me if a table opens"
+            variant="secondary"
+            onPress={() => setWaitlistMode("notify")}
+            testID="issue-4490-notify-me"
+          />
+        ) : null}
+        {tables?.guestWaitlist === true && isToday ? (
+          <Button
+            label="Join tonight's waitlist"
+            variant="secondary"
+            onPress={() => setWaitlistMode("tonight")}
+            testID="issue-4490-join-waitlist"
+          />
+        ) : null}
+      </View>
+    ) : null;
+  const checkPendingPayment = async (): Promise<void> => {
+    if (pendingReturn === null) return;
+    setPendingState("checking");
+    try {
+      const result = await confirmGuestVenueReservation({
+        reservationDraftId: pendingReturn.reservationDraftId,
+        buyerStatusToken: pendingReturn.buyerStatusToken,
+      });
+      if (result.status === "completed") {
+        clearPending(pendingReturn);
+        setCompletedTable(pendingReturn);
+        setPendingReturn(null);
+        setPendingState("idle");
+        setCompleted({
+          email: result.buyerContact?.email ?? null,
+          phoneLast4: result.buyerContact?.phoneLast4 ?? null,
+          shortUrl: result.claim?.shortUrl ?? null,
+          code: result.claim?.code ?? null,
+        });
+        return;
+      }
+      setPendingState(result.status === "pending" ? "pending" : "error");
+    } catch {
+      setPendingState("error");
+    }
+  };
+  const pendingCard =
+    pendingReturn !== null ? (
+      <View style={[styles.stateCard, { borderColor: palette.panelBorder, backgroundColor: palette.accentWash }]} testID="issue-4490-pending-return">
+        <Text style={[styles.yourTableTitle, { color: palette.primaryText }]}>Finish your table booking</Text>
+        <Text style={[styles.body, { color: palette.secondaryText }]}>{pendingReturn.summary}</Text>
+        {pendingReturn.holdLine !== null ? <Text style={[styles.body, { color: palette.secondaryText }]}>{pendingReturn.holdLine}</Text> : null}
+        <Text style={[styles.body, { color: palette.secondaryText }]}>
+          {pendingState === "pending"
+            ? "Your payment is still going through. Give it a minute, then check again."
+            : pendingState === "error"
+              ? "We couldn't confirm it yet. If you paid, your booking is safe while we check. Try again in a minute."
+              : "If you paid, check it here to see your booking."}
+        </Text>
+        <View style={styles.waitlistButtons}>
+          <Button
+            label="Check my payment"
+            variant="primary"
+            accentColor={palette.accent}
+            loading={pendingState === "checking"}
+            disabled={pendingState === "checking"}
+            onPress={() => void checkPendingPayment()}
+            testID="issue-4490-pending-check"
+          />
+          <Button
+            label="I didn't pay"
+            variant="secondary"
+            onPress={() => {
+              clearPending(pendingReturn);
+              setPendingReturn(null);
+            }}
+            testID="issue-4490-pending-dismiss"
+          />
+        </View>
+      </View>
+    ) : null;
+
   const showDetails = barOwned
     ? barStep === "details"
     : selectedSlot !== undefined;
   return (
     <View style={styles.host}>
+      {pendingCard}
       {barOwned && barStep === "details" && selectedSlot !== undefined ? (
         <View
           style={[
@@ -728,6 +1059,22 @@ function GuestVenueReservationBody({
             {occasion.trim().length > 0 ? (
               <Text style={[styles.body, { color: palette.secondaryText }]}>
                 {occasion.trim()}
+              </Text>
+            ) : null}
+            {pickedLive !== null ? (
+              <Text style={[styles.body, { color: palette.primaryText }]} testID="issue-4490-your-table-name">
+                {optionTitle(pickedLive)}
+              </Text>
+            ) : null}
+            {moneyLines.hold !== null ? (
+              <Text style={[styles.body, { color: palette.secondaryText }]}>{moneyLines.hold}</Text>
+            ) : null}
+            {moneyLines.minSpend !== null ? (
+              <Text style={[styles.body, { color: palette.secondaryText }]}>{moneyLines.minSpend}</Text>
+            ) : null}
+            {big ? (
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                {`${venueName ?? "The venue"} confirms large parties. Nothing to pay until they do.`}
               </Text>
             ) : null}
           </View>
@@ -774,16 +1121,17 @@ function GuestVenueReservationBody({
         <OfferingPanelRow
           palette={palette}
           title="Party size"
-          detail="Up to 12"
+          detail={partyDetail(range)}
           right={
             <OfferingStepper
               palette={palette}
               value={partySize}
               min={1}
-              max={12}
+              max={range.max}
               onChange={(next: number) => {
-                setPartySize(Math.min(12, Math.max(1, next)));
+                setPartySize(Math.min(range.max, Math.max(1, next)));
                 setSelectedUtc(null);
+                setBigTimeUtc(null);
               }}
               decrementLabel="Decrease party size"
               incrementLabel="Increase party size"
@@ -792,8 +1140,59 @@ function GuestVenueReservationBody({
           }
         />
       </OfferingPanel>
-      <OfferingSubLabel palette={palette}>Time</OfferingSubLabel>
-      {availability.isLoading || availability.isFetching ? (
+      {showSeating && !big ? (
+        <>
+          <OfferingSubLabel palette={palette}>Where would you like to sit?</OfferingSubLabel>
+          <OfferingChipRow accessibilityLabel="Where would you like to sit" testID="issue-4490-seating-areas">
+            {[
+              { key: "any", label: "Anywhere" },
+              ...seatingAreas.map((a) => ({ key: a.spaceId, label: a.name })),
+              ...(pickOn ? [{ key: "pick", label: "Pick my table" }] : []),
+            ].map((o) => (
+              <OfferingChoiceChip
+                key={o.key}
+                palette={palette}
+                label={o.label}
+                role="button"
+                selected={seat === o.key}
+                accessibilityLabel={o.key === "pick" ? "Pick my table on the floor plan" : `Sit ${o.label}`}
+                onPress={() => {
+                  setSeat(o.key);
+                  setPicked(null);
+                  if (o.key !== "pick") setSelectedUtc(null);
+                }}
+              />
+            ))}
+          </OfferingChipRow>
+        </>
+      ) : null}
+      <OfferingSubLabel palette={palette}>{big ? "Preferred time" : "Time"}</OfferingSubLabel>
+      {big ? (
+        <View style={[styles.stateCard, { borderColor: palette.panelBorder }]} testID="issue-4490-big-party">
+          <Text style={[styles.body, { color: palette.primaryText }]}>
+            {`${range.tableMax + 1} or more is a group booking. ${venueName ?? "The venue"} confirms large parties. Nothing to pay until they do.`}
+          </Text>
+          {slots.length === 0 ? (
+            <Text style={[styles.body, { color: palette.secondaryText }]}>
+              {availability.isLoading || availability.isFetching ? "Finding times…" : "No times this day. Try another date."}
+            </Text>
+          ) : (
+            <OfferingChipRow accessibilityLabel="Choose a preferred time" testID="issue-4490-big-party-times">
+              {slots.map((slot) => (
+                <OfferingChoiceChip
+                  key={slot.slotStartUtc}
+                  palette={palette}
+                  label={slot.slotLocalLabel}
+                  selected={bigTimeUtc === slot.slotStartUtc}
+                  accessibilityLabel={`Prefer ${slot.slotLocalLabel}`}
+                  onPress={() => setBigTimeUtc(slot.slotStartUtc)}
+                />
+              ))}
+            </OfferingChipRow>
+          )}
+        </View>
+      ) : null}
+      {big ? null : availability.isLoading || availability.isFetching ? (
         <View style={styles.loading}>
           <ActivityIndicator color={palette.accent} />
           <Text style={[styles.body, { color: palette.secondaryText }]}>
@@ -821,6 +1220,7 @@ function GuestVenueReservationBody({
           <Text style={[styles.body, { color: palette.secondaryText }]}>
             Try another date.
           </Text>
+          {waitlistOffers}
         </View>
       ) : (
         <OfferingChipRow accessibilityLabel="Choose a time" testID="issue-4420-venue-times">
@@ -860,6 +1260,93 @@ function GuestVenueReservationBody({
           ))}
         </OfferingChipRow>
       )}
+      {!big && slots.length > 0 && slots.some((slot) => slot.isFull) && !slots.every((slot) => slot.isFull) && availabilitySettled && waitlistOffers !== null ? (
+        <View style={styles.waitlistNudge} testID="issue-4490-some-full">
+          <Text style={[styles.body, { color: palette.secondaryText }]}>The time you want is full?</Text>
+          {waitlistOffers}
+        </View>
+      ) : null}
+      {!big && slots.length > 0 && slots.every((slot) => slot.isFull) && availabilitySettled ? (
+        <View style={[styles.stateCard, { borderColor: palette.panelBorder }]} testID="issue-4490-sold-out">
+          <Text style={[styles.body, { color: palette.primaryText }]}>
+            {`Every time is taken for ${partySize} ${partySize === 1 ? "guest" : "guests"} on this day.`}
+          </Text>
+          {waitlistOffers}
+        </View>
+      ) : null}
+      {seat === "pick" && !big && selectedSlot !== undefined ? (
+        <View style={styles.pickBlock} testID="issue-4490-pick-table">
+          <OfferingSubLabel palette={palette}>Pick your table</OfferingSubLabel>
+          {tablesQuery.data === undefined && (tablesQuery.isLoading || tablesQuery.isFetching) ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={palette.accent} />
+              <Text style={[styles.body, { color: palette.secondaryText }]}>Loading the floor…</Text>
+            </View>
+          ) : tablesQuery.isError ? (
+            <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
+              <Text style={[styles.body, { color: palette.secondaryText }]}>We couldn&apos;t load the tables.</Text>
+              <Button label="Try again" variant="secondary" onPress={() => void tablesQuery.refetch()} />
+            </View>
+          ) : (tablesQuery.data ?? []).length === 0 ? (
+            <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                Picking a table isn&apos;t open for this time. Choose Anywhere and the venue seats you.
+              </Text>
+              <Button label="Choose Anywhere" variant="secondary" onPress={() => setSeat("any")} />
+            </View>
+          ) : (
+            <>
+              <React.Suspense fallback={<ActivityIndicator color={palette.accent} />}>
+              <VenueFloorPick
+                palette={palette}
+                options={tablesQuery.data ?? []}
+                spacePlans={plansQuery.data ?? {}}
+                selectedKey={pickedLive !== null ? optionKey(pickedLive) : null}
+                onSelect={(o) => setPicked(o)}
+                money={(m) => formatVenueMoney(m, currency ?? "NGN", 2)}
+              />
+              </React.Suspense>
+              {!(tablesQuery.data ?? []).some((o) => o.status === "free") ? (
+                <Text style={[styles.body, { color: palette.secondaryText }]}>
+                  Every table that fits is taken at this time. Pick another time, or choose Anywhere.
+                </Text>
+              ) : null}
+              {pickedLive !== null ? (
+                <View style={[styles.pickNote, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]} testID="issue-4490-pick-money">
+                  <Text style={[styles.yourTableTitle, { color: palette.primaryText }]}>{optionTitle(pickedLive)}</Text>
+                  <Text style={[styles.body, { color: palette.secondaryText }]}>
+                    {`Seats up to ${pickedLive.capacity}${pickedLive.spaceName !== null ? ` · ${pickedLive.spaceName}` : ""}`}
+                  </Text>
+                  {moneyLines.minSpend !== null ? <Text style={[styles.body, { color: palette.primaryText }]}>{moneyLines.minSpend}</Text> : null}
+                  {moneyLines.holdTotal !== null ? <Text style={[styles.body, { color: palette.primaryText }]}>{`${moneyLines.holdTotal}.`}</Text> : null}
+                  {moneyLines.hold !== null ? <Text style={[styles.body, { color: palette.secondaryText }]}>{moneyLines.hold}</Text> : null}
+                  {moneyLines.hold === null && moneyLines.minSpend === null ? (
+                    <Text style={[styles.body, { color: palette.secondaryText }]}>Your usual booking terms apply. You&apos;ll see the price before you pay.</Text>
+                  ) : null}
+                </View>
+              ) : (
+                <Text style={[styles.body, { color: palette.secondaryText }]}>Choose an outlined table, or one from the list.</Text>
+              )}
+            </>
+          )}
+        </View>
+      ) : null}
+      {waitlistMode !== null && date !== null ? (
+        <React.Suspense fallback={<ActivityIndicator color={palette.accent} />}>
+        <GuestWaitlistForm
+          palette={palette}
+          venueId={venueId}
+          partySize={partySize}
+          date={date}
+          mode={waitlistMode}
+          times={windowChoices(slots.map((slot) => slot.slotLocalLabel))}
+          fullTimes={windowChoices(slots.filter((slot) => slot.isFull).map((slot) => slot.slotLocalLabel))}
+          currency={currency}
+          countryCode={countryCode}
+          onCancel={() => setWaitlistMode(null)}
+        />
+        </React.Suspense>
+      ) : null}
       <OfferingSubLabel palette={palette} style={styles.occasionLabel}>
         Occasion · optional
       </OfferingSubLabel>
@@ -877,7 +1364,7 @@ function GuestVenueReservationBody({
       </OfferingChipRow>
       </>
       )}
-      {showDetails && selectedSlot !== undefined ? (
+      {showDetails && selectedSlot !== undefined && pickReady ? (
         <View style={styles.form}>
           <Text style={[styles.label, { color: palette.tertiaryText }]}>
             NAME · REQUIRED
@@ -926,6 +1413,12 @@ function GuestVenueReservationBody({
               {INVALID_EMAIL_COPY}
             </Text>
           ) : null}
+          {/* #4490 fix 2 (N53): the venue needs a number to reach the table's
+              guest (the reservation writer requires one, #1857), so the field
+              says so like Name and Email. */}
+          <Text style={[styles.label, { color: palette.tertiaryText }]} testID="issue-4490-phone-required-label">
+            PHONE · REQUIRED
+          </Text>
           <PhoneInput
             // issue #3380 — formats as typed, follows a pasted +code, autofill.
             smartEntry
@@ -1000,12 +1493,8 @@ function GuestVenueReservationBody({
           >
             {BUYER_CLAIM_COPY.checkoutPromise.booking}
           </Text>
-          <Input
-            value={occasion}
-            onChangeText={setOccasion}
-            placeholder="Occasion (optional)"
-            accessibilityLabel="Occasion"
-          />
+          {/* #4490 N53: the occasion is the chip picked on the step before
+              (carried over); no second free-text box here. */}
           <Input
             value={notes}
             onChangeText={setNotes}
@@ -1016,10 +1505,18 @@ function GuestVenueReservationBody({
             <Text style={[styles.body, { color: palette.secondaryText }]}>
               Send me occasional Mingla updates
             </Text>
-            <Switch value={marketingOptIn} onValueChange={setMarketingOptIn} />
+            <Switch
+              value={marketingOptIn}
+              onValueChange={setMarketingOptIn}
+              accessibilityLabel="Send me occasional Mingla updates"
+              testID="issue-4490-marketing-opt-in"
+            />
           </View>
+          {/* #4490 N118: the price area keeps one height whether it is loading or
+              settled, so Confirm never slides away from under the pointer. */}
+          <View style={previewEnabled ? styles.priceArea : undefined} testID="issue-4490-price-area">
           {reservationPreview.isLoading || reservationPreview.isFetching ? (
-            <View style={styles.loading}>
+            <View style={[styles.loading, styles.priceAreaLoading, { borderColor: palette.panelBorder }]}>
               <ActivityIndicator color={palette.accent} />
               <Text style={[styles.body, { color: palette.secondaryText }]}>
                 Getting your exact price…
@@ -1052,7 +1549,7 @@ function GuestVenueReservationBody({
                     <Text
                       style={[styles.body, { color: palette.secondaryText }]}
                     >
-                      Deposit
+                      {pickedLive !== null && pickedLive.holdMinor !== null && pickedLive.holdMinor > 0 ? "Table hold" : "Deposit"}
                     </Text>
                     <Text
                       style={[
@@ -1185,6 +1682,7 @@ function GuestVenueReservationBody({
               )}
             </View>
           ) : null}
+          </View>
           {error !== null ? (
             <Text style={styles.error} accessibilityLiveRegion="polite">
               {error}
@@ -1193,9 +1691,13 @@ function GuestVenueReservationBody({
           {barOwned ? null : (
           <Button
             label={
-              activePreview?.requiresPayment
+              big
+                ? "Send request"
+                : activePreview?.requiresPayment
                 ? reviewQuote === null
-                  ? "Confirm & pay"
+                  ? previewTotalLabel !== null
+                    ? `Confirm · ${previewTotalLabel}`
+                    : "Confirm reservation"
                   : "Confirm updated total"
                 : "Confirm reservation"
             }
@@ -1216,6 +1718,8 @@ function GuestVenueReservationBody({
   );
 }
 
+const PRICE_AREA_MIN_HEIGHT = 96;
+
 const styles = StyleSheet.create({
   partyPanel: { marginTop: 18, marginBottom: 18 },
   occasionLabel: { marginTop: 18 },
@@ -1233,6 +1737,16 @@ const styles = StyleSheet.create({
   host: { gap: space[2] },
   title: { ...type.h1 },
   body: { ...type.small },
+  manageRow: { gap: space[2], marginTop: space[2] },
+  manageButton: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
+    borderWidth: 1,
+  },
+  manageLabel: { ...type.small, fontWeight: "600" },
   label: {
     ...type.caption,
     letterSpacing: 1.2,
@@ -1258,6 +1772,14 @@ const styles = StyleSheet.create({
   },
   chipText: { ...type.small },
   loading: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  // #4490 N118 — as tall as the settled "No deposit" card, so nothing shifts.
+  priceArea: { minHeight: PRICE_AREA_MIN_HEIGHT },
+  priceAreaLoading: {
+    minHeight: PRICE_AREA_MIN_HEIGHT,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: space[4],
+  },
   stateCard: {
     gap: space[2],
     borderRadius: radius.md,
@@ -1265,6 +1787,10 @@ const styles = StyleSheet.create({
     padding: space[4],
   },
   form: { gap: space[2], marginTop: space[4] },
+  pickBlock: { gap: space[3], marginTop: space[4] },
+  pickNote: { gap: space[1], padding: space[4], borderRadius: radius.md, borderWidth: 1 },
+  waitlistNudge: { gap: space[1], marginTop: space[2] },
+  waitlistButtons: { flexDirection: "row", flexWrap: "wrap", gap: space[2], marginTop: space[1] },
   fieldError: { ...type.small, color: color.danger },
   phoneSwitch: { alignSelf: "flex-start", paddingVertical: space[1] },
   phoneSwitchText: { ...type.small, fontWeight: "600" },

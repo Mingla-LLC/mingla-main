@@ -50,6 +50,9 @@ const hooksDir = path.join(root, "mingla-business/src/hooks");
 // ── Auth-scoped hook files (relative to mingla-business/src/hooks). Each MUST
 //    fold isAuthReady into its query `enabled`. (SPEC ORCH-1004 Part 1.)
 const AUTH_SCOPED_HOOK_FILES = [
+  // #4490 07 guest list — the Host guest list read (issue_4490 guest list RPCs,
+  // auth.uid() venue grant check). Folds isAuthReady into enabled.
+  "useVenueGuestList.ts",
   // #2829 W4 — the trip guide editor read (biz_get_trip_guide, auth.uid()
   // rank check). Folds isAuthReady into enabled.
   "useTripGuide.ts",
@@ -205,6 +208,57 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    into enabled.
   "useVenueOrders.ts",
   "useVenueOrderingSettings.ts",
+  // ── #4490 — venue features, spaces/combinations and special days. All read
+  //    through issue_4490_get_venue_features or venue-viewer RLS
+  //    (issue_4490_can_view_venue), so a pre-auth fire would cache an empty
+  //    answer the host reads as "no spaces" or "every feature off". All three
+  //    fold isAuthReady into enabled.
+  "useVenueFeatures.ts",
+  // #4490 07-A / 07-L: read the event's venue link (events, RLS by brand) with isAuthReady folded into enabled.
+  "useEventAtVenue.ts",
+  "useEventVenueCover.ts",
+  "useVenueSpaces.ts",
+  "useVenueSpecialDays.ts",
+  // ── #4490 — the Host's preview of a venue page not public yet
+  //    (biz_preview_venue_page reads auth.uid() for a brand member). Folds
+  //    isAuthReady into enabled.
+  "useVenuePreviewPage.ts",
+  // ── #4490 P2 — venue offers, the venue's day and the door list
+  //    (issue_4490_list_offers / venue_day read auth.uid(); the
+  //    venue-check-in edge function needs the staff JWT). An anon answer would
+  //    read as "no offers" or "nobody expected". All three fold isAuthReady
+  //    into enabled.
+  "useVenueOffers.ts",
+  "useVenueDay.ts",
+  "useVenueCheckIns.ts",
+  // ── #4490 spec 08 O1 — the Till (catalog, checks, one check), all read
+  //    through venue-till with the staff JWT. Each folds isAuthReady into enabled.
+  "useVenueTill.ts",
+  // ── #4490 spec 08 O3 — the kitchen and bar board reads venue-order-staff
+  //    (station_board) as the signed-in member; a pre-auth fire would answer
+  //    401 and show "Couldn't load the orders". It folds isAuthReady into enabled.
+  "useStationBoard.ts",
+  // #4490 spec 08 O5 part C — the Menu builder's stock counts (menu_items,
+  // RLS brand member read). Folds isAuthReady into enabled.
+  "useMenuStock.ts",
+  // ── #4490 spec 08 O5 part B — Close the day, the drawer and the Till settings
+  //    read venue-till with the staff JWT. Each folds isAuthReady into enabled.
+  "useVenueDayClose.ts",
+  // ── #4490 P3 — one booking with its money and the day-closure preview
+  //    (issue_4490_get_booking / preview_day_closure read auth.uid()). Both
+  //    fold isAuthReady into enabled.
+  "useVenueBooking.ts",
+  // ── #4490 P4 — requests, the calendar and next free dates
+  //    (issue_4490_requests_list / venue_calendar / next_free_dates read
+  //    auth.uid()). An anon answer would read as "nothing to answer" or an
+  //    empty calendar. Folds isAuthReady into enabled.
+  "useVenueHire.ts",
+  // ── #4490 P6 — membership plans, members and one member
+  //    (issue_4490_membership_plans / venue_members / venue_member read
+  //    auth.uid()). An anon answer would read as "no plans" or "no members".
+  //    Both fold isAuthReady into enabled.
+  "useVenueMembershipPlans.ts",
+  "useVenueMembers.ts",
   // ── #1792 (#1767 Phase 3b) — waiter mode. The pad reads the venue's own
   //    menus/menu_items/menu_modifier_groups and the open-tab summaries, all
   //    brand-member-RLS-gated. A pre-auth fire caches an RLS-empty 200, which a
@@ -370,6 +424,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
   ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],
+  ["usePublicVenueFeatures.ts", "anon-safe verified-venue features via pg_public_venue_page (SECURITY DEFINER, granted to anon, verified venues of live brands only, no auth.uid() read); the signed-out venue page decides its tabs, info row and booking bar from it (#4490)"],
   ["usePublicMenuBundle.ts", "anon-safe verified-venue menu + its service windows via public_menus_view (SECURITY DEFINER, claim_status='verified'); the guest ordering surface reads it with no account at all (#1793)"],
   ["usePublicBrandEnquiry.ts", "anon-safe brand_enquiry_public_profile (SECURITY DEFINER, granted to anon) + business_public_brands_view identity; the signed-out brand, offering and cancel pages read them with no account (#4111)"],
   ["usePublicBrandSections.ts", "anon-safe brand page Happening now / Past via pg_public_brand_offering_section (SECURITY DEFINER, public + published only, no auth.uid() read); buyer-web renders it with no account (#3426)"],

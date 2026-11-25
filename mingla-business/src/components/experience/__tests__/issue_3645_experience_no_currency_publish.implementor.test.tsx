@@ -50,6 +50,11 @@ type RpcResult = { data: unknown; error: { code?: string; message?: string } | n
 const mockRpc = jest.fn<(name: string, args: Record<string, unknown>) => Promise<RpcResult>>();
 const mockFrom = jest.fn<(table: string) => unknown>();
 
+// #4490 — the Where step's venue/space link has its own data (react-query);
+// these wizard harnesses mount no QueryClient, so it renders nothing here.
+jest.mock("../../venue/features/EventVenueSpacePicker", () => ({
+  EventVenueSpacePicker: () => null,
+}));
 jest.mock("../../../services/supabase", () => ({
   supabase: {
     rpc: (name: string, args: Record<string, unknown>) => mockRpc(name, args),
@@ -233,6 +238,7 @@ import {
   experiencePublishNeedsPayoutCountry,
   isEventCurrencyRequiredRefusal,
 } from "../../../utils/experiencePublishCurrencyGate";
+import { emptyPriceOption } from "../experienceWizardTypes";
 
 const collectText = (node: unknown, out: string[] = []): string[] => {
   if (node === null || node === undefined || typeof node === "boolean") return out;
@@ -297,6 +303,10 @@ const seed = (priced: boolean): ExperienceWizardInitialDraft => ({
   pricingMode: "whole",
   stops: [stop(1), stop(2)] as never,
   wholePriceMajor: priced ? "25.00" : "0.00",
+  // #4490 — every price is named by the host (a blank name blocks Continue).
+  priceOptions: [
+    emptyPriceOption({ name: "General admission", priceMajor: priced ? "25.00" : "0.00", priceBasis: "person" }),
+  ],
   isFree: !priced,
   capacity: "20",
   unlimited: false,

@@ -44,12 +44,34 @@ export type VenueModule =
   | "tables"
   | "availability"
   | "reservations"
-  | "waitlist";
+  | "waitlist"
+  // #4490 — feature-driven modules. Each appears only when its feature is on
+  // and its phase has shipped (venueModules.ts `deriveVenueNav`). P1 ships
+  // `spaces`; the rest are reserved ids so deep links and the rail are typed.
+  | "offers"
+  | "spaces"
+  | "today"
+  | "calendar"
+  | "requests"
+  | "guestlist"
+  | "members"
+  | "checkin"
+  // #4490 spec 08 O1 — the Till. A rail destination that opens the full-screen
+  // Till route (`/venue/[venueId]/till`); inside the shell it is only the
+  // launcher a Till-only login lands on.
+  | "till"
+  // #4490 spec 08 O3 — Kitchen and bar. Opens the full-screen station route
+  // (`/venue/[venueId]/station/[station]`); inside the shell it is only the
+  // launcher a kitchen-only login lands on.
+  | "stations"
+  // #4490 spec 08 O5 part B — Close the day. Opens the full-screen close route
+  // (`/venue/[venueId]/close`); inside the shell it is only the launcher.
+  | "close";
 
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
-export type VenueBookingModule = Exclude<
+export type VenueBookingModule = Extract<
   VenueModule,
-  "overview" | "reviews" | "settings" | "menu" | "insights" | "orders"
+  "tables" | "availability" | "reservations" | "waitlist"
 >;
 
 /** No-show fee policy (enforcement is 2.2; 2.0 stores the policy only). */
@@ -418,6 +440,8 @@ export interface WaitlistEntry {
   guestEmail: string | null;
   partySize: number;
   preferredZone: VenueTableZone | null;
+  /** #4490 fix 3 (N112) — one of the venue's own spaces, when it has them. */
+  preferredSpaceId?: string | null;
   quotedWaitMinutes: number | null;
   status: WaitlistStatus;
   notifyVia: "push" | "sms" | "none";
@@ -426,6 +450,16 @@ export interface WaitlistEntry {
   convertedReservationId: string | null;
   consumerUserId: string | null;
   createdAt: string;
+  /** #4490 P5 — "guest" when the guest joined online (no account). */
+  source?: "staff" | "guest";
+  /** #4490 P5 — the day (and time range) a guest asked for. */
+  desiredDate?: string | null;
+  desiredFrom?: string | null;
+  desiredTo?: string | null;
+  /** #4490 P5 — the guest left the waitlist from their own page. */
+  leftByGuestAt?: string | null;
+  /** #4490 P5 — the time a freed table was offered to them. */
+  offeredSlotAt?: string | null;
 }
 
 /** Add-to-waitlist payload (direct RLS-gated insert). */
@@ -435,5 +469,7 @@ export interface WaitlistAddInput {
   guestEmail: string | null;
   partySize: number;
   preferredZone: VenueTableZone | null;
+  /** #4490 fix 3 (N112) — one of the venue's own spaces, when it has them. */
+  preferredSpaceId?: string | null;
   quotedWaitMinutes: number | null;
 }

@@ -15,6 +15,10 @@ import { LoadError } from "../components/ui/LoadError";
 import { StatTileSkeleton } from "../components/crm/home/StatTile";
 import { listOfferingsBoard, getOfferingsSummary } from "../services/offeringsService";
 import { OfferingDetailView } from "./OfferingDetailView";
+// #4490 P2-7 — venue offers (entry and later kinds) live in their own list with
+// the audited pause / resume; its reads and writes sit in its own service.
+import { VenueOffersAdminList } from "../components/offerings/VenueOffersAdminList";
+import { VenueBookingLookup } from "../components/offerings/VenueBookingLookup";
 import { formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
 import {
@@ -115,8 +119,12 @@ function offeringIdFromHash() {
   return hashParams().get("offeringId");
 }
 
+const VENUE_OFFERS_VIEW = "venue_offers";
+
 function viewFromHash() {
-  return offeringViewFor(hashParams().get("view")).id;
+  const raw = hashParams().get("view");
+  if (raw === VENUE_OFFERS_VIEW) return VENUE_OFFERS_VIEW;
+  return offeringViewFor(raw).id;
 }
 
 function Kpi({ value, label, note }) {
@@ -193,7 +201,7 @@ export function OfferingsConsolePage() {
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Offerings"
-        description="Events, experiences, trips and RSVPs across all brands. Opens on what is on sale now; offerings of deleted and staff/test brands are hidden unless you include them."
+        description="Events, experiences, trips, RSVPs and venue offers across all brands. Opens on what is on sale now; offerings of deleted and staff/test brands are hidden unless you include them."
       />
 
       {summaryError ? (
@@ -214,7 +222,7 @@ export function OfferingsConsolePage() {
       )}
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Which offerings">
-        {OFFERING_VIEWS.map((v) => (
+        {[...OFFERING_VIEWS, { id: VENUE_OFFERS_VIEW, label: "Venue offers" }].map((v) => (
           <button
             key={v.id}
             type="button"
@@ -229,6 +237,12 @@ export function OfferingsConsolePage() {
         ))}
       </div>
 
+      {view === VENUE_OFFERS_VIEW ? (
+        <div className="flex flex-col gap-6">
+          <VenueOffersAdminList />
+          <VenueBookingLookup />
+        </div>
+      ) : (
       <EntityListView
         key={view}
         columns={COLUMNS}
@@ -241,6 +255,7 @@ export function OfferingsConsolePage() {
         emptyMessage={EMPTY[view]}
         emptyIcon={CalendarDays}
       />
+      )}
     </div>
   );
 }

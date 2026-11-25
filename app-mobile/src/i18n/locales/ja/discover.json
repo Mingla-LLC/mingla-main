@@ -56,6 +56,7 @@
   "pill.experiences": "体験",
   "pill.trips": "旅行",
   "pill.stays": "滞在",
+  "pill.venues": "会場",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "クリア",
   "filters.option_a11y": "{{label}}の都市を設定します。 {{count}} 件一致",
@@ -77,6 +78,7 @@
   "group.check_in": "チェックイン",
   "group.guests": "ゲスト",
   "group.property_kind": "場所のタイプ",
+  "group.venue_type": "場所のタイプ",
   "group.any_suffix": "{{group}} · 任意",
   "when.any_day": "いつでも",
   "when.tomorrow": "明日",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} 件の体験",
   "count.trips_other": "{{count}} 件の旅行",
   "count.stays_other": "{{count}}滞在",
+  "count.venues_other": "{{count}}件の会場",
   "guests.value_other": "{{count}} 人",
-  "card.type.stops_other": "{{count}} 停留所"
+  "card.type.stops_other": "{{count}} 停留所",
+  "venues.empty_title": "ここで予約できる会場はまだありません。",
+  "venues.empty_body": "Minglaで予約できる会場がここに表示されます。",
+  "venues.filtered_title": "このフィルターに合う会場はありません。",
+  "venues.error_title": "会場を読み込めませんでした。",
+  "venues.error_retry": "もう一度試す"
 }

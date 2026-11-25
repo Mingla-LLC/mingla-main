@@ -39,6 +39,7 @@ import { isConnectionFailure } from "../../../src/services/connectionFailure";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
+import { useWebDocumentTitle } from "../../../src/hooks/useWebDocumentTitle";
 
 function PublicEventRouteBody(): React.ReactElement {
   const params = useLocalSearchParams<{
@@ -55,6 +56,15 @@ function PublicEventRouteBody(): React.ReactElement {
   const publicEventQuery = usePublicEventBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
     typeof eventSlug === "string" ? eventSlug : null,
+  );
+  // #4490 fix 3 (N104) — name the event in the tab (it kept the venue's title
+  // when opened from a venue's What's on).
+  const titleEvent = publicEventQuery.data?.event;
+  const titleBrand = publicEventQuery.data?.brand;
+  useWebDocumentTitle(
+    titleEvent !== undefined && titleEvent !== null
+      ? `${titleEvent.name}${titleBrand?.displayName ? ` · ${titleBrand.displayName}` : ""} on Mingla`
+      : null,
   );
   const routeState = resolveBuyerWebPublicLifecycle({
     hasData: publicEventQuery.data !== null &&

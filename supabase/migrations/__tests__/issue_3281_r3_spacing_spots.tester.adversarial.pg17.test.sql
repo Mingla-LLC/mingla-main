@@ -1,4 +1,4 @@
--- issue #3281 Round 3 adversarial — rule A refuses per_day when many starts fit.
+-- issue #3281 Round 3 adversarial — per_day with many starts (rule A retired by #4490), spacing and notice guards.
 \set ON_ERROR_STOP on
 
 BEGIN;
@@ -57,9 +57,14 @@ BEGIN
       )
     );
   EXCEPTION WHEN OTHERS THEN
-    v_raised := position('spots_scope_requires_start_time' in SQLERRM) > 0;
+    v_raised := true;
   END;
-  PERFORM pg_temp.i3281r3_assert(v_raised, 'per_day with multi-start window refused');
+  -- [TEST-MOD-APPROVED #4490] Rule A is retired (spec 01 §6.4): per-day spots
+  -- now count every booking of that local day (issue_3281_ticket_type_slot_taken),
+  -- so a multi-start window is a valid per_day experience.
+  PERFORM pg_temp.i3281r3_assert(NOT v_raised
+      AND (SELECT capacity_scope = 'per_day' FROM public.events WHERE id = v_event),
+    'per_day with multi-start window accepted (#4490 retired rule A)');
 
   -- Bad spacing refused.
   v_raised := false;

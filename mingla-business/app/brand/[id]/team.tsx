@@ -49,6 +49,9 @@ import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Table } from "../../../src/components/ui/Table";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
+import { useTillReleased } from "../../../src/hooks/useTillReleased";
+import { rowTappable, showSelfRowAboveEmpty, teamEmptyCopy, teamGateCaptionShown, teamListState } from "../../../src/components/team/teamRowModel";
+import { Skeleton } from "../../../src/components/ui/Skeleton";
 import { useAuth } from "../../../src/context/AuthContext";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
@@ -171,8 +174,13 @@ export default function BrandTeamRoute(): React.ReactElement {
     return () => clearTimeout(timer);
   }, [isBrandResolving]);
 
-  const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
-  const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
+  const invitationsQuery = useBrandInvitations(brandIdResolved);
+  const membersQuery = useBrandTeamMembers(brandIdResolved);
+  const { data: invitationRows = [] } = invitationsQuery;
+  const { data: memberRows = [] } = membersQuery;
+  // #4490 08-O5 fix 5: still loading the people (a failed read is not
+  // pending): no empty state until both have answered.
+  const peopleLoading = invitationsQuery.isPending === true || membersQuery.isPending === true;
   // issue #4271 — names and emails for accepted members (never a raw user id).
   const directoryQuery = useBrandTeamMemberDirectory(brandIdResolved);
   const directoryRows = useMemo(() => directoryQuery.data ?? [], [directoryQuery.data]);
@@ -195,11 +203,21 @@ export default function BrandTeamRoute(): React.ReactElement {
   // ORCH-1384 — accepted, non-cancelled links keyed by partner_account_id.
   const { data: partnerLinkRows = [] } = useBrandPartnerLinks(brandIdResolved);
 
-  const { role: currentRole, rank: currentRank } = useCurrentBrandRole(
-    brandIdResolved,
-  );
+  const {
+    role: currentRole,
+    rank: currentRank,
+    isLoading: roleIsLoading,
+    isAuthReady: roleAuthReady,
+  } = useCurrentBrandRole(brandIdResolved);
+  // #4490 08-O5 fix 6: until the role has answered, rank reads as "no rights",
+  // which flashed "Your role doesn't include this action" for staff and
+  // finance users. The page shows its loading list until the role is known.
+  const roleLoading = roleIsLoading || !roleAuthReady;
 
   const { isWideDesktop } = useResponsiveLayout();
+  // #4490 08-O5 fix 2 (O5-B1): while the Till is released your own row opens
+  // your Till PIN (nobody else can set it); otherwise it stays informational.
+  const tillReleased = useTillReleased();
   const [inviteVisible, setInviteVisible] = useState<boolean>(false);
   const [detailEntry, setDetailEntry] = useState<DisplayEntry | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -296,12 +314,28 @@ export default function BrandTeamRoute(): React.ReactElement {
             role: currentRole,
             status: "self",
             timestampIso: new Date().toISOString(),
-            storeEntry: null,
+            // The sheet shows you read-only (no role, access or remove controls);
+            // its only control is your own Till PIN (MemberDetailSheet isSelf).
+            storeEntry: brandIdResolved !== null
+              ? {
+                  id: `self_${userId}`,
+                  brandId: brandIdResolved,
+                  inviteeEmail: user?.email ?? "",
+                  inviteeName: user?.email ?? "You",
+                  role: currentRole,
+                  venueGrants: [],
+                  status: "accepted",
+                  invitedBy: userId,
+                  invitedAt: new Date().toISOString(),
+                  acceptedAt: new Date().toISOString(),
+                  removedAt: null,
+                }
+              : null,
             partnerLinkId: null,
           }
         : null;
     return selfRow !== null ? [selfRow, ...fromServer] : fromServer;
-  }, [memberRows, currentRole, user, userId, partnerLinkByUserId, directoryByUserId, directoryLoaded]);
+  }, [memberRows, currentRole, user, userId, brandIdResolved, partnerLinkByUserId, directoryByUserId, directoryLoaded]);
 
   const canInvite = canPerformAction(currentRank, "INVITE_TEAM_MEMBER");
 
@@ -328,9 +362,9 @@ export default function BrandTeamRoute(): React.ReactElement {
   );
 
   const handleRowTap = useCallback((entry: DisplayEntry): void => {
-    if (entry.status === "self") return; // self-row is informational only
+    if (!rowTappable(entry, tillReleased)) return;
     setDetailEntry(entry);
-  }, []);
+  }, [tillReleased]);
 
   const handleRevoke = useCallback(
     (entry: BrandTeamEntry): void => {
@@ -453,9 +487,13 @@ export default function BrandTeamRoute(): React.ReactElement {
     );
   }
 
-  const showEmpty =
-    pendingEntries.length === 0 && acceptedEntries.length <= 1;
   // <=1 because self-row is always present when role is known
+  const listState = teamListState({
+    loading: peopleLoading || roleLoading,
+    pendingCount: pendingEntries.length,
+    acceptedCount: acceptedEntries.length,
+  });
+  const showEmpty = listState === "empty";
 
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -489,16 +527,26 @@ export default function BrandTeamRoute(): React.ReactElement {
         contentContainerStyle={[styles.scrollContent, isWideDesktop && styles.scrollContentDesktop]}
         showsVerticalScrollIndicator={false}
       >
-        {showEmpty ? (
+        {showEmpty && showSelfRowAboveEmpty(acceptedEntries, tillReleased) ? (
+          <SectionList
+            title="Active members"
+            rows={acceptedEntries}
+            tillReleased={tillReleased}
+            onRowTap={handleRowTap}
+          />
+        ) : null}
+        {listState === "loading" ? (
+          <View style={styles.loadingHost} testID="team-loading" accessibilityLabel="Loading the team">
+            <Skeleton height={56} radius="lg" />
+            <Skeleton height={56} radius="lg" />
+            <Skeleton height={56} radius="lg" />
+          </View>
+        ) : showEmpty ? (
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="users"
-              title="You're working solo"
-              description={
-                canInvite
-                  ? "Tap + to invite a team member."
-                  : "Ask the brand admin to invite team members."
-              }
+              title={teamEmptyCopy(canInvite).title}
+              description={teamEmptyCopy(canInvite).description}
               cta={
                 canInvite
                   ? {
@@ -516,6 +564,7 @@ export default function BrandTeamRoute(): React.ReactElement {
             // invitations first; rows open the same detail sheet.
             <TeamTable
               rows={[...pendingEntries, ...acceptedEntries]}
+              tillReleased={tillReleased}
               onRowTap={handleRowTap}
             />
           ) : (
@@ -524,12 +573,14 @@ export default function BrandTeamRoute(): React.ReactElement {
               <SectionList
                 title="Pending invitations"
                 rows={pendingEntries}
+                tillReleased={tillReleased}
                 onRowTap={handleRowTap}
               />
             ) : null}
             <SectionList
               title="Active members"
               rows={acceptedEntries}
+              tillReleased={tillReleased}
               onRowTap={handleRowTap}
             />
           </>
@@ -550,7 +601,7 @@ export default function BrandTeamRoute(): React.ReactElement {
           defer={deferAfterDismiss}
         />
 
-        {!canInvite && !showEmpty ? (
+        {teamGateCaptionShown(listState, canInvite) ? (
           <Text style={styles.gateCaption}>
             {gateCaptionFor("INVITE_TEAM_MEMBER")}
           </Text>
@@ -571,6 +622,12 @@ export default function BrandTeamRoute(): React.ReactElement {
       <MemberDetailSheet
         visible={detailEntry !== null}
         entry={detailEntry?.storeEntry ?? null}
+        isSelf={detailEntry?.status === "self"}
+        onOwnPinSaved={(message) => {
+          // The sheet closes first; the toast follows once it has gone (iOS).
+          setDetailEntry(null);
+          deferAfterDismiss(() => setToast(message));
+        }}
         currentRank={currentRank}
         onClose={() => {
           if (removePending) return;
@@ -622,12 +679,14 @@ export default function BrandTeamRoute(): React.ReactElement {
 interface SectionListProps {
   title: string;
   rows: DisplayEntry[];
+  tillReleased: boolean;
   onRowTap: (entry: DisplayEntry) => void;
 }
 
 const SectionList: React.FC<SectionListProps> = ({
   title,
   rows,
+  tillReleased,
   onRowTap,
 }) => {
   if (rows.length === 0) return null;
@@ -643,11 +702,11 @@ const SectionList: React.FC<SectionListProps> = ({
           onPress={() => onRowTap(row)}
           accessibilityRole="button"
           accessibilityLabel={`${row.name}, ${roleDisplayName(row.role)}`}
-          disabled={row.status === "self"}
+          disabled={!rowTappable(row, tillReleased)}
           style={({ pressed }) => [
             styles.row,
             index > 0 && styles.rowDivider,
-            pressed && row.status !== "self" && styles.rowPressed,
+            pressed && rowTappable(row, tillReleased) && styles.rowPressed,
           ]}
         >
           <Avatar name={row.name} size="row" />
@@ -692,14 +751,15 @@ const SectionList: React.FC<SectionListProps> = ({
 
 const TeamTable: React.FC<{
   rows: DisplayEntry[];
+  tillReleased: boolean;
   onRowTap: (entry: DisplayEntry) => void;
-}> = ({ rows, onRowTap }) => (
+}> = ({ rows, tillReleased, onRowTap }) => (
   <View style={styles.tableWrap}>
     <Table<DisplayEntry>
       rows={rows}
       rowKey={(row) => row.id}
       onRowPress={(row) => {
-        if (row.status !== "self") onRowTap(row);
+        if (rowTappable(row, tillReleased)) onRowTap(row);
       }}
       columns={[
         {
@@ -846,6 +906,10 @@ const styles = StyleSheet.create({
   emptyHost: {
     paddingTop: space[7],
     alignItems: "center",
+  },
+  loadingHost: {
+    marginTop: space[5],
+    gap: space[2],
   },
   // ORCH-1309 — cold-load resolving spinner host.
   resolvingHost: {

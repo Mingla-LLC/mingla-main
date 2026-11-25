@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#4490",
+  "target": {
+    "kind": "function",
+    "name": "notify-dispatch"
+  },
+  "basePolicySha256": "1ab32f3da23a10bf109dcb9988e7e7164ddf8f4873085c2aad46ed19975b473b",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "AD_CONVERSION_TOKENS",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUSINESS_WEB_ORIGIN",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "b749eb9dc0753c7a9e231f1aadabcc4b6a303b37aedb982597b1849e9ae798f5",
+  "reason": "#4490 venue guest links: the visit-link origin reads BUSINESS_WEB_ORIGIN (production-origin fallback remains) and the link validators import the venue manage key-ring module (AD_CONVERSION_TOKENS); with no key ring the email carries no link, so both are optional."
+}

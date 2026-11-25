@@ -39,6 +39,7 @@ import {
   venueOrderCreateBody,
 } from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
 import { getStoredReferralVisitorKey } from "./referralAttribution";
+import { parseGuestSoldOut } from "../components/venue/stock/guestSoldOut";
 
 export type { VenueOrderRequest };
 
@@ -218,8 +219,12 @@ export async function fetchVenueOrderStatus(
     Record<string, unknown>
   >(VENUE_ORDER_FUNCTIONS.status, { body: { orderId, buyerStatusToken } });
   if (error !== null || data === null) return null;
-  return parseVenueOrderStatus(data, orderId);
+  const parsed = parseVenueOrderStatus(data, orderId);
+  // #4490 spec 08 O5 part C (T16): what happened to a line that sold out
+  // after the guest paid (buyer web only; an older server sends nothing).
+  return { ...parsed, soldOut: parseGuestSoldOut(data.soldOut) } as VenueOrderLiveStatus;
 }
+
 
 /** Reopen the SAME hosted provider object behind the possession token. */
 export async function resumeVenueOrderPayment(

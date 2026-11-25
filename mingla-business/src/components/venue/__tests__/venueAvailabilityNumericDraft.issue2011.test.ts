@@ -72,6 +72,9 @@ jest.mock("../../../wrappers/SmartScrollView", () => ({
   ScrollView: "ScrollView",
 }));
 jest.mock("../../ui/Button", () => ({ Button: "Button" }));
+// TEST-MOD-APPROVED #4490 — the module's number chips come from ui/Chip (no
+// reanimated); a string host type is enough here.
+jest.mock("../../ui/Chip", () => ({ Chip: "Chip" }));
 // [TEST-MOD-APPROVED #3655] Availability lazy-loads ConfirmDialog; a string host
 // type fails React.lazy ("must resolve to a class or function").
 jest.mock("../../ui/ConfirmDialog", () => {

@@ -272,7 +272,9 @@ describe("T-B1 — venueWizardSteps step model", () => {
       "Cover",
       "Contact",
       "Price",
-      "Bookings",
+      // [TEST-MOD-APPROVED #4490] step s8 is now the Features step (the id stays
+      // s8); its label was "Bookings" before the venue features landed.
+      "Features",
       "Review",
     ]);
   });

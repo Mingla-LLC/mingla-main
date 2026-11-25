@@ -149,6 +149,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   scrollToBottom,
   focusFirstErrorSignal = 0,
   scrollToStepOffset,
+  atVenue = false,
 }) => {
   const nameRef = useRef<TextInput>(null);
   const descriptionRef = useRef<TextInput>(null);
@@ -287,18 +288,20 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
         </View>
       </View>
 
-      {/* Event type (#4572 item 6, was "Party Type") — required,
-          multi-select, 26 choices in two headed groups. */}
+      {/* Event type (#4572 item 6, was "Party Type") — required, multi-select,
+          26 choices in two headed groups (#4490 07-A: optional at a venue). */}
       <View style={styles.field} onLayout={rememberSectionY("partyTypes")}>
         <View style={styles.fieldLabelRow}>
-          <Text style={styles.fieldLabel}>Event type *</Text>
+          <Text style={styles.fieldLabel}>{atVenue ? "Event type" : "Event type *"}</Text>
           {draft.partyTypes.length > 0 ? (
             <Text style={styles.fieldCount}>
               {draft.partyTypes.length} picked
             </Text>
           ) : null}
         </View>
-        <Text style={styles.fieldHint}>Pick all that fit.</Text>
+        <Text style={styles.fieldHint}>
+          {atVenue ? "Optional for an event at your venue. Pick all that fit." : "Pick all that fit."}
+        </Text>
         {PARTY_TYPE_GROUPS.map((group) => (
           <View key={group.id} style={styles.taxonomyGroup}>
             <Text style={styles.taxonomyGroupLabel}>{group.label}</Text>
@@ -319,6 +322,12 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
             </View>
           </View>
         ))}
+        {/* #4490 fix 2 (N81 e) — events are filed under an event type; a class,
+            workshop or tour is an experience (its own creator, no event type). */}
+        <Text style={styles.fieldHintAfter}>
+          Running a class, workshop or tour? Make it an experience instead: Create › Experience, or
+          &quot;Add an experience here&quot; inside your venue.
+        </Text>
         {partyTypesError !== undefined ? (
           <Text style={styles.helperError}>{partyTypesError}</Text>
         ) : null}
@@ -422,6 +431,13 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: color.text2,
     marginBottom: space[1],
+  },
+  // #4490 fix 2 (N81 e): the class / workshop / tour hint under the choices.
+  fieldHintAfter: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[2],
   },
   helperError: {
     fontSize: type.caption.fontSize,

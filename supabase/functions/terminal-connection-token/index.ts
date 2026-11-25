@@ -7,6 +7,12 @@
 // verify_jwt = false at the gateway; the bearer is verified in code and the
 // caller must be allowed to take door money for the event.
 
+import {
+  canSellAtVenue,
+  tillEnabledAtVenue,
+  tillLocation,
+  tillNotEnabledResponse,
+} from "../_shared/venueTillTerminal.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import {
@@ -100,6 +106,41 @@ export const createTerminalConnectionTokenHandler = (
     const actorId = await deps.userIdFromAuthHeader(req);
     if (actorId === null) return jsonResponse({ error: "door_access_denied" }, 401);
     const supabase = deps.serviceClient();
+    // #4490 spec 08 O2: a Till's reader. Who may sell at the venue may connect;
+    // the Location is the one door-tap-intent (scope till) names on the sale.
+    if (body?.scope === "till" && isUuid(body?.venueId)) {
+      const venueId = body.venueId as string;
+      // #4490 O2 fix 1 (O2-T1): no Till reader while the Till is switched off.
+      if (!(await tillEnabledAtVenue(supabase, venueId))) {
+        return tillNotEnabledResponse();
+      }
+      if (!(await canSellAtVenue(supabase, venueId, actorId))) {
+        return jsonResponse({ error: "door_access_denied" }, 400);
+      }
+      const { data: venue } = await supabase.from("venue_listings")
+        .select("brand_id").eq("id", venueId).maybeSingle();
+      if (!venue) return jsonResponse({ error: "door_access_denied" }, 400);
+      const tillTap = await loadBrandTapContext(supabase, String(venue.brand_id));
+      if (!tillTap.ok) return jsonResponse({ error: tillTap.error }, tapContextStatus(tillTap.error));
+      if (!(await tapToPayReleased(supabase, tillTap.brandId, body.platform))) {
+        return jsonResponse({ error: "tap_not_available", reason: "not_released" }, 400);
+      }
+      const tillStripe = deps.stripe();
+      const location = await tillLocation(
+        supabase,
+        tillStripe,
+        tillTap.brandId,
+        venueId,
+        tillTap.stripeAccountId,
+      );
+      if (!location.ok) return location.response;
+      // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      const tillToken = await tillStripe.terminal.connectionTokens.create(
+        { location: location.locationId },
+        { stripeAccount: tillTap.stripeAccountId },
+      );
+      return jsonResponse({ secret: tillToken.secret, locationId: location.locationId });
+    }
     if (!isUuid(body?.eventId) && isUuid(body?.brandId)) {
       // The root host: a brand with no event in view.
       const brandId = body.brandId as string;

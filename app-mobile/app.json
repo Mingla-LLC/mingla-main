@@ -62,6 +62,41 @@
           "data": [
             {
               "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPattern": "/visit/........-....-....-....-............"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/visit/waitlist/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPattern": "/stay/........-....-....-....-............"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPattern": "/o/........-....-....-....-............"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPattern": "/reserve/.*/manage.*"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/b/"
             },

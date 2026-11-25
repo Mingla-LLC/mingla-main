@@ -44,7 +44,29 @@ const I18N_STUB =
   + 'export default i18n;\n'
   + 'export const t = (k) => k;\n';
 
+/**
+ * #4490: priceTiers imports the shared currency glyph rule from the monorepo
+ * package `@mingla/offering-rendering`. The bundler resolves that workspace
+ * package to `packages/offering-rendering/<subpath>.ts`; a bare `node --test`
+ * run with no node_modules cannot, so the same resolution is done here. This
+ * is resolution, not a stub: the real package module runs.
+ */
+const WORKSPACE_PACKAGE = /^@mingla\/offering-rendering\/([A-Za-z0-9_./-]+)$/;
+const PACKAGE_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../packages/offering-rendering',
+);
+
 export async function resolve(specifier, context, nextResolve) {
+  const workspaceMatch = WORKSPACE_PACKAGE.exec(specifier);
+  if (workspaceMatch !== null) {
+    for (const ext of ['.ts', '.tsx', '/index.ts']) {
+      const candidate = path.join(PACKAGE_ROOT, `${workspaceMatch[1]}${ext}`);
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return nextResolve(pathToFileURL(candidate).href, context);
+      }
+    }
+  }
   if (specifier.startsWith('.') && context.parentURL !== undefined) {
     const parentDir = path.dirname(fileURLToPath(context.parentURL));
     const base = path.resolve(parentDir, specifier);

@@ -42,6 +42,7 @@ import {
 import {
   emptyPriceOption,
   newStopClientId,
+  toExperienceBlockMinutes,
   type ExperienceBlockMinutes,
   type ExperiencePriceOptionDraft,
   type ExperienceStopDraft,
@@ -226,11 +227,9 @@ function detailToInitialDraft(
   const priceOptions: ExperiencePriceOptionDraft[] =
     ticketList.length > 0
       ? ticketList.map((t) => {
-          const blockMinutes = (
-            [15, 30, 45, 60].includes(t.blockMinutes ?? -1)
-              ? (t.blockMinutes as ExperienceBlockMinutes)
-              : 60
-          );
+          // #4490 — every wizard block length (15 min to 8 h) survives an edit.
+          const blockMinutes: ExperienceBlockMinutes =
+            toExperienceBlockMinutes(t.blockMinutes) ?? 60;
           return emptyPriceOption({
             ticketTypeId: t.id,
             name: t.name,
@@ -247,7 +246,8 @@ function detailToInitialDraft(
         })
       : [
           emptyPriceOption({
-            name: "Standard",
+            // #4490 — the host names the price; no forced Standard name.
+            name: "",
             priceMajor: centsToMajor(
               exp.pricingMode === "whole"
                 ? exp.wholePriceCents ?? 0

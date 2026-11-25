@@ -56,6 +56,7 @@
   "pill.experiences": "Awọn iriri",
   "pill.trips": "Awọn irin ajo",
   "pill.stays": "Duro",
+  "pill.venues": "Àwọn ibi",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.option_a11y": "{{label}}, {{count}} matches",
@@ -77,6 +78,7 @@
   "group.check_in": "Ṣayẹwo",
   "group.guests": "Awọn alejo",
   "group.property_kind": "Type of place",
+  "group.venue_type": "Type of place",
   "group.any_suffix": "{{group}} · Eyikeyi",
   "when.any_day": "Ọjọ eyikeyi",
   "when.tomorrow": "Ọla",
@@ -204,6 +206,12 @@
   "count.experiences_other": "{{count}} iriri",
   "count.trips_other": "{{count}} irin ajo",
   "count.stays_other": "{{count}} stays",
+  "count.venues_other": "ibi {{count}}",
   "guests.value_other": "{{count}} guests",
-  "card.type.stops_other": "{{count}} STOPS"
+  "card.type.stops_other": "{{count}} STOPS",
+  "venues.empty_title": "Kò sí ibi tí o lè ṣe ìfiṣura níbí síbẹ̀.",
+  "venues.empty_body": "Àwọn ibi tí o lè ṣe ìfiṣura lórí Mingla yóò hàn níbí.",
+  "venues.filtered_title": "Kò sí ibi tó bá àwọn àlẹ̀mọ́ yẹn mu.",
+  "venues.error_title": "A kò lè gbé àwọn ibi wá.",
+  "venues.error_retry": "Tún gbìyànjú"
 }

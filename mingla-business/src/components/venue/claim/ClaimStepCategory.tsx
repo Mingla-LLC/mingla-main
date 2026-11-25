@@ -24,13 +24,13 @@ import {
 import { VenueCategoryPicker } from "../../brand/VenueCategoryPicker";
 import { useFeatureFlag } from "../../../hooks/useFeatureFlag";
 import { ProvenanceChip } from "../../ui/ProvenanceChip";
+import { VENUE_TYPES } from "../../../types/venueFeatures";
 
-const CAT_LABEL: Record<VenueCategory, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-  stay: "Stay",
-};
+// #4490 click-test D10/D12 — one label per type, everywhere a host reads it
+// ("Play and games", never "Play"): the nine types' own labels.
+const CAT_LABEL: Record<VenueCategory, string> = Object.fromEntries(
+  VENUE_TYPES.map((t) => [t.key, t.label]),
+) as Record<VenueCategory, string>;
 
 export interface ClaimStepCategoryProps {
   showErrors: boolean;
@@ -71,6 +71,8 @@ export const ClaimStepCategory: React.FC<ClaimStepCategoryProps> = ({
         // still decides whether it can be picked.
         includeStay
         stayDisabled={stayAuthoringFlag.data !== true}
+        // #4490 — show which features each of the nine types starts with.
+        showPreset
         testID="claim-category-picker"
       />
       {err !== null ? <Text style={styles.err}>{err}</Text> : null}

@@ -1,6 +1,10 @@
 /**
  * Issue #1792 (#1767 Phase 3b) — WAITER MODE: the order pad (DESIGN D-11).
  *
+ * [TRANSITIONAL] #4490 spec 08 O1: used only where the Till is not running
+ * (`venueOrderEntry` = "pad"); exits when every venue runs the Till, and this
+ * file is then deleted with the pad and the tabs card.
+ *
  * New order -> pick the spot -> build from the same menu with the same modifier
  * groups a guest would see -> send to kitchen. Then settle, or leave it on a tab.
  *

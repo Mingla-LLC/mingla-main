@@ -13,8 +13,9 @@
  * renderers under `@mingla/brand-rendering/venueOrdering`.
  */
 
+import { VENUE_ORDER_COUNTER_TITLE } from "@mingla/brand-rendering/venueOrdering/VenueOrderingStickyBar";
 import React from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -27,8 +28,11 @@ import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import {
   isoDayFromMondayZero,
   venueOrderingCanOrder,
+  venueOrderingIsCounterPickup,
   venueOrderingMenuGroups,
   venueOrderingNotice,
+  venueOrderingOwnsBottomEdge,
+  venueOrderingSheetView,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueLocalClock } from "@mingla/brand-rendering/venueOpenState";
 import { VenueOrderingMenuList } from "@mingla/brand-rendering/venueOrdering/VenueOrderingMenuList";
@@ -124,12 +128,55 @@ export const BuyerVenueOrderingNotice: React.FC<
   if (!venueOrderingCanOrder(ordering.config)) return null;
   const label =
     ordering.config.spotState === "ok" &&
+    // #4490 07-D — a counter order at a scanned spot names the counter.
+    !venueOrderingIsCounterPickup(ordering.config, ordering.pickup) &&
     ordering.config.spot?.label !== null &&
     ordering.config.spot?.label !== undefined
       ? `Ordering for ${ordering.config.spot.label}`
-      : "Order & collect from the counter";
-  return <VenueOrderingSpotChip label={label} palette={palette} />;
+      : // #4490 fix 2 (N91): the same words as the order bar with no table.
+        VENUE_ORDER_COUNTER_TITLE;
+  const counterPath = ordering.counterOrderPath ?? null;
+  if (counterPath === null) {
+    return <VenueOrderingSpotChip label={label} palette={palette} />;
+  }
+  // N145 (#4490): a pickup order placed from this table keeps its own status
+  // page; the table stays orderable and links to it.
+  return (
+    <View style={counterStyles.row}>
+      <VenueOrderingSpotChip label={label} palette={palette} />
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="See your pickup order"
+        onPress={() => openCounterOrder(counterPath)}
+        hitSlop={8}
+      >
+        <Text style={[counterStyles.link, { color: palette.primaryText }]}>
+          Your pickup order · See status
+        </Text>
+      </Pressable>
+    </View>
+  );
 };
+
+function openCounterOrder(path: string): void {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.assign(path);
+    return;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { router } = require("expo-router") as typeof import("expo-router");
+  router.push(path as never);
+}
+
+const counterStyles = StyleSheet.create({
+  row: { gap: 8 },
+  link: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+});
 
 /**
  * issue #4420 — the order review's frame: the app's bottom sheet on phone (a
@@ -222,6 +269,8 @@ export const BuyerVenueOrderingMenu: React.FC<
         onCancel={ordering.cancelOrder}
         onRequestRefund={ordering.requestRefund}
         onOrderMore={ordering.orderMore}
+        onRetryPayment={ordering.retryPayment}
+        retryPaymentPending={ordering.retryPending}
       />
     );
   }
@@ -274,6 +323,8 @@ export const BuyerVenueOrderingMenu: React.FC<
             onPartySizeChange={ordering.cart.setPartySize}
             buyer={ordering.cart.state.buyer}
             onBuyerChange={ordering.cart.patchBuyer}
+            pickup={ordering.pickup}
+            onPickupChange={ordering.setPickup}
             onSetQuantity={ordering.cart.setQuantity}
             onSetNotes={ordering.cart.setNotes}
             // issue #3380 — the country picker instead of a free-text box.
@@ -436,15 +487,20 @@ export const BuyerVenueOrderingSurface: React.FC<{
     );
   }
 
+  // #4490 fix 2 (N93): on desktop the bar comes after the menu and sticks to
+  // the bottom of the screen inside the menu's column (never over the cover).
+  const bar = (
+    <BuyerVenueOrderingBar
+      {...slotProps}
+      isDesktop={isDesktop}
+      bottomInset={bottomInset}
+      onBottomBarChange={onBottomBarChange}
+    />
+  );
   return (
     <View style={styles.surface}>
       <BuyerVenueOrderingNotice {...slotProps} />
-      <BuyerVenueOrderingBar
-        {...slotProps}
-        isDesktop={isDesktop}
-        bottomInset={bottomInset}
-        onBottomBarChange={onBottomBarChange}
-      />
+      {isDesktop ? null : bar}
       {canOrder ? (
         <BuyerVenueOrderingMenu
           {...slotProps}
@@ -461,6 +517,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
           theme={theme}
         />
       )}
+      {isDesktop ? bar : null}
     </View>
   );
 };
@@ -522,17 +579,30 @@ export const BuyerVenueOrderStatusView: React.FC<{
 export const BuyerVenueOrderingBar: React.FC<
   BuyerVenueOrderingSlotProps & BuyerVenueOrderingBarPlacement
 > = ({ ordering, palette, isDesktop = false, bottomInset = 0, onBottomBarChange }) => {
-  const shown =
-    venueOrderingCanOrder(ordering.config) && ordering.cart.state.view === "browse";
-  const docked = shown && Platform.OS === "web";
+  const canOrder = venueOrderingCanOrder(ordering.config);
+  const shown = canOrder && ordering.cart.state.view === "browse";
+  // #4490 W3 fix 4 (W3-N36): ordering keeps the Menu tab's bottom edge while
+  // the review or the order status is open too, so the venue's lead bar
+  // ("Buy entry") never comes back over an open order.
+  const owned =
+    Platform.OS === "web" &&
+    venueOrderingOwnsBottomEdge({
+      canOrder,
+      sheetView: venueOrderingSheetView({
+        view: ordering.cart.state.view,
+        lineCount: ordering.cart.state.lines.length,
+      }),
+    });
   React.useEffect(() => {
     if (onBottomBarChange === undefined) return undefined;
-    onBottomBarChange(docked);
+    onBottomBarChange(owned);
     return () => onBottomBarChange(false);
-  }, [docked, onBottomBarChange]);
+  }, [owned, onBottomBarChange]);
   if (!shown) return null;
   const spotLabel =
-    ordering.config.spotState === "ok" ? ordering.config.spot?.label ?? null : null;
+    ordering.config.spotState === "ok" && !venueOrderingIsCounterPickup(ordering.config, ordering.pickup)
+      ? ordering.config.spot?.label ?? null
+      : null;
   return (
     <VenueOrderingStickyBar
       count={ordering.cart.count}

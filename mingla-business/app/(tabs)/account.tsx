@@ -141,6 +141,25 @@ export default function AccountTab(): React.ReactElement {
       setSignOutBusy(true);
       setSignOutEverywhereError(null);
       try {
+        // #4490 spec 08 O5 part B — a shared Till device login signs out only
+        // with a manager's PIN (or its own email code when nobody at the venue
+        // has a PIN): the Till's own sign-out step, loaded on use.
+        let tillSignOut: string | null = null;
+        try {
+          const till = await import("../../src/services/tillDeviceSignOut");
+          const tillVenue = await till.tillDeviceSignOutVenue(user?.id ?? null);
+          tillSignOut = tillVenue !== null ? till.tillSignOutHref(tillVenue) : null;
+        } catch (lookupError) {
+          // Never keep someone signed in over a failed check (the server ends
+          // a device's PIN sessions with any sign-out anyway).
+          console.warn("[AccountTab] Till device check failed", lookupError instanceof Error ? lookupError.message : "unknown");
+        }
+        if (tillSignOut !== null) {
+          setSignOutEverywhereOpen(false);
+          setSignOutLocalOpen(false);
+          router.push(tillSignOut as never);
+          return;
+        }
         await signOut({ scope });
         // After signOut succeeds, navigate to root. AuthContext clears `user`
         // to null via the Supabase listener, then app/index.tsx renders the
@@ -170,7 +189,7 @@ export default function AccountTab(): React.ReactElement {
         setSignOutBusy(false);
       }
     },
-    [signOut, router, signOutBusy],
+    [signOut, router, signOutBusy, user?.id],
   );
 
   // Cycle 14 — Settings hub navigation handlers per SPEC §4.7.1.

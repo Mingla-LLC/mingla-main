@@ -100,3 +100,18 @@ export const coverTargetHasUploadIdentity = (target: CoverTarget): boolean => {
       return target.eventRowId.trim().length > 0;
   }
 };
+
+/**
+ * #4490 D6 — does a device photo for this target go to brand-keyed storage
+ * with NO row write (the host keeps the emitted patch)? True for a saved venue,
+ * a venue that is still a draft in the add-venue wizard, and an ad creative.
+ * A venue draft has no venue row and no events row: before this rule it fell
+ * through to the events-row upload with an empty id and every "Upload new" in
+ * the add-venue wizard failed.
+ */
+export const coverTargetUploadsToBrandStorage = (target: CoverTarget): boolean =>
+  target.kind === "venue" || target.kind === "venue_draft" || target.kind === "ad_creative";
+
+/** #4490 D6 — a venue cover (saved or draft): validate provider URLs, never patch the brand. */
+export const coverTargetIsVenue = (target: CoverTarget): boolean =>
+  target.kind === "venue" || target.kind === "venue_draft";

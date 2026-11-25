@@ -381,6 +381,11 @@ module.exports = {
   // / react-dom / @mingla/* siblings are untouched. A test's own jest.mock()
   // overrides any map for that file.
   moduleNameMapper: {
+    // #4490 venue owners — jest-only lazy stand-ins for the two owner barrels:
+    // a suite loads only the screens it opens (see the stub's header). Anchored
+    // to the barrels' own specifier, so nothing else maps.
+    "^\\./venueHostScreens$": "<rootDir>/jest.issue4490.venue-host-owner-stub.cjs",
+    "^\\./venueGuestScreens$": "<rootDir>/jest.issue4490.venue-guest-owner-stub.cjs",
     // #3176 — the shared privacy contract is source-owned at repository level;
     // resolve that exact workspace package through the real TypeScript module.
     "^@mingla/search-measurement$":

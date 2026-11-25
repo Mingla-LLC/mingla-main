@@ -7,7 +7,9 @@ import { usePurchases } from "../../hooks/usePurchases";
 import { PROFILE_REVISIT_STALE_MS } from "./profileFreshness";
 import { postHogService } from "../../services/postHogService";
 import type { PurchaseTimelineItem } from "../../utils/purchaseTimeline";
+import { purchaseCountLabel } from "../../utils/purchasePresentation";
 import SettingsRow from "./SettingsRow";
+import { isVenueKind, itemWhen } from "./purchasesCardWhen";
 
 interface PurchasesCardProps {
   userId: string | null | undefined;
@@ -16,32 +18,7 @@ interface PurchasesCardProps {
   onFinishSetup: () => void;
 }
 
-function itemWhen(
-  item: PurchaseTimelineItem,
-  tonight: boolean,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  const date = new Date(item.startsAt);
-  if (Number.isNaN(date.getTime())) return t("card.dateTbd");
-  try {
-    const time = new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      timeZone: item.timezone,
-    }).format(date);
-    if (tonight) return t("card.tonightAt", { time });
-    const day = new Intl.DateTimeFormat(undefined, {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      timeZone: item.timezone,
-    }).format(date);
-    return `${day} · ${time}`;
-  } catch {
-    return date.toLocaleString();
-  }
-}
-
+// #4490 W2-N21 / W2-N34: the "when" line lives in purchasesCardWhen.ts.
 export function PurchasesCard({
   userId,
   setupDeferred,
@@ -53,7 +30,7 @@ export function PurchasesCard({
   const upcoming = useMemo(
     () =>
       purchases.timeline.upcoming.flatMap((group) =>
-        group.items.map((item) => ({ item, tonight: group.key === "tonight" })),
+        group.items.map((item) => ({ item, groupKey: group.key })),
       ),
     [purchases.timeline.upcoming],
   );
@@ -63,6 +40,7 @@ export function PurchasesCard({
     if (item.kind === "rsvp") return t("pill.rsvp");
     if (item.kind === "reservation") return t("pill.reservation");
     if (item.source === "comp") return t("pill.guestList");
+    if (isVenueKind(item)) return purchaseCountLabel(item);
     return t("pill.tickets", { count: item.count });
   };
 
@@ -82,7 +60,7 @@ export function PurchasesCard({
   const accessibilityLabel = next
     ? `${t("screen.title")}. ${t("card.upcomingCount", { count: upcoming.length })}. Next: ${next.item.title}, ${itemWhen(
         next.item,
-        next.tonight,
+        next.groupKey,
         t,
       )}.`
     : `${t("screen.title")}. ${t("card.empty")}`;
@@ -125,7 +103,7 @@ export function PurchasesCard({
             )}
             <View style={styles.copy}>
               <Text style={styles.when}>
-                {itemWhen(next.item, next.tonight, t)}
+                {itemWhen(next.item, next.groupKey, t)}
               </Text>
               <Text style={styles.itemTitle} numberOfLines={1}>
                 {next.item.title}

@@ -216,6 +216,15 @@ jest.mock("../../ui/Toast", () => ({ __esModule: true, Toast: (): null => null }
 // BOTH suite shells render identifiable host nodes, so H-1…H-5 can assert
 // WHICH BRANCH the page took. An unbound `brandId` fixture would silently drop
 // a "stay" case into the non-stay branch and prove nothing.
+// #4490 venue owners: the route mounts both shells through LazyVenueSuites
+// (the Host venue owner); hand it the shell stubs below, synchronously.
+jest.mock("../host/LazyVenueSuites", () => ({
+  __esModule: true,
+  StaySuiteShell: (props: Record<string, unknown>) =>
+    (jest.requireMock("../../stay/StaySuiteShell") as { StaySuiteShell: (p: Record<string, unknown>) => unknown }).StaySuiteShell(props),
+  VenueSuiteShell: (props: Record<string, unknown>) =>
+    (jest.requireMock("../VenueSuiteShell") as { VenueSuiteShell: (p: Record<string, unknown>) => unknown }).VenueSuiteShell(props),
+}));
 jest.mock("../../stay/StaySuiteShell", () => {
   const ReactActual = require("react") as typeof React;
   return {

@@ -190,20 +190,24 @@ jest.mock("expo-router", () => ({
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({
-    invalidateQueries: jest.fn(),
-    setQueryData: jest.fn(),
-  }),
-  useMutation: () => ({
-    mutate: jest.fn(),
-    mutateAsync: jest.fn(),
-    isPending: false,
-    isError: false,
-    error: null,
-    reset: jest.fn(),
-  }),
-}));
+jest.mock("@tanstack/react-query", () => {
+  const ReactLocal = jest.requireActual("react");
+  return {
+    QueryClientContext: ReactLocal.createContext(undefined),
+    useQueryClient: () => ({
+      invalidateQueries: jest.fn(),
+      setQueryData: jest.fn(),
+    }),
+    useMutation: () => ({
+      mutate: jest.fn(),
+      mutateAsync: jest.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+      reset: jest.fn(),
+    }),
+  };
+});
 
 // ---- Service boundaries (import-time supabase-client chains). --------------
 jest.mock("../../../services/stayInventoryService", () => ({
@@ -310,9 +314,15 @@ jest.mock("../../../hooks/useVenueReservationSettings", () => ({
   }),
   useSetReservationsEnabled: () => ({ mutate: jest.fn(), isPending: false }),
 }));
+// [TEST-MOD-APPROVED #4490] Stay shell also selects setRequestLeave from the store,
+// and (fix round 5) dirtyModules for the Table reservations times view.
 jest.mock("../../../store/venueSuiteStore", () => ({
-  useVenueSuiteStore: (selector: (s: { sync: () => void }) => unknown) =>
-    selector({ sync: () => undefined }),
+  useVenueSuiteStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({
+      sync: () => undefined,
+      setRequestLeave: () => undefined,
+      dirtyModules: new Set(),
+    }),
 }));
 
 // ---- Venue MODULE BODIES are stubbed: this suite asserts on the SHELL. -----
@@ -374,6 +384,25 @@ jest.mock("../../../hooks/useMyVenueAccess", () => ({
     isError: false,
   }),
 }));
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+  useSetVenueFeature: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+jest.mock("../../../services/venueFeaturesService", () => ({
+  VenueFeatureError: class VenueFeatureError extends Error {
+    code = "test";
+    detail = null;
+  },
+}));
+jest.mock("../../venue/features/VenueTypeAndFeaturesPanel", () => ({
+  VenueTypeAndFeaturesPanel: () => null,
+}));
 
 import { StyleSheet, Text as RNText } from "react-native";
 
@@ -430,7 +459,14 @@ function testIdsMatching(tree: RenderTree, pattern: RegExp): string[] {
   const seen = new Set<string>();
   for (const node of nodes(tree)) {
     const id = node.props?.testID;
-    if (typeof id === "string" && pattern.test(id)) seen.add(id);
+    if (
+      typeof id === "string" &&
+      id !== "stay-rail-scroll" &&
+      id !== "venue-rail-scroll" &&
+      pattern.test(id)
+    ) {
+      seen.add(id);
+    }
   }
   return [...seen];
 }
@@ -478,7 +514,10 @@ function pageMeasure(tree: RenderTree): Flat | undefined {
         (StyleSheet.flatten(node.props.contentContainerStyle as never) ??
           {}) as Flat,
     )
-    .find((flat: Flat) => flat.paddingBottom !== undefined);
+    .find(
+      (flat: Flat) =>
+        flat.paddingBottom !== undefined && flat.alignSelf !== undefined,
+    );
 }
 
 /** Flattened style of the two-column block hanging off a desktop host. */
@@ -936,7 +975,8 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
     for (const moduleId of VENUE_MODULE_IDS) {
       const tree = actual[moduleId];
       expect(tree).toContain('"accessibilityRole":"tablist"');
-      expect(tree).toContain('"accessibilityLabel":"Restaurant Hub sections"');
+      // #4490 — the venue rail names itself "Venue sections" (railLabel prop).
+      expect(tree).toContain('"accessibilityLabel":"Venue sections"');
       for (const groupLabel of ["Venue", "Bookings", "Operations"]) {
         expect(tree).toContain(`"children":["${groupLabel}"]`);
       }

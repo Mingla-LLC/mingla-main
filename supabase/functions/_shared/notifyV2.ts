@@ -18,6 +18,8 @@ import {
   smsProviderForDestination,
 } from "./adapters/smsAdapter.ts";
 import { renderCategoryMessage } from "./notifyTemplates.ts";
+import { venueMembershipRenewalSms } from "./email/templates/venueMembershipEmails.ts";
+import { tillReceiptSms } from "./email/tillReceiptEmail.ts";
 import type { RenderedMessage } from "./notifyTemplates.ts";
 import {
   type PersistedOfferingPushV1,
@@ -127,6 +129,21 @@ export interface DispatchV2Input {
    * booking manage link it carries is a credential.
    */
   email_cta?: EmailCtaInput;
+  /**
+   * #4490 Explorer W2 — the member's web pay link for a membership renewal
+   * TEXT ("Pay here: {link}", spec 06 §6). Set solely by notify-dispatch after
+   * it validated a service-role caller's member link. Like email_cta it is
+   * never copied into the payload, the inbox row, push data or the delivery
+   * ledger: the link carries the member token.
+   */
+  venue_sms_pay_url?: string;
+  /**
+   * #4490 spec 08 O1 (T20) — the private Till receipt link, set solely by
+   * notify-dispatch after it validated a service-role caller's link for the
+   * same payment. Like email_cta it is never copied into the payload, the
+   * inbox row, push data or the delivery ledger: the link carries a token.
+   */
+  till_receipt_url?: string;
 }
 
 export interface EmailCtaInput {
@@ -134,6 +151,8 @@ export interface EmailCtaInput {
   url: string;
   /** A paragraph appended to the email body, above the button. */
   note: string;
+  /** #4490 Explorer W1: the web link under "Open in Mingla". */
+  secondary?: { label: string; url: string };
 }
 
 // #4063 — the only category payload fields allowed to leave Mingla for the
@@ -163,6 +182,10 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     buyer_event_updated: ["order_id", "event_id", "event_date_id"],
     buyer_venue_order_receipt: ["venue_order_id", "venue_id"],
     buyer_door_receipt: ["order_id", "event_id"],
+    // #4490 spec 08 O1 — Till receipts: opaque ids only (no token, no contact).
+    buyer_till_receipt: ["till_payment_id", "venue_id"],
+    // #4490 spec 08 O5 (T16): a guest's line sold out after they paid.
+    buyer_venue_order_sold_out: ["venue_order_id", "venue_id"],
     buyer_ticket_sent: ["ticket_id", "event_id"],
     rsvp_acknowledgement: ["rsvp_id", "event_id", "guest_id"],
     rsvp_pass: ["rsvp_id", "event_id", "guest_id"],
@@ -184,6 +207,32 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     stay_refund_state: ["stay_group_id", "venue_id", "refund_record_id"],
     stay_reconciliation_attention: ["stay_group_id", "venue_id"],
     stay_reservation_reminder: ["stay_group_id", "venue_id"],
+    // #4490 — venue bookings (entry passes): opaque ids only; the private
+    // booking link never enters a push payload.
+    venue_booking_confirmed: ["venue_group_id", "venue_id"],
+    venue_booking_cancelled: ["venue_group_id", "venue_id"],
+    venue_refund_state: ["venue_group_id", "venue_id"],
+    venue_balance_due: ["venue_group_id", "venue_id"],
+    venue_balance_overdue: ["venue_group_id", "venue_id"],
+    venue_booking_changed: ["venue_group_id", "venue_id"],
+    venue_balance_paid: ["venue_group_id", "venue_id"],
+    venue_request_received: ["venue_group_id", "venue_id"],
+    venue_request_action_needed: ["venue_group_id", "venue_id"],
+    venue_payment_required: ["venue_group_id", "venue_id"],
+    venue_hold_expiring: ["venue_group_id", "venue_id"],
+    venue_request_declined: ["venue_group_id", "venue_id"],
+    venue_request_expired: ["venue_group_id", "venue_id"],
+    // #4490 Explorer W2 — visit reminders: opaque ids only.
+    venue_visit_reminder: ["venue_group_id", "venue_id"],
+    // #4490 P5 — guest waitlist: opaque ids only (no token, no contact).
+    venue_waitlist_joined: ["waitlist_id", "venue_id"],
+    venue_table_opened: ["waitlist_id", "venue_id"],
+    venue_waitlist_ready: ["waitlist_id", "venue_id"],
+    // #4490 P6 — members: opaque ids only (no token, no contact).
+    venue_membership_renewal: ["subscription_id", "venue_id"],
+    venue_membership_lapsed: ["subscription_id", "venue_id"],
+    venue_membership_paid: ["subscription_id", "venue_id"],
+    venue_membership_ended: ["subscription_id", "venue_id"],
     // #3682 wave 2 — Explorer routes these to the brand / offering page from
     // the public slugs; the receive reason is not personal data.
     brand_offering_invite: ["brand_slug", "event_slug", "reason"],
@@ -194,7 +243,12 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
 function emailContent(
   rendered: RenderedMessage,
   emailCta: EmailCtaInput | undefined,
-): { title: string; body: string; cta?: { label: string; url: string } } {
+): {
+  title: string;
+  body: string;
+  cta?: { label: string; url: string };
+  secondaryCta?: { label: string; url: string };
+} {
   if (!emailCta) {
     return { title: rendered.email.subject, body: rendered.email.body };
   }
@@ -202,6 +256,7 @@ function emailContent(
     title: rendered.email.subject,
     body: `${rendered.email.body}\n\n${emailCta.note}`,
     cta: { label: emailCta.label, url: emailCta.url },
+    ...(emailCta.secondary ? { secondaryCta: emailCta.secondary } : {}),
   };
 }
 
@@ -828,7 +883,16 @@ export async function dispatchV2(
         const r = await smsAdapter.send({
           to: contactPhone,
           brandName,
-          message: rendered.sms,
+          // #4490 Explorer W2: a renewal text carries the web pay link.
+          message: venueMembershipRenewalSms(
+            input.category_key,
+            input.payload,
+            input.venue_sms_pay_url,
+          ) ?? tillReceiptSms(
+            input.category_key,
+            input.payload,
+            input.till_receipt_url,
+          ) ?? rendered.sms,
           countryCode: input.country_code,
         });
         await completeChannel(
@@ -1801,7 +1865,16 @@ async function dispatchAnon(
       const r = await smsAdapter.send({
         to: contactPhone!,
         brandName,
-        message: rendered.sms,
+        // #4490 Explorer W2: a renewal text carries the web pay link.
+        message: venueMembershipRenewalSms(
+          input.category_key,
+          input.payload,
+          input.venue_sms_pay_url,
+        ) ?? tillReceiptSms(
+          input.category_key,
+          input.payload,
+          input.till_receipt_url,
+        ) ?? rendered.sms,
         countryCode: input.country_code,
       });
       await updateGuestDelivery(

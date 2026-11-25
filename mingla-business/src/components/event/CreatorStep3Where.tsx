@@ -51,7 +51,19 @@ import type { LocationSelectionState } from "@mingla/location-input";
 import { LazyAddressMapPreview } from "../location/LazyAddressMapPreview";
 
 import { errorForKey, type StepBodyProps } from "./types";
+
 import { whereStepAddressCopy } from "./whereStepCopy";
+import type { VenueLocation } from "../../services/venueFeaturesService";
+import { venueTimezone } from "../../utils/eventVenueTimezone";
+
+/**
+ * #4490 — "Where: venue and space" (links the event to one of the brand's
+ * venues and a space there). Lazy: it pulls the venue hooks and pickers.
+ */
+const LazyEventVenueSpacePicker = React.lazy(async () => {
+  const mod = await import("../venue/features/EventVenueSpacePicker");
+  return { default: mod.EventVenueSpacePicker };
+});
 
 export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   draft,
@@ -150,6 +162,147 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
     draft.hideAddressUntilTicket,
   );
 
+  // #4490 fix 2 (N84) — a venue pick fills name, address, pin and time
+  // zone; "Somewhere else" clears them for typing. A venue with no saved pin
+  // keeps the address field open so the step can still be completed.
+  const [venueIncomplete, setVenueIncomplete] = React.useState(false);
+  const onVenuePlace = React.useCallback(
+    (venue: VenueLocation | null): void => {
+      advanceLocationRequestGeneration(requestGenerationRef);
+      if (venue === null) {
+        setVenueIncomplete(false);
+        savedCityRef.current = null;
+        committedAddrRef.current = "";
+        setSelectionState("editing");
+        updateDraft({
+          venueName: null,
+          address: null,
+          city: null,
+          locationGeo: null,
+          locationProviderPlaceId: null,
+          coordinatePrecision: null,
+        });
+        return;
+      }
+      const label = venue.address ?? venue.name;
+      const complete = venue.city !== null && venue.lat !== null && venue.lng !== null;
+      committedAddrRef.current = label;
+      savedCityRef.current = venue.city;
+      setSelectionState(complete ? "selected" : "editing");
+      setVenueIncomplete(!complete);
+      updateDraft({
+        venueName: venue.name,
+        address: label,
+        city: venue.city,
+        locationGeo: complete ? { lat: venue.lat as number, lng: venue.lng as number } : null,
+        locationProviderPlaceId: venue.placeId,
+        coordinatePrecision: complete ? "approximate" : null,
+        timezone: venueTimezone(venue.countryCode, draft.timezone),
+        // #4490 fix 3 (N103) — the venue's own page already shows its
+        // address, so hiding it until a ticket is bought starts off.
+        hideAddressUntilTicket: false,
+      });
+    },
+    [draft.timezone, updateDraft],
+  );
+
+  const addressFields = (
+    <>
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>Venue name</Text>
+        <Input
+          value={draft.venueName ?? ""}
+          onChangeText={(v) => updateDraft({ venueName: v })}
+          placeholder="e.g. Hidden Rooms"
+          variant="text"
+          accessibilityLabel="Venue name"
+          style={venueError !== undefined ? styles.inputError : undefined}
+        />
+        {venueError !== undefined ? (
+          <Text style={styles.helperError}>{venueError}</Text>
+        ) : null}
+      </View>
+
+      {/* ORCH-0824: Google Places autocomplete replaces the plain
+          <Input>. On pick, address + city + locationGeo are written
+          atomically. Free typing without picking leaves city=null,
+          which the validator rejects with "Pick the venue address
+          from the suggestions." */}
+      <View style={styles.field}>
+        <Text style={styles.fieldLabel}>Address</Text>
+        <AddressInput
+          value={draft.address ?? ""}
+          allowFreeText
+          selectionState={selectionState}
+          selectedLabel={draft.address ?? ""}
+          // Issue #3291 — rank-only: brand → picked point → time zone.
+          proximitySources={{
+            brandPoint: brandLocation,
+            draftPoint: draft.locationGeo,
+            timeZone: draft.timezone,
+          }}
+          onChangeText={(v) => {
+            advanceLocationRequestGeneration(requestGenerationRef);
+            savedCityRef.current = null;
+            committedAddrRef.current = v;
+            updateDraft({
+              address: v,
+              city: null,
+              locationGeo: null,
+              locationProviderPlaceId: null,
+              coordinatePrecision: null,
+            });
+          }}
+          onFreeText={resolveCommittedText}
+          onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+            advanceLocationRequestGeneration(requestGenerationRef);
+            const label = selectedLabel ?? details.formattedAddress;
+            committedAddrRef.current = label;
+            updateDraft({
+              address: label,
+              city: details.city,
+              locationGeo: details.location,
+              // #4334 — the picked Google place id, saved in the same write.
+              locationProviderPlaceId: details.placeId,
+              // Issue #1629 — READ the precision from the pick's own feature type
+              // instead of asserting it. This branch is a REAL PICK, so hardcoding
+              // "approximate" made `exact` unreachable everywhere (0 rows in prod).
+              coordinatePrecision: precisionFromPlaceDetails(details),
+            });
+            savedCityRef.current = details.city;
+            setSelectionState("selected");
+          }}
+          onChangeSelected={() => {
+            advanceLocationRequestGeneration(requestGenerationRef);
+            savedCityRef.current = null;
+            committedAddrRef.current = draft.address ?? "";
+            setSelectionState("editing");
+            updateDraft({
+              city: null,
+              locationGeo: null,
+              locationProviderPlaceId: null,
+              coordinatePrecision: null,
+            });
+          }}
+          onClear={(): void => {
+            advanceLocationRequestGeneration(requestGenerationRef);
+            savedCityRef.current = null;
+            committedAddrRef.current = "";
+            setSelectionState("editing");
+            updateDraft({
+              address: null,
+              city: null,
+              locationGeo: null,
+              locationProviderPlaceId: null,
+              coordinatePrecision: null,
+            });
+          }}
+          error={addressError}
+        />
+      </View>
+    </>
+  );
+
   return (
     <View
       style={
@@ -165,98 +318,22 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
     >
       {showInPerson ? (
         <>
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Venue name</Text>
-            <Input
-              value={draft.venueName ?? ""}
-              onChangeText={(v) => updateDraft({ venueName: v })}
-              placeholder="e.g. Hidden Rooms"
-              variant="text"
-              accessibilityLabel="Venue name"
-              style={venueError !== undefined ? styles.inputError : undefined}
+          {/* #4490 fix 2 (N84) — with venues, Where opens on "At one of your
+              venues" (venue → space; address and time zone fill in) or
+              "Somewhere else" (the fields below). Without venues, or while
+              the venues load, the fields show as before. */}
+          <Suspense fallback={addressFields}>
+            <LazyEventVenueSpacePicker
+              brandId={draft.brandId}
+              eventId={draft.id}
+              noun="event"
+              otherPlace={addressFields}
+              hasOtherAddress={(draft.address ?? "").trim().length > 0}
+              addressMissing={(draft.address ?? "").trim().length === 0 || draft.locationGeo === null}
+              onPlace={onVenuePlace}
             />
-            {venueError !== undefined ? (
-              <Text style={styles.helperError}>{venueError}</Text>
-            ) : null}
-          </View>
-
-          {/* ORCH-0824: Google Places autocomplete replaces the plain
-              <Input>. On pick, address + city + locationGeo are written
-              atomically. Free typing without picking leaves city=null,
-              which the validator rejects with "Pick the venue address
-              from the suggestions." */}
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Address</Text>
-            <AddressInput
-              value={draft.address ?? ""}
-              allowFreeText
-              selectionState={selectionState}
-              selectedLabel={draft.address ?? ""}
-              // Issue #3291 — rank-only: brand → picked point → time zone.
-              proximitySources={{
-                brandPoint: brandLocation,
-                draftPoint: draft.locationGeo,
-                timeZone: draft.timezone,
-              }}
-              onChangeText={(v) => {
-                advanceLocationRequestGeneration(requestGenerationRef);
-                savedCityRef.current = null;
-                committedAddrRef.current = v;
-                updateDraft({
-                  address: v,
-                  city: null,
-                  locationGeo: null,
-                  locationProviderPlaceId: null,
-                  coordinatePrecision: null,
-                });
-              }}
-              onFreeText={resolveCommittedText}
-              onPick={(details: PlaceDetails, selectedLabel?: string): void => {
-                advanceLocationRequestGeneration(requestGenerationRef);
-                const label = selectedLabel ?? details.formattedAddress;
-                committedAddrRef.current = label;
-                updateDraft({
-                  address: label,
-                  city: details.city,
-                  locationGeo: details.location,
-                  // #4334 — the picked Google place id, saved in the same write.
-                  locationProviderPlaceId: details.placeId,
-                  // Issue #1629 — READ the precision from the pick's own feature type
-                  // instead of asserting it. This branch is a REAL PICK, so hardcoding
-                  // "approximate" made `exact` unreachable everywhere (0 rows in prod).
-                  coordinatePrecision: precisionFromPlaceDetails(details),
-                });
-                savedCityRef.current = details.city;
-                setSelectionState("selected");
-              }}
-              onChangeSelected={() => {
-                advanceLocationRequestGeneration(requestGenerationRef);
-                savedCityRef.current = null;
-                committedAddrRef.current = draft.address ?? "";
-                setSelectionState("editing");
-                updateDraft({
-                  city: null,
-                  locationGeo: null,
-                  locationProviderPlaceId: null,
-                  coordinatePrecision: null,
-                });
-              }}
-              onClear={(): void => {
-                advanceLocationRequestGeneration(requestGenerationRef);
-                savedCityRef.current = null;
-                committedAddrRef.current = "";
-                setSelectionState("editing");
-                updateDraft({
-                  address: null,
-                  city: null,
-                  locationGeo: null,
-                  locationProviderPlaceId: null,
-                  coordinatePrecision: null,
-                });
-              }}
-              error={addressError}
-            />
-          </View>
+          </Suspense>
+          {venueIncomplete ? addressFields : null}
 
           {/* Hide-address toggle — replaces the static helper text from
               Cycle 3 v1. Default ON (matches prior behaviour). */}

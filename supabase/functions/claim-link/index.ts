@@ -33,6 +33,7 @@ export {
   contactCodeHash,
   generateContactCode,
 } from "../_shared/contactCode.ts";
+import { isLocalSupabaseUrl } from "../_shared/localSupabaseUrl.ts";
 
 const CODE = /^[0-9A-Za-z]{10}$/;
 const UUID =
@@ -44,6 +45,29 @@ const ALLOWED_WEB_ORIGINS = new Set([
   "https://usemingla.com",
   "https://host.usemingla.com",
 ]);
+
+// #4490 Explorer W1: a loopback buyer web (127.0.0.1 / localhost) may call
+// this function ONLY while the function itself runs on a local Supabase
+// stack (the same rule venueOfferVisitLink.ts applies to return links). A
+// deployed function never sees a local SUPABASE_URL, so production keeps the
+// two origins above and nothing else.
+const LOOPBACK_WEB_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
+
+export function webOriginAllowed(
+  origin: string,
+  supabaseUrl: string,
+): boolean {
+  if (ALLOWED_WEB_ORIGINS.has(origin)) return true;
+  return isLocalSupabaseUrl(supabaseUrl) && LOOPBACK_WEB_ORIGIN.test(origin);
+}
+
+const supabaseUrlNow = (): string => {
+  try {
+    return Deno.env.get("SUPABASE_URL") ?? "";
+  } catch {
+    return "";
+  }
+};
 
 type RpcResult = {
   data: unknown;
@@ -108,7 +132,7 @@ function cors(req: Request): Record<string, string> {
   const origin = req.headers.get("origin");
   return {
     "Access-Control-Allow-Origin":
-      origin !== null && ALLOWED_WEB_ORIGINS.has(origin)
+      origin !== null && webOriginAllowed(origin, supabaseUrlNow())
         ? origin
         : "https://usemingla.com",
     "Access-Control-Allow-Headers":
@@ -135,7 +159,7 @@ function json(
 
 function allowedOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
-  return origin === null || ALLOWED_WEB_ORIGINS.has(origin);
+  return origin === null || webOriginAllowed(origin, supabaseUrlNow());
 }
 
 export function parseClaimLinkBody(

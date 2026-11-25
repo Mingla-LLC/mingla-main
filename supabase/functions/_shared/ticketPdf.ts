@@ -658,3 +658,448 @@ export async function buildVenueQrSheetPdf(
     byteLength: bytes.byteLength,
   };
 }
+
+// ---------------------------------------------------------------------------
+// #4490 spec 08 O3 — floor PDFs (kitchen and bar tickets, Till receipts, test
+// tickets). Mingla makes the PDF; the device prints it (browser viewer, or the
+// phone's own viewer › Share › Print). Paper size comes from
+// venue_till_settings.print_paper: A4/letter, or a receipt roll 80 mm
+// (226.77 pt) or 58 mm (164.41 pt) wide whose height is fitted to the content.
+//
+// Every data string goes through sanitizeForWinAnsi (StandardFonts). Because
+// that turns every character above 0x7E into a space (₦, £, €, "Café" ->
+// "Caf "), money is ALWAYS written with the currency code ("NGN 18,500.00").
+// The day-close PDF is O5.
+// ---------------------------------------------------------------------------
+export type FloorPaper = "a4" | "roll_80" | "roll_58";
+
+export const FLOOR_PAPER_WIDTH_PT: Record<FloorPaper, number> = {
+  a4: 595.28,
+  roll_80: 226.77,
+  roll_58: 164.41,
+};
+const A4_HEIGHT_PT = 841.89;
+
+export function floorPaperFrom(value: unknown): FloorPaper {
+  return value === "roll_80" || value === "roll_58" ? value : "a4";
+}
+
+// ISO 4217 minor units for the currencies that are not 2.
+const ZERO_DECIMAL = new Set([
+  "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX",
+  "UYI", "VND", "VUV", "XAF", "XOF", "XPF",
+]);
+const THREE_DECIMAL = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
+
+/** "NGN 18,500.00", "GBP 12.50", "JPY 1,200": always the code, never a symbol. */
+export function formatMoneyCode(minor: number, currency: string): string {
+  const code = /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : "XXX";
+  const digits = ZERO_DECIMAL.has(code) ? 0 : THREE_DECIMAL.has(code) ? 3 : 2;
+  const safe = Number.isFinite(minor) ? Math.round(minor) : 0;
+  const negative = safe < 0;
+  const abs = Math.abs(safe);
+  const unit = 10 ** digits;
+  const whole = Math.floor(abs / unit);
+  const fraction = abs % unit;
+  const grouped = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const amount = digits === 0 ? grouped : `${grouped}.${String(fraction).padStart(digits, "0")}`;
+  return `${negative ? "-" : ""}${code} ${amount}`;
+}
+
+type PdfFontLike = {
+  widthOfTextAtSize: (text: string, size: number) => number;
+};
+
+interface FloorRow {
+  /** Left text (wrapped to the column). */
+  left: string;
+  /** Right-aligned text (money), never wrapped. */
+  right?: string;
+  size?: number;
+  bold?: boolean;
+  center?: boolean;
+  /** Draw a rule instead of text. */
+  rule?: boolean;
+  indent?: number;
+  gapBefore?: number;
+}
+
+// The middle dot and the other separators used in copy are not WinAnsi: write
+// them as ASCII first so a ticket reads "Pickup 41 - Tolu", not "Pickup 41   Tolu".
+function floorText(value: string | null | undefined): string {
+  const ascii = String(value ?? "").replace(/\s*·\s*/g, " - ").replace(/×/g, "x");
+  return sanitizeForWinAnsi(ascii).replace(/\s+/g, " ").trim();
+}
+
+function wrapToWidth(text: string, font: PdfFontLike, size: number, width: number): string[] {
+  const words = text.split(" ").filter((w) => w.length > 0);
+  if (words.length === 0) return [""];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current.length === 0 ? word : `${current} ${word}`;
+    if (font.widthOfTextAtSize(candidate, size) <= width) {
+      current = candidate;
+      continue;
+    }
+    if (current.length > 0) lines.push(current);
+    // A single word wider than the column is cut, never overflowed.
+    let rest = word;
+    while (font.widthOfTextAtSize(rest, size) > width && rest.length > 1) {
+      let cut = rest.length - 1;
+      while (cut > 1 && font.widthOfTextAtSize(rest.slice(0, cut), size) > width) cut--;
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    current = rest;
+  }
+  if (current.length > 0) lines.push(current);
+  return lines;
+}
+
+async function renderFloorDocument(
+  rows: FloorRow[],
+  paper: FloorPaper,
+  filename: string,
+  sizeError: string,
+): Promise<TicketPdfResult> {
+  const pdf = await PDFDocument.create();
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const width = FLOOR_PAPER_WIDTH_PT[paper];
+  const roll = paper !== "a4";
+  const margin = roll ? 10 : 48;
+  const base = paper === "roll_58" ? 8.5 : roll ? 9.5 : 11;
+  const column = width - margin * 2;
+
+  type Placed = { row: FloorRow; lines: string[]; size: number; lineHeight: number };
+  const placed: Placed[] = rows.map((row) => {
+    const size = (row.size ?? 1) * base;
+    const font = row.bold ? bold : regular;
+    const rightWidth = row.right ? font.widthOfTextAtSize(row.right, size) + 6 : 0;
+    const lines = row.rule ? [""] : wrapToWidth(row.left, font, size, column - (row.indent ?? 0) - rightWidth);
+    return { row, lines, size, lineHeight: size * 1.35 };
+  });
+  const heightOf = (p: Placed) => (p.row.gapBefore ?? 0) + (p.row.rule ? 8 : p.lines.length * p.lineHeight);
+  const contentHeight = placed.reduce((sum, p) => sum + heightOf(p), 0);
+  const pageHeight = roll ? Math.max(120, Math.ceil(contentHeight + margin * 2)) : A4_HEIGHT_PT;
+
+  let page = pdf.addPage([width, pageHeight]);
+  let pageCount = 1;
+  let y = pageHeight - margin;
+  const ink = rgb(0.06, 0.07, 0.09);
+  for (const p of placed) {
+    if (!roll && y - heightOf(p) < margin) {
+      page = pdf.addPage([width, pageHeight]);
+      pageCount += 1;
+      y = pageHeight - margin;
+    }
+    y -= p.row.gapBefore ?? 0;
+    if (p.row.rule) {
+      page.drawLine({
+        start: { x: margin, y: y - 4 },
+        end: { x: width - margin, y: y - 4 },
+        thickness: 0.6,
+        color: ink,
+      });
+      y -= 8;
+      continue;
+    }
+    const font = p.row.bold ? bold : regular;
+    p.lines.forEach((line, index) => {
+      y -= p.lineHeight;
+      const textWidth = font.widthOfTextAtSize(line, p.size);
+      const x = p.row.center ? (width - textWidth) / 2 : margin + (p.row.indent ?? 0);
+      page.drawText(line, { x, y: y + p.lineHeight - p.size, size: p.size, font, color: ink });
+      if (index === 0 && p.row.right) {
+        const rw = font.widthOfTextAtSize(p.row.right, p.size);
+        page.drawText(p.row.right, {
+          x: width - margin - rw,
+          y: y + p.lineHeight - p.size,
+          size: p.size,
+          font,
+          color: ink,
+        });
+      }
+    });
+  }
+  const bytes = await pdf.save();
+  if (bytes.byteLength > SIZE_CAP_BYTES) throw new Error(sizeError);
+  return {
+    filename,
+    contentBase64: bytesToBase64(bytes),
+    pageCount,
+    byteLength: bytes.byteLength,
+  };
+}
+
+export interface KitchenTicketLine {
+  quantity: number;
+  name: string;
+  modifiers: string[];
+  notes: string | null;
+  voided: boolean;
+}
+
+export interface KitchenTicketPdfInput {
+  paper: FloorPaper;
+  venueName: string;
+  /** kitchen | bar (a test ticket may also say all). */
+  station: "kitchen" | "bar" | "all";
+  ticketNo: string;
+  destination: string;
+  movedFrom?: string | null;
+  sentAtLocal: string;
+  sellerName: string | null;
+  guestOrder: boolean;
+  lines: KitchenTicketLine[];
+  printedAtLocal: string;
+  /** This print's number (1 for the first PDF of the ticket). */
+  printNumber: number;
+  /** A test ticket from Start service: no order behind it. */
+  test?: boolean;
+}
+
+const STATION_HEADING: Record<KitchenTicketPdfInput["station"], string> = {
+  kitchen: "KITCHEN",
+  bar: "BAR",
+  all: "KITCHEN AND BAR",
+};
+
+export async function buildKitchenTicketPdf(
+  input: KitchenTicketPdfInput,
+): Promise<TicketPdfResult> {
+  if (!input.test && input.lines.length === 0) {
+    throw new Error("kitchen_ticket_no_lines");
+  }
+  const who = input.guestOrder ? "Guest order" : floorText(input.sellerName) || "Staff";
+  const rows: FloorRow[] = [
+    {
+      left: `${STATION_HEADING[input.station]}  #${floorText(input.ticketNo)}`,
+      size: 1.5,
+      bold: true,
+    },
+    { left: floorText(input.venueName), size: 0.9 },
+  ];
+  if (input.test) {
+    rows.push(
+      { left: "TEST TICKET", size: 1.3, bold: true, gapBefore: 4 },
+      { left: `Printed ${floorText(input.printedAtLocal)}` },
+      { rule: true, left: "" },
+      { left: "If you can read this, printing works.", size: 1 },
+      { left: "1 x Sample dish", size: 1.15, bold: true, gapBefore: 4 },
+      { left: "Choice, size", indent: 14 },
+      { left: "NOTE: sample note", indent: 14 },
+      { rule: true, left: "" },
+    );
+  } else {
+    rows.push(
+      { left: `${floorText(input.destination)}   ${floorText(input.sentAtLocal)}   ${who}`, size: 1.1, bold: true },
+    );
+    if (input.movedFrom) rows.push({ left: `Moved from ${floorText(input.movedFrom)}`, size: 0.9 });
+    rows.push({ rule: true, left: "" });
+    for (const line of input.lines) {
+      const head = `${Math.max(1, Math.round(line.quantity))} x ${floorText(line.name)}`;
+      rows.push({ left: line.voided ? `VOID  ${head}` : head, size: 1.15, bold: !line.voided, gapBefore: 2 });
+      const mods = line.modifiers.map(floorText).filter((m) => m.length > 0);
+      if (mods.length > 0) rows.push({ left: mods.join(", "), indent: 14 });
+      const note = floorText(line.notes);
+      if (note.length > 0) rows.push({ left: `NOTE: ${note}`, indent: 14, bold: true });
+    }
+    rows.push({ rule: true, left: "" });
+    rows.push({ left: `Printed ${floorText(input.printedAtLocal)}  (${Math.max(1, input.printNumber)})`, size: 0.9 });
+  }
+  return await renderFloorDocument(
+    rows,
+    input.paper,
+    input.test ? "mingla-test-ticket.pdf" : `ticket-${floorText(input.ticketNo).toLowerCase()}-${input.station}.pdf`,
+    "kitchen_ticket_size_exceeded",
+  );
+}
+
+export interface TillReceiptPdfLine {
+  label: string;
+  quantity: number;
+  amountMinor: number;
+  modifiers: string[];
+}
+
+export interface TillReceiptPdfInput {
+  paper: FloorPaper;
+  venueName: string;
+  venueAddress: string | null;
+  checkLabel: string | null;
+  paidAtLocal: string;
+  receiptNo: number | null;
+  currency: string;
+  lines: TillReceiptPdfLine[];
+  subtotalMinor: number;
+  serviceChargeMinor: number;
+  taxIncludedMinor: number;
+  totalMinor: number;
+  paidBeforeMinor: number;
+  paymentAmountMinor: number;
+  tipMinor: number;
+  methodLabel: string;
+  cashGivenMinor: number | null;
+  changeMinor: number | null;
+  refundedMinor: number;
+  paidLate: boolean;
+  reference: string;
+  footer: string | null;
+}
+
+export async function buildTillReceiptPdf(
+  input: TillReceiptPdfInput,
+): Promise<TicketPdfResult> {
+  const money = (minor: number) => formatMoneyCode(minor, input.currency);
+  const rows: FloorRow[] = [
+    { left: floorText(input.venueName), size: 1.35, bold: true, center: true },
+  ];
+  if (input.venueAddress) rows.push({ left: floorText(input.venueAddress), center: true, size: 0.9 });
+  const when = [floorText(input.paidAtLocal), floorText(input.checkLabel)].filter((s) => s.length > 0).join(" - ");
+  rows.push({ left: when, center: true, size: 0.9 });
+  if (input.receiptNo !== null) rows.push({ left: `Receipt ${input.receiptNo}`, center: true, size: 0.9 });
+  rows.push({ rule: true, left: "" });
+  for (const line of input.lines) {
+    rows.push({
+      left: `${Math.max(1, Math.round(line.quantity))} ${floorText(line.label)}`,
+      right: money(line.amountMinor),
+    });
+    const mods = line.modifiers.map(floorText).filter((m) => m.length > 0);
+    if (mods.length > 0) rows.push({ left: mods.join(", "), indent: 10, size: 0.85 });
+  }
+  rows.push({ rule: true, left: "" });
+  rows.push({ left: "Subtotal", right: money(input.subtotalMinor) });
+  if (input.serviceChargeMinor > 0) rows.push({ left: "Service charge", right: money(input.serviceChargeMinor) });
+  if (input.taxIncludedMinor > 0) rows.push({ left: "Includes tax", right: money(input.taxIncludedMinor), size: 0.9 });
+  rows.push({ left: "TOTAL", right: money(input.totalMinor), bold: true, size: 1.2 });
+  if (input.paidBeforeMinor > 0) rows.push({ left: "Paid before", right: money(input.paidBeforeMinor) });
+  rows.push({ left: `Paid - ${floorText(input.methodLabel)}`, right: money(input.paymentAmountMinor) });
+  if (input.tipMinor > 0) rows.push({ left: "Tip", right: money(input.tipMinor) });
+  if (input.cashGivenMinor !== null) rows.push({ left: "Cash given", right: money(input.cashGivenMinor) });
+  if (input.changeMinor !== null && input.changeMinor > 0) rows.push({ left: "Change", right: money(input.changeMinor) });
+  if (input.refundedMinor > 0) rows.push({ left: "Refunded", right: money(input.refundedMinor) });
+  if (input.paidLate) rows.push({ left: "Paid after the payment was cancelled", size: 0.9 });
+  rows.push({ left: "Ref", right: floorText(input.reference) });
+  if (input.footer && floorText(input.footer).length > 0) {
+    rows.push({ rule: true, left: "" });
+    rows.push({ left: floorText(input.footer), center: true, size: 0.9 });
+  }
+  return await renderFloorDocument(
+    rows,
+    input.paper,
+    `receipt-${floorText(input.reference).toLowerCase()}.pdf`,
+    "till_receipt_size_exceeded",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// #4490 spec 08 O5 part B — the day close (Print on "Day closed").
+// ---------------------------------------------------------------------------
+
+export interface DayClosePdfRow {
+  label: string;
+  amountMinor: number;
+  /** Extra words after the label ("3 payments"); never money. */
+  detail?: string | null;
+}
+
+export interface DayClosePdfPerson {
+  name: string;
+  salesMinor: number;
+  tipsMinor: number;
+  cashTakenMinor: number;
+  voidCount: number;
+  refundMinor: number;
+}
+
+export interface DayClosePdfInput {
+  paper: FloorPaper;
+  venueName: string;
+  /** "Sat 21 Nov 2026" in the venue's own day. */
+  dayLabel: string;
+  currency: string;
+  /** "Closed 23:48 by Chioma", "Not closed yet". */
+  statusLine: string;
+  takingsMinor: number;
+  paymentCount: number;
+  tipsMinor: number;
+  byMethod: DayClosePdfRow[];
+  people: DayClosePdfPerson[];
+  tipsByServer: DayClosePdfRow[];
+  /** Service charge, refunds, voids, deposits, online orders, the door, card money. */
+  lines: DayClosePdfRow[];
+  /** The drawer: float, cash payments and tips, door, refunds, paid outs, expected. */
+  cash: DayClosePdfRow[];
+  countedMinor: number | null;
+  differenceMinor: number | null;
+  late: DayClosePdfRow[];
+  printedAtLocal: string;
+}
+
+/** "NGN 500.00 short", "NGN 1,200.00 over", "Balanced". */
+export function dayCloseDifferenceWords(differenceMinor: number, currency: string): string {
+  if (differenceMinor === 0) return "Balanced";
+  const amount = formatMoneyCode(Math.abs(differenceMinor), currency);
+  return differenceMinor < 0 ? `${amount} short` : `${amount} over`;
+}
+
+export async function buildDayClosePdf(input: DayClosePdfInput): Promise<TicketPdfResult> {
+  const money = (minor: number) => formatMoneyCode(minor, input.currency);
+  const row = (r: DayClosePdfRow, indent = 0): FloorRow => ({
+    left: r.detail ? `${floorText(r.label)} (${floorText(r.detail)})` : floorText(r.label),
+    right: money(r.amountMinor),
+    indent,
+  });
+  const rows: FloorRow[] = [
+    { left: "DAY CLOSE", size: 1.4, bold: true, center: true },
+    { left: floorText(input.venueName), center: true, bold: true },
+    { left: floorText(input.dayLabel), center: true },
+    { left: floorText(input.statusLine), center: true, size: 0.9 },
+    { rule: true, left: "" },
+    { left: `Takings (${Math.max(0, Math.round(input.paymentCount))} payments)`, right: money(input.takingsMinor), bold: true, size: 1.15 },
+    { left: "Tips", right: money(input.tipsMinor), bold: true },
+    { left: "By payment type", bold: true, gapBefore: 6 },
+    ...input.byMethod.map((r) => row(r, 8)),
+  ];
+  if (input.people.length > 0) {
+    rows.push({ left: "By person (sales)", bold: true, gapBefore: 6 });
+    for (const p of input.people) {
+      rows.push({ left: floorText(p.name), right: money(p.salesMinor), indent: 8 });
+      const extra = [
+        p.tipsMinor > 0 ? `tips ${money(p.tipsMinor)}` : "",
+        p.cashTakenMinor > 0 ? `cash ${money(p.cashTakenMinor)}` : "",
+        p.refundMinor > 0 ? `refunds ${money(p.refundMinor)}` : "",
+        p.voidCount > 0 ? `${p.voidCount} void${p.voidCount === 1 ? "" : "s"}` : "",
+      ].filter((s) => s.length > 0).join(", ");
+      if (extra.length > 0) rows.push({ left: extra, indent: 16, size: 0.85 });
+    }
+  }
+  if (input.tipsByServer.length > 0) {
+    rows.push({ left: "Tips by who served", bold: true, gapBefore: 6 });
+    rows.push(...input.tipsByServer.map((r) => row(r, 8)));
+  }
+  if (input.lines.length > 0) {
+    rows.push({ rule: true, left: "", gapBefore: 4 });
+    rows.push(...input.lines.map((r) => row(r)));
+  }
+  rows.push({ rule: true, left: "", gapBefore: 4 });
+  rows.push({ left: "Cash drawer", bold: true });
+  rows.push(...input.cash.map((r) => row(r, 8)));
+  if (input.countedMinor !== null) {
+    rows.push({ left: "Counted", right: money(input.countedMinor), bold: true });
+  }
+  if (input.differenceMinor !== null) {
+    rows.push({ left: "Difference", right: dayCloseDifferenceWords(input.differenceMinor, input.currency), bold: true, size: 1.15 });
+  }
+  if (input.late.length > 0) {
+    rows.push({ rule: true, left: "", gapBefore: 4 });
+    rows.push({ left: "Late payments since close", bold: true });
+    rows.push(...input.late.map((r) => row(r, 8)));
+  }
+  rows.push({ rule: true, left: "", gapBefore: 4 });
+  rows.push({ left: `Printed ${floorText(input.printedAtLocal)}`, size: 0.85, center: true });
+  const safeDay = floorText(input.dayLabel).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return await renderFloorDocument(rows, input.paper, `day-close-${safeDay || "day"}.pdf`, "day_close_size_exceeded");
+}

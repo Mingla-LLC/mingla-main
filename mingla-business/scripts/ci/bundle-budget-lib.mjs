@@ -135,8 +135,11 @@ export function assessCommonBaselineMovement(baselineRaw, measuredRaw, { oneTime
 //   - NEVER INSIDE A TEST HARNESS: the budget suites run these gates against
 //     synthetic exports and must keep meeting the normal limit on every branch.
 //
-// It raises ONLY `common`. The eager allowance and both PRODUCT CEILINGS are
-// untouched and still enforced first. Every run an entry applies to prints the
+// It raises `common`, and, only when an entry carries an optional `eager` cap
+// (issue #4490: eager includes __common, so shared code is counted in both),
+// the eager per-PR allowance of the orch-1083 gate, scoped by exactly the same
+// checks. An entry without `eager` leaves eager at its normal 25,000 B. Both
+// PRODUCT CEILINGS are untouched and still enforced first. Every run an entry applies to prints the
 // normal limit, the granted cap, the measured delta, the reason and the
 // approver, and every run it does NOT apply to says so in one line.
 //
@@ -163,7 +166,38 @@ export const ONE_TIME_PR_ALLOWANCE = Object.freeze([
       "services) lands in the shared chunk (+22,349 B measured against the #4589 baseline). The " +
       "nested lazy load was already removed; splitting cohesive modules only to pass is not allowed.",
   }),
+  Object.freeze({
+    issue: 4490,
+    pr: 4600,
+    headRef: "4490-venue-features",
+    common: 162_000,
+    eager: 165_000,
+    expiresAfter: "2026-12-08",
+    approvedBy: "Seth, 2026-11-24",
+    reason:
+      "Venue features (#4490): the host and guest venue pages genuinely share about 161 KB of " +
+      "code (Till, Close the day, offers, venue models and services) that lands in the shared " +
+      "chunk (+161,172 B in __common and +163,802 B in the eager payload, measured against the #4589 baseline). Splitting cohesive modules only " +
+      "to pass is not allowed.",
+  }),
 ]);
+
+/**
+ * The per-pull-request `__common` and eager caps a resolved entry grants.
+ * `entry` is what resolveOneTimeAllowance returned (null for a run it does not
+ * apply to: another PR, another branch, expired, a test harness). An absent or
+ * unusable `eager` on an entry means the normal eager allowance, never a grant.
+ * Pure; it never touches PR_DELTA_ALLOWANCE or the product ceilings.
+ */
+export function effectivePerPrAllowance(entry, normal) {
+  const common = entry && Number.isSafeInteger(entry.common) && entry.common > normal.common
+    ? entry.common
+    : normal.common;
+  const eager = entry && Number.isSafeInteger(entry.eager) && entry.eager > normal.eager
+    ? entry.eager
+    : normal.eager;
+  return { common, eager };
+}
 
 const MAIN_REF = "refs/heads/main";
 const MAIN_EVENTS = new Set(["push", "workflow_dispatch"]);

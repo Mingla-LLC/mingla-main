@@ -23,6 +23,7 @@ import {
   type,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
+import { VenueCoverButton } from "../ui/VenueCoverButton";
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import { useBrand } from "../../hooks/useBrands";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
@@ -206,6 +207,16 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
           </Text>
         </View>
       )}
+
+      {/* #4490 07-L — "Use {Venue}'s cover", applied through the same
+          onCoverChange (wizard setCover) the device upload uses. */}
+      {ready ? (
+        <VenueCoverButton
+          rowId={experienceId}
+          noun="experience"
+          onApply={(patch) => onCoverChange({ ...patch, coverGallery: cover.coverGallery })}
+        />
+      ) : null}
 
       {/* #1022 M5 — last child of the root stepBody View, after the Button
           ternary. `stepBody: { gap: space[4] }` gives the 16pt gap free.

@@ -106,6 +106,9 @@ jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => ({ rank: 100 }),
 }));
 
+// TEST-MOD-APPROVED #4490 07-D: the Menu module now opens with the ordering-mode card (its own
+// settings query); registered like the module's other hooks, the card is inert here.
+jest.mock("../OrderingModeCard", () => ({ OrderingModeCard: (): null => null }));
 jest.mock("../../../hooks/useMenus", () => ({
   useBrandMenus: () => ({
     data: [savedMenu],
@@ -262,23 +265,20 @@ describe("#3565 menu service times", () => {
     );
   });
 
-  test("web renders visible native time inputs and clear returns to all day", () => {
+  // TEST-MOD-APPROVED #4490 N12/N71: web uses the workspace's typeable
+  // 24-hour TimeField instead of the browser's native time input.
+  test("web renders the workspace time fields and clear returns to all day", () => {
     setPlatform("web");
     renderCategory(savedMenu);
     if (tree === undefined) throw new Error("Renderer missing");
 
-    const start = tree.root.findByProps({
-      "data-testid": "menu-category-window-start",
-    });
-    const end = tree.root.findByProps({
-      "data-testid": "menu-category-window-end",
-    });
-    expect(start.props).toMatchObject({
-      type: "time",
+    const field = (id: string) =>
+      tree?.root.findAllByProps({ testID: id }).filter((n) => typeof n.props.value === "string")[0];
+    expect(field("menu-category-window-start-input")?.props).toMatchObject({
       value: "17:00",
-      "aria-label": "Service start time",
+      accessibilityLabel: "Service start time",
     });
-    expect(end.props).toMatchObject({ type: "time", value: "22:30" });
+    expect(field("menu-category-window-end-input")?.props).toMatchObject({ value: "22:30" });
     expect(tree.root.findAllByType("NativeDateTimePicker")).toHaveLength(0);
 
     call(byTestID("menu-category-window-clear"), "onPress");

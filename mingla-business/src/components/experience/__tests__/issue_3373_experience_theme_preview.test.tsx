@@ -81,6 +81,9 @@ const mockUseBrand = jest.fn(() => ({
   isError: false,
   data: { theme: null },
 }));
+// [TEST-MOD-APPROVED #4490] 07-L: the cover step reads the experience's venue cover; registered
+// like useBrands (no venue in this harness, so the button draws nothing).
+jest.mock("../../../hooks/useEventVenueCover", () => ({ useEventVenueCover: (): null => null }));
 jest.mock("../../../hooks/useBrands", () => ({
   useBrand: () => mockUseBrand(),
 }));

@@ -11,6 +11,7 @@
  * (`buildVenueGalleryPhotoUrls`, now shared) instead of a raw `pool_photo_urls`
  * read, so the two surfaces cannot publish different photographs.
  */
+import type { VenueCategory } from "@mingla/brand-rendering/venueCategoryProfile";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 // #1560 — DEEP specifier, never the barrel: the bare "@mingla/brand-rendering"
 // re-exports PublicBrandPage, which imports lucide-react-native at module
@@ -47,7 +48,8 @@ export interface ConsumerPublicVenue {
   brandName: string;
   slug: string;
   name: string;
-  venueCategory: "restaurant" | "play" | "creative_and_arts" | "stay" | null;
+  // #4490 — nine types, all labels (what a venue sells is its features).
+  venueCategory: VenueCategory | null;
   address: string | null;
   city: string | null;
   /**
@@ -111,12 +113,7 @@ interface VenueRow {
   brand_name: string;
   slug: string;
   name: string;
-  venue_category:
-    | "restaurant"
-    | "play"
-    | "creative_and_arts"
-    | "stay"
-    | null;
+  venue_category: VenueCategory | null;
   address: string | null;
   city: string | null;
   country_code?: string | null;

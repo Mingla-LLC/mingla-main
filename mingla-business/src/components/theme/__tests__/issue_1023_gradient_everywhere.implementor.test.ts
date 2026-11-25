@@ -100,7 +100,8 @@ describe("theme font face: Android names the face without a bold weight", () => 
     const key = "GF_Bricolage_Grotesque_700";
     expect(android.themeFontFace(key)).toEqual({ fontFamily: key, fontWeight: "normal" });
     expect(ios.themeFontFace(key)).toEqual({ fontFamily: key });
-    expect(web.themeFontFace(key)).toEqual({ fontFamily: key });
+    // TEST-MOD-APPROVED #4490 (N39): web adds a sans fallback after the key.
+    expect(web.themeFontFace(key)).toEqual({ fontFamily: `${key}, ${web.WEB_FONT_FALLBACK}` });
   });
 });
 

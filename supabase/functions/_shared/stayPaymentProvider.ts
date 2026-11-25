@@ -66,10 +66,20 @@ function nonnegativeSafeInteger(value: string): number {
   return parsed;
 }
 
+export type StayPaymentSessionOptions = {
+  /**
+   * #4490: where Paystack sends the buyer back after paying. Stays leave it
+   * unset (the Paystack dashboard default); venue offers pass their own
+   * booking page so the return can confirm the payment.
+   */
+  callbackUrl?: string;
+};
+
 export async function createStayPaymentSession(
   prepared: PreparedStayPayment,
   idempotencyKey: string,
   dependencies: StayPaymentProviderDependencies = {},
+  options: StayPaymentSessionOptions = {},
 ): Promise<StayPaymentSession> {
   const amount = positiveSafeInteger(prepared.amountMinor);
   const applicationFee = nonnegativeSafeInteger(
@@ -193,6 +203,7 @@ export async function createStayPaymentSession(
       stay_group_id: prepared.groupId,
       stay_payment_attempt_id: prepared.attemptId,
     },
+    ...(options.callbackUrl ? { callbackUrl: options.callbackUrl } : {}),
     // The brand is payout-hold cut over before preparation. No subaccount or
     // transaction_charge fields: funds settle to Mingla for shared release.
   });

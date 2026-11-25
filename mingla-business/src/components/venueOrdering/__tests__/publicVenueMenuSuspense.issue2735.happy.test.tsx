@@ -113,6 +113,13 @@ const mockBuyerOrdering: { current: BuyerVenueOrdering } = {
     orderMore: jest.fn(),
     askPartySize: false,
     tipRemembered: false,
+    // TEST-MOD-APPROVED #4490 07-D: the ordering hook returns the "I'll collect it" choice.
+    pickup: false,
+    setPickup: () => undefined,
+    // TEST-MOD-APPROVED #4490 N144: the hook offers "Try again" after a decline.
+    retryPayment: () => undefined,
+    retryPending: false,
+    counterOrderPath: null,
   },
 };
 

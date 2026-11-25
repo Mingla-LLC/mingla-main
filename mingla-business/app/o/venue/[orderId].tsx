@@ -24,7 +24,7 @@
  * failed, and never that it succeeded.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -43,7 +43,10 @@ import {
   resolveTheme,
 } from "@mingla/offering-rendering";
 import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering";
+import { venueOrderStatusPollDelay } from "@mingla/brand-rendering/venueOrdering/venueOrderingPoll";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
+import { GUEST_SOLD_OUT_COPY as STOCK_COPY, guestSoldOutOf, type GuestSoldOutLine } from "../../../src/components/venue/stock/guestSoldOut";
+import { formatCurrency } from "../../../src/utils/currency";
 import { venuePublicPath } from "../../../src/constants/publicUrls";
 import { useSignedInHostViewer } from "../../../src/components/venue/guestViewHostSession";
 
@@ -120,6 +123,7 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
     void refresh();
   }, [refresh]);
 
+  const pendingReadsRef = useRef(0);
   useEffect(() => {
     if (live === null) return () => undefined;
     const settled =
@@ -128,10 +132,16 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
         live.fulfillmentStatus === "cancelled" ||
         live.fulfillmentStatus === "refunded");
     if (settled) return () => undefined;
-    const handle = setInterval(() => {
+    // N143: back off while unpaid (5 s, 10 s, 20 s, then stop) and stop on a
+    // declined answer; a paid order keeps the steady interval.
+    if (live.paymentStatus !== "pending") pendingReadsRef.current = 0;
+    const delay = venueOrderStatusPollDelay(live, pendingReadsRef.current, POLL_INTERVAL_MS);
+    if (delay === null) return () => undefined;
+    const handle = setTimeout(() => {
+      if (live.paymentStatus === "pending") pendingReadsRef.current += 1;
       void refresh();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(handle);
+    }, delay);
+    return () => clearTimeout(handle);
   }, [live, refresh]);
 
   /**
@@ -277,6 +287,7 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
           </View>
         }
       >
+        <GuestSoldOutNotes palette={palette} lines={guestSoldOutOf(live)} currency={live.totals.currency} />
         <LazyOrderStatusView
           palette={palette}
           surface={surface}
@@ -326,6 +337,42 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
   );
 }
 
+/**
+ * #4490 spec 08 O5 part C (T16): a line the guest paid for sold out. The venue
+ * swapped it (same price or less; any difference goes back) or refunded it;
+ * until then the guest reads that they won't pay for anything they don't get.
+ */
+const GuestSoldOutNotes: React.FC<{
+  palette: ReturnType<typeof createThemePalette>;
+  lines: GuestSoldOutLine[];
+  currency: string;
+}> = ({ palette, lines, currency }) => {
+  if (lines.length === 0) return null;
+  const money = (minor: number): string => formatCurrency(minor, currency, true);
+  return (
+    <View style={styles.soldOutWrap} testID="guest-order-sold-out">
+      {lines.map((line, i) => {
+        const title = line.resolution === "swap"
+          ? STOCK_COPY.guestSwappedTitle(line.itemName, line.swappedToName ?? "")
+          : STOCK_COPY.guestRefundTitle(line.itemName);
+        const note = line.resolution === "swap"
+          ? (line.refundedMinor !== null && line.refundedMinor > 0
+            ? STOCK_COPY.guestSwappedBack(money(line.refundedMinor))
+            : STOCK_COPY.guestSwappedSame)
+          : line.resolution === "refund"
+          ? STOCK_COPY.guestRefundBody(money(line.refundedMinor ?? 0))
+          : STOCK_COPY.guestWaitingBody;
+        return (
+          <View key={`${line.itemName}-${i}`} style={styles.stateCard} accessibilityRole="summary">
+            <Text style={[styles.soldOutTitle, { color: palette.primaryText }]}>{title}</Text>
+            <Text style={[styles.stateNote, { color: palette.secondaryText }]}>{note}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+};
+
 const StateCard: React.FC<{
   palette: ReturnType<typeof createThemePalette>;
   title: string;
@@ -356,6 +403,8 @@ const styles = StyleSheet.create({
   loading: { alignItems: "center", gap: 12, paddingVertical: 56 },
   loadingText: { fontSize: 15 },
   stateCard: { gap: 8, paddingVertical: 24 },
+  soldOutWrap: { gap: 4 },
+  soldOutTitle: { fontSize: 16, lineHeight: 22, fontWeight: "800" },
   stateTitle: { fontSize: 18, lineHeight: 24, fontWeight: "800" },
   stateNote: { fontSize: 15, lineHeight: 21 },
   homeBtn: { minHeight: 44, justifyContent: "center" },

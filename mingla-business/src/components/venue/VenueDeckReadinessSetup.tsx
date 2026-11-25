@@ -236,6 +236,13 @@ const FACET_QUESTIONS_BY_CATEGORY: Record<
   // Stay should carry — tracked as a discovery on #1558, not fixed here.
   stay: [...FACET_CORE, ...FACET_RESTAURANT],
   uncategorised: [...FACET_CORE, ...FACET_RESTAURANT],
+  // #4490 — the five new venue types. Bars, clubs and cafes are food-and-drink
+  // venues; event spaces and coworking get the core questions only.
+  bar_lounge: [...FACET_CORE, ...FACET_RESTAURANT],
+  club: [...FACET_CORE, ...FACET_RESTAURANT],
+  cafe: [...FACET_CORE, ...FACET_RESTAURANT],
+  event_space: [...FACET_CORE],
+  coworking: [...FACET_CORE],
 };
 
 const EMPTY_COVER: CoverPatch = {

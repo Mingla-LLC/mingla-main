@@ -74,6 +74,16 @@ export function paidCancelNote(
   };
 }
 
+/**
+ * #4490 08-O4 fix 1 (O4-T1): a plain move (seat, no-show, cancel of a seated
+ * booking) refused because the booking's deposit is on a bill at the Till.
+ * Any other refusal keeps the module's existing behaviour (null).
+ */
+export function transitionErrorMessage(error: unknown): string | null {
+  const message = (error as { message?: unknown } | null)?.message;
+  return message === "reservation_deposit_used" ? paidCancelErrorMessage("reservation_deposit_used") : null;
+}
+
 /** A sentence for each refusal the host-cancel edge action can return. */
 export function paidCancelErrorMessage(code: string | null): string {
   switch (code) {
@@ -83,6 +93,8 @@ export function paidCancelErrorMessage(code: string | null): string {
       return "This guest has already been refunded.";
     case "seated_no_auto_refund":
       return SEATED_PAID_CANCEL_NOTE;
+    case "reservation_deposit_used":
+      return "This deposit was used on the bill at the venue.";
     case "cancel_not_allowed":
       return "This booking can't be cancelled any more.";
     case "not_authorized":

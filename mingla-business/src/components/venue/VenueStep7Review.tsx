@@ -16,7 +16,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
-import type { VenueCategory } from "../../types/brand";
+import { FEATURE_COPY, type VenueTypeKey } from "../../types/venueFeatures";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
@@ -24,24 +24,25 @@ import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { useVenueThemeControl } from "./useVenueThemeControl";
-
-const CAT_LABEL: Record<VenueCategory, string> = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-  stay: "Stay",
-};
+import { chosenStartingFeatures } from "./features/wizardFeaturesModel";
+import { c6DialCode } from "./venueWizardValidation";
+import { hoursWeekLines, phoneWithCode, priceRangeLabel, venueTypeLabel } from "./venueReviewModel";
 
 export interface VenueStep7ReviewProps {
   submitting: boolean;
   submitError: string | null;
   onSubmit: () => void;
+  /** #4490 D11 — the step that fixes the submit error, as a button. */
+  fixLabel?: string | null;
+  onFix?: () => void;
 }
 
 export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
   submitting,
   submitError,
   onSubmit,
+  fixLabel = null,
+  onFix,
 }) => {
   const d = useDraftVenueStore();
   // issue #1564 — MOUNT 2 of 4. Last chance to change the look before it goes
@@ -54,16 +55,15 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
   const cover = d.coverChoice ?? null;
   const gallery = d.galleryUrls ?? [];
   const pitch = d.description.trim();
-  const contact = [d.contactEmail.trim(), d.contactPhone.trim(), d.website.trim()]
+  // #4490 D10 — the phone with its country code, money with symbol and
+  // thousands, the full type label, the hours and the starting features.
+  const phone = phoneWithCode(c6DialCode(d.contactPhoneCountryIso), d.contactPhone);
+  const contact = [d.contactEmail.trim(), phone, d.website.trim()]
     .filter((s) => s.length > 0)
     .join(" · ");
-  const priceLabel = (d.discoveryPriceMinInput ?? "").trim().length > 0
-    ? `${(d.discoveryPriceMinInput ?? "").trim()}${
-        (d.discoveryPriceMaxInput ?? "").trim().length > 0
-          ? `–${(d.discoveryPriceMaxInput ?? "").trim()}`
-          : "+"
-      }${currencyCode ? ` ${currencyCode}` : ""}`
-    : "—";
+  const priceLabel = priceRangeLabel(d.discoveryPriceMinInput, d.discoveryPriceMaxInput, currencyCode);
+  const features = chosenStartingFeatures((d.venueCategory ?? null) as VenueTypeKey | null, d.startingFeatures);
+  const hoursLines = hoursWeekLines(d.hours ?? []);
 
   return (
     <View style={styles.host}>
@@ -95,7 +95,7 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
           </View>
         </View>
         <Row k="Name" v={d.displayName.trim() || "—"} />
-        <Row k="Category" v={d.venueCategory ? CAT_LABEL[d.venueCategory] : "—"} />
+        <Row k="Type" v={venueTypeLabel(d.venueCategory)} />
         <Row k="Address" v={d.formattedAddress || "—"} />
         {pitch.length === 0 ? (
           // #3384 — there is no pitch step (ORCH-1304): Mingla writes the
@@ -117,9 +117,19 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
         )}
         <Row k="Contact" v={contact || "—"} />
         <Row k="Price" v={priceLabel} />
+        <View style={styles.row} testID="venue-review-hours">
+          <Text style={styles.k}>Hours</Text>
+          {hoursLines.map((line) => (
+            <Text key={line} style={styles.v}>{line}</Text>
+          ))}
+        </View>
         <Row
-          k="Bookings"
-          v={d.wantsReservations ? "Reservations on" : "Reservations off"}
+          k="Starts with"
+          v={
+            features.length > 0
+              ? features.map((key) => FEATURE_COPY[key].label).join(", ")
+              : "No features yet. Switch them on in Settings."
+          }
         />
       </View>
       <ThemeControlRow
@@ -134,7 +144,12 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
         testID="venue-review-theme-control-row"
       />
       {submitError !== null ? (
-        <Text style={styles.err}>{submitError}</Text>
+        <View style={styles.errBox} accessibilityLiveRegion="polite" testID="venue-review-submit-error">
+          <Text style={styles.err}>{submitError}</Text>
+          {fixLabel !== null && onFix !== undefined ? (
+            <Button label={fixLabel} variant="secondary" size="sm" onPress={onFix} testID="venue-review-fix" />
+          ) : null}
+        </View>
       ) : null}
       <Button
         label={submitting ? "Submitting…" : "Submit for review"}
@@ -215,8 +230,12 @@ const styles = StyleSheet.create({
     color: color.text2,
   },
   err: {
-    fontSize: type.caption.fontSize,
+    fontSize: type.small.fontSize,
     color: color.errorText,
+  },
+  errBox: {
+    gap: space[2],
+    alignItems: "flex-start",
   },
 });
 

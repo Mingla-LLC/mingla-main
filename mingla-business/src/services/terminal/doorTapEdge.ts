@@ -96,6 +96,8 @@ export interface DoorPayCodeCreated {
 }
 
 export interface CreateDoorTapIntentInput {
+  /** #4490 O2: set for a Till payment (the event fields are then empty). */
+  scope?: { kind: "till"; venueId: string; paymentId: string };
   eventId: string;
   eventDateId: string | null;
   lines: TapToPayDraftLine[];
@@ -178,9 +180,12 @@ const optionalInt = (data: Record<string, unknown>, key: string): number | null 
 export interface TapToPayScopeIds {
   brandId: string | null;
   eventId?: string | null;
+  /** #4490 O2: a Till at this venue (token and Location for sellers there). */
+  venueId?: string | null;
 }
 
 const scopeBody = (scope: TapToPayScopeIds): Record<string, string> => {
+  if (scope.venueId !== null && scope.venueId !== undefined) return { scope: "till", venueId: scope.venueId };
   if (scope.eventId !== null && scope.eventId !== undefined) return { eventId: scope.eventId };
   if (scope.brandId !== null) return { brandId: scope.brandId };
   throw new DoorTapError("invalid_request", "no event or brand");
@@ -294,3 +299,59 @@ export const createDoorPayCodeForLines = async (input: {
   });
   return { codeId: requireString(data, "codeId") };
 };
+
+/**
+ * #4490 spec 08 O2 — the TapToPayServer for a Till payment. venue-till
+ * `pay_tap_start` already made the pending payment and its carrier (priced by
+ * the server); door-tap-intent scope "till" starts, records and cancels the
+ * card_present PaymentIntent for it. completeIntent answers in the door shape
+ * (orderId = the Till payment id; no tickets).
+ */
+export const createTillTapServer = (input: { venueId: string; paymentId: string; staffSession?: string | null }) => ({
+  createIntent: async (create: CreateDoorTapIntentInput): Promise<DoorTapIntent> => {
+    const data = await invoke("door-tap-intent", {
+      action: "create",
+      scope: "till",
+      platform: Platform.OS,
+      venueId: input.venueId,
+      paymentId: input.paymentId,
+      clientRequestId: create.clientRequestId,
+      // #4490 O5: a Till device's PIN session (memory only); none otherwise.
+      ...(input.staffSession ? { staffSession: input.staffSession } : {}),
+    });
+    return {
+      paymentIntentId: requireString(data, "paymentIntentId"),
+      clientSecret: requireString(data, "clientSecret"),
+      totalCents: requireInt(data, "totalCents"),
+      currency: requireString(data, "currency"),
+      stripeAccountId: requireString(data, "stripeAccountId"),
+      locationId: requireString(data, "locationId"),
+      feeCents: optionalInt(data, "feeCents"),
+      subtotalCents: optionalInt(data, "subtotalCents"),
+    };
+  },
+  completeIntent: async (complete: { paymentIntentId: string; clientRequestId: string }): Promise<DoorTapCompleteResult> => {
+    const data = await invoke("door-tap-intent", {
+      action: "complete",
+      scope: "till",
+      paymentIntentId: complete.paymentIntentId,
+      clientRequestId: complete.clientRequestId,
+    });
+    if (data.status !== "recorded") throw new DoorTapError("invalid_response", "complete did not record");
+    return {
+      orderId: typeof data.paymentId === "string" ? data.paymentId : input.paymentId,
+      ticketIds: [],
+      receiptQueued: false,
+      replayed: data.replayed === true,
+    };
+  },
+  cancelIntent: async (cancel: { paymentIntentId: string; clientRequestId: string }): Promise<void> => {
+    const data = await invoke("door-tap-intent", {
+      action: "cancel",
+      scope: "till",
+      paymentIntentId: cancel.paymentIntentId,
+      clientRequestId: cancel.clientRequestId,
+    });
+    if (data.status !== "cancelled") throw new DoorTapError("invalid_response", "cancel did not report cancelled");
+  },
+});

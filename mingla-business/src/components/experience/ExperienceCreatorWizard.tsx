@@ -171,12 +171,20 @@ import {
 } from "../../utils/publishedExperienceEditGuards";
 import {
   brandPaymentOnboardingRoute,
+  EVENT_SPACE_TAKEN_COPY,
+  isEventSpaceTakenRefusal,
   isOrganiserTermsRefusalMessage,
   organiserTermsUnresolvedCopy,
   paidPriceHasMinorUnits,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
+import {
+  useServerCoverAdoption,
+  type FetchServerCover,
+} from "../../hooks/useServerCoverAdoption";
+import type { ServerDraftCover } from "../../utils/draftCoverBase";
+import { asEventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { ThemeInput } from "@mingla/offering-rendering";
 // Deep import — avoid the package barrel (pulls expo-video via EventCoverMedia
 // and breaks Host web render suites that load this wizard).
@@ -193,12 +201,14 @@ import {
 } from "../../services/offeringTheme";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 import { currencyCodeOrNull } from "../../utils/currency";
+import type { VenueLocation } from "../../services/venueFeaturesService";
 import {
   EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY,
   experienceDisplayCurrencySymbol,
   experiencePublishNeedsPayoutCountry,
   isEventCurrencyRequiredRefusal,
 } from "../../utils/experiencePublishCurrencyGate";
+import { upfrontDraftPayload } from "../../utils/experienceUpfrontDraft";
 
 // #1742 / ORCH-1083 — the gate sheet is needed only at the final publish door.
 // Preload its async chunk one step early so opening it remains immediate while
@@ -359,6 +369,44 @@ const CREATION_STEPS = [
   { id: "review", label: "Review" },
 ];
 
+/**
+ * #4490 — the cover the server holds for an experience DRAFT right now. A
+ * cover video finishes on the server after its sheet closes; this read lets
+ * useServerCoverAdoption bring it back into the wizard (EventCreatorWizard
+ * does the same through fetchServerDraftCover, which reads event drafts only).
+ * Throws on a read error (the hook retries); null when no longer a draft.
+ */
+const fetchExperienceDraftCover: FetchServerCover = async (
+  draftId: string,
+): Promise<ServerDraftCover | null> => {
+  const { data, error } = await supabase
+    .from("events")
+    .select(
+      "cover_media_url,cover_media_poster_url,cover_media_type,cover_media_provider,cover_media_source_url,cover_media_credit,cover_media_credit_url,cover_media_alt",
+    )
+    .eq("id", draftId)
+    .eq("event_type", "experience")
+    .eq("status", "draft")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error !== null) throw error;
+  if (data === null) return null;
+  const text = (value: unknown): string | null =>
+    typeof value === "string" && value.length > 0 ? value : null;
+  const type = data.cover_media_type;
+  return {
+    coverMediaUrl: text(data.cover_media_url),
+    coverMediaPosterUrl: text(data.cover_media_poster_url),
+    coverMediaType:
+      type === "image" || type === "video" || type === "gif" ? type : null,
+    coverMediaProvider: asEventCoverMediaProvider(data.cover_media_provider),
+    coverMediaSourceUrl: text(data.cover_media_source_url),
+    coverMediaCredit: text(data.cover_media_credit),
+    coverMediaCreditUrl: text(data.cover_media_credit_url),
+    coverMediaAlt: text(data.cover_media_alt),
+  };
+};
+
 const RPC_ERROR_COPY: Record<string, string> = {
   not_authenticated: "Please sign in again.",
   brand_not_found: "We couldn't find your brand.",
@@ -378,6 +426,11 @@ const RPC_ERROR_COPY: Record<string, string> = {
   stop_address_unvalidated: "Pick each stop's address from the suggestions.",
   stop_too_many_images: "Each stop can have up to 5 photos.",
   experience_price_invalid: "Set a valid price, or mark the experience free.",
+  // #4490 — every price is named by the host.
+  experience_price_name_required: "Give each price a name.",
+  // #4490 — a cover video still finishing on the server.
+  cover_media_persist_mismatch:
+    "Your cover video is still processing. Try again in a minute.",
   event_date_required: "Pick at least one date.",
   slug_taken:
     "An experience with that name already exists. Try a small variation.",
@@ -562,7 +615,8 @@ export const ExperienceCreatorWizard: React.FC<
       }
       return [
         emptyPriceOption({
-          name: "Standard",
+          // #4490 — the host names the price; no forced Standard name.
+          name: "",
           priceMajor: initialWholePriceInput(
             initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor,
           ),
@@ -781,6 +835,26 @@ export const ExperienceCreatorWizard: React.FC<
     };
   }, [experienceId, themeOverrides, flushThemeWrite]);
   const [cover, setCover] = useState<CoverPatch>(initialCover ?? EMPTY_COVER);
+  // #4490 — a cover video finishes on the server after its sheet closes.
+  // Adopt it on every step change and app foreground (as the event wizard
+  // does), so a later save never sends an empty cover over the server's one.
+  // A live edit has no draft row to read, so adoption stays off there.
+  const handleAdoptServerCover = useCallback(
+    (server: ServerDraftCover): void => {
+      setCover((prev) => ({ ...prev, ...server }));
+    },
+    [],
+  );
+  useServerCoverAdoption({
+    draftId: experienceId ?? "d_pending_experience",
+    fetchServerCover:
+      experienceId !== null && !isLiveEdit ? fetchExperienceDraftCover : undefined,
+    localCoverUrl: cover.coverMediaUrl,
+    watching: false,
+    pulse: step,
+    onAdopt: handleAdoptServerCover,
+    onReadError: () => setToast("Couldn't refresh your cover. Retrying shortly."),
+  });
 
   // ORCH-1339 (D5) — the two guest-privacy display gates (wizard-owned state;
   // Pricing-step accordion is their single home for create AND edit).
@@ -849,6 +923,31 @@ export const ExperienceCreatorWizard: React.FC<
       cancelled = true;
     };
   }, [existingExperienceId]);
+
+  // #4490 fix 2 (N84) — a venue picked in Where fills the first stop's place
+  // (name, address, pin); "Somewhere else" leaves the stops as typed.
+  const onVenuePlace = useCallback((venue: VenueLocation | null): void => {
+    if (venue === null) return;
+    setStops((prev) => {
+      if (prev.length === 0) return prev;
+      const complete = venue.city !== null && venue.lat !== null && venue.lng !== null;
+      const first = prev[0];
+      return [
+        {
+          ...first,
+          placeId: venue.placeId,
+          placeName: venue.name,
+          address: venue.address ?? venue.name,
+          city: venue.city,
+          countryCode: venue.countryCode,
+          lat: complete ? venue.lat : null,
+          lng: complete ? venue.lng : null,
+          coordinatePrecision: complete ? "approximate" : null,
+        },
+        ...prev.slice(1),
+      ];
+    });
+  }, []);
 
   // When-step adapter (feeds the lifted CreatorStep2When). Edit-mode seeds it.
   // ORCH-1339 — the synthetic draft carries the wizard's guest-privacy state.
@@ -1201,7 +1300,11 @@ export const ExperienceCreatorWizard: React.FC<
     try {
       const { data, error } = await supabase.rpc("biz_create_experience", {
         p_brand_id: brandId,
-        p_payload: buildPayload(false),
+        // N129 (#4490): the up-front draft is made when the host leaves
+        // Identity, before any price has a name; unnamed seeds would be
+        // refused (experience_price_name_required) and the Cover step would
+        // wait forever. Prices are written by the save / publish that follows.
+        p_payload: upfrontDraftPayload(buildPayload(false)),
         p_publish: false,
       });
       if (error !== null) {
@@ -1445,7 +1548,9 @@ export const ExperienceCreatorWizard: React.FC<
               : !whenAdapter.isValid
                 ? "Set the date and time on the When step before publishing."
                 : !pricingValid
-                  ? "Set a valid price (or mark it free) before publishing."
+                  ? priceOptions.some((o) => o.name.trim().length === 0)
+                    ? "Give each price a name on the Pricing step before publishing."
+                    : "Set a valid price (or mark it free) before publishing."
                   : "Fix your refund policy tiers on the Pricing step before publishing.";
         setToast(reason);
         return;
@@ -1514,6 +1619,13 @@ export const ExperienceCreatorWizard: React.FC<
           // ORCH-1075 — paid-publish integrity guards (Stripe readiness /
           // past date) get actionable copy + a route, not a raw error.
           if (handlePaidPublishGuard(code)) {
+            return;
+          }
+          // #4490 fix 3 (N101) — the experience takes a venue space that is
+          // already hired or blocked then: say so and open Where (step 2).
+          if (isEventSpaceTakenRefusal(code)) {
+            setToast(EVENT_SPACE_TAKEN_COPY);
+            setStep(2);
             return;
           }
           const mapped = RPC_ERROR_COPY[code];
@@ -2194,6 +2306,24 @@ export const ExperienceCreatorWizard: React.FC<
         ) : null}
 
         {step === 2 ? (
+          // #4490 — "Where: venue and space": link the experience to one of
+          // the brand's venues and a space there (lazy; saves on pick).
+          // fix 2 (N84): first on the step, and a venue pick fills stop 1's
+          // place and address.
+          <React.Suspense fallback={null}>
+            <View style={styles.venueLink}>
+              <LazyEventVenueSpacePicker
+                brandId={brandId}
+                eventId={experienceId}
+                noun="experience"
+                hasOtherAddress={(stops[0]?.address ?? "").trim().length > 0}
+                addressMissing={(stops[0]?.address ?? "").trim().length === 0}
+                onPlace={onVenuePlace}
+              />
+            </View>
+          </React.Suspense>
+        ) : null}
+        {step === 2 ? (
           <ExperienceStopsStep
             brandId={brandId}
             currencySymbol={currencySymbol}
@@ -2570,7 +2700,16 @@ export const ExperienceCreatorWizard: React.FC<
   );
 };
 
+/** #4490 — the venue/space link (lazy: venue hooks and pickers stay out of the wizard chunk). */
+const LazyEventVenueSpacePicker = React.lazy(async () => {
+  const mod = await import("../venue/features/EventVenueSpacePicker");
+  return { default: mod.EventVenueSpacePicker };
+});
+
 const styles = StyleSheet.create({
+  venueLink: {
+    marginTop: space[4],
+  },
   host: { flex: 1, backgroundColor: color.canvas },
   header: {
     flexDirection: "row",

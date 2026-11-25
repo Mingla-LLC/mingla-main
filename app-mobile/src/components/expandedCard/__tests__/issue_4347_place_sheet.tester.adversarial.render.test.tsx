@@ -438,11 +438,16 @@ describe("A — pinned bar parity with the old band", () => {
     const three = /venueReservable\?\.reservable === true &&\s*venueReservable\.brand_id !== null &&\s*venueReservable\.venue_id !== null/;
     const reserveAt = MODAL.indexOf('testID="sheet-primary-reserve"');
     const gateWindow = MODAL.slice(MODAL.lastIndexOf("reserve={", reserveAt), reserveAt);
+    // [TEST-MOD-APPROVED #4490] The button now also needs the deck model's
+    // "reserve" kind (the main button follows what the venue sells); it keeps
+    // ALL THREE reserve conditions, so the button and the sheet still gate on
+    // the identical set.
     expect(gateWindow).toMatch(three);
+    expect(gateWindow).toMatch(/deckCta\.kind === 'reserve'/);
     const sheetAt = MODAL.indexOf("<VenueReserveSheet");
-    expect(MODAL.slice(sheetAt - 300, sheetAt)).toMatch(three);
+    expect(MODAL.slice(sheetAt - 400, sheetAt)).toMatch(three);
     // And the "else" arm is a real action (Directions), not an empty slot.
-    expect(MODAL.slice(reserveAt, reserveAt + 1500)).toMatch(/testID="sheet-primary-directions"[\s\S]*onPress=\{sheetDirections\}/);
+    expect(MODAL.slice(reserveAt, reserveAt + 4500)).toMatch(/testID="sheet-primary-directions"[\s\S]*onPress=\{sheetDirections\}/);
   });
 
   const card = { id: "p1", title: "Nok by Alara", category: "Restaurant", phone: "08012345678", countryCode: "NG", images: [], image: "" };

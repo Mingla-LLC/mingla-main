@@ -1,4 +1,19 @@
 // META-ORCH-1161 Sub-A — per-category message templates (single source of truth).
+// #4490 — venue booking messages (confirmed, cancelled, refund).
+import {
+  isVenueBookingCategory,
+  renderVenueBookingMessage,
+} from "./email/templates/venueBookingEmails.ts";
+// #4490 P5 — guest waitlist messages.
+import {
+  isVenueWaitlistCategory,
+  renderVenueWaitlistMessage,
+} from "./email/templates/venueWaitlistEmails.ts";
+// #4490 P6 — member messages (renewal, lapsed, paid, ended).
+import {
+  isVenueMembershipCategory,
+  renderVenueMembershipMessage,
+} from "./email/templates/venueMembershipEmails.ts";
 import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
 import {
   isBrandReachCategory,
@@ -15,6 +30,7 @@ import {
 import { formatMessageTime, type MessageTime } from "./messageTime.ts";
 import { isBrandFormCategory, renderBrandFormMessage } from "./brandFormNotify.ts";
 import { type BuyerSmsNoun, renderBuyerSms } from "./sms/buyerSms.ts";
+import { renderTillReceiptEmailBody } from "./email/tillReceiptEmail.ts";
 import {
   isIssue4111EnquiryCategory,
   ISSUE_4111_SUBSCRIBE_SMS_CATEGORY,
@@ -130,6 +146,24 @@ function fmtAmount(payload: Record<string, unknown>): string {
   }
 }
 
+// #4490 spec 08 O5 (T16): the sold-out text in one segment. The outcome is a
+// fixed slot, so a long swap name or amount falls back to a shorter outcome
+// rather than failing the send.
+function shortName(name: string): string {
+  return name.length > 24 ? `${name.slice(0, 21)}...` : name;
+}
+
+function soldOutSms(venue: string, item: string, link: string, outcomes: string[]): string {
+  for (const outcome of outcomes) {
+    try {
+      return renderBuyerSms("S21", { venue, title: item, stateWord: outcome, link });
+    } catch {
+      // try the next, shorter outcome
+    }
+  }
+  return renderBuyerSms("S21", { venue: "", title: item, stateWord: outcomes[outcomes.length - 1], link });
+}
+
 // Format an ISO timestamp into a short date + time for copy interpolation.
 // Locale-aware-friendly but deterministic for tests (en-US, UTC-stable display
 // would require the venue tz — the thin slice passes pre-formatted date/time in
@@ -231,6 +265,16 @@ export function renderCategoryMessage(
   categoryKey: string,
   payload: Record<string, unknown>,
 ): RenderedMessage {
+  // #4490 — venue booking copy (entry passes) lives with its categories.
+  if (isVenueBookingCategory(categoryKey)) {
+    return renderVenueBookingMessage(categoryKey, payload);
+  }
+  if (isVenueWaitlistCategory(categoryKey)) {
+    return renderVenueWaitlistMessage(categoryKey, payload);
+  }
+  if (isVenueMembershipCategory(categoryKey)) {
+    return renderVenueMembershipMessage(categoryKey, payload);
+  }
   // #4111 — customer enquiry copy lives with its categories.
   if (isIssue4111EnquiryCategory(categoryKey)) {
     return renderIssue4111Message(categoryKey, payload);
@@ -814,6 +858,74 @@ export function renderCategoryMessage(
           link,
           noun: "receipt",
         }),
+      };
+    }
+
+    // #4490 spec 08 O5 (T16) — an item the guest paid for sold out; the
+    // venue swapped it (same price or less, any difference refunded) or
+    // refunded it. The link is the order's claim link, built at send time.
+    case "buyer_venue_order_sold_out": {
+      const venue = str(payload.venue_name, brand || "the venue");
+      const item = str(payload.item_name, "An item");
+      const link = str(
+        payload.message_link_display ?? payload.message_link_url,
+        "usemingla.com/download",
+      );
+      const refund = Number(payload.refund_minor);
+      const amount = Number.isFinite(refund) && refund > 0
+        ? fmtAmount({ amount_cents: refund, currency: payload.currency })
+        : "";
+      const swap = str(payload.swap_name, "");
+      const outcome = payload.outcome === "swap"
+        ? (amount
+          ? `The kitchen swapped it for ${swap}, and ${amount} is on its way back to your card`
+          : `The kitchen swapped it for ${swap}, same price`)
+        : `${amount || "Your money"} is on its way back to your card`;
+      return {
+        push: {
+          title: `${item} sold out`,
+          body: `${outcome}.`,
+        },
+        email: {
+          subject: `${item} sold out at ${venue}`,
+          body: payload.outcome === "swap"
+            ? `${item} sold out after you paid, so the kitchen swapped it for ${swap}.` +
+              (amount
+                ? ` ${amount} is on its way back to your card. Banks can take 5 to 10 working days.`
+                : " Same price, so nothing changes on your bill.")
+            : `${item} sold out after you paid. ${amount || "Your money"} is on its way back to your card. ` +
+              "Banks can take 5 to 10 working days.",
+        },
+        sms: soldOutSms(venue, item, link, [
+          payload.outcome === "swap"
+            ? (amount
+              ? `Swapped for ${shortName(swap)}, ${amount} back to your card`
+              : `Swapped for ${shortName(swap)}`)
+            : `${amount || "Your money"} is on its way back to your card`,
+          payload.outcome === "swap" ? (amount ? `Swapped, ${amount} back` : "Swapped") : "Refund on its way",
+          payload.outcome === "swap" ? "Swapped" : "Refunded",
+        ]),
+      };
+    }
+
+    // #4490 spec 08 O1 — a Till receipt. The drain reads the receipt when the
+    // message is sent (payload.receipt) and builds the private link; the text
+    // with that link is tillReceiptSms (notifyV2). Without a link the text is
+    // S15 with the app claim (shown only while VENUE_APP_HANDOFF is on, T20).
+    case "buyer_till_receipt": {
+      const venue = str(payload.venue_name, brand || "the venue");
+      const link = str(payload.venue_app_link_display, "usemingla.com/download");
+      return {
+        push: {
+          title: `Receipt from ${venue}`,
+          body: "Your receipt is ready.",
+        },
+        email: {
+          subject: `Your ${venue} receipt`,
+          body: renderTillReceiptEmailBody(payload.receipt) ??
+            `Thanks for coming to ${venue}.`,
+        },
+        sms: renderBuyerSms("S15", { title: venue, link, noun: "receipt" }),
       };
     }
 

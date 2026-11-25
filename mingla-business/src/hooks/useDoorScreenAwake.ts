@@ -2,6 +2,11 @@
  * issue #4271 (design H3) — while a pay code is showing, the phone stays awake at
  * full brightness so a guest can scan it; leaving restores the phone's settings.
  *
+ * #4490 spec 08 O3: generalised as `useScreenAwake(active, { tag, brighten })`
+ * (station screens stay awake with no brightness change);
+ * `useDoorScreenAwake` keeps its exact behaviour (tag "door-pay-code", full
+ * brightness).
+ *
  * Only what the installed binary has: each native module is asked for by name and
  * a binary without it just goes without. expo-keep-awake ships inside `expo`, and
  * expo-brightness is a declared dependency, so a binary built from this tree has
@@ -11,7 +16,7 @@
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
-const TAG = "door-pay-code";
+const DOOR_TAG = "door-pay-code";
 
 interface KeepAwakeModule {
   activate: (tag: string) => Promise<void>;
@@ -59,10 +64,10 @@ const holdWeb = (): (() => void) => {
   };
 };
 
-const holdNative = (): (() => void) => {
+const holdNative = (tag: string, brighten: boolean): (() => void) => {
   const keepAwake = optionalModule<KeepAwakeModule>("ExpoKeepAwake");
-  const brightness = optionalModule<BrightnessModule>("ExpoBrightness");
-  keepAwake?.activate(TAG).catch((error: unknown) => warn("keep awake failed", error));
+  const brightness = brighten ? optionalModule<BrightnessModule>("ExpoBrightness") : null;
+  keepAwake?.activate(tag).catch((error: unknown) => warn("keep awake failed", error));
   let previous: number | null = null;
   let released = false;
   brightness
@@ -75,16 +80,27 @@ const holdNative = (): (() => void) => {
     .catch((error: unknown) => warn("brightness failed", error));
   return () => {
     released = true;
-    keepAwake?.deactivate(TAG).catch((error: unknown) => warn("keep awake release failed", error));
+    keepAwake?.deactivate(tag).catch((error: unknown) => warn("keep awake release failed", error));
     if (previous !== null) {
       brightness?.setBrightnessAsync(previous).catch((error: unknown) => warn("brightness restore failed", error));
     }
   };
 };
 
-export const useDoorScreenAwake = (active: boolean): void => {
+export interface ScreenAwakeOptions {
+  /** Keep-awake tag (one per screen kind). */
+  tag: string;
+  /** Raise the screen to full brightness while held (pay codes only). */
+  brighten?: boolean;
+}
+
+export const useScreenAwake = (active: boolean, options: ScreenAwakeOptions): void => {
+  const { tag, brighten = false } = options;
   useEffect(() => {
     if (!active) return undefined;
-    return Platform.OS === "web" ? holdWeb() : holdNative();
-  }, [active]);
+    return Platform.OS === "web" ? holdWeb() : holdNative(tag, brighten);
+  }, [active, tag, brighten]);
 };
+
+export const useDoorScreenAwake = (active: boolean): void =>
+  useScreenAwake(active, { tag: DOOR_TAG, brighten: true });

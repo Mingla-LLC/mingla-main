@@ -29,23 +29,55 @@ describe("Issue #1390 Stay guest surface contracts", () => {
     expect(fs.existsSync(path.join(ROOT, "app-mobile/app/hotel"))).toBe(false);
   });
 
-  test("Stay pages do not call restaurant menu, price-range, or table-reserve reads", () => {
+  test("Stay buyer pages keep their own checkout and also load additive venue features", () => {
     const buyerRoute = read("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx");
     const consumerService = read(
       "app-mobile/src/services/publicVenueService.ts",
     );
+    expect(buyerRoute).toContain("const features = featuresQuery.data ?? null");
     expect(buyerRoute).toMatch(
-      /usePublicMenus\([\s\S]*?venue\.venueCategory !== "stay"/,
+      /usePublicMenus\([\s\S]*?venue !== null && typeof brandSlug === "string"/,
     );
-    expect(buyerRoute).toMatch(
-      /venue\?\.venueCategory === "stay" \? null : venue\?\.placePoolId/,
+    expect(buyerRoute).toContain(
+      "usePublicVenueReservable(\n    venue?.placePoolId ?? null,",
     );
+    expect(buyerRoute).toContain(
+      "usePublicVenueDiscoveryPrice(\n    venue?.placePoolId ?? null,",
+    );
+    expect(buyerRoute).not.toMatch(
+      /usePublicMenus\([\s\S]{0,220}?venue\.venueCategory !== "stay"/,
+    );
+    expect(buyerRoute).not.toContain(
+      'venue?.venueCategory === "stay" ? null : venue?.placePoolId',
+    );
+    // Consumer native gains the same feature tabs in Explorer W3. Until then,
+    // its existing service still skips restaurant-only reads for a Stay.
     expect(consumerService).toMatch(
       /row\.venue_category === "stay"[\s\S]*?Promise\.resolve\(\{ data: \[\], error: null \}\)/,
     );
     expect(consumerService).toContain(
       'row.place_pool_id === null || row.venue_category === "stay"',
     );
+  });
+
+  test("Stay host settings and Spaces expose the feature seam without merging inventory", () => {
+    const shell = read(
+      "mingla-business/src/components/stay/StaySuiteShell.tsx",
+    );
+    const spaces = read(
+      "mingla-business/src/components/venue/features/VenueSpacesModule.tsx",
+    );
+    const hostRoute = read("mingla-business/app/venue/[venueId]/index.tsx");
+
+    expect(shell).toContain("Venue type and features");
+    expect(shell).toContain("<LazyVenueTypeAndFeaturesPanel");
+    expect(shell).toContain("STAY_FEATURE_MODULE_ORDER");
+    expect(spaces).toContain(
+      "Rooms and places you sell as stays are separate. Don't add the same",
+    );
+    expect(spaces).toContain('testID="venue-spaces-stay-separation"');
+    expect(hostRoute).toContain('initialModule={initialModule ?? "overview"}');
+    expect(hostRoute).toContain("onModuleChange={handleModuleChange}");
   });
 
   test("web uses connected-account Payment Element while native uses wallet-complete PaymentSheet", () => {

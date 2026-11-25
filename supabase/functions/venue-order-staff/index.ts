@@ -23,9 +23,19 @@
 //                          watches what it lets in.
 //
 // verify_jwt = false with a Bearer REQUIRED IN-CODE (the §S6 table): the token is
-// verified via auth.getUser, then the brand-membership floor is checked, and the
+// verified via auth.getUser, then the pad's floor is checked, and the
 // rank-gated mutations enforce their own floor INSIDE the SECURITY DEFINER RPC
 // (biz_venue_tab_open / biz_venue_tab_close require >= event_manager).
+//
+// #4490 spec 08 O1 fix 1 — one bill, one owner. `create` and `settle` ask
+// issue_4490_pad_guard first (server side, by the order's Till check link and
+// the venue's Till switch, never a client flag): the pad's floor is a brand
+// role (the pad's own rule on main) or venue.sell at that venue; `settle`
+// refuses any round that belongs to a Till check and every order at a venue
+// whose Till is running; `create` refuses a Till check that is no longer
+// open. tab_close is refused inside biz_venue_tab_close (tab_on_till). Each
+// refusal answers `transition_not_allowed`, the copy an installed pad already
+// shows.
 //
 // Phase 3b (#1792) builds the surface a waiter actually touches, and hardens the
 // four Phase-2 actions against what a real service does to them:
@@ -55,7 +65,7 @@ import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
-import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+import { resolveVenueVisitOrigin } from "../_shared/venueOfferVisitLink.ts";
 import {
   classifyStripePaymentIntentCreateFailure,
   jsonResponse,
@@ -107,12 +117,29 @@ import {
 } from "../_shared/paymentProvider.ts";
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
+import { handleStockAction } from "./stockActions.ts";
+import { refundDecisionStepUp } from "./refundDecisionGate.ts";
+import { handleStationAction } from "./stationActions.ts";
+import { fireVenueOrderReady } from "../_shared/venueOrderNotify.ts";
 // Issue #3380 — the guest's phone is read WITH the country the waiter chose.
 import {
   LEGACY_NANP_REFUSAL,
   legacyNanpGuessAllowed,
   resolveBuyerPhone,
 } from "../_shared/buyerPhone.ts";
+
+/** The names the visit-link origin reads, each read literally (function secret contract, #2241). */
+function visitOriginEnv(name: string): string | undefined {
+  switch (name) {
+    case "BUSINESS_WEB_ORIGIN":
+      return Deno.env.get("BUSINESS_WEB_ORIGIN");
+    case "SUPABASE_URL":
+      return Deno.env.get("SUPABASE_URL");
+    default:
+      return undefined;
+  }
+}
+
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -169,6 +196,11 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
   const action = typeof body.action === "string" ? body.action : "";
 
   switch (action) {
+    // [TRANSITIONAL] #4490 spec 08 O1: the order pad's four actions (create,
+    // settle, tab_open, tab_close) serve venues whose Till is off and Host apps
+    // that predate the Till (their tabs appear in the Till's Open checks, T18);
+    // exits when no venue takes staff orders without the Till and no session
+    // is in tab_state settling.
     case "create":
       return await handleStaffCreate(supabase, req, body, userId);
     case "settle":
@@ -181,13 +213,46 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
     case "transition":
       return await handleTransition(req, body);
     case "refund_decision":
-      return await handleRefundDecision(req, body);
+      return await handleRefundDecision(supabase, req, body, userId);
     case "item_availability":
       return await handleItemAvailability(req, body);
     case "pause":
       return await handlePause(req, body);
     case "set_ordering_enabled":
       return await handleSetOrderingEnabled(req, body);
+    // ---- #4490 spec 08 O3 — kitchen and bar stations. ----------------------
+    // The verified user is the actor of service-only RPCs that check the
+    // station gate and kitchen rights (stationActions.ts).
+    case "station_board":
+    case "station_accept":
+    case "item_ready":
+    case "ticket_ready":
+    case "recall":
+    case "picked_up":
+      return await handleStationAction(
+        supabase,
+        action,
+        body,
+        userId,
+        (payload, status = 200) => jsonResponse(payload, status),
+        (input) => fireVenueOrderReady(supabase, input),
+      );
+    // ---- #4490 spec 08 O5 part C — stock and sold out after payment. -----
+    case "stock_set":
+    case "station_stock":
+    case "station_sold_out":
+    case "order_sold_out":
+    case "sold_out_resolve":
+      return await handleStockAction(
+        supabase,
+        action,
+        body,
+        {
+          userId,
+          jwt: (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim(),
+        },
+        (payload, status = 200) => jsonResponse(payload, status),
+      );
     default:
       return jsonResponse({ error: "unknown_action" }, 400);
   }
@@ -200,8 +265,65 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
     }, 500),
 }));
 
-/** The §S6 floor: brand MEMBERSHIP. Rank gates live inside the RPCs. */
-async function callerIsBrandMember(
+type PadGuardVerdict =
+  | "ok"
+  | "not_found"
+  | "not_authorized"
+  | "session_closed"
+  | "till_round"
+  | "till_on";
+
+/**
+ * #4490 spec 08 O1 fix 1 — the pad's floor and the Till's ownership, decided
+ * by the database (issue_4490_pad_guard). Fails CLOSED: a broken read is a
+ * refusal, never a pass. One exception keeps deploy order safe: while the
+ * guard does not exist yet (this function deployed before migration
+ * 20281203554490), no Till check can exist either, so main's rule applies
+ * (an accepted brand member).
+ */
+async function padGuard(
+  supabase: ServiceClient,
+  input: {
+    action: "create" | "settle";
+    orderId: string | null;
+    sessionId: string | null;
+    venueId: string | null;
+    brandId: string;
+    userId: string;
+  },
+): Promise<PadGuardVerdict> {
+  const { data, error } = await supabase.rpc("issue_4490_pad_guard", {
+    p_action: input.action,
+    p_order_id: input.orderId,
+    p_session_id: input.sessionId,
+    p_venue_id: input.venueId,
+    p_actor: input.userId,
+  });
+  if (error) {
+    if (error.code === "PGRST202") {
+      return (await memberBeforeTheTill(supabase, input.brandId, input.userId))
+        ? "ok"
+        : "not_authorized";
+    }
+    console.error("[venue-order-staff] pad guard failed", error.message);
+    return "not_authorized";
+  }
+  const verdict = String(data ?? "");
+  return ([
+      "ok",
+      "not_found",
+      "not_authorized",
+      "session_closed",
+      "till_round",
+      "till_on",
+    ]
+      .includes(verdict)
+    ? verdict
+    : "not_authorized") as PadGuardVerdict;
+}
+
+/** Main's floor, used only while the guard is not deployed (see padGuard). */
+async function memberBeforeTheTill(
   supabase: ServiceClient,
   brandId: string,
   userId: string,
@@ -215,13 +337,20 @@ async function callerIsBrandMember(
     .not("accepted_at", "is", null)
     .maybeSingle();
   if (error) {
-    // Fail CLOSED on an auth read. This is the one place where a broken read
-    // must NOT fail open — the rate limiter's fail-open reasoning is about
-    // losing a sale, this is about who may take one.
     console.error("[venue-order-staff] membership read failed", error.message);
     return false;
   }
   return data !== null;
+}
+
+/** The answer an installed pad already knows for each refusal. */
+function padGuardRefusal(verdict: PadGuardVerdict): Response {
+  if (verdict === "not_found") return jsonResponse({ error: "not_found" }, 404);
+  if (verdict === "session_closed") return fail("session_not_addable");
+  if (verdict === "till_round" || verdict === "till_on") {
+    return fail("transition_not_allowed");
+  }
+  return jsonResponse({ error: "not_authorized" }, 403);
 }
 
 // ---------------------------------------------------------------------------
@@ -288,9 +417,15 @@ async function handleStaffCreate(
     return fail(resolved.failure.code, { venue: resolved.failure.venue });
   }
   const ctx = resolved.context;
-  if (!(await callerIsBrandMember(supabase, ctx.brandId, userId))) {
-    return jsonResponse({ error: "not_authorized" }, 403);
-  }
+  const createGuard = await padGuard(supabase, {
+    action: "create",
+    orderId: null,
+    sessionId,
+    venueId: ctx.servingVenueId,
+    brandId: ctx.brandId,
+    userId,
+  });
+  if (createGuard !== "ok") return padGuardRefusal(createGuard);
 
   const menu = await loadMenuSnapshot(supabase, {
     brandId: ctx.brandId,
@@ -592,9 +727,17 @@ async function handleSettle(
     .maybeSingle();
   if (error) return fail("internal_error");
   if (!order) return jsonResponse({ error: "not_found" }, 404);
-  if (!(await callerIsBrandMember(supabase, String(order.brand_id), userId))) {
-    return jsonResponse({ error: "not_authorized" }, 403);
-  }
+  // #4490 O1 fix 1: a Till round, or any order at a venue running the Till, is
+  // never settled here (both settle methods: venue_collected and bill_to_phone).
+  const settleGuard = await padGuard(supabase, {
+    action: "settle",
+    orderId,
+    sessionId: null,
+    venueId: null,
+    brandId: String(order.brand_id),
+    userId,
+  });
+  if (settleGuard !== "ok") return padGuardRefusal(settleGuard);
   if (order.payment_status !== "pending") {
     return fail("transition_not_allowed");
   }
@@ -838,6 +981,9 @@ async function billToPhone(
   }
 
   if (routing.provider === "paystack") {
+    // #4490 spec 08 O2: the return origin comes from env (loopback on the
+    // local stack), never the hard-coded production origin (ruling 8).
+    const callbackOrigin = resolveVenueVisitOrigin(visitOriginEnv);
     const reference = venueOrderPaystackReference(input.orderId);
     await supabase.from("venue_orders").update({
       paystack_reference: reference,
@@ -849,7 +995,7 @@ async function billToPhone(
         amountSubunits: money.totalCents,
         currency: "NGN",
         reference,
-        callbackUrl: `${PRODUCTION_BUSINESS_WEB_ORIGIN}/o/venue/${
+        callbackUrl: `${callbackOrigin}/o/venue/${
           encodeURIComponent(input.orderId)
         }?bst=${encodeURIComponent(buyerStatusToken)}`,
         channels: paystackChannelsForCountry("NG"),
@@ -1109,6 +1255,11 @@ function mapTabRpcError(message: string): Response {
   if (message.includes("tab_has_mingla_orders")) {
     return fail("transition_not_allowed");
   }
+  // #4490 O1 fix 1: the Till runs at this venue, or the tab's check already
+  // holds Till money. The pad says what it always says for a moved-on order.
+  if (message.includes("tab_on_till")) {
+    return fail("transition_not_allowed");
+  }
   if (message.includes("invalid_settlement_method")) {
     return fail("invalid_json");
   }
@@ -1139,6 +1290,14 @@ const TRANSITION_TARGETS = [
 ] as const;
 
 function mapQueueRpcError(message: string): Response {
+  // #4490 08-O5 fix 3: a Till device login approving a refund without a
+  // fresh PIN (or without a live PIN session) is asked for one.
+  if (message.includes("pin_step_up_required")) {
+    return jsonResponse({ error: "pin_step_up_required" }, 403);
+  }
+  if (message.includes("pin_session_required") || message.includes("pin_session_invalid")) {
+    return jsonResponse({ error: message.includes("pin_session_invalid") ? "pin_session_invalid" : "pin_session_required" }, 401);
+  }
   if (message.includes("not_authorized")) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
@@ -1232,8 +1391,10 @@ async function handleTransition(
  * the reason the guest will read. Either way a PERSON decided.
  */
 async function handleRefundDecision(
+  supabase: ServiceClient,
   req: Request,
   body: Record<string, unknown>,
+  userId: string,
 ): Promise<Response> {
   const orderId = typeof body.orderId === "string" && UUID_RE.test(body.orderId)
     ? body.orderId
@@ -1244,6 +1405,18 @@ async function handleRefundDecision(
   const note = typeof body.note === "string" ? body.note.slice(0, 280) : null;
   if (orderId === null) return jsonResponse({ error: "not_found" }, 404);
   if (decision === null) return jsonResponse({ error: "invalid_request" }, 400);
+
+  // #4490 08-O5 fix 3: approving on a Till device login needs a live PIN
+  // session and a fresh PIN for this order (refundDecisionGate.ts).
+  if (decision === "approved") {
+    const refused = await refundDecisionStepUp(supabase, {
+      orderId,
+      userId,
+      jwt: (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim(),
+      body,
+    }, jsonResponse);
+    if (refused !== null) return refused;
+  }
 
   const asUser = userClient(req);
   const { data, error } = await asUser.rpc("biz_venue_order_refund_decision", {

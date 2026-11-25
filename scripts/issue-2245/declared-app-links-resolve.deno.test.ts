@@ -198,6 +198,9 @@ Deno.test("the shell really does take an attendance-claim URL before the parser 
   const src = read(SHELL);
   for (
     const [taken, fallback, where] of [
+      // [TEST-MOD-APPROVED #4490] W2-N32: the OS Linking paths now tell
+      // handleDeepLink the URL came from the OS (`"os"`), so a purchase link
+      // expo-router already opened is not pushed a second time.
       [
         "if (await receiveAttendanceClaimUrl(url)) return;",
         "handleDeepLink(url",
@@ -360,7 +363,10 @@ function hostAasaClaims(): Claim[] {
     (d.appIDs ?? []).includes(CONSUMER_APP_ID)
   );
   assert(block, `${HOST_AASA} has no block for the consumer appID ${CONSUMER_APP_ID}`);
+  // An `exclude: true` component is the opposite of a claim: it keeps a path on
+  // the web (#4490 payment returns). Only the opening components are claims.
   return (block.components ?? [])
+    .filter((c: any) => c?.exclude !== true)
     .map((c: any) => c["/"])
     .filter((p: unknown): p is string => typeof p === "string")
     .map((pattern: string) => ({
@@ -449,6 +455,31 @@ const PROBES: Readonly<Record<string, readonly string[]>> = {
   // supabase/functions/_shared/attendanceClaim.ts. A fragment is not part of a
   // path, so this URL is what BOTH the iOS `/attendance/claim` component and
   // the Android `/attendance/` prefix actually match in the wild.
+  // ── #4490 Explorer W1, the venue guest links the app serves ──
+  "host.usemingla.com/visit/*": [
+    "https://host.usemingla.com/visit/0a0870b0-c117-4707-bdf4-21fc64bebcab",
+    "https://host.usemingla.com/visit/waitlist/0a0870b0-c117-4707-bdf4-21fc64bebcab",
+  ],
+  "host.usemingla.com/stay/*": ["https://host.usemingla.com/stay/0a0870b0-c117-4707-bdf4-21fc64bebcab"],
+  "host.usemingla.com/o/*": ["https://host.usemingla.com/o/0a0870b0-c117-4707-bdf4-21fc64bebcab"],
+  "host.usemingla.com/reserve/*/manage*": [
+    "https://host.usemingla.com/reserve/0a0870b0-c117-4707-bdf4-21fc64bebcab/manage",
+  ],
+  "host.usemingla.com/visit/........-....-....-....-............": [
+    "https://host.usemingla.com/visit/0a0870b0-c117-4707-bdf4-21fc64bebcab",
+  ],
+  "host.usemingla.com/visit/waitlist/": [
+    "https://host.usemingla.com/visit/waitlist/0a0870b0-c117-4707-bdf4-21fc64bebcab",
+  ],
+  "host.usemingla.com/stay/........-....-....-....-............": [
+    "https://host.usemingla.com/stay/0a0870b0-c117-4707-bdf4-21fc64bebcab",
+  ],
+  "host.usemingla.com/o/........-....-....-....-............": [
+    "https://host.usemingla.com/o/0a0870b0-c117-4707-bdf4-21fc64bebcab",
+  ],
+  "host.usemingla.com/reserve/.*/manage.*": [
+    "https://host.usemingla.com/reserve/0a0870b0-c117-4707-bdf4-21fc64bebcab/manage",
+  ],
   "host.usemingla.com/attendance/claim": [ATTENDANCE_CLAIM_URL],
   "host.usemingla.com/attendance/": [ATTENDANCE_CLAIM_URL],
 };

@@ -271,9 +271,14 @@ describe("issue #1380 public venue Reserve CTA", () => {
     expect(page).toContain(
       'type: "RESERVE_CTA_PRESSED"',
     );
+    // [TEST-MOD-APPROVED #4490] The bar hides on the tab it leads to. On
+    // today's page (and for every venue that sells tables) that tab IS
+    // "reservations"; with features it is the lead's tab (`leadTab`), so the
+    // literal became the variable. The contract is the same.
     expect(page).toContain(
-      'normalizedReservationUiState.activeTab !== "reservations"',
+      "normalizedReservationUiState.activeTab !== leadTab",
     );
+    expect(page).toContain('"reservations"');
     // #4420 D-V3 — the bar also stays on Reservations as the live summary.
     expect(page).toContain("showReserveBar && !isDesktop");
     expect(page).toContain(
@@ -283,7 +288,12 @@ describe("issue #1380 public venue Reserve CTA", () => {
     // is gone: desktop shows the SAME gated glass bar, docked in the flyer
     // column. One CTA, one visibility contract, at every width.
     expect(page).toContain("const reserveBar =\n    showReserveBar ? (");
-    expect(page).toContain("premiumDesktopBarDockStyle(22 + insets.bottom)");
+    // [TEST-MOD-APPROVED #4490 H1] — the bar is in the flyer column under Share and
+    // Directions, not a `position: fixed` dock: the fixed dock sat inside the scroll
+    // container's transform, scrolled with the page and covered the cover photo.
+    expect(page).toContain("? // #4490 H1");
+    expect(page).toContain("styles.flyerBar");
+    expect(page).not.toContain("premiumDesktopBarDockStyle(22 + insets.bottom)");
     expect(page).toContain(
       "normalizedReservationUiState.reservationSheetOpen\n            ? null\n            : reservationsBlock",
     );

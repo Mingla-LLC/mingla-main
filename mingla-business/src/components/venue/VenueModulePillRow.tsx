@@ -33,7 +33,8 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
-import { VENUE_MODULES } from "./venueModules";
+import { useTouchFloor } from "../../hooks/useTouchFloor";
+import { venueModuleLabel } from "./venueModules";
 import type { VenueModule } from "../../types/venueReservation";
 
 export interface VenueModulePillRowProps {
@@ -82,6 +83,7 @@ export function VenueModulePillRow({
   // pill scrolled out of frame (the row starts at x=0). Track each pill's
   // layout x and scroll the ACTIVE one into view: instantly on its first
   // layout (mount), animated on later activeModule changes.
+  const touchFloor = useTouchFloor();
   const scrollRef = useRef<ScrollView | null>(null);
   const backRef = useRef<View | null>(null);
   const pillRefs = useRef<Partial<Record<VenueModule, View | null>>>({});
@@ -128,7 +130,7 @@ export function VenueModulePillRow({
             accessibilityRole="button"
             accessibilityLabel="Back to Hub"
             onPress={() => onBackToHub(() => focusControl(backRef.current))}
-            style={[styles.pill, styles.pillInactive]}
+            style={[styles.pill, touchFloor > 0 ? { minHeight: touchFloor } : null, styles.pillInactive]}
             testID="venue-module-back-to-hub"
           >
             <Text style={[styles.pillLabel, styles.pillLabelInactive]}>‹ Hub</Text>
@@ -137,6 +139,7 @@ export function VenueModulePillRow({
         {modules.map((id) => {
           const isActive = id === activeModule;
           const isDirty = dirtyModules?.has(id) === true;
+          const label = venueModuleLabel(id, modules);
           return (
             <Pressable
               ref={(instance) => {
@@ -146,8 +149,8 @@ export function VenueModulePillRow({
               accessibilityRole="tab"
               accessibilityLabel={
                 isDirty
-                  ? `${VENUE_MODULES[id].label}, ${isActive ? "selected, " : ""}unsaved changes`
-                  : `${VENUE_MODULES[id].label} module`
+                  ? `${label}, ${isActive ? "selected, " : ""}unsaved changes`
+                  : `${label} module`
               }
               accessibilityState={{ selected: isActive }}
               onPress={() =>
@@ -156,6 +159,7 @@ export function VenueModulePillRow({
               onLayout={(event) => handlePillLayout(id, event)}
               style={[
                 styles.pill,
+                touchFloor > 0 ? { minHeight: touchFloor } : null,
                 isActive ? styles.pillActive : styles.pillInactive,
                 isDirty ? styles.pillDirtyPad : null,
               ]}
@@ -167,7 +171,7 @@ export function VenueModulePillRow({
                   isActive ? styles.pillLabelActive : styles.pillLabelInactive,
                 ]}
               >
-                {VENUE_MODULES[id].label}
+                {label}
               </Text>
               {isDirty ? (
                 <View

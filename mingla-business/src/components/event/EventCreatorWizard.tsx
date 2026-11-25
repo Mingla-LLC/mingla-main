@@ -68,6 +68,7 @@ import {
   DESKTOP_WIZARD_FORM_MAX_WIDTH,
   DESKTOP_WIZARD_RAIL_WIDTH,
 } from "../../constants/desktopLayout";
+import { useEventAtVenue } from "../../hooks/useEventAtVenue";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useScrollToTopOnStepChange } from "../../hooks/useScrollToTopOnStepChange";
 import {
@@ -95,6 +96,8 @@ import { payoutGateStatus } from "../../utils/brandPayout";
 import { brandZoneForNewDraft } from "../../utils/timezones";
 import {
   describeUnmappedPublishGuard,
+  EVENT_SPACE_TAKEN_COPY,
+  isEventSpaceTakenRefusal,
   eventPublishCarriesMoney,
   isOrganiserTermsRefusalMessage,
   organiserTermsUnresolvedCopy,
@@ -386,6 +389,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const liveDraft =
     useDraftEventStore((s) => s.drafts.find((d) => d.id === initialDraft.id)) ??
     initialDraft;
+  // #4490 07-A — Party Type is optional for an event at a venue.
+  const atVenue = useEventAtVenue(liveDraft.id, liveDraft.brandId, "event");
+  const venueOpts = useMemo(() => ({ atVenue }), [atVenue]);
   // #4548 — the guest pack's working copy lives for as long as this wizard does.
   const guestPackSessionId = guestPackEventIdForDraft(liveDraft.id);
   useEffect(
@@ -685,8 +691,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const stripeStatus: BrandStripeStatus = payoutGateStatus(brand);
 
   const stepErrors: ValidationError[] = useMemo(
-    () => validateStep(currentStep, liveDraft),
-    [currentStep, liveDraft],
+    () => validateStep(currentStep, liveDraft, venueOpts),
+    [currentStep, liveDraft, venueOpts],
   );
 
   // #4420 B7 — the clickable stepper. Stepper indices are ordinals among the
@@ -698,10 +704,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   );
   const furthestValidOrdinal = useMemo((): number => {
     const firstInvalid = visibleStepDefs.findIndex(
-      ({ index }) => validateStep(index, liveDraft).length > 0,
+      ({ index }) => validateStep(index, liveDraft, venueOpts).length > 0,
     );
     return firstInvalid === -1 ? visibleStepDefs.length - 1 : firstInvalid;
-  }, [visibleStepDefs, liveDraft]);
+  }, [visibleStepDefs, liveDraft, venueOpts]);
   const visibleStepperSteps = useMemo<StepperStep[]>(
     () => visibleStepDefs.map(({ definition, index }) => {
       const firstError =
@@ -1000,7 +1006,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       if (inviteNavigation?.phase === "error") inviteNavigation.retry();
       if (inviteNavigation?.phase !== "ready") return;
     }
-    const errs = validateStep(currentStep, liveDraft);
+    const errs = validateStep(currentStep, liveDraft, venueOpts);
     if (errs.length > 0) {
       setShowStepErrors(true);
       // #3645 — never a silent refusal: the step moves to its first invalid
@@ -1029,7 +1035,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       return;
     }
     advance();
-  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation, handleShowToast]);
+  }, [currentStep, liveDraft, venueOpts, inviteEnabled, inviteNavigation, handleShowToast]);
 
   // #4420 B7 — jump to a reachable step from the stepper. Same guards as the
   // dock Back: never while Invite people is still saving its selection, and
@@ -1060,7 +1066,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       handleShowToast(packResult.message);
       return;
     }
-    const errs = validatePublish(liveDraft, stripeStatus);
+    const errs = validatePublish(liveDraft, stripeStatus, undefined, venueOpts);
     const stripeBlocking = errs.find(
       (e) => e.fieldKey === "stripeNotConnected",
     );
@@ -1131,7 +1137,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [liveDraft, stripeStatus, handleShowToast, persistedInvite, inviteEnabled,
+  }, [liveDraft, venueOpts, stripeStatus, handleShowToast, persistedInvite, inviteEnabled,
     inviteRollbackReady, inviteFlag.data, coverAuthority.isReady,
     blockPaidPublishUntilAccepted]);
 
@@ -1202,6 +1208,13 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         );
         return;
       }
+      // #4490 fix 3 (N101) — the event takes a venue space that is already
+      // hired or blocked then: say so and open the Where step (index 2).
+      if (isEventSpaceTakenRefusal(code)) {
+        handleShowToast(EVENT_SPACE_TAKEN_COPY);
+        setCurrentStep(2);
+        return;
+      }
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);
       if (guardCopy !== null) {
         handleShowToast(guardCopy.body);
@@ -1266,8 +1279,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // Step 7 publishability — drives StripeBlockedCard visibility (in body)
   // and Publish button disabled state (in dock).
   const publishability = useMemo(
-    () => computePublishability(liveDraft, stripeStatus),
-    [liveDraft, stripeStatus],
+    () => computePublishability(liveDraft, stripeStatus, venueOpts),
+    [liveDraft, stripeStatus, venueOpts],
   );
 
   // Cycle 5: Publish button disabled when Stripe is required but not
@@ -1305,6 +1318,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const renderStepBody = (): React.ReactElement => {
     const baseProps = {
       draft: liveDraft,
+      atVenue,
       updateDraft: handleUpdate,
       errors: stepErrors,
       showErrors: showStepErrors,

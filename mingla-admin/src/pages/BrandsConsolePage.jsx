@@ -35,6 +35,7 @@ import { getBrandPayoutConsole } from "../services/adminMoneyService";
 import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
 import { formatMoneyMinor } from "../lib/moneyFormat";
+import { venueCategoryLabel } from "../lib/venueCategoryLabels";
 // #4541 R7.1 — forms support (counts, statuses, failures, switches; never answers or contacts).
 import { BrandFormsSupportPanel } from "../components/brands/BrandFormsSupportPanel";
 
@@ -288,7 +289,7 @@ function buildBrandSections(detail, callbacks) {
         field("Name", b.name),
         field("Slug", b.slug),
         field("Description", b.description),
-        field("Venue category", b.venue_category),
+        field("Venue category", b.venue_category ? venueCategoryLabel(b.venue_category) : b.venue_category),
         field("City", b.city),
         field("Country", b.country_code),
         // #4130: lat/lng are the real column names (the old names made every detail fail).

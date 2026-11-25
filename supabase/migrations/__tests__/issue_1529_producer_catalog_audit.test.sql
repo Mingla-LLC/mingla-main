@@ -124,7 +124,12 @@ $vacuity$;
 -- issue_4514_brand_forms.implementor.pg17 asserts the NULL country on its row.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
---     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255, and 44 -> 45 for #4420, and 45 -> 46 for #4453.
+--     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255, and 44 -> 45 for #4420, and 45 -> 46 for #4453, and 46 -> 49 for #4490.
+--     [TEST-MOD-APPROVED #4490] N150: the three #4490 venue-offer writers add
+--     three; a PG17 replay of the #4490 branch measures 50 writers in all.
+--     [TEST-MOD-APPROVED #4490] Explorer W2: issue_4490_offer_sweep now also
+--     writes (visit reminders), so the branch measures one more; the floor
+--     stays a floor.
 --     The floor is the number that ACTUALLY exists in the catalog, so a
 --     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
@@ -135,9 +140,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 46 THEN
+  IF v_count < 49 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_46_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_49_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -194,6 +199,18 @@ $ratchet$;
 --                                             Stay booking link resend)
 --       issue_4453_website_request_ready    → explicit NULL (#4453 "Ready for
 --                                             review": bell, push, email; no SMS)
+--       issue_4490_enqueue_offer_event      → explicit NULL (#4490 venue offers:
+--                                             email contact, so no SMS leg)
+--       issue_4490_enqueue_waitlist_message → explicit NULL (#4490 waitlist; email)
+--       issue_4490_member_enqueue           → explicit NULL (#4490 memberships; email)
+--       issue_4490_text_claim_link          → mingla_e164_country(v_phone) (#4490 W1 text)
+--       issue_4490_offer_sweep              → explicit NULL (#4490 W2 visit reminders;
+--                                             in-app, push, email; no SMS channel)
+--       issue_4490_till_receipt_send        → mingla_e164_country(phone) on the text row,
+--                                             explicit NULL on the email row (#4490 08-O1)
+--       issue_4490_till_pay_code_text       → mingla_e164_country(p_phone_e164) (#4490 08-O2)
+--       issue_4490_order_sold_out_resolve   → mingla_e164_country(buyer phone) on the text row,
+--                                             explicit NULL on the email row (#4490 08-O5)
 --       brand_form_auto_reminders_due       → explicit NULL (#4514 "reminder held"
 --                                             host notice: in-app and push; no SMS)
 --       brand_form_blast_hold_if_closed     → explicit NULL (#4541 "Blast not sent"
@@ -253,6 +270,37 @@ DECLARE
     'ops_due_digest',
     'issue_4420_stay_group_resend_link',
     'issue_4453_website_request_ready',
+    -- [TEST-MOD-APPROVED #4490] N150: the three #4490 venue-offer writers
+    -- (booking, request/hold, waitlist and membership notices) address an
+    -- email and write an explicit NULL country_code. Their owning suites
+    -- (issue_4490_p4_private_hire, issue_4490_p5_tables_hour and
+    -- issue_4490_p6_memberships implementor pg17) assert the NULL on every
+    -- row they enqueue.
+    'issue_4490_enqueue_offer_event',
+    'issue_4490_enqueue_waitlist_message',
+    'issue_4490_member_enqueue',
+    -- [TEST-MOD-APPROVED #4490] Explorer W1: "Text me the link" writes one SMS
+    -- row to the guest phone on file with mingla_e164_country(phone);
+    -- issue_4490_explorer_w1_handoff.implementor.pg17 (T-4) asserts NG.
+    'issue_4490_text_claim_link',
+    -- [TEST-MOD-APPROVED #4490] Explorer W2: the offer sweep queues the
+    -- venue_visit_reminder rows (in-app, push, email; no SMS channel) with an
+    -- explicit NULL country_code; issue_4490_explorer_w2_purchases
+    -- implementor pg17 (R-2) asserts the NULL.
+    'issue_4490_offer_sweep',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O1 receipts: "Send receipt" writes
+    -- one buyer_till_receipt row per channel: the text row with
+    -- mingla_e164_country(phone), the email row an explicit NULL;
+    -- issue_4490_ops_till_receipts.implementor.pg17 (RC-S2) asserts both.
+    'issue_4490_till_receipt_send',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O2 scan to pay: "Text them the link"
+    -- writes one buyer_door_pay_link SMS row with mingla_e164_country(phone);
+    -- issue_4490_ops_till_pay.implementor.pg17 (O2-DB11b) asserts it.
+    'issue_4490_till_pay_code_text',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O5 sold-out lines: the buyer notice
+    -- writes one buyer_venue_order_sold_out row per channel: the text row with
+    -- mingla_e164_country(phone), the email row an explicit NULL.
+    'issue_4490_order_sold_out_resolve',
     'brand_form_auto_reminders_due',
     -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
     -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
@@ -404,6 +452,37 @@ DECLARE
     'ops_due_digest',
     'issue_4420_stay_group_resend_link',
     'issue_4453_website_request_ready',
+    -- [TEST-MOD-APPROVED #4490] N150: the three #4490 venue-offer writers
+    -- (booking, request/hold, waitlist and membership notices) address an
+    -- email and write an explicit NULL country_code. Their owning suites
+    -- (issue_4490_p4_private_hire, issue_4490_p5_tables_hour and
+    -- issue_4490_p6_memberships implementor pg17) assert the NULL on every
+    -- row they enqueue.
+    'issue_4490_enqueue_offer_event',
+    'issue_4490_enqueue_waitlist_message',
+    'issue_4490_member_enqueue',
+    -- [TEST-MOD-APPROVED #4490] Explorer W1: "Text me the link" writes one SMS
+    -- row to the guest phone on file with mingla_e164_country(phone);
+    -- issue_4490_explorer_w1_handoff.implementor.pg17 (T-4) asserts NG.
+    'issue_4490_text_claim_link',
+    -- [TEST-MOD-APPROVED #4490] Explorer W2: the offer sweep queues the
+    -- venue_visit_reminder rows (in-app, push, email; no SMS channel) with an
+    -- explicit NULL country_code; issue_4490_explorer_w2_purchases
+    -- implementor pg17 (R-2) asserts the NULL.
+    'issue_4490_offer_sweep',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O1 receipts: "Send receipt" writes
+    -- one buyer_till_receipt row per channel: the text row with
+    -- mingla_e164_country(phone), the email row an explicit NULL;
+    -- issue_4490_ops_till_receipts.implementor.pg17 (RC-S2) asserts both.
+    'issue_4490_till_receipt_send',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O2 scan to pay: "Text them the link"
+    -- writes one buyer_door_pay_link SMS row with mingla_e164_country(phone);
+    -- issue_4490_ops_till_pay.implementor.pg17 (O2-DB11b) asserts it.
+    'issue_4490_till_pay_code_text',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O5 sold-out lines: the buyer notice
+    -- writes one buyer_venue_order_sold_out row per channel: the text row with
+    -- mingla_e164_country(phone), the email row an explicit NULL.
+    'issue_4490_order_sold_out_resolve',
     'brand_form_auto_reminders_due',
     -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
     -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.

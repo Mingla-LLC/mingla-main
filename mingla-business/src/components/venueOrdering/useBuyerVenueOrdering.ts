@@ -30,6 +30,13 @@ import {
   serialiseVenueOrderSitting,
   useVenueOrderingCart,
   venueOrderShouldAskPartySize,
+  venueOrderingOffersPickup,
+  venueOrderingIsCounterPickup,
+  venueOrderSittingKeyForOrder,
+  venueOrderCounterStatusPath,
+  venueOrderActiveSitting,
+  venueOrderSubmitFailure,
+  VENUE_ORDER_REVIEW_MODE_POLL_MS,
   venueOrderSittingKey,
   venueOrderingQueryKeys,
 } from "@mingla/brand-rendering/venueOrdering";
@@ -43,12 +50,14 @@ import {
   createVenueOrder,
   fetchVenueMenuModifiers,
   fetchVenueOrderStatus,
+  resumeVenueOrderPayment,
   fetchVenueOrderingState,
   previewVenueOrder,
   type VenueOrderRequest,
   VenueOrderError,
   venueOrderGuestAction,
 } from "../../services/venueOrderingService";
+import { venueOrderStatusPollDelay } from "@mingla/brand-rendering/venueOrdering/venueOrderingPoll";
 import { captureWeb } from "../../analytics/webAnalytics";
 
 const STATUS_POLL_INTERVAL_MS = 5000;
@@ -114,6 +123,14 @@ export interface BuyerVenueOrdering {
   orderMore: () => void;
   askPartySize: boolean;
   tipRemembered: boolean;
+  /** N144 (#4490): reopen the payment after a decline (null while not offered). */
+  retryPayment: () => void;
+  retryPending: boolean;
+  /** #4490 07-D — "I'll collect it" at a scanned spot (Both only). */
+  pickup: boolean;
+  setPickup: (pickup: boolean) => void;
+  /** N145 (#4490): a pickup order placed from this table, to see its status. */
+  counterOrderPath: string | null;
 }
 
 export function useBuyerVenueOrdering(
@@ -157,14 +174,38 @@ export function useBuyerVenueOrdering(
     setSitting(parseVenueOrderSitting(webStorage.get(sittingKey), Date.now()));
   }, [sittingKey]);
 
+  // N145 (#4490): a pickup order from this table lives under the venue key;
+  // the table page links to its status instead of taking over the table.
+  const counterKey =
+    input.spotCode !== null && input.spotCode.trim() !== ""
+      ? venueOrderSittingKeyForOrder({ venueId: config.venueId, spotCode: input.spotCode, toCounter: true })
+      : null;
+  const [counterSitting, setCounterSitting] = useState<VenueOrderSitting | null>(null);
+  useEffect(() => {
+    if (counterKey === null) return;
+    setCounterSitting(parseVenueOrderSitting(webStorage.get(counterKey), Date.now()));
+  }, [counterKey]);
+
+  // N145: a free pickup order shows here in-pane; its own tokens drive it.
+  const [viewingCounter, setViewingCounter] = useState(false);
+  const activeSitting = venueOrderActiveSitting({ table: sitting, counter: counterSitting, viewingCounter });
+
   const persistSitting = useCallback(
-    (next: Omit<VenueOrderSitting, "expiresAt">): void => {
+    (next: Omit<VenueOrderSitting, "expiresAt">, toCounter = false): void => {
       const now = Date.now();
-      setSitting({ ...next, expiresAt: now + 4 * 60 * 60 * 1000 });
-      if (sittingKey === null) return;
-      webStorage.set(sittingKey, serialiseVenueOrderSitting(next, now));
+      // N145 (#4490): a counter order from a scanned table is remembered as a
+      // counter sitting (venue key), never over the table's own sitting, so
+      // the table link keeps its state and the guest can order from it again.
+      const key = toCounter
+        ? venueOrderSittingKeyForOrder({ venueId: config.venueId, spotCode: input.spotCode, toCounter })
+        : sittingKey;
+      if (!toCounter) setSitting({ ...next, expiresAt: now + 4 * 60 * 60 * 1000 });
+      else setCounterSitting({ ...next, expiresAt: now + 4 * 60 * 60 * 1000 });
+      setViewingCounter(toCounter);
+      if (key === null) return;
+      webStorage.set(key, serialiseVenueOrderSitting(next, now));
     },
-    [sittingKey],
+    [config.venueId, input.spotCode, sittingKey],
   );
 
   const cart = useVenueOrderingCart({
@@ -173,6 +214,21 @@ export function useBuyerVenueOrdering(
     initialBuyer: { name: sitting?.buyerName ?? "" },
   });
   const [discountCode, setDiscountCode] = useState("");
+  // N126 (#4490 07-D): the host may change the ordering mode while a basket
+  // is open; read it again when the review opens (the preview also carries it).
+  const reviewOpen = cart.state.view === "review";
+  const refetchConfig = configQuery.refetch;
+  useEffect(() => {
+    if (!reviewOpen) return undefined;
+    void refetchConfig();
+    // N126 residual: keep reading it while the review is open, so a change
+    // shows without waiting for the next price check.
+    const handle = setInterval(() => void refetchConfig(), VENUE_ORDER_REVIEW_MODE_POLL_MS);
+    return () => clearInterval(handle);
+  }, [reviewOpen, refetchConfig]);
+  // #4490 07-D — sent only where the venue offers the choice (Both).
+  const [pickupChoice, setPickup] = useState(false);
+  const pickup = pickupChoice && venueOrderingOffersPickup(config);
 
   const request: VenueOrderRequest = useMemo(
     () => ({
@@ -186,8 +242,10 @@ export function useBuyerVenueOrdering(
       tipFlatCents: cart.state.tip.flatCents,
       entrySource: input.entrySource,
       discountCode: discountCode.trim().length > 0 ? discountCode.trim() : null,
+      pickup,
     }),
     [
+      pickup,
       cart.state.buyer,
       cart.state.lines,
       cart.state.partySize,
@@ -222,8 +280,13 @@ export function useBuyerVenueOrdering(
         spot: config.spotState === "ok" ? input.spotCode : null,
         venue: config.venueId,
         discountCode: discountCode.trim().toUpperCase(),
+        pickup,
+        // N126: a mode change re-prices at once, so the review follows it.
+        mode: config.orderMode ?? null,
       }),
     [
+      config.orderMode,
+      pickup,
       cart.state.lines,
       cart.state.tip,
       config.spotState,
@@ -315,22 +378,28 @@ export function useBuyerVenueOrdering(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sitting]);
 
+  const pendingReadsRef = useRef(0);
   useEffect(() => {
     if (live === null) return () => undefined;
     const settled =
       live.fulfillmentStatus === "delivered" ||
       live.fulfillmentStatus === "cancelled" ||
       live.fulfillmentStatus === "refunded";
-    const token = sitting?.buyerStatusToken ?? null;
+    const token = activeSitting?.buyerStatusToken ?? null;
     if (settled || token === null) return () => undefined;
     const orderId = live.orderId;
-    const handle = setInterval(() => {
+    // N143: back off while unpaid and stop on a declined answer.
+    if (live.paymentStatus !== "pending") pendingReadsRef.current = 0;
+    const delay = venueOrderStatusPollDelay(live, pendingReadsRef.current, STATUS_POLL_INTERVAL_MS);
+    if (delay === null) return () => undefined;
+    const handle = setTimeout(() => {
+      if (live.paymentStatus === "pending") pendingReadsRef.current += 1;
       void fetchVenueOrderStatus(orderId, token).then((status) => {
         if (status !== null) setLive(status);
       });
-    }, STATUS_POLL_INTERVAL_MS);
-    return () => clearInterval(handle);
-  }, [live, sitting?.buyerStatusToken]);
+    }, delay);
+    return () => clearTimeout(handle);
+  }, [live, activeSitting?.buyerStatusToken]);
 
   // P-23 — one key per basket. Stable across a retry of the SAME basket (so a
   // double-tap cannot buy dinner twice) and fresh the moment the basket changes
@@ -361,9 +430,13 @@ export function useBuyerVenueOrdering(
           idempotencyKeyFor(priceSignature),
         );
         if (created.kind === "already_created") {
-          setSubmitError(
+          // N134: a replay of a failed payment start gets a fresh key next tap.
+          const failure = venueOrderSubmitFailure(
+            { kind: "already_created", paymentStatus: created.paymentStatus },
             "That order is already in. Refresh to see how it's doing.",
           );
+          if (failure.resetKey) keyRef.current = null;
+          setSubmitError(failure.message);
           return;
         }
         // PERSISTED BEFORE THE REDIRECT, always. A hosted checkout takes the
@@ -380,7 +453,7 @@ export function useBuyerVenueOrdering(
             tip: cart.state.tip,
             partySizeClaimed: cart.state.partySize,
             buyerName: cart.state.buyer.name.trim(),
-          });
+          }, config.spotState === "ok" && venueOrderingIsCounterPickup(config, pickup));
         }
 
         if (created.kind === "free_completed") {
@@ -410,6 +483,8 @@ export function useBuyerVenueOrdering(
         }
         await Linking.openURL(url);
       } catch (error) {
+        // N134: the failed start left a dead order under this key; mint anew.
+        if (venueOrderSubmitFailure({ kind: "threw" }, "").resetKey) keyRef.current = null;
         // #3645 — the price changed on the server (a discount moved, or the
         // order switched between free and paid). Fetch the preview again so
         // the guest reads the new total, and the next Pay carries its digest.
@@ -431,6 +506,8 @@ export function useBuyerVenueOrdering(
   }, [
     cart,
     idempotencyKeyFor,
+    config,
+    pickup,
     persistSitting,
     priceSignature,
     refetchPreview,
@@ -442,7 +519,7 @@ export function useBuyerVenueOrdering(
   const guestAction = useCallback(
     (action: "cancel" | "request_refund"): void => {
       const orderId = live?.orderId ?? null;
-      const token = sitting?.guestCancelToken ?? null;
+      const token = activeSitting?.guestCancelToken ?? null;
       if (orderId === null || token === null) return;
       setActionError(null);
       setActionPending(true);
@@ -450,7 +527,7 @@ export function useBuyerVenueOrdering(
         .then(async () => {
           const status = await fetchVenueOrderStatus(
             orderId,
-            sitting?.buyerStatusToken ?? "",
+            activeSitting?.buyerStatusToken ?? "",
           );
           if (status !== null) setLive(status);
         })
@@ -463,11 +540,33 @@ export function useBuyerVenueOrdering(
         })
         .finally(() => setActionPending(false));
     },
-    [live?.orderId, sitting?.buyerStatusToken, sitting?.guestCancelToken],
+    [live?.orderId, activeSitting?.buyerStatusToken, activeSitting?.guestCancelToken],
   );
+
+  // N144 (#4490): after a decline the venue page offers a real "Try again"
+  // that reopens this order's payment (the server also resets its cached
+  // "not paid" answer, so the return is verified afresh).
+  const [retryPending, setRetryPending] = useState(false);
+  const retryPayment = useCallback((): void => {
+    const token = activeSitting?.buyerStatusToken ?? null;
+    if (live === null || token === null || retryPending) return;
+    setRetryPending(true);
+    setActionError(null);
+    void resumeVenueOrderPayment(live.orderId, token)
+      .then((url) => {
+        if (url === null) {
+          setActionError("This payment can no longer be reopened. Ask a member of staff.");
+          return;
+        }
+        if (Platform.OS === "web" && typeof window !== "undefined") window.location.assign(url);
+      })
+      .catch(() => setActionError("Payment couldn't be opened. Try again."))
+      .finally(() => setRetryPending(false));
+  }, [live, retryPending, activeSitting?.buyerStatusToken]);
 
   const orderMore = useCallback((): void => {
     setSubmitError(null);
+    setViewingCounter(false);
     cart.setView("browse");
   }, [cart]);
 
@@ -497,5 +596,10 @@ export function useBuyerVenueOrdering(
     orderMore,
     askPartySize: venueOrderShouldAskPartySize(sitting),
     tipRemembered: sitting !== null,
+    pickup,
+    setPickup,
+    retryPayment,
+    retryPending,
+    counterOrderPath: venueOrderCounterStatusPath(counterSitting),
   };
 }

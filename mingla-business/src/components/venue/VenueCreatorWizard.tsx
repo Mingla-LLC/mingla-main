@@ -76,6 +76,12 @@ import {
 } from "../../services/venueListingsService";
 import { saveVenueReservationsEnabled } from "../../hooks/useVenueReservationSettings";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
+import { upsertBrandHours } from "../../services/brandsService";
+import { withOrderedWindows } from "../../utils/venueBrandHours";
+import type { VenueTypeKey } from "../../types/venueFeatures";
+import { chosenStartingFeatures } from "./features/wizardFeaturesModel";
+import { VenueFeaturesStep } from "./features/VenueFeaturesStep";
+import { venueSubmitErrorCopy } from "./venueSubmitErrors";
 import { composeE164 } from "../../utils/phone";
 import { acquireVenueForSubmission } from "./venueSubmissionResume";
 import { saveWizardReservationsChoice } from "./venueWizardReservationsChoice";
@@ -212,6 +218,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
   const [showErr, setShowErr] = useState(false);
   const [slugCollision, setSlugCollision] = useState<string | null>(null);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+  // #4490 D11 — the step that fixes the last submit error ("s4" = Cover).
+  const [submitFix, setSubmitFix] = useState<{ step: string; label: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // ORCH-1263 — the §8.2 (foreign) / §8.3 (retry) submit edge states.
   const [claimBlock, setClaimBlock] = useState<ClaimSubmitBlock | null>(null);
@@ -286,6 +294,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       return;
     }
     setSubmitErr(null);
+    setSubmitFix(null);
     setClaimBlock(null);
     const st = useDraftVenueStore.getState();
     const claimMode = st.claim !== null;
@@ -390,7 +399,19 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             coverChoice?.posterUrl ??
             (coverChoice?.type === "image" ? coverChoice.url : null),
           coverMediaType: coverChoice?.type ?? null,
-          hours: st.hours,
+          // #4490 D5 — the create RPC takes one window a day; extra windows
+          // are written right after the row exists (upsertBrandHours below).
+          hours: st.hours.map((h) => ({ ...withOrderedWindows(h), extraWindows: [] })),
+          // #4490 D9 — the Features step's switches (create only; claim keeps
+          // the type preset).
+          ...(claimMode
+            ? {}
+            : {
+                startingFeatures: chosenStartingFeatures(
+                  venueCategory as VenueTypeKey,
+                  st.startingFeatures ?? null,
+                ),
+              }),
           // issue #1564 — the venue's own colours/font/motion, authored at
           // s4/s9 (create) or c4/c9 (claim) into the SAME top-level draft
           // field, so one line serves both paths. `?? null` = inherit.
@@ -452,7 +473,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             // the wizard no longer collects a tagline (vestigial empty string).
             tagline: st.tagline.trim(),
             description: st.description.trim(),
-            hours: st.hours,
+            hours: st.hours.map((h) => ({ ...withOrderedWindows(h), extraWindows: [] })),
             // META-ORCH-1290 Leg B (D-1) — the folded create wizard now collects
             // website/gallery too. Issue #1384 removes discovery money from the
             // tier staging blob; both create and claim save one canonical range
@@ -485,6 +506,11 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       }
       if (venueId === null) {
         throw new Error("venue_link_missing");
+      }
+
+      // #4490 D5 — a split day's extra windows (the create RPC took window 1).
+      if (st.hours.some((h) => !h.isClosed && (h.extraWindows?.length ?? 0) > 0)) {
+        await upsertBrandHours(venueId, st.hours.map(withOrderedWindows));
       }
 
       await commitNewVenueDiscoveryRange({
@@ -569,7 +595,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         setClaimBlock(own !== null ? { kind: "retry" } : { kind: "foreign" });
         return; // draft NOT cleared — their work survives (DESIGN §8.2).
       }
-      if (e instanceof Error && e.message.includes("Google location")) {
+      if (claimMode && e instanceof Error && e.message.includes("Google location")) {
         setSubmitErr(e.message);
         return;
       }
@@ -580,7 +606,10 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         setSubmitErr(sanitizeAuthoringError(e, "Could not submit. Try again."));
         return;
       }
-      setSubmitErr(sanitizeAuthoringError(e, "Could not submit. Try again."));
+      // #4490 D11 — plain words and a way to fix it; never a raw code.
+      const copy = venueSubmitErrorCopy(e, sanitizeAuthoringError(e, "Could not submit. Try again."));
+      setSubmitErr(copy.message);
+      setSubmitFix(copy.step !== null && copy.fixLabel !== null ? { step: copy.step, label: copy.fixLabel } : null);
     } finally {
       setSubmitting(false);
     }
@@ -618,13 +647,16 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       case "s7":
         return <ClaimStepPrice showErrors={showErr} />;
       case "s8":
-        return <ClaimStepBookings />;
+        // #4490 D9 — Features, not a reservations-only Bookings step.
+        return <VenueFeaturesStep />;
       case "s9":
         return (
           <VenueStep7Review
             submitting={createVenue.isPending || submitting}
             submitError={submitErr}
             onSubmit={() => void handleSubmit()}
+            fixLabel={submitFix?.label ?? null}
+            onFix={submitFix !== null ? () => jumpToStep(submitFix.step) : undefined}
           />
         );
       // ── claim path (ORCH-1263) ────────────────────────────────────────────
@@ -711,7 +743,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         </StepTransition>
       </ScrollView>
 
-      {clampedStep < TOTAL - 1 ? (
+      {/* #4490 D10 — the create Review step keeps the dock for its Back. */}
+      {clampedStep < TOTAL - 1 || !isClaim ? (
         <View
           style={[
             styles.dock,
@@ -720,12 +753,13 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         >
           {coverGateCaption !== null ? (
             <Text style={styles.dockCaption}>{coverGateCaption}</Text>
-          ) : clampedStep > 0 ? (
+          ) : clampedStep > 0 && clampedStep < TOTAL - 1 ? (
             <Text
               style={styles.dockCaption}
               testID="venue-wizard-draft-caption"
             >
-              Draft saved on this phone
+              {/* #4490 D7 — say where the draft is kept. */}
+              {Platform.OS === "web" ? "Draft saved in this browser" : "Draft saved on this phone"}
             </Text>
           ) : null}
           <View style={styles.dockRow}>
@@ -739,15 +773,18 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             ) : (
               <View style={{ width: 88 }} />
             )}
-            <Button
-              label={dockLabel}
-              variant="step"
-              size="lg"
-              trailingIcon="chevR"
-              onPress={goNext}
-              disabled={!stepValid}
-              testID="venue-wizard-continue"
-            />
+            {clampedStep < TOTAL - 1 ? (
+              <Button
+                label={dockLabel}
+                variant="step"
+                size="lg"
+                trailingIcon="chevR"
+                onPress={goNext}
+                // #4490 fix 2 (N20 check): never a dead tap — Continue stays
+                // pressable and a step that isn't finished says why.
+                testID="venue-wizard-continue"
+              />
+            ) : null}
           </View>
         </View>
       ) : null}

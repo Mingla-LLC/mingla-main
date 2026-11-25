@@ -21,7 +21,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar";
 import * as FileSystem from "expo-file-system/legacy";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import QRCode from "react-native-qrcode-svg";
@@ -35,6 +35,13 @@ import {
 } from "@mingla/offering-rendering";
 
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
+import { venueDetailMissingCopy } from "../../../src/components/purchases/venuePurchaseModel";
+import { purchaseDetailBack } from "../../../src/components/purchases/purchaseDetailNav";
+import { VENUE_LINK_COPY } from "../../../src/components/venueLink/venueLinkModel";
+import {
+  isVenuePurchaseKind,
+  VenuePurchaseDetail,
+} from "../../../src/components/purchases/VenuePurchaseDetail";
 import { TripBalanceCard } from "../../../src/components/purchases/TripBalanceCard";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
@@ -74,16 +81,19 @@ import {
   TicketTransferError,
 } from "../../../src/services/purchasesService";
 import { useAppStore } from "../../../src/store/appStore";
+import { useReturnToStartOnSignOut } from "../../../src/hooks/useReturnToStartOnSignOut";
 import { TicketService } from "../../../src/services/ticketService";
 import { fetchRsvpPartyPasses } from "../../../src/services/rsvpDeckService";
 import { postHogService } from "../../../src/services/postHogService";
 import {
-  formatPurchaseMoney,
   purchaseCountLabel,
   purchaseKindLabel,
-  purchaseRefundLabel,
   purchaseStatusLabel,
 } from "../../../src/utils/purchasePresentation";
+import {
+  purchaseMoneyText,
+  purchaseRefundText,
+} from "../../../src/utils/purchaseMoney";
 import type {
   PurchaseKind,
   PurchaseTimelineItem,
@@ -99,6 +109,10 @@ const KINDS = new Set<PurchaseKind>([
   "reservation",
   "venue_order",
   "stay",
+  // #4490 Explorer W2 — venue bookings (passes), plans and waitlist places.
+  "venue_booking",
+  "venue_membership",
+  "venue_waitlist",
 ]);
 
 const TICKET_MAPS_PALETTE: ThemePalette = {
@@ -160,9 +174,9 @@ function detailRows(
     [t("ticket.details.where"), item.venueLine],
     [
       t("ticket.details.total"),
-      formatPurchaseMoney(item.amountCents, item.currency),
+      purchaseMoneyText(item.amountCents, item.currency),
     ],
-    [t("ticket.details.refund"), purchaseRefundLabel(item)],
+    [t("ticket.details.refund"), purchaseRefundText(item)],
     [t("ticket.details.reference"), item.id],
   ];
   return rows.filter(
@@ -185,7 +199,7 @@ function moneyOrFree(
 ): string {
   return amountCents === 0
     ? freeLabel
-    : (formatPurchaseMoney(amountCents, currency) ?? "—");
+    : (purchaseMoneyText(amountCents, currency) ?? "—");
 }
 
 function cardDisplay(order: PurchaseOrderRecord): string | null {
@@ -233,6 +247,10 @@ export default function PurchaseDetailRoute(): React.ReactElement {
   const { t } = useTranslation("purchases");
   const { open: openInMingla } = useOpenInMingla();
   const router = useRouter();
+  // #4490 06-W4 fix 2 (W4-D1): a Purchases detail is signed-in only; when its
+  // account signs out (forced) it goes back to the welcome screen.
+  useReturnToStartOnSignOut();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{
@@ -451,9 +469,13 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     [item?.kind, kind],
   );
 
+  // #4490 W2-N32: back pops past every copy of this same detail (a warm link
+  // opens it twice) and opens the Purchases list when nothing else is below.
   const goBack = (): void => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/purchases");
+    const state = navigation.getState();
+    const action = purchaseDetailBack(state?.routes, state?.index);
+    if (action.kind === "dismiss") router.dismiss(action.count);
+    else router.replace(action.href);
   };
 
   const handleAddToCalendar = useCallback(async (): Promise<void> => {
@@ -732,6 +754,34 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               <Text style={styles.retryText}>{t("error.retry")}</Text>
             </Pressable>
           </View>
+        ) : userId === null && isVenuePurchaseKind(kind) ? (
+          // #4490 06-W4 fix 2 (W4-D1): signed out, this is nobody's pass to
+          // judge; the route is leaving for the welcome screen.
+          <View style={styles.loading} testID="venue-purchase-signed-out">
+            <ActivityIndicator color="#eb7825" />
+          </View>
+        ) : item === null && isVenuePurchaseKind(kind) ? (
+          // #4490 W2-N16: a venue id that is not yours (or not real) says so
+          // with its own noun; only a failed read blames the connection.
+          (() => {
+            const copy = venueDetailMissingCopy(kind, purchase.isError ? "load_failed" : "not_found");
+            return (
+              <View style={styles.missing} testID="venue-purchase-missing">
+                <Text style={styles.missingTitle}>{copy.title}</Text>
+                {copy.body !== null ? <Text style={styles.missingBody}>{copy.body}</Text> : null}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    if (copy.retry) void purchase.refetch();
+                    else router.replace("/purchases");
+                  }}
+                  style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+                >
+                  <Text style={styles.retryText}>{copy.retry ? t("error.retry") : VENUE_LINK_COPY.paidButton}</Text>
+                </Pressable>
+              </View>
+            );
+          })()
         ) : item === null ? (
           <View style={styles.missing}>
             <Text style={styles.missingTitle}>{t("ticket.notFound")}</Text>
@@ -746,6 +796,12 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               <Text style={styles.retryText}>{t("error.retry")}</Text>
             </Pressable>
           </View>
+        ) : isVenuePurchaseKind(item.kind) && userId !== null ? (
+          <VenuePurchaseDetail
+            item={item}
+            openDoor={firstParam(params.door) === "1"}
+            userId={userId}
+          />
         ) : shared ? (
           <SharedPurchaseDetail
             item={item}

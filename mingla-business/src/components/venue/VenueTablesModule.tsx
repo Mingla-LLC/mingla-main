@@ -412,6 +412,7 @@ export function VenueTablesModule({
       {spotsSheetOpen ? (
         <React.Suspense fallback={null}>
           <LazyVenueSpotsSheet
+            venueId={venueId ?? null}
             visible
             onClose={() => setSpotsSheetOpen(false)}
             brandId={brandId}

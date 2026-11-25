@@ -43,7 +43,26 @@ const isAndroid = (): boolean => Platform !== undefined && Platform.OS === "andr
 export const themeFontFace = (
   fontFamily: string,
 ): { fontFamily: string; fontWeight?: "normal" } =>
-  isAndroid() ? { fontFamily, fontWeight: "normal" } : { fontFamily };
+  isAndroid()
+    ? { fontFamily, fontWeight: "normal" }
+    : isWeb()
+      ? { fontFamily: withWebFallback(fontFamily) }
+      : { fontFamily };
+
+/**
+ * #4490 N39: on web the theme face loads after first paint; until it does the
+ * browser drew headings and the buy button in its default serif. A system
+ * sans fallback after the key keeps the page in a sans face meanwhile.
+ */
+export const WEB_FONT_FALLBACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const withWebFallback = (fontFamily: string): string =>
+  // A theme with no face key at all (older rows, stubs) stays as it was.
+  // "System" is react-native-web's own keyword: it expands it to the system
+  // stack only when the value is exactly "System", so it gets no tail (#4420:
+  // Host chrome draws shared parts in the app's face).
+  typeof fontFamily !== "string" || fontFamily === "System" || fontFamily.includes(",")
+    ? fontFamily
+    : `${fontFamily}, ${WEB_FONT_FALLBACK}`;
 
 /** The theme's bold face (`boldFontFamily`) as a text style; see themeFontFace. */
 export const themeBoldFace = (

@@ -56,6 +56,7 @@
   "pill.experiences": "Experiences",
   "pill.trips": "Trips",
   "pill.stays": "Stays",
+  "pill.venues": "Ehe",
   "filters.button_selected": "{{summary}}",
   "filters.clear": "Clear",
   "filters.option_a11y": "{{label}}, {{count}} matches",
@@ -77,6 +78,7 @@
   "group.check_in": "Check in",
   "group.guests": "Guests",
   "group.property_kind": "Type of place",
+  "group.venue_type": "Type of place",
   "group.any_suffix": "{{group}} · Any",
   "when.any_day": "Any day",
   "when.tomorrow": "Tomorrow",
@@ -209,8 +211,15 @@
   "count.trips_other": "{{count}} ukhun",
   "count.stays_one": "{{count}} ehe",
   "count.stays_other": "{{count}} ehe",
+  "count.venues_one": "{{count}} ehe",
+  "count.venues_other": "{{count}} ehe",
   "guests.value_one": "{{count}} ọmwa",
   "guests.value_other": "{{count}} ọmwa",
   "card.type.stops_one": "{{count}} EHE",
-  "card.type.stops_other": "{{count}} EHE"
+  "card.type.stops_other": "{{count}} EHE",
+  "venues.empty_title": "Ehe ne a sẹtin bọ ẹre ma rre evba.",
+  "venues.empty_body": "Ehe ne u sẹtin bọ vbe Mingla gha rre evba.",
+  "venues.filtered_title": "Ehe ne ọ kpaọ vbe ifilta na ma rre.",
+  "venues.error_title": "Ma i sẹtin rhie ehe ladian.",
+  "venues.error_retry": "Ke gberra"
 }

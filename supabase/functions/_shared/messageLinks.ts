@@ -15,6 +15,13 @@ export type BuyerLinkKind =
   | "venue_order"
   | "ticket"
   | "waitlist_offer"
+  // #4490 Explorer W1: venue claim kinds (download fallback kept); stay_group
+  // for the signed-in /stay page's app card.
+  | "stay_group"
+  | "venue_booking"
+  | "venue_membership"
+  | "venue_waitlist"
+  | "venue_till_sale"
   // Issue #4422 — one shared short link to an event's public page.
   | "event_page";
 

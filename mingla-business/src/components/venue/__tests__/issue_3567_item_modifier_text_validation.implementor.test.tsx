@@ -740,10 +740,15 @@ describe("#3567 parent routing and preservation seams", () => {
     expect(category).toContain("onChangeValue={handleWindowStartChange}");
     expect(category).toContain("onChangeValue={handleWindowEndChange}");
 
+    // TEST-MOD-APPROVED #4490 — fix round 1 replaced the hand-rolled day
+    // toggles (`toggleDay`) with the shared WeekdayChips; its onChange is the
+    // day handler now and must still clear a stale save failure first.
+    const dayChips = category.indexOf("<WeekdayChips");
+    expect(dayChips).toBeGreaterThan(-1);
+    expect(category.slice(dayChips, dayChips + 260)).toContain("onClearSaveFailure?.()");
     for (const handler of [
       "handleWindowStartChange",
       "handleWindowEndChange",
-      "toggleDay",
       "commitTimePickerValue",
       "clearTimes",
     ]) {
