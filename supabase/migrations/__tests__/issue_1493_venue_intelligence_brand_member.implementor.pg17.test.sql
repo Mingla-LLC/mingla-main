@@ -1,10 +1,7 @@
 -- #1493 — the shared Business Overview intelligence RPC admits every accepted,
 -- active brand member, while preserving cross-brand and venue containment.
 --
--- MINGLA-INVARIANT: I-1493-VENUE-INTELLIGENCE-MEMBER-READ | issue #1493 |
--- Venue Overview uses the same accepted brand-member read contract on Business
--- web, iOS and Android; an unrelated user and a venue from another brand are
--- refused with 42501.
+-- MINGLA-INVARIANT: I-1493-VENUE-INTELLIGENCE-MEMBER-READ | issue #1493 | Venue Overview uses the same accepted brand-member read contract on Business web, iOS and Android; an unrelated user and a venue from another brand are refused with 42501.
 --
 -- FAILS-ON-REVERT: restore the owner-only brands.account_id check and A-1 fails.
 \set ON_ERROR_STOP on
