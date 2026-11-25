@@ -760,6 +760,7 @@ function PublicVenueRouteBody(): React.ReactElement {
         onClose={context.onClose}
         onDismissed={context.onDismissed}
         title={context.title}
+        palette={context.palette}
       >
         {context.children}
       </PublicVenueReservationSheet>

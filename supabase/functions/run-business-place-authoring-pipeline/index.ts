@@ -522,6 +522,51 @@ export function nextStoredPhotosForHero(
   return merged;
 }
 
+// #4490 — live gallery edits use the same stage/apply boundary as hero edits.
+// In apply mode, replace only the previously-authored gallery slice while
+// preserving the current hero and any seeded/provider photos outside that
+// slice. Brand-owned uploads that are no longer in the gallery are removed too:
+// legacy syncs could replace `business_gallery_urls` without replacing the
+// public array, so the previous gallery alone is not enough to identify every
+// stale authored URL. This keeps `stored_photo_urls` (the public view's source)
+// in lockstep without allowing a pre-approval claim to publish.
+export function nextStoredPhotosForGallery(
+  prior: string[],
+  previousGallery: string[],
+  nextGallery: string[],
+  hero: string | null,
+  authorBrandId: string,
+): string[] {
+  const oldGallery = new Set(
+    previousGallery.filter((u) => typeof u === "string" && u.length > 0),
+  );
+  const preserved = prior.filter(
+    (u) =>
+      typeof u === "string" &&
+      u.length > 0 &&
+      u !== hero &&
+      !oldGallery.has(u) &&
+      !isBrandCoverUrlFor(u, authorBrandId),
+  );
+  return Array.from(
+    new Set([
+      ...(hero ? [hero] : []),
+      ...nextGallery.filter((u) => typeof u === "string" && u.length > 0),
+      ...preserved,
+    ]),
+  );
+}
+
+function isBrandCoverUrlFor(value: string, brandId: string): boolean {
+  try {
+    const segments = new URL(value).pathname.split("/").filter(Boolean);
+    const bucketIndex = segments.indexOf("brand_covers");
+    return bucketIndex >= 0 && segments[bucketIndex + 1] === brandId;
+  } catch {
+    return false;
+  }
+}
+
 // WS6: the consumer deck shows photos from stored_photo_urls (NOT the gallery
 // column). Mirror hero + gallery into stored_photo_urls so a self-listed venue's
 // photos actually render on its deck card. Hero = the first existing stored URL
@@ -2065,9 +2110,47 @@ async function handleSyncGallery(
       raw.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u)),
     ),
   ).slice(0, GALLERY_MAX);
+
+  const { data: galleryPlace, error: galleryPlaceErr } = await client
+    .from("place_pool")
+    .select("business_author_brand_id, stored_photo_urls, business_gallery_urls")
+    .eq("id", placePoolId)
+    .maybeSingle();
+  if (galleryPlaceErr) {
+    return errorResponse(500, "PLACE_READ_FAILED", galleryPlaceErr.message);
+  }
+  if (!galleryPlace) {
+    return errorResponse(404, "PLACE_NOT_FOUND", "Place not found");
+  }
+
+  const mode = placeWriteMode(
+    venue.claim_status,
+    (galleryPlace as { business_author_brand_id?: string | null })
+      .business_author_brand_id ?? null,
+  );
+  const rawStored = (galleryPlace as { stored_photo_urls?: unknown })
+    .stored_photo_urls;
+  const priorStored = Array.isArray(rawStored)
+    ? rawStored.filter(
+      (u): u is string => typeof u === "string" && u.length > 0,
+    )
+    : [];
+  const previousGallery = galleryUrls(galleryPlace as Record<string, unknown>);
+  const galleryPatch: Record<string, unknown> = {
+    business_gallery_urls: cleaned,
+  };
+  if (mode === "apply") {
+    galleryPatch.stored_photo_urls = nextStoredPhotosForGallery(
+      priorStored,
+      previousGallery,
+      cleaned,
+      venue.cover_media_url,
+      brand.id,
+    );
+  }
   const { error } = await client
     .from("place_pool")
-    .update({ business_gallery_urls: cleaned })
+    .update(galleryPatch)
     .eq("id", placePoolId);
   if (error) return errorResponse(500, "PLACE_UPDATE_FAILED", error.message);
   return jsonResponse(200, {

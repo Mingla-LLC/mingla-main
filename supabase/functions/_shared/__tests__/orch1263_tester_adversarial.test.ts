@@ -30,6 +30,8 @@
  * first-archive-wins guard in authoredApply.ts → D4 fails. (Receipts in the
  * QA report.)
  */
+
+// MINGLA-INVARIANT: I-4490-LIVE-GALLERY-EDITS-REACH-PUBLIC-VIEW | issue #4490 | verified gallery edits replace authored serving photos while preserving the hero and provider photos.
 import {
   assert,
   assertEquals,
@@ -44,7 +46,10 @@ import {
   type PoolMatchRow,
 } from "../poolMatchResponse.ts";
 import { buildAuthoredApplyPatch, FACET_COLUMNS } from "../authoredApply.ts";
-import { nextStoredPhotosForHero } from "../../run-business-place-authoring-pipeline/index.ts";
+import {
+  nextStoredPhotosForGallery,
+  nextStoredPhotosForHero,
+} from "../../run-business-place-authoring-pipeline/index.ts";
 
 // ─── The forbidden set (superset of FORBIDDEN_RESPONSE_KEYS + dispatch list) ─
 const FORBIDDEN = [
@@ -229,6 +234,55 @@ Deno.test("D3: hero re-picks across an evolving prior never shrink below the gal
   );
   // All empty is the ONLY way to get [].
   assertEquals(nextStoredPhotosForHero([], [], null), []);
+});
+
+Deno.test("#4490: live gallery edits replace authored serving photos without wiping hero or seeded photos", () => {
+  const brandId = "e79f0000-0000-4000-8000-000000000001";
+  const hero = "https://cdn/video-cover.mp4";
+  const seeded = "https://google/seeded.jpg";
+  const oldGallery = ["https://cdn/old-1.jpg", "https://cdn/old-2.jpg"];
+  const nextGallery = ["https://cdn/new-1.jpg", "https://cdn/new-2.jpg"];
+
+  assertEquals(
+    nextStoredPhotosForGallery(
+      [hero, ...oldGallery, seeded],
+      oldGallery,
+      nextGallery,
+      hero,
+      brandId,
+    ),
+    [hero, ...nextGallery, seeded],
+  );
+
+  // A photo may be both the current hero and part of the prior gallery. It is
+  // retained exactly once when the gallery changes.
+  const photoHero = "https://cdn/photo-hero.jpg";
+  assertEquals(
+    nextStoredPhotosForGallery(
+      [photoHero, "https://cdn/old.jpg"],
+      [photoHero, "https://cdn/old.jpg"],
+      ["https://cdn/new.jpg"],
+      photoHero,
+      brandId,
+    ),
+    [photoHero, "https://cdn/new.jpg"],
+  );
+
+  // A legacy sync may already have replaced business_gallery_urls while the
+  // public array still holds an older brand-owned upload. It is not provider
+  // inventory and must not survive the repair save.
+  const staleBrandUpload =
+    `https://project.supabase.co/storage/v1/object/public/brand_covers/${brandId}/venue-decks/deleted.jpg`;
+  assertEquals(
+    nextStoredPhotosForGallery(
+      [hero, ...nextGallery, staleBrandUpload, seeded],
+      nextGallery,
+      nextGallery,
+      hero,
+      brandId,
+    ),
+    [hero, ...nextGallery, seeded],
+  );
 });
 
 // ─── D4 — first-archive-wins across a double approve ───────────────────────

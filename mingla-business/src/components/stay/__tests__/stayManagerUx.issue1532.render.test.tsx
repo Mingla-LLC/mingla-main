@@ -15,6 +15,8 @@
  *   npx jest --config jest.issue1532.render.cjs --runInBand
  */
 
+// MINGLA-INVARIANT: I-4490-RESERVATION-SHEET-ONE-PALETTE | issue #4490 | reservation panel chrome and booking body share one venue palette.
+
 import React from "react";
 import { ScrollView as RNScrollView, StyleSheet, Text, View } from "react-native";
 import type { ViewStyle } from "react-native";
@@ -956,6 +958,12 @@ describe("#1532 D3 — the editor is a layer, not an inline replace", () => {
 // ===========================================================================
 
 describe("#1532 D1 — the reserve sheet says what the CTA said", () => {
+  const reservationPalette = {
+    page: "#fffaf0",
+    primaryText: "#17212b",
+    card: "#f2eadb",
+  };
+
   it("D1-R1 — the copy function is the single source for both surfaces", () => {
     expect(reserveActionLabel(true)).toBe("Reserve this Stay");
     expect(reserveActionLabel(false)).toBe("Reserve a table");
@@ -971,6 +979,7 @@ describe("#1532 D1 — the reserve sheet says what the CTA said", () => {
         visible
         onClose={() => undefined}
         title={reserveSheetTitle(true)}
+        palette={reservationPalette}
       >
         <View testID="stay-reservation-body" />
       </PublicVenueReservationSheet>,
@@ -999,6 +1008,7 @@ describe("#1532 D1 — the reserve sheet says what the CTA said", () => {
         visible
         onClose={() => undefined}
         title={reserveSheetTitle(false)}
+        palette={reservationPalette}
       >
         <View testID="restaurant-reservation-body" />
       </PublicVenueReservationSheet>,
@@ -1006,6 +1016,34 @@ describe("#1532 D1 — the reserve sheet says what the CTA said", () => {
     const text = renderedText(tree);
     expect(text).toContain("Reserve a table");
     expect(text).not.toContain("Reserve this Stay");
+    tree.unmount();
+  });
+
+  it("#4490 — sheet chrome uses the same venue palette as its booking body", async () => {
+    const tree = await mount(
+      <PublicVenueReservationSheet
+        visible
+        onClose={() => undefined}
+        title="Reserve a table"
+        palette={reservationPalette}
+      >
+        <Text style={{ color: reservationPalette.primaryText }}>No tables for this day.</Text>
+      </PublicVenueReservationSheet>,
+    );
+
+    // App graphite must never sit behind light-palette booking text.
+    const themedSheet = nodes(tree).find(
+      (node) => node.props?.panelBackground === reservationPalette.page,
+    );
+    expect(themedSheet).toBeDefined();
+    expect(
+      nodes(tree).some(
+        (node) =>
+          (node.props?.palette as { primaryText?: string } | undefined)
+            ?.primaryText === reservationPalette.primaryText,
+      ),
+    ).toBe(true);
+    expect(renderedText(tree)).toContain("No tables for this day.");
     tree.unmount();
   });
 });

@@ -67,6 +67,7 @@ import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
+import { unreferencedPreviousCoverUrls } from "./venueCoverCleanup";
 
 /** #3655 — best-effort remove of staged/replaced cover storage objects. */
 async function removeCoverStorageUrls(
@@ -552,15 +553,9 @@ export function VenueDeckReadinessSetup({
       // (hydration would otherwise wipe the just-committed URLs).
       if (coverDirty) {
         setSavedCover(cover);
-        void removeCoverStorageUrls([
-          previousCover.coverMediaUrl !== cover.coverMediaUrl
-            ? previousCover.coverMediaUrl
-            : null,
-          previousCover.coverMediaPosterUrl !== cover.coverMediaPosterUrl &&
-          previousCover.coverMediaPosterUrl !== previousCover.coverMediaUrl
-            ? previousCover.coverMediaPosterUrl
-            : null,
-        ]);
+        void removeCoverStorageUrls(
+          unreferencedPreviousCoverUrls(previousCover, cover, gallery),
+        );
       }
       if (galleryDirty) {
         setSavedGallery(gallery);

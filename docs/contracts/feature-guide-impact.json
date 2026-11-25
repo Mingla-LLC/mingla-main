@@ -4155,6 +4155,7 @@
         "mingla-business/src/components/venue/claim/ClaimStepCover.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepReview.tsx",
         "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx",
+        "mingla-business/src/components/venue/venueCoverCleanup.ts",
         "mingla-business/src/components/venue/claim/ClaimAdoptionBanner.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepCategory.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepContact.tsx",
@@ -4162,7 +4163,8 @@
         "mingla-business/src/components/venue/claim/ClaimStepPhotos.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepPitch.tsx",
         "mingla-business/src/components/venue/claim/ClaimStepPlace.tsx",
-        "mingla-business/src/components/venue/claim/ClaimStepPrice.tsx"
+        "mingla-business/src/components/venue/claim/ClaimStepPrice.tsx",
+        "supabase/functions/run-business-place-authoring-pipeline/index.ts"
       ]
     },
     {

@@ -22,13 +22,26 @@ export interface PickerSheetHeadProps {
    * shows only the title and the panel's button is the one control.
    */
   plain?: boolean;
+  /**
+   * #4490 — a public, venue-themed sheet paints its whole panel from the
+   * venue palette. When supplied, the heading and Close control must use the
+   * same surface instead of the signed-in app's graphite sheet tokens.
+   */
+  palette?: {
+    primaryText: string;
+    card: string;
+  };
   testID?: string;
 }
 
-export function PickerSheetHead({ title, onClose, plain = false, testID }: PickerSheetHeadProps): React.ReactElement {
+export function PickerSheetHead({ title, onClose, plain = false, palette, testID }: PickerSheetHeadProps): React.ReactElement {
   return (
     <View style={styles.row} testID={testID}>
-      <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
+      <Text
+        style={[styles.title, palette !== undefined ? { color: palette.primaryText } : null]}
+        accessibilityRole="header"
+        numberOfLines={2}
+      >
         {title ?? ""}
       </Text>
       {plain ? null : (
@@ -37,10 +50,18 @@ export function PickerSheetHead({ title, onClose, plain = false, testID }: Picke
         hitSlop={4}
         accessibilityRole="button"
         accessibilityLabel="Close"
-        style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.close,
+          palette !== undefined ? { backgroundColor: palette.card } : null,
+          pressed && styles.pressed,
+        ]}
         testID={testID !== undefined ? `${testID}-close` : undefined}
       >
-        <Icon name="close" size={18} color={color.text1} />
+        <Icon
+          name="close"
+          size={18}
+          color={palette?.primaryText ?? color.text1}
+        />
       </Pressable>
       )}
     </View>

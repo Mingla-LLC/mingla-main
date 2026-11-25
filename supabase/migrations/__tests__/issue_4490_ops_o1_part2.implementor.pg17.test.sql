@@ -106,6 +106,11 @@ SELECT public.issue_4490_set_venue_feature('44900300-0000-4000-9000-0000000000a1
 SELECT public.t4490p2_reset();
 
 -- A staff round on a session, as the edge inserts it (held unless told).
+-- TEST-MOD-APPROVED #4490 (flake fix): allocate repeatable codes from a
+-- fixture-owned sequence. random() could reuse a live code and trip
+-- venue_orders_live_pickup_code_uniq before the assertions ran.
+CREATE SEQUENCE public.t4490p2_pickup START 101 MAXVALUE 899 NO CYCLE;
+GRANT USAGE ON SEQUENCE public.t4490p2_pickup TO PUBLIC;
 CREATE FUNCTION public.t4490p2_round(p_session uuid, p_status text, p_age interval)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $f$
 DECLARE
@@ -118,7 +123,7 @@ BEGIN
     buyer_subtotal_cents, total_cents, payment_status, fulfillment_status, idempotency_key, metadata, created_at
   ) VALUES (
     v_order, p_session, '44900300-0000-4000-9000-000000000010', '44900300-0000-4000-9000-0000000000a1', 'staff',
-    '44900300-0000-4000-8000-000000000002', lpad((100 + floor(random() * 800))::int::text, 3, '0'), 'Guest',
+    '44900300-0000-4000-8000-000000000002', lpad(nextval('public.t4490p2_pickup')::text, 3, '0'), 'Guest',
     'venue_collected', 'NGN', 250000, 250000, 0, 1000, 25000, 0, 0, 0, false, false, false,
     275000, 275000, 'pending', p_status, 'till-p2-round:' || v_order,
     jsonb_build_object('unsettled_staff_order', true), now() - p_age);

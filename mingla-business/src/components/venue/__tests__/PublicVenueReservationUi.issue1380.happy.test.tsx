@@ -306,10 +306,13 @@ describe("issue #1380 public venue Reserve CTA", () => {
     expect(page).toContain("children: reservationsSheetBlock,");
     expect(route).toContain("<PublicVenueReservationSheet");
     expect(route).toContain("{context.children}");
+    expect(route).toContain("palette={context.palette}");
     expect(page).toContain(
       "activeTab={normalizedReservationUiState.activeTab}",
     );
     expect(sheet).toContain('snapPoint="full"');
+    expect(sheet).toContain("panelBackground={palette.page}");
+    expect(sheet).toContain("palette={palette}");
     expect(sheet).toContain("{visible ? children : null}");
     // [TEST-MOD-APPROVED #1532] — the hardcoded heading WAS the defect.
     // A hotel guest tapped "Reserve this Stay" and landed on a sheet headed
