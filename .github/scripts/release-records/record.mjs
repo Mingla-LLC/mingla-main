@@ -14,7 +14,9 @@ import {
   edgeFunctions,
   edgeSupersessionStatus,
   hasDeployMarker,
+  isBundleBaselinePr,
   isTestFile,
+  issueLinkWaiver,
   mergeRecordData,
   migrationsAdded,
   parseFeatureGuide,
@@ -282,24 +284,74 @@ function eventKind(event) {
   return "unknown";
 }
 
-const MAX_LIVE_CHECK_RECORDS = 20;
+// #4618 (B3): a "Live check:" comment refreshes at most this many records in
+// one run. Only records that still need this live check count, so a re-run
+// picks up exactly the ones left over.
+const MAX_LIVE_CHECK_RECORDS = 40;
+
+/** Records a live check reached past the cap; the run says so and ends non-zero. */
+const liveCheckLeftover = { reached: 0, total: 0, prs: [] };
 
 /**
- * The merged pull requests this event is about (newest record first for a
- * comment), or an empty list. A "Live check:" comment refreshes every record
- * on its issue: each record then takes the newest trusted live check made
- * after its own merge, so the comment counts for each record it applies to.
+ * #4618 (B3, rework P2-1): the records on an issue that this "Live check:"
+ * comment applies to, oldest merge first. A record qualifies when its pull
+ * request merged no later than the comment and it NEEDS a live check: it holds
+ * no valid one (none, or one made before its merge) and it is not a bundle
+ * baseline; or (an edit) its live check is this very comment. A record that
+ * already holds any valid live check costs no GitHub calls, so a busy issue
+ * stays under the cap. A comment whose author is not trusted reaches nothing.
+ */
+async function liveCheckTargets(event) {
+  const c = event.comment ?? {};
+  if (!(await trustedAuthor(c))) return [];
+  const parsed = Date.parse(c.created_at ?? "");
+  const at = Number.isNaN(parsed) ? Date.now() : parsed;
+  const url = typeof c.html_url === "string" ? c.html_url : null;
+  const edited = event.action === "edited";
+  const byPr = new Map();
+  const comments = await issueComments(event.issue.number);
+  // A live check whose comment on this issue is gone (deleted) is not valid
+  // any more; known from the list already read, at no extra call.
+  const urls = new Set(comments.map((x) => String(x?.html_url ?? "")));
+  const onIssue = new RegExp(`^https://github\\.com/Mingla-LLC/mingla-main/(?:issues|pull)/${Number(event.issue.number)}#issuecomment-\\d+$`);
+  const gone = (u) => onIssue.test(String(u ?? "")) && !urls.has(String(u));
+  for (const x of comments) {
+    if (x?.user?.login !== "github-actions[bot]") continue;
+    const m = new RegExp(`<!-- ${RECORD_MARKER_PREFIX}(\\d+) -->`).exec(String(x.body ?? ""));
+    if (!m) continue;
+    const pr = Number(m[1]);
+    const data = readRecordData(x.body);
+    // A record whose data cannot be read is refreshed: its state is unknown.
+    const merged = data && data.pr === pr ? Date.parse(data.merged_at) : NaN;
+    const lc = data && data.pr === pr ? data.live_check : null;
+    const lcAt = lc ? Date.parse(lc.at) : NaN;
+    const holdsValid = Boolean(lc) && typeof lc.url === "string" && lc.url !== "" && !gone(lc.url)
+      && !Number.isNaN(lcAt) && (Number.isNaN(merged) || lcAt >= merged);
+    const wants = !data || data.pr !== pr ? true
+      : !(Number.isNaN(merged) || merged <= at) ? false
+      : edited && url !== null && lc?.url === url ? true
+      : !holdsValid && data.release_kind !== "bundle_baseline";
+    const was = byPr.get(pr);
+    byPr.set(pr, { pr, merged: Number.isNaN(merged) ? 0 : merged, wants: Boolean(was?.wants) || wants });
+  }
+  const all = [...byPr.values()].filter((r) => r.wants).sort((a, b) => a.merged - b.merged || a.pr - b.pr);
+  const reached = all.slice(0, MAX_LIVE_CHECK_RECORDS).map((r) => r.pr);
+  if (all.length > reached.length) {
+    liveCheckLeftover.reached = reached.length;
+    liveCheckLeftover.total = all.length;
+    liveCheckLeftover.prs = all.slice(MAX_LIVE_CHECK_RECORDS).map((r) => r.pr);
+  }
+  return reached;
+}
+
+/**
+ * The merged pull requests this event is about, or an empty list. A "Live
+ * check:" comment refreshes every record on its issue that it applies to
+ * (liveCheckTargets): each record then takes the newest trusted live check
+ * made after its own merge.
  */
 async function resolvePrs(eventName, event) {
-  if (eventName === "issue_comment") {
-    const seen = [];
-    for (const c of (await issueComments(event.issue.number)).reverse()) {
-      if (c?.user?.login !== "github-actions[bot]") continue;
-      const m = new RegExp(`<!-- ${RECORD_MARKER_PREFIX}(\\d+) -->`).exec(String(c.body ?? ""));
-      if (m && !seen.includes(Number(m[1]))) seen.push(Number(m[1]));
-    }
-    return seen.slice(0, MAX_LIVE_CHECK_RECORDS);
-  }
+  if (eventName === "issue_comment") return await liveCheckTargets(event);
   const one = await resolvePr(eventName, event);
   return one ? [one] : [];
 }
@@ -332,6 +384,11 @@ async function main() {
   const event = JSON.parse(readFileSync(env("GITHUB_EVENT_PATH"), "utf8"));
   const eventName = eventKind(event);
   const numbers = await resolvePrs(eventName, event);
+  const leftover = () => {
+    if (liveCheckLeftover.prs.length === 0) return false;
+    console.log(`release-record: ERROR: live check reached ${liveCheckLeftover.reached} of ${liveCheckLeftover.total} records; re-run this run for PRs ${liveCheckLeftover.prs.map((n) => `#${n}`).join(", ")}`);
+    return true;
+  };
   if (numbers.length === 0) {
     console.log(`release-record: no merged pull request for this ${eventName} event; nothing to do`);
     return 0;
@@ -350,8 +407,9 @@ async function main() {
   if (readBackErrors.length > 0) {
     console.log(`release-record: ERROR: ${readBackErrors.length} GitHub read${readBackErrors.length === 1 ? "" : "s"} failed while reading records back; the records written keep this run's data. ${readBackErrors.join("; ")}`);
   }
+  const cut = leftover();
   if (stopped.length > 0) throw new Error(stopped.join("; "));
-  return readBackErrors.length > 0 ? 1 : 0;
+  return readBackErrors.length > 0 || cut ? 1 : 0;
 }
 
 /**
@@ -455,6 +513,11 @@ async function collect(number) {
   const migrationStatus = statuses.find((s) => s.context === MIGRATIONS_CONTEXT);
   const added = migrationsAdded(files);
   const guide = parseFeatureGuide(pr.body);
+  // #4618 (B1/B2): the baseline bot changing only the baseline file ships
+  // nothing: no web project, no deploy, no live check.
+  const baseline = isBundleBaselinePr({ author: pr.user, paths });
+  // #4618 D1: the PR links check's own rule for "no issue link needed".
+  const waiver = issueLinkWaiver({ author: pr.user, body: pr.body });
   const data = {
     v: 1,
     repo: REPO,
@@ -466,15 +529,18 @@ async function collect(number) {
     merged_by: pr.merged_by?.login ?? "",
     author: pr.user?.login ?? "",
     issues,
+    release_kind: baseline ? "bundle_baseline" : "standard",
+    issue_waiver: waiver ? waiver.kind : null,
+    issue_waiver_reason: waiver?.kind === "none" ? waiver.reason : null,
     migrations_added: added,
     migrations_applied_state: added.length === 0 ? "none"
       : migrationStatus?.state === "success" ? "applied" : "pending",
     migrations_status: migrationStatus ? visible(migrationStatus.description, 140) : null,
     edge_functions: edge,
-    web_projects: web,
+    web_projects: baseline ? [] : web,
     deploy_marker: marker,
-    deploy: deployState({ web, edge, marker, statuses, checks, edgeRuns }),
-    web_original_state: originalWebDeployState({ web, marker, statuses, checks }),
+    deploy: baseline ? { web: {}, edge: "none" } : deployState({ web, edge, marker, statuses, checks, edgeRuns }),
+    web_original_state: baseline ? {} : originalWebDeployState({ web, marker, statuses, checks }),
     web_supersession: webSupersessionStatus(statuses),
     edge_original_state: originalEdgeDeployState(edge, edgeRuns),
     edge_supersession: edgeSupersessionStatus(statuses),
@@ -506,6 +572,7 @@ async function refresh(number) {
   const failed = [];
   const unread = [];
   const unwritten = [];
+  const recordUrl = new Map();
   for (const t of targets) {
     // W2 rework 4: a GitHub read before the write that fails leaves this
     // issue's record as it was (nothing emptier is written), is said as an
@@ -525,6 +592,7 @@ async function refresh(number) {
     }
     const existing = mine[0];
     const body = renderRecord(merged);
+    if (existing?.html_url) recordUrl.set(t, existing.html_url);
     if (existing) {
       if (existing.body !== body) {
         const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${existing.id}`, { body });
@@ -542,6 +610,7 @@ async function refresh(number) {
         continue;
       }
       written.push(`#${t} created (HTTP ${r.status})`);
+      if (typeof r.json?.html_url === "string") recordUrl.set(t, r.json.html_url);
     }
     // #3980 W2 rework 3: the record is written. Reading it back (to remove a
     // duplicate a racing run posted, and to merge news written in the window
@@ -557,6 +626,25 @@ async function refresh(number) {
       unread.push(t);
       written.push(`#${t} written, read-back failed`);
       console.log(`release-record: ERROR: PR #${number}: the record on #${t} was written but reading it back failed (${error.message}); a duplicate or a racing run's news may remain there until the next refresh. Carrying on with the other issues.`);
+    }
+  }
+  // #4618 (B4): once the record lives on a linked issue, an older record
+  // comment on the pull request itself (written while no issue was linked)
+  // stops being a record: it is turned into a pointer without the marker, so
+  // Mingla never reads its stale "no issue" again.
+  const home = targets.find((t) => t !== number && !failed.includes(t) && !unwritten.includes(t));
+  if (home !== undefined) {
+    try {
+      for (const c of recordCommentsFor(await issueComments(number), number)) {
+        const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${c.id}`, {
+          body: `The release record for PR #${number} now lives on #${home}: ${recordUrl.get(home) ?? `https://github.com/${REPO}/issues/${home}`}`,
+        });
+        wrote(r, `the pointer in comment ${c.id}`);
+        written.push(`PR record on #${number} turned into a pointer`);
+      }
+    } catch (error) {
+      unread.push(number);
+      console.log(`release-record: ERROR: PR #${number}: the old record on the pull request could not be turned into a pointer (${error.message}).`);
     }
   }
   console.log(`release-record: PR #${number}: ${written.length > 0 ? written.join(", ") : "unchanged"}`);

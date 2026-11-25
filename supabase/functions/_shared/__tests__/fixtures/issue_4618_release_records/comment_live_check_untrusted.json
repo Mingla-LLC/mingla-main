@@ -1,0 +1,12 @@
+{
+  "action": "created",
+  "comment": {
+    "id": 7778,
+    "body": "Live check: looks fine to me",
+    "author_association": "NONE",
+    "user": { "login": "stranger", "type": "User" },
+    "created_at": "2026-11-20T12:00:00Z",
+    "html_url": "https://github.com/Mingla-LLC/mingla-main/issues/4618#issuecomment-7778"
+  },
+  "issue": { "number": 4618 }
+}
