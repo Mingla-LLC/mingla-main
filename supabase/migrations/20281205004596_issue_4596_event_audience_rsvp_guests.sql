@@ -485,4 +485,337 @@ BEGIN
 END;
 $repair$;
 
+-- ── #1493: accepted brand members can read the Overview intelligence ───────
+-- VenueSuiteShell is shared by Business web, iOS and Android. Its three
+-- companion Overview rollups already use the brand-member read helper; this
+-- base intelligence RPC was the obsolete owner-only exception.
+CREATE OR REPLACE FUNCTION public.venue_intelligence_overview(
+  p_brand_id uuid,
+  p_venue_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+  v_tz            text;
+  v_tz_confidence text;
+  v_offset_min    integer;
+  v_default_ccy   text;
+  v_venue_id      uuid;
+  v_place_pool_id uuid;
+  v_order_count   integer := 0;
+  v_first_order   timestamptz;
+  v_hours         jsonb;
+  v_days          jsonb;
+  v_revenue_trend jsonb;
+  v_revenue_ccy   jsonb;
+  v_rev7d_ccy     jsonb;
+  v_signal_scores jsonb;
+BEGIN
+  -- #1493: Overview is available to every accepted, active brand member,
+  -- matching the three sibling rollups and the shared Business shell.
+  IF NOT (
+    public.is_admin_user()
+    OR public.biz_is_brand_member_for_read_for_caller(p_brand_id)
+  ) THEN
+    RAISE EXCEPTION 'not authorized for brand %', p_brand_id USING ERRCODE = '42501';
+  END IF;
+
+  -- ── META-ORCH-1255(C) D-D venue resolution ───────────────────────────────
+  IF p_venue_id IS NOT NULL THEN
+    SELECT v.id INTO v_venue_id
+      FROM public.venue_listings v
+     WHERE v.id = p_venue_id AND v.brand_id = p_brand_id;
+    IF v_venue_id IS NULL THEN
+      RAISE EXCEPTION 'venue % does not belong to brand %', p_venue_id, p_brand_id
+        USING ERRCODE = '42501';
+    END IF;
+  ELSE
+    -- Deterministic single-venue back-compat: exactly one venue → use it;
+    -- 0 or N>1 venues → NULL (legacy fallback below, never an arbitrary pick).
+    IF (SELECT count(*) FROM public.venue_listings v WHERE v.brand_id = p_brand_id) = 1 THEN
+      SELECT v.id INTO v_venue_id
+        FROM public.venue_listings v
+       WHERE v.brand_id = p_brand_id;
+    END IF;
+  END IF;
+
+  SELECT b.default_currency INTO v_default_ccy
+    FROM public.brands b
+   WHERE b.id = p_brand_id;
+
+  -- Place pointer: the venue row owns it (one owner per truth); the legacy
+  -- brand pointer survives ONLY as the pre-1255 fallback when no venue row
+  -- resolves.
+  IF v_venue_id IS NOT NULL THEN
+    SELECT v.place_pool_id INTO v_place_pool_id
+      FROM public.venue_listings v
+     WHERE v.id = v_venue_id;
+  ELSE
+    SELECT b.place_pool_id INTO v_place_pool_id
+      FROM public.brands b
+     WHERE b.id = p_brand_id;
+  END IF;
+
+  v_default_ccy := COALESCE(NULLIF(TRIM(UPPER(v_default_ccy)), ''), 'GBP');
+
+  -- ── Timezone resolution ladder (§4.1) ────────────────────────────────────
+  -- (1) reservations availability config IANA zone (DST-aware) — venue-scoped
+  --     when a venue resolved, else the legacy brand read.
+  -- (2) the brand's most-common non-UTC events.timezone (DST-aware)
+  -- (3) static utc_offset_minutes (NOT DST-aware) — fixed-offset bucketing
+  -- (4) 'UTC'
+  IF v_venue_id IS NOT NULL THEN
+    SELECT vac.iana_timezone
+      INTO v_tz
+      FROM public.venue_availability_config vac
+     WHERE vac.venue_id = v_venue_id
+       AND vac.iana_timezone IS NOT NULL
+     LIMIT 1;
+  ELSE
+    SELECT vac.iana_timezone
+      INTO v_tz
+      FROM public.venue_availability_config vac
+     WHERE vac.brand_id = p_brand_id
+       AND vac.iana_timezone IS NOT NULL
+     LIMIT 1;
+  END IF;
+
+  IF v_tz IS NOT NULL THEN
+    v_tz_confidence := 'iana';
+  ELSE
+    SELECT e.timezone
+      INTO v_tz
+      FROM public.events e
+     WHERE e.brand_id = p_brand_id
+       AND e.deleted_at IS NULL
+       AND e.timezone IS NOT NULL
+       AND e.timezone <> 'UTC'
+     GROUP BY e.timezone
+     ORDER BY COUNT(*) DESC, e.timezone ASC
+     LIMIT 1;
+
+    IF v_tz IS NOT NULL THEN
+      v_tz_confidence := 'iana';
+    ELSE
+      -- (3) static offset on the place_pool, if present
+      SELECT pp.utc_offset_minutes
+        INTO v_offset_min
+        FROM public.place_pool pp
+       WHERE pp.id = v_place_pool_id
+         AND pp.utc_offset_minutes IS NOT NULL;
+
+      IF v_offset_min IS NOT NULL THEN
+        v_tz_confidence := 'offset';
+        v_tz := NULL; -- bucket via interval, not a named zone
+      ELSE
+        v_tz := 'UTC';
+        v_tz_confidence := 'utc';
+      END IF;
+    END IF;
+  END IF;
+
+  -- ── Source set: paid, non-failed/cancelled/refunded orders for this venue ─
+  -- Order timestamp = COALESCE(confirmed_at, created_at) ("paid at").
+  -- The local instant per order is computed once below in the CTE.
+  WITH base AS (
+    SELECT
+      COALESCE(o.confirmed_at, o.created_at) AS paid_at,
+      -- venue-local timestamp: named zone when known, else a fixed-offset shift
+      CASE
+        WHEN v_tz IS NOT NULL
+          THEN (COALESCE(o.confirmed_at, o.created_at) AT TIME ZONE v_tz)
+        ELSE (COALESCE(o.confirmed_at, o.created_at)
+               + make_interval(mins => v_offset_min))
+      END AS local_ts,
+      COALESCE(NULLIF(TRIM(UPPER(o.currency)), ''), v_default_ccy) AS ccy,
+      (o.total_cents - COALESCE(o.refunded_amount_cents, 0))       AS net_cents
+    FROM public.orders o
+    JOIN public.events e
+      ON e.id = o.event_id
+     AND e.brand_id = p_brand_id
+     AND e.deleted_at IS NULL
+    WHERE o.payment_status NOT IN ('failed', 'cancelled', 'refunded')
+  )
+  SELECT
+    COUNT(*)::int,
+    MIN(paid_at)
+    INTO v_order_count, v_first_order
+  FROM base;
+
+  -- hours[]: all 24 buckets, 0-filled, hour = EXTRACT(hour FROM local_ts)
+  SELECT jsonb_agg(jsonb_build_object('hour', h.hour, 'orders', COALESCE(c.cnt, 0))
+                   ORDER BY h.hour)
+    INTO v_hours
+  FROM generate_series(0, 23) AS h(hour)
+  LEFT JOIN (
+    SELECT EXTRACT(hour FROM b.local_ts)::int AS hour, COUNT(*)::int AS cnt
+    FROM (
+      SELECT
+        CASE
+          WHEN v_tz IS NOT NULL
+            THEN (COALESCE(o.confirmed_at, o.created_at) AT TIME ZONE v_tz)
+          ELSE (COALESCE(o.confirmed_at, o.created_at)
+                 + make_interval(mins => v_offset_min))
+        END AS local_ts
+      FROM public.orders o
+      JOIN public.events e
+        ON e.id = o.event_id AND e.brand_id = p_brand_id AND e.deleted_at IS NULL
+      WHERE o.payment_status NOT IN ('failed', 'cancelled', 'refunded')
+    ) b
+    GROUP BY 1
+  ) c ON c.hour = h.hour;
+
+  -- days[]: all 7 buckets, 0-filled, weekday 0=Mon..6=Sun via ((dow+6)%7)
+  SELECT jsonb_agg(jsonb_build_object('weekday', d.weekday, 'orders', COALESCE(c.cnt, 0))
+                   ORDER BY d.weekday)
+    INTO v_days
+  FROM generate_series(0, 6) AS d(weekday)
+  LEFT JOIN (
+    SELECT ((EXTRACT(dow FROM b.local_ts)::int + 6) % 7) AS weekday, COUNT(*)::int AS cnt
+    FROM (
+      SELECT
+        CASE
+          WHEN v_tz IS NOT NULL
+            THEN (COALESCE(o.confirmed_at, o.created_at) AT TIME ZONE v_tz)
+          ELSE (COALESCE(o.confirmed_at, o.created_at)
+                 + make_interval(mins => v_offset_min))
+        END AS local_ts
+      FROM public.orders o
+      JOIN public.events e
+        ON e.id = o.event_id AND e.brand_id = p_brand_id AND e.deleted_at IS NULL
+      WHERE o.payment_status NOT IN ('failed', 'cancelled', 'refunded')
+    ) b
+    GROUP BY 1
+  ) c ON c.weekday = d.weekday;
+
+  -- revenue_trend: last 30 calendar days (venue-local), default-currency only,
+  -- oldest→newest, 0-filled.
+  SELECT jsonb_build_object(
+           'currency', v_default_ccy,
+           'days', COALESCE(jsonb_agg(
+             jsonb_build_object('date', to_char(g.d, 'YYYY-MM-DD'),
+                                'net_cents', COALESCE(r.net_cents, 0))
+             ORDER BY g.d), '[]'::jsonb)
+         )
+    INTO v_revenue_trend
+  FROM (
+    SELECT (
+      (CASE
+         WHEN v_tz IS NOT NULL THEN (now() AT TIME ZONE v_tz)::date
+         ELSE ((now() + make_interval(mins => v_offset_min)))::date
+       END) - g.day_offset
+    ) AS d
+    FROM generate_series(0, 29) AS g(day_offset)
+  ) g
+  LEFT JOIN (
+    SELECT b.local_date AS d, SUM(b.net_cents)::bigint AS net_cents
+    FROM (
+      SELECT
+        (CASE
+           WHEN v_tz IS NOT NULL
+             THEN (COALESCE(o.confirmed_at, o.created_at) AT TIME ZONE v_tz)
+           ELSE (COALESCE(o.confirmed_at, o.created_at)
+                  + make_interval(mins => v_offset_min))
+         END)::date AS local_date,
+        (o.total_cents - COALESCE(o.refunded_amount_cents, 0)) AS net_cents,
+        COALESCE(NULLIF(TRIM(UPPER(o.currency)), ''), v_default_ccy) AS ccy
+      FROM public.orders o
+      JOIN public.events e
+        ON e.id = o.event_id AND e.brand_id = p_brand_id AND e.deleted_at IS NULL
+      WHERE o.payment_status NOT IN ('failed', 'cancelled', 'refunded')
+    ) b
+    WHERE b.ccy = v_default_ccy
+    GROUP BY b.local_date
+  ) r ON r.d = g.d;
+
+  -- revenue_by_currency: lifetime net cents per currency (NEVER cross-summed)
+  SELECT COALESCE(jsonb_object_agg(t.ccy, t.net_cents), '{}'::jsonb)
+    INTO v_revenue_ccy
+  FROM (
+    SELECT
+      COALESCE(NULLIF(TRIM(UPPER(o.currency)), ''), v_default_ccy) AS ccy,
+      SUM(o.total_cents - COALESCE(o.refunded_amount_cents, 0))::bigint AS net_cents
+    FROM public.orders o
+    JOIN public.events e
+      ON e.id = o.event_id AND e.brand_id = p_brand_id AND e.deleted_at IS NULL
+    WHERE o.payment_status NOT IN ('failed', 'cancelled', 'refunded')
+    GROUP BY 1
+  ) t;
+
+  -- rev7d_by_currency: last-7-day net cents per currency (venue-local window)
+  SELECT COALESCE(jsonb_object_agg(t.ccy, t.net_cents), '{}'::jsonb)
+    INTO v_rev7d_ccy
+  FROM (
+    SELECT
+      COALESCE(NULLIF(TRIM(UPPER(o.currency)), ''), v_default_ccy) AS ccy,
+      SUM(o.total_cents - COALESCE(o.refunded_amount_cents, 0))::bigint AS net_cents
+    FROM public.orders o
+    JOIN public.events e
+      ON e.id = o.event_id AND e.brand_id = p_brand_id AND e.deleted_at IS NULL
+    WHERE o.payment_status NOT IN ('failed', 'cancelled', 'refunded')
+      AND (
+        CASE
+          WHEN v_tz IS NOT NULL
+            THEN (COALESCE(o.confirmed_at, o.created_at) AT TIME ZONE v_tz)::date
+          ELSE ((COALESCE(o.confirmed_at, o.created_at)
+                  + make_interval(mins => v_offset_min)))::date
+        END
+      ) > (
+        CASE
+          WHEN v_tz IS NOT NULL THEN (now() AT TIME ZONE v_tz)::date
+          ELSE ((now() + make_interval(mins => v_offset_min)))::date
+        END - 7
+      )
+    GROUP BY 1
+  ) t;
+
+  -- signal_scores: place_pool.ai_signal_scores is a JSONB OBJECT keyed by
+  -- signal id, value = { score_0_to_100, inappropriate_for, ... }. Transform to
+  -- [{ id, score }], filtering inappropriate_for=true, sorted score desc.
+  -- (Mirrors VenueListingContent.tsx scoreRows transform.)
+  SELECT COALESCE(jsonb_agg(s.row ORDER BY (s.row->>'score')::int DESC), '[]'::jsonb)
+    INTO v_signal_scores
+  FROM (
+    SELECT jsonb_build_object(
+             'id', kv.key,
+             'score', COALESCE((kv.value->>'score_0_to_100')::int, 0)
+           ) AS row
+    FROM public.place_pool pp
+    CROSS JOIN LATERAL jsonb_each(pp.ai_signal_scores) AS kv(key, value)
+    WHERE pp.id = v_place_pool_id
+      AND v_place_pool_id IS NOT NULL
+      AND jsonb_typeof(pp.ai_signal_scores) = 'object'
+      AND COALESCE((kv.value->>'inappropriate_for')::boolean, false) = false
+  ) s;
+
+  RETURN jsonb_build_object(
+    'resolved_timezone',     COALESCE(v_tz, CASE WHEN v_offset_min IS NOT NULL
+                                                 THEN 'UTC' || (CASE WHEN v_offset_min >= 0 THEN '+' ELSE '' END)
+                                                      || (v_offset_min / 60)::text
+                                                 ELSE 'UTC' END),
+    'tz_confidence',         v_tz_confidence,
+    'brand_default_currency', v_default_ccy,
+    'order_count',           v_order_count,
+    'first_order_at',        v_first_order,
+    'hours',                 COALESCE(v_hours, '[]'::jsonb),
+    'days',                  COALESCE(v_days, '[]'::jsonb),
+    'revenue_trend',         v_revenue_trend,
+    'revenue_by_currency',   v_revenue_ccy,
+    'rev7d_by_currency',     v_rev7d_ccy,
+    'signal_scores',         v_signal_scores
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.venue_intelligence_overview(uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.venue_intelligence_overview(uuid, uuid) TO authenticated;
+
+COMMENT ON FUNCTION public.venue_intelligence_overview(uuid, uuid) IS
+  '#1493: venue-scoped intelligence for accepted brand members and Mingla '
+  'admins. Venue resolution, timezone buckets, per-currency aggregation and '
+  'fail-closed cross-brand behavior remain unchanged from META-ORCH-1255(C).';
+
 COMMIT;

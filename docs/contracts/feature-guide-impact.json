@@ -5733,7 +5733,9 @@
         "mingla-business/src/components/venue/insights/VenueInsightsModule.tsx",
         "mingla-business/src/components/venue/insights/insightsInstruments.ts",
         "mingla-business/src/components/venue/venueIntelligence.ts",
-        "mingla-business/src/components/venue/venueReviewsSummary.ts"
+        "mingla-business/src/components/venue/venueReviewsSummary.ts",
+        "mingla-business/src/services/venueIntelligenceService.ts",
+        "supabase/migrations/20281205004596_issue_4596_event_audience_rsvp_guests.sql"
       ]
     },
     {
