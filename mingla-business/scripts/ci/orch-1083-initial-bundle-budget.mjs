@@ -272,15 +272,15 @@ if (process.argv.includes("--self-test")) {
     ]);
   }
 
-  // 4 — the one-time allowances for #4596 and #4490 are exactly two named
-  // entries. Each matches exactly one pull request; everyone else keeps the
-  // normal limit. Adding an entry, widening a cap or loosening a match fails.
+  // 4 — the one-time allowances for #4596, #4490 and #3493 are exactly three
+  // named entries. Each matches exactly one pull request; everyone else keeps
+  // the normal limit. Adding an entry, widening a cap or loosening a match fails.
   {
     const E = ONE_TIME_PR_ALLOWANCE;
     const only = E[0] ?? {};
     checks.push(["one-time allowance: the general allowance is still 12,000 / 25,000",
       PR_DELTA_ALLOWANCE.common === 12_000 && PR_DELTA_ALLOWANCE.eager === 25_000]);
-    checks.push(["one-time allowance: the table holds exactly two entries (#4596, #4490)", E.length === 2]);
+    checks.push(["one-time allowance: the table holds exactly three entries (#4596, #4490, #3493)", E.length === 3]);
     checks.push(["one-time allowance: that entry is PR #4601 / issue #4596 on its own branch, capped at 3,300 B, dated",
       only.pr === 4601 && only.issue === 4596 &&
         only.headRef === "4596-rsvp-event-blast-audience" &&
@@ -318,6 +318,20 @@ if (process.argv.includes("--self-test")) {
       decide(prEnv("4490-venue-features", "refs/pull/4600/merge")) === second &&
         decide(prEnv("4490-venue-features", "refs/pull/4601/merge")) === null &&
         decide(prEnv("4522-young-polish", "refs/pull/4600/merge")) === null]);
+    const third = E[2] ?? {};
+    checks.push(["one-time allowance: the third entry is PR #4610 / issue #3493 on its exact branch, capped at 3,000 B, dated and frozen",
+      third.pr === 4610 && third.issue === 3493 &&
+        third.headRef === "3493-common-raw-ceiling" &&
+        third.common === 3_000 && third.expiresAfter === "2026-12-09" &&
+        third.approvedBy === "Seth, 2026-11-25" &&
+        typeof third.reason === "string" && third.reason.length > 40 &&
+        Object.keys(third).sort().join(",") === "approvedBy,common,expiresAfter,headRef,issue,pr,reason" &&
+        Object.isFrozen(third)]);
+    checks.push(["one-time allowance: PR #4610 gets only its 3,000 B movement cap",
+      decide(prEnv("3493-common-raw-ceiling", "refs/pull/4610/merge"), none, "2026-11-25") === third &&
+        decide(prEnv("3493-common-raw-ceiling", "refs/pull/46100/merge"), none, "2026-11-25") === null &&
+        decide(prEnv("3493-common-raw-ceiling-x", "refs/pull/4610/merge"), none, "2026-11-25") === null &&
+        effectivePerPrAllowance(third, PR_DELTA_ALLOWANCE).common === PR_DELTA_ALLOWANCE.common]);
     const strangers = [
       prEnv("3697-host-ads", "refs/pull/4600/merge"),
       prEnv(HEAD, "refs/pull/4600/merge"), // same branch name, another pull request
@@ -327,6 +341,8 @@ if (process.argv.includes("--self-test")) {
       prEnv(HEAD.toUpperCase(), "refs/pull/4601/merge"),
       prEnv("", "refs/pull/4601/merge"),
       prEnv(HEAD, "refs/pull/46010/merge"),
+      prEnv("3493-common-raw-ceiling", "refs/pull/46100/merge"),
+      prEnv("3493-common-raw-ceiling-x", "refs/pull/4610/merge"),
       prEnv(HEAD, ""),
       {},
       { GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/4601/merge" }, // no event
