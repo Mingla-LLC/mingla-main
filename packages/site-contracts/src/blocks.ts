@@ -211,7 +211,9 @@ export const BLOCK_CATALOG = {
       heading: heading(true),
       body: { kind: "text", max: 500, label: "Sentence" },
       label: { kind: "text", max: 80, required: true, label: "Button label" },
-      href: { kind: "action_href", labelField: "label", required: true, label: "Button link" },
+      // #4572: a targetless owner-created band is valid content, but it has
+      // no button. The owner editor may add a safe target later.
+      href: { kind: "action_href", labelField: "label", label: "Button link" },
     },
   },
   offering_grid: {

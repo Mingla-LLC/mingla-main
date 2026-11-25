@@ -103,7 +103,24 @@
       "discard": "Descartar",
       "keep": "Conservarla",
       "discardError": "No pudimos descartar {{brand}}. Inténtalo de nuevo.",
-      "discarded": "{{brand}} descartada."
+      "discarded": "{{brand}} descartada.",
+      "clearStep": {
+        "name": "Siguiente: finaliza el nombre de esta marca. Luego continúa con la configuración o descártala aquí.",
+        "country": "Siguiente: elige un país bancario. Luego finaliza Cobrar, o elige Guardar y finalizar más tarde → Eventos gratuitos solo por ahora.",
+        "pay": "Siguiente: finaliza Cobrar, o elige Guardar y finalizar más tarde → Eventos gratuitos solo por ahora.",
+        "done": "La configuración ya no parece bloquear una nueva marca. Refresca para ver el estado más reciente."
+      },
+      "discardFailure": {
+        "offline": "Mingla no pudo conectar con el servidor. Verifica tu conexión y vuelve a intentarlo.",
+        "auth": "Tu inicio de sesión no estuvo listo, por lo que no se envió la solicitud de eliminación. Espera un momento y vuelve a intentarlo.",
+        "session": "Tu inicio de sesión expiró, por lo que el borrador no fue descartado. Inicia sesión nuevamente y vuelve a intentarlo.",
+        "forbidden": "Solo el dueño de la cuenta puede descartar este borrador.",
+        "notDraft": "{{brand}} ya no es un borrador, por lo que no fue descartado. Refresca para ver qué cambió.",
+        "blocked": "Este borrador tiene actividades o dinero pendientes que deben resolverse antes de poder descartarlo.",
+        "payment": "No se pudo cerrar la cuenta de pago ({{reason}}). Nada fue eliminado. Contacta al soporte.",
+        "mismatch": "El nombre de la marca cambió antes de que se completara el descarte. Refresca y vuelve a intentarlo.",
+        "server": "Mingla no confirmó el descarte. Nada fue eliminado. Lo hemos registrado—contacta al soporte si sigue ocurriendo."
+      }
     },
     "n3": {
       "draftLabel": "Borrador",

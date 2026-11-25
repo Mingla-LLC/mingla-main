@@ -103,7 +103,24 @@
       "discard": "Renunță",
       "keep": "Păstrează-l",
       "discardError": "Nu am putut renunța la {{brand}}. Încearcă din nou.",
-      "discarded": "Ai renunțat la {{brand}}."
+      "discarded": "Ai renunțat la {{brand}}.",
+      "clearStep": {
+        "name": "Următorul: finalizează numirea acestui brand. Apoi continuă prin configurare sau îl anulezi aici.",
+        "country": "Următorul: alege un țară bancară. Apoi finalizează Primește bani, sau alege Salvează și finalizează mai târziu → Evenimente gratuite doar acum.",
+        "pay": "Următorul: finalizează Primește bani, sau alege Salvează și finalizează mai târziu → Evenimente gratuite doar acum.",
+        "done": "Configurarea nu pare mai să blocheze un nou brand. Refresh pentru a vedea cel mai recent statut."
+      },
+      "discardFailure": {
+        "offline": "Mingla nu a putut atinge serverul. Verifică conexiunea, apoi începe din nou.",
+        "auth": "Autentificarea ta nu a fost gata, deci nicio cerere de eliminare nu a fost trimisă. Așteaptă un moment, apoi începe din nou.",
+        "session": "Autentificarea ta a expirat, deci draft-ul nu a fost anulat. Autentifică-te din nou, apoi începe din nou.",
+        "forbidden": "Doar proprietarul contului poate anula acest draft.",
+        "notDraft": "{{brand}} nu este mai un draft, deci nu a fost anulat. Refresh pentru a vedea ce s-a schimbat.",
+        "blocked": "Acest draft are activități sau bani vii care trebuie rezolvați înainte ca să poată fi anulat.",
+        "payment": "Contul de plată nu a putut fi închis ({{reason}}). Nimic nu a fost șters. Contactează suportul.",
+        "mismatch": "Numele brandului a fost schimbat înainte ca anularea să se termine. Refresh, apoi începe din nou.",
+        "server": "Mingla nu a confirmat anularea. Nimic nu a fost eliminat. Am înregistrat aceasta—contactează suportul dacă se repetă."
+      }
     },
     "n3": {
       "draftLabel": "Ciornă",

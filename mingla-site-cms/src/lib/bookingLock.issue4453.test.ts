@@ -17,7 +17,7 @@ vi.mock("./observability", () => ({ emitCmsObservation: vi.fn(), observeCmsEndpo
 vi.mock("./gateway", () => ({ callCore: vi.fn(), verifyCoreRequest: vi.fn(), readCoreProjection: vi.fn() }));
 
 import { actionScopeFromCore, artifactOutboundActionLinks, assertNoOutboundActionLinks, coreSendsBookingIdentity, OutboundActionLinkError } from "./bookingLock";
-import { buttonUrl, safeActionUrl, safeUrl } from "./validation";
+import { buttonUrl, safeActionUrl, safeOwnerCtaUrl, safeUrl } from "./validation";
 import { composeFromPlan, type ComposePlan } from "./composeFromPlan";
 import { assertAriBookingLock, ARI_REFUSAL_CODES, AriRefusal, parseAriEvidence, type AriActionContext } from "./ariSiteActions";
 import { siteBlocks } from "../blocks/siteBlocks";
@@ -215,8 +215,16 @@ describe("#4453 Studio's save-time check", () => {
       .find((field) => field.name === "href").validate;
     expect(heroCta).toBe(safeActionUrl);
     expect(validatorOf("offering_grid", "empty_cta_href")).toBe(safeActionUrl);
-    // Other buttons are judged by their label: booking words lock them to Mingla.
-    for (const [slug, name] of [["cta", "href"], ["contact_handoff", "href"], ["menu_link", "href"]] as const) {
+    // #4572: the owner-created CTA band has a deliberately narrower field:
+    // a page on this site or a Mingla /b/ or /e/ target. Existing published
+    // informational CTAs remain valid at the artifact layer above.
+    const ownerCta = validatorOf("cta", "href");
+    expect(ownerCta).toBe(safeOwnerCtaUrl);
+    expect(ownerCta("https://maps.google.com/?q=x")).toMatch(/Use another page/);
+    expect(ownerCta("https://host.usemingla.com/e/young-and-stamped/x")).toBe(true);
+    // Broader contact/menu buttons are still judged by their label: booking
+    // words lock them to Mingla while directions may use a map.
+    for (const [slug, name] of [["contact_handoff", "href"], ["menu_link", "href"]] as const) {
       const validate = validatorOf(slug, name);
       expect(validate("https://maps.google.com/?q=x", { siblingData: { label: "Directions" } }), slug).toBe(true);
       expect(validate("https://maps.google.com/?q=x", { siblingData: { label: "Book a table" } }), slug).toMatch(/points outside Mingla/);

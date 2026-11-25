@@ -9,7 +9,7 @@ import {
   UnorderedListFeature,
   lexicalEditor,
 } from "@payloadcms/richtext-lexical";
-import { buttonUrl, safeActionUrl, safeCityTimeZone, safeText, safeUrl } from "../lib/validation";
+import { buttonUrl, safeActionUrl, safeCityTimeZone, safeOwnerCtaUrl, safeText, safeUrl } from "../lib/validation";
 import { statsIconOptions } from "../lib/statsIcons";
 import { reviewField } from "../lib/reviewStamp";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
@@ -104,7 +104,15 @@ const eyebrow = (): Field =>
     "Optional. The small line printed above this section\u2019s heading, in your words \u2014 for example \u201cThe place\u201d above \u201cCome as you are\u201d. Leave it empty and no line is printed.",
   );
 
-const ctaFields: Field[] = [short("label", "Label", true, 80), link()];
+const ctaFields: Field[] = [
+  short("label", "Label", true, 80),
+  link(
+    "href",
+    "Button link",
+    false,
+    safeOwnerCtaUrl,
+  ),
+];
 // #4453 PR 2 — the hero's buttons are the site's primary actions: always booking.
 const heroCtaFields: Field[] = [short("label", "Label", true, 80), link("href", "Link", true, safeActionUrl)];
 

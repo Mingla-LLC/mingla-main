@@ -60,7 +60,7 @@ import {
   newBrandId,
   type BrandSetupStep,
 } from "../../services/brandSetupCore";
-import type { StripeSetupStatus } from "../../services/brandSetupService";
+import type { BrandDeleteOutcome, StripeSetupStatus } from "../../services/brandSetupService";
 import { useBrandSetupChecklist, useMarkBrandSetupFreeOnly } from "../../hooks/useBrandSetupChecklist";
 import {
   adoptBrandIntoCaches,
@@ -98,6 +98,9 @@ import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutSt
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useBrandTeamMemberDirectory } from "../../hooks/useBrandTeamMemberDirectory";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { captureException } from "../../diagnostics/sentry";
+import { isAuthNotReadyError } from "../../utils/authReadyGate";
+import { isLikelyOfflineError } from "../../utils/supabaseErrorMessage";
 import {
   CountryConflictBanner,
   ForbiddenBanner,
@@ -245,8 +248,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   useFocusEffect(
     useCallback(() => {
       // R-14: returning from the secure screen or the app foregrounding.
-      if (brandId !== null) void checklistQuery.refetch();
-    }, [brandId, checklistQuery.refetch]),
+      if (brandId !== null) void refetchChecklist();
+    }, [brandId, refetchChecklist]),
   );
 
   // R1 — "Welcome back. You stopped at…" once per resume: on the first step
@@ -1038,6 +1041,34 @@ const K1Sheet: React.FC<{
 };
 
 // ── N1 (one brand in progress at a time) ─────────────────────────────────
+type DraftDiscardFailure = Exclude<BrandDeleteOutcome, { ok: true }>;
+
+const isDraftDiscardFailure = (value: unknown): value is DraftDiscardFailure =>
+  typeof value === "object" && value !== null &&
+  "ok" in value && (value as { ok?: unknown }).ok === false &&
+  "error" in value && typeof (value as { error?: unknown }).error === "string";
+
+/** #4572 — preserve the server/transport reason instead of one false retry line. */
+export function draftDiscardFailureMessage(failure: unknown, brandName: string): string {
+  if (isDraftDiscardFailure(failure)) {
+    switch (failure.error) {
+      case "forbidden": return C.n1.discardForbidden;
+      case "not_a_draft": return C.n1.discardNotDraft(brandName);
+      case "delete_blocked": return C.n1.discardBlocked;
+      case "payment_account_close_refused": return C.n1.discardPayment(failure.reasonCode);
+      case "confirm_name_mismatch": return C.n1.discardMismatch;
+    }
+  }
+  if (
+    isAuthNotReadyError(failure) ||
+    (failure instanceof Error && failure.name === "BusinessAuthNotReadyError")
+  ) return C.n1.discardAuth;
+  if (isSessionExpiredError(failure)) return C.n1.discardSession;
+  if (failure instanceof Error && failure.name === "FunctionsFetchError") return C.n1.discardOffline;
+  if (isLikelyOfflineError(failure)) return C.n1.discardOffline;
+  return C.n1.discardServer;
+}
+
 export const DraftInProgress: React.FC<{
   draftId: string;
   draftName: string;
@@ -1050,6 +1081,8 @@ export const DraftInProgress: React.FC<{
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const checklist = useBrandSetupChecklist(draftId);
+  const clearStep = checklist.data === undefined ? null : deriveSetupStep(checklist.data);
   // #4389 P0 — evicts the discarded brand from the brand caches (ORCH-1062).
   const discardDraftBrand = useDiscardDraftBrand(user?.id ?? null);
   const discard = async (): Promise<void> => {
@@ -1057,12 +1090,19 @@ export const DraftInProgress: React.FC<{
     setError(null);
     try {
       const r = await discardDraftBrand(draftId);
-      if (!r.ok) throw new Error(r.error);
+      if (!r.ok) {
+        setError(draftDiscardFailureMessage(r, draftName));
+        return;
+      }
       trackBrandSetup("brand_draft_discarded", { had_payment_setup: r.stripe === "closed" || r.paystack === "switched_off" });
       setConfirming(false);
       onDiscarded();
-    } catch {
-      setError(C.n1.discardError(draftName));
+    } catch (failure) {
+      captureException(failure, {
+        tags: { feature: "brand-setup", issue: "4572", action: "discard-draft" },
+        extra: { brandId: draftId },
+      });
+      setError(draftDiscardFailureMessage(failure, draftName));
     } finally {
       setBusy(false);
     }
@@ -1072,7 +1112,9 @@ export const DraftInProgress: React.FC<{
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
         <Text style={styles.h1}>{C.n1.title}</Text>
         <Text style={styles.sub}>{C.n1.body(draftName)}</Text>
-        <Text style={styles.helper}>{C.n1.oneAtATime}</Text>
+        <Text style={styles.helper} testID="brand-setup-n1-clear-step">
+          {clearStep === null ? C.n1.oneAtATime : C.n1.clearStep(clearStep)}
+        </Text>
       </ScrollView>
       <View style={styles.footer}>
         <Button label={C.n1.continue(draftName)} onPress={() => { trackBrandSetup("brand_draft_continued", {}); onContinue(); }} variant="primary" size="lg" fullWidth />
@@ -1084,7 +1126,7 @@ export const DraftInProgress: React.FC<{
           testID="brand-setup-n1-confirm"
           footer={
             <>
-              {error !== null ? <Text style={[styles.helper, styles.errorText]}>{error}</Text> : null}
+              {error !== null ? <Text style={[styles.helper, styles.errorText]} testID="brand-setup-n1-discard-error" accessibilityRole="alert">{error}</Text> : null}
               <Button label={C.n1.discard} onPress={() => void discard()} variant="destructive" size="lg" fullWidth loading={busy} />
               <Button label={C.n1.keep} onPress={() => setConfirming(false)} variant="secondary" size="lg" fullWidth disabled={busy} />
             </>

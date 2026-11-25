@@ -291,12 +291,22 @@ export type BrandDeleteOutcome =
   | { ok: false; error: "not_a_draft" | "confirm_name_mismatch" | "forbidden" };
 
 async function invokeBrandDelete(body: Record<string, unknown>): Promise<BrandDeleteOutcome> {
-  const { supabase } = await import("./supabase");
-  const { data, error } = await supabase.functions.invoke("brand-delete", { body });
+  // #4572 — the raw functions client waits on auth.getSession() before it
+  // sends anything. In a busy multi-tab Host session that can fail or remain
+  // queued before a `brand-delete` request exists, which made Discard appear
+  // to fail mysteriously. Use the existing bounded authenticated edge path:
+  // it reuses a live token, caps auth-lock acquisition and preserves the same
+  // `{ data, error }`/HTTP-response contract used below.
+  const { invokeLaneFunction } = await import("./laneEdgeInvoke");
+  const { data, error } = await invokeLaneFunction<unknown>("brand-delete", { body });
   if (error) {
     let payload: Json = {};
+    let httpStatus: number | null = null;
     try {
-      const ctx = (error as { context?: { clone?: () => { json: () => Promise<unknown> } } }).context;
+      const ctx = (error as {
+        context?: { status?: unknown; clone?: () => { json: () => Promise<unknown> } };
+      }).context;
+      if (typeof ctx?.status === "number") httpStatus = ctx.status;
       const parsed = ctx?.clone ? await ctx.clone().json() : null;
       if (isObject(parsed)) payload = parsed;
     } catch {
@@ -318,11 +328,16 @@ async function invokeBrandDelete(body: Record<string, unknown>): Promise<BrandDe
       default: {
         // #1835 — never let a non-Error (or a code-less Error) escape the delete.
         const { normalizeSupabaseError } = await import("../utils/supabaseErrorMessage");
-        throw normalizeSupabaseError(error, "brand-delete rejected");
+        const normalized = normalizeSupabaseError(error, "brand-delete rejected") as Error & { status?: number };
+        if (httpStatus !== null) normalized.status = httpStatus;
+        throw normalized;
       }
     }
   }
   const r = isObject(data) ? data : {};
+  if (r.ok !== true) {
+    throw new BrandSetupError("unknown", "brand-delete returned an invalid response");
+  }
   return {
     ok: true,
     stripe: r.stripe === "closed" ? "closed" : "none",

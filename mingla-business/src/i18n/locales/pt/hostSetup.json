@@ -103,7 +103,24 @@
       "discard": "Descartar",
       "keep": "Manter",
       "discardError": "Não conseguimos descartar {{brand}}. Tente de novo.",
-      "discarded": "{{brand}} descartada."
+      "discarded": "{{brand}} descartada.",
+      "clearStep": {
+        "name": "Próximo: finalize o nome dessa marca. Depois, continue com a configuração ou descarte aqui.",
+        "country": "Próximo: escolha um país de banco. Depois, finalize Receber pagamentos, ou escolha Salvar e finalizar mais tarde → Eventos grátis apenas por enquanto.",
+        "pay": "Próximo: finalize Receber pagamentos, ou escolha Salvar e finalizar mais tarde → Eventos grátis apenas por enquanto.",
+        "done": "A configuração parece não estar bloqueando uma nova marca. Atualize para ver o status mais recente."
+      },
+      "discardFailure": {
+        "offline": "Mingla não conseguiu alcançar o servidor. Verifique sua conexão e tente novamente.",
+        "auth": "Seu login não estava pronto, então nenhum pedido de exclusão foi enviado. Aguarde um momento e tente novamente.",
+        "session": "Seu login expirou, então o rascunho não foi descartado. Faça login novamente e tente novamente.",
+        "forbidden": "Apenas o dono da conta pode descartar este rascunho.",
+        "notDraft": "{{brand}} já não é um rascunho, então não foi descartado. Atualize para ver o que mudou.",
+        "blocked": "Este rascino tem atividades ou dinheiro agendados que devem ser resolvidos antes de ser descartado.",
+        "payment": "O conta de pagamento não pôde ser fechada ({{reason}}). Nada foi excluído. Entre em contato com o suporte.",
+        "mismatch": "O nome da marca mudou antes do descarte terminar. Atualize e tente novamente.",
+        "server": "Mingla não confirmou o descarte. Nada foi removido. Já registramos isso—entre em contato com o suporte se isso continuar acontecendo."
+      }
     },
     "n3": {
       "draftLabel": "Rascunho",

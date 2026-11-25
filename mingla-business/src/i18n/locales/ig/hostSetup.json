@@ -103,7 +103,24 @@
       "discard": "Wepụ",
       "keep": "Debe ya",
       "discardError": "Anyị enweghị ike iwepụ {{brand}}. Nwaa ọzọ.",
-      "discarded": "E wepụla {{brand}}."
+      "discarded": "E wepụla {{brand}}.",
+      "clearStep": {
+        "name": "Nke: ọ bụla na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "country": "Nke: ọ bụla na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge. → Ebe ọhụrụ na-aga n'ihu",
+        "pay": "Nke: ọ bụla na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị ot-aga n'ihu n'otu oge. → Ebe ọhụrụ na-aga n'ihu",
+        "done": "Setup ọ bụla ọhụrụ na-aga n'ihu. Nwaa ọzọ."
+      },
+      "discardFailure": {
+        "offline": "Mingla ọ bụla ọhụrụ na-aga n'ihu. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "auth": "Ebe ọhụrụ na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "session": "Ebe ọhụrụ na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "forbidden": "Ebe ọhụrụ na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "notDraft": "{{brand}} ọ bụla ọhụrụ na-aga n'ihu, ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "blocked": "Ebe ọhụrụ na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "payment": "Ebe ọhụrụ na-aga n'ihu ọhụrụ ({{reason}}). Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge. Ebe ọhụrụ na-aga n'ihu.",
+        "mismatch": "Ebe ọhụrụ na-aga n'ihu ọhụrụ. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge.",
+        "server": "Mingla ọ bụla ọhụrụ na-aga n'ihu. Ị nwere ike inwe naanị otu akara na-aga n'ihu n'otu oge. Ebe ọhụrụ na-aga n'ihu."
+      }
     },
     "n3": {
       "draftLabel": "Ndepụta",

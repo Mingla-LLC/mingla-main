@@ -106,14 +106,20 @@ export function CalloutBasic({ block, index }: SharedBlockProps) {
   const reservation = block.type === "venue_reservation";
   const href = reservation ? block.url : block.href;
   const label = reservation ? "Continue with Mingla" : text(block.label);
-  if (!label || !isSafeHref(href)) return null;
+  if (!label) return null;
+  // #4572: older owner-created CTA rows stored "/" only to satisfy the
+  // required field. It was never an intentional destination. Keep the band,
+  // but hide that dead home button until the owner supplies a real target.
+  const actionHref =
+    block.type === "cta" && href === "/" ? null : href;
+  if (block.type !== "cta" && !isSafeHref(actionHref)) return null;
   return (
     <Blk className={`mg-callout mg-callout--${block.type}`} labelledBy={text(block.heading) ? id : undefined} tone={block.type === "cta" ? "band" : undefined}>
       <div className="mg-callout__in" data-mg-rise="">
         <Label>{text(block.eyebrow)}</Label>
         {text(block.heading) ? <h2 id={id}>{text(block.heading)}</h2> : null}
         {text(block.body) ? <p className="mg-callout__body">{text(block.body)}</p> : null}
-        <ActionButton label={label} href={href} className={block.type === "cta" ? "mg-btn mg-btn--accent" : "mg-btn"} />
+        <ActionButton label={label} href={actionHref} className={block.type === "cta" ? "mg-btn mg-btn--accent" : "mg-btn"} />
       </div>
     </Blk>
   );

@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useState } from "react";
+import { Platform } from "react-native";
 
 import {
   BRAND_AVATARS_BUCKET,
@@ -21,6 +22,7 @@ import {
   BrandAvatarError,
   type BrandAvatarAssetInput,
 } from "../utils/brandAvatarRules";
+import { toSameOriginStorage } from "../services/buyerMediaRoute";
 import { useUpdateBrand } from "./useBrands";
 
 export interface BrandAvatarUploadInput {
@@ -71,7 +73,14 @@ export const useBrandAvatarUpload = (): UseBrandAvatarUploadResult => {
         const result = await uploadBrandAvatar(
           input.brandId,
           input.asset,
-          { previousPublicUrl: input.previousPhotoUrl },
+          {
+            previousPublicUrl: input.previousPhotoUrl,
+            // The upload client already has Host's /_sb recovery road. Use
+            // that same road for the safe HEAD/GET verification instead of
+            // switching back to a direct supabase.co request on web.
+            verificationUrlFor:
+              Platform.OS === "web" ? toSameOriginStorage : undefined,
+          },
         );
 
         await updateBrand.mutateAsync({

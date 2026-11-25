@@ -826,7 +826,13 @@ export function useMarkReviewed(siteId: string | null) {
  * reach visitors; only Publish does.
  */
 export type SectionReview = { state: "draft" | "reviewed"; source: "ari" | "composer" | "person" | "team" };
-export type SectionField = { key: string; label: string; kind: "text" | "multiline" | "richtext"; value: string; max: number | null };
+export type SectionField = {
+  key: string;
+  label: string;
+  kind: "text" | "multiline" | "richtext" | "mingla_link";
+  value: string;
+  max: number | null;
+};
 export type SectionMedia = { slot: string; label: string; media_id: string | null; thumb_url: string | null };
 export type SectionLayout = { key: string; label: string };
 /** A list inside a section whose rows the owner can add, remove and reorder (a question, a feature). */

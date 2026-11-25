@@ -135,8 +135,8 @@ async function webResilientLock<R>(
   }
 }
 
-// #3040 (2026-10-19) — the video lane calls its edge functions straight
-// through this endpoint with an access token it already holds, instead of
+// #3040 (2026-10-19), reused by #4572 — bounded edge callers go straight
+// through this endpoint with an access token they already hold, instead of
 // `supabase.functions.invoke`, whose fetch wrapper awaits `auth.getSession()`
 // before every request. That await queues behind whatever holds the auth lock
 // in this tab (a `getUser()` probe or a token refresh can hold it for a whole

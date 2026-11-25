@@ -103,7 +103,24 @@
       "discard": "Abandonner",
       "keep": "La garder",
       "discardError": "Impossible d'abandonner {{brand}}. Réessayez.",
-      "discarded": "{{brand}} abandonnée."
+      "discarded": "{{brand}} abandonnée.",
+      "clearStep": {
+        "name": "Suivant : finaliser le nom de cette marque. Puis continuez dans la configuration ou l'abandonnez ici.",
+        "country": "Suivant : choisissez un pays bancaire. Puis finalisez Être payé, ou choisissez Enregistrer et terminer plus tard → Événements gratuits seulement pour l'instant.",
+        "pay": "Suivant : finalisez Être payé, ou choisissez Enregistrer et terminer plus tard → Événements gratuits seulement pour l'instant.",
+        "done": "La configuration ne bloque plus l'ajout d'une nouvelle marque. Actualisez pour voir l'état le plus récent."
+      },
+      "discardFailure": {
+        "offline": "Mingla ne peut pas atteindre le serveur. Vérifiez votre connexion, puis réessayez.",
+        "auth": "Votre connexion n'était pas prête, donc aucune demande d'abandonnage n'a été envoyée. Attendez un moment, puis réessayez.",
+        "session": "Votre connexion a expiré, donc le brouillon n'a pas été abandonné. Connectez-vous à nouveau, puis réessayez.",
+        "forbidden": "Seul le propriétaire du compte peut abandonner ce brouillon.",
+        "notDraft": "{{brand}} n'est plus un brouillon, donc il n'a pas été abandonné. Actualisez pour voir ce qui a changé.",
+        "blocked": "Ce brouillon comporte une activité ou des paiements à venir qui doivent être résolus avant qu'il ne puisse être abandonné.",
+        "payment": "Le compte de paiement ne peut pas être fermé ({{reason}}). Rien n'a été supprimé. Contactez le support.",
+        "mismatch": "Le nom de la marque a changé avant que l'abandonnage ne soit terminé. Actualisez, puis réessayez.",
+        "server": "Mingla n'a pas confirmé l'abandon. Rien n'a été supprimé. Nous l'avons enregistré — contactez le support si cela se reproduit."
+      }
     },
     "n3": {
       "draftLabel": "Brouillon",

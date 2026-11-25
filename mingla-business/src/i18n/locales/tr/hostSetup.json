@@ -103,7 +103,24 @@
       "discard": "Sil",
       "keep": "Kalsın",
       "discardError": "{{brand}} silinemedi. Tekrar dene.",
-      "discarded": "{{brand}} silindi."
+      "discarded": "{{brand}} silindi.",
+      "clearStep": {
+        "name": "Sonraki: bu markanın adını belirle. Sonra ayarlamayı devam ettir veya burada atla.",
+        "country": "Sonraki: bir banka ülkesi seç. Sonra Ödeme al'ı tamamla veya Kaydet ve sonra bitir → Şu an sadece ücretsiz etkinlikler.",
+        "pay": "Sonraki: Ödeme al'ı tamamla veya Kaydet ve sonra bitir → Şu an sadece ücretsiz etkinlikler.",
+        "done": "Ayarlama artık yeni bir marka oluşturmayı engellemiyor. Durumu en son hâle getirmek için yeniden yükle."
+      },
+      "discardFailure": {
+        "offline": "Mingla sunucuya ulaşamadı. Bağlantınızı kontrol edip tekrar dene.",
+        "auth": "Girişiniz hazır değil, bu yüzden silme isteği gönderilmemiş. Bir an bekleyip tekrar dene.",
+        "session": "Girişiniz süresi doldu, bu yüzden taslak silinmedi. Yeniden giriş yapın ve tekrar dene.",
+        "forbidden": "Sadece hesap sahibi bu taslakı siler.",
+        "notDraft": "{{brand}} artık bir taslak değil, bu yüzden silinmedi. Durumu yeniden yükle.",
+        "blocked": "Bu taslak, ileride yapılacak etkinlik veya para ile ilgili bir durum içeriyor. Bu durum çözülmeden silinemez.",
+        "payment": "Ödeme hesabının kapatılması yapılamadı ({{reason}}). Hiçbir şey silinmedi. Destek ile iletişime geçin.",
+        "mismatch": "Silme işlemi tamamlanırken marka adı değişti. Yeniden yükle ve tekrar dene.",
+        "server": "Mingla silme işlemini onaylamadı. Hiçbir şey silinmedi. Bu durumu kaydettik—sürekli olursa destek ile iletişime geçin."
+      }
     },
     "n3": {
       "draftLabel": "Taslak",

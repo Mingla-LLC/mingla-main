@@ -103,7 +103,24 @@
       "discard": "Verwerfen",
       "keep": "Behalten",
       "discardError": "{{brand}} konnte nicht verworfen werden. Versuch es erneut.",
-      "discarded": "{{brand}} verworfen."
+      "discarded": "{{brand}} verworfen.",
+      "clearStep": {
+        "name": "Nächste Schritt: Benenne diese Marke abgeschlossen. Dann fahre mit der Einstellung fort oder verwirf sie hier.",
+        "country": "Nächste Schritt: Wähle ein Bankland aus. Dann beende Bezahlt werden, oder wähle Speichern und später beenden → Free Events nur für jetzt.",
+        "pay": "Nächste Schritt: Beende Bezahlt werden, oder wähle Speichern und später beenden → Free Events nur für jetzt.",
+        "done": "Die Einstellung zeigt nicht mehr, dass eine neue Marke blockiert wird. Aktualisiere, um den neuesten Status zu sehen."
+      },
+      "discardFailure": {
+        "offline": "Mingla konnte nicht auf den Server zugreifen. Prüfe deine Verbindung und versuche es erneut.",
+        "auth": "Deine Anmeldung war nicht bereit, daher wurde kein Löschen-Antrag gesendet. Warte einen Moment und versuche es erneut.",
+        "session": "Deine Anmeldung ist abgelaufen, daher wurde das Entwurf nicht verworfen. Melde dich erneut an und versuche es erneut.",
+        "forbidden": "Nur der Account-Besitzer kann diesen Entwurf verwirfen.",
+        "notDraft": "{{brand}} ist kein Entwurf mehr, daher wurde er nicht verworfen. Aktualisiere, um zu sehen, was sich geändert hat.",
+        "blocked": "Dieser Entwurf hat zukünftige Aktivitäten oder Gelder, die vor der Verwerfung gelöst werden müssen.",
+        "payment": "Das Zahlungskonto konnte nicht geschlossen werden ({{reason}}). Nichts wurde gelöscht. Wende dich an Support.",
+        "mismatch": "Der Marke-Name wurde vor dem Ende der Verwerfung geändert. Aktualisiere und versuche es erneut.",
+        "server": "Mingla hat die Verwerfung nicht bestätigt. Nichts wurde entfernt. Wir haben es protokolliert — kontaktiere Support, wenn es weiterhin vorkommt."
+      }
     },
     "n3": {
       "draftLabel": "Entwurf",

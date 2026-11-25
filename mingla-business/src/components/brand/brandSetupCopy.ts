@@ -18,6 +18,7 @@
  */
 import english from "../../i18n/locales/en/brandSetup.json";
 import { businessT, registerBusinessEnglish } from "../../i18n";
+import type { BrandSetupStep } from "../../services/brandSetupCore";
 import { BRAND_SETUP_SHARED_COPY } from "./brandSetupSharedCopy";
 
 registerBusinessEnglish(english);
@@ -121,6 +122,16 @@ export const BRAND_SETUP_COPY = {
     get discard(): string { return t("n1.discard"); },
     get keep(): string { return t("n1.keep"); },
     discardError: (brand: string): string => t("n1.discardError", { brand }),
+    clearStep: (step: BrandSetupStep): string => t(`n1.clearStep.${step}`),
+    get discardOffline(): string { return t("n1.discardFailure.offline"); },
+    get discardAuth(): string { return t("n1.discardFailure.auth"); },
+    get discardSession(): string { return t("n1.discardFailure.session"); },
+    get discardForbidden(): string { return t("n1.discardFailure.forbidden"); },
+    discardNotDraft: (brand: string): string => t("n1.discardFailure.notDraft", { brand }),
+    get discardBlocked(): string { return t("n1.discardFailure.blocked"); },
+    discardPayment: (reason: string): string => t("n1.discardFailure.payment", { reason }),
+    get discardMismatch(): string { return t("n1.discardFailure.mismatch"); },
+    get discardServer(): string { return t("n1.discardFailure.server"); },
   },
   stepNames: {
     get name(): string { return t("stepNames.name"); },

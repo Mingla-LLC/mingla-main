@@ -103,7 +103,24 @@
       "discard": "Odrzuć",
       "keep": "Zachowaj",
       "discardError": "Nie udało się odrzucić {{brand}}. Spróbuj ponownie.",
-      "discarded": "Odrzucono {{brand}}."
+      "discarded": "Odrzucono {{brand}}.",
+      "clearStep": {
+        "name": "Następny: ukończ nazwanie tej marki. Następnie kontynuuj konfigurację lub odrzuć ją tutaj.",
+        "country": "Następny: wybierz kraj bankowy. Następnie ukończ Otrzymuj płatności, lub wybierz Zapisz i zakończ później → Dostępne tylko dla darmowych wydarzeń.",
+        "pay": "Następny: ukończ Otrzymuj płatności, lub wybierz Zapisz i zakończ później → Dostępne tylko dla darmowych wydarzeń.",
+        "done": "Konfiguracja już nie blokuje tworzenia nowej marki. Odśwież, aby zobaczyć najnowy status."
+      },
+      "discardFailure": {
+        "offline": "Mingla nie może się dołączyć do serwera. Sprawdź połączenie i spróbuj ponownie.",
+        "auth": "Twoje zalogowanie nie było gotowe, więc żądanie usunięcia nie zostało wysłane. Czekaj chwilę, a następnie spróbuj ponownie.",
+        "session": "Twoje zalogowanie wygasło, więc szkic nie został odrzucony. Zaloguj się ponownie, a następnie spróbuj ponownie.",
+        "forbidden": "Tylko właściciel konta może odrzucić ten szkic.",
+        "notDraft": "{{brand}} nie jest już szkicem, więc nie został odrzucony. Odśwież, aby zobaczyć zmiany.",
+        "blocked": "Ten szkic ma planowane działania lub pieniądze, które muszą zostać rozwiązywane przed odrzuceniem.",
+        "payment": "Konto płatności nie może zostać zamknięte ({{reason}}). Nic nie zostało usunięte. Skontaktuj się z obsługą.",
+        "mismatch": "Nazwa marki zmieniła się przed zakończeniem odrzucenia. Odśwież, a następnie spróbuj ponownie.",
+        "server": "Mingla nie potwierdziła odrzucenia. Nic nie zostało usunięte. Zanotowaliśmy to — skontaktuj się z obsługą, jeśli to się powtarza."
+      }
     },
     "n3": {
       "draftLabel": "Wersja robocza",

@@ -103,7 +103,24 @@
       "discard": "Watsar",
       "keep": "Bar shi",
       "discardError": "Ba mu iya watsar da {{brand}} ba. Sake gwadawa.",
-      "discarded": "An watsar da {{brand}}."
+      "discarded": "An watsar da {{brand}}.",
+      "clearStep": {
+        "name": "Na gaba: saka wa wannan alamar suna. Sannan ka ci gaba da saitin ko ka watsar da shi a nan.",
+        "country": "Na gaba: zaɓi ƙasar bankin. Bayan haka, kammala Karɓi kuɗi, ko zaɓi Ajiye ka gama daga baya → Taruka kyauta kawai a yanzu.",
+        "pay": "Na gaba: kammala Karɓi kuɗi, ko zaɓi Ajiye ka gama daga baya → Taruka kyauta kawai a yanzu.",
+        "done": "Saitin ba ya ƙara bayyana don toshe sabon alama. Sake loda don samun sabon matsayi."
+      },
+      "discardFailure": {
+        "offline": "Mingla bai iya samun damar shiga sabar ba. Duba haɗin intanet ɗinka, sannan ka sake gwadawa.",
+        "auth": "Shigowarku bai kasance a shirye ba, don haka ba a aika wani buƙatar sharewa ba. Ka jira na ɗan lokaci, sannan ka sake gwadawa.",
+        "session": "Lokacin shigarku ya ƙare, don haka ba a watsar da rubutun ba. Sake shiga, sannan sake gwadawa.",
+        "forbidden": "Mai asusun ne kaɗai zai iya watsar da wannan rubutun.",
+        "notDraft": "{{brand}} ba ta kasance wani zane ba, don haka ba a yar da ita ba. Sake loda don ganin abin da ya canza.",
+        "blocked": "Wannan tsarin yana da aikin da ke gabatowa ko kuɗin da dole ne a warware kafin a iya watsar da shi.",
+        "payment": "Ba a iya rufe asusun biyan kuɗin ba ({{reason}}). Ba a share kome ba. Tuntuɓi tallafi.",
+        "mismatch": "An canza sunan alamar kafin a kammala watsarwa. Sake loda, sannan ka sake gwadawa.",
+        "server": "Mingla bai tabbatar da watsi da shi ba. Ba a cire komai ba. Mun yi rikodin hakan—tuntuɓi tallafi idan hakan na ci gaba da faruwa."
+      }
     },
     "n3": {
       "draftLabel": "Daftari",

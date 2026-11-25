@@ -103,7 +103,24 @@
       "discard": "Släng",
       "keep": "Behåll det",
       "discardError": "Vi kunde inte slänga {{brand}}. Försök igen.",
-      "discarded": "{{brand}} slängdes."
+      "discarded": "{{brand}} slängdes.",
+      "clearStep": {
+        "name": "Nästa: namnge detta varumärke. Därefter fortsätt i inställningarna eller släng det här.",
+        "country": "Nästa: välj en bankländer. Därefter slutför Få betalt, eller välj Spara och avsluta senare → Fria händelser endast för nu.",
+        "pay": "Nästa: slutför Få betalt, eller välj Spara och avsluta senare → Fria händelser endast för nu.",
+        "done": "Inställningarna ser ut som att de inte längre blockar ett nytt varumärke. Uppdatera för att få den senaste statusen."
+      },
+      "discardFailure": {
+        "offline": "Mingla kunde inte nå servern. Kontrollera din anslutning och försök igen.",
+        "auth": "Din inloggning var inte klar, så inget borttagningssägelse skickades. Vänta en stund och försök igen.",
+        "session": "Din inloggning har gått ut, så det förslaget inte slängdes. Logga in igen och försök sedan igen.",
+        "forbidden": "Endast ägaren kan slänga detta förslag.",
+        "notDraft": "{{brand}} är inte längre ett förslag, så det slängdes inte. Uppdatera för att se vad som ändrats.",
+        "blocked": "Detta förslag har kommande aktivitet eller pengar som måste lösa sig innan det kan slängas.",
+        "payment": "Betalningskontot kunde inte stängas ({{reason}}). Inget togs bort. Kontakta support.",
+        "mismatch": "Namnet på varumärket ändrades innan slängningen färdigställdes. Uppdatera och försök sedan igen.",
+        "server": "Mingla bekräftade inte slängningen. Inget togs bort. Vi har loggat det—kontakta support om det fortsätter hända."
+      }
     },
     "n3": {
       "draftLabel": "Utkast",

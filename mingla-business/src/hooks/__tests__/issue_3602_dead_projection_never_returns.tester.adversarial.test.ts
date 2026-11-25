@@ -182,7 +182,7 @@ beforeEach(() => {
   calls = [];
   trapHits = 0;
   memberResult = { data: null, error: null };
-  brandResult = { data: null, error: null };
+  brandResult = { data: { account_id: STRANGER }, error: null };
 });
 
 /** The owner fixture: no membership row, and the brand names USER as owner. */
@@ -464,7 +464,7 @@ describe("#3602 A8 — `accepted` means ownership, and no input synthesises a fa
     // surface and the identical 403 storm #1863 was filed for.
     expect(result.role).toBe("brand_admin");
     expect(result.accepted).toBe(false);
-    expect(tablesQueried).toEqual(["brand_team_members"]);
+    expect(tablesQueried).toEqual(["brand_team_members", "brands"]);
   });
 });
 
@@ -550,6 +550,7 @@ describe("#3602 A9 — the reachable table set is closed across EVERY path in th
           },
           error: null,
         };
+        brandResult = { data: { account_id: STRANGER }, error: null };
         return fetchCurrentBrandRole(BRAND, USER);
       },
       // pending member
@@ -558,6 +559,7 @@ describe("#3602 A9 — the reachable table set is closed across EVERY path in th
           data: { role: "event_manager", permissions_override: null, accepted_at: null },
           error: null,
         };
+        brandResult = { data: { account_id: STRANGER }, error: null };
         return fetchCurrentBrandRole(BRAND, USER);
       },
       // owner synthesis

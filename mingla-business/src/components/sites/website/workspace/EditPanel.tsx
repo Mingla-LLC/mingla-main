@@ -221,10 +221,26 @@ function SectionEditor({ ws, section, onAskAri, madeByTeam }: { ws: Workspace; s
           label={field.label}
           value={kept ?? field.value}
           onChangeText={(value) => ws.typeField(section, field.key, value)}
-          multiline={field.kind !== "text"}
+          multiline={
+            field.kind === "multiline" || field.kind === "richtext"
+          }
           max={field.max ?? undefined}
           editable={!readOnly}
-          help={field.kind === "richtext" ? "Plain paragraphs. Leave a blank line between them." : null}
+          autoCapitalize={field.kind === "mingla_link" ? "none" : undefined}
+          autoCorrect={field.kind === "mingla_link" ? false : undefined}
+          keyboardType={field.kind === "mingla_link" ? "url" : undefined}
+          placeholder={
+            field.kind === "mingla_link"
+              ? "https://host.usemingla.com/e/..."
+              : undefined
+          }
+          help={
+            field.kind === "richtext"
+              ? "Plain paragraphs. Leave a blank line between them."
+              : field.kind === "mingla_link"
+                ? "Use another page on this site, or a Mingla brand or event link. The button stays hidden until this is set."
+                : null
+          }
           testID={`field-${section.id}-${field.key}`}
         />
         {kept !== null ? (

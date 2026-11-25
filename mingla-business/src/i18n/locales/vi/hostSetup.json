@@ -103,7 +103,24 @@
       "discard": "Bỏ",
       "keep": "Giữ lại",
       "discardError": "Không bỏ được {{brand}}. Hãy thử lại.",
-      "discarded": "Đã bỏ {{brand}}."
+      "discarded": "Đã bỏ {{brand}}.",
+      "clearStep": {
+        "name": "Tiếp theo: hoàn thành tên thương hiệu này. Sau đó tiếp tục quá trình thiết lập hoặc bỏ thương hiệu ở đây.",
+        "country": "Tiếp theo: chọn quốc gia ngân hàng. Sau đó hoàn thành Nhận tiền, hoặc chọn Lưu và hoàn thành sau này → Chức năng miễn phí chỉ hiện tạm thời.",
+        "pay": "Tiếp theo: hoàn thành Nhận tiền, hoặc chọn Lưu và hoàn thành sau này → Chức năng miễn phí chỉ hiện tạm thời.",
+        "done": "Quá trình thiết lập hiện không còn ngăn việc tạo thương hiệu mới. Làm mới để xem trạng thái mới nhất."
+      },
+      "discardFailure": {
+        "offline": "Mingla không thể kết nối đến máy chủ. Kiểm tra kết nối của bạn, rồi thử lại.",
+        "auth": "Tài khoản đăng nhập của bạn chưa sẵn sàng, do đó không gửi yêu cầu xóa. Đợi một chút, rồi thử lại.",
+        "session": "Tài khoản đăng nhập của bạn đã hết hạn, do đó bản nháp không được xóa. Đăng nhập lại, rồi thử lại.",
+        "forbidden": "Chỉ người sở hữu tài khoản mới có thể xóa bản nháp này.",
+        "notDraft": "{{brand}} không còn là bản nháp, do đó không được xóa. Làm mới để xem thay đổi.",
+        "blocked": "Bản nháp này có hoạt động hoặc tiền tệ sắp tới phải được giải quyết trước khi có thể xóa.",
+        "payment": "Tài khoản thanh toán không thể đóng ({{reason}}). Không có gì bị xóa. Liên hệ hỗ trợ.",
+        "mismatch": "Tên thương hiệu đã thay đổi trước khi quá trình xóa kết thúc. Làm mới, rồi thử lại.",
+        "server": "Mingla không xác nhận việc xóa. Không có gì bị xóa. Chúng tôi đã ghi lại—nếu tình trạng này tiếp tục xảy ra, hãy liên hệ hỗ trợ."
+      }
     },
     "n3": {
       "draftLabel": "Bản nháp",

@@ -88,7 +88,7 @@ import {
 beforeEach(() => {
   tablesQueried.length = 0;
   memberResult = { data: null, error: null };
-  brandResult = { data: null, error: null };
+  brandResult = { data: { account_id: "someone-else" }, error: null };
 });
 
 describe("#3602 fetchCurrentBrandRole — brand_owner synthesis from brands.account_id", () => {
@@ -152,7 +152,7 @@ describe("#3602 fetchCurrentBrandRole — brand_owner synthesis from brands.acco
     expect(tablesQueried).toEqual(["brand_team_members", "brands"]);
   });
 
-  test("T1-d (SC-4): an accepted membership row short-circuits before the brands read", async () => {
+  test("T1-d (SC-4): an accepted non-owner membership survives the owner-authority read", async () => {
     memberResult = {
       data: {
         role: "event_manager",
@@ -167,7 +167,26 @@ describe("#3602 fetchCurrentBrandRole — brand_owner synthesis from brands.acco
       permissionsOverride: {},
       accepted: true,
     });
-    expect(tablesQueried).toEqual(["brand_team_members"]);
+    expect(tablesQueried).toEqual(["brand_team_members", "brands"]);
+  });
+
+  test("#4572: account ownership outranks a lower Mingla-admin membership", async () => {
+    memberResult = {
+      data: {
+        role: "brand_admin",
+        permissions_override: {},
+        accepted_at: "2026-11-25T18:00:00Z",
+      },
+      error: null,
+    };
+    brandResult = { data: { account_id: "u1" }, error: null };
+
+    await expect(fetchCurrentBrandRole("b1", "u1")).resolves.toEqual({
+      role: "brand_owner",
+      permissionsOverride: {},
+      accepted: true,
+    });
+    expect(tablesQueried).toEqual(["brand_team_members", "brands"]);
   });
 
   test("T1-e (SC-4): a pending membership row keeps its role but is not accepted", async () => {
@@ -186,8 +205,15 @@ describe("#3602 fetchCurrentBrandRole — brand_owner synthesis from brands.acco
     expect(result.accepted).toBe(false);
   });
 
-  test("T1-f (SC-5): an absent or soft-deleted brand row denies without any further read", async () => {
-    memberResult = { data: null, error: null };
+  test("T1-f (SC-5): a lower membership cannot survive an absent or soft-deleted brand", async () => {
+    memberResult = {
+      data: {
+        role: "brand_admin",
+        permissions_override: { EDIT_TICKET_PRICE: true },
+        accepted_at: "2026-01-01T00:00:00Z",
+      },
+      error: null,
+    };
     // `brands` is read with .is("deleted_at", null), so a soft-deleted brand
     // comes back as null here — it must NOT synthesise a role (I-PROPOSED-A).
     brandResult = { data: null, error: null };

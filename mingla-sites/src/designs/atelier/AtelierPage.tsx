@@ -240,7 +240,12 @@ function Block({ block, context, primaryHeading = false, facts, pill, live, page
     // #3355 bug 21 -- a call to action, reservation or contact band with no
     // body text prints no empty paragraph (the composer's Home call to action
     // has no body when the owner gave no "who comes with you" answer).
-    case "cta": return <section className="cta"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2>{text(block.body).trim() ? <p>{text(block.body)}</p> : null}<SafeLink href={block.href} context={context} className="button accent">{text(block.label, "Continue")}</SafeLink></section>;
+    case "cta": {
+      // #4572: "/" was the old owner-editor placeholder, not a chosen link.
+      // Keep the words and hide the button until it has a real target.
+      const href = block.href === "/" ? null : block.href;
+      return <section className="cta"><Eyebrow label={block.eyebrow} heading={block.heading} /><h2>{text(block.heading)}</h2>{text(block.body).trim() ? <p>{text(block.body)}</p> : null}<SafeLink href={href} context={context} className="button accent">{text(block.label, "Continue")}</SafeLink></section>;
+    }
     // #2829 W4 — a live grid reads Mingla's feed; an original v1 grid keeps
     // its publish-time list and renders exactly as before.
     case "offering_grid": if (isLiveOfferingGrid(block)) return <LiveOfferingGrid block={block} live={live} context={context} clearHref={pageHref} eyebrow={<Eyebrow label={block.eyebrow} heading={block.heading} />} />; return <section className="editorial-grid"><Eyebrow label={block.eyebrow} heading={text(block.heading, "Experiences")} /><h2>{text(block.heading, "Experiences")}</h2><div className="grid">{items(block.offerings).map((offering, index) => <article className="tile" key={text(offering.id, String(index))}><h3>{text(offering.label, "Experience")}</h3><p>{text(offering.summary)}</p><SafeLink href={offering.url} context={context} ctaKind="offering" offeringId={text(offering.id)}>View on Mingla</SafeLink></article>)}</div></section>;

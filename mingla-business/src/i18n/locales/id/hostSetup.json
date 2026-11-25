@@ -103,7 +103,24 @@
       "discard": "Buang",
       "keep": "Simpan",
       "discardError": "Kami tidak bisa membuang {{brand}}. Coba lagi.",
-      "discarded": "{{brand}} dibuang."
+      "discarded": "{{brand}} dibuang.",
+      "clearStep": {
+        "name": "Langkah berikutnya: selesai namai brand ini. Lalu lanjutkan pada pengaturan atau buang di sini.",
+        "country": "Langkah berikutnya: pilih negara bank. Lalu selesai Terima pembayaran, atau pilih Simpan dan selesai nanti → Event gratis hanya saat ini.",
+        "pay": "Langkah berikutnya: selesai Terima pembayaran, atau pilih Simpan dan selesai nanti → Event gratis hanya saat ini.",
+        "done": "Pengaturan tidak lagi menghalangi pembuatan brand baru. Segarkan untuk melihat status terbaru."
+      },
+      "discardFailure": {
+        "offline": "Mingla tidak bisa mencapai server. Periksa koneksi Anda, lalu coba lagi.",
+        "auth": "Pengaturan masuk Anda belum siap, sehingga permintaan pembuangan tidak dikirim. Tunggu sejenak, lalu coba lagi.",
+        "session": "Pengaturan masuk Anda telah kedaluwarsa, sehingga draft tidak dibuang. Masuk kembali, lalu coba lagi.",
+        "forbidden": "Hanya pemilik akun yang bisa membuang draft ini.",
+        "notDraft": "{{brand}} tidak lagi merupakan draft, sehingga tidak dibuang. Segarkan untuk melihat perubahan.",
+        "blocked": "Draft ini memiliki aktivitas atau uang yang akan datang yang harus diselesaikan sebelum bisa dibuang.",
+        "payment": "Akun pembayaran tidak bisa ditutup ({{reason}}). Tidak ada yang dihapus. Hubungi dukungan.",
+        "mismatch": "Nama brand berubah sebelum proses pembuangan selesai. Segarkan, lalu coba lagi.",
+        "server": "Mingla tidak mengonfirmasi pembuangan. Tidak ada yang dihapus. Kami telah mencatatnya—hubungi dukungan jika terus terjadi."
+      }
     },
     "n3": {
       "draftLabel": "Draf",

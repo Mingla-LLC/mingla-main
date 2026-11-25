@@ -62,6 +62,12 @@ export interface BrandAvatarUploadOptions {
   /** When provided, the previously-persisted public URL is parsed for its
    * storage path and best-effort removed after the new upload verifies. */
   previousPublicUrl?: string | null;
+  /**
+   * Web can verify a public object through Host's same-origin Storage
+   * rewrite when the browser cannot reach supabase.co directly. This changes
+   * only the probe URL; the canonical public URL is still returned/persisted.
+   */
+  verificationUrlFor?: (publicUrl: string) => string;
 }
 
 export const uploadBrandAvatar = async (
@@ -132,8 +138,12 @@ export const uploadBrandAvatar = async (
     .from(BRAND_AVATARS_BUCKET)
     .getPublicUrl(storagePath);
 
-  // 7. Verify the URL actually serves bytes (HEAD/Range probe).
-  await verifyBrandAvatarPublicUrl(data.publicUrl);
+  // 7. Verify the URL actually serves bytes (HEAD/Range probe). Host web
+  // may use its /_sb road for this read; native and the persisted value stay
+  // on the canonical public URL.
+  await verifyBrandAvatarPublicUrl(
+    options.verificationUrlFor?.(data.publicUrl) ?? data.publicUrl,
+  );
 
   // 8. Best-effort orphan cleanup of the prior path. Never fail the
   //    upload on cleanup error.

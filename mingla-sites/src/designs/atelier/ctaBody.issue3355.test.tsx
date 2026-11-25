@@ -44,5 +44,20 @@ describe("#3355 call-to-action body", () => {
       const html = render({ type: "cta", heading: "Small groups, long tables", body: "Couples who like slow mornings", label: "Reserve", href: "/trips" });
       expect(section(html, "Small groups, long tables")).toContain("<p>Couples who like slow mornings</p>");
     });
+
+    it(`${name}: the legacy '/' placeholder is not a public button`, () => {
+      const html = section(
+        render({
+          type: "cta",
+          heading: "Small groups, long tables",
+          body: "Couples who like slow mornings",
+          label: "Reserve",
+          href: "/",
+        }),
+        "Small groups, long tables",
+      );
+      expect(html).toContain("Couples who like slow mornings");
+      expect(html).not.toContain("<a");
+    });
   }
 });
