@@ -72,7 +72,9 @@ describe("T-2 chips never open the card", () => {
     assert.match(card, /link\.type === "email" \? \{\} :/);
   });
   it("the tile shows no count or time the server did not send", () => {
-    assert.match(card, /Number\.isFinite\(Number\(record\.open_work\)\) \? Number\(record\.open_work\) : null/);
+    // #4571 design v5: "N open" shows only above zero; a count the server did not send reads as none.
+    assert.match(card, /Number\.isFinite\(Number\(record\.open_work\)\) \? Number\(record\.open_work\) : 0/);
+    assert.match(card, /openWork > 0 \? `\$\{openWork\} open` : ""/);
     assert.match(card, /touch \? `Touched \$\{touch\}` : "Not contacted yet"/);
   });
 });
@@ -166,7 +168,8 @@ describe("F-1 files and the thread on a host or creator card", () => {
     assert.match(read("components/ops/CardFiles.jsx"), /ops\.addCardLink\(card\.id, v, linkFriendlyName\(v\), requestKey\("web_link"\), \{ record \}\)/);
   });
   it("Thread focuses the notes composer at the top of the timeline", () => {
-    assert.match(panel, /data-thread-button="" onClick=\{focusNote\}>Thread<\/Button>/);
+    // #4571 design v5: Thread is an icon button on the header's one row.
+    assert.match(panel, /data-thread-button="" title="Thread" aria-label="Thread" onClick=\{focusNote\} \/>/);
     assert.match(panel, /const focusNote = \(\) => \{[\s\S]*?if \(fold && !fold\.open\) fold\.open = true;[\s\S]*?box\?\.focus\?\.\(\);/);
     assert.match(panel, /<textarea ref=\{noteRef\} id=\{fid\("note"\)\}/);
     assert.ok(panel.indexOf('data-record-section="note"') < panel.indexOf("<ActivityLog"), "the composer sits above the timeline");

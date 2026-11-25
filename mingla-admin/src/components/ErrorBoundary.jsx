@@ -1,6 +1,7 @@
 import { Component } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { captureException } from "../diagnostics/sentry";
+import { isChunkLoadError, UPDATED_MESSAGE } from "../lib/staleChunk";
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -35,6 +36,7 @@ export class ErrorBoundary extends Component {
         return this.props.fallback({ error: this.state.error, reset: this.handleReset });
       }
 
+      const stale = isChunkLoadError(this.state.error);
       return (
         <div
           style={{
@@ -68,7 +70,7 @@ export class ErrorBoundary extends Component {
               margin: 0,
             }}
           >
-            Something went wrong
+            {stale ? "Update available" : "Something went wrong"}
           </h2>
           <p
             style={{
@@ -79,10 +81,10 @@ export class ErrorBoundary extends Component {
               margin: 0,
             }}
           >
-            {this.state.error?.message || "An unexpected error occurred."}
+            {stale ? UPDATED_MESSAGE : this.state.error?.message || "An unexpected error occurred."}
           </p>
           <button
-            onClick={this.handleReset}
+            onClick={stale ? () => window.location.reload() : this.handleReset}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -100,7 +102,7 @@ export class ErrorBoundary extends Component {
             }}
           >
             <RefreshCw style={{ width: 16, height: 16 }} />
-            Try Again
+            {stale ? "Reload" : "Try Again"}
           </button>
         </div>
       );

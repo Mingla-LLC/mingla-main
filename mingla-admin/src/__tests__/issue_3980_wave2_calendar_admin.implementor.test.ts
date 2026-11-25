@@ -145,7 +145,8 @@ Deno.test("#3980 W2 the host card's On Mingla section: hosts only, its words, no
   ]) assert(section.includes(words), words);
   for (const gone of ["Save. Steps and Calendar fill in by themselves", "Work on this host", "Brand linked"]) assert(!section.includes(gone), gone);
   // #4571 W3: To do became the Work section (hosts and creators); an empty one says what to do.
-  assert(read("components/crm/HostToDoSection.jsx").includes("yet. Add a work item, or link this card from any Work card."), "Work says how to add one");
+  // #4571 design v5: the empty Work section offers both ways in: add one, or link an existing one.
+  assert(read("components/crm/HostToDoSection.jsx").includes("yet. Add a work item, or link an existing one."), "Work says how to add one");
   for (const banned of ["Drafts to send", "Draft, not sent", "@mention", "mention", "will get an email", "Getting started"]) {
     assert(!section.includes(banned), banned);
   }

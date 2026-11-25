@@ -135,6 +135,8 @@ const FIELD_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
  */
 function panelWidth(size, both, narrow, fallback) {
   if (size === "full") return both && !narrow ? "w-[calc(100vw-400px)]" : "w-screen";
+  // #4571 design v5: a host or creator record is 560px, so its header fits on one row.
+  if (size === "record") return both && !narrow ? "w-[min(560px,calc(100vw-400px))]" : "w-screen sm:w-[560px] sm:max-w-[100vw]";
   if (size === "card") return both && !narrow ? "w-[min(720px,calc(100vw-400px))]" : "w-screen sm:w-[720px] sm:max-w-[100vw]";
   return fallback;
 }
@@ -144,9 +146,15 @@ function panelWidth(size, both, narrow, fallback) {
  * panels' contents (each normally a <Drawer>), either may be null. `narrow`
  * forces the narrow layout (tests); otherwise the screen width decides.
  */
-export function PanelStack({ stack = null, first = null, second = null, narrow: forceNarrow, firstSize = "default" }) {
+/**
+ * #4571 design v5 (`over`): panel two is drawn OVER panel one at every width
+ * (panel one stays mounted, hidden, so nothing typed in it is lost), with
+ * "Back to <panel one>" closing panel two. Hosts and creators use it for a
+ * Work card opened from a record.
+ */
+export function PanelStack({ stack = null, first = null, second = null, narrow: forceNarrow, firstSize = "default", over = false, firstTitle = "" }) {
   const screenNarrow = useNarrow();
-  const narrow = forceNarrow ?? screenNarrow;
+  const narrow = forceNarrow ?? (over && !!first && !!second ? true : screenNarrow);
   const rootRef = useRef(null);
   const entries = useRef({ 1: null, 2: null });
   const [titles, setTitles] = useState({ 1: "", 2: "" });
@@ -194,7 +202,7 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
   const secondBack = trailTop
     ? { label: `Back to ${trailTop.title || "the last item"}`, onClick: stack.back }
     : narrow && hasFirst && stack?.closeSide
-      ? { label: `Back to ${titles[1] || "the first panel"}`, onClick: stack.closeSide }
+      ? { label: `Back to ${titles[1] || firstTitle || "the first panel"}`, onClick: stack.closeSide }
       : null;
   const firstSlot = useMemo(() => ({ slot: 1, register: registerFirst, back: null }), [registerFirst]);
   const secondSlot = useMemo(() => ({ slot: 2, register: registerSecond, back: secondBack }), [registerSecond, secondBack?.label, secondBack?.onClick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -205,7 +213,9 @@ export function PanelStack({ stack = null, first = null, second = null, narrow: 
   // #4255 W3: a work card is 720px wide (its thread beside it at 400px), and
   // focus mode or the sprint planner fills the page.
   const firstWidth = panelWidth(firstSize, both, narrow, width);
-  const secondWidth = firstSize === "default" ? width : both && !narrow ? "w-[400px] max-w-[45vw]" : "w-screen sm:w-[440px]";
+  const secondWidth = firstSize === "default" ? width
+    : both && !narrow ? "w-[400px] max-w-[45vw]"
+      : over && both ? "w-screen sm:w-[560px] sm:max-w-[100vw]" : "w-screen sm:w-[440px]";
   return (
     <div
       ref={rootRef}

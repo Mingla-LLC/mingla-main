@@ -571,8 +571,13 @@ describe("#3802 M-11: the three smoke-test items", () => {
     const LAYER = read("components/crm/CrmLayer.jsx");
     assert.match(LAYER, /typeof document === "undefined" \? box : createPortal\(box, document\.body\)/);
     // #4255: the card panels are the first of the two side panels, drawn by the
-    // PanelStack inside the same layer.
-    assert.match(PAGE, /<PipelineOverlays\s+card=\{\s*<PanelLinksContext\.Provider value=\{stack\.links\}>\s*<PanelStack\s+stack=\{stack\}\s+first=\{\s*ready && state\.card === NEW_CARD && !holding \? \(\s*<Drawer open/);
+    // PanelStack inside the same layer. #4571 gives that stack record-scoped
+    // links plus its approved size and over-panel treatment before the first
+    // panel itself.
+    assert.match(PAGE, /<PipelineOverlays\s+card=\{\s*<PanelLinksContext\.Provider value=\{recordLinks\}>\s*<PanelStack\s+stack=\{stack\}/);
+    assert.match(PAGE, /firstSize=\{ready && openId && state\.card !== NEW_CARD \? "record" : "default"\}/);
+    assert.match(PAGE, /over=\{stack\.side\?\.kind === "card" \|\| stack\.side\?\.kind === "thread"\}/);
+    assert.match(PAGE, /first=\{\s*ready && state\.card === NEW_CARD && !holding \? \(\s*<Drawer open/);
     assert.match(PAGE, /\) : ready && openId \? \(\s*<Suspense[\s\S]*?<RecordPanel/);
     assert.ok(!/createPortal/.test(PAGE), "the page draws an overlay outside the layer component");
   });

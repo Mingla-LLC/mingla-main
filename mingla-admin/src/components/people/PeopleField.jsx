@@ -84,6 +84,8 @@ export function PeopleField({
   // #4420 rework 3 (G8): keep the pick list inside the field's width (a
   // narrow side panel must not scroll sideways).
   fitMenu = false,
+  // #4571 design v5: a labelled grid row already names the field; keep the label for screen readers only.
+  hideLabel = false,
 }) {
   // #4420 G8: a fitted list stays inside the field; otherwise it may grow to 24rem.
   const menuWidth = fitMenu ? "w-full max-w-full" : "w-[max(100%,17rem)] max-w-[min(24rem,calc(100vw-2.5rem))]";
@@ -192,7 +194,7 @@ export function PeopleField({
 
   return (
     <div ref={rootRef} className="relative flex min-w-0 flex-col gap-1.5">
-      <label htmlFor={id} className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{label}</label>
+      <label htmlFor={id} className={hideLabel ? "sr-only" : "text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]"}>{label}</label>
       <div className="relative min-w-0">
       <div
         onMouseDown={(event) => { if (event.target === event.currentTarget && !locked) { event.preventDefault(); inputRef.current?.focus(); setOpen(true); } }}

@@ -209,3 +209,17 @@ export function brandGroupSearch(search, patch) {
   if (Object.hasOwn(patch, "side")) next = withSide(next, patch.side || null, BRAND_GROUP_SIDE_KINDS);
   return next;
 }
+
+/**
+ * #4571 design v5: where a linked host or creator opens on the Hosts and
+ * creators page. Same pipeline: { kind: "here", id } (it becomes the record
+ * panel, the Work card closes). The other pipeline: { kind: "tab", hash } (the
+ * page switches to that tab with the card open). Anything else: { kind: "side" }.
+ */
+export function recordSideRoute(side, pipeline) {
+  const s = cleanSide(side);
+  if (!s || (s.kind !== "host" && s.kind !== "creator")) return { kind: "side" };
+  const own = pipeline === "creators" ? "creator" : "host";
+  if (s.kind === own) return { kind: "here", id: s.id };
+  return { kind: "tab", hash: sideHref(s) };
+}

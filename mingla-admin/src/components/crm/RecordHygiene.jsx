@@ -41,7 +41,12 @@ export function MergeConfirmLine({ pick }) {
   );
 }
 
-export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequestMove, onOpenCard }) {
+/**
+ * #4571 design v5: the panel header's "..." menu asks for Merge or Archive
+ * (`request` = { mode, tick }); the inline buttons and the cadence line then
+ * stay out of the body (`inMenu`), since the Follow-up grid shows the round.
+ */
+export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequestMove, onOpenCard, request = null, inMenu = false }) {
   const { addToast } = useToast();
   const [mode, setMode] = useState(""); // "" | "archive" | "merge"
   const [reason, setReason] = useState("");
@@ -118,6 +123,13 @@ export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequest
     } finally { setBusy(""); }
   };
 
+  const requestTick = request?.tick || 0;
+  useEffect(() => {
+    if (!requestTick || !request?.mode || archived) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the header menu asks once per tick
+    if (request.mode === "merge") openMerge();
+    else if (request.mode === "archive") setMode("archive");
+  }, [requestTick]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section aria-label="Archive and merge" data-record-section="hygiene" className="flex min-w-0 flex-col gap-2">
       {archived && (
@@ -145,10 +157,10 @@ export function RecordHygiene({ record, pipeline, disabled, onChanged, onRequest
           <Button size="sm" className="min-h-11" disabled={disabled} onClick={() => onRequestMove(record, "replied")}>Move to Replied</Button>
         </div>
       )}
-      {cadence && !archived && (
+      {cadence && !archived && !inMenu && (
         <p className="text-[12.5px] text-[var(--color-text-secondary)]" data-cadence="">{cadence}</p>
       )}
-      {!archived && mode === "" && (
+      {!archived && mode === "" && !inMenu && (
         <div className="flex flex-wrap gap-1">
           <Button variant="ghost" size="sm" className="min-h-11" icon={GitMerge} disabled={disabled} onClick={openMerge}>Merge a duplicate…</Button>
           <Button variant="ghost" size="sm" className="min-h-11" icon={Archive} disabled={disabled} onClick={() => setMode("archive")}>Archive…</Button>

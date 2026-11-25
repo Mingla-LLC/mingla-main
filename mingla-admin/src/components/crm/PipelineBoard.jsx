@@ -10,7 +10,8 @@ import { collisions, columnKeyboardCoordinates } from "../ops/WorkBoard";
 // column of 200 cards is as tall as a column of 5.
 const COLUMN_CLASS =
   "flex min-h-[180px] max-h-[min(72vh,760px)] flex-col gap-2 rounded-[var(--radius-md)] bg-[var(--gray-100)] p-2.5";
-const BOARD_CLASS = "grid grid-flow-col auto-cols-[minmax(200px,1fr)] gap-3";
+// #4571 design v5: 264px columns so a card's five lines read without clipping.
+const BOARD_CLASS = "grid grid-flow-col auto-cols-[minmax(264px,1fr)] gap-3.5";
 
 /** Seven columns of two placeholder cards while the pipeline loads. */
 export function PipelineBoardSkeleton() {

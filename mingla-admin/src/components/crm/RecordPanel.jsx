@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { ArrowRight, Calendar, ExternalLink, FileText, Lock, MessageSquare, Phone, Plus } from "lucide-react";
+import { AlertCircle, ArrowRight, Calendar, Copy, ExternalLink, FileText, Globe, Lock, Mail, MessageSquare, MoreHorizontal, Phone, Plus } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { SideLink } from "../ui/PanelStack";
 import { Button } from "../ui/Button";
@@ -23,8 +23,11 @@ import { hostMissing } from "../../lib/opsModel";
 import { ActivityLog } from "./ActivityLog";
 import { CardFiles } from "../ops/CardFiles";
 import { useCardUploads } from "../../hooks/useCardFiles";
-import { QuickLinks } from "./RecordCard";
-import { PropChip, PeopleChip } from "../ops/WorkDetail";
+import { CardDue } from "./RecordCard";
+import { Popover, MenuItem } from "../ops/Popover";
+import { openWorkCount } from "../../lib/recordWorkLinks";
+import { activeJump, jumpSections } from "../../lib/recordPanelModel";
+import { PropChip } from "../ops/WorkDetail";
 import { PeopleField } from "../people/PeopleField";
 import { OWNERS_HINT, WATCHERS_HINT, lastOwnerWords, lastWatcherWords } from "../../lib/peopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
@@ -33,8 +36,12 @@ import {
   MOVE_BLOCK_COPY,
   TEXT_FIELDS,
 
+  badRouteWords,
+  cadenceWords,
   callOutcomeLabel,
   clockTime,
+  lastTouchWords,
+  quickLinks,
   demoLocked,
   demoLockWords,
   needsLinkingWords,
@@ -93,7 +100,7 @@ function DetailsFold({ isHosts, detailsRef, fid, children }) {
   return (
     <details ref={detailsRef} data-host-section="details" className="group min-w-0 border-t border-[var(--gray-200)] pt-3">
       <summary id={fid("details")} className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-1 text-[14px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]">
-        <span className="min-w-0 break-words">Details · contact rule, imports, log and activity</span>
+        <span className="min-w-0 break-words">Details · contact, type, region, contact rule, channels and imports</span>
         <span aria-hidden="true" className="text-[var(--color-text-tertiary)] group-open:rotate-90">›</span>
       </summary>
       <div className="mt-3 flex min-w-0 flex-col gap-5">{children}</div>
@@ -257,6 +264,83 @@ function DemosSection({ record, demos, scheduleToken, disabled, onChanged }) {
   );
 }
 
+const ROUTE_ICONS = { website: Globe, phone: Phone, email: Mail };
+const PLATFORM_WORDS = { instagram: "Instagram", tiktok: "TikTok", facebook: "Facebook", x: "X", youtube: "YouTube", linkedin: "LinkedIn", snapchat: "Snapchat", threads: "Threads" };
+
+/**
+ * #4571 design v5: Contacts as an aligned list (kind, value with what it is,
+ * one action: Copy a phone for PressOne, Email, or Open). A wrong number or a
+ * bounced email is red and struck through with its reason. A handle's
+ * follower count is edited on its own row (the old Follower counts fold).
+ */
+function ContactsList({ record, disabled, onFollowers }) {
+  const { addToast } = useToast();
+  const links = quickLinks(record);
+  const handles = new Map((record.identifiers || []).filter((i) => i.kind === "handle" && i.id).map((i) => [i.id, i]));
+  if (!links.length) return <p className="rounded-lg border border-dashed border-[var(--gray-300)] px-3 py-3 text-[13px] text-[var(--color-text-tertiary)]">No handles, emails or phones yet.</p>;
+  const copy = async (value) => {
+    try {
+      if (!navigator?.clipboard?.writeText) throw new Error("no clipboard");
+      await navigator.clipboard.writeText(value);
+      addToast({ variant: "success", title: `Copied ${value}` });
+    } catch (err) {
+      console.error("[crm] copy failed:", err?.message || err);
+      addToast({ variant: "error", title: "Couldn’t copy the number", description: `Copy it by hand: ${value}` });
+    }
+  };
+  const ACT = "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg border border-[var(--gray-200)] px-2.5 text-[12.5px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] sm:min-h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]";
+  return (
+    <ul data-contacts-list="" className="min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)]">
+      {links.map((l) => {
+        const Icon = ROUTE_ICONS[l.type];
+        const handle = l.type === "social" ? handles.get(l.id) : null;
+        const value = l.type === "social" ? `@${l.handle}` : l.value;
+        const sub = l.bad ? badRouteWords({ status: "bad", bad_reason: l.bad_reason }) || l.badWords || "Marked bad"
+          : l.type === "social" ? `${PLATFORM_WORDS[l.platform] || l.label}${l.followers ? ` · ${l.followers} followers` : ""}`
+            : l.type === "phone" ? "Phone · copies for PressOne" : l.type === "email" ? "Email" : "Website";
+        return (
+          <li key={`${l.type}:${l.id}`} data-contact-row={l.type} className="grid min-h-[46px] min-w-0 grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-[var(--gray-200)] py-2 pl-3 pr-2 first:border-t-0">
+            <span aria-hidden="true" className="grid h-[30px] w-[30px] place-items-center rounded-[7px] bg-[var(--gray-100)] text-[11px] font-bold text-[var(--color-text-secondary)]">
+              {Icon ? <Icon className="h-3.5 w-3.5" /> : l.short}
+            </span>
+            <span className={`min-w-0 text-[13.5px] ${l.bad ? "text-[var(--color-error-700)]" : "text-[var(--color-text-primary)]"}`}>
+              <span className={`break-all ${l.bad ? "line-through" : ""}`}>{value}</span>
+              <small className={`block text-[12px] ${l.bad ? "" : "text-[var(--color-text-tertiary)]"}`}>{sub}</small>
+            </span>
+            <span className="flex shrink-0 items-center gap-1">
+              {handle && (
+                <input type="text" inputMode="numeric" maxLength={9} defaultValue={handle.followers ?? ""} disabled={disabled}
+                  aria-label={`Followers of ${handle.value}`} placeholder="Followers"
+                  onBlur={(e) => { if (String(handle.followers ?? "") !== e.target.value.trim()) onFollowers(handle, e.target.value); }}
+                  className={`${CONTROL_CLASS} h-9 w-24`} />
+              )}
+              {l.type === "phone" ? (
+                <button type="button" className={ACT} disabled={l.bad} onClick={() => copy(l.value)} aria-label={l.bad ? `${l.value}, ${sub}` : `Copy ${l.value}`}><Copy aria-hidden="true" className="h-3.5 w-3.5" />Copy</button>
+              ) : l.type === "email" ? (
+                <a className={ACT} href={l.href} aria-label={`Email ${l.value}`}><Mail aria-hidden="true" className="h-3.5 w-3.5" />Email</a>
+              ) : (
+                <a className={ACT} href={l.href} target="_blank" rel="noopener noreferrer" aria-label={`Open ${value} in a new tab`}><ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />Open</a>
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** One labelled row of the Follow-up grid. */
+function GridRow({ label, children, id }) {
+  return (
+    <>
+      <div id={id} className="flex min-h-[44px] items-center border-t border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2 text-[12.5px] text-[var(--color-text-tertiary)] [&:nth-child(1)]:border-t-0">{label}</div>
+      <div className="flex min-h-[44px] min-w-0 flex-wrap items-center gap-2 border-t border-[var(--gray-200)] px-3 py-2 text-[13.5px] text-[var(--color-text-primary)] [&:nth-child(2)]:border-t-0">{children}</div>
+    </>
+  );
+}
+
+const ICON_BTN = "min-h-11 min-w-11 shrink-0 justify-center px-0";
+
 /**
  * Everything about one host or creator. Each field saves by itself when it
  * changes (selects, date, owners) or when focus leaves it (text).
@@ -369,6 +453,37 @@ export function RecordPanel({
   // #4571 W3: the Work section (hosts and creators), the people chips, the activity filter.
   const [workTick, setWorkTick] = useState(0);
   const work = useRecordWork(record?.id || null, `${activityTick}:${workTick}`);
+  // #4571 design v5: the board card's "N open" follows a link or unlink at once.
+  const openNow = work.data && work.id === record?.id ? (Number.isFinite(Number(work.data.open_count)) ? Number(work.data.open_count) : openWorkCount(work.data.cards)) : null;
+  useEffect(() => {
+    if (openNow === null || !record || Number(record.open_work) === openNow) return;
+    applyRecord({ ...record, open_work: openNow });
+  }, [openNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [hygieneAsk, setHygieneAsk] = useState(null);
+  // #4571 design v5: the section jump links under the header; the active one follows the scroll.
+  const bodyRef = useRef(null);
+  const [activeSection, setActiveSection] = useState("");
+  useEffect(() => {
+    const box = bodyRef.current?.parentElement;
+    if (!box) return undefined;
+    const onScroll = () => {
+      const top = box.getBoundingClientRect().top;
+      const offsets = [...bodyRef.current.querySelectorAll("[data-jump]")].map((el) => ({ key: el.dataset.jump, top: el.getBoundingClientRect().top - top }));
+      setActiveSection(activeJump(offsets, { atBottom: box.scrollTop + box.clientHeight >= box.scrollHeight - 2 }));
+    };
+    onScroll();
+    box.addEventListener("scroll", onScroll, { passive: true });
+    return () => box.removeEventListener("scroll", onScroll);
+  }, [record?.id]);
+  const jumpTo = (key) => {
+    const el = bodyRef.current?.querySelector(`[data-jump="${key}"]`);
+    if (!el) return;
+    el.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    setActiveSection(key);
+    // Keyboard users land in the section they asked for.
+    if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+    el.focus?.({ preventScroll: true });
+  };
   const directory = usePeopleDirectory();
   const [activityFilter, setActivityFilter] = useState("all");
   const [peopleBusy, setPeopleBusy] = useState(false);
@@ -894,6 +1009,10 @@ export function RecordPanel({
   else if (isHosts) stageHelp = "Live sets itself when the linked brand has a public listing.";
   else if (record.agreement !== "signed" && !here?.terminal) stageHelp = "Booked and Posted need the agreement marked as signed.";
 
+  const where = [(def.icps || []).find((i) => i.id === record.icp)?.label, (config.regions || []).find((r) => r.id === record.region_id)?.name].filter(Boolean).join(" · ") || "No type or region yet";
+  const signGate = !!next && moveBlocker(def, record, next.id)?.token === "agreement_required";
+  const touch = lastTouchWords(record);
+  const round = cadenceWords(record);
   const line = saveLine({ saving: savingCount, drafts, record, unsent, savedAt });
   const names = line.keys.map((k) => fieldLabel(k, pipeline)).join(", ");
   const canRetry = line.kind === "unsent" && line.keys.some((k) => !unsent[k]?.local);
@@ -914,7 +1033,8 @@ export function RecordPanel({
         }}
         className="h-10 w-full rounded-lg border border-transparent bg-transparent px-2 text-lg font-semibold text-[var(--color-text-primary)] outline-none transition-colors duration-150 hover:border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] disabled:cursor-not-allowed disabled:opacity-70"
       />
-      <div className="mt-1 flex min-h-8 flex-wrap items-center gap-2 px-2 text-xs" aria-live="polite">
+      <p data-record-crumbs="" className="px-2 text-[12.5px] text-[var(--color-text-tertiary)]">{[plural, here?.label].filter(Boolean).join(" › ")} · {where}</p>
+      <div className="flex min-h-7 flex-wrap items-center gap-2 px-2 text-xs" aria-live="polite">
         {line.kind === "saving" ? (
           <span className="text-[var(--color-text-tertiary)]">{holding ? "Saving before closing…" : "Saving…"}</span>
         ) : line.kind === "unsent" ? (
@@ -971,6 +1091,56 @@ export function RecordPanel({
         </div>
       )}
       {nameNote && <p className="px-2 text-xs text-[var(--color-text-tertiary)]">{nameNote}</p>}
+      {/* #4571 design v5: Stage, the one next move, Log call, Thread and ⋯ on ONE row. */}
+      <div data-record-section="stage" className="mt-2 flex min-w-0 flex-nowrap items-center gap-1.5 px-1">
+        <PropChip label="Stage" value={here?.label || record.stage} disabled={locked || pending} width="w-60">
+          {(closeIt) => stageOptions.map((o) => (
+            <button key={o.value} type="button" disabled={o.disabled || o.value === record.stage} aria-pressed={o.value === record.stage}
+              onClick={() => { closeIt(); onRequestMove(record, o.value); }}
+              className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)] disabled:opacity-50">{o.label}{o.locked ? ` · ${demoLockWords(o.value)}` : ""}</button>
+          ))}
+        </PropChip>
+        {nextLocked ? (
+          <Button size="sm" className="min-h-11 min-w-0 shrink" icon={Lock} data-gate-action="" data-next-locked="" disabled={locked}
+            title={`${next.label} is locked until a demo is linked. Book one.`} aria-label={`${next.label} locked. Book a demo`}
+            onClick={() => { const box = demosRef.current; box?.scrollIntoView?.({ block: "center" }); box?.querySelector?.("a, button")?.focus?.(); }}>
+            <span className="truncate">Book a demo</span>
+          </Button>
+        ) : signGate ? (
+          <Button size="sm" className="min-h-11 min-w-0 shrink" icon={Lock} data-sign-gate="" disabled={locked}
+            title={`${next.label} needs the agreement marked as signed`} aria-label={`${next.label} locked. Mark the agreement signed`}
+            onClick={() => { const box = document.getElementById(fid("agreement")); box?.scrollIntoView?.({ block: "center" }); box?.focus?.(); }}>
+            <span className="truncate">Mark signed</span>
+          </Button>
+        ) : next ? (
+          <Button size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight} disabled={locked || pending} title={`Move to ${next.label}`} onClick={() => onRequestMove(record, next.id)}>
+            <span className="truncate">Move to {next.label}</span>
+          </Button>
+        ) : null}
+        <span className="flex-1" />
+        <Button variant="secondary" size="sm" className={ICON_BTN} icon={Phone} disabled={locked} data-log-call="" title="Log call" aria-label="Log call" onClick={openLogCall} />
+        <Button variant="ghost" size="sm" className={ICON_BTN} icon={MessageSquare} data-thread-button="" title="Thread" aria-label="Thread" onClick={focusNote} />
+        <Popover label="More actions" role="menu" align="right" width="w-56" dataAttr="record-more"
+          button={<MoreHorizontal aria-hidden="true" className="h-4 w-4" />}
+          buttonClassName="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]">
+          {(close) => (
+            <>
+              {!record.archived_at && <MenuItem disabled={locked || pending} onClick={() => { close(); setHygieneAsk({ mode: "merge", tick: Date.now() }); }}>Merge a duplicate…</MenuItem>}
+              {!record.archived_at && <MenuItem disabled={locked || pending} onClick={() => { close(); setHygieneAsk({ mode: "archive", tick: Date.now() }); }}>Archive…</MenuItem>}
+              {closing && record.stage !== closing.id && <MenuItem danger disabled={locked || pending} onClick={() => { close(); onRequestMove(record, closing.id); }}>Mark as {closing.label.toLowerCase()}</MenuItem>}
+              {record.archived_at && !(closing && record.stage !== closing.id) && <p className="px-2 py-1.5 text-[12.5px] text-[var(--color-text-tertiary)]">This card is archived. Unarchive it below.</p>}
+            </>
+          )}
+        </Popover>
+      </div>
+      <nav aria-label="Sections" data-jump-links="" className="-mx-1 mt-2 flex gap-0.5 overflow-x-auto px-1 [scrollbar-width:none]">
+        {jumpSections({ isHosts, hasAttention: isHosts && (!(record.owners || []).length || hostMissing(record).length > 0) }).map((j) => (
+          <button key={j.key} type="button" data-jump-link={j.key} aria-current={activeSection === j.key ? "true" : undefined} onClick={() => jumpTo(j.key)}
+            className={`min-h-11 shrink-0 border-b-2 px-2 text-[12.5px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] ${activeSection === j.key ? "border-[var(--color-text-primary)] text-[var(--color-text-primary)]" : "border-transparent text-[var(--color-text-tertiary)] hover:border-[var(--gray-300)] hover:text-[var(--color-text-primary)]"}`}>
+            {j.label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 
@@ -1009,7 +1179,7 @@ export function RecordPanel({
       {/* The space at the end is as tall as any message shown over the card on
           a phone, so the last fields can always be scrolled clear of it
           (components/ui/Toast.jsx sets --toast-clear). */}
-      <div className="flex flex-col gap-5" style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
+      <div ref={bodyRef} className="flex flex-col gap-5" style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
         {locked && (
           <p className="rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-xs text-[var(--color-warning-700)]">
             You&apos;re offline. You can read this card, but changes won&apos;t save until you&apos;re back.
@@ -1041,134 +1211,132 @@ export function RecordPanel({
             <ArrowRight aria-hidden="true" className="ml-auto h-4 w-4 shrink-0" />
           </SideLink>
         )}
-        {/* #4571 W3: the WorkDetail anatomy. Region and type, quick links,
-            a stage pill with one next action, then people and follow-up chips. */}
-        <div className="flex min-w-0 flex-col gap-2" data-record-section="top">
-          <p className="text-[12.5px] text-[var(--color-text-tertiary)]">{[plural, here?.label].filter(Boolean).join(" › ")} · {[(config.regions || []).find((r) => r.id === record.region_id)?.name, (def.icps || []).find((i) => i.id === record.icp)?.label].filter(Boolean).join(" · ") || "No region or type yet"}</p>
-          <QuickLinks record={record} big>
-            <Button variant="ghost" size="sm" className="min-h-9" icon={Plus} disabled={locked} onClick={() => fillIn("contact")}>Website</Button>
-            <Button variant="ghost" size="sm" className="min-h-9" icon={Plus} disabled={locked} onClick={() => fillIn("contact")}>Email</Button>
-            <Button variant="ghost" size="sm" className="min-h-9" icon={Plus} disabled={locked} onClick={() => fillIn("contact")}>Social</Button>
-          </QuickLinks>
-          {(record.identifiers || []).filter((i) => i.kind === "handle" && i.id).length > 0 && (
-            <details className="text-[12px] text-[var(--color-text-tertiary)]">
-              <summary className="min-h-9 cursor-pointer">Follower counts</summary>
-              <div className="mt-1 flex flex-col gap-1">
-                {(record.identifiers || []).filter((i) => i.kind === "handle" && i.id).map((i) => (
-                  <label key={i.id} className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate">{i.value}</span>
-                    <input type="text" inputMode="numeric" maxLength={9} defaultValue={i.followers ?? ""} disabled={locked} aria-label={`Followers of ${i.value}`}
-                      onBlur={(e) => { if (String(i.followers ?? "") !== e.target.value.trim()) saveFollowers(i, e.target.value); }}
-                      className={`${CONTROL_CLASS} h-9 w-28`} />
-                  </label>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-        <section aria-label="Stage" data-record-section="stage" className="flex min-w-0 flex-wrap items-center gap-2">
-          <PropChip label="Stage" value={here?.label || record.stage} disabled={locked || pending} width="w-60">
-            {(closeIt) => stageOptions.map((o) => (
-              <button key={o.value} type="button" disabled={o.disabled || o.value === record.stage} aria-pressed={o.value === record.stage}
-                onClick={() => { closeIt(); onRequestMove(record, o.value); }}
-                className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)] disabled:opacity-50">{o.label}{o.locked ? ` · ${demoLockWords(o.value)}` : ""}</button>
-            ))}
-          </PropChip>
-          {next && !nextLocked && (
-            <Button size="sm" className="min-h-11 max-sm:h-11" iconRight={ArrowRight} disabled={locked || pending} onClick={() => onRequestMove(record, next.id)}>
-              Move to {next.label}
-            </Button>
-          )}
-          {nextLocked && (
-            <>
-              <span data-next-locked="" className="inline-flex min-h-11 items-center gap-1 text-[12.5px] font-semibold text-[var(--color-error-700)]">
-                <Lock aria-hidden="true" className="h-3.5 w-3.5" />{next.label} locked
-              </span>
-              <Button size="sm" className="min-h-11 max-sm:h-11" icon={Calendar} data-gate-action="" disabled={locked}
-                onClick={() => { const box = demosRef.current; box?.scrollIntoView?.({ block: "center" }); box?.querySelector?.("a, button")?.focus?.(); }}>
-                Book a demo
-              </Button>
-            </>
-          )}
-          <Button variant="secondary" size="sm" className="min-h-11" icon={Phone} disabled={locked} data-log-call="" onClick={openLogCall}>
-            Log call
-          </Button>
-          <Button variant="ghost" size="sm" className="min-h-11" icon={MessageSquare} data-thread-button="" onClick={focusNote}>Thread</Button>
-          {(record.stage_reason || stageHelp) && <p className="w-full text-[12px] text-[var(--color-text-tertiary)]">{record.stage_reason ? `Reason: ${record.stage_reason}. ` : ""}{stageHelp}</p>}
-        </section>
-        {/* #4571 W6: archive state, merge, a reply that suggests Replied, the cadence round. */}
-        <RecordHygiene record={record} pipeline={pipeline} disabled={locked || pending}
+        {/* #4571 design v5: the reply nudge and archive state first (RecordHygiene; Merge and Archive come from the ⋯ menu). */}
+        <RecordHygiene record={record} pipeline={pipeline} disabled={locked || pending} request={hygieneAsk} inMenu
           onChanged={() => { setReloadTick((n) => n + 1); pipe.refetch({ quiet: true }); onHygieneChanged?.(); }}
           onRequestMove={onRequestMove} onOpenCard={onOpenCard} />
-        <section aria-label="People and details" data-record-section="people" className="flex min-w-0 flex-wrap items-center gap-1">
-          <PeopleChip id={fid("owners-pop")} label="Owners" people={(record.owners || []).map((e) => (config.team || []).find((p) => p.email === e) || { email: e, name: e })} field={
-            <PeopleField id={fid("owners")} label="Owners" value={record.owners || []} team={directory.people || config.team} me={directory.me}
-              exclude={record.watchers || []} min={(record.owners || []).length ? 1 : 0} max={10} minWords={lastOwnerWords} hint={OWNERS_HINT}
-              disabled={locked} busy={peopleBusy}
-              onChange={(nextOwners) => savePeople(nextOwners, record.watchers || [], "Owners changed")} />
-          } />
-          <PeopleChip id={fid("watchers-pop")} label="Watching" people={(record.watchers || []).map((e) => (config.team || []).find((p) => p.email === e) || { email: e, name: e })} field={
-            <PeopleField id={fid("watchers")} label="Watching" value={record.watchers || []} team={directory.people || config.team} me={directory.me}
-              exclude={record.owners || []} min={0} max={10} minWords={lastWatcherWords} hint={WATCHERS_HINT}
-              disabled={locked} busy={peopleBusy}
-              onChange={(nextWatchers) => savePeople(record.owners || [], nextWatchers, "Watchers changed. They hear about stage moves and see calls.")} />
-          } />
-          <PropChip label="Next follow-up" value={record.next_action || ""} empty="Next follow-up" disabled={locked} width="w-72">
-            {(closeIt) => (
-              <input type="text" autoFocus maxLength={200} placeholder="What happens next" aria-label="Next action" defaultValue={record.next_action || ""}
-                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                onBlur={(e) => { const t = normalizeTyped("next_action", e.target.value); closeIt(); if (t !== (record.next_action || "")) save("next_action", t); }}
-                className={CONTROL_CLASS} />
-            )}
-          </PropChip>
-          <PropChip label="Due" value={record.due_on ? dayLabel(record.due_on) : ""} disabled={locked} width="w-56">
-            {(closeIt) => (
-              <>
-                {dueChoices(localToday()).map((c) => (
-                  <button key={c.label} type="button" onClick={() => { closeIt(); save("due_on", c.value); }}
-                    className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)]">{c.label} <span className="text-[var(--color-text-tertiary)]">{dayLabel(c.value)}</span></button>
-                ))}
-                {record.due_on && <button type="button" onClick={() => { closeIt(); save("due_on", ""); }} className="min-h-9 rounded-md px-2 text-left text-[13px] text-[var(--color-error-700)] hover:bg-[var(--gray-50)]">Clear the date</button>}
-              </>
-            )}
-          </PropChip>
-          {fieldError("next_action") && <p role="alert" className="w-full text-xs text-[var(--color-error-700)]">{fieldError("next_action")}</p>}
-          {fieldError("due_on") && <p role="alert" className="w-full text-xs text-[var(--color-error-700)]">{fieldError("due_on")}</p>}
-          {fieldError("owners") && <p role="alert" className="w-full text-xs text-[var(--color-error-700)]">{fieldError("owners")}</p>}
-        </section>
         {isHosts && (!(record.owners || []).length || hostMissing(record).length > 0) && (
-          <div data-needs-attention="" className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-[var(--color-error-50)] px-3 py-2.5 text-[13px]">
-            <b className="text-[var(--color-error-700)]">Needs attention</b>
+          <section aria-label="Needs attention" data-needs-attention="" data-jump="attention" className="min-w-0 overflow-hidden rounded-xl border border-[var(--color-warning-500)]/40 bg-[var(--color-warning-50)] text-[13.5px]">
+            <h3 className="flex items-center gap-1.5 px-3 pb-1.5 pt-2.5 text-[12px] font-semibold uppercase tracking-wide text-[var(--color-warning-700)]">
+              <AlertCircle aria-hidden="true" className="h-3.5 w-3.5" />Needs attention · {(!(record.owners || []).length ? 1 : 0) + (hostMissing(record).length > 0 ? 1 : 0)}
+            </h3>
             {!(record.owners || []).length && (
-              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <span className="text-[var(--color-text-primary)]">No owner</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5 border-t border-[var(--color-warning-500)]/20 px-3 py-2">
+                <span className="min-w-0 flex-1"><b className="text-[var(--color-text-primary)]">No owner</b><small className="block text-[12px] text-[var(--color-text-secondary)]">Nobody owns this {singular}, so nobody follows up.</small></span>
                 {config.me?.email && <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => { const mine = String(config.me?.email || "").toLowerCase(); if (mine) save("owners", [...new Set([...(record.owners || []), mine])].sort()); }}>Assign to me</Button>}
               </div>
             )}
             {hostMissing(record).length > 0 && (
-              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <span className="min-w-0 break-words text-[var(--color-text-primary)]">Missing {hostMissing(record).join(", ")}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5 border-t border-[var(--color-warning-500)]/20 px-3 py-2">
+                <span className="min-w-0 flex-1 break-words"><b className="text-[var(--color-text-primary)]">Missing {hostMissing(record).join(", ")}</b><small className="block text-[12px] text-[var(--color-text-secondary)]">Filters and reports miss this {singular} until it is filled in.</small></span>
                 <Button variant="secondary" size="sm" className="min-h-11" disabled={locked} onClick={() => fillIn(hostMissing(record)[0])}>Fill in</Button>
               </div>
             )}
-          </div>
+          </section>
         )}
-        {/* #4571 W3: Work for hosts and creators (crm_record_work); its Add work item keeps #4270's form. */}
-        <HostToDoSection key={`record-work-${record.id}`} record={record} read={work} online={online && !locked} onAdded={() => { work.retry(); if (isHosts) hostRead.retry(); }} />
-        {isHosts && <div ref={demosRef} className="min-w-0"><DemosSection record={record} demos={current.data?.demos} scheduleToken={current.data?.schedule_token} disabled={locked || !online} onChanged={() => setReloadTick((n) => n + 1)} /></div>}
-        <CallsSection activity={current.data?.activity} disabled={locked} onLogCall={openLogCall} />
+        {/* #4571 design v5: the labelled Follow-up grid. Owners and watchers are
+            chips with remove, an Add picker and Assign to me (PeopleField; a card
+            that has owners keeps one, like the server's last_owner rule). */}
+        <section aria-labelledby={fid("followup")} data-record-section="people" data-jump="followup" className="flex min-w-0 flex-col gap-2">
+          <h3 id={fid("followup")} className={H3}>Follow-up</h3>
+          <div className="grid min-w-0 grid-cols-[112px_minmax(0,1fr)] overflow-visible rounded-xl border border-[var(--gray-200)]">
+            <GridRow label="Owners">
+              <div className="w-full min-w-0">
+                <PeopleField id={fid("owners")} label="Owners" hideLabel fitMenu value={record.owners || []} team={directory.people || config.team} me={directory.me}
+                  exclude={record.watchers || []} min={(record.owners || []).length ? 1 : 0} max={10} minWords={lastOwnerWords} hint={OWNERS_HINT}
+                  disabled={locked} busy={peopleBusy}
+                  onChange={(nextOwners) => savePeople(nextOwners, record.watchers || [], "Owners changed")} />
+              </div>
+            </GridRow>
+            <GridRow label="Watching">
+              <div className="w-full min-w-0">
+                <PeopleField id={fid("watchers")} label="Watching" hideLabel fitMenu value={record.watchers || []} team={directory.people || config.team} me={directory.me}
+                  exclude={record.owners || []} min={0} max={10} minWords={lastWatcherWords} hint={WATCHERS_HINT}
+                  disabled={locked} busy={peopleBusy}
+                  onChange={(nextWatchers) => savePeople(record.owners || [], nextWatchers, "Watchers changed. They hear about stage moves and see calls.")} />
+              </div>
+            </GridRow>
+            <GridRow label="Next follow-up">
+              <input type="text" maxLength={200} placeholder="What happens next?" aria-label="Next action" {...textProps("next_action")}
+                className="min-h-9 w-full min-w-0 rounded-md border border-transparent bg-transparent px-1 text-[13.5px] text-[var(--color-text-primary)] hover:border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:outline-none disabled:opacity-70" />
+            </GridRow>
+            <GridRow label="Due">
+              {record.due_on ? <CardDue record={record} today={localToday()} /> : null}
+              <PropChip label="Due" value={record.due_on ? dayLabel(record.due_on) : ""} empty="Set a date" disabled={locked} width="w-56">
+                {(closeIt) => (
+                  <>
+                    {dueChoices(localToday()).map((c) => (
+                      <button key={c.label} type="button" onClick={() => { closeIt(); save("due_on", c.value); }}
+                        className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)]">{c.label} <span className="text-[var(--color-text-tertiary)]">{dayLabel(c.value)}</span></button>
+                    ))}
+                    {record.due_on && <button type="button" onClick={() => { closeIt(); save("due_on", ""); }} className="min-h-9 rounded-md px-2 text-left text-[13px] text-[var(--color-error-700)] hover:bg-[var(--gray-50)]">Clear the date</button>}
+                  </>
+                )}
+              </PropChip>
+            </GridRow>
+            <GridRow label="Round">{round ? <span data-cadence="">{round}</span> : <span className="text-[var(--color-text-tertiary)]">No cadence running</span>}</GridRow>
+            <GridRow label="Last touch">{touch ? <span data-last-touch="">{touch}</span> : <span className="text-[var(--color-text-tertiary)]">Not contacted yet</span>}</GridRow>
+            {(record.stage_reason || stageHelp) && <GridRow label="Stage note"><span className="text-[12.5px] text-[var(--color-text-tertiary)]">{record.stage_reason ? `Reason: ${record.stage_reason}. ` : ""}{stageHelp}</span></GridRow>}
+          </div>
+          {fieldError("next_action") && <p role="alert" className="text-xs text-[var(--color-error-700)]">{fieldError("next_action")}</p>}
+          {fieldError("due_on") && <p role="alert" className="text-xs text-[var(--color-error-700)]">{fieldError("due_on")}</p>}
+          {fieldError("owners") && <p role="alert" className="text-xs text-[var(--color-error-700)]">{fieldError("owners")}</p>}
+        </section>
+        {!isHosts && (
+          <section aria-labelledby={fid("deal")} data-record-section="deal" data-jump="deal" className="flex min-w-0 flex-col gap-2">
+            <h3 id={fid("deal")} className={H3}>Deal</h3>
+            <div className="grid grid-cols-1 gap-3 rounded-xl border border-[var(--gray-200)] p-3 sm:grid-cols-2">
+              <Field label="Followers" htmlFor={fid("followers")} error={fieldError("followers")}>
+                <input type="text" inputMode="numeric" maxLength={9} placeholder="For example 12000" {...textProps("followers")} />
+              </Field>
+              <Field
+                label="Agreement"
+                htmlFor={fid("agreement")}
+                error={fieldError("agreement")}
+                helper={
+                  keepsAgreement
+                    ? `${here.label} keeps a signed agreement. Move the card back to Negotiating to change it.`
+                    : "Mark it Signed before moving to Booked."
+                }
+              >
+                <Select {...selectProps("agreement")} disabled={locked || keepsAgreement} placeholder="None yet" options={opt(config.agreements)} />
+              </Field>
+              <Field label="Rate" htmlFor={fid("rate")} full error={fieldError("rate")}>
+                <input type="text" maxLength={120} placeholder="What they charge, in their words" {...textProps("rate")} />
+              </Field>
+            </div>
+          </section>
+        )}
+        <section aria-labelledby={fid("contacts")} data-record-section="contacts" data-jump="contacts" className="flex min-w-0 flex-col gap-2">
+          <h3 id={fid("contacts")} className={H3}><span>{isHosts ? "Contacts" : "Handle and reach"} <span className="font-medium text-[var(--color-text-tertiary)]">· {quickLinks(record).length}</span></span></h3>
+          <ContactsList record={record} disabled={locked} onFollowers={saveFollowers} />
+          <div className="flex flex-wrap gap-1">
+            {["Website", "Email", "Phone", "Social"].map((w) => (
+              <Button key={w} variant="ghost" size="sm" className="min-h-11 sm:min-h-9" icon={Plus} disabled={locked} onClick={() => fillIn("contact")}>{w}</Button>
+            ))}
+          </div>
+        </section>
+        {/* #4571 W3: Work for hosts and creators (crm_record_work); Add work item keeps #4270's form; design v5 adds Link existing work and Unlink. */}
+        <div data-jump="work" className="min-w-0">
+        <HostToDoSection key={`record-work-${record.id}`} record={record} read={work} online={online && !locked}
+          onAdded={() => { work.retry(); if (isHosts) hostRead.retry(); }}
+          onLinksChanged={() => { work.retry(); if (isHosts) hostRead.retry(); }} />
+        </div>
+        {isHosts && <div ref={demosRef} data-jump="demos" className="min-w-0"><DemosSection record={record} demos={current.data?.demos} scheduleToken={current.data?.schedule_token} disabled={locked || !online} onChanged={() => setReloadTick((n) => n + 1)} /></div>}
+        <div data-jump="calls" className="min-w-0"><CallsSection activity={current.data?.activity} disabled={locked} onLogCall={openLogCall} /></div>
         {isHosts && (
           <>
             {/* #4270: the plan (W3), On Mingla, Brand and team stay on the host card. */}
-            <HostPlanSection key={`host-plan-${record.id}`} record={record} online={online && !locked} onChanged={() => hostRead.retry()} />
-            <div className="border-t border-[var(--gray-200)] pt-3">
+            <div data-jump="plan" className="min-w-0"><HostPlanSection key={`host-plan-${record.id}`} record={record} online={online && !locked} onChanged={() => hostRead.retry()} /></div>
+            <div data-jump="onmingla" className="border-t border-[var(--gray-200)] pt-3">
               <OnMinglaSection key={`on-mingla-${record.id}`} record={record} read={hostRead} online={online && !locked} />
             </div>
-            <HostTeamSection record={record} read={hostRead} onOpenSide={onOpenSide} />
+            <div data-jump="team" className="min-w-0"><HostTeamSection record={record} read={hostRead} onOpenSide={onOpenSide} /></div>
           </>
         )}
         {/* #4270 W2: hosts fold contact, ICP, region, channels, contact rule,
             imports, the log form and activity under one Details row. */}
+        <div data-jump="details" className="min-w-0">
         <DetailsFold isHosts detailsRef={detailsRef} fid={fid}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="ICP" htmlFor={fid("icp")} error={fieldError("icp")}>
@@ -1242,34 +1410,7 @@ export function RecordPanel({
               }}
             />
           ) : (
-            <fieldset className="grid grid-cols-1 gap-3 rounded-lg border border-[var(--gray-200)] p-3 sm:col-span-2 sm:grid-cols-2">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-                Deal
-              </legend>
-              <Field label="Followers" htmlFor={fid("followers")} error={fieldError("followers")}>
-                <input type="text" inputMode="numeric" maxLength={9} placeholder="For example 12000" {...textProps("followers")} />
-              </Field>
-              <Field
-                label="Agreement"
-                htmlFor={fid("agreement")}
-                error={fieldError("agreement")}
-                helper={
-                  keepsAgreement
-                    ? `${here.label} keeps a signed agreement. Move the card back to Negotiating to change it.`
-                    : "Mark it Signed before moving to Booked."
-                }
-              >
-                <Select
-                  {...selectProps("agreement")}
-                  disabled={locked || keepsAgreement}
-                  placeholder="None yet"
-                  options={opt(config.agreements)}
-                />
-              </Field>
-              <Field label="Rate" htmlFor={fid("rate")} full error={fieldError("rate")}>
-                <input type="text" maxLength={120} placeholder="What they charge, in their words" {...textProps("rate")} />
-              </Field>
-            </fieldset>
+            null
           )}
           {isHosts && (fieldError("brand_id") || fieldError("place_pool_id")) && (
             <p role="alert" className="text-xs text-[var(--color-error-700)] sm:col-span-2">
@@ -1328,6 +1469,11 @@ export function RecordPanel({
         )}
 
 
+        </DetailsFold>
+        </div>
+        {/* #4571 design v5: Activity is its own section after Details (the log form, the note composer and the timeline). */}
+        <section aria-label="Activity" data-record-section="activity" data-jump="activity" className={SECTION}>
+          <h3 className={H3}>Activity</h3>
         <RecentTouchNotice key={`signals-${record.id}`} record={record} online={online} />
 
         <div ref={logRef} data-record-section="log" className="border-t border-[var(--gray-200)] pt-4">
@@ -1365,7 +1511,7 @@ export function RecordPanel({
             </Button>
           </div>
         )}
-        </DetailsFold>
+        </section>
         {/* #4571 W3: Files, the Work card's files section on a host or creator. */}
         <div data-record-section="files" className="border-t border-[var(--gray-200)] pt-3">
           <CardFiles card={record} record files={current.data?.files || []} disabled={locked} uploads={fileUploads} onChanged={() => setReloadTick((n) => n + 1)} />

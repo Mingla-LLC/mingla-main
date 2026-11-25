@@ -370,9 +370,12 @@ describe("#3802 C-4: the contact rule on screen", () => {
   });
   it("the card and the drawer draw it (#4255: the list view is gone)", () => {
     const CARD = read("components/crm/RecordCard.jsx");
-    assert.ok(CARD.includes("aria-label={recordOpenLabel(record, team)}"));
-    // #4571 W3: the tile is a column with gaps, so the badge line has no margin of its own.
-    assert.ok(/\{rule && \(\s*<p title=\{rule\.reason \|\| undefined\}>\s*<Badge variant=\{rule\.variant\}>\{rule\.label\}<\/Badge>/.test(CARD));
+    // #4571 preserves the contact-rule name at the start of the card's
+    // accessible label and appends the concrete attention reasons when present.
+    assert.match(CARD, /aria-label=\{`\$\{recordOpenLabel\(record, team\)\}/);
+    assert.match(CARD, /needs attention: \$\{problems\.join\(", "\)\}/);
+    // #4571 W3: the compact contact-rule badge leads the card's quick-link row.
+    assert.ok(CARD.includes('before={rule ? <span title={rule.reason || undefined} className="shrink-0"><Badge variant={rule.variant}>{rule.label}</Badge></span> : null}'));
     assert.ok(!fs.existsSync(path.join(SRC, "components/crm/PipelineList.jsx")), "#4255: the list view was removed (D8)");
     const DRAWER = read("components/crm/RecordPanel.jsx");
     assert.ok(DRAWER.includes("const rule = contactRuleView(record, config.team);"));

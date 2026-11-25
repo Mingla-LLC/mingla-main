@@ -88,6 +88,14 @@ describe("#3802 W-1 (D-1): one stacking order, in one place", () => {
     for (const f of files) {
       const code = stripComments(fs.readFileSync(f, "utf8"));
       if (f.endsWith("CrmLayer.jsx")) continue;
+      // #4571's problem-count tooltip has one local card-relative layer so it
+      // opens above the rest of that card. It is not an overlay or portal and
+      // cannot escape the CRM layer order asserted above.
+      if (f.endsWith("RecordCard.jsx")) {
+        assert.match(code, /role="tooltip" data-problem-list="" className="[^"]*\bz-10\b[^"]*"/);
+        assert.deepEqual(code.match(/zIndex|\bz-\[|\bz-\d+\b|createPortal/g), ["z-10"]);
+        continue;
+      }
       assert.ok(!/zIndex|\bz-\[|\bz-\d+\b|createPortal/.test(code), `${path.basename(f)} sets a stacking number or a portal`);
     }
   });
@@ -125,7 +133,9 @@ describe("#3802 W-2 (D-2): a toast never covers an open card, at any width", () 
     assert.match(TOAST, /root\.style\.setProperty\("--toast-clear", `\$\{region\.offsetHeight \+ CLEAR_GAP\}px`\);/);
     assert.match(TOAST, /root\.style\.removeProperty\("--toast-clear"\);/);
     assert.match(TOAST, /useClearSpace\(regionRef, toasts\.length > 0 && besidePanel === 0\);/);
-    assert.match(DRAWER, /<div className="flex flex-col gap-5" style=\{\{ paddingBottom: "var\(--toast-clear, 0px\)" \}\}>/);
+    // #4571's jump links keep a ref to this same scrollable body; the toast
+    // clearance remains on the body rather than moving to another layer.
+    assert.match(DRAWER, /<div ref=\{bodyRef\} className="flex flex-col gap-5" style=\{\{ paddingBottom: "var\(--toast-clear, 0px\)" \}\}>/);
     assert.match(PAGE, /<div style=\{\{ paddingBottom: "var\(--toast-clear, 0px\)" \}\}>\s*<AddRecordForm/);
   });
   it("a toast narrower than usual takes the room there is instead of spilling over", () => {
