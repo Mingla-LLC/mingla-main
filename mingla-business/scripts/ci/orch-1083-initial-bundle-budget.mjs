@@ -105,7 +105,7 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // deliberate runway above it so the DELTA gate — not this one — is what a
 // normal PR ever meets:
 //   __common  brotli 439,775 → ceiling 597,000   (raised 2026-09-20, 2026-10-27, 2026-11-24)
-//   __common  raw    2,341,978 → ceiling 2,940,000 (raised 2026-09-20, 2026-11-24)
+//   __common  raw    2,341,978 → ceiling 2,943,000 (raised 2026-09-20, 2026-11-24, 2026-11-25)
 //   eager     brotli 660,678 → ceiling 838,000   (raised 2026-10-17, 2026-11-24)
 //   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
 //
@@ -151,14 +151,23 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // these figures). The per-PR allowance and the machine-maintained baseline are
 // unchanged.
 //
+// RAISED 2026-11-25 — __common raw ONLY, from 2,940,000 to 2,943,000.
+// Production main measured 2,930,315 B after #4601, 2,692 B above the
+// pre-merge #4490 measurement used for the 2026-11-24 decision. The old
+// ceiling therefore left only 9,685 B of raw runway and the machine baseline
+// correctly refused to bank it. Seth approved the 3,000 B correction in chat:
+// 2,930,315 + the unchanged 12,000 B normal allowance = 2,942,315 B, leaving
+// 685 B spare beneath the corrected ceiling. Brotli and both eager ceilings,
+// the per-PR allowance, and the machine-maintained baseline are unchanged.
+//
 // The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
 // unfailable since route splitting landed. This is a tightening, not a
 // relaxation: 4,000,000 is 57% below the number it replaces.
 // ═══════════════════════════════════════════════════════════════════════════
 const HARD_CEILING = {
-  // 2026-11-24 — __common raw 2_800_000 → 2_940_000 and brotli 560_000 →
-  // 597_000, eager brotli 800_000 → 838_000 (issue #4490; Seth approved).
-  common: { raw: 2_940_000, brotli: 597_000 },
+  // 2026-11-25 — __common raw 2_940_000 → 2_943_000 after the measured
+  // #4601 main payload left less than one normal allowance (Seth approved).
+  common: { raw: 2_943_000, brotli: 597_000 },
   // 2026-10-17 — eager brotli 775_000 → 800_000 after #3937 recorded
   // eager.brotli at 750,291 B, which left only 24,709 B beneath the old
   // ceiling. Human limit move only; automation still cannot raise this.
