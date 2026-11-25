@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { StyleSheet, Text, View, type View as ViewInstance } from "react-native";
+import { StyleSheet, View, type View as ViewInstance } from "react-native";
 
 import { space } from "../../constants/designSystem";
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -29,6 +29,16 @@ export interface PublicVenueReservationSheetProps {
    * the heading and the CTA that opens it can never drift apart again.
    */
   title: string;
+  /**
+   * #4490 — the reservation body already renders from this palette. The sheet
+   * chrome must share it; otherwise a light venue body is placed on the app's
+   * dark graphite panel and its labels become unreadable.
+   */
+  palette: {
+    page: string;
+    primaryText: string;
+    card: string;
+  };
   children: React.ReactNode;
 }
 
@@ -37,6 +47,7 @@ export function PublicVenueReservationSheet({
   onClose,
   onDismissed,
   title,
+  palette,
   children,
 }: PublicVenueReservationSheetProps): React.ReactElement {
   const headingRef = useRef<ViewInstance | null>(null);
@@ -80,6 +91,7 @@ export function PublicVenueReservationSheet({
       visible={visible}
       onClose={onClose}
       snapPoint="full"
+      panelBackground={palette.page}
       testID="issue-1380-public-venue-reservation-sheet"
     >
       <View style={styles.host} accessibilityViewIsModal={visible}>
@@ -93,7 +105,10 @@ export function PublicVenueReservationSheet({
         >
           {/* #4490 N118: the same head the other sheets carry: title and a
               visible Close, for the form and for its confirmation. */}
-          <PickerSheetHead title={title} onClose={onClose} testID="issue-4490-reservation-sheet-head" />
+          <PickerSheetHead title={title} onClose={onClose}
+            palette={palette}
+            testID="issue-4490-reservation-sheet-head"
+          />
         </View>
         <ScrollView
           style={styles.scroll}

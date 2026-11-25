@@ -482,10 +482,21 @@ jest.mock("../PublicVenueReservationSheet", () => {
   return {
     __esModule: true,
     PublicVenueReservationSheet: (props: Record<string, unknown>) => {
-      const { children, ...rest } = props as { children?: React.ReactNode };
+      const { children, ...rest } = props as Record<string, unknown> & {
+        children?: React.ReactNode;
+      };
+
+      // [TEST-MOD-APPROVED #4490 N118] The historical move-parity proof keeps
+      // every reservation-sheet prop except the palette that #4490 deliberately
+      // adds to this app-owned host slot. Palette identity and use are asserted
+      // by PublicVenueReservationUi.issue1380; retaining every other prop here
+      // keeps unrelated route/tree drift byte-for-byte visible.
+      const parityProps: Record<string, unknown> = { ...rest };
+      delete parityProps.palette;
+
       return ReactLocal.createElement(
         "PublicVenueReservationSheetStub",
-        rest,
+        parityProps,
         children,
       );
     },
