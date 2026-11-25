@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4618_release_records_bot.tester.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4618-release-records-bot-tester",
+  "profile": "deno-1.46-stripe"
+}

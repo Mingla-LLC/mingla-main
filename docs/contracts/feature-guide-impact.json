@@ -2,6 +2,12 @@
   "version": 1,
   "mappings": [
     {
+      "capability_key": "staff-release-records",
+      "paths": [
+        "supabase/migrations/20281205034618_issue_4618_release_card_hygiene.sql"
+      ]
+    },
+    {
       "capability_key": "checkout-tickets",
       "paths": [
         "mingla-business/api/event-checkout-bundle.js",

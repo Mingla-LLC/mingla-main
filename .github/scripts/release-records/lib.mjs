@@ -98,6 +98,29 @@ export function parseIssueField(body) {
   return numbersIn(v).length > 0 ? { kind: "numbers", reason: null } : { kind: "missing", reason: null };
 }
 
+/**
+ * #4618 D1: a pull request written by a bot (Dependabot, the bundle-baseline
+ * app, any "[bot]" login or account of type Bot). One definition, used by the
+ * PR links check (exempt) and by the release record (no issue link needed).
+ */
+export function isBotAuthor(author) {
+  const login = typeof author === "string" ? author : author?.login ?? "";
+  const type = typeof author === "object" && author ? author.type : undefined;
+  return login === "dependabot[bot]" || type === "Bot" || /\[bot\]$/.test(login);
+}
+
+/**
+ * #4618 D1: why a pull request needs no issue link, or null when it needs
+ * one. A bot pull request, or a description whose "Issue:" line is "none"
+ * with a reason (parseIssueField). A bare "Issue: none" is not a waiver. The
+ * PR links check and recordProblems both read this one rule.
+ */
+export function issueLinkWaiver({ author, body }) {
+  if (isBotAuthor(author)) return { kind: "bot", reason: null };
+  const field = parseIssueField(body);
+  return field.kind === "none" ? { kind: "none", reason: field.reason } : null;
+}
+
 /** How many Feature Guide entries are wrong, in words that quote none of them. */
 export function invalidGuideWords(guide) {
   const n = Number(guide?.badCount ?? 0);
@@ -509,18 +532,34 @@ function utcMinute(iso) {
   return d.toISOString().slice(0, 16).replace("T", " ");
 }
 
+// #4618 (B1): the machine-written bundle-baseline pull request. Its release
+// record is written (Mingla opens a card when a merged PR has none) but it
+// ships nothing, so it needs no live check and no web deploy.
+export const BUNDLE_BASELINE_AUTHOR = "mingla-bundle-baseline[bot]";
+export const BUNDLE_BASELINE_PATH = "mingla-business/scripts/ci/bundle-baseline.json";
+
+/** True only for the baseline bot changing exactly the baseline file. */
+export function isBundleBaselinePr({ author, paths }) {
+  const login = typeof author === "string" ? author : author?.login ?? "";
+  const list = [...(paths ?? [])].map(String);
+  return login === BUNDLE_BASELINE_AUTHOR && list.length === 1 && list[0] === BUNDLE_BASELINE_PATH;
+}
+
 /** Problem codes the bot knows. migrations_pending is added by Mingla. */
 export function recordProblems(data) {
   const p = [];
-  if (!Array.isArray(data?.issues) || data.issues.length === 0) p.push("no_issue");
+  const baseline = data?.release_kind === "bundle_baseline";
+  // #4618 D1: a bot pull request, or one with "Issue: none, <reason>", needs no issue link.
+  const waived = data?.issue_waiver === "bot" || data?.issue_waiver === "none";
+  if ((!Array.isArray(data?.issues) || data.issues.length === 0) && !waived) p.push("no_issue");
   if (data?.feature_guide === null || data?.feature_guide === undefined) {
     p.push(Array.isArray(data?.feature_guide_bad) && data.feature_guide_bad.length > 0 ? "feature_guide_invalid" : "feature_guide_missing");
   }
-  const web = data?.deploy?.web ?? {};
+  const web = baseline ? {} : data?.deploy?.web ?? {};
   if (Object.values(web).includes("not_deployed")) p.push("web_not_deployed");
   if (Object.values(web).includes("failed")) p.push("web_deploy_failed");
   if (data?.deploy?.edge === "failed") p.push("edge_deploy_failed");
-  if (!data?.live_check) p.push("live_check_missing");
+  if (!data?.live_check && !baseline) p.push("live_check_missing");
   return p;
 }
 
@@ -545,6 +584,7 @@ export function recordMissing(data) {
 }
 
 function deployLine(data) {
+  if (data?.release_kind === "bundle_baseline") return "N/A";
   const parts = [];
   const web = data?.deploy?.web ?? {};
   const projects = WEB_PROJECTS.filter((project) => web[project]);
@@ -725,7 +765,10 @@ export function mergeRecordData(fresh, previous) {
   const theirs = after(previous.live_check) ? previous.live_check : null;
   const live = !mine ? theirs : !theirs ? mine : Date.parse(theirs.at) > Date.parse(mine.at) ? theirs : mine;
   const out = { ...fresh };
-  const paired = new Set(["live_check", "problems", "migrations_applied_state", "migrations_status", "feature_guide", "feature_guide_reason", "feature_guide_bad"]);
+  // #4618: the release kind and the issue-link waiver are read from GitHub
+  // each time; the fresh record's value wins (a waiver can also go away).
+  const paired = new Set(["live_check", "problems", "migrations_applied_state", "migrations_status", "feature_guide", "feature_guide_reason", "feature_guide_bad",
+    "release_kind", "issue_waiver", "issue_waiver_reason"]);
   for (const k of Object.keys(previous)) {
     if (paired.has(k)) continue;
     const v = forwardField(fresh[k], previous[k]);
@@ -741,6 +784,13 @@ export function mergeRecordData(fresh, previous) {
     if (Array.isArray(previous.feature_guide_bad)) out.feature_guide_bad = previous.feature_guide_bad;
     else delete out.feature_guide_bad;
   }
+  // #4618 (B2): a bundle baseline ships nothing; an older record's web
+  // deploy state must not come back through the key-by-key merge.
+  if (fresh.release_kind === "bundle_baseline") {
+    for (const k of ["deploy", "web_projects", "web_original_state"]) {
+      if (Object.hasOwn(fresh, k)) out[k] = fresh[k];
+    }
+  }
   out.live_check = live;
   out.problems = recordProblems(out);
   return JSON.stringify(out) === JSON.stringify(fresh) ? fresh : out;
@@ -755,6 +805,10 @@ export function recordJson(data) {
 export function renderRecord(data) {
   const issues = Array.isArray(data.issues) && data.issues.length > 0
     ? data.issues.map((i) => `#${i.number} (${i.relation})`).join(", ")
+    : data.issue_waiver === "bot"
+    ? "none needed (a bot pull request)"
+    : data.issue_waiver === "none"
+    ? `none: ${plainText(data.issue_waiver_reason ?? "", 200)}`
     : "none linked: link one";
   const migrationsAdded = (data.migrations_added ?? []).length > 0 ? data.migrations_added.join(", ") : "none";
   const applied = data.migrations_applied_state === "pending"
@@ -762,7 +816,9 @@ export function renderRecord(data) {
     : data.migrations_applied_state === "applied"
     ? `all applied${data.migrations_status ? ` (${visible(data.migrations_status, 140)})` : ""}`
     : "none";
-  const live = data.live_check
+  const live = data.release_kind === "bundle_baseline" && !data.live_check
+    ? "N/A (machine-written bundle baseline; nothing ships)"
+    : data.live_check
     ? `"${visible(data.live_check.text)}" by @${visible(data.live_check.by_login, 39)}, ${visible(data.live_check.url, 300)}`
     : 'pending: add a comment starting with "Live check:"';
   const guide = Array.isArray(data.feature_guide)
@@ -823,14 +879,12 @@ function dayMonth(ms) {
  * blocking. ok is false only when blocking and a line is missing.
  */
 export function prLinksVerdict({ title, body, author, createdAt, landedAt, now }) {
-  const login = typeof author === "string" ? author : author?.login ?? "";
-  const type = typeof author === "object" && author ? author.type : undefined;
-  if (login === "dependabot[bot]" || type === "Bot" || /\[bot\]$/.test(login)) {
+  const waiver = issueLinkWaiver({ author, body });
+  if (waiver?.kind === "bot") {
     return { ok: true, missing: [], phase: "exempt", words: "", comment: false };
   }
   const missing = [];
-  const field = parseIssueField(body);
-  if (parseIssueRefs(title, body).length === 0 && field.kind !== "none") missing.push("an issue link");
+  if (parseIssueRefs(title, body).length === 0 && !waiver) missing.push("an issue link");
   const guide = parseFeatureGuide(body);
   if (guide.kind === "missing") missing.push('a "Feature Guide:" line');
   if (guide.kind === "none" && !guide.reason) missing.push('a reason after "Feature Guide: none"');

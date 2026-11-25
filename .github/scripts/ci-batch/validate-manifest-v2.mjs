@@ -786,7 +786,9 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 merge of origin/main 60e3e235d2 (#4598 Hosts board speed): kept both sides' rows (main's 20281202174571 before the #4490 block, filename order) and both sides' exact-filename skips in the #2117 phase-1 lane; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4596 merge of origin/main 9289878e2a (#4490): kept main's 79 #4490 migration rows before 20281205004596, plus both #4596 pg17 suites and sidecars; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #1493: registered the accepted-brand-member Venue Overview pg17 proof and sidecar in both filtered replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "91de8b697070395acd95da955a8bd6125cd2b3f52f2161d84712b36fecbe2d75";
+// issue #4618: registered migration 20281205034618 in the #1857, #1931 and #2117 replay inventories and its implementor pg17 suite with sidecar in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
+// issue #4618 tester: registered the tester adversarial pg17 suite with sidecar in the #1931 and #2117 inventories; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "92fb30975d0cf8e9c9d42b3d6a47ccd0151c0d3f47025126a88d1657b5fb49f0";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

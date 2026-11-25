@@ -530,7 +530,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 merge of origin/main 60e3e235d2 (#4598 Hosts board speed): kept both sides' rows (main's 20281202174571 after 20281202163281 and before the #4490 block, filename order; its pg17 suite and sidecar in the #1931 and #2117 inventories; its EXACT filtered-replay skip beside the #4490 skips); re-sealed.
 // issue #4596 merge of origin/main 9289878e2a (#4490): kept main's 79 #4490 migration rows before 20281205004596, plus both #4596 pg17 suites and sidecars; re-sealed.
 // issue #1493: registered the accepted-brand-member Venue Overview pg17 proof and sidecar in both filtered replay inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "56639011bd75ca74c77c12874251316280f7a9b7d0e2a4deccbb6eff4dbb11d8";
+// issue #4618: registered migration 20281205034618 in the #1857, #1931 and #2117 replay inventories and its implementor pg17 suite with sidecar in the #1931 and #2117 inventories; re-sealed.
+// issue #4618 tester: registered the tester adversarial pg17 suite with sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "dac6d2d8a9c827ae924d2879e762e17cf311560865926070bfa7bfe297c778af";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
