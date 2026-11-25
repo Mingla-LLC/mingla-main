@@ -160,6 +160,18 @@ Deno.test("#4130 refunds: exception rows open with their captured details", () =
   const detail = exceptionDetail(item);
   assertMatch(detail.explanation, /matches no refund/);
   assertEquals(detail.fields.find(([k]) => k === "Event")?.[1], "refund.processed");
+  const failed = exceptionDetail({
+    ...item,
+    safeSummary: {
+      ...item.safeSummary,
+      matchStatus: "matched",
+      safeReasonCode: "provider_refund_failed",
+      providerRefundId: "re_3645",
+    },
+  });
+  assertEquals(failed.title, "Provider refund failed");
+  assertMatch(failed.explanation, /did not complete/);
+  assertEquals(failed.fields.find(([k]) => k === "Provider refund")?.[1], "re_3645");
   assertEquals(queueRowModel({ itemKind: "refund_operation", itemId: "r1", safeSummary: { operationId: "r1" } }).kind, "refund");
 });
 

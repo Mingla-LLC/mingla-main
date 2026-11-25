@@ -178,6 +178,7 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
       "refund_record_id",
     ],
     buyer_order_cancelled: ["order_id", "event_id", "refund_record_id"],
+    buyer_refund_failed: ["order_id", "event_id", "refund_record_id"],
     buyer_contribution_receipt: ["contribution_id", "event_id"],
     buyer_event_updated: ["order_id", "event_id", "event_date_id"],
     buyer_venue_order_receipt: ["venue_order_id", "venue_id"],

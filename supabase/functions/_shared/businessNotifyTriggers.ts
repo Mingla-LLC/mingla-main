@@ -258,7 +258,10 @@ export async function fireBuyerPurchaseConfirmationPush(
 export async function fireBuyerOrderNotify(
   supabase: SupabaseClient,
   input: {
-    categoryKey: "buyer_refund_issued" | "buyer_order_cancelled";
+    categoryKey:
+      | "buyer_refund_issued"
+      | "buyer_order_cancelled"
+      | "buyer_refund_failed";
     orderId: string;
     idempotencyKey: string;
     extraPayload?: Record<string, unknown>;

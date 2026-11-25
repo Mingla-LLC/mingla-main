@@ -2,6 +2,8 @@
 -- MINGLA-INVARIANT: I-4522-HOST-NEVER-PAID-REFUNDS | issue #4522 | A host is never paid money that went back to a traveler: no payout sends more than its sales are worth after their refunds, and a refund after payout becomes the host's payout debt.
 -- MINGLA-INVARIANT: I-4522-CANCEL-COMPLETABLE | issue #4522 | One trip cancel is one refund operation: until every refund it intends is made and recorded it stays in progress, a host retry and the instalment run resume it, no refund is sent twice, and the booking's sales stay held from payouts.
 -- MINGLA-INVARIANT: I-4522-TRIP-CALENDAR-DAYS | issue #4522 | Trip refund tiers count calendar days from the cancel date in the trip's zone to the stored departure date, and a trip stops taking bookings when its departure day begins in its zone.
+-- MINGLA-INVARIANT: I-3645-PROVIDER-REFUND-TRUTH | issue #3645 | A refund is counted on its exact provider charge only while confirmed; terminal failure cannot be resurrected and pending provider money blocks payout.
+-- MINGLA-INVARIANT: I-3645-LATE-REFUND-DEBT-AUTHORIZATION | issue #3645 | Debt opened before payout authorization reduces the payable claim and its growth refreshes the operator alert.
 \set ON_ERROR_STOP on
 
 -- Issue #4522 slice 8 (M4, 20281202084522): refunds and payouts for v2
@@ -1450,5 +1452,308 @@ BEGIN
     RAISE EXCEPTION 'L-0 bookings close at 00:00 on the departure day in the trip''s zone';
   END IF;
 END $$;
+
+-- D-1: a provider reversal reaches a real #2097-settled card refund.
+DO $$
+DECLARE
+  v_order uuid := '36450000-0000-4000-8000-0000000000d1';
+  v_id uuid;
+  v_result jsonb;
+BEGIN
+  PERFORM pg_temp.sale(v_order, '45220008-0000-4000-8000-000000000024', 'USD', 50000, 'pi_3645_d1', false);
+  v_id := pg_temp.card_refund(v_order, 10000, 450);
+  UPDATE public.orders SET cancelled_at=now() WHERE id=v_order;
+  v_result := public.issue_3645_record_stripe_refund_lifecycle(
+    're_' || v_id, 'pi_3645_d1', 'acct_wrong', 'usd', 10000, 'failed', now());
+  IF v_result->>'status' <> 'mismatched'
+     OR (SELECT status FROM public.refunds WHERE id=v_id) <> 'succeeded' THEN
+    RAISE EXCEPTION 'D1: another connected account must not reverse this refund: %',v_result;
+  END IF;
+  v_result := public.issue_3645_record_stripe_refund_lifecycle(
+    're_' || v_id, 'pi_3645_d1', 'acct_i4522', 'usd', 10000, 'failed', now());
+  IF v_result->>'status' <> 'matched'
+     OR v_result #>> '{buyer_correction,cancelled}' IS DISTINCT FROM 'true'
+     OR (SELECT status FROM public.refunds WHERE id=v_id) <> 'failed'
+     OR (SELECT buyer_refund_status FROM public.refunds WHERE id=v_id) <> 'failed'
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id=v_order) <> 0
+     OR (SELECT payment_status FROM public.orders WHERE id=v_order) <> 'cancelled'
+     OR public.issue_3645_unresolved_provider_refund_cents(v_order,NULL) <> 10000 THEN
+    RAISE EXCEPTION 'D1: provider failure must reverse the buyer ledger and keep the cancellation: %',v_result;
+  END IF;
+  PERFORM public.issue_3645_record_stripe_refund_lifecycle(
+    're_' || v_id, 'pi_3645_d1', 'acct_i4522', 'usd', 10000, 'failed', now());
+  IF (SELECT count(*) FROM public.ticket_order_notifications
+      WHERE order_id=v_order AND payload->>'template_key'='buyer_refund_failed') <> 1 THEN
+    RAISE EXCEPTION 'D1: replays must produce exactly one buyer correction';
+  END IF;
+END;
+$$;
+
+-- A failed terminal event can arrive before an older success. A tombstone
+-- for the exact charge fences the older event, and unrelated refunds can
+-- still settle from pending through the normal dashboard allocator.
+DO $$
+DECLARE
+  v_order uuid := '36450000-0000-4000-8000-0000000000d3';
+  v_result jsonb;
+BEGIN
+  PERFORM pg_temp.sale(v_order, '45220008-0000-4000-8000-000000000024', 'USD', 50000, 'pi_3645_d3', false);
+  v_result := public.issue_3645_record_stripe_refund_lifecycle(
+    're_3645_pending', 'pi_3645_d3', 'acct_i4522', 'usd', 10000, 'pending', now());
+  IF v_result->>'status' <> 'matched' OR NOT EXISTS (
+    SELECT 1 FROM public.refunds WHERE stripe_refund_id='re_3645_pending'
+      AND status='pending' AND buyer_refund_status='provider_pending'
+  ) OR (SELECT refunded_amount_cents FROM public.orders WHERE id=v_order) <> 0 THEN
+    RAISE EXCEPTION 'D1: dashboard refund pending must not count as paid';
+  END IF;
+  PERFORM public.biz_refund_order_commit_from_webhook(v_order,'re_3645_pending',10000,'usd',NULL,NULL);
+  IF (SELECT refunded_amount_cents FROM public.orders WHERE id=v_order) <> 10000 THEN
+    RAISE EXCEPTION 'D1: matching success should settle the pending amount';
+  END IF;
+  PERFORM public.issue_3645_record_stripe_refund_lifecycle(
+    're_3645_failed_first', 'pi_3645_d3', 'acct_i4522', 'usd', 5000, 'failed', now());
+  PERFORM public.biz_refund_order_commit_from_webhook(v_order,'re_3645_failed_first',5000,'usd',NULL,NULL);
+  IF (SELECT refunded_amount_cents FROM public.orders WHERE id=v_order) <> 10000
+     OR (SELECT status FROM public.refunds WHERE stripe_refund_id='re_3645_failed_first') <> 'failed' THEN
+    RAISE EXCEPTION 'D1: a stale success resurrected a terminal failure';
+  END IF;
+END;
+$$;
+
+-- D-2: one exact reference is enough for a dashboard refund with a human
+-- note. Pending holds money, processed records it, and an old replay is inert.
+DO $$
+DECLARE
+  v_order uuid := '36450000-0000-4000-8000-0000000000d2';
+  v_result jsonb;
+  v_part uuid;
+  v_when timestamptz := now();
+BEGIN
+  PERFORM pg_temp.sale(v_order, '45220008-0000-4000-8000-000000000025', 'NGN', 30000000, 'ps_3645_d2', false);
+  UPDATE public.orders SET stripe_charge_id='36450001' WHERE id=v_order;
+  PERFORM public.run_payout_release_dark_sweep(now());
+
+  v_result := public.issue_3645_reconcile_paystack_dashboard_refund(
+    '364501', 'ps_3645_d2', 'Refund requested by customer', 'ngn', 1000000, 'accepted', v_when);
+  IF v_result->>'status' <> 'matched'
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id=v_order) <> 0
+     OR (SELECT net_cents FROM public.issue_4522_payout_item_now(
+       'order',v_order,30000000,0,0,1350000,28650000)) <> 0 THEN
+    RAISE EXCEPTION 'D2: provider pending must hold payout without booking a refund: %', v_result;
+  END IF;
+  v_result := public.issue_3645_reconcile_paystack_dashboard_refund(
+    '364501', 'ps_3645_d2', NULL, 'ngn', 1000000, 'processed', v_when + interval '1 minute');
+  PERFORM public.issue_3645_reconcile_paystack_dashboard_refund(
+    '364501', 'ps_3645_d2', NULL, 'ngn', 1000000, 'accepted', v_when);
+  IF v_result->>'status' <> 'matched'
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id=v_order) <> 1000000
+     OR (SELECT count(*) FROM public.refunds WHERE order_id=v_order AND status='succeeded') <> 1
+     OR (SELECT status FROM public.paystack_refund_attempts WHERE provider_refund_id='364501') <> 'processed' THEN
+    RAISE EXCEPTION 'D2: successful charge refund must be booked exactly once: %',v_result;
+  END IF;
+  v_result := public.issue_3645_reconcile_paystack_dashboard_refund(
+    '364502', 'ps_3645_d2', NULL, 'usd', 1000000, 'processed', v_when);
+  IF v_result->>'status' <> 'mismatched'
+     OR EXISTS (SELECT 1 FROM public.paystack_refund_attempts WHERE provider_refund_id='364502') THEN
+    RAISE EXCEPTION 'D2: conflicting currency must be surfaced without booking: %',v_result;
+  END IF;
+
+  INSERT INTO public.order_installments(order_id,ordinal,amount_cents,currency,due_at,status,
+    provider,collection_method,buyer_total_cents,collected_at,stripe_payment_intent_id)
+  VALUES(v_order,1,1500000,'NGN',now(),'collected','paystack','pay_link',1500000,now(),'ps_3645_d2_row')
+  RETURNING id INTO v_part;
+
+  PERFORM public.issue_3645_reconcile_paystack_dashboard_refund(
+    '364503', 'ps_3645_d2_row', NULL, 'ngn', 200000, 'accepted', v_when);
+  IF NOT public.issue_4522_row_payout_blocked(v_part) THEN
+    RAISE EXCEPTION 'D2: a dashboard refund must hold an installment before it is attached';
+  END IF;
+  PERFORM public.issue_3645_reconcile_paystack_dashboard_refund(
+    '364503', 'ps_3645_d2_row', NULL, 'ngn', 200000, 'processed', v_when + interval '1 minute');
+  IF (SELECT refunded_amount_cents FROM public.order_installments WHERE id=v_part) <> 200000
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id=v_order) <> 1000000
+     OR public.issue_4522_row_payout_blocked(v_part) THEN
+    RAISE EXCEPTION 'D2: installment refunds are applied to their own charge and release its pending hold';
+  END IF;
+END;
+$$;
+
+-- H-3 / H-4: a real card release already paid two sales. A later release
+-- is attached and claimed first. New/refreshed debt must be visible to its
+-- final authorization even though the late release's own sale never changed.
+DO $$
+DECLARE
+  v_first uuid := '36450000-0000-4000-8000-0000000000a1';
+  v_second uuid := '36450000-0000-4000-8000-0000000000a2';
+  v_new uuid := '36450000-0000-4000-8000-0000000000a3';
+  v_brand uuid := '36450000-0000-4000-8000-000000000030';
+  v_event uuid := '36450000-0000-4000-8000-000000000040';
+  v_host uuid := '45220008-0000-4000-8000-000000000001';
+  v_origin public.brand_payout_releases;
+  v_later public.brand_payout_releases;
+  v_claim record;
+  v_alert record;
+  v_debt public.organiser_payout_debts;
+  v_payout integer;
+BEGIN
+  INSERT INTO public.brands(id,account_id,name,slug,default_currency,payment_provider,payment_country,payout_hold_cutover_at)
+  VALUES(v_brand,v_host,'Late debt Stripe','late-debt-stripe-3645','USD','stripe','US',now()-interval '30 days');
+  INSERT INTO public.stripe_connect_accounts(brand_id,stripe_account_id,charges_enabled,payouts_enabled,country,default_currency)
+  VALUES(v_brand,'acct_3645_h3',true,true,'US','usd');
+  INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,currency)
+  VALUES(v_event,v_brand,v_host,'Late debt card payout','late-debt-card-payout-3645','trip','scheduled','public','America/New_York','USD');
+  INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master)
+  VALUES(v_event,now()+interval '120 days',now()+interval '124 days','America/New_York',true);
+  PERFORM pg_temp.sale(v_first,v_event,'USD',50000,'pi_3645_h31',false);
+  PERFORM pg_temp.sale(v_second,v_event,'USD',50000,'pi_3645_h32',false);
+  PERFORM public.run_payout_release_dark_sweep(now()+interval '3 days');
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_origin := pg_temp.rel(v_first);
+  IF v_origin.id IS DISTINCT FROM (pg_temp.rel(v_second)).id THEN
+    RAISE EXCEPTION 'H3: two sales did not attach to one release';
+  END IF;
+  SELECT * INTO STRICT v_claim FROM public.claim_stripe_payout_releases(100,now()+interval '3 days')
+  WHERE release_id=v_origin.id;
+  v_payout := v_claim.net_release_cents + v_claim.maturity_recredit_cents;
+  IF NOT public.authorize_stripe_payout_execution(v_origin.id,v_claim.claim_id,v_payout,now()+interval '3 days') THEN
+    RAISE EXCEPTION 'H3/H4: fixture origin did not authorize';
+  END IF;
+  PERFORM public.record_stripe_payout_execution(v_origin.id,v_claim.claim_id,'accepted','po_3645_h3',
+    v_payout,NULL,now()+interval '3 days');
+
+  PERFORM pg_temp.sale(v_new,v_event,'USD',100000,'pi_3645_h4',false);
+  PERFORM public.run_payout_release_dark_sweep(now()+interval '4 days');
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_later := pg_temp.rel(v_new);
+  SELECT * INTO STRICT v_claim FROM public.claim_stripe_payout_releases(100,now()+interval '4 days')
+  WHERE release_id=v_later.id;
+
+  PERFORM pg_temp.card_refund(v_first,10000,450);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  SELECT * INTO STRICT v_alert FROM public.claim_payout_release_alerts(100,now()+interval '4 days')
+  WHERE release_id=v_origin.id AND alert_kind='payout_refund_debt';
+  IF v_alert.idempotency_key NOT LIKE '%:r1' THEN RAISE EXCEPTION 'H3: first revision'; END IF;
+  IF public.authorize_stripe_payout_execution(v_later.id,v_claim.claim_id,
+       v_claim.net_release_cents+v_claim.maturity_recredit_cents,now()+interval '4 days') THEN
+    RAISE EXCEPTION 'H4: earlier release did not reserve the first newly opened slice';
+  END IF;
+  SELECT * INTO STRICT v_claim FROM public.claim_stripe_payout_releases(100,now()+interval '4 days')
+  WHERE release_id=v_later.id;
+
+  PERFORM pg_temp.card_refund(v_second,10000,450);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF public.record_payout_release_alert_delivery(v_alert.alert_id,v_alert.claim_id,
+       'provider_accepted',NULL,now()+interval '4 days') <> 'pending' THEN
+    RAISE EXCEPTION 'H3: a prior dispatch cannot mark the increased debt alert sent: %',
+      (SELECT to_jsonb(o) FROM public.payout_release_alert_outbox o WHERE id=v_alert.alert_id);
+  END IF;
+  SELECT * INTO STRICT v_alert FROM public.claim_payout_release_alerts(100,now()+interval '4 days')
+  WHERE release_id=v_origin.id AND alert_kind='payout_refund_debt';
+  IF v_alert.idempotency_key NOT LIKE '%:r2' OR v_alert.error_message NOT LIKE '%19100 USD%' THEN
+    RAISE EXCEPTION 'H3: debt growth needs the new amount and key: %',v_alert;
+  END IF;
+
+  IF public.authorize_stripe_payout_execution(v_later.id,v_claim.claim_id,
+       v_claim.net_release_cents+v_claim.maturity_recredit_cents,now()+interval '4 days') THEN
+    RAISE EXCEPTION 'H4: old claim authorized after post-claim debt became visible';
+  END IF;
+  SELECT * INTO STRICT v_debt FROM public.organiser_payout_debts
+  WHERE origin_release_id=v_origin.id AND kind='post_release_refund';
+  IF v_debt.recovered_cents <> 19100 OR (
+       SELECT count(*) FROM public.payout_debt_applications
+       WHERE debt_id=v_debt.id AND release_id=v_later.id
+     ) <> 2
+     OR (SELECT count(*) FROM public.payout_debt_applications
+         WHERE debt_id=v_debt.id AND release_id=v_later.id
+           AND idempotency_key LIKE 'late-debt-apply:%') <> 2
+     OR (SELECT net_release_cents FROM public.brand_payout_releases WHERE id=v_later.id)
+       <> v_claim.net_release_cents-9550 THEN
+    RAISE EXCEPTION 'H4: failed authorization must reserve exactly the new debt: %',v_debt;
+  END IF;
+END;
+$$;
+
+-- H-4 Paystack: preserve the old plan, create fresh chunk identities for a
+-- wholly untouched plan, and settle the lower plan without an extra transfer.
+DO $$
+DECLARE
+  v_brand uuid := '36450000-0000-4000-8000-000000000010';
+  v_event uuid := '36450000-0000-4000-8000-000000000020';
+  v_host uuid := '45220008-0000-4000-8000-000000000001';
+  v_origin_sale uuid := '36450000-0000-4000-8000-000000000010'::uuid;
+  v_later_sale uuid := '36450000-0000-4000-8000-000000000011';
+  v_origin public.brand_payout_releases;
+  v_later public.brand_payout_releases;
+  v_claim record;
+  v_leg public.payout_transfer_legs;
+  v_due integer;
+BEGIN
+  INSERT INTO public.brands(id,account_id,name,slug,default_currency,payment_provider,payment_country,payout_hold_cutover_at)
+  VALUES(v_brand,v_host,'Late debt Paystack','late-debt-paystack-3645','NGN','paystack','NG',now()-interval '30 days');
+  INSERT INTO public.brand_paystack_recipients(brand_id,recipient_code,bank_code,account_fingerprint,
+    account_number_masked,account_name,is_active)
+  VALUES(v_brand,'RCP_3645_h4','058','hmac-sha256:'||repeat('bb',32),'••••0010','Late Debt',true);
+  INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,currency)
+  VALUES(v_event,v_brand,v_host,'Late debt payout','late-debt-payout-3645','trip','scheduled','public','Africa/Lagos','NGN');
+  INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master)
+  VALUES(v_event,now()+interval '120 days',now()+interval '124 days','Africa/Lagos',true);
+
+  PERFORM pg_temp.sale(v_origin_sale,v_event,'NGN',30000000,'ps_3645_h4_origin',false);
+  UPDATE public.orders SET stripe_charge_id='36450410' WHERE id=v_origin_sale;
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_origin := pg_temp.rel(v_origin_sale);
+  PERFORM pg_temp.pay_out(v_origin.id);
+
+  PERFORM pg_temp.sale(v_later_sale,v_event,'NGN',30000000,'ps_3645_h4_later',false);
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_later := pg_temp.rel(v_later_sale);
+  SELECT * INTO STRICT v_claim FROM public.claim_paystack_payout_releases(100,now())
+  WHERE release_id=v_later.id;
+  v_due := v_claim.net_release_cents + v_claim.maturity_recredit_cents;
+  PERFORM public.record_paystack_leg_plan(v_later.id,v_claim.claim_id,jsonb_build_array(jsonb_build_object(
+    'chunk_index',0,'principal_cents',v_due-10000,'estimated_fee_cents',5000,'stamp_duty_cents',5000)),now());
+
+  PERFORM public.issue_3645_reconcile_paystack_dashboard_refund(
+    '36450411','ps_3645_h4_origin',NULL,'ngn',1000000,'processed',now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF public.authorize_paystack_payout_execution(v_later.id,v_claim.claim_id,now()) THEN
+    RAISE EXCEPTION 'H4: should reject Paystack plan for an amount before post-claim refund debt';
+  END IF;
+  IF (SELECT recovered_cents FROM public.organiser_payout_debts
+      WHERE origin_release_id=v_origin.id AND kind='post_release_refund') IS DISTINCT FROM 1000000
+     OR NOT EXISTS (SELECT 1 FROM public.payout_transfer_legs
+       WHERE release_id=v_later.id AND chunk_index=0 AND refund_debt_superseded_at IS NOT NULL
+         AND provider_reference IS NULL) THEN
+    RAISE EXCEPTION 'H4: debt must be reserved once and the old untouched plan preserved';
+  END IF;
+  SELECT * INTO STRICT v_claim FROM public.claim_paystack_payout_releases(100,now())
+  WHERE release_id=v_later.id;
+  IF v_due - 1000000 <> v_claim.net_release_cents + v_claim.maturity_recredit_cents THEN
+    RAISE EXCEPTION 'H4: re-claim must carry reduced value';
+  END IF;
+  v_due := v_due - 1000000;
+  PERFORM public.record_paystack_leg_plan(v_later.id,v_claim.claim_id,jsonb_build_array(jsonb_build_object(
+    'chunk_index',0,'principal_cents',v_due-10000,'estimated_fee_cents',5000,'stamp_duty_cents',5000)),now());
+  IF NOT public.authorize_paystack_payout_execution(v_later.id,v_claim.claim_id,now()) THEN
+    RAISE EXCEPTION 'H4: the reduced, fresh Paystack plan should be eligible';
+  END IF;
+  SELECT * INTO STRICT v_leg FROM public.payout_transfer_legs
+  WHERE release_id=v_later.id AND kind='organiser' AND refund_debt_superseded_at IS NULL;
+  IF v_leg.chunk_index <> 1 THEN RAISE EXCEPTION 'H4: never reuse a superseded chunk reference'; END IF;
+  PERFORM public.record_paystack_transfer_leg_outcome(v_leg.id,v_later.id,'succeeded','TRF_3645_h4','ref-3645-h4',NULL,now());
+  IF public.reconcile_paystack_transfer_leg_fee(v_leg.id,5000,5000,now()) <> 'released' THEN
+    RAISE EXCEPTION 'H4: settled replacement plan wrongly waited on the superseded leg';
+  END IF;
+END;
+$$;
 
 ROLLBACK;

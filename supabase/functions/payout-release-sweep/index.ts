@@ -369,7 +369,10 @@ export function payoutReleaseAlertCopyFor(
         "was not sent because refunds made after its sales were added lowered what it owes. It now owes the lower amount and the next payout run sends that. Check why the refund had not reached the payout",
     };
   }
-  if (errorMessage.startsWith(PAYOUT_REFUND_DEBT_OPENED_ERROR)) {
+  if (
+    kind === "payout_refund_debt" ||
+    errorMessage.startsWith(PAYOUT_REFUND_DEBT_OPENED_ERROR)
+  ) {
     return {
       type: "ops.payout_release_refund_debt_opened",
       title: "Refund after payout: the organiser owes it back",
@@ -717,11 +720,11 @@ async function notifyAttemptCap(
   // one layer below this function and ops would keep the stale number. Every
   // other kind keeps the #1217 key byte-for-byte: their payload is a fixed
   // fact, and re-sending it would be noise.
-  // Issue #3645 — the stale stay-dispute kind re-arms with a revision key
-  // the same way, when the set of stale disputes on a release changes.
+  // Stay disputes and refund debt also rearm when their evidence changes.
   const idempotencyKey =
     (alertKind === "paystack_float_shortfall" ||
-        alertKind === "stay_dispute_hold_open") &&
+        alertKind === "stay_dispute_hold_open" ||
+        alertKind === "payout_refund_debt") &&
       typeof outboxIdempotencyKey === "string" &&
       outboxIdempotencyKey.length > 0
       ? outboxIdempotencyKey
@@ -1047,27 +1050,29 @@ async function readOrganiserLegs(
   const { data, error } = await admin
     .from("payout_transfer_legs")
     .select(
-      "id, chunk_index, principal_cents, estimated_fee_cents, stamp_duty_cents, status, provider_reference, provider_transfer_code, attempt_count",
+      "id, chunk_index, principal_cents, estimated_fee_cents, stamp_duty_cents, status, provider_reference, provider_transfer_code, attempt_count, refund_debt_superseded_at",
     )
     .eq("release_id", releaseId)
     .eq("kind", "organiser")
     .order("chunk_index", { ascending: true });
   if (error) throw new Error(`organiser_leg_read_failed:${error.message}`);
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    legId: String(row.id),
-    chunkIndex: Number(row.chunk_index),
-    principalCents: Number(row.principal_cents),
-    estimatedFeeCents: Number(row.estimated_fee_cents),
-    stampDutyCents: Number(row.stamp_duty_cents),
-    status: String(row.status),
-    providerReference: row.provider_reference == null
-      ? null
-      : String(row.provider_reference),
-    providerTransferCode: row.provider_transfer_code == null
-      ? null
-      : String(row.provider_transfer_code),
-    attemptCount: Number(row.attempt_count),
-  }));
+  return ((data ?? []) as Array<Record<string, unknown>>)
+    .filter((row) => row.refund_debt_superseded_at == null)
+    .map((row) => ({
+      legId: String(row.id),
+      chunkIndex: Number(row.chunk_index),
+      principalCents: Number(row.principal_cents),
+      estimatedFeeCents: Number(row.estimated_fee_cents),
+      stampDutyCents: Number(row.stamp_duty_cents),
+      status: String(row.status),
+      providerReference: row.provider_reference == null
+        ? null
+        : String(row.provider_reference),
+      providerTransferCode: row.provider_transfer_code == null
+        ? null
+        : String(row.provider_transfer_code),
+      attemptCount: Number(row.attempt_count),
+    }));
 }
 
 async function readPartnerCeilingKobo(
@@ -1589,7 +1594,7 @@ export async function captureProviderFees(
       break;
     }
     const candidate = ordered[i];
-    let timer: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const fee = await Promise.race([
         deps.resolveProviderFee(candidate),

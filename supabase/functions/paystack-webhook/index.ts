@@ -36,6 +36,11 @@ import {
 import { handlePaystackChargeSuccess } from "../_shared/paystackWebhookRouter.ts";
 import { requestGigLateRefund } from "../_shared/gigPaymentCapture.ts";
 import { handlePaystackRefundEvent } from "../_shared/paystackRefundRouter.ts";
+import {
+  alertOrderRefundException,
+  orderRefundInboxFields,
+  type OrderRefundWebhookOutcome,
+} from "../_shared/orderRefundWebhookOutcome.ts";
 import { handlePaystackDisputeEvent } from "../_shared/paystackDisputeRouter.ts";
 // ORCH-1331 — partner Paystack payout rail: fail-soft split fan-out on
 // charge.success + transfer.*/refund.processed lifecycle routing.
@@ -198,6 +203,7 @@ serve(async (req) => {
 
   // ---- Route on top-level event ----
   let processingError: string | null = null;
+  let refundOutcome: OrderRefundWebhookOutcome | void = undefined;
   let finalizedOrderId: string | null = null;
   // ORCH-1331 — captured for the post-confirmation partner-split fan-out.
   let splitFanOut:
@@ -268,14 +274,22 @@ serve(async (req) => {
       // ORCH-1331 — dashboard-issued NGN refunds: reverse the pending split /
       // stamp reversal_owed_at on an already-paid one.
       await handlePaystackRefundProcessed(supabase, data);
-      await handlePaystackRefundEvent(supabase, "refund.processed", data);
+      refundOutcome = await handlePaystackRefundEvent(
+        supabase,
+        "refund.processed",
+        data,
+      );
     } else if (eventName === "refund.failed") {
-      await handlePaystackRefundEvent(supabase, "refund.failed", data);
+      refundOutcome = await handlePaystackRefundEvent(
+        supabase,
+        "refund.failed",
+        data,
+      );
     } else if (
       eventName === "refund.pending" || eventName === "refund.processing" ||
       eventName === "refund.needs-attention"
     ) {
-      await handlePaystackRefundEvent(
+      refundOutcome = await handlePaystackRefundEvent(
         supabase,
         eventName as
           | "refund.pending"
@@ -307,6 +321,13 @@ serve(async (req) => {
         target_id: idempotencyKey,
         after: { event: eventName, reference },
       });
+    }
+    if (refundOutcome) {
+      await alertOrderRefundException(
+        "paystack",
+        String(data.id ?? ""),
+        refundOutcome,
+      );
     }
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
@@ -399,6 +420,9 @@ serve(async (req) => {
   const { error: markError } = await supabase
     .from("payment_webhook_events")
     .update({
+      ...(refundOutcome
+        ? orderRefundInboxFields(refundOutcome, String(data.id ?? ""))
+        : {}),
       processed: processingError === null,
       processed_at: new Date().toISOString(),
       retry_count: nextRetryCount,

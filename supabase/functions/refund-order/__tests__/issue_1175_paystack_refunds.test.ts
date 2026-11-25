@@ -265,7 +265,7 @@ Deno.test("issue #1175: order and trip handlers retain Paystack and Stripe direc
   }
 });
 
-Deno.test("issue #1175: webhook routes processed and failed refunds through one idempotent RPC", async () => {
+Deno.test("issue #1175: webhook routes processed and failed refunds and keeps the marked-refund RPC", async () => {
   const root = new URL("../../", import.meta.url);
   const webhook = await Deno.readTextFile(
     new URL("paystack-webhook/index.ts", root),
@@ -273,18 +273,19 @@ Deno.test("issue #1175: webhook routes processed and failed refunds through one 
   const router = await Deno.readTextFile(
     new URL("_shared/paystackRefundRouter.ts", root),
   );
-  assert(
-    webhook.includes(
-      'handlePaystackRefundEvent(supabase, "refund.processed", data)',
-    ),
-    "processed refund webhook is not routed",
-  );
-  assert(
-    webhook.includes(
-      'handlePaystackRefundEvent(supabase, "refund.failed", data)',
-    ),
-    "failed refund webhook is not routed",
-  );
+  for (const status of ["processed", "failed"]) {
+    const event = `refund\\.${status}`;
+    const branch = webhook.match(new RegExp(
+      `else\\s+if\\s*\\(\\s*eventName\\s*===\\s*"${event}"\\s*\\)\\s*\\{([\\s\\S]*?)(?=\\}\\s*else\\b)`,
+    ))?.[1] ?? "";
+    const handlerCall = new RegExp(
+      `refundOutcome\\s*=\\s*await\\s+handlePaystackRefundEvent\\(\\s*supabase\\s*,\\s*"${event}"\\s*,\\s*data\\s*,?\\s*\\)`,
+    );
+    assert(
+      handlerCall.test(branch),
+      `refund.${status} must route through the handler and retain its outcome`,
+    );
+  }
   assert(
     router.includes('"record_paystack_refund_outcome"'),
     "webhook router bypasses the idempotent refund RPC",

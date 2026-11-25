@@ -13,6 +13,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asse
 import { applyHunks, definitions } from "./issue_3645_reemit_hunks.ts";
 import { LEDGER_FOLLOWUP_REEMITS } from "./issue_3645_ledger_followup_reemit_hunks.ts";
 import { PAYOUT_GAPS_REEMITS } from "./issue_3645_payout_gaps_reemit_hunks.ts";
+import { LATE_REFUND_DEBT_REEMITS } from "./issue_3645_late_refund_debt_reemit_hunks.ts";
 import {
   FLOAT_FORECAST_NEW_FUNCTIONS,
   FLOAT_FORECAST_REEMITS,
@@ -67,18 +68,23 @@ Deno.test("#3645 2c the target defines only its declared re-emits and new functi
 
 Deno.test("#3645 2c the target is still the latest definition of what it defines", () => {
   const mine = [...definitions(Deno.readTextFileSync(TARGET)).keys()];
+  const latest = new Map(mine.map((name) => [name, TARGET]));
+  const declared = [...LEDGER_FOLLOWUP_REEMITS, ...PAYOUT_GAPS_REEMITS, ...LATE_REFUND_DEBT_REEMITS];
   for (const file of files().filter((f) => f > TARGET_FILE)) {
-    const later = definitions(Deno.readTextFileSync(`${DIR}/${file}`));
+    const path = `${DIR}/${file}`;
+    const later = definitions(Deno.readTextFileSync(path));
     for (const name of mine) {
+      if (!later.has(name)) continue;
       // A later bundle may supersede a 2c body only through its own guard,
-      // which declares its hunks against this target.
-      const superseded = [...LEDGER_FOLLOWUP_REEMITS, ...PAYOUT_GAPS_REEMITS].some((r) =>
-        r.target === `${DIR}/${file}` && r.fn === name && r.source === TARGET
+      // which declares its hunks against the most recent checked body.
+      const superseded = declared.some((r) =>
+        r.target === path && r.fn === name && r.source === latest.get(name)
       );
       assert(
-        !later.has(name) || superseded,
-        `${file} redefines ${name}; declare its hunks against ${TARGET_FILE} in its own guard`,
+        superseded,
+        `${file} redefines ${name}; declare its hunks against ${latest.get(name)} in its own guard`,
       );
+      latest.set(name, path);
     }
   }
 });

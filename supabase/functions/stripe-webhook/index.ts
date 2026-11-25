@@ -14,6 +14,10 @@ import {
 } from "../_shared/stripeIpAllowlist.ts";
 import { routeStripeEvent } from "../_shared/stripeWebhookRouter.ts";
 import {
+  alertOrderRefundException,
+  orderRefundInboxFields,
+} from "../_shared/orderRefundWebhookOutcome.ts";
+import {
   classifyStripeWebhookFailure,
   stripeWebhookResponseStatus,
 } from "../_shared/stripeWebhookRetry.ts";
@@ -171,7 +175,10 @@ export interface ProcessVerifiedStripeEventDeps {
   supabase: WebhookSupabase;
   route: (
     event: WebhookEvent,
-  ) => Promise<{ gigMismatchReason?: string | null } | void>;
+  ) => Promise<{
+    gigMismatchReason?: string | null;
+    refundOutcome?: Parameters<typeof orderRefundInboxFields>[0];
+  } | void>;
 }
 
 /**
@@ -260,8 +267,14 @@ export async function processVerifiedStripeEvent(
 
   let processingError: string | null = null;
   let failureClass: "transient" | "config" | "permanent" | null = null;
+  let refundFields: ReturnType<typeof orderRefundInboxFields> | undefined;
   try {
     const routed = await deps.route(event);
+    if (routed?.refundOutcome) {
+      const refundId = String(event.data.object.id ?? "");
+      refundFields = orderRefundInboxFields(routed.refundOutcome, refundId);
+      await alertOrderRefundException("stripe", refundId, routed.refundOutcome);
+    }
     if (routed && routed.gigMismatchReason) {
       await supabase.from("payment_webhook_events").update({
         match_status: "mismatched",
@@ -305,6 +318,7 @@ export async function processVerifiedStripeEvent(
   const exhausted = processingError !== null &&
     nextRetryCount >= MAX_WEBHOOK_ATTEMPTS;
   const updatePayload: Record<string, unknown> = {
+    ...refundFields,
     processed: processingError === null,
     processed_at: new Date().toISOString(),
     retry_count: nextRetryCount,

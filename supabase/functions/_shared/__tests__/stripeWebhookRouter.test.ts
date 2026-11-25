@@ -7,6 +7,8 @@ import {
   routeStripeEvent,
   STRIPE_ROUTED_EVENT_TYPES,
 } from "../stripeWebhookRouter.ts";
+import { handlePaystackRefundEvent } from "../paystackRefundRouter.ts";
+import { orderRefundInboxFields } from "../orderRefundWebhookOutcome.ts";
 
 class FakeBuilder {
   table: string;
@@ -62,6 +64,17 @@ class FakeBuilder {
   }
 
   maybeSingle() {
+    if (this.table === "orders" && this.db.refundOrder) {
+      const order = this.db.refundOrder;
+      const matches = this.filters.stripe_payment_intent_id === order.paymentIntentId ||
+        this.filters.id === order.id;
+      return Promise.resolve({ data: matches ? order : null, error: null });
+    }
+    if (this.table === "refunds" && this.db.refundRecord) {
+      const record = this.db.refundRecord;
+      const matches = this.filters.stripe_refund_id === record.providerId;
+      return Promise.resolve({ data: matches ? record : null, error: null });
+    }
     if (this.table === "ticket_checkout_sessions") {
       return Promise.resolve({
         data: {
@@ -106,6 +119,19 @@ class FakeDb {
   deletes: Array<{ table: string; filters: Record<string, unknown> }> = [];
   rpcs: Array<{ fn: string; args: Record<string, unknown> }> = [];
   detachedAt: string | null = null;
+  refundOrder: {
+    id: string;
+    paymentIntentId: string;
+    event_id: string;
+    buyer_email: string;
+    buyer_user_id: string;
+    currency: string;
+  } | null = null;
+  refundRecord: {
+    id: string;
+    providerId: string;
+    buyer_refund_status: string;
+  } | null = null;
 
   from(table: string) {
     return new FakeBuilder(this, table);
@@ -113,6 +139,18 @@ class FakeDb {
 
   rpc(fn: string, args: Record<string, unknown>) {
     this.rpcs.push({ fn, args });
+    if (fn === "issue_3645_record_stripe_refund_lifecycle") {
+      return Promise.resolve({
+        data: { status: "matched", reason: "provider_refund_failed" },
+        error: null,
+      });
+    }
+    if (fn === "issue_3645_reconcile_paystack_dashboard_refund") {
+      return Promise.resolve({
+        data: { status: "unmatched", reason: "refund_charge_missing" },
+        error: null,
+      });
+    }
     if (fn === "issue_2079_verify_ticket_paid_identity") {
       // #2079: this replaces an unconditional "verified" stub, so the test now proves the
       // real refusal path instead of assuming success.
@@ -132,7 +170,137 @@ class FakeDb {
   }
 }
 
-Deno.test("router exposes 29 subscribed events and excludes fake requirements event", () => {
+Deno.test("#4063 Stripe webhook uses the local refund ID on both buyer notification paths", async () => {
+  const db = new FakeDb();
+  db.refundOrder = {
+    id: "order_4063",
+    paymentIntentId: "pi_4063",
+    event_id: "event_4063",
+    buyer_email: "buyer@example.test",
+    buyer_user_id: "buyer_4063",
+    currency: "USD",
+  };
+  db.refundRecord = {
+    id: "40630000-0000-4000-8000-000000000001",
+    providerId: "re_4063",
+    buyer_refund_status: "succeeded",
+  };
+  const buyerDispatches: Record<string, unknown>[] = [];
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SUPABASE_URL: Deno.env.get("SUPABASE_URL"),
+    SUPABASE_SERVICE_ROLE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+  };
+  Deno.env.set("SUPABASE_URL", "https://example-test.supabase.co");
+  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key-not-real");
+  globalThis.fetch = (input, init) => {
+    if (String(input).endsWith("/notify-dispatch")) {
+      buyerDispatches.push(JSON.parse(String(init?.body)));
+    }
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  };
+  try {
+    await routeStripeEvent(db as never, {} as never, {
+      id: "evt_4063",
+      type: "refund.updated",
+      data: { object: {
+        id: db.refundRecord.providerId,
+        payment_intent: db.refundOrder.paymentIntentId,
+        status: "succeeded",
+        amount: 1250,
+        currency: "usd",
+      } },
+    });
+
+    const email = db.upserts.find(({ table }) => table === "ticket_order_notifications");
+    const emailPayload = email?.payload.payload as Record<string, unknown>;
+    assertEquals(emailPayload.template_key, "buyer_refund_issued");
+    assertEquals(emailPayload.refund_record_id, db.refundRecord.id);
+    assertEquals(emailPayload.stripe_refund_id, db.refundRecord.providerId);
+    assertEquals(buyerDispatches.length, 1);
+    assertEquals(buyerDispatches[0].category_key, "buyer_refund_issued");
+    assertEquals(
+      (buyerDispatches[0].payload as Record<string, unknown>).refund_record_id,
+      db.refundRecord.id,
+    );
+
+    db.refundRecord.buyer_refund_status = "failed";
+    db.upserts.length = 0;
+    buyerDispatches.length = 0;
+    const replay = await routeStripeEvent(db as never, {} as never, {
+      id: "evt_4063_late",
+      type: "refund.updated",
+      data: { object: {
+        id: db.refundRecord.providerId,
+        payment_intent: db.refundOrder.paymentIntentId,
+        status: "succeeded",
+        amount: 1250,
+        currency: "usd",
+      } },
+    });
+    assertEquals(replay.refundOutcome?.reason, "provider_refund_failed");
+    assertEquals(db.upserts.some(({ table }) => table === "ticket_order_notifications"), false);
+    assertEquals(buyerDispatches, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [name, value] of Object.entries(originalEnv)) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+});
+
+Deno.test("#3645 dedicated Stripe failure routes exact evidence and opens a staff review", async () => {
+  const db = new FakeDb();
+  const result = await routeStripeEvent(db as never, {} as never, {
+    id: "evt_3645",
+    type: "refund.failed",
+    account: "acct_3645",
+    created: 1795507200,
+    data: { object: {
+      id: "re_3645",
+      payment_intent: "pi_3645",
+      status: "failed",
+      amount: 1250,
+      currency: "usd",
+    } },
+  });
+  const call = db.rpcs.find(({ fn }) => fn === "issue_3645_record_stripe_refund_lifecycle");
+  assertEquals(call?.args.p_provider_refund_id, "re_3645");
+  assertEquals(call?.args.p_payment_reference, "pi_3645");
+  assertEquals(call?.args.p_account, "acct_3645");
+  assertEquals(call?.args.p_status, "failed");
+  assertEquals(result.refundOutcome, {
+    status: "matched",
+    reason: "provider_refund_failed",
+  });
+  const fields = orderRefundInboxFields(result.refundOutcome!, "re_3645");
+  assertEquals(fields.match_status, "matched");
+  assertEquals(Number.isFinite(Date.parse(fields.first_response_due_at!)), true);
+});
+
+Deno.test("#3645 Paystack unrecognized notes use provider transaction evidence and never turn pending into failed", async () => {
+  const db = new FakeDb();
+  const result = await handlePaystackRefundEvent(db as never, "refund.needs-attention", {
+    id: 123456,
+    amount: 125000,
+    merchant_note: "Customer request",
+    transaction: { reference: "recorded_reference", currency: "NGN" },
+  });
+  const call = db.rpcs.find(({ fn }) => fn === "issue_3645_reconcile_paystack_dashboard_refund");
+  assertEquals(call?.args.p_provider_refund_id, "123456");
+  assertEquals(call?.args.p_transaction_reference, "recorded_reference");
+  assertEquals(call?.args.p_currency, "NGN");
+  assertEquals(call?.args.p_status, "accepted");
+  assertEquals(result, { status: "unmatched", reason: "refund_charge_missing" });
+  if (!result) throw new Error("missing inbox outcome");
+  const fields = orderRefundInboxFields(result, "123456");
+  assertEquals(fields.match_reason_code, "refund_charge_missing");
+  assertEquals(fields.matched_at, null);
+  assertEquals(Number.isFinite(Date.parse(fields.first_response_due_at!)), true);
+});
+
+Deno.test("router exposes 30 subscribed events and excludes fake requirements event", () => {
   // ORCH-0787 added charge.refunded + refund.created + refund.updated (3 events) to the
   // existing 19, bringing total to 22. The legacy charge.refund.updated remains for
   // detached-account audit-only handling per stripeWebhookRouter.ts:28.
@@ -147,7 +315,8 @@ Deno.test("router exposes 29 subscribed events and excludes fake requirements ev
   // Issue #3872 added transfer.reversed (1 event) so payee payout reversals are
   // reconciled into the server-owned ledger: total 29.
   // This revises ORCH-0953 §3.4, which had explicitly excluded charge.succeeded.
-  assertEquals(STRIPE_ROUTED_EVENT_TYPES.length, 29);
+  assertEquals(STRIPE_ROUTED_EVENT_TYPES.length, 30);
+  assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes("refund.failed"), true);
   assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes("account.updated"), true);
   assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes("charge.succeeded"), true);
   assertEquals(

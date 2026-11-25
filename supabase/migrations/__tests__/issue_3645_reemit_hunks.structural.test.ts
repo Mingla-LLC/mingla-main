@@ -10,6 +10,12 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { applyHunks, definitions, REEMITS } from "./issue_3645_reemit_hunks.ts";
+import {
+  LATE_REFUND_DEBT_REEMITS,
+  LATE_REFUND_DEBT_TARGET,
+  PROVIDER_REFUND_TRUTH_REEMITS,
+  PROVIDER_REFUND_TRUTH_TARGET,
+} from "./issue_3645_late_refund_debt_reemit_hunks.ts";
 
 const DIR = "supabase/migrations";
 const FIRST_3645 = "20280201003645";
@@ -29,6 +35,10 @@ const LEDGER_FOLLOWUP_TARGET = "20280602003645_issue_3645_payout_ledger_followup
 // The payout-gaps migration likewise carries its own guard
 // (issue_3645_payout_gaps_reemit_hunks.ts).
 const PAYOUT_GAPS_TARGET = "20280809003645_issue_3645_payout_gaps.sql";
+const REFUND_REEMITS = new Map([
+  [PROVIDER_REFUND_TRUTH_TARGET, PROVIDER_REFUND_TRUTH_REEMITS],
+  [LATE_REFUND_DEBT_TARGET, LATE_REFUND_DEBT_REEMITS],
+]);
 
 function migrationFiles(): string[] {
   return [...Deno.readDirSync(DIR)]
@@ -83,8 +93,52 @@ Deno.test("#3645 every #3645 re-emit is declared (no undeclared money-function r
       f !== DEBT_RETURN_TARGET && f !== LEDGER_FOLLOWUP_TARGET && f !== PAYOUT_GAPS_TARGET)) &&
     f.includes("_issue_3645_")
   )) {
-    for (const name of definitions(Deno.readTextFileSync(`${DIR}/${file}`)).keys()) {
-      if (before.has(name)) assert(declared.has(name), `${file} re-emits ${name} without declared hunks`);
+    const path = `${DIR}/${file}`;
+    const refundReemits = REFUND_REEMITS.get(path);
+    const allowed = refundReemits ? new Set(refundReemits.map((r) => r.fn)) : declared;
+    for (const name of definitions(Deno.readTextFileSync(path)).keys()) {
+      if (before.has(name)) {
+        assert(allowed.has(name), `${file} re-emits ${name} without declared hunks`);
+      }
     }
   }
+});
+
+for (const [targetPath, reemits] of REFUND_REEMITS) {
+  const targetFile = targetPath.slice(DIR.length + 1);
+  Deno.test(`#3645 ${targetFile} re-emits its declared hunks against the latest bodies`, () => {
+    const latest = new Map<string, string>();
+    for (const file of migrationFiles()) {
+      if (file >= targetFile) break;
+      const path = `${DIR}/${file}`;
+      for (const name of definitions(Deno.readTextFileSync(path)).keys()) latest.set(name, path);
+    }
+
+    const target = definitions(Deno.readTextFileSync(targetPath));
+    assertEquals(
+      [...target.keys()].filter((name) => latest.has(name)).sort(),
+      reemits.map(({ fn }) => fn).sort(),
+    );
+    for (const { fn, source, hunks } of reemits) {
+      assertEquals(latest.get(fn), source, `${fn} must use its latest earlier definition`);
+      const body = definitions(Deno.readTextFileSync(source)).get(fn);
+      assert(body !== undefined, `${fn} missing from ${source}`);
+      assertEquals(target.get(fn), applyHunks(body, hunks), `${fn} must match its declared hunks`);
+    }
+  });
+}
+
+Deno.test("#3645 pending dashboard settlement locks the referral share before the order", () => {
+  const body = definitions(Deno.readTextFileSync(PROVIDER_REFUND_TRUTH_TARGET))
+    .get("biz_refund_order_commit_from_webhook");
+  assert(body !== undefined, "missing dashboard refund settlement function");
+  const pending = body.match(
+    /metadata \? 'provider_pending_dashboard' INTO v_allocate[\s\S]*?IF v_allocate THEN([\s\S]*?)END IF;/,
+  )?.[1];
+  assert(pending !== undefined, "missing pending dashboard allocation branch");
+  const shareLock = pending.search(
+    /FROM public\.payee_shares\s+WHERE order_kind = 'ticket' AND order_id = p_order_id AND payee_kind = 'referral'\s+FOR UPDATE;/,
+  );
+  const orderLock = pending.search(/FROM public\.orders\s+WHERE id = p_order_id FOR NO KEY UPDATE;/);
+  assert(shareLock >= 0 && orderLock > shareLock, "referral lock must precede the order lock");
 });
