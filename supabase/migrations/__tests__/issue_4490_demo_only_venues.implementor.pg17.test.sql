@@ -1,4 +1,5 @@
 -- #4490: internal demo places cannot be made servable by any ordinary write.
+-- MINGLA-INVARIANT: I-4490-DEMO-PLACE-NEVER-SERVABLE | issue #4490 | A demo-only place may keep a direct preview, but no ordinary write can make it servable in Explorer.
 \set ON_ERROR_STOP on
 
 BEGIN;
