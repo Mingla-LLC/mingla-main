@@ -117,6 +117,24 @@ export function VenueCardList({
     },
     [router],
   );
+  const handleReservations = useCallback(
+    (venueId: string): void => {
+      router.push(`/venue/${venueId}?module=reservations` as never);
+    },
+    [router],
+  );
+  const handleRequests = useCallback(
+    (venueId: string): void => {
+      router.push(`/venue/${venueId}?module=requests` as never);
+    },
+    [router],
+  );
+  const handleWaitlist = useCallback(
+    (venueId: string): void => {
+      router.push(`/venue/${venueId}?module=waitlist` as never);
+    },
+    [router],
+  );
   const publicPageFor = useCallback(
     (venue: { claimStatus?: string | null; slug: string }): (() => void) | undefined => {
       if (venue.claimStatus !== "verified" || brandSlug === null || brandSlug.length === 0 || venue.slug.length === 0) {
@@ -150,13 +168,17 @@ export function VenueCardList({
               key={i}
               style={isWideDesktop ? styles.desktopListCell : undefined}
             >
-              <View style={styles.skeletonCard}>
-                <Skeleton width={76} height={92} radius="md" />
-                <View style={styles.skeletonBody}>
-                  <Skeleton width={96} height={24} radius="full" />
-                  <Skeleton width="70%" height={16} />
-                  <Skeleton width="50%" height={12} />
+              <View style={styles.skeletonVenue}>
+                <View style={styles.skeletonCard}>
+                  <Skeleton width={76} height={92} radius="md" />
+                  <View style={styles.skeletonBody}>
+                    <Skeleton width={96} height={24} radius="full" />
+                    <Skeleton width="70%" height={16} />
+                    <Skeleton width="50%" height={12} />
+                  </View>
                 </View>
+                <Skeleton height={92} radius="md" />
+                <Skeleton height={36} radius="full" />
               </View>
             </View>
           ))}
@@ -280,10 +302,17 @@ export function VenueCardList({
                 venue={venue}
                 status={status}
                 openFixCount={openCountsByVenue[venue.id] ?? 0}
-                menuItemCount={menuItemCountByVenue[venue.id] ?? 0}
+                menuItemCount={
+                  menusQuery.data === undefined
+                    ? null
+                    : (menuItemCountByVenue[venue.id] ?? 0)
+                }
                 reservationsEnabled={reservationsByVenue[venue.id] === true}
                 onOpen={() => handleOpenVenue(venue.id)}
                 onCheckIn={() => handleCheckIn(venue.id)}
+                onReservations={() => handleReservations(venue.id)}
+                onWaitlist={() => handleWaitlist(venue.id)}
+                onRequests={() => handleRequests(venue.id)}
                 onPublicPage={publicPageFor(venue)}
                 testID={`venue-card-${venue.id}`}
               />
@@ -367,8 +396,8 @@ const styles = StyleSheet.create({
     borderColor: color.line,
     backgroundColor: color.fill.inset,
     overflow: "hidden",
-    marginBottom: space[2],
   },
+  skeletonVenue: { gap: space[2] },
   skeletonBody: {
     flex: 1,
     gap: space[2],
@@ -442,6 +471,7 @@ const styles = StyleSheet.create({
     width: `${100 / DESKTOP_HUB_GRID_COLUMNS}%`,
     paddingHorizontal: space[1],
     marginBottom: space[2],
+    alignSelf: "stretch",
   },
 });
 

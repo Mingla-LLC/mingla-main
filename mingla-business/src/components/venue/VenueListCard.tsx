@@ -16,14 +16,13 @@
  * the venue page — one card, one action). Android glass = the exact
  * META-ORCH-1002 opaque frosted fallback.
  *
- * #4490 P2 (hub, click-test E2) — feature-driven: the data slot names the
- * venue's switched-on features ("Entry · Menu · Events here") instead of the
- * old "Reservations on"; a venue that sells shows its day (In now, To arrive,
- * Paying now) and the two things a host opens most, Check-in and Public page,
- * as their own buttons BELOW the card's pressable (never nested in it).
+ * #4490 (hub, click-test E2) — feature-driven: the data slot names the venue's
+ * switched-on features. Below it, every card owns one same-height operational
+ * snapshot and a capability-specific action; Public page stays independent.
+ * Buttons live below the card pressable (never nested in it).
  */
 
-import React, { useMemo, useState } from "react";
+import React, { Suspense, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ViewStyle } from "react-native";
 
@@ -34,20 +33,22 @@ import {
   materials,
 } from "../../constants/designSystem";
 import type { VenueListing } from "../../services/venueListingsService";
-import { useVenueDay } from "../../hooks/useVenueDay";
 import { useVenueFeatures } from "../../hooks/useVenueFeatures";
 import { VENUE_FEATURE_KEYS, featureLine } from "../../types/venueFeatures";
 import { Button } from "../ui/Button";
-import { StatRow } from "../ui/StatRow";
 import { Skeleton } from "../ui/Skeleton";
-import { dayNumbers } from "./features/today/todayModel";
 import type { ListingStatusView } from "../../utils/listingStatus";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
+import type { IconName } from "../ui/Icon";
 import { ListingStatusChip } from "./ListingStatusChip";
+import { venueCardSnapshotKind } from "./venueCardSnapshotKind";
 
 const COVER_W = 76;
 const COVER_H = 92;
+
+// Keep the data-heavy operational hooks out of the Hub's eager listing chunk.
+const LazyVenueCardSnapshot = React.lazy(() => import("./VenueCardSnapshot"));
 
 /** Deterministic no-media hue (the established app-wide treatment). */
 const hashHueFromString = (s: string): number => {
@@ -64,12 +65,18 @@ export interface VenueListCardProps {
   /** Open admin-feedback count for THIS venue (0 = none). */
   openFixCount: number;
   /** Brand-level menu item count ([TRANSITIONAL-3] menus are brand-level). */
-  menuItemCount: number;
+  menuItemCount: number | null;
   /** THIS venue's reservations toggle (used only while its features are unread). */
   reservationsEnabled: boolean;
   onOpen: () => void;
   /** #4490 — open this venue's Check-in (shown when the venue sells). */
   onCheckIn?: () => void;
+  /** #4490 — open this venue's reservations inbox. */
+  onReservations?: () => void;
+  /** #4490 — open this venue's waitlist when it is the only table feature. */
+  onWaitlist?: () => void;
+  /** #4490 — open this venue's private-hire requests. */
+  onRequests?: () => void;
   /** #4490 — open the public page (verified venues only; omit to hide). */
   onPublicPage?: () => void;
   testID?: string;
@@ -83,13 +90,14 @@ export function VenueListCard({
   reservationsEnabled,
   onOpen,
   onCheckIn,
+  onReservations,
+  onWaitlist,
+  onRequests,
   onPublicPage,
   testID,
 }: VenueListCardProps): React.ReactElement {
   const featuresQuery = useVenueFeatures(venue.brandId, venue.id);
   const features = featuresQuery.data?.features ?? null;
-  const sells = features?.entry.enabled === true;
-  const dayQuery = useVenueDay(venue.brandId, venue.id, null, { enabled: sells });
   const enabledKeys = useMemo(
     () => new Set(features === null ? [] : VENUE_FEATURE_KEYS.filter((k) => features[k].enabled)),
     [features],
@@ -116,7 +124,7 @@ export function VenueListCard({
     // #4490 E2 — the features the venue has on come before the menu count.
     const features0 = featureLine(enabledKeys);
     if (features0 !== null) return { label: features0, warning: false };
-    if (menuItemCount > 0 && venue.venueCategory !== "stay") {
+    if (menuItemCount !== null && menuItemCount > 0 && venue.venueCategory !== "stay") {
       return {
         label:
           menuItemCount === 1 ? "1 menu item" : `${menuItemCount} menu items`,
@@ -128,9 +136,29 @@ export function VenueListCard({
     }
     return null;
   }, [enabledKeys, features, openFixCount, menuItemCount, reservationsEnabled, venue.venueCategory]);
-  const day = dayQuery.data;
-  const numbers = day !== undefined ? dayNumbers(day) : null;
-  const showActions = (sells && onCheckIn !== undefined) || onPublicPage !== undefined;
+  const snapshotKind = venueCardSnapshotKind(features, venue.venueCategory);
+  const primaryAction = useMemo<{
+    label: string;
+    icon: IconName;
+    onPress: () => void;
+    testSuffix: string;
+  }>(() => {
+    if (snapshotKind === "door" && onCheckIn !== undefined) {
+      return { label: "Check-in", icon: "scan", onPress: onCheckIn, testSuffix: "checkin" };
+    }
+    if ((snapshotKind === "stay" || snapshotKind === "tables") && onReservations !== undefined) {
+      if (snapshotKind === "stay" || features?.table_reservations.enabled === true) {
+        return { label: "Reservations", icon: "calendar", onPress: onReservations, testSuffix: "reservations" };
+      }
+    }
+    if (snapshotKind === "tables" && onWaitlist !== undefined) {
+      return { label: "Waitlist", icon: "list", onPress: onWaitlist, testSuffix: "waitlist" };
+    }
+    if (snapshotKind === "requests" && onRequests !== undefined) {
+      return { label: "Requests", icon: "inbox", onPress: onRequests, testSuffix: "requests" };
+    }
+    return { label: "Manage", icon: "settings", onPress: onOpen, testSuffix: "manage" };
+  }, [features, onCheckIn, onOpen, onRequests, onReservations, onWaitlist, snapshotKind]);
 
   return (
     <View style={styles.outer}>
@@ -194,64 +222,58 @@ export function VenueListCard({
         </View>
       )}
     </Pressable>
-    {sells ? (
-      dayQuery.isLoading ? (
-        <Skeleton height={56} radius="md" />
-      ) : numbers !== null ? (
-        <StatRow
-          items={[
-            { key: "in", label: "In now", value: String(numbers.inNow) },
-            { key: "arrive", label: "To arrive", value: String(numbers.toArrive) },
-            { key: "paying", label: "Paying now", value: String(numbers.waiting) },
-          ]}
-          style={styles.stats}
-          testID={testID !== undefined ? `${testID}-stats` : undefined}
+    <Suspense
+      fallback={
+        <View style={styles.snapshotSlot}>
+          <Skeleton height={92} radius="md" />
+        </View>
+      }
+    >
+      <LazyVenueCardSnapshot
+        kind={snapshotKind}
+        brandId={venue.brandId}
+        venueId={venue.id}
+        enabledFeatures={features === null ? null : enabledKeys.size}
+        menuItems={menuItemCount}
+        openFixes={venue.claimFollowUpAt === null ? 0 : (openFixCount || null)}
+        testID={testID !== undefined ? `${testID}-stats` : undefined}
+      />
+    </Suspense>
+    <View style={styles.actions}>
+      <View style={styles.action}>
+        <Button
+          label={primaryAction.label}
+          variant="secondary"
+          size="sm"
+          leadingIcon={primaryAction.icon}
+          fullWidth
+          onPress={primaryAction.onPress}
+          accessibilityLabel={`${primaryAction.label} for ${venue.name}`}
+          testID={testID !== undefined ? `${testID}-${primaryAction.testSuffix}` : undefined}
         />
-      ) : null
-    ) : null}
-    {showActions ? (
-      <View style={styles.actions}>
-        {sells && onCheckIn !== undefined ? (
-          <View style={styles.action}>
-            <Button
-              label="Check-in"
-              variant="secondary"
-              size="sm"
-              leadingIcon="scan"
-              fullWidth
-              onPress={onCheckIn}
-              accessibilityLabel={`Check-in at ${venue.name}`}
-              testID={testID !== undefined ? `${testID}-checkin` : undefined}
-            />
-          </View>
-        ) : null}
-        {onPublicPage !== undefined ? (
-          <View style={styles.action}>
-            <Button
-              label="Public page"
-              variant="secondary"
-              size="sm"
-              leadingIcon="eye"
-              fullWidth
-              onPress={onPublicPage}
-              accessibilityLabel={`Public page of ${venue.name}`}
-              testID={testID !== undefined ? `${testID}-public` : undefined}
-            />
-          </View>
-        ) : null}
       </View>
-    ) : null}
+      {onPublicPage !== undefined ? (
+        <View style={styles.action}>
+          <Button
+            label="Public page"
+            variant="secondary"
+            size="sm"
+            leadingIcon="eye"
+            fullWidth
+            onPress={onPublicPage}
+            accessibilityLabel={`Public page of ${venue.name}`}
+            testID={testID !== undefined ? `${testID}-public` : undefined}
+          />
+        </View>
+      ) : null}
+    </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   outer: { gap: space[2] },
-  stats: {
-    borderRadius: radiusTokens.md,
-    borderWidth: 1,
-    borderColor: color.line,
-  },
+  snapshotSlot: { height: 92 },
   actions: { flexDirection: "row", gap: space[2] },
   action: { flex: 1 },
   host: {
