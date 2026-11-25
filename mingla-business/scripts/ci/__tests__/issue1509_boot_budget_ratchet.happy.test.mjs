@@ -154,7 +154,10 @@ describe("#1509 — the boot budget is a baseline + allowance + ceiling, not one
   });
 
   test("one PR adding more than the allowance FAILS, and the message names the delta", () => {
-    const over = baseline.common.raw + 12_000 + 5_000;
+    // Cross only the normal per-PR allowance. Keeping this synthetic build at
+    // the smallest failing delta isolates the branch-growth verdict even when
+    // main's measured baseline is close to the separate product ceiling.
+    const over = baseline.common.raw + 12_000 + 1;
     const r = runGate(makeBuild({ commonRaw: over }));
     assert.equal(r.status, 1, "a PR over the per-PR allowance must fail the gate");
     assert.match(r.stderr, /grew [\d,]+ B in this branch/);
