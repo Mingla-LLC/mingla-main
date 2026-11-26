@@ -24,8 +24,11 @@ import {
 
 import { BRAND_NEW_COPY } from "../../src/components/brand/brandNewCopy";
 import { Toast } from "../../src/components/ui/Toast";
+import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
+import { useBrandSetupChecklist } from "../../src/hooks/useBrandSetupChecklist";
 import { useBrandSetupStates } from "../../src/hooks/useBrandSetupStates";
+import { useBrand } from "../../src/hooks/useBrands";
 import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 import { decideBrandNewEntry } from "../../src/components/brand/brandNewEntry";
 import { setupFlowHop } from "../../src/services/brandSetupCore";
@@ -46,13 +49,13 @@ export default function BrandNewRoute(): React.ReactElement {
     draft_name?: string | string[];
     discard?: string | string[];
   }>();
+  const { user } = useAuth();
   const [draftGone, setDraftGone] = useState(false);
   const [discardedName, setDiscardedName] = useState<string | null>(null);
   // #4389 N1 up front — a host with a draft sees "You have a brand in
   // progress" before typing, from every way in (switcher, Ari, Hub).
   const brandList = useBrandListState();
-  const brandIds = React.useMemo(() => brandList.brands.map((b) => b.id), [brandList.brands]);
-  const setupStates = useBrandSetupStates(brandIds);
+  const setupStates = useBrandSetupStates(brandList.brands);
   // #881 — partner intent (Step 0) before the self setup.
   const partnerStatus = usePartnerStripeStatus();
   const [selfTyped, setSelfTyped] = useState(false);
@@ -83,22 +86,37 @@ export default function BrandNewRoute(): React.ReactElement {
   }, [router]);
 
   const resume = first(params.resume_brand);
+  const requestedDraftId = first(params.draft);
+  const requestedBrand = useBrand(requestedDraftId);
+  const requestedChecklist = useBrandSetupChecklist(requestedDraftId);
   const knownDraftId = flowOpened ? null : setupStates.draftId;
   const knownDraft = brandList.brands.find((b) => b.id === knownDraftId) ?? null;
-  const draft = first(params.draft) ?? knownDraft?.id ?? null;
-  const draftName = first(params.draft_name) ?? knownDraft?.displayName ?? "";
+  // #4627 — query params are navigation hints, not authority. Old history or
+  // a hand-written URL can name a teammate's draft; N1 may only open for the
+  // account-owned draft independently proven by the brand + setup readers.
+  // This also preserves the server-refusal path when the cached list missed
+  // an owned draft that biz_create_setup_brand just returned.
+  const requestedDraftIsOwned =
+    requestedDraftId !== null &&
+    requestedBrand.data?.id === requestedDraftId &&
+    requestedBrand.data.accountId === user?.id &&
+    requestedChecklist.data?.facts.isDraft === true;
+  const draftBrand = requestedDraftIsOwned ? requestedBrand.data : knownDraft;
+  const draft = draftBrand?.id ?? null;
+  const draftName = draftBrand?.displayName ?? "";
   const waitingForDrafts =
     !flowOpened &&
-    first(params.draft) === null &&
     first(params.partner_mode) !== "client" &&
-    (brandList.isLoading || setupStates.isLoading);
+    (brandList.isLoading ||
+      setupStates.isLoading ||
+      (requestedDraftId !== null && (requestedBrand.isLoading || requestedChecklist.isLoading)));
   const body = entry === "client" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} />
   ) : draft !== null && !draftGone ? (
     <LazyDraftInProgress
       draftId={draft}
       draftName={draftName}
-      startConfirming={first(params.discard) === "1"}
+      startConfirming={requestedDraftIsOwned && first(params.discard) === "1"}
       onContinue={() => router.replace(`/brand/${draft}/setup` as never)}
       onDiscarded={() => {
         setDraftGone(true);

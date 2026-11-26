@@ -11,6 +11,7 @@ import { useQueries } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import type { BrandSetupChecklist } from "../services/brandSetupService";
+import type { Brand } from "../types/brand";
 import { brandSetupKey } from "./useBrandSetupChecklist";
 
 /**
@@ -36,7 +37,29 @@ export function brandSetupRowState(checklist: BrandSetupChecklist | undefined): 
   return { kind: "incomplete", doneCount: checklist.doneCount };
 }
 
-export function useBrandSetupStates(brandIds: readonly string[]): {
+type BrandSetupSubject = Pick<Brand, "id" | "accountId">;
+
+export function deriveBrandSetupStates(
+  brands: readonly BrandSetupSubject[],
+  checklists: readonly (BrandSetupChecklist | undefined)[],
+  userId: string | null,
+): { byId: Record<string, BrandSetupRowState>; draftId: string | null } {
+  const byId: Record<string, BrandSetupRowState> = {};
+  let draftId: string | null = null;
+  brands.forEach((brand, i) => {
+    const state = brandSetupRowState(checklists[i]);
+    byId[brand.id] = state;
+    // #4627 — setup progress stays visible for every accessible team brand,
+    // but the one-draft guard mirrors issue_4389_user_draft_brand: only an
+    // account-owned draft can block this user's new brand.
+    if (state.kind === "draft" && draftId === null && userId !== null && brand.accountId === userId) {
+      draftId = brand.id;
+    }
+  });
+  return { byId, draftId };
+}
+
+export function useBrandSetupStates(brands: readonly BrandSetupSubject[]): {
   byId: Record<string, BrandSetupRowState>;
   /** The host's one draft (S-12), when the answers are in. */
   draftId: string | null;
@@ -44,6 +67,7 @@ export function useBrandSetupStates(brandIds: readonly string[]): {
 } {
   const { isAuthReady, user } = useAuth();
   const enabled = isAuthReady && user !== null;
+  const brandIds = brands.map((brand) => brand.id);
   const results = useQueries({
     queries: brandIds.map((brandId) => ({
       queryKey: brandSetupKey(brandId),
@@ -58,14 +82,8 @@ export function useBrandSetupStates(brandIds: readonly string[]): {
   const stamp = results.map((r) => `${r.dataUpdatedAt}`).join(",");
   const isLoading = results.some((r) => r.isLoading);
   return useMemo(() => {
-    const byId: Record<string, BrandSetupRowState> = {};
-    let draftId: string | null = null;
-    brandIds.forEach((id, i) => {
-      const state = brandSetupRowState(results[i]?.data);
-      byId[id] = state;
-      if (state.kind === "draft" && draftId === null) draftId = id;
-    });
-    return { byId, draftId, isLoading };
+    const states = deriveBrandSetupStates(brands, results.map((r) => r.data), user?.id ?? null);
+    return { ...states, isLoading };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `stamp` stands for the rows.
-  }, [brandIds.join(","), stamp, isLoading]);
+  }, [brands.map((brand) => `${brand.id}:${brand.accountId ?? ""}`).join(","), stamp, isLoading, user?.id]);
 }
