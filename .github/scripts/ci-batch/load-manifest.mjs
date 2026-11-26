@@ -536,7 +536,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4572 venue offer Sites feed: registered 20281205054572 in the three preserved replay inventories and exact-skipped it from the #1931/#2117 historical replays whose filtered chains omit its #4572/#4490 prerequisites; re-sealed.
 // issue #4624 offering discounts: registered migration 20281206004624 in the #1857, #1931 and #2117 replay inventories, its implementor pg17 suite with sidecar in the #1931 and #2117 inventories, and an EXACT filtered-replay skip in the #1931 template replay; re-sealed.
 // issue #4624 tester: re-sealed after registering the tester adversarial pg17 suite and sidecar in the #1931 and #2117 inventories.
-export const BOOTSTRAP_SHA256 = "ac36f9e818e7b98620b2a79841b5210628013b4504cd660bf4cb05dc96836db5";
+// issue #4624 ticket-capped codes: registered migration 20281206014624 in the #1857, #1931 and #2117 replay inventories, its implementor pg17 suite with sidecar in the #1931 and #2117 inventories, and an EXACT filtered-replay skip in the #1931 template replay; re-sealed.
+export const BOOTSTRAP_SHA256 = "53f04a610f7e3d5fd9e88c1c63c44ba495280d3ca5b284788cbcf8773eefc1cd";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
