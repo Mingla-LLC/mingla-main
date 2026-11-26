@@ -3667,7 +3667,11 @@
         "mingla-business/src/components/discounts/DiscountScopePicker.tsx",
         "mingla-business/src/components/discounts/ItemDiscountControls.tsx",
         "mingla-business/src/components/discounts/PricesWorkspace.tsx",
-        "mingla-business/src/services/discountBlastService.ts"
+        "mingla-business/src/services/discountBlastService.ts",
+        "mingla-business/src/components/discounts/discountEditorContract.ts",
+        "mingla-business/src/components/discounts/discountScopeLabels.ts",
+        "mingla-business/src/services/discountService.ts",
+        "supabase/migrations/20281206004624_issue_4624_offering_discounts.sql"
       ]
     },
     {
