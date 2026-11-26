@@ -55,6 +55,12 @@ export interface TicketQuoteNotice {
   discountId: string;
   lineRef: string;
   remaining: number;
+  /**
+   * #4624: "code" when a ticket-capped discount code (ends_after_count) has
+   * fewer tickets left than the line holds (the line keeps full price);
+   * absent on automatic and sale notices. Mirrors issue_3872_discount_apply.
+   */
+  discountKind?: "code";
 }
 
 export interface InstallmentChargeSchedule {

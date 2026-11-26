@@ -92,8 +92,12 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // feature-list and offering-grid buttons, and venue offers join the Sites feed.
 // Those approved schema additions reach the shared declaration on both rollout
 // paths; the tool count, prompt digests and per-message selections stay fixed.
+// #4624 intended change: create_discount's description says ends_after_count
+// counts tickets and works on codes ("5 free tickets"). The tool count stays
+// 190 and the digest is recomputed the same way. The off path's prompt digests
+// and per-message selections are unchanged.
 const MAIN_DECLARATIONS_DIGEST =
-  "7eb2bfbdc07090f9adbc7bad5b908c6732b55fb83a9377d4174c82c013a49b33";
+  "d513782332833d686e0fefcf2dea00897a05a1bd73cb4d5383ce95858029762e";
 const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {

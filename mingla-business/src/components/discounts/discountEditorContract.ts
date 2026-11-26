@@ -163,6 +163,42 @@ export const discountSaveBlockedReason = (
   return null;
 };
 
+// ---------------------------------------------------------------------------
+// #4624 ticket-capped codes: "Total tickets" (ends_after_count) beside "Total
+// uses" (max_total_uses). Approved copy: design comment 7204990816.
+// ---------------------------------------------------------------------------
+
+export const CODE_LIMITS_HELP =
+  "Total uses counts checkouts. Total tickets counts tickets. The code stops when either runs out.";
+export const TOTAL_TICKETS_ERROR = "Enter a whole number, 1 or more.";
+export const TOTAL_TICKETS_SAVE_REASON = "Fix Total tickets to save.";
+export const NO_LIMIT_PLACEHOLDER = "No limit";
+
+const MAX_INT4 = 2147483647;
+
+/**
+ * The typed "Total tickets" text, kept raw so 0, decimals and negatives show
+ * an error instead of silently becoming "no limit". Empty means no limit.
+ */
+export const parseTicketLimit = (
+  text: string,
+): { valid: true; value: number | null } | { valid: false } => {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return { valid: true, value: null };
+  if (!/^\d+$/.test(trimmed)) return { valid: false };
+  const value = Number(trimmed);
+  return value >= 1 && value <= MAX_INT4
+    ? { valid: true, value }
+    : { valid: false };
+};
+
+/** The Total tickets error, only on a Code (other kinds don't show the box). */
+export const ticketLimitError = (
+  kind: DiscountKind,
+  text: string,
+): string | null =>
+  kind === "code" && !parseTicketLimit(text).valid ? TOTAL_TICKETS_ERROR : null;
+
 export const DISCOUNT_LISTING_KIND_OPTIONS = [
   ["event", "Events"],
   ["experience", "Experiences"],

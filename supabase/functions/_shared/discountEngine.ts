@@ -62,6 +62,12 @@ export interface SaleLimitedNotice {
   discountId: string;
   lineRef: string;
   remaining: number;
+  /**
+   * #4624: "code" when a ticket-capped discount code (ends_after_count) has
+   * fewer tickets left than the line holds; absent on automatic and sale
+   * notices.
+   */
+  discountKind?: "code";
 }
 
 export type Notice = SaleLimitedNotice;

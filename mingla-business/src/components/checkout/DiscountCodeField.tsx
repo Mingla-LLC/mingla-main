@@ -7,7 +7,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
+import {
+  codeLimitedCopy,
+  saleLimitedCopy,
+} from "@mingla/offering-rendering/saleLimitedCopy";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 import { formatQuoteMoney } from "./quoteMoney";
 import {
@@ -110,7 +113,20 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
     [quote, value],
   );
   const saleNotice =
-    quote?.notices.find((notice) => notice.type === "sale_limited") ?? null;
+    quote?.notices.find(
+      (notice) =>
+        notice.type === "sale_limited" && notice.discountKind !== "code",
+    ) ?? null;
+  // #4624 D1a: a ticket-capped code with fewer tickets left than a line holds
+  // leaves that line at full price. The applied chip hides when the code
+  // saved nothing (no code row in quote.discounts) and this line explains why.
+  const codeNotice =
+    value === null
+      ? null
+      : (quote?.notices.find(
+          (notice) =>
+            notice.type === "sale_limited" && notice.discountKind === "code",
+        ) ?? null);
   const saleName =
     saleNotice === null
       ? null
@@ -164,7 +180,10 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
     if (saleNotice !== null) {
       captureOnce("sale_limited_shown", saleNotice.discountId, { surface });
     }
-  }, [quote, quoteStatus, saleNotice, surface, value]);
+    if (codeNotice !== null) {
+      captureOnce("sale_limited_shown", codeNotice.discountId, { surface });
+    }
+  }, [codeNotice, quote, quoteStatus, saleNotice, surface, value]);
 
   const showField = !collapsible || expanded || value !== null;
   // #4304 — the field is ALWAYS typeable. Before, `disabled` (an empty cart)
@@ -318,6 +337,15 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
       {quoteStatus === "error" && !rateLimited ? (
         <Text style={styles.errorText} accessibilityRole="alert">
           Couldn&apos;t get your price. Try again.
+        </Text>
+      ) : null}
+      {codeNotice !== null ? (
+        <Text
+          style={styles.noticeText}
+          accessibilityRole="alert"
+          testID="discount-code-limited"
+        >
+          {codeLimitedCopy(codeNotice.remaining)}
         </Text>
       ) : null}
       {saleNotice !== null && saleName !== null ? (

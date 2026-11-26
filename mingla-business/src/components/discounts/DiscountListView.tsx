@@ -19,7 +19,10 @@ import { Button } from "../ui/Button";
 import { Chip, Segmented } from "../ui/Pill";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { PricesWorkspace } from "./PricesWorkspace";
-import { DISCOUNT_SCOPE_LABELS } from "./discountScopeLabels";
+import {
+  DISCOUNT_SCOPE_LABELS,
+  discountUsageLabel,
+} from "./discountScopeLabels";
 
 const loadDiscountService = () => import("../../services/discountService");
 const DISCOUNT_QUERY_ROOT = "brand-discounts";
@@ -385,7 +388,7 @@ const DiscountRow: React.FC<{
             />
           </View>
           <Text style={styles.usage}>
-            {consumed} of {used} used
+            {discountUsageLabel(consumed, used, row.endsAfterCount != null)}
           </Text>
         </View>
       ) : null}
