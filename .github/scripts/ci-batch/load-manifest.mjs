@@ -537,7 +537,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4624 offering discounts: registered migration 20281206004624 in the #1857, #1931 and #2117 replay inventories, its implementor pg17 suite with sidecar in the #1931 and #2117 inventories, and an EXACT filtered-replay skip in the #1931 template replay; re-sealed.
 // issue #4624 tester: re-sealed after registering the tester adversarial pg17 suite and sidecar in the #1931 and #2117 inventories.
 // issue #4624 ticket-capped codes: registered migration 20281206014624 in the #1857, #1931 and #2117 replay inventories, its implementor pg17 suite with sidecar in the #1931 and #2117 inventories, and an EXACT filtered-replay skip in the #1931 template replay; re-sealed.
-export const BOOTSTRAP_SHA256 = "53f04a610f7e3d5fd9e88c1c63c44ba495280d3ca5b284788cbcf8773eefc1cd";
+// issue #4624 tester: re-sealed after registering the ticket-limit tester adversarial pg17 suite and sidecar in the #1931 and #2117 inventories.
+export const BOOTSTRAP_SHA256 = "6d1c18ba317df7c6c8842f6f88e6314946b476d156197b09f963d3fe75b9659f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
