@@ -61,6 +61,27 @@ export const formatDiscountPreviewMoney = (
   return code === null ? "—" : formatCurrency(minor, code, true);
 };
 
+/**
+ * #4624 P2-1: the draft after the Host switches the discount Type. Sale price
+ * forces the Specific items scope, so any targets picked under another scope
+ * (offerings, listing kinds) are cleared: targets must always match the scope.
+ */
+export const applyDiscountKindChange = (
+  current: DiscountDraft,
+  kind: DiscountKind,
+): DiscountDraft => {
+  const scopeKind = kind === "sale_price" ? "items" : current.scopeKind;
+  return {
+    ...current,
+    kind,
+    code: kind === "code" ? (current.code ?? "") : null,
+    valueType: kind === "sale_price" ? "set_price" : current.valueType,
+    combinesWith: kind === "code" ? "automatic_only" : "any",
+    scopeKind,
+    targets: scopeKind === current.scopeKind ? current.targets : [],
+  };
+};
+
 export const canCreateDiscountKind = (
   rank: number,
   kind: DiscountKind,

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "@jest/globals";
 import type { DiscountDraft } from "../../../services/discountService";
 import {
+  applyDiscountKindChange,
   canCreateDiscountKind,
+  discountSaveBlockedReason,
   DISCOUNT_COMBINATION_LABELS,
   DISCOUNT_KIND_OPTIONS,
   isDiscountDraftValid,
@@ -49,5 +51,32 @@ describe("DiscountEditSheet Host decision contract", () => {
     expect(canCreateDiscountKind(20, "sale_price")).toBe(false);
     expect(canCreateDiscountKind(30, "automatic")).toBe(true);
     expect(canCreateDiscountKind(30, "sale_price")).toBe(true);
+  });
+  test("#4624 P2-1: switching to Sale price clears offering targets so Save is blocked until an item is picked", () => {
+    const withOffering: DiscountDraft = {
+      ...validCode(),
+      scopeKind: "listings",
+      targets: [
+        { targetKind: "event", targetId: "e1", listingKind: null, orphanedAt: null },
+      ],
+    };
+    const next = applyDiscountKindChange(withOffering, "sale_price");
+    expect(next.scopeKind).toBe("items");
+    expect(next.targets).toEqual([]);
+    expect(isDiscountDraftValid({ ...next, name: "Sale", valueMinor: 500 }, 30)).toBe(false);
+    expect(discountSaveBlockedReason({ ...next, name: "Sale", valueMinor: 500 }, 30)).toBe(
+      "Pick at least one item to save.",
+    );
+  });
+
+  test("#4624 P2-1: a kind change that keeps the scope keeps its targets", () => {
+    const items: DiscountDraft = {
+      ...validCode(),
+      scopeKind: "items",
+      targets: [
+        { targetKind: "ticket_type", targetId: "t1", listingKind: null, orphanedAt: null },
+      ],
+    };
+    expect(applyDiscountKindChange(items, "sale_price").targets).toHaveLength(1);
   });
 });

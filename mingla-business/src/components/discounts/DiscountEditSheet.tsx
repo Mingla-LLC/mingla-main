@@ -46,6 +46,7 @@ const LazyConfirmDialog = React.lazy(() =>
 );
 import { isoFromLocalDateTime, localDateTimeValue } from "./discountDateTime";
 import {
+  applyDiscountKindChange,
   canCreateDiscountKind,
   DISCOUNT_COMBINATION_LABELS,
   DISCOUNT_KIND_DESCRIPTIONS,
@@ -231,14 +232,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
 
   const changeKind = (kind: DiscountKind): void => {
     if (!canCreateDiscountKind(rank, kind)) return;
-    setDraft((current) => ({
-      ...current,
-      kind,
-      code: kind === "code" ? (current.code ?? "") : null,
-      valueType: kind === "sale_price" ? "set_price" : current.valueType,
-      combinesWith: kind === "code" ? "automatic_only" : "any",
-      scopeKind: kind === "sale_price" ? "items" : current.scopeKind,
-    }));
+    setDraft((current) => applyDiscountKindChange(current, kind));
     setDirty(true);
     setError(null);
   };

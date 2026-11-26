@@ -206,10 +206,10 @@ BEGIN
     RAISE EXCEPTION 'T4 RSVP or deleted offering listed: %',v_rows;
   END IF;
   SELECT o INTO v_q FROM jsonb_array_elements(v_rows) o WHERE (o->>'id')::uuid=v_e1;
-  IF (v_q->>'paidTicketCount')::integer<>3 OR v_q->>'title'<>'Rooftop Night'
+  IF (v_q->>'paidTicketCount')::integer<>2 OR v_q->>'title'<>'Rooftop Night'
      OR v_q->>'status'<>'scheduled' OR (v_q->>'discountsAllowed')::boolean IS NOT TRUE
      OR v_q->>'nextStartAt' IS NULL OR v_q->>'lastEndAt' IS NULL THEN
-    RAISE EXCEPTION 'T4 E1 row wrong (want 3 paid tickets, dates): %',v_q;
+    RAISE EXCEPTION 'T4 E1 row wrong (want 2 discountable paid tickets: General + Late VIP, not Members; dates): %',v_q;
   END IF;
   IF v_rows->0->>'offeringKind'<>'event' OR v_rows->3->>'offeringKind'<>'trip' THEN
     RAISE EXCEPTION 'T4 not ordered by kind: %',v_rows;

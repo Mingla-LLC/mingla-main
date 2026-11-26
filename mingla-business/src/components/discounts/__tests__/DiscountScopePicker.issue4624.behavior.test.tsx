@@ -275,4 +275,28 @@ describe("#4624 Specific offerings picker", () => {
     expect(allText(tree)).toContain("Sale prices apply to specific items only.");
     expect(onScopeKindChange).not.toHaveBeenCalled();
   });
+  test("web: scope cards and offering rows expose aria-checked (P2-2)", () => {
+    const { tree } = mount({ targets: [eventTarget("e1")] });
+    expect(one(tree, "discount-scope-listings").props["aria-checked"]).toBe(true);
+    expect(one(tree, "discount-scope-brand").props["aria-checked"]).toBe(false);
+    expect(one(tree, "discount-offering-e1").props["aria-checked"]).toBe(true);
+    expect(one(tree, "discount-offering-x1").props["aria-checked"]).toBe(false);
+  });
+
+  test("web: item cards and offering-type chips expose aria-checked (P2-2)", () => {
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "DiscountScopePicker.tsx"),
+      "utf8",
+    ) as string;
+    expect(src.match(/aria-checked=\{isSelected\}/g)?.length).toBe(4);
+  });
+
+  test("the Remove button gets a 44 pt target without changing its size (P3-1)", () => {
+    const { tree } = mount({ targets: [eventTarget("gone", "2026-12-01T00:00:00Z")] });
+    const remove = one(tree, "discount-offering-remove-gone");
+    expect(remove.props.size).toBe("sm");
+    const slop = remove.props.hitSlop as Record<string, number>;
+    expect(36 + slop.top + slop.bottom).toBeGreaterThanOrEqual(44);
+    expect(36 + slop.left + slop.right).toBeGreaterThanOrEqual(44);
+  });
 });

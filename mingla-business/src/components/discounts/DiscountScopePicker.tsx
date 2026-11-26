@@ -129,6 +129,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
               accessibilityRole="radio"
               accessibilityLabel={label}
               accessibilityHint={available ? description : SALE_PRICE_SCOPE_HELP}
+              aria-checked={isSelected}
               accessibilityState={{ checked: isSelected, disabled: !available }}
               testID={`discount-scope-${value}`}
               style={(state: PressState) => [
@@ -176,6 +177,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
                 style={[styles.chip, isSelected && styles.chipSelected]}
                 accessibilityRole="checkbox"
                 accessibilityLabel={`${label} offering type`}
+                aria-checked={isSelected}
                 accessibilityState={{ checked: isSelected }}
               >
                 <Text
@@ -232,6 +234,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
                         ]}
                         accessibilityRole="checkbox"
                         accessibilityLabel={`${price.itemName} in ${price.listingName}`}
+                        aria-checked={isSelected}
                         accessibilityState={{
                           checked: isSelected,
                           disabled: !selectable,
@@ -475,6 +478,7 @@ const OfferingsPicker: React.FC<{
                       label="Remove"
                       variant="secondary"
                       size="sm"
+                      hitSlop={REMOVE_HIT_SLOP}
                       onPress={() => removeTarget(target)}
                       accessibilityLabel="Remove deleted offering"
                       testID={`discount-offering-remove-${target.targetId ?? ""}`}
@@ -536,6 +540,7 @@ const OfferingRow: React.FC<{
           ? meta
           : `${meta}. Turn on Allow discounts for this offering to include it.`
       }
+      aria-checked={isSelected}
       accessibilityState={{ checked: isSelected, disabled }}
       testID={`discount-offering-${row.id}`}
       style={(state: PressState): StyleProp<ViewStyle> => [
@@ -615,6 +620,9 @@ const OfferingsSkeleton: React.FC<{ reduceMotion: boolean }> = ({
     </Animated.View>
   );
 };
+
+/** #4624: sm Button is 36 tall; 4 each side makes the Remove target 44. */
+const REMOVE_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 };
 
 const styles = StyleSheet.create({
   wrap: { gap: space[2] },

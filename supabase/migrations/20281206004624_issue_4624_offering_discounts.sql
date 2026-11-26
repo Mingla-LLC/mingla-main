@@ -88,6 +88,7 @@ AS $fn$
       SELECT count(*) FROM public.ticket_types tt
       WHERE tt.event_id=e.id AND tt.deleted_at IS NULL
         AND NOT COALESCE(tt.is_free,false) AND tt.price_cents>0
+        AND tt.discounts_allowed
     ),
     'nextStartAt',(
       SELECT min(d.start_at) FROM public.event_dates d
