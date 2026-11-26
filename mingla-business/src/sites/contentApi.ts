@@ -29,6 +29,8 @@ import {
   parsePreviewPreference,
   type PreviewDevicePreference,
 } from "./previewDevice";
+import { siteMediaChecksum } from "./siteMediaChecksum";
+import { putSiteMediaFile, readSiteMediaBytes } from "./siteMediaFile";
 
 export type ContentCollection = "destinations" | "stories" | "testimonials";
 
@@ -562,12 +564,14 @@ export async function uploadSitePhoto(input: {
   const grant = await contentCall<{ media_id: string; upload_url: string; required_headers?: Record<string, string> }>(
     input.siteId, "media_upload_grant", { filename: input.file.name, content_type: input.file.type, bytes: input.file.size },
   );
-  const blob = await (await fetch(input.file.uri)).blob();
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  const checksum = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  const put = await fetch(grant.upload_url, { method: "PUT", headers: grant.required_headers ?? { "content-type": input.file.type }, body: blob });
-  if (!put.ok) throw new BrandSitesError("MEDIA_REJECTED", "That photo couldn’t be uploaded. Try again.", true);
+  const bytes = await readSiteMediaBytes(input.file.uri);
+  const checksum = await siteMediaChecksum(bytes);
+  const uploaded = await putSiteMediaFile({
+    uri: input.file.uri,
+    url: grant.upload_url,
+    headers: grant.required_headers ?? { "content-type": input.file.type },
+  });
+  if (!uploaded) throw new BrandSitesError("MEDIA_REJECTED", "That photo couldn’t be uploaded. Try again.", true);
   input.onStatus?.("checking");
   const done = await contentCall<{ media_id: string; state: string }>(input.siteId, "media_complete", {
     media_id: grant.media_id, checksum, bytes: bytes.byteLength,

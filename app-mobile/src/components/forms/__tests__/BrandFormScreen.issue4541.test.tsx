@@ -107,6 +107,7 @@ const GUEST = "45410000-0000-4000-8000-0000000000b2";
 const CAMPAIGN = "45410000-0000-4000-8000-0000000000c1";
 const TOKEN = "ab".repeat(32);
 const Q1 = "45410000-0000-4000-8000-0000000000f1";
+const mountedRoots = new Set<import("react-test-renderer").ReactTestRenderer>();
 
 const read = (over: Partial<FormScreenRead> = {}): FormScreenRead => ({
   state: "unanswered",
@@ -144,6 +145,7 @@ async function mount(raw: Record<string, string>): Promise<import("react-test-re
         <BrandFormScreen params={parseFormRouteParams({ formId: FORM, ...raw })} routePath={`/form/${FORM}`} />
       </QueryClientProvider>,
     );
+    mountedRoots.add(root);
   });
   await flush();
   return root;
@@ -182,6 +184,15 @@ beforeEach(async () => {
   mockStore.user = { id: "user-a" };
   mockStore.profile = { first_name: "Ada", last_name: "Okafor" };
   mockApi.fetchMyPendingBrandForms.mockResolvedValue([]);
+  const storage = require("@react-native-async-storage/async-storage");
+  await storage.clear();
+});
+
+afterEach(async () => {
+  await act(async () => {
+    for (const root of mountedRoots) root.unmount();
+  });
+  mountedRoots.clear();
   const storage = require("@react-native-async-storage/async-storage");
   await storage.clear();
 });
