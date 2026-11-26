@@ -21,6 +21,7 @@ import type {
   AccessibilityRole,
   AccessibilityState,
   GestureResponderEvent,
+  Insets,
   PressableStateCallbackType,
   StyleProp,
   TextStyle,
@@ -121,6 +122,8 @@ export interface ButtonProps {
   accessibilityRole?: AccessibilityRole;
   accessibilityState?: AccessibilityState;
   testID?: string;
+  /** #4624 — extra touch area without changing the drawn size. */
+  hitSlop?: Insets;
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
   /**
@@ -245,6 +248,7 @@ export const Button = forwardRef<
     accessibilityRole = "button",
     accessibilityState,
     testID,
+    hitSlop,
     style,
     labelStyle,
     iconColor,
@@ -452,6 +456,7 @@ export const Button = forwardRef<
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityHint={accessibilityHint}
       testID={testID}
+      hitSlop={hitSlop}
       style={[fullWidth ? styles.fullWidth : undefined, style]}
     >
       {renderInteractiveContent}

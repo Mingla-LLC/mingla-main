@@ -69,6 +69,13 @@ export const DISCOUNT_WRITE_REFUSALS: Readonly<
     ari:
       "A sale price works on one ticket or item at a time. Pick the single ticket or item and ask me again. Nothing was saved.",
   },
+  // #4624: a "Specific offerings" discount covers whole events, experiences
+  // or trips; the target guard refuses a ticket or item target under it.
+  listings_target_invalid: {
+    host: "Pick whole events, experiences or trips for this discount.",
+    ari:
+      "Pick whole events, experiences or trips for this discount and ask me again. Nothing was saved.",
+  },
   set_price_needs_one_item: {
     host:
       "A sale price works on one ticket or item at a time. Pick a single ticket or item.",

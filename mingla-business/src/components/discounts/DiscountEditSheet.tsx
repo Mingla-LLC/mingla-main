@@ -26,13 +26,17 @@ import type {
   BrandPriceRow,
   DiscountDraft,
   DiscountKind,
+  DiscountOfferingRow,
   DiscountValueType,
 } from "../../services/discountService";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
-import { DiscountScopePicker } from "./DiscountScopePicker";
+import {
+  DiscountScopePicker,
+  type DiscountOfferingsStatus,
+} from "./DiscountScopePicker";
 
 /**
  * #4304: Alert.alert with buttons is a no-op on react-native-web, so closing a
@@ -46,10 +50,12 @@ const LazyConfirmDialog = React.lazy(() =>
 );
 import { isoFromLocalDateTime, localDateTimeValue } from "./discountDateTime";
 import {
+  applyDiscountKindChange,
   canCreateDiscountKind,
   DISCOUNT_COMBINATION_LABELS,
   DISCOUNT_KIND_DESCRIPTIONS,
   DISCOUNT_KIND_OPTIONS,
+  discountSaveBlockedReason,
   formatDiscountPreviewMoney,
   isDiscountDraftValid,
 } from "./discountEditorContract";
@@ -69,6 +75,10 @@ export interface DiscountEditSheetProps {
   rank: number;
   currencyCode: string | null;
   prices: BrandPriceRow[];
+  /** #4624: the "Specific offerings" picker's rows and their query state. */
+  offerings: DiscountOfferingRow[];
+  offeringsStatus: DiscountOfferingsStatus;
+  onRetryOfferings: () => void;
   discount?: BrandDiscount | null;
   presetTarget?: BrandPriceRow | null;
   onClose: () => void;
@@ -134,6 +144,9 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   rank,
   currencyCode,
   prices,
+  offerings,
+  offeringsStatus,
+  onRetryOfferings,
   discount,
   presetTarget,
   onClose,
@@ -166,6 +179,15 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
     setError(null);
   };
   const valid = isDiscountDraftValid(draft, rank);
+  // #4624 D4: the reason Save is disabled, shown above it on every scope.
+  const blockedReason = discountSaveBlockedReason(draft, rank);
+  const offeringsPending =
+    draft.scopeKind === "listings" && offeringsStatus !== "ready";
+  const saveBlockedText =
+    blockedReason ??
+    (offeringsPending && offeringsStatus === "error"
+      ? "Your offerings didn’t load. Retry to save."
+      : null);
 
   const previewQuery = useQuery({
     queryKey: [DISCOUNT_QUERY_ROOT, "preview", brandId, JSON.stringify(draft)],
@@ -214,14 +236,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
 
   const changeKind = (kind: DiscountKind): void => {
     if (!canCreateDiscountKind(rank, kind)) return;
-    setDraft((current) => ({
-      ...current,
-      kind,
-      code: kind === "code" ? (current.code ?? "") : null,
-      valueType: kind === "sale_price" ? "set_price" : current.valueType,
-      combinesWith: kind === "code" ? "automatic_only" : "any",
-      scopeKind: kind === "sale_price" ? "items" : current.scopeKind,
-    }));
+    setDraft((current) => applyDiscountKindChange(current, kind));
     setDirty(true);
     setError(null);
   };
@@ -381,6 +396,10 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
             targets={draft.targets}
             prices={prices}
             currencyCode={currencyCode}
+            discountKind={draft.kind}
+            offerings={offerings}
+            offeringsStatus={offeringsStatus}
+            onRetryOfferings={onRetryOfferings}
             onScopeKindChange={(value) => {
               setDraft((current) => ({
                 ...current,
@@ -540,7 +559,12 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
             <Text style={styles.help}>
               What buyers would pay today, including fees.
             </Text>
-            {previewQuery.isLoading ? (
+            {draft.scopeKind === "listings" &&
+            !draft.targets.some((target) => target.targetKind === "event") ? (
+              <Text style={styles.help}>
+                Tick an offering to see what buyers will pay.
+              </Text>
+            ) : previewQuery.isLoading ? (
               <Text style={styles.help}>Checking eligible prices…</Text>
             ) : previewQuery.isError ? (
               <>
@@ -569,6 +593,11 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
                       style={styles.previewRow}
                     >
                       <Text style={styles.previewItem}>{row.itemName}</Text>
+                      {row.listingName ? (
+                        <Text style={styles.previewMeta}>
+                          {row.listingName}
+                        </Text>
+                      ) : null}
                       <Text style={styles.previewPrice}>
                         Buyer pays {previewMoney(row.allInNetCents)}
                       </Text>
@@ -603,10 +632,19 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
           ) : null}
         </ScrollView>
         <View style={styles.footer}>
+          {saveBlockedText ? (
+            <View style={styles.blockRow} testID="discount-save-blocked">
+              <View style={styles.blockDot}>
+                <Text style={styles.blockDotText}>!</Text>
+              </View>
+              <Text style={styles.blockText}>{saveBlockedText}</Text>
+            </View>
+          ) : null}
           <Button
             label={discount ? "Save changes" : "Create discount"}
             onPress={() => saveMutation.mutate()}
-            disabled={!valid || saveMutation.isPending}
+            accessibilityHint={saveBlockedText ?? undefined}
+            disabled={!valid || offeringsPending || saveMutation.isPending}
             loading={saveMutation.isPending}
             fullWidth
             size="lg"
@@ -796,9 +834,22 @@ const styles = StyleSheet.create({
   body: { padding: space[4], gap: space[2], paddingBottom: 120 },
   footer: {
     padding: space[4],
+    gap: space[2] + 2,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.line,
   },
+  // #4624 D4: why Save is disabled, beside the control it disables.
+  blockRow: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
+  blockDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.warningTint,
+  },
+  blockDotText: { color: color.warningText, fontSize: 12, fontWeight: "800" },
+  blockText: { flex: 1, color: color.text2, fontSize: 13, lineHeight: 18 },
   label: { fontSize: 13, fontWeight: "700", color: color.text1 },
   help: { fontSize: 12, lineHeight: 18, color: color.text2 },
   field: { gap: 6 },

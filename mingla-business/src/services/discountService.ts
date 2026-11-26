@@ -91,8 +91,26 @@ export interface BrandPriceRow {
   ownerRoute: string;
 }
 
+/** #4624: an event, experience or trip a "Specific offerings" discount can cover. */
+export type DiscountOfferingKind = "event" | "experience" | "trip";
+
+export interface DiscountOfferingRow {
+  id: string;
+  offeringKind: DiscountOfferingKind;
+  title: string;
+  status: "draft" | "scheduled" | "live" | "ended" | "cancelled";
+  discountsAllowed: boolean;
+  paidTicketCount: number;
+  /** Earliest date that has not ended; null when none. */
+  nextStartAt: string | null;
+  /** End of the last date; null when undated. */
+  lastEndAt: string | null;
+}
+
 export interface BrandDiscountPreviewRow {
   itemName: string;
+  /** #4624: the offering the previewed ticket belongs to. */
+  listingName: string | null;
   listUnitMinor: number;
   netUnitMinor: number;
   allInListCents: number;
@@ -231,6 +249,52 @@ export async function fetchBrandPrices(
   });
 }
 
+const OFFERING_KINDS: readonly DiscountOfferingKind[] = [
+  "event",
+  "experience",
+  "trip",
+];
+const OFFERING_STATUSES: readonly DiscountOfferingRow["status"][] = [
+  "draft",
+  "scheduled",
+  "live",
+  "ended",
+  "cancelled",
+];
+
+/** #4624: the brand's events, experiences and trips for the offerings picker. */
+export async function fetchDiscountOfferings(
+  brandId: string,
+): Promise<DiscountOfferingRow[]> {
+  const { data, error } = await supabase.rpc("brand_discount_offerings", {
+    p_brand_id: brandId,
+  });
+  if (error) throw new Error(error.message);
+  return (Array.isArray(data) ? data : []).flatMap((value) => {
+    const row = value as Record<string, unknown>;
+    const kind = OFFERING_KINDS.find((k) => k === row.offeringKind);
+    if (typeof row.id !== "string" || kind === undefined) return [];
+    const status =
+      OFFERING_STATUSES.find((s) => s === row.status) ?? "draft";
+    return [
+      {
+        id: row.id,
+        offeringKind: kind,
+        title:
+          typeof row.title === "string" && row.title.trim().length > 0
+            ? row.title
+            : "Untitled offering",
+        status,
+        discountsAllowed: row.discountsAllowed !== false,
+        paidTicketCount: Math.max(0, Number(row.paidTicketCount ?? 0) || 0),
+        nextStartAt:
+          typeof row.nextStartAt === "string" ? row.nextStartAt : null,
+        lastEndAt: typeof row.lastEndAt === "string" ? row.lastEndAt : null,
+      },
+    ];
+  });
+}
+
 export async function previewBrandDiscount(
   brandId: string,
   draft: DiscountDraft,
@@ -244,6 +308,8 @@ export async function previewBrandDiscount(
     const row = value as Record<string, unknown>;
     return {
       itemName: String(row.itemName ?? "Item"),
+      listingName:
+        typeof row.listingName === "string" ? row.listingName : null,
       listUnitMinor: Number(row.listUnitMinor ?? 0),
       netUnitMinor: Number(row.netUnitMinor ?? 0),
       allInListCents: Number(row.allInListCents ?? 0),

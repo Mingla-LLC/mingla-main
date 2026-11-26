@@ -19,6 +19,7 @@ import { Button } from "../ui/Button";
 import { Chip, Segmented } from "../ui/Pill";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { PricesWorkspace } from "./PricesWorkspace";
+import { DISCOUNT_SCOPE_LABELS } from "./discountScopeLabels";
 
 const loadDiscountService = () => import("../../services/discountService");
 const DISCOUNT_QUERY_ROOT = "brand-discounts";
@@ -26,6 +27,9 @@ const discountListKey = (brandId: string, filter: DiscountFilter) =>
   [DISCOUNT_QUERY_ROOT, "list", brandId, filter] as const;
 const discountPricesKey = (brandId: string) =>
   [DISCOUNT_QUERY_ROOT, "prices", brandId] as const;
+// #4624: the "Specific offerings" picker's events, experiences and trips.
+const discountOfferingsKey = (brandId: string) =>
+  [DISCOUNT_QUERY_ROOT, "offerings", brandId] as const;
 
 const LazyEditSheet = React.lazy(async () => {
   const mod = await import("./DiscountEditSheet");
@@ -89,6 +93,11 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
     queryKey: discountPricesKey(brandId),
     queryFn: async () =>
       (await loadDiscountService()).fetchBrandPrices(brandId),
+  });
+  const offerings = useQuery({
+    queryKey: discountOfferingsKey(brandId),
+    queryFn: async () =>
+      (await loadDiscountService()).fetchDiscountOfferings(brandId),
   });
   const action = useMutation({
     mutationFn: ({
@@ -273,6 +282,15 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
             rank={rank}
             currencyCode={currencyCode}
             prices={priceRows}
+            offerings={offerings.data ?? []}
+            offeringsStatus={
+              offerings.data !== undefined
+                ? "ready"
+                : offerings.isError && !offerings.isFetching
+                  ? "error"
+                  : "loading"
+            }
+            onRetryOfferings={() => void offerings.refetch()}
             discount={editing}
             presetTarget={preset}
             onClose={() => {
@@ -344,7 +362,8 @@ const DiscountRow: React.FC<{
       >
         <Text style={styles.name}>{row.name}</Text>
         <Text style={styles.value}>
-          {value} · {row.scopeKind.replace("_", " ")}
+          <Text style={styles.valueAmount}>{value}</Text> ·{" "}
+          {DISCOUNT_SCOPE_LABELS[row.scopeKind] ?? row.scopeKind}
         </Text>
         <Text style={styles.heroSub}>
           {row.endsAt
@@ -485,12 +504,14 @@ const styles = StyleSheet.create({
   typeText: { ...type.label, fontSize: 10, color: color.text2 },
   status: { ...type.label, fontSize: 10, color: color.text3 },
   name: { ...type.row, fontWeight: "600", color: color.text1 },
+  // #4624 design §3: scope label 14/600, the value text 14/400.
   value: {
-    ...type.small,
+    fontSize: 14,
     fontWeight: "600",
     color: color.text1,
     marginTop: space[1],
   },
+  valueAmount: { fontWeight: "400" },
   progress: {
     height: 6,
     borderRadius: radius.full,

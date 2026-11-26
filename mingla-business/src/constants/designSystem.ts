@@ -149,8 +149,18 @@ const palette = {
     a45: "rgba(248, 113, 113, 0.45)",
   },
   green: { 500: "#22c55e", 300: "#5ee08f", a12: "rgba(34, 197, 94, 0.12)" },
-  blue: { 500: "#3b82f6", 300: "#8fb3ff", a14: "rgba(59, 130, 246, 0.14)" },
-  amber: { 500: "#f59e0b", 300: "#fbbf24", a14: "rgba(245, 158, 11, 0.14)" },
+  blue: {
+    500: "#3b82f6",
+    300: "#8fb3ff",
+    a14: "rgba(59, 130, 246, 0.14)",
+  },
+  amber: {
+    500: "#f59e0b",
+    300: "#fbbf24",
+    a14: "rgba(245, 158, 11, 0.14)",
+    // #4624: the deleted-offering row's border.
+    a40: "rgba(245, 158, 11, 0.40)",
+  },
   transparent: "transparent",
   // Status colours that read on a paper (light) surface: receipts, light
   // share sheets, light host-theme pages, the light keyboard toolbar.
@@ -249,6 +259,8 @@ export const color = {
   warning: palette.amber[500],
   warningText: palette.amber[300],
   warningTint: palette.amber.a14,
+  /** #4624: hairline on a warningTint row (deleted offering). */
+  warningLine: palette.amber.a40,
   errorText: palette.red[300],
   errorTint: palette.red.a14,
   errorLine: palette.red.a45,

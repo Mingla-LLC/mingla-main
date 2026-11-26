@@ -35,6 +35,12 @@ describe("issue #3872 Host discount editor polish", () => {
         label: "Offering types",
         description: "Events, trips, venues and more",
       },
+      // #4624: whole events, experiences or trips.
+      {
+        value: "listings",
+        label: "Specific offerings",
+        description: "Whole events, experiences or trips",
+      },
       {
         value: "items",
         label: "Specific items",
