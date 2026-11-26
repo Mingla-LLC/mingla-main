@@ -21,9 +21,20 @@ const NEW_DETAILS = [
   "schedule_invalid",
   "code_taken",
   "invalid_input",
+  // #4624
+  "listings_target_invalid",
 ] as const;
 
 describe("#4304 discount write refusal copy", () => {
+  test("#4624 listings_target_invalid has the approved host and Ari copy", () => {
+    expect(discountWriteHostCopy("listings_target_invalid")).toBe(
+      "Pick whole events, experiences or trips for this discount.",
+    );
+    expect(DISCOUNT_WRITE_REFUSAL_COPY.listings_target_invalid).toBe(
+      "Pick whole events, experiences or trips for this discount and ask me again. Nothing was saved.",
+    );
+  });
+
   test.each(NEW_DETAILS)("%s has plain host copy", (detail) => {
     const copy = discountWriteHostCopy(detail);
     expect(copy).not.toBe(DISCOUNT_WRITE_FALLBACK_HOST_COPY);

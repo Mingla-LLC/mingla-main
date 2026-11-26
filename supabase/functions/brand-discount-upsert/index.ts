@@ -35,6 +35,8 @@ const DETAILS = new Set([
   "window_invalid",
   "sale_price_overlap",
   "scope_target_mismatch",
+  // #4624: a "Specific offerings" discount holds whole offerings only.
+  "listings_target_invalid",
   "target_not_in_brand",
   "target_not_discountable",
   "kind_not_available",
