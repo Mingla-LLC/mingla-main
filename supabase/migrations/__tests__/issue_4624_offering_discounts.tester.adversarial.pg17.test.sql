@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: INV-4624-4 | issue #4624 | An offering-scoped ('listings') discount prices exactly like the same discount written as per-ticket ('items') targets, never reaches another offering or another brand, and is readable only by brand members of rank 20 or above.
+-- MINGLA-INVARIANT: I-4624-4 | issue #4624 | An offering-scoped ('listings') discount prices exactly like the same discount written as per-ticket ('items') targets, never reaches another offering or another brand, and is readable only by brand members of rank 20 or above.
 -- Issue #4624 tester adversarial suite (independent of the implementor's T1-T7).
 -- Angles the implementor's suite does not take:
 --   A1 guard matrix: every non-whole-offering kind (ticket_type, menu_item,

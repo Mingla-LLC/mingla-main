@@ -1,6 +1,6 @@
--- MINGLA-INVARIANT: INV-4624-1 | issue #4624 | An offering-scoped discount is resolved at quote time from the line's listingId; saving one never writes ticket_type or menu_item targets.
--- MINGLA-INVARIANT: INV-4624-2 | issue #4624 | A listings discount only ever holds event, venue_menu or venue_deposit targets (guard raises listings_target_invalid).
--- MINGLA-INVARIANT: INV-4624-3 | issue #4624 | A ticket with Allow discounts off, or a free ticket, is never discounted by an offering scope.
+-- MINGLA-INVARIANT: I-4624-1 | issue #4624 | An offering-scoped discount is resolved at quote time from the line's listingId; saving one never writes ticket_type or menu_item targets.
+-- MINGLA-INVARIANT: I-4624-2 | issue #4624 | A listings discount only ever holds event, venue_menu or venue_deposit targets (guard raises listings_target_invalid).
+-- MINGLA-INVARIANT: I-4624-3 | issue #4624 | A ticket with Allow discounts off, or a free ticket, is never discounted by an offering scope.
 -- Issue #4624: "Specific offerings" discounts, on the fully replayed PostgreSQL 17
 -- schema with 20281206004624_issue_4624_offering_discounts.sql applied.
 --   T1 guard: a ticket_type target under scope 'listings' is refused, through the

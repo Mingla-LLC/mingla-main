@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: INV-4624-1 | issue #4624 | The "Specific offerings" picker writes only whole-offering event targets; tickets are never expanded into ticket_type targets.
+// MINGLA-INVARIANT: I-4624-5 | issue #4624 | The "Specific offerings" picker writes only whole-offering event targets; tickets are never expanded into ticket_type targets.
 /* eslint-disable import/first */
 /**
  * #4624 — the REAL DiscountScopePicker, mounted with react-test-renderer under
