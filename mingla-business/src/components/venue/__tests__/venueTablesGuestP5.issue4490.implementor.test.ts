@@ -174,7 +174,8 @@ describe("by the hour (D P5-9: Boardroom 2 hours = N24,000 before VAT)", () => {
     ],
   };
   it("draws the day line: free, taken, yours", () => {
-    const cells = dayLineCells(day, "Africa/Lagos", { startsAt: "2026-11-26T07:00:00.000Z", minutes: 120 });
+    // Pin "now" to the day before, so the real clock never turns these hours into "closed".
+    const cells = dayLineCells(day, "Africa/Lagos", { startsAt: "2026-11-26T07:00:00.000Z", minutes: 120 }, Date.parse("2026-11-25T12:00:00.000Z"));
     expect(cells.map((c) => c.state)).toEqual(["mine", "mine", "taken", "free"]);
     expect(cells[0]?.label).toBe("08:00");
     // Today, hours already gone read as closed, not taken.
