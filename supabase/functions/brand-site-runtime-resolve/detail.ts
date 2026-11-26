@@ -21,6 +21,9 @@ export function parseDetailRequest(value: Record<string, unknown>): { kind: Offe
   const kind = value.kind;
   const slug = value.slug;
   if (typeof kind !== "string" || !(OFFERING_KINDS as readonly string[]).includes(kind)) return null;
+  // #4572 venue offers link to their Mingla booking routes. They intentionally
+  // have no standalone Sites detail page, even though they share the feed.
+  if (kind === "venue") return null;
   if (typeof slug !== "string" || !SLUG_RE.test(slug)) return null;
   return { kind: kind as OfferingKind, slug };
 }
