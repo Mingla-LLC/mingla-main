@@ -4,7 +4,7 @@
  * loses its Total tickets row.
  */
 import { describe, expect, test } from "@jest/globals";
-import { discountUsageLabel } from "../discountScopeLabels";
+import { discountUsageLabel } from "../discountUsageLabel";
 import { discountProposalFields } from "../../ari/eventProposalDisplay";
 
 describe("#4624 Total tickets labels", () => {

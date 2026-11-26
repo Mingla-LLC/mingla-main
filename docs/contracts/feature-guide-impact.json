@@ -3674,7 +3674,8 @@
         "supabase/migrations/20281206004624_issue_4624_offering_discounts.sql",
         "supabase/migrations/20281206014624_issue_4624_code_ticket_limit.sql",
         "packages/offering-rendering/saleLimitedCopy.ts",
-        "supabase/functions/_shared/discountEngine.ts"
+        "supabase/functions/_shared/discountEngine.ts",
+        "mingla-business/src/components/discounts/discountUsageLabel.ts"
       ]
     },
     {

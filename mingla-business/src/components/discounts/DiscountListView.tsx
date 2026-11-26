@@ -19,10 +19,8 @@ import { Button } from "../ui/Button";
 import { Chip, Segmented } from "../ui/Pill";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { PricesWorkspace } from "./PricesWorkspace";
-import {
-  DISCOUNT_SCOPE_LABELS,
-  discountUsageLabel,
-} from "./discountScopeLabels";
+import { DISCOUNT_SCOPE_LABELS } from "./discountScopeLabels";
+import { discountUsageLabel } from "./discountUsageLabel";
 
 const loadDiscountService = () => import("../../services/discountService");
 const DISCOUNT_QUERY_ROOT = "brand-discounts";
