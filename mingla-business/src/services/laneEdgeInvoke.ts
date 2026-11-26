@@ -1,5 +1,7 @@
 /**
- * #3040 (2026-10-19) — every video-lane edge call, never stuck behind sign-in.
+ * #3040 (2026-10-19) — bounded authenticated edge calls, introduced for the
+ * video lane and reused by destructive writes that must never disappear
+ * behind sign-in (#4572 draft discard).
  *
  * `supabase.functions.invoke` runs through supabase-js's `fetchWithAuth`,
  * which awaits `auth.getSession()` BEFORE it sends anything — even when the
@@ -72,7 +74,7 @@ const notReady = (): BusinessAuthNotReadyError =>
 const SESSION_TIMED_OUT = Symbol("session_timed_out");
 
 /**
- * The access token for one lane call. Never waits on the auth lock for more
+ * The access token for one direct edge call. Never waits on the auth lock for more
  * than SESSION_ACQUIRE_TIMEOUT_MS.
  */
 export const resolveLaneAccessToken = async (): Promise<string> => {
@@ -115,7 +117,7 @@ const httpError = (name: string, message: string, response: Response): Error =>
   Object.assign(new Error(message), { name, context: response });
 
 /**
- * Call one lane edge function. Same result shape as `supabase.functions.invoke`.
+ * Call one edge function. Same result shape as `supabase.functions.invoke`.
  * Without a configured endpoint (tests that replace services/supabase) it is
  * exactly `supabase.functions.invoke`.
  */

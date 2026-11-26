@@ -60,6 +60,7 @@ export type PlanOfferingKey =
   | "trips"
   | "events"
   | "experiences"
+  | "venue_coworking"
   | "venue_food_drink"
   | "venue_play"
   | "venue_creative_arts"
@@ -75,11 +76,12 @@ export type PlanOfferingOption = {
   readonly stay: boolean;
 };
 
-/** The seven options, one grid, no grouping (design contract chapter 3). */
+/** The eight options, one grid, no grouping (design contract chapter 3). */
 export const PLAN_OFFERING_OPTIONS: readonly PlanOfferingOption[] = [
   { key: "trips", label: "Trips", hint: "Group trips, tours", venue: false, stay: false },
   { key: "events", label: "Events", hint: "Ticketed or RSVP", venue: false, stay: false },
   { key: "experiences", label: "Experiences", hint: "Classes, tastings", venue: false, stay: false },
+  { key: "venue_coworking", label: "Coworking & workspaces", hint: "Desks, rooms, memberships", venue: true, stay: false },
   { key: "venue_food_drink", label: "Restaurant, bar or café", hint: "Food & drink", venue: true, stay: false },
   { key: "venue_play", label: "Play", hint: "Activities, family fun", venue: true, stay: false },
   { key: "venue_creative_arts", label: "Creative & arts", hint: "Studios, galleries, shows", venue: true, stay: false },
@@ -90,7 +92,7 @@ export const PLAN_OFFERING_KEYS: readonly PlanOfferingKey[] = PLAN_OFFERING_OPTI
 
 /** "Which describes you best?" chips after a venue tick (shapes words only, never pages). */
 export const VENUE_DESCRIPTOR_CHIPS: readonly string[] = [
-  "Cocktail bar", "Café", "Restaurant", "Nightclub", "Rooftop", "Gallery", "Studio", "Activity centre",
+  "Cocktail bar", "Café", "Restaurant", "Nightclub", "Rooftop", "Gallery", "Studio", "Activity centre", "Coworking space", "Meeting rooms",
 ];
 
 /** Fixed menu order of the offering pages (M1). */
@@ -100,6 +102,7 @@ const OFFERING_PAGE: Readonly<Record<PlanOfferingKey, PlannedPageKey>> = {
   trips: "trips",
   events: "events",
   experiences: "experiences",
+  venue_coworking: "visit",
   venue_food_drink: "menu",
   venue_play: "visit",
   venue_creative_arts: "visit",

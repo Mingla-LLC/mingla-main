@@ -103,7 +103,24 @@
       "discard": "Weggooien",
       "keep": "Behouden",
       "discardError": "We konden {{brand}} niet weggooien. Probeer het opnieuw.",
-      "discarded": "{{brand}} weggegooid."
+      "discarded": "{{brand}} weggegooid.",
+      "clearStep": {
+        "name": "Volgende: voer de naam van dit merk in. Ga dan verder met de instellingen of weggooi het hier.",
+        "country": "Volgende: kies een bankland. Ga dan verder met 'Betaald worden', of kies 'Opslaan en later afmaken' → Alleen gratis evenementen nu.",
+        "pay": "Volgende: ga verder met 'Betaald worden', of kies 'Opslaan en later afmaken' → Alleen gratis evenementen nu.",
+        "done": "De instellingen tonen nu geen blokkering voor een nieuw merk. Ververs om de laatste status te zien."
+      },
+      "discardFailure": {
+        "offline": "Mingla kon geen verbinding met de server maken. Controleer je verbinding en probeer opnieuw.",
+        "auth": "Je inlogsessie was niet klaar, dus geen verwijderingsaanvraag is verzonden. Wacht even, dan probeer het opnieuw.",
+        "session": "Je inlogsessie is verlopen, dus de tekening is niet weggewezen. Log opnieuw in, dan probeer het opnieuw.",
+        "forbidden": "Alleen de eigenaar van het account kan deze tekening weggooien.",
+        "notDraft": "{{brand}} is geen tekening meer, dus is het niet weggewezen. Ververs om te zien wat veranderd is.",
+        "blocked": "Deze tekening heeft komende activiteiten of geld die moeten worden opgelost voordat het kan worden weggewezen.",
+        "payment": "Het betalingsaccount kon niet worden gesloten ({{reason}}). Niets is verwijderd. Neem contact op met ondersteuning.",
+        "mismatch": "De merknaam veranderde voordat de weggooi klaar was. Ververs, dan probeer het opnieuw.",
+        "server": "Mingla heeft de weggooi niet bevestigd. Niets is verwijderd. We hebben het opgenomen—neem contact op met ondersteuning als het blijft gebeuren."
+      }
     },
     "n3": {
       "draftLabel": "Concept",

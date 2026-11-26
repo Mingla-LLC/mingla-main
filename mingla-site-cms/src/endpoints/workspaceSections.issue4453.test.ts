@@ -95,8 +95,7 @@ describe("#4453 workspace reads", () => {
     expect(hero.fields).toContainEqual({ key: "heading", label: "Heading", kind: "text", value: "Play together", max: 120 });
     expect(hero.fields).toContainEqual({ key: "subheading", label: expect.any(String), kind: "multiline", value: "Game nights in Lagos.", max: 300 });
     expect(hero.fields).toContainEqual({ key: "ctas.0.label", label: "Label 1", kind: "text", value: "See what's on", max: 80 });
-    // A button's link is not words: it is never a field.
-    expect((hero.fields as Doc[]).some((field) => String(field.key).includes("href"))).toBe(false);
+    expect(hero.fields).toContainEqual({ key: "ctas.0.href", label: "Link 1", kind: "mingla_link", value: "/events", max: 2048 });
     expect(hero.media).toEqual([
       { slot: "media", label: "Photo", media_id: PHOTO_A, thumb_url: `https://thumbs.test/r/${PHOTO_A}/640.jpg` },
       { slot: "video", label: "Video", media_id: null, thumb_url: null },
@@ -198,10 +197,12 @@ describe("#4453 edit_section", () => {
     const edit = (args: Doc) => call(site, "edit_section", { page_id: site.homeId, expected_revision: "1", section_id: hero.id, ...args });
 
     expect((await edit({ section_id: "nope", edits: [{ key: "heading", value: "x" }] })).error).toMatchObject({ code: "SECTION_NOT_FOUND" });
-    for (const key of ["variant", "media", "booking_target_id", "ctas.0.href", "ctas.7.label", "review", "__proto__", "ctas.0.label.extra"]) {
+    for (const key of ["variant", "media", "booking_target_id", "ctas.7.label", "review", "__proto__", "ctas.0.label.extra"]) {
       const refused = await edit({ edits: [{ key, value: "x" }] });
       expect(refused.error, key).toMatchObject({ code: "FIELD_NOT_EDITABLE", key });
     }
+    expect((await edit({ edits: [{ key: "ctas.0.href", value: "https://tickets.example/book" }] })).error)
+      .toMatchObject({ code: "VALIDATION_FAILED", key: "ctas.0.href" });
     expect((await edit({ edits: [{ key: "heading", value: "x".repeat(121) }] })).error).toMatchObject({ code: "VALUE_TOO_LONG", key: "heading", max: 120 });
     expect((await edit({ edits: [{ key: "ctas.0.label", value: "  " }] })).error).toMatchObject({ code: "FIELD_REQUIRED", key: "ctas.0.label" });
     expect((await edit({ edits: [{ key: "heading", value: "<b>Play</b>" }] })).error).toMatchObject({ code: "VALIDATION_FAILED" });

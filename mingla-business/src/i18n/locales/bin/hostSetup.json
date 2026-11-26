@@ -103,7 +103,24 @@
       "discard": "Fi fiẹ",
       "keep": "Sẹ ẹre",
       "discardError": "Ma sẹtin fi {{brand}} fiẹ. Ke gberra.",
-      "discarded": "A fi {{brand}} fiẹ."
+      "discarded": "A fi {{brand}} fiẹ.",
+      "clearStep": {
+        "name": "Ọna ọ gha dee: ya ẹvbo ye brand na. Vbe ẹghe, gha dee ru emwi ladian ra fi ẹre fiẹ vbe na.",
+        "country": "Ọna ọ gha dee: tọ ẹvbo banki ọkpa. Vbe ẹghe, ru Miẹ igho ladian, ra tọ Sẹ ẹre ne u fu ẹre vbe ọdẹ → Ukpo ọ khọ igho ọkpa nia.",
+        "pay": "Ọna ọ gha dee: ru Miẹ igho ladian, ra tọ Sẹ ẹre ne u fu ẹre vbe ọdẹ → Ukpo ọ khọ igho ọkpa nia.",
+        "done": "Emwi ne a ya ru ladian i ghi ka brand ọkpẹ fiẹ. Ru ẹre ọkpakpa ne u ghee ẹre ẹghẹ na."
+      },
+      "discardFailure": {
+        "offline": "Mingla ma sẹtin rrie ẹkpẹ na. Ghee intanẹti ruẹ ne u ke gberra.",
+        "auth": "Rie ku ruẹ ma ghi ladian, ọna ọre a i viẹ ẹmwẹ ne a fi ẹre fiẹ. Hẹ ẹghẹ kherhe ne u ke gberra.",
+        "session": "Rie ku ruẹ fu, ọna ọre a i fi draft na fiẹ. Rie ku ọkpakpa ne u ke gberra.",
+        "forbidden": "Ọnọ nọ ye akaunti ọkpa ọ sẹtin fi draft na fiẹ.",
+        "notDraft": "{{brand}} i ghi draft, ọna ọre a i fi ẹre fiẹ. Ru ẹre ọkpakpa ne u ghee emwi ne ọ rhie.",
+        "blocked": "Draft na mwẹ ukpo ne ọ gha dee ra igho ne a ka ru ladian ne u ka sẹtin fi ẹre fiẹ.",
+        "payment": "A ma sẹtin khui akaunti igho na ({{reason}}). A i fi emwi rhọkpa fiẹ. Gu support guan.",
+        "mismatch": "Ẹvbo brand rhie wẹẹ ne a ma ghi fi ẹre fiẹ. Ru ẹre ọkpakpa ne u ke gberra.",
+        "server": "Mingla ma ya ẹmwẹ ye fi ẹre fiẹ. A i fi emwi rhọkpa fiẹ. A gbe ẹre ye—gu support guan deghẹ ọ ya ru ọkpakpa."
+      }
     },
     "n3": {
       "draftLabel": "Draft",

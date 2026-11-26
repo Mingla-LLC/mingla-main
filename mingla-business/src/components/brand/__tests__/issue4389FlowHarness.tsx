@@ -35,6 +35,9 @@ export const harness = {
   saveCountry: jest.fn<(country: string, o: { onSuccess?: () => void }) => void>(),
   markFreeOnly: jest.fn<() => Promise<void>>(() => Promise.resolve()),
   markFreeOnlyMutate: jest.fn<(v: undefined, o: { onSuccess?: () => void; onError?: () => void }) => void>(),
+  discardDraft: jest.fn<(brandId: string) => Promise<unknown>>(() =>
+    Promise.resolve({ ok: true, stripe: "none", paystack: "none" }),
+  ),
   focusEffects: [] as Array<() => void>,
   beforeRemove: null as null | ((e: unknown) => void),
   params: {} as Record<string, string>,
@@ -115,7 +118,7 @@ jest.mock("../../../hooks/useBrandSetupFlowWrites", () => ({
   useCreateSetupBrand: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useSetBrandPayoutCountry: () => ({ mutate: harness.saveCountry, isPending: false }),
   adoptBrandIntoCaches: jest.fn(),
-  useDiscardDraftBrand: () => jest.fn(),
+  useDiscardDraftBrand: () => harness.discardDraft,
 }));
 jest.mock("../../../hooks/useMinglaToSAcceptance", () => ({
   CURRENT_MINGLA_TOS_VERSION: "v1",
@@ -227,9 +230,9 @@ jest.mock("../../../hooks/useBrandStripeStatus", () => ({
 }));
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: harness.invalidate }) }));
 
-import { BrandCreationFlow } from "../BrandCreationFlow";
+import { BrandCreationFlow, DraftInProgress, draftDiscardFailureMessage } from "../BrandCreationFlow";
 
-export { BrandCreationFlow };
+export { BrandCreationFlow, DraftInProgress, draftDiscardFailureMessage };
 
 export interface Node {
   type: unknown;
@@ -298,6 +301,8 @@ export function resetHarness(): void {
   harness.saveCountry.mockReset();
   harness.markFreeOnly.mockClear();
   harness.markFreeOnlyMutate.mockReset();
+  harness.discardDraft.mockReset();
+  harness.discardDraft.mockImplementation(() => Promise.resolve({ ok: true, stripe: "none", paystack: "none" }));
   harness.focusEffects = [];
   harness.beforeRemove = null;
   harness.params = {};

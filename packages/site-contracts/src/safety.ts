@@ -119,7 +119,8 @@ export const CANONICAL_ORIGIN_RE =
  * `offersBookingOrPayment`) is accepted ONLY when it is:
  *   1. a same-site path (`/…`) to a page this site has;
  *   2. THIS brand's own page on Mingla's buyer host: `/t/{brand}/…`,
- *      `/e/{brand}/…`, `/exp/{brand}/…`, `/b/{brand}` or `/b/{brand}/v/{venue}`,
+ *      `/e/{brand}/…`, `/exp/{brand}/…`, `/b/{brand}`, `/b/{brand}/v/{venue}`
+ *      or that venue's `/book/{offer}` buyer route,
  *      or `/checkout/{event}` for one of this brand's events;
  *   3. `mailto:` the brand's own contact email or `tel:` its own phone.
  *
@@ -547,8 +548,12 @@ export function actionHrefProblem(
     return scope.checkoutEventIds?.has(brand!.toLowerCase()) ? null : "other_brand";
   }
   const offeringRoute = (root === "t" || root === "e" || root === "exp") && segments.length >= 3;
+  const venueBookRoute = root === "b" && segments.length === 6 && segments[2] === "v" &&
+    ACTION_SLUG_RE.test(segments[3]!) && segments[4] === "book" && UUID_RE.test(segments[5]!) &&
+    ([...url.searchParams.keys()].length === 0 ||
+      ([...url.searchParams.keys()].length === 1 && url.searchParams.get("k") === "plan"));
   const brandRoute = root === "b" &&
-    (segments.length === 2 || (segments.length === 4 && segments[2] === "v" && ACTION_SLUG_RE.test(segments[3]!)));
+    (segments.length === 2 || (segments.length === 4 && segments[2] === "v" && ACTION_SLUG_RE.test(segments[3]!)) || venueBookRoute);
   if (!(offeringRoute || brandRoute) || !ACTION_SLUG_RE.test(brand ?? "")) return "outside_mingla";
   if (!scope) return null;
   if (scope.brandSlug === null) return scope.identityUnchecked ? null : "brand_unknown";

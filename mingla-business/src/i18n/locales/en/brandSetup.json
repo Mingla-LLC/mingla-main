@@ -85,7 +85,24 @@
       "confirmBodyPayments": " Its payment setup will be closed too.",
       "discard": "Discard",
       "keep": "Keep it",
-      "discardError": "We couldn't discard {{brand}}. Try again."
+      "discardError": "We couldn't discard {{brand}}. Try again.",
+      "clearStep": {
+        "name": "Next: finish naming this brand. Then continue through setup or discard it here.",
+        "country": "Next: choose a bank country. Then finish Get paid, or choose Save and finish later → Free events only for now.",
+        "pay": "Next: finish Get paid, or choose Save and finish later → Free events only for now.",
+        "done": "Setup no longer appears to block a new brand. Refresh to get the latest status."
+      },
+      "discardFailure": {
+        "offline": "Mingla couldn't reach the server. Check your connection, then try again.",
+        "auth": "Your sign-in wasn't ready, so no delete request was sent. Wait a moment, then try again.",
+        "session": "Your sign-in expired, so the draft wasn't discarded. Sign in again, then try again.",
+        "forbidden": "Only the account owner can discard this draft.",
+        "notDraft": "{{brand}} is no longer a draft, so it wasn't discarded. Refresh to see what changed.",
+        "blocked": "This draft has upcoming activity or money that must be resolved before it can be discarded.",
+        "payment": "The payment account could not be closed ({{reason}}). Nothing was deleted. Contact support.",
+        "mismatch": "The brand name changed before the discard finished. Refresh, then try again.",
+        "server": "Mingla did not confirm the discard. Nothing was removed. We've logged it—contact support if it keeps happening."
+      }
     },
     "stepNames": {
       "name": "Name your brand",

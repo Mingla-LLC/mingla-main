@@ -93,13 +93,19 @@ describe("#2830 stripped Studio and preview contract", () => {
     expect(manager).toContain("20 MB and 40 megapixels");
     expect(manager).toContain("This image is decorative");
     expect(manager).toContain("Retry");
-    expect(manager).toContain("Replace");
     expect(manager).toContain("Dismiss");
     expect(manager).toContain("Remove unused");
     expect(manager).toContain("Use in draft");
     expect(manager).toContain("window.location.assign(result.return_url)");
     expect(manager).toContain('window.location.replace("/mingla/session-expired")');
     expect(manager).not.toContain("mingla:media-selected");
+    // #4572: mobile browsers receive a native chooser, never a hidden input
+    // opened by a synthetic click.
+    expect(manager).toContain('className="studio-native-file-input"');
+    expect(manager).toContain('aria-label="Choose an image or video from this device"');
+    expect(manager).not.toMatch(/type="file"[\s\S]{0,300}\bhidden\b/);
+    expect(manager).not.toContain(".click()");
+    expect(styles).toContain(".studio-native-file-input::file-selector-button");
     expect(client).toContain('"/api/mingla/media-library"');
     expect(client).toContain("/attach");
     expect(endpoints).toContain("applyStudioMediaSelection");

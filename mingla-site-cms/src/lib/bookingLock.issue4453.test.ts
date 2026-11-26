@@ -118,8 +118,9 @@ describe("#4453 rework: informational buttons publish, booking ones go to Mingla
       .toEqual([expect.objectContaining({ intent: "booking", problem: "booking_site" })]);
   });
 
-  it("a hero button to any outside site is refused", () => {
-    expect(artifactOutboundActionLinks(withBlocks([{ type: "hero", heading: "Gogi", ctas: [{ label: "Follow us", href: "https://www.instagram.com/gogi" }] }])))
+  it("a hero button follows its label: information may leave, booking stays on Mingla", () => {
+    expect(artifactOutboundActionLinks(withBlocks([{ type: "hero", heading: "Gogi", ctas: [{ label: "Follow us", href: "https://www.instagram.com/gogi" }] }]))).toEqual([]);
+    expect(artifactOutboundActionLinks(withBlocks([{ type: "hero", heading: "Gogi", ctas: [{ label: "Book", href: "https://www.instagram.com/gogi" }] }])))
       .toEqual([expect.objectContaining({ blockType: "hero", intent: "booking", problem: "outside_mingla" })]);
   });
 });
@@ -213,10 +214,21 @@ describe("#4453 Studio's save-time check", () => {
       (siteBlocks.find((block) => block.slug === slug)!.fields as any[]).find((field) => field.name === name)?.validate;
     const heroCta = ((siteBlocks.find((block) => block.slug === "hero")!.fields as any[]).find((field) => field.name === "ctas").fields as any[])
       .find((field) => field.name === "href").validate;
-    expect(heroCta).toBe(safeActionUrl);
-    expect(validatorOf("offering_grid", "empty_cta_href")).toBe(safeActionUrl);
-    // Other buttons are judged by their label: booking words lock them to Mingla.
-    for (const [slug, name] of [["cta", "href"], ["contact_handoff", "href"], ["menu_link", "href"]] as const) {
+    expect(heroCta("https://maps.google.com/?q=x", { siblingData: { label: "Directions" } })).toBe(true);
+    expect(heroCta("https://maps.google.com/?q=x", { siblingData: { label: "Book" } })).toMatch(/points outside Mingla/);
+    const emptyCta = validatorOf("offering_grid", "empty_cta_href");
+    expect(emptyCta("https://maps.google.com/?q=x", { siblingData: { empty_cta_label: "Directions" } })).toBe(true);
+    expect(emptyCta("https://maps.google.com/?q=x", { siblingData: { empty_cta_label: "Book" } })).toMatch(/points outside Mingla/);
+    // #4572: the owner-created CTA uses the same label-aware rule as Studio's
+    // other optional buttons: informational maps/socials pass, booking words
+    // remain locked to Mingla.
+    const ownerCta = validatorOf("cta", "href");
+    expect(ownerCta("https://maps.google.com/?q=x", { siblingData: { label: "Directions" } })).toBe(true);
+    expect(ownerCta("https://maps.google.com/?q=x", { siblingData: { label: "Book a table" } })).toMatch(/points outside Mingla/);
+    expect(ownerCta("https://host.usemingla.com/b/young-and-stamped/v/althaven/book/11111111-1111-4111-8111-111111111111", { siblingData: { label: "Book" } })).toBe(true);
+    // Broader contact/menu buttons are still judged by their label: booking
+    // words lock them to Mingla while directions may use a map.
+    for (const [slug, name] of [["contact_handoff", "href"], ["menu_link", "href"]] as const) {
       const validate = validatorOf(slug, name);
       expect(validate("https://maps.google.com/?q=x", { siblingData: { label: "Directions" } }), slug).toBe(true);
       expect(validate("https://maps.google.com/?q=x", { siblingData: { label: "Book a table" } }), slug).toMatch(/points outside Mingla/);

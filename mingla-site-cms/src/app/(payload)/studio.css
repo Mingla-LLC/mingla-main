@@ -193,6 +193,33 @@ a.studio-secondary-button {
   background: var(--studio-gold-hover);
 }
 
+/* #4572 — a real file control works on mobile browsers without a scripted click. */
+.studio-native-file-input {
+  display: block;
+  width: min(100%, 28rem);
+  margin: 0 auto 0.75rem;
+  color: var(--studio-ivory);
+  font: inherit;
+}
+
+.studio-native-file-input::file-selector-button {
+  min-height: 44px;
+  margin-right: 12px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--studio-gold);
+  color: var(--studio-black);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.studio-native-file-input:disabled::file-selector-button {
+  cursor: wait;
+  opacity: 0.5;
+}
+
 .studio-secondary-button,
 .studio-preview-switcher button {
   background: transparent;

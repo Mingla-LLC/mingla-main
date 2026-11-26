@@ -20,7 +20,7 @@
  * → T1 never settles; drop `adoptBrandIntoCaches` from commitDefaultBrand →
  * T3 (pin) and T2's guarded scenario loses the new brand.
  */
-import { describe, expect, jest, test } from "@jest/globals";
+import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import React from "react";
@@ -43,8 +43,11 @@ jest.mock("../../diagnostics/sentry", () => ({ captureException: jest.fn() }));
 jest.mock("../../services/creatorAccount", () => ({
   setCreatorDefaultBrand: jest.fn(() => Promise.resolve()),
 }));
+const mockDiscardDraftBrand = jest.fn<() => Promise<unknown>>(() =>
+  Promise.resolve({ ok: true, stripe: "none", paystack: "none" }),
+);
 jest.mock("../../services/brandSetupService", () => ({
-  discardDraftBrand: jest.fn(() => Promise.resolve({ ok: true, stripe: "none", paystack: "none" })),
+  discardDraftBrand: () => mockDiscardDraftBrand(),
 }));
 
 /* eslint-disable import/first */
@@ -71,6 +74,11 @@ const account = (defaultBrandId: string | null): CreatorAccountRow => ({
   marketing_opt_in: false,
   default_brand_id: defaultBrandId,
   deleted_at: null,
+});
+
+beforeEach(() => {
+  mockDiscardDraftBrand.mockReset();
+  mockDiscardDraftBrand.mockResolvedValue({ ok: true, stripe: "none", paystack: "none" });
 });
 
 /**
@@ -160,6 +168,28 @@ describe("#4389 P0 — discard a draft, then create on F1: no current-brand loop
     expect(qc.getQueryData<CreatorAccountRow>(creatorAccountKeys.byId(ACCT))?.default_brand_id).toBeNull();
     expect(qc.getQueryData(brandKeys.detail(DRAFT))).toBeUndefined();
     expect(settle(qc, DRAFT, new Set([DRAFT]))).toBeNull();
+  });
+
+  test("#4572: a structured refusal leaves list, detail and default caches intact", async () => {
+    const qc = seed();
+    mockDiscardDraftBrand.mockResolvedValue({ ok: false, error: "forbidden" });
+
+    await discardWithHook(qc);
+
+    expect(qc.getQueryData<Brand[]>(brandKeys.list(ACCT))?.map((b) => b.id)).toEqual([DRAFT]);
+    expect(qc.getQueryData<CreatorAccountRow>(creatorAccountKeys.byId(ACCT))?.default_brand_id).toBe(DRAFT);
+    expect(qc.getQueryData<Brand>(brandKeys.detail(DRAFT))?.id).toBe(DRAFT);
+  });
+
+  test("#4572: a rejected or malformed delete response leaves every cache intact", async () => {
+    const qc = seed();
+    mockDiscardDraftBrand.mockRejectedValue(new Error("brand-delete returned an invalid response"));
+
+    await expect(discardWithHook(qc)).rejects.toThrow("invalid response");
+
+    expect(qc.getQueryData<Brand[]>(brandKeys.list(ACCT))?.map((b) => b.id)).toEqual([DRAFT]);
+    expect(qc.getQueryData<CreatorAccountRow>(creatorAccountKeys.byId(ACCT))?.default_brand_id).toBe(DRAFT);
+    expect(qc.getQueryData<Brand>(brandKeys.detail(DRAFT))?.id).toBe(DRAFT);
   });
 
   test("T2: the new F1 brand, adopted into the caches, stays current", async () => {

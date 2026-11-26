@@ -7,6 +7,7 @@ const read = (relative: string) =>
 
 describe("#2830 Restaurant Website v1 visual and accessibility contract", () => {
   const renderer = read("src/components/RestaurantV1.tsx");
+  const atelier = read("src/designs/atelier/AtelierPage.tsx");
   const styles = read("public/designs/legacy-v1.css");
 
   it("pins the sole pilot composition to the approved near-black and warm-gold tokens", () => {
@@ -18,6 +19,15 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
     expect(renderer).toContain('className="fact-rail"');
     expect(renderer).toContain("editorial-feature");
     expect(renderer).not.toMatch(/template picker|template catalogue|provider/i);
+  });
+
+  it("keeps venue language neutral and anchors a rectangular media badge", () => {
+    expect(renderer).toContain('aria-label="Venue facts"');
+    expect(renderer).toContain("See venue details");
+    expect(renderer).toContain("Contact the venue");
+    expect(renderer).not.toContain("Restaurant facts");
+    expect(renderer).toContain('style={badge ? { position: "relative" } : undefined}');
+    expect(atelier).toContain('style={badge ? { position: "relative" } : undefined}');
   });
 
   it("locks the responsive header, hero and editorial widths across 320–1440", () => {
@@ -79,6 +89,7 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
      * still carries exactly one h1, and it is the page title.
      */
     expect(renderer).toContain('<header className="page-header"');
+    expect(renderer).toContain('block.type === "hero" || String(block.type) === "page_header"');
     expect(renderer).toContain("<h1>{current.title}</h1>");
     expect(renderer).toContain("const Heading = primaryHeading ? \"h1\" : \"h2\";");
     expect(renderer).toContain('className="skip"');

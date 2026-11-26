@@ -103,7 +103,24 @@
       "discard": "Buang",
       "keep": "Simpan",
       "discardError": "Kami tidak dapat membuang {{brand}}. Cuba lagi.",
-      "discarded": "{{brand}} dibuang."
+      "discarded": "{{brand}} dibuang.",
+      "clearStep": {
+        "name": "Seterusnya: selesai namakan jenama ini. Lalu teruskan melalui setup atau buang di sini.",
+        "country": "Seterusnya: pilih negara bank. Lalu selesai Terima bayaran, atau pilih Simpan dan tamat nanti → Kegiatan percuma sahaja sekarang.",
+        "pay": "Seterusnya: selesai Terima bayaran, atau pilih Simpan dan tamat nanti → Kegiatan percuma sahaja sekarang.",
+        "done": "Setup tidak lagi terhalang untuk jenama baru. Segarkan untuk lihat status terkini."
+      },
+      "discardFailure": {
+        "offline": "Mingla tidak dapat mencapai pelayan. Periksa konektiviti anda, lalu cuba lagi.",
+        "auth": "Pendaftaran anda tidak siap, jadi tidak ada permintaan pembuangan. Tunggu sebentar, lalu cuba lagi.",
+        "session": "Pendaftaran anda telah berakhir, jadi cadangan tidak dibuang. Log masuk semula, lalu cuba lagi.",
+        "forbidden": "Hanya pemilik akaun yang boleh buang cadangan ini.",
+        "notDraft": "{{brand}} tidak lagi sebagai cadangan, jadi tidak dibuang. Segarkan untuk lihat apa yang berubah.",
+        "blocked": "Cadangan ini mempunyai aktiviti atau wang yang akan datang yang perlu diselesaikan sebelum boleh dibuang.",
+        "payment": "Akaun pembayaran tidak dapat ditutup ({{reason}}). Tiada apa yang dihapuskan. Hubungi sokongan.",
+        "mismatch": "Nama jenama berubah sebelum pembuangan selesai. Segarkan, lalu cuba lagi.",
+        "server": "Mingla tidak mengesahkan pembuangan. Tiada apa yang dihapuskan. Kita telah mencatatnya—hubungi sokongan jika ia berterusan."
+      }
     },
     "n3": {
       "draftLabel": "Draf",

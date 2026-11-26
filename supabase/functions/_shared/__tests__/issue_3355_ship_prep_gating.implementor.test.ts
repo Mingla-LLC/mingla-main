@@ -88,8 +88,12 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // accepts 15 to 1440, and the group-size cap is dropped, all in agentTools.ts.
 // The tool count stays 190 and the digest is recomputed the same way. The off
 // path's prompt digests and per-message selections are unchanged.
+// [TEST-MOD-APPROVED #4572] Ari can now author safe action targets for CTA,
+// feature-list and offering-grid buttons, and venue offers join the Sites feed.
+// Those approved schema additions reach the shared declaration on both rollout
+// paths; the tool count, prompt digests and per-message selections stay fixed.
 const MAIN_DECLARATIONS_DIGEST =
-  "b4cc82c97a6c73bb8a9f20267038b322020055be154c70975e56720c0bc5522b";
+  "7eb2bfbdc07090f9adbc7bad5b908c6732b55fb83a9377d4174c82c013a49b33";
 const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {

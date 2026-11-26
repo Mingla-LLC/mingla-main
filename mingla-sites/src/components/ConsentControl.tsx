@@ -12,10 +12,10 @@ import {
 type Consent = "granted" | "necessary" | null;
 
 /*
- * #2829 W7 — `subject` names who is asking, so a travel brand's site does not
- * say "this restaurant". It defaults to the original wording.
+ * #2829 W7 / #4572 — `subject` names who is asking. The neutral default works
+ * for restaurants, coworking spaces, galleries and travel brands alike.
  */
-export function ConsentControl({ siteId, brandId, publicationId, subject = "this restaurant" }: { siteId: string; brandId: string; publicationId: string; subject?: string }) {
+export function ConsentControl({ siteId, brandId, publicationId, subject = "this business" }: { siteId: string; brandId: string; publicationId: string; subject?: string }) {
   const [choice, setChoice] = useState<Consent>(null);
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {

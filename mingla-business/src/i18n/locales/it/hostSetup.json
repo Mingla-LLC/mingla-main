@@ -103,7 +103,24 @@
       "discard": "Scarta",
       "keep": "Tienilo",
       "discardError": "Non siamo riusciti a scartare {{brand}}. Riprova.",
-      "discarded": "{{brand}} scartato."
+      "discarded": "{{brand}} scartato.",
+      "clearStep": {
+        "name": "Prossimo: completa il nome di questo brand. Poi prosegui nell'installazione o scartalo qui.",
+        "country": "Prossimo: scegli un paese bancario. Poi completa Ricevi pagamenti, o scegli Salva e termina più tardi → Eventi gratuiti disponibili solo ora.",
+        "pay": "Prossimo: completa Ricevi pagamenti, o scegli Salva e termina più tardi → Eventi gratuiti disponibili solo ora.",
+        "done": "L'installazione sembra non bloccare più un nuovo brand. Riaggiorna per vedere lo stato più aggiornato."
+      },
+      "discardFailure": {
+        "offline": "Mingla non ha raggiunto il server. Verifica la tua connessione, poi riprova.",
+        "auth": "Il tuo accesso non era pronto, quindi nessuna richiesta di eliminazione è stata inviata. Aspetta un momento, poi riprova.",
+        "session": "Il tuo accesso è scaduto, quindi il bozzato non è stato scartato. Accedi di nuovo, poi riprova.",
+        "forbidden": "Solo il proprietario dell'account può scartare questo bozzato.",
+        "notDraft": "{{brand}} non è più un bozzato, quindi non è stato scartato. Riaggiorna per vedere cosa è cambiato.",
+        "blocked": "Questo bozzato ha attività o pagamenti in programma che devono essere risolti prima di poter essere scartati.",
+        "payment": "L'account di pagamento non può essere chiuso ({{reason}}). Niente è stato eliminato. Contatta il supporto.",
+        "mismatch": "Il nome del brand è cambiato prima che lo scarto fosse completato. Riaggiorna, poi riprova.",
+        "server": "Mingla non ha confermato lo scarto. Niente è stato rimosso. Lo abbiamo registrato—contatta il supporto se si ripete."
+      }
     },
     "n3": {
       "draftLabel": "Bozza",

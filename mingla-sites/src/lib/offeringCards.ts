@@ -60,7 +60,7 @@ export type LiveOfferings = {
   detailPages?: boolean;
 };
 
-const KIND_NOUN: Readonly<Record<SiteOffering["kind"], string>> = { trip: "trip", event: "event", experience: "experience", stay: "room" };
+const KIND_NOUN: Readonly<Record<SiteOffering["kind"], string>> = { trip: "trip", event: "event", experience: "experience", stay: "room", venue: "offer" };
 
 function ctaFor(offering: SiteOffering, state: OfferingState): string {
   if (state.bookable) return "Book";

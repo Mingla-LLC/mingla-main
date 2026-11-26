@@ -137,6 +137,7 @@ export function parseSignedDesignPass(value: unknown): SignedDesignPass | null {
 
 /** The venue format a plan's ticks name (for the venue facts), or null. */
 const VENUE_FORMAT_FOR_TICK: Readonly<Record<string, (typeof VENUE_FORMATS)[number]>> = {
+  venue_coworking: "play",
   venue_food_drink: "restaurants",
   venue_play: "play",
   venue_creative_arts: "art",

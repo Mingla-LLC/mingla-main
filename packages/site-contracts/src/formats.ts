@@ -37,6 +37,7 @@ export const FORMAT_FOR_PLAN_OPTION: Readonly<Record<PlanOfferingKey, FormatKey>
   trips: "trips",
   events: "events",
   experiences: "experiences",
+  venue_coworking: "play",
   venue_food_drink: "restaurants",
   venue_play: "play",
   venue_creative_arts: "art",

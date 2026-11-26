@@ -1,10 +1,10 @@
 /**
  * useCurrentBrandRole — React Query hook for the current user's role within a brand (Cycle 13a).
  *
- * SPEC §4.6. Reads `brand_team_members` for the authenticated user; on null,
- * falls back to brand_owner SYNTHESIS for solo operators: the brand row's
- * `account_id` IS the owner's auth user id, so `account_id === auth.uid()`
- * means brand_owner.
+ * SPEC §4.6. Reads `brand_team_members` and the brand row for the authenticated
+ * user. The brand row's `account_id` IS the owner's auth user id, so
+ * `account_id === auth.uid()` always means brand_owner, even when that user
+ * also has a lower-ranked team membership.
  *
  * The synthesis fallback is CRITICAL — without it, every existing solo
  * operator on a deploy of Cycle 13a loses access (no brand_team_members row
@@ -157,16 +157,11 @@ export const fetchCurrentBrandRole = async (
     .is("removed_at", null)
     .maybeSingle();
   if (memberErr) throw memberErr;
-  if (memberRow !== null) {
-    return {
-      role: memberRow.role as BrandRole,
-      permissionsOverride:
-        (memberRow.permissions_override as Record<string, unknown> | null) ?? {},
-      accepted: memberRow.accepted_at !== null,
-    };
-  }
-  // Step 2: brand_owner synthesis fallback for solo operators.
-  // Without this, every existing solo operator loses access on deploy.
+  // Step 2: read the owner authority even when a membership exists. #4572
+  // proved that Mingla-wide admin access can add `brand_admin` to a brand its
+  // creator already owns. Returning the membership first downgraded the real
+  // account owner in client gates, while SQL's biz_brand_effective_rank
+  // correctly gives the account_id owner branch precedence.
   // Cycle 17e-A: filter deleted_at IS NULL per I-PROPOSED-A — soft-deleted
   // brands MUST NOT grant role synthesis to anyone (closed brand = no access).
   const { data: brandRow, error: brandErr } = await supabase
@@ -198,6 +193,14 @@ export const fetchCurrentBrandRole = async (
     // Returning `false` here would lock every solo operator out of their
     // own payments surface.
     return { role: "brand_owner", permissionsOverride: {}, accepted: true };
+  }
+  if (memberRow !== null) {
+    return {
+      role: memberRow.role as BrandRole,
+      permissionsOverride:
+        (memberRow.permissions_override as Record<string, unknown> | null) ?? {},
+      accepted: memberRow.accepted_at !== null,
+    };
   }
   return { role: null, permissionsOverride: {}, accepted: false };
 };

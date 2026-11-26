@@ -326,14 +326,16 @@ BEGIN
     v_new := public.brand_site_offerings_feed(pg_temp.id('site_a')) - 'generated_at';
     PERFORM pg_temp.p_assert(jsonb_array_length(v_new->'offerings') = CASE WHEN v_flags THEN 7 ELSE 5 END,
       format('X-1a non-trivial feed (stay flags %s): %s rows', v_flags, jsonb_array_length(v_new->'offerings')));
-    -- #4572 items 2/7a added one key per offering (cover_stream_poster, null
-    -- for these image/no-cover rows) and keep summary line breaks (none in
-    -- this fixture); with that key set aside the feed is still the pre-M10 body.
+    -- [TEST-MOD-APPROVED #4572] Items 2/7a added cover_stream_poster (null for these image/no-cover
+    -- rows), and the venue-feed work added price_cadence. These legacy rows are
+    -- all "from" prices. Summary line breaks are kept too (none in this fixture).
+    -- With those two approved additive keys set aside, this is still M10's body.
     PERFORM pg_temp.p_assert(v_old = jsonb_set(v_new, '{offerings}', COALESCE((
-        SELECT jsonb_agg(o.value - 'cover_stream_poster' ORDER BY o.ordinality)
+        SELECT jsonb_agg(o.value - 'cover_stream_poster' - 'price_cadence' ORDER BY o.ordinality)
         FROM jsonb_array_elements(v_new->'offerings') WITH ORDINALITY o), '[]'::jsonb))
-      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_new->'offerings') o WHERE o->'cover_stream_poster' <> 'null'::jsonb),
-      format('X-1b site feed equals the pre-M10 body byte for byte, #4572 still key aside (stay flags %s)', v_flags));
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_new->'offerings') o
+        WHERE o->'cover_stream_poster' <> 'null'::jsonb OR o->>'price_cadence' <> 'from'),
+      format('X-1b site feed equals the pre-M10 body byte for byte, #4572 keys aside (stay flags %s)', v_flags));
     PERFORM pg_temp.p_assert((public.brand_site_offerings_feed_for_brand(pg_temp.id('a')) - 'generated_at') = v_new,
       format('X-1c feed by brand equals the site feed (stay flags %s)', v_flags));
   END LOOP;

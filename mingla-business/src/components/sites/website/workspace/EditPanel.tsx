@@ -221,12 +221,48 @@ function SectionEditor({ ws, section, onAskAri, madeByTeam }: { ws: Workspace; s
           label={field.label}
           value={kept ?? field.value}
           onChangeText={(value) => ws.typeField(section, field.key, value)}
-          multiline={field.kind !== "text"}
+          multiline={
+            field.kind === "multiline" || field.kind === "richtext"
+          }
           max={field.max ?? undefined}
           editable={!readOnly}
-          help={field.kind === "richtext" ? "Plain paragraphs. Leave a blank line between them." : null}
+          autoCapitalize={field.kind === "mingla_link" ? "none" : undefined}
+          autoCorrect={field.kind === "mingla_link" ? false : undefined}
+          keyboardType={field.kind === "mingla_link" ? "url" : undefined}
+          placeholder={
+            field.kind === "mingla_link"
+              ? "https://host.usemingla.com/e/..."
+              : undefined
+          }
+          help={
+            field.kind === "richtext"
+              ? "Plain paragraphs. Leave a blank line between them."
+              : field.kind === "mingla_link"
+                ? "Choose a site page or paste a Mingla brand, event or venue link. Non-booking buttons can also use a validated map, social or contact link. The button stays hidden until this is set."
+                : null
+          }
           testID={`field-${section.id}-${field.key}`}
         />
+        {field.kind === "mingla_link" ? (
+          <View style={styles.linkTargets} accessibilityRole="list" accessibilityLabel={`${field.label} site pages`}>
+            {ws.pages.filter((page) => page.enabled).map((page) => {
+              const href = page.path ? `/${page.path}` : "/";
+              return (
+                <Pressable
+                  key={page.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Link to ${page.title}`}
+                  disabled={readOnly}
+                  onPress={() => ws.typeField(section, field.key, href)}
+                  style={styles.linkTarget}
+                  testID={`field-${section.id}-${field.key}-page-${page.path || "home"}`}
+                >
+                  <Text style={styles.linkTargetText}>{page.title}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
         {kept !== null ? (
           <View style={styles.unsaved} role="alert" testID={`field-${section.id}-${field.key}-unsaved`}>
             <Text style={styles.unsavedText}>{`Not saved. ${reason ?? ""}`.trim()}</Text>
@@ -421,6 +457,9 @@ const styles = StyleSheet.create({
   // #4572 item 11 — the "Not saved" row under a field (error tint, a 44 px Try again).
   unsaved: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: space[2], paddingVertical: space[2], paddingHorizontal: space[3], borderRadius: radius.sm, backgroundColor: color.errorTint, borderWidth: 1, borderColor: color.errorLine },
   unsavedText: { flex: 1, minWidth: 160, color: color.text1, fontSize: 13, lineHeight: 18 },
+  linkTargets: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  linkTarget: { minHeight: 36, justifyContent: "center", paddingHorizontal: 12, borderRadius: radius.full, borderWidth: 1, borderColor: ui.border2, backgroundColor: ui.card2 },
+  linkTargetText: { fontSize: 13, fontWeight: "600", color: ui.t1 },
   label: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ui.t3, marginBottom: 6 },
   picker: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 14, borderRadius: radius.sm, borderWidth: 1, borderColor: ui.border2, backgroundColor: ui.card },
   pickerText: { fontSize: 16, fontWeight: "600", color: ui.t1 },

@@ -9,7 +9,7 @@ import {
   UnorderedListFeature,
   lexicalEditor,
 } from "@payloadcms/richtext-lexical";
-import { buttonUrl, safeActionUrl, safeCityTimeZone, safeText, safeUrl } from "../lib/validation";
+import { buttonUrl, safeCityTimeZone, safeText, safeUrl } from "../lib/validation";
 import { statsIconOptions } from "../lib/statsIcons";
 import { reviewField } from "../lib/reviewStamp";
 import { BLOCK_TYPES, type BlockType } from "../contracts/generated/blocks.ts";
@@ -43,8 +43,7 @@ const short = (
 /*
  * #4453 PR 2 — every block link here is a BUTTON (an action link) except the
  * map and directions links, which say so with `safeUrl`. A button is checked
- * by its label (`buttonUrl("label")`: booking words lock it to Mingla);
- * hero buttons and the empty-offerings button always book (`safeActionUrl`).
+ * by its label (`buttonUrl("label")`: booking words lock it to Mingla).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Payload's validate signature varies by field type.
 const link = (name = "href", label = "Link", required = true, validate: (value: unknown, options?: any) => true | string = buttonUrl("label")): Field => ({
@@ -104,9 +103,16 @@ const eyebrow = (): Field =>
     "Optional. The small line printed above this section\u2019s heading, in your words \u2014 for example \u201cThe place\u201d above \u201cCome as you are\u201d. Leave it empty and no line is printed.",
   );
 
-const ctaFields: Field[] = [short("label", "Label", true, 80), link()];
-// #4453 PR 2 — the hero's buttons are the site's primary actions: always booking.
-const heroCtaFields: Field[] = [short("label", "Label", true, 80), link("href", "Link", true, safeActionUrl)];
+const ctaFields: Field[] = [
+  short("label", "Label", true, 80),
+  link(
+    "href",
+    "Button link",
+    false,
+    buttonUrl("label"),
+  ),
+];
+const heroCtaFields: Field[] = [short("label", "Label", true, 80), link("href", "Link", true, buttonUrl("label"))];
 
 /*
  * #3149 wave 4 — an OPTIONAL button, offered on four blocks that had no way to
@@ -393,6 +399,7 @@ const BLOCK_CONFIGS: Block[] = [
           { label: "Trips", value: "trip" },
           { label: "Events", value: "event" },
           { label: "Experiences", value: "experience" },
+          { label: "Venue offers", value: "venue" },
         ],
       },
       {
@@ -421,7 +428,7 @@ const BLOCK_CONFIGS: Block[] = [
       short("intro", "Line under the heading", false, 500),
       ...optionalCta("See all trips", "beside the heading"),
       short("empty_cta_label", "Button when there is nothing to show", false, 80, "Optional, for example \u201cGet in touch\u201d."),
-      link("empty_cta_href", "Its link", false, safeActionUrl),
+      link("empty_cta_href", "Its link", false, buttonUrl("empty_cta_label")),
       {
         name: "offering_ids",
         label: "Mingla offering IDs",

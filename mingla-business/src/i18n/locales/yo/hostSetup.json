@@ -103,7 +103,24 @@
       "discard": "Pa rẹ́",
       "keep": "Fi sílẹ̀",
       "discardError": "A kò lè pa {{brand}} rẹ́. Tún gbìyànjú.",
-      "discarded": "A ti pa {{brand}} rẹ́."
+      "discarded": "A ti pa {{brand}} rẹ́.",
+      "clearStep": {
+        "name": "Níbẹ̀ẹ̀: yan orúkọ fún buráàndì yìí. Lẹ́yìn náà, tẹ̀síwájú nípasẹ̀ ètò tàbí kọ̀ ọ́ sílẹ̀ níbí.",
+        "country": "Níbẹ̀ẹ̀ yìí: yan orílẹ̀-èdè tí ilé-ifowopamọ́ náà wà. Lẹ́yìn náà, parí Gba owó, tàbí yan Fi pamọ́ kí o parí lẹ́yìn → Ìṣẹ̀lẹ̀ ọ̀fẹ́ nìkan fún báyìí.",
+        "pay": "Tókàn: parí Gba owó, tàbí yan Fi pamọ́ kí o parí lẹ́yìn → Ìṣẹ̀lẹ̀ ọ̀fẹ́ nìkan fún báyìí.",
+        "done": "Ìṣètò kò sì hàn mọ́ bí ẹni pé ó ń dí àmì ọjà tuntun lọ́nà. Tún ṣe ìgbàsílẹ̀ láti gba ìpò tuntun."
+      },
+      "discardFailure": {
+        "offline": "Mingla kò lè dé ọ̀dọ̀ olupin náà. Ṣayẹwo asopọ rẹ, lẹhinna gbiyanju lẹẹkansi.",
+        "auth": "Ìwọlé rẹ kò tíì ṣetán, nítorí náà a kò fi ìbéèrè ìparẹ́ ránṣẹ́. Dúró fún ìgbà díẹ̀, lẹ́yìn náà gbìyànjú lẹ́ẹ̀kan sí i.",
+        "session": "Àkókò ìwọlé rẹ ti dópin, nítorí náà a kò sọ àkòrí náà nù. Wọlé lẹ́ẹ̀kan síi, lẹ́yìn náà gbìyànjú lẹ́ẹ̀kan síi.",
+        "forbidden": "Olúdarí àkántì nìkan ló lè kọ ìwé tí kò tíì parí yìí sílẹ̀.",
+        "notDraft": "{{brand}} kò tún jẹ́ àkòrí mọ́, nítorí náà a kò sọ ọ́ nù. Tún ṣe ìgbàsílẹ̀ láti rí ohun tí ó yí padà.",
+        "blocked": "Ìwé yìí ní iṣẹ́ tí ó ń bọ̀ wá ṣẹlẹ̀ tàbí owó tí ó gbọ́dọ̀ di yíyànjú kí a tó lè kọ̀ ọ́ sílẹ̀.",
+        "payment": "A kò lè pa àkántì ìsanwó náà ({{reason}}). A kò pa ohunkóhun rẹ́. Kàn sí àwọn oníṣẹ́ àtìlẹ́yìn.",
+        "mismatch": "Orúkọ buráàndì náà yí padà kí ìsọ̀tẹ́lẹ̀ tó parí. Tún ṣe ìgbàsílẹ̀, lẹ́yìn náà gbìyànjú lẹ́ẹ̀kan síi.",
+        "server": "Mingla kò jẹ́rìí sí sísọ̀tẹ̀ sílẹ̀ náà. A kò yọ ohunkohun kúrò. A ti ṣe ìkọsílẹ̀ rẹ̀—kàn sí àwọn olùrànlọ́wọ́ tí ó bá ń ṣẹlẹ̀ ní ìtẹsiwájú."
+      }
     },
     "n3": {
       "draftLabel": "Àkọsílẹ̀",

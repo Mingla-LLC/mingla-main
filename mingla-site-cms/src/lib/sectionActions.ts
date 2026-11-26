@@ -27,6 +27,7 @@ import { relationId, tenantPagePaths } from "./pageTree";
 import { ownerFontsOf, ownerTokensOf } from "./siteLook";
 import { findCatalogFont } from "../contracts/generated/fontCatalog.ts";
 import { AriRefusal, currentSettings, mergeTokens, plainTextToLexical, readyMedia, siteDesign, tokensView } from "./ariSiteActions";
+import { buttonUrl, safeActionUrl } from "./validation";
 import {
   LOOK_KEYS, MENU_KEYS, pageSnapshot, pickSnapshot, recordChanges,
   type ChangeGroup, type ChangeRow, type HistoryActor, type HistoryContext,
@@ -184,6 +185,16 @@ export function layoutsFor(design: DesignKey, type: string): { key: string; labe
 // ---------------------------------------------------------------------------
 
 type TextSpec = { label: string; max: number; rich: boolean; required: boolean };
+type LinkSpec = {
+  label: string;
+  max: 2048;
+  rich: false;
+  required: boolean;
+  link: true;
+  booking: boolean;
+  labelField: string;
+};
+type EditableSpec = TextSpec | LinkSpec;
 
 /** Photo words the catalogue keeps on the gallery's photo rows (Studio stores them on each row). */
 const GALLERY_ROW_FIELDS: Readonly<Record<string, TextSpec>> = {
@@ -197,30 +208,45 @@ function textSpec(spec: FieldSpec): TextSpec | null {
   return null;
 }
 
+function linkSpec(spec: FieldSpec): LinkSpec | null {
+  if (spec.kind !== "action_href") return null;
+  return {
+    label: spec.label,
+    max: 2048,
+    rich: false,
+    required: spec.required === true,
+    link: true,
+    booking: spec.booking === true,
+    labelField: spec.labelField ?? "label",
+  };
+}
+
 /** The text fields of a section type: top-level ones, and those of each list's rows. */
-export function sectionTextFields(type: BlockType, actor: SectionActor): { fields: Map<string, TextSpec>; lists: Map<string, Map<string, TextSpec>> } {
-  const fields = new Map<string, TextSpec>();
-  const lists = new Map<string, Map<string, TextSpec>>();
+export function sectionTextFields(type: BlockType, actor: SectionActor): { fields: Map<string, EditableSpec>; lists: Map<string, Map<string, EditableSpec>> } {
+  const fields = new Map<string, EditableSpec>();
+  const lists = new Map<string, Map<string, EditableSpec>>();
   // Ari writes only the fields its copy tool already may (the same list as propose_site_copy).
   const ari = actor === "ari" ? ariCopyFields(type) : null;
   for (const [key, spec] of Object.entries(BLOCK_CATALOG[type].fields) as Array<[string, FieldSpec]>) {
     const top = textSpec(spec);
     if (top && (!ari || ari.fields.includes(key))) fields.set(key, top);
+    const action = linkSpec(spec);
+    if (action && (!ari || ari.fields.includes(key))) fields.set(key, action);
     if (spec.kind === "list") {
-      const inner = new Map<string, TextSpec>();
+      const inner = new Map<string, EditableSpec>();
       for (const [child, childSpec] of Object.entries(spec.item) as Array<[string, FieldSpec]>) {
-        const row = childSpec.kind === "text" ? textSpec(childSpec) : null;
+        const row = textSpec(childSpec) ?? linkSpec(childSpec);
         if (row && (!ari || ari.listFields[key]?.includes(child))) inner.set(child, row);
       }
       if (inner.size) lists.set(key, inner);
     }
   }
-  if (type === "gallery" && actor === "user") lists.set("images", new Map(Object.entries(GALLERY_ROW_FIELDS)));
+  if (type === "gallery" && actor === "user") lists.set("images", new Map<string, EditableSpec>(Object.entries(GALLERY_ROW_FIELDS)));
   return { fields, lists };
 }
 
 /** Where Studio stores a field's value (rich text lives in `content`). */
-const storedKey = (key: string, spec: TextSpec) => (spec.rich ? "content" : key);
+const storedKey = (key: string, spec: EditableSpec) => (spec.rich ? "content" : key);
 
 /** Stored rich text as plain paragraphs (the reverse of the conversion Ari's copy uses on the way in). */
 function plainRichText(value: unknown): string {
@@ -236,9 +262,16 @@ function plainRichText(value: unknown): string {
   return blocks.map((block) => text(block).trim()).filter(Boolean).join("\n\n");
 }
 
-export type SectionField = { key: string; label: string; kind: "text" | "multiline" | "richtext"; value: string; max: number | null };
+export type SectionField = { key: string; label: string; kind: "text" | "multiline" | "richtext" | "mingla_link"; value: string; max: number | null };
 
-const fieldKind = (spec: TextSpec): SectionField["kind"] => (spec.rich ? "richtext" : spec.max > 160 ? "multiline" : "text");
+const fieldKind = (spec: EditableSpec): SectionField["kind"] =>
+  "link" in spec
+    ? "mingla_link"
+    : spec.rich
+      ? "richtext"
+      : spec.max > 160
+        ? "multiline"
+        : "text";
 
 export function sectionFields(block: AnyDoc, actor: SectionActor): SectionField[] {
   const type = String(block.blockType ?? "");
@@ -289,14 +322,16 @@ export function applyEdits(block: AnyDoc, edits: readonly SectionEdit[], actor: 
   const texts: string[] = [];
   for (const edit of edits) {
     const parts = edit.key.split(".");
-    let spec: TextSpec | undefined;
+    let spec: EditableSpec | undefined;
     let write: (value: unknown) => void;
+    let siblingData: AnyDoc;
     if (parts.length === 1) {
       spec = fields.get(edit.key);
       if (!spec) refuse("FIELD_NOT_EDITABLE", { key: edit.key });
       const rich = spec.rich;
       const target = storedKey(edit.key, spec);
       write = (value) => { next[target] = rich && typeof value === "string" ? plainTextToLexical(value) : value; };
+      siblingData = next;
     } else if (parts.length === 3 && /^\d{1,3}$/.test(parts[1]!)) {
       const [list, at, child] = parts as [string, string, string];
       spec = lists.get(list)?.get(child);
@@ -304,6 +339,7 @@ export function applyEdits(block: AnyDoc, edits: readonly SectionEdit[], actor: 
       const row = rows[Number(at)];
       if (!spec || !row || typeof row !== "object") refuse("FIELD_NOT_EDITABLE", { key: edit.key });
       write = (value) => { row[child] = value; };
+      siblingData = row;
     } else {
       refuse("FIELD_NOT_EDITABLE", { key: edit.key });
     }
@@ -311,8 +347,27 @@ export function applyEdits(block: AnyDoc, edits: readonly SectionEdit[], actor: 
     if (edit.value.length > spec.max) refuse("VALUE_TOO_LONG", { key: edit.key, max: spec.max });
     const empty = edit.value.trim() === "";
     if (empty && spec.required) refuse("FIELD_REQUIRED", { key: edit.key });
-    write(empty ? (spec.rich ? plainTextToLexical("") : null) : edit.value);
-    if (!empty) texts.push(edit.value);
+    if ("link" in spec && !empty) {
+      const verdict = spec.booking
+        ? safeActionUrl(edit.value.trim())
+        : buttonUrl(spec.labelField)(edit.value.trim(), { siblingData });
+      if (verdict !== true) {
+        refuse("VALIDATION_FAILED", {
+          key: edit.key,
+          problems: [verdict],
+        });
+      }
+    }
+    write(
+      empty
+        ? spec.rich
+          ? plainTextToLexical("")
+          : null
+        : "link" in spec
+          ? edit.value.trim()
+          : edit.value,
+    );
+    if (!empty && !("link" in spec)) texts.push(edit.value);
   }
   return { block: next, texts };
 }
@@ -341,7 +396,7 @@ export type SectionList = {
   fields: { key: string; label: string; kind: SectionField["kind"]; max: number | null }[];
 };
 
-type ListRule = { name: string; label: string; min: number; max: number; inner: Map<string, TextSpec> };
+type ListRule = { name: string; label: string; min: number; max: number; inner: Map<string, EditableSpec> };
 
 /** The lists of this section whose rows may be added, removed and moved by this actor. */
 function editableLists(block: AnyDoc, actor: SectionActor): ListRule[] {
@@ -726,7 +781,8 @@ export function starterSection(type: BlockType, design: DesignKey, mediaId: stri
   }
   // What a type needs beyond its words.
   if (type === "rich_text") { block.heading = starterWords(type, "heading"); starters.set("heading", block.heading); block.width = "narrow"; }
-  if (type === "cta") block.href = "/";
+  // #4572: a targetless CTA is text, not a home-link placeholder. Every
+  // renderer hides its button until the owner supplies a real target.
   // Lists Mingla or the site's own collections fill: they start empty.
   const fills = (list: string) => {
     delete block[list];
