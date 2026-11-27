@@ -407,7 +407,7 @@
   "brandGuestsMorePrivate_other": "另有 {{count}} 位宾客隐藏了姓名",
   "brandGuestsRateLimitCountdown": "你发送得太快了。{{time}} 后可以再次发帖。",
   "brandGuestsAnnouncementsOnly": "目前只有主办方可以在这里发帖。",
-  "brandChatWelcomeTitle": "欢迎来到{{brand}}的聊天",
+  "brandChatWelcomeTitle": "欢迎来到{{brand}}聊天",
   "brandChatWelcomeBody": "在{{brand}}预订过的人都在这里。{{brand}}的帖子会显示品牌名称，成员名单保持私密。",
   "brandChatTextOnly": "目前品牌聊天中只能发送文字消息。",
   "brandChatOpen": "打开{{brand}}聊天",

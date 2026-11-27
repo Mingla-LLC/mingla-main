@@ -435,7 +435,7 @@
   "brandGuestsMorePrivate_other": "{{count}} autres invités gardent leur nom privé",
   "brandGuestsRateLimitCountdown": "Vous envoyez vite. Vous pourrez publier à nouveau dans {{time}}.",
   "brandGuestsAnnouncementsOnly": "Seul l'hôte peut publier ici pour le moment.",
-  "brandChatWelcomeTitle": "Bienvenue dans le chat de {{brand}}",
+  "brandChatWelcomeTitle": "Bienvenue dans le chat {{brand}}",
   "brandChatWelcomeBody": "Toutes les personnes ayant réservé avec {{brand}} sont ici. Les publications de {{brand}} portent son nom, et la liste des membres reste privée.",
   "brandChatTextOnly": "Seuls les messages texte peuvent être envoyés dans les chats de marque pour l'instant.",
   "brandChatOpen": "Ouvrir le chat {{brand}}",

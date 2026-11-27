@@ -422,7 +422,7 @@
   "brandGuestsMorePrivate_other": "Nog {{count}} gasten houden hun naam privé",
   "brandGuestsRateLimitCountdown": "Je verstuurt erg snel. Je kunt over {{time}} weer posten.",
   "brandGuestsAnnouncementsOnly": "Op dit moment kan alleen de host hier posten.",
-  "brandChatWelcomeTitle": "Welkom in de chat van {{brand}}",
+  "brandChatWelcomeTitle": "Welkom in de {{brand}}-chat",
   "brandChatWelcomeBody": "Iedereen die bij {{brand}} heeft geboekt, zit hier. Berichten van {{brand}} dragen de naam van het merk en de ledenlijst blijft privé.",
   "brandChatTextOnly": "In merkchats kun je voorlopig alleen tekstberichten sturen.",
   "brandChatOpen": "Chat van {{brand}} openen",

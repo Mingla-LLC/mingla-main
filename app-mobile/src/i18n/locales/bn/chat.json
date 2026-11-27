@@ -420,7 +420,7 @@
   "brandGuestsMorePrivate_other": "আরও {{count}} অতিথি নাম গোপন রাখেন",
   "brandGuestsRateLimitCountdown": "আপনি খুব দ্রুত পাঠাচ্ছেন। {{time}} পরে আবার পোস্ট করতে পারবেন।",
   "brandGuestsAnnouncementsOnly": "এখন শুধু হোস্ট এখানে পোস্ট করতে পারেন।",
-  "brandChatWelcomeTitle": "{{brand}}-এর চ্যাটে স্বাগতম",
+  "brandChatWelcomeTitle": "{{brand}} চ্যাটে স্বাগতম",
   "brandChatWelcomeBody": "{{brand}}-এর সাথে বুক করা সবাই এখানে আছেন। {{brand}}-এর পোস্টে তার নাম থাকে, আর সদস্য তালিকা ব্যক্তিগত থাকে।",
   "brandChatTextOnly": "আপাতত ব্র্যান্ড চ্যাটে শুধু টেক্সট বার্তা পাঠানো যায়।",
   "brandChatOpen": "{{brand}} চ্যাট খুলুন",

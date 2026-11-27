@@ -422,7 +422,7 @@
   "brandGuestsMorePrivate_other": "{{count}} gäster till håller sina namn privata",
   "brandGuestsRateLimitCountdown": "Du skickar snabbt. Du kan posta igen om {{time}}.",
   "brandGuestsAnnouncementsOnly": "Just nu kan bara värden posta här.",
-  "brandChatWelcomeTitle": "Välkommen till chatten för {{brand}}",
+  "brandChatWelcomeTitle": "Välkommen till {{brand}}-chatten",
   "brandChatWelcomeBody": "Alla som har bokat hos {{brand}} finns här. Inlägg från {{brand}} visas med dess namn, och medlemslistan är privat.",
   "brandChatTextOnly": "Just nu kan bara textmeddelanden skickas i varumärkeschattar.",
   "brandChatOpen": "Öppna chatten för {{brand}}",

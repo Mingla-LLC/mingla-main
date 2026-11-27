@@ -435,7 +435,7 @@
   "brandGuestsMorePrivate_other": "Mais {{count}} convidados mantêm o nome privado",
   "brandGuestsRateLimitCountdown": "Você está enviando rápido. Poderá publicar novamente em {{time}}.",
   "brandGuestsAnnouncementsOnly": "Agora só o anfitrião pode publicar aqui.",
-  "brandChatWelcomeTitle": "Boas-vindas ao chat de {{brand}}",
+  "brandChatWelcomeTitle": "Boas-vindas ao chat {{brand}}",
   "brandChatWelcomeBody": "Todos que reservaram com {{brand}} estão aqui. As publicações de {{brand}} levam o nome dela, e a lista de membros é privada.",
   "brandChatTextOnly": "Por enquanto, só é possível enviar mensagens de texto nos chats de marca.",
   "brandChatOpen": "Abrir chat de {{brand}}",

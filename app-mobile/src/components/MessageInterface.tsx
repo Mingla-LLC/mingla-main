@@ -3578,7 +3578,10 @@ function MessageInterfaceInner({
           </View>
         </View>
       ) : visibleMessages.length === 0 ? (
-        <View style={[styles.messagesContainer, { justifyContent: "center" }]}>
+        // #4630 (test P2-2): the empty state clears whatever floats at the
+        // bottom (the composer, or the "Only <Brand> can post here" bar), the
+        // same clearance the thread list uses.
+        <View style={[styles.messagesContainer, { justifyContent: "center", paddingBottom: messageListBottomClearance }]}>
           {isLoadingMessages ? (
             // Issue #4114 Wave 3: a loader until the first read lands, so
             // "Start a conversation" never flashes before the messages.

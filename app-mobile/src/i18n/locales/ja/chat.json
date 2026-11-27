@@ -407,7 +407,7 @@
   "brandGuestsMorePrivate_other": "ほか{{count}}人のゲストは名前を非公開にしています",
   "brandGuestsRateLimitCountdown": "送信が速すぎます。{{time}}後にまた投稿できます。",
   "brandGuestsAnnouncementsOnly": "現在はホストのみ投稿できます。",
-  "brandChatWelcomeTitle": "{{brand}}のチャットへようこそ",
+  "brandChatWelcomeTitle": "{{brand}} チャットへようこそ",
   "brandChatWelcomeBody": "{{brand}}で予約したすべての人がここにいます。{{brand}}の投稿にはブランド名が表示され、メンバーリストは非公開です。",
   "brandChatTextOnly": "現在、ブランドチャットではテキストメッセージのみ送信できます。",
   "brandChatOpen": "{{brand}}のチャットを開く",

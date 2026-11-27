@@ -205,6 +205,9 @@ Deno.test("#4630 SC-7 the empty state keeps 24 pt sides and a centred 320 pt col
   assert(/emptyStateIcon: \{[^}]*backgroundColor: chatTokens\.accentSoft/.test(styles), "the disc uses the chat tokens");
   assert(!styles.includes("#fef3e2"), "no cream disc on the dark screen");
   assert(chat.includes("<View style={styles.emptyStateColumn}>"), "the column wraps the copy");
+  // #4630 rework 1 (test P2-2): the empty state clears the composer or the announcements-only bar.
+  assert(chat.includes('{ justifyContent: "center", paddingBottom: messageListBottomClearance }'), "the empty state reserves the bottom bar's height");
+  assert(/const messageListBottomClearance = showComposer[\s\S]{0,200}broadcastComposerContentClearance/.test(chat), "and that clearance covers the announcements-only bar");
 });
 
 const CONNECTIONS_ADDED = ["brand_chat_pill", "brand_chat_preview_next", "brand_chat_preview_empty", "brand_chat_a11y_kind", "brand_chat_leave_title", "brand_chat_left_toast"];
@@ -247,6 +250,9 @@ Deno.test("#4630 SC-6 every locale has the new keys (same placeholders) and none
       const visible = [...CONNECTIONS_ADDED.map((k) => connections[k]), connections.filter_empty_brands, connections.host_chat_in_business_app,
         connections.brand_guests_leave_title, ...CHAT_ADDED.map((k) => chat[k])];
       assert(!visible.some((v) => /Guest/.test(v)), "en: no Guests in the brand chat copy");
+      // #4630 rework 1 (test P3-2): no possessive on the brand name ("Vibes's chat").
+      assert(!visible.some((v) => v.includes("{{brand}}'s")), "en: no {{brand}}'s");
+      eq([chat.brandChatWelcomeTitle, connections.brand_chat_leave_title], ["Welcome to the {{brand}} chat", "Leave the {{brand}} chat?"], "en wording");
     }
   }
 });

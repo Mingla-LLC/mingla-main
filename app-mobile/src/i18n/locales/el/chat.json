@@ -422,7 +422,7 @@
   "brandGuestsMorePrivate_other": "Ακόμη {{count}} καλεσμένοι κρατούν τα ονόματά τους ιδιωτικά",
   "brandGuestsRateLimitCountdown": "Στέλνεις πολύ γρήγορα. Μπορείς να αναρτήσεις ξανά σε {{time}}.",
   "brandGuestsAnnouncementsOnly": "Τώρα μόνο ο οικοδεσπότης μπορεί να αναρτά εδώ.",
-  "brandChatWelcomeTitle": "Καλώς ήρθες στη συνομιλία του {{brand}}",
+  "brandChatWelcomeTitle": "Καλώς ήρθες στη συνομιλία {{brand}}",
   "brandChatWelcomeBody": "Εδώ είναι όλοι όσοι έκαναν κράτηση με το {{brand}}. Οι αναρτήσεις του {{brand}} φέρουν το όνομά του και η λίστα μελών μένει ιδιωτική.",
   "brandChatTextOnly": "Προς το παρόν στις συνομιλίες brand στέλνονται μόνο μηνύματα κειμένου.",
   "brandChatOpen": "Άνοιγμα συνομιλίας {{brand}}",

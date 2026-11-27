@@ -435,7 +435,7 @@
   "brandGuestsMorePrivate_two": "עוד {{count}} אורחים שומרים על שמם פרטי",
   "brandGuestsRateLimitCountdown": "את/ה שולח/ת מהר מדי. אפשר לפרסם שוב בעוד {{time}}.",
   "brandGuestsAnnouncementsOnly": "כרגע רק המארח יכול לפרסם כאן.",
-  "brandChatWelcomeTitle": "ברוכים הבאים לצ'אט של {{brand}}",
+  "brandChatWelcomeTitle": "ברוכים הבאים לצ'אט {{brand}}",
   "brandChatWelcomeBody": "כל מי שהזמין אצל {{brand}} נמצא כאן. פוסטים של {{brand}} מופיעים בשמו, ורשימת החברים נשארת פרטית.",
   "brandChatTextOnly": "כרגע אפשר לשלוח רק הודעות טקסט בצ'אטים של מותגים.",
   "brandChatOpen": "פתיחת הצ'אט של {{brand}}",

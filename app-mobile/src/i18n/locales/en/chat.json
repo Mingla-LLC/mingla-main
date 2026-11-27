@@ -639,7 +639,7 @@
   "brandGuestsMorePrivate_other": "{{count}} more guests keep their names private",
   "brandGuestsRateLimitCountdown": "You're sending fast. You can post again in {{time}}.",
   "brandGuestsAnnouncementsOnly": "Only the host can post here right now.",
-  "brandChatWelcomeTitle": "Welcome to {{brand}}'s chat",
+  "brandChatWelcomeTitle": "Welcome to the {{brand}} chat",
   "brandChatWelcomeBody": "Everyone who has booked with {{brand}} is here. Posts from {{brand}} carry its name, and the member list stays private.",
   "brandChatTextOnly": "Only text messages can be sent in brand chats for now.",
   "brandChatOpen": "Open {{brand}} chat",

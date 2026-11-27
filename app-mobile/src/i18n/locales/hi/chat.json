@@ -420,7 +420,7 @@
   "brandGuestsMorePrivate_other": "{{count}} और मेहमान अपना नाम निजी रखते हैं",
   "brandGuestsRateLimitCountdown": "आप बहुत तेज़ भेज रहे हैं। {{time}} बाद फिर पोस्ट कर सकते हैं।",
   "brandGuestsAnnouncementsOnly": "अभी यहां केवल होस्ट पोस्ट कर सकता है।",
-  "brandChatWelcomeTitle": "{{brand}} की चैट में आपका स्वागत है",
+  "brandChatWelcomeTitle": "{{brand}} चैट में आपका स्वागत है",
   "brandChatWelcomeBody": "{{brand}} के साथ बुकिंग करने वाले सभी लोग यहाँ हैं। {{brand}} की पोस्ट पर उसका नाम होता है, और सदस्य सूची निजी रहती है।",
   "brandChatTextOnly": "अभी ब्रांड चैट में केवल टेक्स्ट संदेश भेजे जा सकते हैं।",
   "brandChatOpen": "{{brand}} चैट खोलें",

@@ -194,8 +194,34 @@ export function brandPageHref(brandSlug: string | null): string | null {
   return brandSlug ? `/b/${brandSlug}` : null;
 }
 
-export function eventPageHref(brandSlug: string | null, eventSlug: string | null): string | null {
-  return brandSlug && eventSlug ? `/e/${brandSlug}/${eventSlug}` : null;
+/**
+ * #4630 (test P1-1): the offering's own public page, by type, as the app's
+ * canonical route contract (components/discover/discoverCardRoute.ts):
+ * event and RSVP `/e/`, trip `/t/`, experience `/exp/`. `/e/` refuses trips
+ * and experiences ("Open this event from the app"), so a wrong prefix is a dead
+ * end. Any other type, or a missing slug, has no page: null (no control).
+ */
+export function offeringPageHref(
+  offeringType: string | null,
+  brandSlug: string | null,
+  slug: string | null,
+): string | null {
+  const brand = brandSlug?.trim();
+  const offering = slug?.trim();
+  if (!brand || !offering) return null;
+  const b = encodeURIComponent(brand);
+  const o = encodeURIComponent(offering);
+  switch (offeringType) {
+    case "event":
+    case "rsvp":
+      return `/e/${b}/${o}`;
+    case "trip":
+      return `/t/${b}/${o}`;
+    case "experience":
+      return `/exp/${b}/${o}`;
+    default:
+      return null;
+  }
 }
 
 export function bookingHref(booking: BrandChatBooking): string {
@@ -222,7 +248,7 @@ export function brandChatBannerState(input: BrandChatBannerInput): BrandChatBann
     .sort((a, b) => (time(a.startsAt) ?? 0) - (time(b.startsAt) ?? 0));
   const first = mine[0];
   if (first) {
-    const eventHref = eventPageHref(summary.brandSlug, first.eventSlug);
+    const eventHref = offeringPageHref(first.offeringType, summary.brandSlug, first.eventSlug);
     const moreCount = mine.length - 1;
     if (isBookingLiveToday(first, now)) {
       return { kind: "live_today", booking: first, moreCount, eventHref, bookingHref: bookingHref(first) };
@@ -252,7 +278,7 @@ export function brandChatBannerState(input: BrandChatBannerInput): BrandChatBann
       offering: next,
       days: daysUntil(next.startsAt, now),
       cta: offeringCta(next.offeringType),
-      eventHref: eventPageHref(summary.brandSlug, next.offeringSlug),
+      eventHref: offeringPageHref(next.offeringType, summary.brandSlug, next.offeringSlug),
     };
   }
   return { kind: "nothing_upcoming", brandHref: brandPageHref(summary.brandSlug) };

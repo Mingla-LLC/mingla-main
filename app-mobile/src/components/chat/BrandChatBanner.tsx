@@ -149,12 +149,16 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
   const locale = i18n.language;
   let kicker: string;
   let line: string;
+  let title: string;
+  let when: string;
   let cover: string | null;
   let mainHref: string | null;
   let live = false;
   if (state.kind === "next_no_ticket") {
     kicker = t("chat:brandChatBannerNextFrom", { brand });
-    line = joinLine(state.offering.title, formatBannerDate(state.offering.startsAt, locale));
+    title = state.offering.title;
+    when = formatBannerDate(state.offering.startsAt, locale);
+    line = joinLine(title, when);
     cover = state.offering.coverMediaUrl;
     mainHref = state.eventHref;
   } else {
@@ -162,10 +166,14 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
     if (state.kind === "live_today") {
       live = true;
       kicker = t("chat:brandChatBannerToday");
-      line = joinLine(booking.title, formatBannerTime(booking.startsAt, locale));
+      title = booking.title;
+      when = formatBannerTime(booking.startsAt, locale);
+      line = joinLine(title, when);
     } else {
       kicker = t("chat:nextUpInDays", { count: state.days });
-      line = joinLine(booking.title, formatBannerDate(booking.startsAt, locale));
+      title = booking.title;
+      when = formatBannerDate(booking.startsAt, locale);
+      line = joinLine(title, when);
     }
     cover = booking.coverMediaUrl;
     mainHref = state.eventHref;
@@ -221,7 +229,13 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
             {live ? <View style={styles.liveDot} /> : null}
             <Text style={styles.kicker} numberOfLines={1} maxFontSizeMultiplier={1.3}>{kicker}</Text>
           </View>
-          <Text style={styles.line} numberOfLines={1} maxFontSizeMultiplier={1.3}>{line}</Text>
+          {/* #4630 (test P3-1): the title truncates; the date or time stays whole. */}
+          <View style={styles.lineRow}>
+            <Text style={[styles.line, styles.lineTitle]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
+            {when ? (
+              <Text style={[styles.line, styles.lineWhen]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{` · ${when}`}</Text>
+            ) : null}
+          </View>
         </View>
       </Pressable>
 
@@ -363,6 +377,18 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: "600",
     color: chatTokens.accent,
+  },
+  lineRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    minWidth: 0,
+  },
+  lineTitle: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  lineWhen: {
+    flexShrink: 0,
   },
   line: {
     fontSize: 15,

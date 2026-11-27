@@ -407,7 +407,7 @@
   "brandGuestsMorePrivate_other": "อีก {{count}} คนเก็บชื่อเป็นส่วนตัว",
   "brandGuestsRateLimitCountdown": "คุณส่งเร็วเกินไป โพสต์ได้อีกครั้งใน {{time}}",
   "brandGuestsAnnouncementsOnly": "ตอนนี้มีเพียงเจ้าภาพที่โพสต์ที่นี่ได้",
-  "brandChatWelcomeTitle": "ยินดีต้อนรับสู่แชตของ {{brand}}",
+  "brandChatWelcomeTitle": "ยินดีต้อนรับสู่แชต {{brand}}",
   "brandChatWelcomeBody": "ทุกคนที่จองกับ {{brand}} อยู่ที่นี่ โพสต์จาก {{brand}} จะแสดงชื่อแบรนด์ และรายชื่อสมาชิกจะเป็นส่วนตัว",
   "brandChatTextOnly": "ขณะนี้ส่งได้เฉพาะข้อความในแชตแบรนด์",
   "brandChatOpen": "เปิดแชต {{brand}}",

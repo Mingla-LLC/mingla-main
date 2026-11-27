@@ -407,7 +407,7 @@
   "brandGuestsMorePrivate_other": "Thêm {{count}} khách giữ tên riêng tư",
   "brandGuestsRateLimitCountdown": "Bạn đang gửi quá nhanh. Bạn có thể đăng lại sau {{time}}.",
   "brandGuestsAnnouncementsOnly": "Hiện chỉ chủ nhà có thể đăng ở đây.",
-  "brandChatWelcomeTitle": "Chào mừng đến cuộc trò chuyện của {{brand}}",
+  "brandChatWelcomeTitle": "Chào mừng đến cuộc trò chuyện {{brand}}",
   "brandChatWelcomeBody": "Tất cả những ai đã đặt chỗ với {{brand}} đều ở đây. Bài đăng của {{brand}} mang tên thương hiệu, và danh sách thành viên được giữ riêng tư.",
   "brandChatTextOnly": "Hiện chỉ có thể gửi tin nhắn văn bản trong cuộc trò chuyện thương hiệu.",
   "brandChatOpen": "Mở cuộc trò chuyện {{brand}}",

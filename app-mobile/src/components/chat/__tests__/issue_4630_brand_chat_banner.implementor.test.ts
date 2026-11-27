@@ -10,6 +10,7 @@
 import {
   BRAND_CHAT_MORE_HREF,
   brandChatBannerState,
+  offeringPageHref,
   daysUntil,
   formatBannerDate,
   isBookingLiveToday,
@@ -83,11 +84,33 @@ Deno.test("#4630 next_no_ticket: the brand's next offering, with the right call 
   const s = brandChatBannerState({ summary: summary({ brandUpcoming: [offering("event")] }), now });
   eq([s.kind, s.cta, s.eventHref, s.days], ["next_no_ticket", "tickets", "/e/vibe-check/night", 4], "Get tickets, event page");
   eq(brandChatBannerState({ summary: summary({ brandUpcoming: [offering("rsvp")] }), now }).cta, "rsvp", "RSVP");
-  eq(brandChatBannerState({ summary: summary({ brandUpcoming: [offering("trip")] }), now }).cta, "book", "Book (trip)");
-  eq(brandChatBannerState({ summary: summary({ brandUpcoming: [offering("experience")] }), now }).cta, "book", "Book (experience)");
+  eq(brandChatBannerState({ summary: summary({ brandUpcoming: [offering("rsvp")] }), now }).eventHref, "/e/vibe-check/night", "RSVP opens the event route");
+  // #4630 rework 1 (test P1-1): Book opens the trip / experience page, never the /e/ dead end.
+  const trip = brandChatBannerState({ summary: summary({ brandUpcoming: [offering("trip")] }), now });
+  eq([trip.cta, trip.eventHref], ["book", "/t/vibe-check/night"], "Book (trip) opens /t/");
+  const exp = brandChatBannerState({ summary: summary({ brandUpcoming: [offering("experience")] }), now });
+  eq([exp.cta, exp.eventHref], ["book", "/exp/vibe-check/night"], "Book (experience) opens /exp/");
+  eq(brandChatBannerState({ summary: summary({ brandUpcoming: [offering("stay")] }), now }).eventHref, null, "an unknown type: no control, never a wrong page");
   // brandUpcoming has no end time: even starting within the hour it is never live_today.
   const soon = { ...offering("event"), startsAt: at(0, 1) };
   eq(brandChatBannerState({ summary: summary({ brandUpcoming: [soon] }), now }).kind, "next_no_ticket", "never live_today");
+});
+
+Deno.test("#4630 rework 1: my booking's row opens its own page type (event, RSVP, trip, experience)", () => {
+  const route = (type: string) => brandChatBannerState({
+    summary: summary({ myBookings: [booking("a", at(3), at(3, 3), { offeringType: type, eventSlug: "the-slug" })] }),
+    now,
+  }).eventHref;
+  eq(route("event"), "/e/vibe-check/the-slug", "event");
+  eq(route("rsvp"), "/e/vibe-check/the-slug", "RSVP");
+  eq(route("trip"), "/t/vibe-check/the-slug", "trip");
+  eq(route("experience"), "/exp/vibe-check/the-slug", "experience");
+  eq(route("stay"), null, "unknown type: not pressable");
+  eq(offeringPageHref("trip", "a b", "c/d"), "/t/a%20b/c%2Fd", "slugs are encoded");
+  eq(offeringPageHref("trip", "  ", "x"), null, "a blank slug has no page");
+  const component = read("components/chat/BrandChatBanner.tsx");
+  assert(component.includes("styles.lineTitle") && component.includes("styles.lineWhen"), "test P3-1: the title truncates, the date stays");
+  assert(/lineWhen: \{\s*flexShrink: 0,/.test(component) && /lineTitle: \{\s*flexShrink: 1,/.test(component), "only the title shrinks");
 });
 
 Deno.test("#4630 nothing_upcoming: with or without past bookings, the slim View <Brand> line", () => {
