@@ -79,16 +79,20 @@ function isCodeLimitedNotice(notice: unknown): notice is {
 export function venueCodeLimitedNotices(
   preview: VenueCodeLimitedPreviewShape,
 ): VenueCodeLimitedNoticeModel[] {
-  const multiLine = preview.lines.length >= 2;
+  // A preview without lines or notices (older server, tip-only quote) has no
+  // code notice to show; never throw on the review screen.
+  const lines = Array.isArray(preview.lines) ? preview.lines : [];
+  const notices = Array.isArray(preview.notices) ? preview.notices : [];
+  const multiLine = lines.length >= 2;
   const nameCount = new Map<string, number>();
-  for (const line of preview.lines) {
+  for (const line of lines) {
     nameCount.set(line.itemNameAtOrder, (nameCount.get(line.itemNameAtOrder) ?? 0) + 1);
   }
-  return preview.notices
+  return notices
     .filter(isCodeLimitedNotice)
     .map((notice) => {
       const lineNo = Number(notice.lineRef);
-      const line = preview.lines.find((row) => row.lineNo === lineNo);
+      const line = lines.find((row) => row.lineNo === lineNo);
       const remaining = notice.remaining;
       const lowerTo = Math.max(0, remaining);
       // An item named on two lines (different modifiers) is not named: the

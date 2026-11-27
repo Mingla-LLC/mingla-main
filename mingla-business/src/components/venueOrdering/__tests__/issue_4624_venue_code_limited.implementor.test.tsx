@@ -11,6 +11,7 @@
 import React from "react";
 
 import { VenueOrderReviewPane } from "../../../../../packages/brand-rendering/venueOrdering/VenueOrderReviewPane";
+import { venueCodeLimitedNotices } from "../../../../../packages/offering-rendering/venueCodeLimitedCopy";
 import type {
   VenueOrderPreview,
   VenueOrderingConfig,
@@ -245,5 +246,14 @@ describe("#4624 follow-up 3 — venue order code-limit notice", () => {
       "loading",
     );
     expect(notices(loading)).toEqual([]);
+  });
+
+  test("a priced quote without notices or lines renders and shows no code notice", async () => {
+    const noNotices = await renderPane({ ...basePreview, notices: undefined } as never);
+    expect(notices(noNotices)).toEqual([]);
+    expect(
+      venueCodeLimitedNotices({ notices: [codeNotice("001", 1)] } as never).map((n) => n.lineNo),
+    ).toEqual([1]);
+    expect(venueCodeLimitedNotices({} as never)).toEqual([]);
   });
 });
