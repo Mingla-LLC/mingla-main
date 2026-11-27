@@ -1,7 +1,7 @@
 // #4452 §3.2 — the client failure states and their exact copy (pure; unit tested).
 
 export type SubmitOutcome =
-  | { ok: true; submissionId: string; leadEventId: string | null; deduped: boolean; goal: string }
+  | { ok: true; submissionId: string; leadEventId: string | null; deduped: boolean; goal: string; handoffToken: string | null; schedulerKey: string | null }
   | { ok: false; kind: 'network' | 'validation' | 'form_changed' | 'form_closed' | 'rate_limited' | 'paused' | 'server'; fields?: Array<{ key: string; code: string; message: string; suggestion?: string }> }
 
 /** The exact failure copy (§3.2 client failure states). Answers are always kept. */
@@ -23,6 +23,8 @@ export function outcomeFor(status: number, body: Record<string, unknown> | null)
       leadEventId: typeof body.lead_event_id === 'string' ? body.lead_event_id : null,
       deduped: body.deduped === true,
       goal: typeof body.goal === 'string' ? body.goal : 'none',
+      handoffToken: typeof body.handoff_token === 'string' ? body.handoff_token : null,
+      schedulerKey: typeof body.scheduler_key === 'string' ? body.scheduler_key : null,
     }
   }
   const error = String(body?.error ?? '')

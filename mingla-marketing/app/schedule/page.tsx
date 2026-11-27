@@ -27,7 +27,7 @@ export default function SchedulePage() {
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <SitePage surface="host">
         <Suspense fallback={<ScheduleSkeleton />}>
-          <ScheduleClient />
+          <ScheduleClient schedulerKey="host-demo" />
         </Suspense>
         <Spot page="schedule" id="before-footer" />
       </SitePage>

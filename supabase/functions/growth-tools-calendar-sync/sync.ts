@@ -101,6 +101,8 @@ export interface ChangeNotice {
   original_call_at: string | null;
   booker_time_zone: string | null;
   event_url: string | null;
+  notify_to?: string | null;
+  scheduler_time_zone?: string | null;
 }
 
 /** The database calls the sync makes (PostgREST RPCs with the service role). */
@@ -108,7 +110,9 @@ export interface SyncDb {
   begin(calendarId: string): Promise<SyncState>;
   finish(input: FinishInput): Promise<void>;
   bookings(eventIds: string[]): Promise<BookingMatch[]>;
-  apply(changes: CalendarChange[]): Promise<{ matched: number; updated: number }>;
+  apply(
+    changes: CalendarChange[],
+  ): Promise<{ matched: number; updated: number }>;
   claimNotices(limit: number): Promise<ChangeNotice[]>;
   releaseNotice(notice: ChangeNotice): Promise<void>;
 }
@@ -129,11 +133,139 @@ export interface SyncDeps {
   maxPages?: number;
 }
 
+export interface CalendarSyncProfile {
+  calendarId: string;
+  notifyTo: string;
+  timeZone: string;
+}
+
+export interface RegistrySyncDeps {
+  serviceRoleKey: string | undefined;
+  calendarKeysPacked: string;
+  profiles: CalendarSyncProfile[];
+  db: SyncDb;
+  resendKey: string;
+  fetchImpl?: typeof fetch;
+  maxPages?: number;
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+/** Enabled registry calendars, deduplicated after resolving the env default. */
+export async function loadCalendarSyncProfiles(
+  config: {
+    supabaseUrl: string;
+    serviceKey: string;
+    defaultCalendarId: string;
+    defaultNotifyTo: string;
+    defaultTimeZone: string;
+  },
+  fetchImpl: typeof fetch = fetch,
+): Promise<CalendarSyncProfile[]> {
+  const fallback = [{
+    calendarId: config.defaultCalendarId || "primary",
+    notifyTo: config.defaultNotifyTo || "seth@usemingla.com",
+    timeZone: config.defaultTimeZone || "America/New_York",
+  }];
+  const base = config.supabaseUrl.replace(/\/+$/, "");
+  if (!base || !config.serviceKey) return fallback;
+  try {
+    const res = await fetchImpl(
+      `${base}/rest/v1/booking_scheduler_profiles?enabled=eq.true&select=calendar_id,notify_to,time_zone&order=key`,
+      {
+        headers: {
+          apikey: config.serviceKey,
+          Authorization: `Bearer ${config.serviceKey}`,
+        },
+      },
+    );
+    if (!res.ok) return fallback;
+    const rows = await res.json().catch(() => []) as unknown;
+    if (!Array.isArray(rows)) return fallback;
+    const byCalendar = new Map<string, CalendarSyncProfile>();
+    for (const row of rows) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+      const raw = row as Record<string, unknown>;
+      const stored = typeof raw.calendar_id === "string"
+        ? raw.calendar_id.trim()
+        : "";
+      const calendarId = stored === "environment-default"
+        ? fallback[0].calendarId
+        : stored;
+      const notifyTo = typeof raw.notify_to === "string"
+        ? raw.notify_to.trim().toLowerCase()
+        : "";
+      const timeZone = typeof raw.time_zone === "string"
+        ? raw.time_zone.trim()
+        : "";
+      if (!calendarId || calendarId.length > 300 || !notifyTo || !timeZone) {
+        continue;
+      }
+      if (!byCalendar.has(calendarId)) {
+        byCalendar.set(calendarId, { calendarId, notifyTo, timeZone });
+      }
+    }
+    return byCalendar.size ? [...byCalendar.values()] : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Sync every distinct calendar in the registry; one failure cannot hide the others. */
+export async function handleCalendarRegistrySync(
+  req: Request,
+  deps: RegistrySyncDeps,
+): Promise<Response> {
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  const expected = deps.serviceRoleKey ?? "";
+  if (
+    expected === "" ||
+    (req.headers.get("authorization") ?? "") !== `Bearer ${expected}`
+  ) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const profiles = deps.profiles.length ? deps.profiles : [{
+    calendarId: "primary",
+    notifyTo: "seth@usemingla.com",
+    timeZone: "America/New_York",
+  }];
+  const results: Array<Record<string, unknown>> = [];
+  let failedStatus = 0;
+  for (const profile of profiles) {
+    const response = await handleCalendarSync(req, {
+      serviceRoleKey: deps.serviceRoleKey,
+      calendarKeysPacked: deps.calendarKeysPacked,
+      calendarId: profile.calendarId,
+      db: deps.db,
+      notify: deps.resendKey
+        ? {
+          resendKey: deps.resendKey,
+          notifyTo: profile.notifyTo,
+          timeZone: profile.timeZone,
+        }
+        : null,
+      fetchImpl: deps.fetchImpl,
+      maxPages: deps.maxPages,
+    });
+    const body = await response.json().catch(() => ({
+      error: "server",
+    })) as Record<string, unknown>;
+    results.push({
+      calendar_id: profile.calendarId,
+      status: response.status,
+      ...body,
+    });
+    if (!response.ok && !failedStatus) failedStatus = response.status;
+  }
+  return json(
+    { ok: failedStatus === 0, calendars: results },
+    failedStatus || 200,
+  );
 }
 
 // ── Pure pieces ──────────────────────────────────────────────────────────────
@@ -163,7 +295,10 @@ function instantOrNull(value: unknown): string | null {
 }
 
 /** What Google says about one booking's event, for the database to apply. */
-export function eventChange(event: GoogleEvent, bookerEmail: string): CalendarChange | null {
+export function eventChange(
+  event: GoogleEvent,
+  bookerEmail: string,
+): CalendarChange | null {
   const id = typeof event.id === "string" ? event.id.trim() : "";
   if (id === "") return null;
   const cancelled = event.status === "cancelled";
@@ -182,8 +317,13 @@ export function eventChange(event: GoogleEvent, bookerEmail: string): CalendarCh
 }
 
 /** The changes for the events on one page that are bookings. */
-export function changesForPage(events: GoogleEvent[], matches: BookingMatch[]): CalendarChange[] {
-  const bookerByEvent = new Map(matches.map((m) => [m.calendar_event_id, m.email ?? ""]));
+export function changesForPage(
+  events: GoogleEvent[],
+  matches: BookingMatch[],
+): CalendarChange[] {
+  const bookerByEvent = new Map(
+    matches.map((m) => [m.calendar_event_id, m.email ?? ""]),
+  );
   const out: CalendarChange[] = [];
   for (const event of events) {
     const id = typeof event?.id === "string" ? event.id.trim() : "";
@@ -213,15 +353,17 @@ export function buildNoticeEmail(
   notice: ChangeNotice,
   config: { notifyTo: string; timeZone: string },
 ): GrowthToolsEmail {
+  const notifyTo = notice.notify_to?.trim().toLowerCase() || config.notifyTo;
+  const timeZone = notice.scheduler_time_zone?.trim() || config.timeZone;
   const label = AUDIENCE_CALL_LABELS[notice.audience] ?? "Call";
   const who = notice.audience === "host" && notice.venue
     ? `${notice.name} (${notice.venue})`
     : notice.name;
-  const when = formatWhen(notice.call_at, config.timeZone);
+  const when = formatWhen(notice.call_at, timeZone);
   let subject: string;
   let line: string;
   if (notice.status === "moved") {
-    const was = formatWhen(notice.original_call_at, config.timeZone);
+    const was = formatWhen(notice.original_call_at, timeZone);
     subject = `Call moved — ${label}: ${notice.name} (${when})`;
     line = `The ${label} with ${who} moved from ${was} to ${when}.`;
   } else if (notice.status === "declined") {
@@ -229,9 +371,11 @@ export function buildNoticeEmail(
     line = `${who} declined the invite for the ${label} on ${when}.`;
   } else {
     subject = `Call cancelled — ${label}: ${notice.name} (${when})`;
-    line = `The ${label} with ${who} on ${when} was cancelled in Google Calendar.`;
+    line =
+      `The ${label} with ${who} on ${when} was cancelled in Google Calendar.`;
   }
-  const link = typeof notice.event_url === "string" && /^https:\/\/\S+$/.test(notice.event_url)
+  const link = typeof notice.event_url === "string" &&
+      /^https:\/\/\S+$/.test(notice.event_url)
     ? notice.event_url
     : null;
   const text = `${line}\n\nThe admin Calendar shows the change.` +
@@ -241,7 +385,7 @@ export function buildNoticeEmail(
     (link ? ` <a href="${escapeHtml(link)}">Open in Google Calendar</a>` : "") +
     `</p>`;
   return {
-    to: buildNotifyRecipients(config.notifyTo),
+    to: buildNotifyRecipients(notifyTo),
     subject,
     html,
     text,
@@ -250,15 +394,23 @@ export function buildNoticeEmail(
 }
 
 // ── The run ──────────────────────────────────────────────────────────────────
-export async function handleCalendarSync(req: Request, deps: SyncDeps): Promise<Response> {
+export async function handleCalendarSync(
+  req: Request,
+  deps: SyncDeps,
+): Promise<Response> {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   const expected = deps.serviceRoleKey ?? "";
-  if (expected === "" || (req.headers.get("authorization") ?? "") !== `Bearer ${expected}`) {
+  if (
+    expected === "" ||
+    (req.headers.get("authorization") ?? "") !== `Bearer ${expected}`
+  ) {
     return json({ error: "unauthorized" }, 401);
   }
   const keys: CalendarKeys | null = parseCalendarKeys(deps.calendarKeysPacked);
   if (!keys) {
-    console.error(`[${LOG_TAG}] GOOGLE_CALENDAR_KEYS is not set or malformed; nothing synced`);
+    console.error(
+      `[${LOG_TAG}] GOOGLE_CALENDAR_KEYS is not set or malformed; nothing synced`,
+    );
     return json({ error: "calendar_unconfigured" }, 503);
   }
   const doFetch = deps.fetchImpl ?? fetch;
@@ -272,7 +424,12 @@ export async function handleCalendarSync(req: Request, deps: SyncDeps): Promise<
   let fullSync = syncToken === null;
   let resynced = false;
   let complete = false;
-  const counts = { pages: 0, events_seen: 0, bookings_matched: 0, bookings_updated: 0 };
+  const counts = {
+    pages: 0,
+    events_seen: 0,
+    bookings_matched: 0,
+    bookings_updated: 0,
+  };
 
   const finish = async (error: string | null) => {
     await deps.db.finish({
@@ -286,15 +443,21 @@ export async function handleCalendarSync(req: Request, deps: SyncDeps): Promise<
   };
 
   try {
-    const token = await refreshCalendarAccessToken(keys, { logTag: LOG_TAG, fetchImpl: doFetch });
+    const token = await refreshCalendarAccessToken(keys, {
+      logTag: LOG_TAG,
+      fetchImpl: doFetch,
+    });
     if (!token) {
       await finish("token_refresh_failed");
       return json({ error: "calendar_unavailable" }, 502);
     }
     while (counts.pages < maxPages) {
-      const res = await doFetch(buildListUrl(deps.calendarId, syncToken, pageToken), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await doFetch(
+        buildListUrl(deps.calendarId, syncToken, pageToken),
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       if (res.status === 410) {
         // The syncToken (or page token) is no longer valid: full resync, once.
         await res.body?.cancel();
@@ -325,7 +488,12 @@ export async function handleCalendarSync(req: Request, deps: SyncDeps): Promise<
       counts.pages += 1;
       const events = Array.isArray(page.items) ? page.items : [];
       counts.events_seen += events.length;
-      const ids = [...new Set(events.map((e) => typeof e?.id === "string" ? e.id.trim() : "").filter(Boolean))];
+      const ids = [
+        ...new Set(
+          events.map((e) => typeof e?.id === "string" ? e.id.trim() : "")
+            .filter(Boolean),
+        ),
+      ];
       if (ids.length > 0) {
         const matches = await deps.db.bookings(ids);
         const changes = changesForPage(events, matches);
@@ -350,7 +518,10 @@ export async function handleCalendarSync(req: Request, deps: SyncDeps): Promise<
     }
     await finish(null);
   } catch (err) {
-    console.error(`[${LOG_TAG}] sync threw`, err instanceof Error ? err.message : "error");
+    console.error(
+      `[${LOG_TAG}] sync threw`,
+      err instanceof Error ? err.message : "error",
+    );
     await finish("sync_threw").catch(() => {});
     return json({ error: "server" }, 500);
   }
@@ -361,32 +532,66 @@ export async function handleCalendarSync(req: Request, deps: SyncDeps): Promise<
     try {
       const claimed = await deps.db.claimNotices(20);
       for (const notice of claimed) {
-        const ok = await sendGrowthToolsEmail(buildNoticeEmail(notice, deps.notify), {
-          apiKey: deps.notify.resendKey,
-          logTag: LOG_TAG,
-          fetchImpl: doFetch,
-        });
+        const ok = await sendGrowthToolsEmail(
+          buildNoticeEmail(notice, deps.notify),
+          {
+            apiKey: deps.notify.resendKey,
+            logTag: LOG_TAG,
+            fetchImpl: doFetch,
+          },
+        );
         if (ok) {
           notices.sent += 1;
         } else {
           notices.failed += 1;
-          console.error(`[${LOG_TAG}] change notice not sent; claim given back`, notice.id, notice.status);
+          console.error(
+            `[${LOG_TAG}] change notice not sent; claim given back`,
+            notice.id,
+            notice.status,
+          );
           await deps.db.releaseNotice(notice).catch(() => {});
         }
       }
     } catch (err) {
-      console.error(`[${LOG_TAG}] change notices threw`, err instanceof Error ? err.message : "error");
+      console.error(
+        `[${LOG_TAG}] change notices threw`,
+        err instanceof Error ? err.message : "error",
+      );
     }
   }
 
-  console.log(`[${LOG_TAG}] done`, JSON.stringify({ ...counts, full_sync: fullSync, resynced, complete, notices }));
-  return json({ ok: true, ...counts, full_sync: fullSync, resynced, complete, notices_sent: notices.sent, notices_failed: notices.failed });
+  console.log(
+    `[${LOG_TAG}] done`,
+    JSON.stringify({
+      ...counts,
+      full_sync: fullSync,
+      resynced,
+      complete,
+      notices,
+    }),
+  );
+  return json({
+    ok: true,
+    ...counts,
+    full_sync: fullSync,
+    resynced,
+    complete,
+    notices_sent: notices.sent,
+    notices_failed: notices.failed,
+  });
 }
 
 // ── The database, through PostgREST with the service role ────────────────────
-export function restSyncDb(supabaseUrl: string, serviceKey: string, fetchImpl: typeof fetch = fetch): SyncDb {
+export function restSyncDb(
+  supabaseUrl: string,
+  serviceKey: string,
+  fetchImpl: typeof fetch = fetch,
+): SyncDb {
   const base = supabaseUrl.replace(/\/+$/, "");
-  const rpc = async <T>(fn: string, args: Record<string, unknown>): Promise<T> => {
+  const rpc = async <T>(
+    fn: string,
+    args: Record<string, unknown>,
+  ): Promise<T> => {
     const res = await fetchImpl(`${base}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: {
@@ -398,13 +603,19 @@ export function restSyncDb(supabaseUrl: string, serviceKey: string, fetchImpl: t
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error(`rpc ${fn} failed: ${res.status} ${detail.slice(0, 120)}`);
+      throw new Error(
+        `rpc ${fn} failed: ${res.status} ${detail.slice(0, 120)}`,
+      );
     }
     const text = await res.text();
     return (text === "" ? null : JSON.parse(text)) as T;
   };
   return {
-    begin: (calendarId) => rpc<SyncState>("book_call_calendar_sync_begin", { p_calendar_id: calendarId, p_lease_seconds: 240 }),
+    begin: (calendarId) =>
+      rpc<SyncState>("book_call_calendar_sync_begin", {
+        p_calendar_id: calendarId,
+        p_lease_seconds: 240,
+      }),
     finish: async (input) => {
       await rpc("book_call_calendar_sync_finish", {
         p_calendar_id: input.calendarId,
@@ -415,12 +626,24 @@ export function restSyncDb(supabaseUrl: string, serviceKey: string, fetchImpl: t
         p_result: input.result,
       });
     },
-    bookings: async (eventIds) => (await rpc<BookingMatch[] | null>("book_call_calendar_bookings", { p_event_ids: eventIds })) ?? [],
+    bookings: async (eventIds) =>
+      (await rpc<BookingMatch[] | null>("book_call_calendar_bookings", {
+        p_event_ids: eventIds,
+      })) ?? [],
     apply: async (changes) => {
-      const out = await rpc<{ matched?: number; updated?: number } | null>("book_call_apply_calendar_changes", { p_changes: changes });
-      return { matched: Number(out?.matched ?? 0), updated: Number(out?.updated ?? 0) };
+      const out = await rpc<{ matched?: number; updated?: number } | null>(
+        "book_call_apply_calendar_changes",
+        { p_changes: changes },
+      );
+      return {
+        matched: Number(out?.matched ?? 0),
+        updated: Number(out?.updated ?? 0),
+      };
     },
-    claimNotices: async (limit) => (await rpc<ChangeNotice[] | null>("book_call_claim_change_notices", { p_limit: limit })) ?? [],
+    claimNotices: async (limit) =>
+      (await rpc<ChangeNotice[] | null>("book_call_claim_change_notices", {
+        p_limit: limit,
+      })) ?? [],
     releaseNotice: async (notice) => {
       await rpc("book_call_release_change_notice", {
         p_id: notice.id,

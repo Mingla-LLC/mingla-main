@@ -20,13 +20,29 @@ import { flowSaveErrors } from "../../lib/formsModel";
 import { crmChoices, formsErrorWords, publishAutomation, saveAutomationDraft, sendTestEmails, setAutomationEnabled, testWholeFlow } from "../../services/formsService";
 
 const ICON = { email: Mail, team: Users, wait: Clock, branch: GitBranch, stage: MoveRight };
-const DESTS = [
-  { value: "schedule", label: "Book a call (/schedule)" },
-  { value: "schedule_creators", label: "Book a call (/schedule/creators)" },
-  { value: "schedule_locals", label: "Book a call (/schedule/locals)" },
+const NON_SCHEDULER_DESTINATIONS = [
   { value: "app", label: "Get the app" },
   { value: "url", label: "Any link" },
 ];
+const LEGACY_SCHEDULER_DESTINATIONS = {
+  schedule: "Book a call (older Host link)",
+  schedule_creators: "Book a call (older Creator link)",
+  schedule_locals: "Book a call (older Local link)",
+};
+
+function formEmailDestinations(schedulers, audience, current) {
+  const choices = (schedulers || [])
+    .filter((profile) => profile.audience === audience)
+    .map((profile) => ({
+      value: `scheduler:${profile.key}`,
+      label: `${profile.name} · ${profile.duration_minutes} min`,
+    }));
+  // Existing saved flows keep rendering without silently changing their URL.
+  if (LEGACY_SCHEDULER_DESTINATIONS[current]) {
+    choices.push({ value: current, label: LEGACY_SCHEDULER_DESTINATIONS[current] });
+  }
+  return [...choices, ...NON_SCHEDULER_DESTINATIONS];
+}
 
 function AddMenu({ onAdd, disabled, cardOn, label = "Add a step" }) {
   const [open, setOpen] = useState(false);
@@ -88,11 +104,13 @@ export function FlowList({ steps, path, ctx }) {
   );
 }
 
-function EmailEditor({ step, set, kinds, tokens, canEdit, formId, onTested, trackStale }) {
+function EmailEditor({ step, set, kinds, tokens, canEdit, formId, onTested, trackStale, schedulers, audience }) {
   const { addToast } = useToast();
   const [sending, setSending] = useState(false);
   const kind = kinds[step.id] || "confirmation";
   const [kindName, kindHint] = KIND_COPY[kind];
+  const destinationOptions = formEmailDestinations(schedulers, audience, step.button?.to?.kind);
+  const defaultDestination = destinationOptions.find((option) => option.value.startsWith("scheduler:"))?.value || "url";
   const test = async () => {
     setSending(true);
     try {
@@ -120,9 +138,9 @@ function EmailEditor({ step, set, kinds, tokens, canEdit, formId, onTested, trac
       <EmailBodyEditor value={step.doc || []} onChange={(next) => set({ doc: typeof next === "function" ? next(step.doc || []) : next })} tokens={tokens} />
       <div className="grid gap-2 sm:grid-cols-2">
         <LimitedText label="Main button (optional)" value={step.button?.text || ""} limit={28} disabled={!canEdit}
-          onChange={(v) => set({ button: v ? { text: v, to: step.button?.to || { kind: "schedule" } } : null })} />
-        <Select label="Button goes to" value={step.button?.to?.kind || "schedule"} disabled={!canEdit || !step.button?.text}
-          onChange={(e) => set({ button: { ...step.button, to: { kind: e.target.value, ...(e.target.value === "url" ? { href: step.button?.to?.href || "https://usemingla.com" } : {}) } } })} options={DESTS} />
+          onChange={(v) => set({ button: v ? { text: v, to: step.button?.to || { kind: defaultDestination } } : null })} />
+        <Select label="Button goes to" value={step.button?.to?.kind || defaultDestination} disabled={!canEdit || !step.button?.text}
+          onChange={(e) => set({ button: { ...step.button, to: { kind: e.target.value, ...(e.target.value === "url" ? { href: step.button?.to?.href || "https://usemingla.com" } : {}) } } })} options={destinationOptions} />
       </div>
       {step.button?.to?.kind === "url" && (
         <Input label="Link" value={step.button.to.href || ""} disabled={!canEdit} onChange={(e) => set({ button: { ...step.button, to: { kind: "url", href: e.target.value } } })} placeholder="https://" />
@@ -140,7 +158,7 @@ function StepEditor({ step, set, remove, ctx }) {
   const choiceFields = ctx.fields.filter((f) => ["single", "multi", "dropdown"].includes(f.type) && f.source !== "google_city");
   return (
     <div className="flex flex-col gap-3">
-      {step.type === "email" && <EmailEditor step={step} set={set} kinds={ctx.kinds} tokens={ctx.tokens} canEdit={ctx.canEdit} formId={ctx.formId} onTested={ctx.onTested} trackStale={ctx.trackStale} />}
+      {step.type === "email" && <EmailEditor step={step} set={set} kinds={ctx.kinds} tokens={ctx.tokens} canEdit={ctx.canEdit} formId={ctx.formId} onTested={ctx.onTested} trackStale={ctx.trackStale} schedulers={ctx.schedulers} audience={ctx.audience} />}
       {step.type === "team" && (
         <>
           <LimitedText label="Name" value={step.name} limit={60} disabled={!ctx.canEdit} onChange={(v) => set({ name: v })} />
@@ -197,7 +215,7 @@ function StepEditor({ step, set, remove, ctx }) {
   );
 }
 
-export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setStops, kinds, auto, reloadAuto, setMeta }) {
+export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setStops, kinds, auto, reloadAuto, setMeta, schedulers = [] }) {
   const { addToast, removeToast } = useToast();
   const [sel, setSel] = useState(flow?.steps?.[0]?.id || null);
   const [stepErrors, setStepErrors] = useState({});
@@ -217,6 +235,7 @@ export function AutomationsTab({ form, def, canEdit, flow, setFlow, stops, setSt
 
   const ctx = {
     canEdit, cardOn, kinds, fields: def.fields, tokens, stages: cardOn ? stages : [], sel, formId: form.id,
+    schedulers, audience: def.audience,
     stats: auto?.steps || {}, errors: stepErrors, trackStale,
     select: setSel,
     add: (path, index, type) => {

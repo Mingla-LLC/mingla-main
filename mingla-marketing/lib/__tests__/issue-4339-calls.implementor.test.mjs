@@ -185,7 +185,7 @@ test('no city list is written in the call pages', () => {
   assert.match(code(read('lib/schedule-cities.ts')), /const data = await getLinksData\(\)\s+return cityOptions\(data\.failed\.includes\('cities'\) \? \[\] : data\.cities\)/)
   const page = code(read('app/schedule/ProgramCallPage.tsx'))
   assert.match(page, /await connection\(\)\s+const cities = await liveCityOptions\(\)/, 'read at request time')
-  assert.match(page, /<ScheduleClient audience=\{audience\} cities=\{cities\} copy=\{PROGRAM_CALL_COPY\[audience\]\} \/>/)
+  assert.match(page, /<ScheduleClient audience=\{audience\} schedulerKey=\{audience === 'creator' \? 'creator-call' : 'local-call'\} cities=\{cities\} copy=\{PROGRAM_CALL_COPY\[audience\]\} \/>/)
 })
 
 // ---- validation per audience -------------------------------------------------

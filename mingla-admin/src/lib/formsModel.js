@@ -592,6 +592,7 @@ export const BUILDER_TABS = Object.freeze([
   { id: "design", label: "Design" },
   { id: "automations", label: "Automations" },
   { id: "routing", label: "Leads and lead label" },
+  { id: "aftersend", label: "After send" },
   { id: "ownpage", label: "Own page" },
   { id: "where", label: "Where it shows" },
   { id: "publish", label: "Publish" },

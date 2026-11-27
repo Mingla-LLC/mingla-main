@@ -12,17 +12,43 @@ export interface BookingSlot {
   end: string
 }
 
-export async function fetchBookingSlots(): Promise<
-  { ok: true; slots: BookingSlot[] } | { ok: false; error: GrowthToolsError }
+export async function fetchBookingSlots(schedulerKey: string): Promise<
+  { ok: true; slots: BookingSlot[]; durationMinutes: number } | { ok: false; error: GrowthToolsError }
 > {
-  const result = await postGrowthTools('growth-tools-book', { action: 'slots' })
+  const result = await postGrowthTools('growth-tools-book', { action: 'slots', scheduler_key: schedulerKey })
   if (!result.ok) return result
   const slots =
     result.body && typeof result.body === 'object' && 'slots' in result.body
       ? (result.body as { slots?: BookingSlot[] }).slots
       : undefined
   if (!Array.isArray(slots)) return { ok: false, error: 'server' }
-  return { ok: true, slots }
+  const duration = Number((result.body as { duration_minutes?: unknown })?.duration_minutes)
+  return { ok: true, slots, durationMinutes: Number.isInteger(duration) && duration > 0 ? duration : 20 }
+}
+
+export interface BookingHandoffPayload {
+  audience?: 'host' | 'creator' | 'local'
+  name?: string
+  email?: string
+  phone?: string
+  icp?: string
+  social_platform?: string
+  social_handle?: string
+  venue?: string
+  website?: string
+  city?: string
+  makes?: string
+  first_place?: string
+}
+
+export async function fetchBookingHandoff(handoffToken: string, schedulerKey: string): Promise<
+  { ok: true; payload: BookingHandoffPayload; schedulerKey: string } | { ok: false; error: GrowthToolsError }
+> {
+  const result = await postGrowthTools('growth-tools-book', { action: 'handoff', handoff_token: handoffToken, scheduler_key: schedulerKey })
+  if (!result.ok) return result
+  const body = result.body as { payload?: unknown; scheduler?: { key?: unknown } } | null
+  if (!body?.payload || typeof body.payload !== 'object' || Array.isArray(body.payload) || typeof body.scheduler?.key !== 'string') return { ok: false, error: 'server' }
+  return { ok: true, payload: body.payload as BookingHandoffPayload, schedulerKey: body.scheduler.key }
 }
 
 /**
@@ -79,12 +105,14 @@ export type BookCallInput = {
 
 /** #4452 §4.6 / A1: phone, UTM, the form link, the ads context and the optional consent box, for every audience. */
 export interface BookCallExtras {
-  phone?: string
+  phone: string
   utm?: Record<string, string>
   form_submission_id?: string
   marketing_consent?: boolean
   consent_text?: string
   ad?: MarketingAdContext
+  scheduler_key?: string
+  handoff_token?: string
 }
 
 const SCHEDULE_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

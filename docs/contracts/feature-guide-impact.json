@@ -2338,6 +2338,7 @@
         "mingla-admin/src/components/ops/WorkItem.jsx",
         "mingla-admin/src/components/ops/WorkViews.jsx",
         "mingla-admin/src/components/ops/workToday.js",
+        "supabase/migrations/20281206024640_issue_4640_host_demo_conversion.sql",
         "mingla-admin/src/components/panels/SidePanel.jsx",
         "mingla-admin/src/components/ui/Drawer.jsx",
         "mingla-admin/src/components/ui/FilterSelect.jsx",
@@ -2508,6 +2509,7 @@
         "mingla-admin/src/components/forms/DesignTab.jsx",
         "mingla-admin/src/components/forms/FieldsTab.jsx",
         "mingla-admin/src/components/forms/FormBuilder.jsx",
+        "mingla-admin/src/components/forms/AfterSendTab.jsx",
         "mingla-admin/src/components/forms/FormPreviewFrame.jsx",
         "mingla-admin/src/components/forms/OwnPageTab.jsx",
         "mingla-admin/src/components/forms/PublishTab.jsx",
@@ -4877,6 +4879,9 @@
         "supabase/functions/_shared/growthToolsResend.ts",
         "supabase/functions/growth-tools-book/bookingContext.ts",
         "supabase/functions/growth-tools-book/bookingLead.ts",
+        "supabase/functions/growth-tools-book/schedulerProfile.ts",
+        "supabase/functions/growth-tools-booking-reminders/index.ts",
+        "supabase/functions/growth-tools-booking-reminders/function-policy.json",
         "supabase/functions/growth-tools-calendar-sync/function-policy.json",
         "supabase/functions/growth-tools-calendar-sync/index.ts",
         "supabase/functions/growth-tools-calendar-sync/sync.ts",
@@ -4892,6 +4897,7 @@
         "supabase/functions/growth-tools-book/bookingAdLead.ts",
         "supabase/functions/growth-tools-book/bookingConfirmation.ts",
         "supabase/functions/growth-tools-book/index.ts",
+        "supabase/migrations/20281206024640_issue_4640_host_demo_conversion.sql",
         "supabase/migrations/20280712034452_issue_4452_lead_labels_and_calls.sql"
       ]
     },

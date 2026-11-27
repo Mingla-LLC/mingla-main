@@ -25,6 +25,7 @@ export const WORK_SHOW = Object.freeze([
   Object.freeze({ value: "", label: "All cards" }),
   Object.freeze({ value: "watch", label: "Cards I watch" }),
   Object.freeze({ value: "attention", label: "Needs attention" }),
+  Object.freeze({ value: "demo_calls", label: "Demo calls" }),
   // #4270 (D2): what To review was, as a Show option.
   Object.freeze({ value: "needs_ok", label: "Needs your OK" }),
   Object.freeze({ value: "overdue", label: "Overdue" }),
@@ -135,6 +136,8 @@ export function workFilter(cards, { owner = null, show = "", linked = "", type =
         return (c.watchers || []).some((o) => String(o.email || "").toLowerCase() === mine);
       case "attention":
         return needsAttention(c, today, reasonsOf ? reasonsOf(c) : []);
+      case "demo_calls":
+        return c.auto_kind === "demo_booked" || c.auto_kind === "demo_hour";
       case "needs_ok":
         // #4270: open tagged cards I own; the owner and admins see every one.
         return isTagged(c) && (isAdmin || (c.owners || []).some((o) => String(o.email || "").toLowerCase() === mine));

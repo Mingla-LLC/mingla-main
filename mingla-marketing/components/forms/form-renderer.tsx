@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type FormDefinition,
   type FormField,
+  type AfterSubmit,
   emailTypoFix,
   errorMessage,
   isVisible,
@@ -51,6 +52,7 @@ export interface RendererForm {
   design?: Record<string, unknown>
   slug?: string | null
   preview?: boolean
+  after_submit?: AfterSubmit
 }
 
 type Answers = Record<string, unknown>
@@ -440,7 +442,7 @@ export interface FormRendererProps {
 
 export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'Send', onDone, onDirty }: FormRendererProps) {
   const def = useMemo<FormDefinition>(() => ({
-    v: 1, audience: form.audience, fields: form.fields, ads: { lead_on: true, goal: 'none' }, routing: { card: { on: false } },
+    v: 1, audience: form.audience, fields: form.fields, ads: { lead_on: true, goal: 'none' }, routing: { card: { on: false } }, after_submit: form.after_submit,
   }), [form])
   const answers = useRef<Answers>({})
   const [structure, setStructure] = useState(0)
@@ -538,7 +540,7 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
     setErrorCount(0)
     if (form.preview) {
       setState('done')
-      onDone?.({ ok: true, submissionId: 'preview', leadEventId: null, deduped: false, goal: 'none' }, res.first_name, bookingFromAnswers(form.fields, answers.current, form.audience))
+      onDone?.({ ok: true, submissionId: 'preview', leadEventId: null, deduped: false, goal: 'none', handoffToken: null, schedulerKey: null }, res.first_name, bookingFromAnswers(form.fields, answers.current, form.audience))
       return
     }
     setState('sending')
@@ -555,6 +557,21 @@ export function FormRenderer({ form, placement, spotKey, blockId, sendLabel = 'S
       formEvent('form_submitted', ctx, { deduped: outcome.deduped })
       try { window.localStorage.setItem(`mingla:form-done:${form.id}`, String(Date.now())) } catch { /* storage off */ }
       setState('done')
+      const after = form.after_submit
+      if (after?.action === 'book_call' && outcome.handoffToken && outcome.schedulerKey) {
+        // The public route follows the audience; the profile key is data. A new
+        // profile therefore needs no new route or renderer release.
+        const path = form.audience === 'creator' ? '/schedule/creators' : form.audience === 'local' ? '/schedule/locals' : '/schedule'
+        const next = new URL(path, window.location.origin)
+        next.searchParams.set('profile', outcome.schedulerKey)
+        next.searchParams.set('handoff', outcome.handoffToken)
+        window.location.assign(next.toString())
+        return
+      }
+      if (after?.action === 'link' && after.url) {
+        window.location.assign(new URL(after.url, window.location.origin).toString())
+        return
+      }
       onDone?.(outcome, res.first_name, bookingFromAnswers(form.fields, visible, form.audience))
       return
     }

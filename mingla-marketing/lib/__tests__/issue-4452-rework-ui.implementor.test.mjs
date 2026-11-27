@@ -179,3 +179,4 @@ test('RW-UI-8 P3-15 the preview pop-up: Esc closes, Tab is trapped, it covers th
   assert.match(css, /\.pu-over-bar \{ z-index: 100; \}/)
   assert.match(css, /\.sp-bar \{ position: sticky; top: 0; z-index: 99;/, 'the bar it must cover')
 })
+import './issue-4640-host-demo-conversion.implementor.test.mjs'

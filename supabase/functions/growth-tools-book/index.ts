@@ -52,7 +52,10 @@ import { corsHeaders } from "../_shared/cors.ts";
 // Branded email shell + senders + escape — reused by import (same infra the
 // grader gate uses to email the report). DO-NOT edit those modules here.
 import { renderShell, SHELL_TOKENS } from "../_shared/email/shell.ts";
-import { emailButton, renderBookingConfirmation } from "./bookingConfirmation.ts";
+import {
+  emailButton,
+  renderBookingConfirmation,
+} from "./bookingConfirmation.ts";
 import { escapeHtml } from "../_shared/email/escape.ts";
 import {
   type GrowthToolsEmail,
@@ -97,6 +100,16 @@ import {
   parseCalendarKeys,
   refreshCalendarAccessToken,
 } from "../_shared/googleCalendarAuth.ts";
+import {
+  legacySchedulerProfile,
+  loadSchedulerProfile,
+  markBookingHandoffUsed,
+  mergeBookingHandoff,
+  resolveBookingHandoff,
+  schedulerKey,
+  type SchedulerProfile,
+  startBookingLifecycle,
+} from "./schedulerProfile.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -136,7 +149,14 @@ function tzOffsetMs(date: Date, tz: string): number {
   for (const part of dtf.formatToParts(date)) {
     if (part.type !== "literal") p[part.type] = Number(part.value);
   }
-  const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const asUTC = Date.UTC(
+    p.year,
+    p.month - 1,
+    p.day,
+    p.hour,
+    p.minute,
+    p.second,
+  );
   return asUTC - date.getTime();
 }
 
@@ -155,7 +175,10 @@ function wallToUtc(
 }
 
 // {year,month,day,weekday} of `date` in `tz`.
-function tzYmd(date: Date, tz: string): { y: number; mo: number; d: number; wd: number } {
+function tzYmd(
+  date: Date,
+  tz: string,
+): { y: number; mo: number; d: number; wd: number } {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     year: "numeric",
@@ -166,7 +189,13 @@ function tzYmd(date: Date, tz: string): { y: number; mo: number; d: number; wd: 
   const p: Record<string, string> = {};
   for (const part of dtf.formatToParts(date)) p[part.type] = part.value;
   const wdMap: Record<string, number> = {
-    Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
   };
   return {
     y: Number(p.year),
@@ -190,7 +219,9 @@ function calendarKeys(): CalendarKeys | null {
 async function getAccessToken(): Promise<string | null> {
   const keys = calendarKeys();
   if (!keys) return null;
-  return await refreshCalendarAccessToken(keys, { logTag: "growth-tools-book" });
+  return await refreshCalendarAccessToken(keys, {
+    logTag: "growth-tools-book",
+  });
 }
 
 interface Busy {
@@ -202,6 +233,7 @@ async function fetchBusy(
   token: string,
   timeMinIso: string,
   timeMaxIso: string,
+  calendarId: string = CALENDAR_ID,
 ): Promise<Busy[] | null> {
   const res = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
     method: "POST",
@@ -212,7 +244,7 @@ async function fetchBusy(
     body: JSON.stringify({
       timeMin: timeMinIso,
       timeMax: timeMaxIso,
-      items: [{ id: CALENDAR_ID }],
+      items: [{ id: calendarId }],
     }),
   });
   if (!res.ok) {
@@ -222,32 +254,44 @@ async function fetchBusy(
   const body = await res.json() as {
     calendars?: Record<string, { busy?: { start: string; end: string }[] }>;
   };
-  const busyRaw = body.calendars?.[CALENDAR_ID]?.busy ?? [];
+  const busyRaw = body.calendars?.[calendarId]?.busy ?? [];
   return busyRaw.map((b) => ({
     start: Date.parse(b.start),
     end: Date.parse(b.end),
   }));
 }
 
-function computeFreeSlots(busy: Busy[], now: number): { start: string; end: string }[] {
+function computeFreeSlots(
+  busy: Busy[],
+  now: number,
+  profile?: SchedulerProfile,
+): { start: string; end: string }[] {
   const slots: { start: string; end: string }[] = [];
-  const earliest = now + MIN_NOTICE_MS;
+  const tz = profile?.timeZone ?? TZ;
+  const slotMinutes = profile?.durationMinutes ?? SLOT_MIN;
+  const startMinute = profile?.startMinute ?? WORK_START_MIN;
+  const endMinute = profile?.endMinute ?? WORK_END_MIN;
+  const lookahead = profile?.lookaheadDays ?? LOOKAHEAD_DAYS;
+  const maxDays = profile?.maxOpenDays ?? MAX_DAYS;
+  const weekdays = new Set(profile?.weekdays ?? [1, 2, 3, 4, 5]);
+  const earliest = now +
+    (profile?.minNoticeMinutes ?? MIN_NOTICE_MS / 60_000) * 60_000;
   // Cap by DISTINCT open days, not a flat slot count: a flat cap fills up on the
   // first free day (15h × 20-min ≈ 44 slots) and hides the rest of the month.
   let openDays = 0;
-  for (let dayOffset = 0; dayOffset <= LOOKAHEAD_DAYS; dayOffset++) {
+  for (let dayOffset = 0; dayOffset <= lookahead; dayOffset++) {
     const dayInstant = new Date(now + dayOffset * 24 * 60 * 60 * 1000);
-    const { y, mo, d, wd } = tzYmd(dayInstant, TZ);
-    if (wd === 0 || wd === 6) continue; // weekends off
+    const { y, mo, d, wd } = tzYmd(dayInstant, tz);
+    if (!weekdays.has(wd)) continue;
     let dayHasSlot = false;
-    for (let m = WORK_START_MIN; m + SLOT_MIN <= WORK_END_MIN; m += SLOT_MIN) {
-      const startMs = wallToUtc(y, mo, d, Math.floor(m / 60), m % 60, TZ);
-      const endMs = startMs + SLOT_MIN * 60 * 1000;
+    for (let m = startMinute; m + slotMinutes <= endMinute; m += slotMinutes) {
+      const startMs = wallToUtc(y, mo, d, Math.floor(m / 60), m % 60, tz);
+      const endMs = startMs + slotMinutes * 60 * 1000;
       if (startMs < earliest) continue;
       const overlaps = busy.some((b) => startMs < b.end && endMs > b.start);
       if (overlaps) continue;
       if (!dayHasSlot) {
-        if (openDays >= MAX_DAYS) return slots; // month is full — stop
+        if (openDays >= maxDays) return slots;
         openDays++;
         dayHasSlot = true;
       }
@@ -275,8 +319,8 @@ function formatLocal(ms: number, timeZone: string = TZ): string {
   }).format(new Date(ms));
 }
 
-const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BORDER } = SHELL_TOKENS;
-
+const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BORDER } =
+  SHELL_TOKENS;
 
 // #4339 calendar sync — the send itself is shared with growth-tools-calendar-sync.
 async function sendResend(input: GrowthToolsEmail): Promise<boolean> {
@@ -299,8 +343,10 @@ export async function sendBookingEmails(input: {
   timeZone: string | null;
   meetUrl: string | null;
   eventUrl: string | null;
+  scheduler?: Pick<SchedulerProfile, "timeZone" | "notifyTo">;
 }): Promise<void> {
-  const when = formatLocal(input.startMs);
+  const schedulerTimeZone = input.scheduler?.timeZone ?? TZ;
+  const when = formatLocal(input.startMs, schedulerTimeZone);
   const host = input.context.audience === "host";
   const callLabel = AUDIENCE_CALL_LABELS[input.context.audience];
   const logo = minglaLogoUrl();
@@ -310,7 +356,10 @@ export async function sendBookingEmails(input: {
       bodyHtml,
       supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? REPLY_TO,
       logoUrl: logo,
-      footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
+      footerAddress: resolveRuntimeString(
+        "mingla_footer_address",
+        "MINGLA_FOOTER_ADDRESS",
+      ) ??
         "Mingla, hello@usemingla.com",
     });
   // 1) Confirmation to the booker: the audience's bar with the app button only (#4452 SC-86).
@@ -320,8 +369,9 @@ export async function sendBookingEmails(input: {
     audience: input.context.audience,
     supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? REPLY_TO,
     logoUrl: logo,
-    footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
-      "Mingla, hello@usemingla.com",
+    footerAddress:
+      resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
+        "Mingla, hello@usemingla.com",
   });
 
   // 2) Notification to Seth — reply-to is the lead so a reply reaches them.
@@ -333,19 +383,33 @@ export async function sendBookingEmails(input: {
   const second = input.context.audience === "host"
     ? { url: input.context.website, label: "Website", none: "No website given" }
     : input.context.audience === "creator"
-    ? { url: input.context.workUrl, label: "Best work", none: "No work link given" }
+    ? {
+      url: input.context.workUrl,
+      label: "Best work",
+      none: "No work link given",
+    }
     : null;
   const contextLinks = [
-    `<a href="${escapeHtml(input.context.social.url)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">${escapeHtml(socialLabel)}: ${escapeHtml(input.context.social.display)}</a>`,
+    `<a href="${
+      escapeHtml(input.context.social.url)
+    }" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">${
+      escapeHtml(socialLabel)
+    }: ${escapeHtml(input.context.social.display)}</a>`,
     second === null
       ? ""
       : second.url
-      ? `<a href="${escapeHtml(second.url)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">${second.label}: ${escapeHtml(second.url)}</a>`
+      ? `<a href="${
+        escapeHtml(second.url)
+      }" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">${second.label}: ${
+        escapeHtml(second.url)
+      }</a>`
       : `<span style="color:${BRAND_MUTED};">${second.none}</span>`,
   ].filter(Boolean).join(" &nbsp;·&nbsp; ");
   const row = (label: string, value: string) =>
-    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">${label}</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(value)}</td></tr>`;
-  const theirTime = input.timeZone && input.timeZone !== TZ
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">${label}</td><td style="color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(value)
+    }</td></tr>`;
+  const theirTime = input.timeZone && input.timeZone !== schedulerTimeZone
     ? formatLocal(input.startMs, input.timeZone)
     : "";
   // The audience's own facts, as rows (Host: what they run).
@@ -362,32 +426,48 @@ export async function sendBookingEmails(input: {
     : [["Runs", ICP_LABELS[input.context.icp]]];
   const rows = [
     host ? "" : row("Call", callLabel),
-    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">When</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(when)}</td></tr>`,
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">When</td><td style="color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(when)
+    }</td></tr>`,
     theirTime ? row("Their time", theirTime) : "",
-    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Who</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.name)} &lt;${escapeHtml(input.email)}&gt;</td></tr>`,
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Who</td><td style="color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(input.name)
+    } &lt;${escapeHtml(input.email)}&gt;</td></tr>`,
     input.venue
-      ? `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Venue</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.venue)}</td></tr>`
+      ? `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Venue</td><td style="color:${BRAND_INK};font-weight:600;">${
+        escapeHtml(input.venue)
+      }</td></tr>`
       : "",
     ...facts.map(([label, value]) => row(label, value)),
     // #3601 — unconditional, matching the calendar: the origin is never blank, so
     // a blank can never be ambiguous between "came in cold" and "we lost the tag".
-    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Came from</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(originLabel(input.source))}</td></tr>`,
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Came from</td><td style="color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(originLabel(input.source))
+    }</td></tr>`,
   ].filter(Boolean).join("");
   const links = [
     input.meetUrl ? `${emailButton(input.meetUrl, "Join the Meet")} ` : "",
     input.reportUrl
-      ? `<a href="${escapeHtml(input.reportUrl)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">Their report</a>`
+      ? `<a href="${
+        escapeHtml(input.reportUrl)
+      }" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">Their report</a>`
       : "",
   ].join(" ");
   const ownerBody = `
-    <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">${host ? "New call booked" : `New ${callLabel} booked`} 📅</h1>
+    <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">${
+    host ? "New call booked" : `New ${callLabel} booked`
+  } 📅</h1>
     <p style="margin:0 0 14px;font-size:15px;">${contextLinks}</p>
     <table role="presentation" style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
     <p style="margin:18px 0 0;">${links}</p>`;
   const ownerText =
-    (host ? `New Mingla call booked.\n\n` : `New Mingla ${callLabel} booked.\n\n`) +
+    (host
+      ? `New Mingla call booked.\n\n`
+      : `New Mingla ${callLabel} booked.\n\n`) +
     `Social: ${input.context.social.url} (${socialLabel})\n` +
-    (second === null ? "" : `${second.label}: ${second.url ?? "none given"}\n`) +
+    (second === null
+      ? ""
+      : `${second.label}: ${second.url ?? "none given"}\n`) +
     `\n` +
     `When: ${when}` + (theirTime ? `\nTheir time: ${theirTime}` : "") +
     `\nWho: ${input.name} <${input.email}>` +
@@ -406,7 +486,7 @@ export async function sendBookingEmails(input: {
       replyTo: REPLY_TO,
     }),
     sendResend({
-      to: buildNotifyRecipients(NOTIFY_TO),
+      to: buildNotifyRecipients(input.scheduler?.notifyTo ?? NOTIFY_TO),
       // #4339 calls: the subject names a Creator or Local call; Host is unchanged.
       subject: host
         ? `New Mingla call — ${input.venue || input.name} (${when})`
@@ -418,25 +498,43 @@ export async function sendBookingEmails(input: {
   ]);
   for (const r of results) {
     if (r.status === "rejected") {
-      console.error("[growth-tools-book] booking email threw", String(r.reason));
+      console.error(
+        "[growth-tools-book] booking email threw",
+        String(r.reason),
+      );
     }
   }
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
-async function handleSlots(token: string): Promise<Response> {
+async function handleSlots(
+  token: string,
+  profile: SchedulerProfile,
+): Promise<Response> {
   const now = Date.now();
-  const timeMax = new Date(now + (LOOKAHEAD_DAYS + 1) * 24 * 60 * 60 * 1000)
+  const timeMax = new Date(
+    now + (profile.lookaheadDays + 1) * 24 * 60 * 60 * 1000,
+  )
     .toISOString();
-  const busy = await fetchBusy(token, new Date(now).toISOString(), timeMax);
+  const busy = await fetchBusy(
+    token,
+    new Date(now).toISOString(),
+    timeMax,
+    profile.calendarId,
+  );
   if (busy === null) return json({ error: "calendar_unavailable" }, 502);
-  return json({ slots: computeFreeSlots(busy, now), tz: TZ });
+  return json({
+    slots: computeFreeSlots(busy, now, profile),
+    tz: profile.timeZone,
+    duration_minutes: profile.durationMinutes,
+  });
 }
 
 async function handleBook(
   token: string,
   body: Record<string, unknown>,
   req: Request,
+  profile: SchedulerProfile,
 ): Promise<Response> {
   const start = typeof body.start === "string" ? body.start : "";
   // #3601 — sanitizeLine at PARSE TIME, so the event `summary` (which interpolates
@@ -470,6 +568,9 @@ async function handleBook(
     return json({ error: "validation", field: parsedContext.field }, 400);
   }
   const context = parsedContext.context;
+  if (context.audience !== profile.audience) {
+    return json({ error: "validation", field: "audience" }, 400);
+  }
   // #4452 §4.6: phone (required for Creators and Locals), UTM, click source, form link, consent.
   const parsedExtras = parseBookingExtras(body, context.audience);
   if (!parsedExtras.ok) {
@@ -478,16 +579,17 @@ async function handleBook(
   const extras = parsedExtras.extras;
   const timeZone = parseTimeZone(body.time_zone);
   // Slot must be in the future (min notice) and land on a valid grid boundary.
-  if (startMs < Date.now() + MIN_NOTICE_MS) {
+  if (startMs < Date.now() + profile.minNoticeMinutes * 60_000) {
     return json({ error: "validation" }, 400);
   }
-  const endMs = startMs + SLOT_MIN * 60 * 1000;
+  const endMs = startMs + profile.durationMinutes * 60 * 1000;
 
   // Re-verify the slot is still free (avoid a double-book race).
   const busy = await fetchBusy(
     token,
     new Date(startMs).toISOString(),
     new Date(endMs).toISOString(),
+    profile.calendarId,
   );
   if (busy === null) return json({ error: "calendar_unavailable" }, 502);
   if (busy.some((b) => startMs < b.end && endMs > b.start)) {
@@ -496,7 +598,7 @@ async function handleBook(
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${
-      encodeURIComponent(CALENDAR_ID)
+      encodeURIComponent(profile.calendarId)
     }/events?conferenceDataVersion=1&sendUpdates=all`,
     {
       method: "POST",
@@ -510,7 +612,12 @@ async function handleBook(
           context,
           buildEventDescription({ name, email, venue, reportUrl, source }),
         ),
-        extendedProperties: { private: buildPrivateProperties(context, source) },
+        extendedProperties: {
+          private: {
+            ...buildPrivateProperties(context, source),
+            mingla_scheduler_key: profile.key,
+          },
+        },
         start: { dateTime: new Date(startMs).toISOString() },
         end: { dateTime: new Date(endMs).toISOString() },
         attendees: buildAttendees(email, name),
@@ -526,7 +633,11 @@ async function handleBook(
   );
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    console.error("[growth-tools-book] events.insert failed", res.status, detail.slice(0, 200));
+    console.error(
+      "[growth-tools-book] events.insert failed",
+      res.status,
+      detail.slice(0, 200),
+    );
     if (res.status === 409) return json({ error: "slot_taken" }, 409);
     return json({ error: "calendar_unavailable" }, 502);
   }
@@ -547,7 +658,11 @@ async function handleBook(
     serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
   };
   // #4452 §4.6 A: a booking from a form links to it only with the same email within 7 days.
-  const formLink = await resolveFormLink(extras.formSubmissionId, email, leadConfig);
+  const formLink = await resolveFormLink(
+    extras.formSubmissionId,
+    email,
+    leadConfig,
+  );
   const leadRow = buildBookingLead({
     eventId: ev.id ?? null,
     startMs,
@@ -561,6 +676,7 @@ async function handleBook(
     eventUrl: ev.htmlLink ?? null,
     extras,
     formSubmissionId: formLink?.id ?? null,
+    schedulerKey: profile.key,
   });
   const leadWrite = await recordBookingLead(leadRow, leadConfig);
   // #4571 W4: a booking from a host card's own link links itself to that card.
@@ -568,13 +684,28 @@ async function handleBook(
   if (scheduleToken && leadWrite === "written") {
     await linkDemoFromToken(leadRow.booking_key, scheduleToken, leadConfig);
   }
+  if (
+    leadWrite === "written" &&
+    !(await startBookingLifecycle(leadRow.booking_key, leadConfig))
+  ) {
+    console.error(
+      "[growth-tools-book] BOOKING LIFECYCLE FAILED for booking",
+      leadRow.booking_key,
+    );
+  }
 
   // #4452 §4.6 (was #4238 W3-3 host-only): every audience's booking is a
   // labelled Lead (unless the form already fired it) and a call_booked goal.
   // The ad context is read for every audience now. Never fails the booking.
   const ad = parseHostAdContext(body.ad, req);
   const conversions = leadWrite === "written"
-    ? await recordBookingConversions(leadRow.booking_key, context.audience, ad, formLink, leadConfig)
+    ? await recordBookingConversions(
+      leadRow.booking_key,
+      context.audience,
+      ad,
+      formLink,
+      leadConfig,
+    )
     : { leadEventId: null, goalEventId: null };
   const leadEventId = conversions.leadEventId;
 
@@ -591,7 +722,11 @@ async function handleBook(
     timeZone,
     meetUrl: meet,
     eventUrl: ev.htmlLink ?? null,
+    scheduler: profile,
   });
+  if (body.handoff_token) {
+    await markBookingHandoffUsed(body.handoff_token, leadConfig);
+  }
 
   return json({
     ok: true,
@@ -617,6 +752,48 @@ export async function handler(req: Request): Promise<Response> {
     return json({ error: "validation" }, 400);
   }
 
+  const profileConfig = {
+    supabaseUrl: Deno.env.get("SUPABASE_URL"),
+    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+    defaultCalendarId: CALENDAR_ID,
+  };
+  const requestedKey = schedulerKey(body.scheduler_key, body.audience);
+  if (body.action === "handoff") {
+    const handoff = await resolveBookingHandoff(
+      body.handoff_token,
+      requestedKey,
+      profileConfig,
+    );
+    if (!handoff) return json({ error: "handoff_expired" }, 410);
+    return json({
+      ok: true,
+      scheduler: {
+        key: handoff.scheduler.key,
+        name: handoff.scheduler.name,
+        audience: handoff.scheduler.audience,
+        duration_minutes: handoff.scheduler.durationMinutes,
+      },
+      payload: handoff.payload,
+    });
+  }
+
+  let bookingBody = body;
+  let profile: SchedulerProfile | null = null;
+  if (body.action === "book" && body.handoff_token) {
+    const handoff = await resolveBookingHandoff(
+      body.handoff_token,
+      requestedKey,
+      profileConfig,
+    );
+    if (!handoff) return json({ error: "handoff_expired" }, 410);
+    bookingBody = mergeBookingHandoff(body, handoff);
+    profile = handoff.scheduler;
+  } else {
+    profile = await loadSchedulerProfile(requestedKey, profileConfig) ??
+      legacySchedulerProfile(requestedKey, profileConfig);
+  }
+  if (!profile) return json({ error: "booking_unconfigured" }, 503);
+
   const token = await getAccessToken();
   if (!token) {
     // Keys not configured yet (Seth hasn't minted the refresh token) or refresh
@@ -625,8 +802,10 @@ export async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    if (body.action === "slots") return await handleSlots(token);
-    if (body.action === "book") return await handleBook(token, body, req);
+    if (body.action === "slots") return await handleSlots(token, profile);
+    if (body.action === "book") {
+      return await handleBook(token, bookingBody, req, profile);
+    }
     return json({ error: "validation" }, 400);
   } catch (err) {
     console.error(

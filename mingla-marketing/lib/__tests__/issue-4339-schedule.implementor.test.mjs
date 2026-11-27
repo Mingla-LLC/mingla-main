@@ -88,7 +88,7 @@ test('the page sends the new fields and the #3601 source through bookCall, and r
     assert.match(client, new RegExp(`await bookCall\\(\\{[\\s\\S]*${field}[\\s\\S]*\\}\\)`), `bookCall carries ${field}`)
   }
   assert.match(client, /const source = \(params\.get\('source'\) \?\? 'direct'\)\.slice\(0, 40\)/, '#3601 source default kept')
-  assert.match(client, /fetchBookingSlots\(\)/, 'live slots')
+  assert.match(client, /fetchBookingSlots\(schedulerKey\)/, 'live slots use the selected registry profile')
   // #4339: Book a call's transport is lib/booking-call.ts (re-exported by growth-tools-submit).
   const submit = code(read('lib/booking-call.ts'))
   assert.match(code(read('lib/growth-tools-submit.ts')), /export \{\s*bookCall,\s*fetchBookingSlots,/)
@@ -101,7 +101,7 @@ test('the page sends the new fields and the #3601 source through bookCall, and r
     assert.match(client, new RegExp(marker), marker)
   }
   assert.match(client, /You’re booked\./)
-  assert.match(client, /your time zone · 20 min/)
+  assert.match(client, /your time zone · \{durationMinutes\} min/)
   assert.match(client, /Grab 20 minutes <em>with Mingla\.<\/em>/)
 })
 
@@ -156,6 +156,7 @@ test('built + Chrome: the whole booking flow at 375 px, growth-tools-book stubbe
     // A bad handle is caught before anything is sent.
     await page.evaluate(typeExpr('[data-field="name"]', 'Ada Lovelace'))
     await page.evaluate(typeExpr('[data-field="email"]', 'ada@bluenote.com'))
+    await page.evaluate(typeExpr('[data-field="phone"]', '+2348012345678'))
     await page.evaluate(typeExpr('[data-field="social"]', 'blue note'))
     await page.evaluate(`document.querySelector('[data-schedule-confirm]').click()`)
     await page.until(`document.querySelector('[data-field="social"]').getAttribute('aria-invalid')==='true'`, 'the bad handle was not flagged')
@@ -184,5 +185,6 @@ test('built + Chrome: the whole booking flow at 375 px, growth-tools-book stubbe
     assert.equal(sent.source, 'venue_grader', '#3601 source attribution')
     assert.equal(sent.name, 'Ada Lovelace')
     assert.equal(sent.email, 'ada@bluenote.com')
+    assert.equal(sent.phone, '+2348012345678')
   })
 })

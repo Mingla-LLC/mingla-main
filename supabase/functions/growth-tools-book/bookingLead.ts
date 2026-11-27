@@ -43,6 +43,7 @@ export interface BookingLeadInput {
   extras?: BookingExtras | null;
   /** #4452: the form submission id only once it was validated (same email, ≤ 7 days). */
   formSubmissionId?: string | null;
+  schedulerKey?: string;
 }
 
 export interface BookingLeadRow {
@@ -78,6 +79,7 @@ export interface BookingLeadRow {
   marketing_consent?: boolean;
   consent_text?: string | null;
   consent_at?: string | null;
+  scheduler_key?: string;
 }
 
 /** Only an https link is stored for the Meet and the calendar event. */
@@ -139,21 +141,28 @@ export function buildBookingLead(input: BookingLeadInput): BookingLeadRow {
     meet_url: httpsOrNull(input.meetUrl),
     event_url: httpsOrNull(input.eventUrl),
     source: source === "" ? null : source,
+    ...(input.schedulerKey ? { scheduler_key: input.schedulerKey } : {}),
     // #4452: present only when the page sent them, so an old-shape booking row is unchanged.
-    ...(input.extras ? {
-      phone_e164: input.extras.phoneE164,
-      utm_source: input.extras.utm.source,
-      utm_medium: input.extras.utm.medium,
-      utm_campaign: input.extras.utm.campaign,
-      utm_content: input.extras.utm.content,
-      utm_term: input.extras.utm.term,
-      utm_id: input.extras.utm.id,
-      click_source: input.extras.clickSource,
-      form_submission_id: input.formSubmissionId ?? null,
-      marketing_consent: input.extras.marketingConsent,
-      consent_text: input.extras.marketingConsent ? input.extras.consentText : null,
-      consent_at: input.extras.marketingConsent ? new Date().toISOString() : null,
-    } : {}),
+    ...(input.extras
+      ? {
+        phone_e164: input.extras.phoneE164,
+        utm_source: input.extras.utm.source,
+        utm_medium: input.extras.utm.medium,
+        utm_campaign: input.extras.utm.campaign,
+        utm_content: input.extras.utm.content,
+        utm_term: input.extras.utm.term,
+        utm_id: input.extras.utm.id,
+        click_source: input.extras.clickSource,
+        form_submission_id: input.formSubmissionId ?? null,
+        marketing_consent: input.extras.marketingConsent,
+        consent_text: input.extras.marketingConsent
+          ? input.extras.consentText
+          : null,
+        consent_at: input.extras.marketingConsent
+          ? new Date().toISOString()
+          : null,
+      }
+      : {}),
   };
 }
 

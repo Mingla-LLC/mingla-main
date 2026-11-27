@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-book/issue_4640_scheduler_handoff.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4640-scheduler-handoff",
+  "profile": "deno-2-unit"
+}
