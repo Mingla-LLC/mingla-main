@@ -103,11 +103,19 @@ export const DISCOUNT_WRITE_REFUSALS: Readonly<
     ari:
       "The discount has to end after it starts. Give me an end date after the start and ask me again. Nothing was saved.",
   },
+  // #4624: codes may now end after a number of tickets, so only daily hours
+  // remain automatic-only.
   schedule_invalid: {
     host:
-      "That schedule doesn't fit this discount. Daily hours and use-count endings are only for automatic discounts.",
+      "That schedule doesn't fit this discount. Daily hours are only for automatic discounts.",
     ari:
-      "That schedule doesn't fit a discount. Codes run for a date window; daily hours and use-count endings are for automatic discounts. Nothing was saved.",
+      "That schedule doesn't fit a discount. Codes run for a date window; daily hours are for automatic discounts. Nothing was saved.",
+  },
+  // #4624: Total tickets (ends_after_count) must be a whole number, 1 or more.
+  limit_invalid: {
+    host: "Enter a whole number, 1 or more.",
+    ari:
+      "A ticket limit has to be a whole number, 1 or more. Tell me how many tickets and ask me again. Nothing was saved.",
   },
   name_invalid: {
     host: "Names need 1 to 60 characters.",

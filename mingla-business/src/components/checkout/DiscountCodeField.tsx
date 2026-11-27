@@ -7,7 +7,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
+import {
+  codeLimitedNotices,
+  saleLimitedCopy,
+} from "@mingla/offering-rendering/saleLimitedCopy";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 import {
   neutralControl,
@@ -47,6 +50,11 @@ export interface DiscountCodeFieldProps {
   disabled?: boolean;
   surface?: BuyerDiscountSurface;
   saleNameByLineRef?: Readonly<Record<string, string | null | undefined>>;
+  /**
+   * #4624 item 6 — the buyer's own number per ticket type (null when picked
+   * date by date), so a per-day notice can say what to lower to.
+   */
+  pickerQuantityByLineRef?: Readonly<Record<string, number | null | undefined>>;
   onApply: (code: string) => void;
   onRemove: () => void;
   /**
@@ -71,6 +79,7 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
   disabled = false,
   surface = "web_event",
   saleNameByLineRef = {},
+  pickerQuantityByLineRef,
   onApply,
   onRemove,
   collapsible = false,
@@ -117,7 +126,21 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
     [quote, value],
   );
   const saleNotice =
-    quote?.notices.find((notice) => notice.type === "sale_limited") ?? null;
+    quote?.notices.find(
+      (notice) =>
+        notice.type === "sale_limited" && notice.discountKind !== "code",
+    ) ?? null;
+  // #4624 D1a: a ticket-capped code with fewer tickets left than a line holds
+  // leaves that line at full price. The applied chip hides when the code
+  // saved nothing (no code row in quote.discounts); one notice per line, in
+  // quote line order, names the ticket type when the basket has two (item 6).
+  const codeNotices = useMemo(
+    () =>
+      value === null || quote === null
+        ? []
+        : codeLimitedNotices(quote, pickerQuantityByLineRef),
+    [pickerQuantityByLineRef, quote, value],
+  );
   const saleName =
     saleNotice === null
       ? null
@@ -171,7 +194,10 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
     if (saleNotice !== null) {
       captureOnce("sale_limited_shown", saleNotice.discountId, { surface });
     }
-  }, [quote, quoteStatus, saleNotice, surface, value]);
+    for (const notice of codeNotices) {
+      captureOnce("discount_code_limited_shown", notice.key, { surface });
+    }
+  }, [codeNotices, quote, quoteStatus, saleNotice, surface, value]);
 
   const showField = !collapsible || expanded || value !== null;
   // #4304 — the field is ALWAYS typeable. Before, `disabled` (an empty cart)
@@ -327,6 +353,16 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
           Couldn&apos;t get your price. Try again.
         </Text>
       ) : null}
+      {codeNotices.map((notice) => (
+        <Text
+          key={notice.key}
+          style={styles.noticeText}
+          accessibilityRole="alert"
+          testID={`discount-code-limited-${notice.lineRef}`}
+        >
+          {notice.text}
+        </Text>
+      ))}
       {saleNotice !== null && saleName !== null ? (
         <Text style={styles.noticeText} accessibilityRole="alert">
           {saleLimitedCopy(saleName, saleNotice.remaining)}
@@ -350,9 +386,22 @@ export const CheckoutDiscountCodeField: React.FC<
   CheckoutDiscountCodeFieldProps
 > = (props) => {
   const cart = useCart();
+  // #4624 item 6 — the buyer's own number per ticket type; a line picked date
+  // by date has no single number to lower to.
+  const pickerQuantityByLineRef = useMemo(
+    () =>
+      Object.fromEntries(
+        cart.lines.map((line) => [
+          line.ticketTypeId,
+          line.byDate !== undefined ? null : line.quantity,
+        ]),
+      ),
+    [cart.lines],
+  );
   return (
     <DiscountCodeField
       {...props}
+      pickerQuantityByLineRef={pickerQuantityByLineRef}
       value={cart.discountCode}
       quote={cart.quote}
       quoteStatus={cart.quoteStatus}

@@ -52,12 +52,17 @@ import { isoFromLocalDateTime, localDateTimeValue } from "./discountDateTime";
 import {
   applyDiscountKindChange,
   canCreateDiscountKind,
+  CODE_LIMITS_HELP,
   DISCOUNT_COMBINATION_LABELS,
   DISCOUNT_KIND_DESCRIPTIONS,
   DISCOUNT_KIND_OPTIONS,
   discountSaveBlockedReason,
   formatDiscountPreviewMoney,
   isDiscountDraftValid,
+  NO_LIMIT_PLACEHOLDER,
+  parseTicketLimit,
+  ticketLimitError,
+  TOTAL_TICKETS_SAVE_REASON,
 } from "./discountEditorContract";
 
 const loadDiscountService = () => import("../../services/discountService");
@@ -160,11 +165,17 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSchedule, setShowSchedule] = useState(false);
+  // #4624: the raw "Total tickets" text, so 0 or 2.5 shows an error instead of
+  // silently becoming "no limit".
+  const [ticketsText, setTicketsText] = useState(
+    () => discount?.endsAfterCount?.toString() ?? "",
+  );
   useEffect(() => {
     if (!visible) return;
     setDraft(
       discount ? fromDiscount(discount) : defaultDraft(brandId, presetTarget),
     );
+    setTicketsText(discount?.endsAfterCount?.toString() ?? "");
     setDirty(false);
     setError(null);
     setShowSchedule(discount?.schedule != null);
@@ -178,9 +189,17 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
     setDirty(true);
     setError(null);
   };
-  const valid = isDiscountDraftValid(draft, rank);
+  const ticketsError = ticketLimitError(draft.kind, ticketsText);
+  const valid = isDiscountDraftValid(draft, rank) && ticketsError === null;
   // #4624 D4: the reason Save is disabled, shown above it on every scope.
-  const blockedReason = discountSaveBlockedReason(draft, rank);
+  const blockedReason =
+    discountSaveBlockedReason(draft, rank) ??
+    (ticketsError === null ? null : TOTAL_TICKETS_SAVE_REASON);
+  const changeTickets = (value: string): void => {
+    setTicketsText(value);
+    const parsed = parseTicketLimit(value);
+    set("endsAfterCount", parsed.valid ? parsed.value : null);
+  };
   const offeringsPending =
     draft.scopeKind === "listings" && offeringsStatus !== "ready";
   const saveBlockedText =
@@ -237,6 +256,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   const changeKind = (kind: DiscountKind): void => {
     if (!canCreateDiscountKind(rank, kind)) return;
     setDraft((current) => applyDiscountKindChange(current, kind));
+    setTicketsText(draft.endsAfterCount?.toString() ?? "");
     setDirty(true);
     setError(null);
   };
@@ -255,6 +275,23 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
     draft.valueMinor == null ? "" : String(draft.valueMinor / 100);
   const previewMoney = (minor: number): string =>
     formatDiscountPreviewMoney(minor, currencyCode);
+  const minimumSpendField = (
+    <Field
+      label="Minimum spend"
+      value={
+        draft.minSubtotalMinor == null
+          ? ""
+          : String(draft.minSubtotalMinor / 100)
+      }
+      keyboardType="decimal-pad"
+      onChange={(value) =>
+        set(
+          "minSubtotalMinor",
+          numeric(value) == null ? null : Math.round(Number(value) * 100),
+        )
+      }
+    />
+  );
 
   return (
     <Sheet visible={visible} onClose={requestClose} snapPoint="full">
@@ -512,47 +549,73 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
               </View>
             </>
           ) : null}
-          <View style={styles.two}>
-            <View style={styles.flex}>
+          {draft.kind === "code" ? (
+            <>
+              {/* #4624: a code stops after N checkouts or N tickets (D2a). */}
+              <View style={styles.two}>
+                <View style={styles.flex}>
+                  <Field
+                    label="Total uses"
+                    value={draft.maxTotalUses?.toString() ?? ""}
+                    placeholder={NO_LIMIT_PLACEHOLDER}
+                    keyboardType="number-pad"
+                    onChange={(value) => set("maxTotalUses", numeric(value))}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <Field
+                    label="Total tickets"
+                    value={ticketsText}
+                    placeholder={NO_LIMIT_PLACEHOLDER}
+                    keyboardType="number-pad"
+                    error={ticketsError}
+                    testID="discount-total-tickets"
+                    onChange={changeTickets}
+                  />
+                </View>
+              </View>
+              <Text style={styles.help}>{CODE_LIMITS_HELP}</Text>
+              <View style={styles.two}>
+                <View style={styles.flex}>
+                  <Field
+                    label="Per buyer"
+                    value={draft.maxUsesPerBuyer?.toString() ?? ""}
+                    keyboardType="number-pad"
+                    onChange={(value) => set("maxUsesPerBuyer", numeric(value))}
+                  />
+                </View>
+                <View style={styles.flex}>{minimumSpendField}</View>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.two}>
+                <View style={styles.flex}>
+                  <Field
+                    label="Total uses"
+                    value={draft.maxTotalUses?.toString() ?? ""}
+                    keyboardType="number-pad"
+                    onChange={(value) => set("maxTotalUses", numeric(value))}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <Field
+                    label="Per buyer"
+                    value={draft.maxUsesPerBuyer?.toString() ?? ""}
+                    keyboardType="number-pad"
+                    onChange={(value) => set("maxUsesPerBuyer", numeric(value))}
+                  />
+                </View>
+              </View>
               <Field
-                label="Total uses"
-                value={draft.maxTotalUses?.toString() ?? ""}
+                label="End after N sold"
+                value={draft.endsAfterCount?.toString() ?? ""}
                 keyboardType="number-pad"
-                onChange={(value) => set("maxTotalUses", numeric(value))}
+                onChange={(value) => set("endsAfterCount", numeric(value))}
               />
-            </View>
-            <View style={styles.flex}>
-              <Field
-                label="Per buyer"
-                value={draft.maxUsesPerBuyer?.toString() ?? ""}
-                keyboardType="number-pad"
-                onChange={(value) => set("maxUsesPerBuyer", numeric(value))}
-              />
-            </View>
-          </View>
-          {draft.kind !== "code" ? (
-            <Field
-              label="End after N sold"
-              value={draft.endsAfterCount?.toString() ?? ""}
-              keyboardType="number-pad"
-              onChange={(value) => set("endsAfterCount", numeric(value))}
-            />
-          ) : null}
-          <Field
-            label="Minimum spend"
-            value={
-              draft.minSubtotalMinor == null
-                ? ""
-                : String(draft.minSubtotalMinor / 100)
-            }
-            keyboardType="decimal-pad"
-            onChange={(value) =>
-              set(
-                "minSubtotalMinor",
-                numeric(value) == null ? null : Math.round(Number(value) * 100),
-              )
-            }
-          />
+              {minimumSpendField}
+            </>
+          )}
 
           <View style={styles.preview}>
             <Text style={styles.previewTitle}>Buyer preview</Text>
@@ -682,12 +745,20 @@ const Field: React.FC<{
   onChange: (value: string) => void;
   keyboardType?: "default" | "number-pad" | "decimal-pad";
   autoCapitalize?: "none" | "characters";
+  /** #4624: "No limit" on the code limit boxes. */
+  placeholder?: string;
+  /** #4624: inline error under the box; the box turns red. */
+  error?: string | null;
+  testID?: string;
 }> = ({
   label,
   value,
   onChange,
   keyboardType = "default",
   autoCapitalize = "none",
+  placeholder,
+  error = null,
+  testID,
 }) => (
   <View style={styles.field}>
     <Text style={styles.label}>{label}</Text>
@@ -696,9 +767,22 @@ const Field: React.FC<{
       onChangeText={onChange}
       keyboardType={keyboardType}
       autoCapitalize={autoCapitalize}
-      style={styles.input}
+      placeholder={placeholder}
+      accessibilityLabel={label}
+      accessibilityHint={error ?? undefined}
+      testID={testID}
+      style={[styles.input, error !== null && styles.inputInvalid]}
       placeholderTextColor={color.text3}
     />
+    {error !== null ? (
+      <Text
+        style={styles.fieldError}
+        accessibilityRole="alert"
+        testID={testID === undefined ? undefined : `${testID}-error`}
+      >
+        {error}
+      </Text>
+    ) : null}
   </View>
 );
 
@@ -862,6 +946,11 @@ const styles = StyleSheet.create({
     color: color.text1,
     backgroundColor: color.fill.inset,
   },
+  inputInvalid: {
+    borderColor: color.errorLine,
+    backgroundColor: color.errorTint,
+  },
+  fieldError: { fontSize: 12, lineHeight: 17, color: color.errorText },
   kindCards: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   kindCard: {
     flex: 1,
