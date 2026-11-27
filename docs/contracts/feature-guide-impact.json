@@ -4871,6 +4871,7 @@
         "mingla-marketing/app/schedule/locals/page.tsx",
         "mingla-marketing/app/schedule/page.tsx",
         "mingla-marketing/lib/booking-call.ts",
+        "mingla-marketing/lib/booking-handoff.ts",
         "mingla-marketing/lib/booking-social.fixtures.json",
         "mingla-marketing/lib/booking-social.ts",
         "mingla-marketing/lib/program-call-copy.ts",
