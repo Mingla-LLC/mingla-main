@@ -161,7 +161,8 @@ function check(s, manifest) {
   // #3355 Wave B: search_mingla_guide (self read); #4389: start_payments_onboarding + start_door_sale; 185→188.
   // #4453 milestones 7 and 11: three design-pass + two add-a-page Website tools (owner or marketing manager); 188→193; plus #4238 W5 (2) and #3281 get_experience (1) from main; 196.
   // #4453 Website workspace: get_site_workspace, propose_site_change_set, propose_website_team_request (owner or marketing manager); 196→199.
-  if (declarationCount !== 199) failures.push(`expected 199 declarations, got ${declarationCount}`);
+  // #4599 answer truth: get_event_settings (finance manager, event-scoped); 199→200.
+  if (declarationCount !== 200) failures.push(`expected 200 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

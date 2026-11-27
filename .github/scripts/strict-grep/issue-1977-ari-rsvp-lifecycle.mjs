@@ -302,11 +302,12 @@ export function audit(base, plans = effectiveSuites()) {
     // #3355 Wave B: search_mingla_guide; #4389: start_payments_onboarding + start_door_sale; 185→188.
     // #4453 milestones 7 and 11: three design-pass + two add-a-page Website tools; 188→193; plus #4238 W5 (2) and #3281 get_experience (1) from main; 196.
     // #4453 Website workspace: get_site_workspace, propose_site_change_set, propose_website_team_request; 196→199.
-    if (parsed.audit?.registered_tool_count !== 199) {
-      failures.push("ledger audit registered_tool_count is not 199");
+    // #4599 answer truth: get_event_settings; 199→200.
+    if (parsed.audit?.registered_tool_count !== 200) {
+      failures.push("ledger audit registered_tool_count is not 200");
     }
-    if (mapped.length !== 199 || new Set(mapped).size !== 199) {
-      failures.push("ledger mapped tool census is not 199 unique tools");
+    if (mapped.length !== 200 || new Set(mapped).size !== 200) {
+      failures.push("ledger mapped tool census is not 200 unique tools");
     }
     if (
       !mapped.includes("update_rsvp") ||
