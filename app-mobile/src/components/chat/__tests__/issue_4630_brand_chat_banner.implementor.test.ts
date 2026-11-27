@@ -111,9 +111,9 @@ Deno.test("#4630 rework 1: my booking's row opens its own page type (event, RSVP
   const component = read("components/chat/BrandChatBanner.tsx");
   assert(component.includes("styles.lineTitle") && component.includes("styles.lineWhen"), "test P3-1: the title truncates, the date stays");
   // Retest P3-1: the title gives way first, down to a readable floor; then the date.
-  assert(/lineTitle: \{\s*flexShrink: 1000,/.test(component) && /lineWhen: \{\s*flexShrink: 1,/.test(component), "the title shrinks first");
+  assert(/lineTitle: \{\s*flexShrink: 1000,/.test(component), "the title shrinks");
   assert(component.includes("const TITLE_MIN_WIDTH = 72;") && /lineTitleFloor: \{\s*minWidth: TITLE_MIN_WIDTH,/.test(component), "the title keeps a readable minimum width");
-  assert(component.includes("title.length > TITLE_FLOOR_MIN_CHARS ? styles.lineTitleFloor : null"), "a short title gets no floor (no gap before the date)");
+  assert(component.includes("const titleFloor = !iconOnlyTicket && title.length > TITLE_FLOOR_MIN_CHARS;") && component.includes("titleFloor ? styles.lineTitleFloor : null"), "a short title gets no floor (no gap before the date)");
   // Retest P3-1: Your ticket + "+N more" at 393 / 320 pt: no thumbnail, "+N" (full label for a11y).
   assert(component.includes("const COMPACT_MORE_MAX_WINDOW_WIDTH = 420;"), "the compact threshold covers 320-393 pt phones");
   assert(component.includes("const showThumb = width >= THUMB_MIN_WINDOW_WIDTH && !compactMore;"), "the thumbnail gives its room to the title");
@@ -167,4 +167,21 @@ Deno.test("#4630 wiring: the banner sits under the header for a live brand chat;
   assert(keys.includes("brandChatSummary: (conversationId: string | null) =>"), "the key lives in the factory");
   const countdown = read("components/chat/TripCountdownBanner.tsx");
   assert(!countdown.includes("nextUp"), "TripCountdownBanner's unused nextUp mode is deleted");
+});
+
+Deno.test("#4630 retest 2 P2: under 360 pt the ticket pill is icon-only and the date never shrinks", () => {
+  const component = read("components/chat/BrandChatBanner.tsx");
+  // The date or time is never cut: only the title truncates.
+  assert(/lineWhen: \{\s*flexShrink: 0,\s*\}/.test(component), "the date part has flexShrink 0");
+  assert(!/lineWhen: \{[^}]*flexShrink: 1/.test(component), "the date part never shrinks");
+  // Under 360 pt the ticket pill shows only its icon.
+  assert(component.includes("const ICON_ONLY_TICKET_MAX_WINDOW_WIDTH = 360;"), "icon-only threshold is 360 pt");
+  assert(component.includes("const iconOnlyTicket = width < ICON_ONLY_TICKET_MAX_WINDOW_WIDTH;"), "icon-only strictly under 360 pt");
+  assert(component.includes("{iconOnlyTicket ? null : <Text style={styles.ticketPillText} numberOfLines={1}>{ticketText}</Text>}"), "the pill text is dropped when icon-only");
+  assert(/ticketPillIconOnly: \{\s*width: 32,/.test(component), "the icon-only pill is a 32 pt circle");
+  // The accessibility label and the 44x44 hit area are unchanged.
+  assert(component.includes("accessibilityLabel={`${ticketText}, ${state.booking.title}`}"), "the ticket label still names the ticket and the title");
+  assert(/hit: \{\s*minWidth: 44,\s*minHeight: 44,\s*flexShrink: 0,/.test(component), "the hit area stays 44x44");
+  const ticketBlock = component.slice(component.indexOf('testID="brand-chat-banner-ticket"') - 400, component.indexOf('testID="brand-chat-banner-ticket"'));
+  assert(ticketBlock.includes("style={styles.hit}"), "the ticket Pressable uses the 44x44 hit style");
 });

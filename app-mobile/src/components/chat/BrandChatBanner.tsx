@@ -48,6 +48,13 @@ const COMPACT_MORE_MAX_WINDOW_WIDTH = 420;
 const TITLE_MIN_WIDTH = 72;
 /** A title this short already fits in TITLE_MIN_WIDTH; no floor (no gap before the date). */
 const TITLE_FLOOR_MIN_CHARS = 10;
+/**
+ * #4630 (retest 2, P2): at 320 pt with "Your ticket" and "+1" the date was cut
+ * ("The Extr… · Wed…"). Under this width the ticket pill is icon-only (its
+ * accessibility label and 44x44 hit area are unchanged), the date never
+ * shrinks and the title is the only part that truncates.
+ */
+const ICON_ONLY_TICKET_MAX_WINDOW_WIDTH = 360;
 
 export interface BrandChatBannerProps {
   conversationId: string;
@@ -216,6 +223,9 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
   const hasMore = state.kind !== "next_no_ticket" && state.kind !== "next_with_ticket" && state.moreCount > 0;
   const compactMore = hasMore && width < COMPACT_MORE_MAX_WINDOW_WIDTH;
   const showThumb = width >= THUMB_MIN_WINDOW_WIDTH && !compactMore;
+  const iconOnlyTicket = width < ICON_ONLY_TICKET_MAX_WINDOW_WIDTH;
+  // Under 360 pt the date is fixed, so the title gets no floor: it alone gives way.
+  const titleFloor = !iconOnlyTicket && title.length > TITLE_FLOOR_MIN_CHARS;
 
   return (
     <Animated.View style={[styles.host, { opacity }]} testID={`brand-chat-banner-${state.kind}`}>
@@ -243,7 +253,7 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
           </View>
           {/* #4630 (test P3-1): the title truncates; the date or time stays whole. */}
           <View style={styles.lineRow}>
-            <Text style={[styles.line, styles.lineTitle, title.length > TITLE_FLOOR_MIN_CHARS ? styles.lineTitleFloor : null]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
+            <Text style={[styles.line, styles.lineTitle, titleFloor ? styles.lineTitleFloor : null]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
             {when ? (
               <Text style={[styles.line, styles.lineWhen]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{` · ${when}`}</Text>
             ) : null}
@@ -279,9 +289,9 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
             testID="brand-chat-banner-ticket"
           >
             {({ pressed }) => (
-              <View style={[styles.ticketPill, pressedPill({ pressed })]}>
+              <View style={[styles.ticketPill, iconOnlyTicket ? styles.ticketPillIconOnly : null, pressedPill({ pressed })]}>
                 <Icon name="ticket-outline" size={15} color={chatTokens.accent} />
-                <Text style={styles.ticketPillText} numberOfLines={1}>{ticketText}</Text>
+                {iconOnlyTicket ? null : <Text style={styles.ticketPillText} numberOfLines={1}>{ticketText}</Text>}
               </View>
             )}
           </Pressable>
@@ -395,8 +405,8 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     minWidth: 0,
   },
-  // The title gives way first (large shrink weight) down to TITLE_MIN_WIDTH;
-  // only then does the date shorten, so a name always stays readable.
+  // The title is the only part that truncates (down to TITLE_MIN_WIDTH on
+  // 360 pt and wider); the date or time never shrinks.
   lineTitle: {
     flexShrink: 1000,
     minWidth: 0,
@@ -405,7 +415,7 @@ const styles = StyleSheet.create({
     minWidth: TITLE_MIN_WIDTH,
   },
   lineWhen: {
-    flexShrink: 1,
+    flexShrink: 0,
   },
   line: {
     fontSize: 15,
@@ -432,6 +442,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     backgroundColor: chatTokens.accentSoft,
+  },
+  ticketPillIconOnly: {
+    width: 32,
+    paddingHorizontal: 0,
+    justifyContent: "center",
   },
   ticketPillText: {
     fontSize: 13,
