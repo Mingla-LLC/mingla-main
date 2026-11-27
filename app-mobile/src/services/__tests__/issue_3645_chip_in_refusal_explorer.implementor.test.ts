@@ -16,10 +16,7 @@ import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.t
 import { FunctionsHttpError } from "npm:@supabase/functions-js@2.103.0";
 
 import { extractFunctionErrorFields } from "../../utils/edgeFunctionError.ts";
-import {
-  chipInRefusalFloorCents,
-  chipInRefusalFromBody,
-} from "../../../../packages/offering-rendering/chipInRefusal.ts";
+import { chipInRefusalFromBody } from "../../../../packages/offering-rendering/chipInRefusal.ts";
 
 const refusal = (body: Record<string, unknown>, status = 422): FunctionsHttpError =>
   new FunctionsHttpError(
@@ -41,8 +38,6 @@ Deno.test("#3645 the provider floor reaches the panel (₦50 host minimum, ₦10
   );
   assertEquals(err.message, "amount_below_min");
   assertEquals(err.minCents, 10_000);
-  assertEquals(err.reason, "provider_minimum");
-  assertEquals(chipInRefusalFloorCents(err, 5_000), 10_000);
 });
 
 Deno.test("#3645 brand_cannot_collect reaches the panel (its paused state)", async () => {

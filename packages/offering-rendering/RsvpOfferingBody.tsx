@@ -98,10 +98,6 @@ import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira chip-in copy shows "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
-import {
-  chipInRefusalFloorCents,
-  chipInWholeUnitFloorCents,
-} from "./chipInRefusal";
 import { normalizeCityCountry } from "./normalizeCityCountry";
 // issue #2468 — the ONE privacy gate + label composer for the venue card.
 import {
@@ -877,10 +873,7 @@ export const useRsvpOfferingState = (
     number | null
   >(null);
   const chipEffectiveMinCents: number | null =
-    chipServerFloorCents !== null &&
-    (chipMinCents === null || chipServerFloorCents > chipMinCents)
-      ? chipServerFloorCents
-      : chipMinCents;
+    Math.max(chipServerFloorCents ?? 0, chipMinCents ?? 0) || null;
   const [renderedContext, setRenderedContext] = useState(context);
   if (renderedContext !== context) {
     acceptedRevision.current += 1;
@@ -1555,17 +1548,20 @@ export const useRsvpOfferingState = (
   // ── ORCH-1291 — server-code → gift-framed copy (DESIGN §4.7). ──
   const fmtChipWhole = useCallback(
     (cents: number): string => {
+      // #3645 — the chip-in field takes whole units, so a floor is named
+      // rounded UP (DKK 2.30 -> 3; GBP 30p -> £1, never £0).
+      const major = Math.ceil(cents / 100);
       try {
         return withCurrencyGlyph(
           new Intl.NumberFormat(undefined, {
             style: "currency",
             currency: chipCurrency || "USD",
             maximumFractionDigits: 0,
-          }).format(cents / 100),
+          }).format(major),
           chipCurrency,
         );
       } catch {
-        return `${Math.round(cents / 100)} ${chipCurrency}`;
+        return `${major} ${chipCurrency}`;
       }
     },
     [chipCurrency],
@@ -1581,7 +1577,7 @@ export const useRsvpOfferingState = (
     }
     if (chipEffectiveMinCents !== null && chipAmountCents < chipEffectiveMinCents) {
       setChipError(
-        `Add at least ${fmtChipWhole(chipInWholeUnitFloorCents(chipEffectiveMinCents))}.`,
+        `Add at least ${fmtChipWhole(chipEffectiveMinCents)}.`,
       );
       setChipInState("error");
       return;
@@ -1606,13 +1602,16 @@ export const useRsvpOfferingState = (
       } else if (code.includes("amount_below_min")) {
         // #3645 — name the server's floor (the provider minimum can be above
         // the host's), and remember it so the next tap is checked here.
-        const floor = chipInRefusalFloorCents(err, chipMinCents);
+        // `minCents` is set (and validated) by chipInRefusalFromBody; an older
+        // caller's plain Error has none, so the host minimum is named.
+        const sent = (err as { minCents?: unknown } | null)?.minCents;
+        const floor = typeof sent === "number" ? sent : chipMinCents;
         if (floor !== null && (chipMinCents === null || floor > chipMinCents)) {
           setChipServerFloorCents(floor);
         }
         setChipError(
           floor !== null
-            ? `Add at least ${fmtChipWhole(chipInWholeUnitFloorCents(floor))}.`
+            ? `Add at least ${fmtChipWhole(floor)}.`
             : "Add a little more.",
         );
         setChipInState("error");
@@ -1997,9 +1996,7 @@ export const useRsvpOfferingState = (
           hostShortName={chipHostName}
           suggestedCents={chipSuggestedCents}
           minCents={
-            chipEffectiveMinCents === null
-              ? null
-              : chipInWholeUnitFloorCents(chipEffectiveMinCents)
+            chipEffectiveMinCents && Math.ceil(chipEffectiveMinCents / 100) * 100
           }
           state={chipInState}
           amountCents={chipAmountCents}

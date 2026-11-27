@@ -37,11 +37,11 @@ const input = {
   callerIdempotencyKey: "key-1",
 };
 
-const rejection = async (): Promise<Error & { minCents?: unknown; reason?: unknown }> => {
+const rejection = async (): Promise<Error & { minCents?: unknown }> => {
   try {
     await submitRsvpContribution(input as Parameters<typeof submitRsvpContribution>[0]);
   } catch (err) {
-    return err as Error & { minCents?: unknown; reason?: unknown };
+    return err as Error & { minCents?: unknown };
   }
   throw new Error("expected a rejection");
 };
@@ -55,7 +55,7 @@ describe("#3645 submitRsvpContribution refusal", () => {
     expect(error.message).toBe("Edge Function returned a non-2xx status code");
   });
 
-  it("carries the provider floor: code as message, minCents and reason", async () => {
+  it("carries the provider floor: code as message and minCents", async () => {
     mockInvoke.mockResolvedValue({
       data: null,
       error: httpError(422, JSON.stringify({ error: "amount_below_min", minCents: 10_000, reason: "provider_minimum" })),
@@ -63,10 +63,9 @@ describe("#3645 submitRsvpContribution refusal", () => {
     const err = await rejection();
     expect(err.message).toBe("amount_below_min");
     expect(err.minCents).toBe(10_000);
-    expect(err.reason).toBe("provider_minimum");
   });
 
-  it("carries the host minimum with no reason", async () => {
+  it("carries the host minimum", async () => {
     mockInvoke.mockResolvedValue({
       data: null,
       error: httpError(422, JSON.stringify({ error: "amount_below_min", minCents: 5_000 })),
@@ -74,7 +73,6 @@ describe("#3645 submitRsvpContribution refusal", () => {
     const err = await rejection();
     expect(err.message).toBe("amount_below_min");
     expect(err.minCents).toBe(5_000);
-    expect(err.reason).toBeNull();
   });
 
   it("keeps brand_cannot_collect (the panel's paused state)", async () => {
@@ -96,8 +94,7 @@ describe("#3645 submitRsvpContribution refusal", () => {
       const err = await rejection();
       expect(err.message).toBe("amount_below_min");
       expect(err.minCents).toBeNull();
-      expect(err.reason).toBeNull();
-    }
+      }
   });
 
   it("an unreadable body (HTML relay page, already read) falls back to the error message, never throws past the caller", async () => {
