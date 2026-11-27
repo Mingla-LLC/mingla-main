@@ -1,0 +1,2254 @@
+{
+  "registry_version": 1,
+  "colours": [
+    "paper",
+    "cream",
+    "sand",
+    "moss",
+    "night",
+    "clay"
+  ],
+  "blocks": [
+    {
+      "key": "reelHero",
+      "version": 1,
+      "name": "Reel hero",
+      "description": "The big headline with one button in a ring and the curved card carousel (Home, For hosts).",
+      "category": "hero",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "paper",
+          "night"
+        ]
+      },
+      "fields": [
+        {
+          "key": "lines",
+          "kind": "list",
+          "label": "Headline lines",
+          "min": 1,
+          "max": 3,
+          "item": [],
+          "textItem": {
+            "max": 40,
+            "em": true
+          }
+        },
+        {
+          "key": "phrases",
+          "kind": "list",
+          "label": "Rotating phrases (shown after the first line)",
+          "min": 0,
+          "max": 8,
+          "item": [],
+          "textItem": {
+            "max": 30
+          }
+        },
+        {
+          "key": "srTitle",
+          "kind": "text",
+          "label": "Headline for screen readers (needed with rotating phrases)",
+          "max": 90,
+          "required": false
+        },
+        {
+          "key": "sub",
+          "kind": "text",
+          "label": "Line under the headline",
+          "max": 220,
+          "required": true
+        },
+        {
+          "key": "cta",
+          "kind": "action",
+          "label": "Button",
+          "required": true
+        },
+        {
+          "key": "cards",
+          "kind": "list",
+          "label": "Carousel cards",
+          "min": 4,
+          "max": 12,
+          "item": [
+            {
+              "key": "media",
+              "kind": "media",
+              "label": "Clip",
+              "accept": [
+                "video",
+                "photo"
+              ],
+              "required": true
+            },
+            {
+              "key": "caption",
+              "kind": "text",
+              "label": "Caption",
+              "max": 28,
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "heroWords",
+      "version": 1,
+      "name": "Programme hero",
+      "description": "Headline, lead and two buttons (Creators, Locals).",
+      "category": "hero",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "title",
+          "kind": "text",
+          "label": "Headline",
+          "max": 70,
+          "required": true
+        },
+        {
+          "key": "em",
+          "kind": "text",
+          "label": "Italic end of the headline",
+          "max": 40,
+          "required": false
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 260,
+          "required": true
+        },
+        {
+          "key": "primary",
+          "kind": "action",
+          "label": "Main button",
+          "required": true,
+          "targets": [
+            "internal",
+            "explorer"
+          ]
+        },
+        {
+          "key": "secondary",
+          "kind": "action",
+          "label": "Second button",
+          "required": true,
+          "targets": [
+            "internal"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "pageHero",
+      "version": 1,
+      "name": "Page headline",
+      "description": "A large serif headline and a lead, with optional note and buttons (About, Going out, Cities, Help, Support, Careers, Free tools).",
+      "category": "hero",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "variant",
+          "kind": "enum",
+          "label": "Format",
+          "options": [
+            "plain",
+            "centred"
+          ],
+          "required": true,
+          "hidden": true
+        },
+        {
+          "key": "title",
+          "kind": "text",
+          "label": "Headline",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 260,
+          "required": false
+        },
+        {
+          "key": "note",
+          "kind": "text",
+          "label": "Small note above the buttons",
+          "max": 160,
+          "required": false
+        },
+        {
+          "key": "actions",
+          "kind": "list",
+          "label": "Buttons",
+          "min": 0,
+          "max": 2,
+          "item": [
+            {
+              "key": "action",
+              "kind": "action",
+              "label": "Button",
+              "required": true,
+              "targets": [
+                "internal",
+                "web",
+                "mail"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "icpHero",
+      "version": 1,
+      "name": "Full-screen video hero",
+      "description": "Full-screen clip, two-line headline and the glass button bar (the host-type pages).",
+      "category": "hero",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "night"
+        ]
+      },
+      "fields": [
+        {
+          "key": "pill",
+          "kind": "text",
+          "label": "Label pill",
+          "max": 40,
+          "required": true
+        },
+        {
+          "key": "line1",
+          "kind": "text",
+          "label": "Headline line one",
+          "max": 40,
+          "required": true
+        },
+        {
+          "key": "line2",
+          "kind": "text",
+          "label": "Headline line two (italic)",
+          "max": 40,
+          "required": true
+        },
+        {
+          "key": "sub",
+          "kind": "text",
+          "label": "Line under the headline",
+          "max": 220,
+          "required": true
+        },
+        {
+          "key": "media",
+          "kind": "media",
+          "label": "Background clip",
+          "accept": [
+            "video",
+            "photo"
+          ],
+          "required": true
+        },
+        {
+          "key": "call",
+          "kind": "action",
+          "label": "Call button",
+          "required": true,
+          "targets": [
+            "internal"
+          ]
+        },
+        {
+          "key": "app",
+          "kind": "action",
+          "label": "App button",
+          "required": true,
+          "targets": [
+            "host"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "cityHero",
+      "version": 1,
+      "name": "City hero",
+      "description": "The city clip with \"Things to do in <City>\" and the app button. Text follows the city.",
+      "category": "hero",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": true
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "night"
+        ]
+      },
+      "fields": [
+        {
+          "key": "city",
+          "kind": "city",
+          "label": "City",
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "steps",
+      "version": 1,
+      "name": "Numbered steps",
+      "description": "Three numbered steps (Home how it works, Creators, Locals, Careers values).",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": {
+        "*": "programme",
+        "home": "own"
+      },
+      "colours": {
+        "home": [
+          "paper"
+        ],
+        "creators": [
+          "paper"
+        ],
+        "locals": [
+          "paper"
+        ],
+        "values": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "variant",
+          "kind": "enum",
+          "label": "Format",
+          "options": [
+            "home",
+            "creators",
+            "locals",
+            "values"
+          ],
+          "required": true,
+          "hidden": true
+        },
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": false,
+          "em": true
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 260,
+          "required": false
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Steps",
+          "min": 3,
+          "max": 3,
+          "item": [
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Step title",
+              "max": 60,
+              "required": true,
+              "em": true
+            },
+            {
+              "key": "body",
+              "kind": "text",
+              "label": "Step text",
+              "max": 200,
+              "required": true
+            },
+            {
+              "key": "visual",
+              "kind": "enum",
+              "label": "Picture",
+              "options": [
+                "none",
+                "pills",
+                "saved",
+                "scheduled"
+              ],
+              "required": false,
+              "hidden": true
+            },
+            {
+              "key": "words",
+              "kind": "list",
+              "label": "Picture words",
+              "min": 0,
+              "max": 3,
+              "item": [],
+              "textItem": {
+                "max": 24
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "litAbout",
+      "version": 1,
+      "name": "Intro with lit paragraph",
+      "description": "Intro, two buttons, the wordmark and a large paragraph that lights up word by word on scroll.",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "cream"
+        ]
+      },
+      "fields": [
+        {
+          "key": "intro",
+          "kind": "text",
+          "label": "Intro",
+          "max": 320,
+          "required": true
+        },
+        {
+          "key": "call",
+          "kind": "action",
+          "label": "Talk button",
+          "required": true,
+          "targets": [
+            "internal"
+          ]
+        },
+        {
+          "key": "insideLabel",
+          "kind": "text",
+          "label": "\"See what's inside\" label",
+          "max": 30,
+          "required": true
+        },
+        {
+          "key": "duoA",
+          "kind": "text",
+          "label": "Before word",
+          "max": 20,
+          "required": true
+        },
+        {
+          "key": "duoB",
+          "kind": "text",
+          "label": "After word",
+          "max": 20,
+          "required": true
+        },
+        {
+          "key": "big",
+          "kind": "text",
+          "label": "Large paragraph",
+          "max": 420,
+          "required": true,
+          "em": true
+        }
+      ]
+    },
+    {
+      "key": "icpFeatures",
+      "version": 1,
+      "name": "Sticky features over video",
+      "description": "A sticky left column with three section buttons beside three glass video cards, over a background clip.",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "night"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 200,
+          "required": true
+        },
+        {
+          "key": "background",
+          "kind": "media",
+          "label": "Background",
+          "accept": [
+            "video",
+            "photo"
+          ],
+          "required": true
+        },
+        {
+          "key": "cta",
+          "kind": "action",
+          "label": "Button",
+          "required": true,
+          "targets": [
+            "host"
+          ]
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Feature cards",
+          "min": 3,
+          "max": 3,
+          "item": [
+            {
+              "key": "icon",
+              "kind": "enum",
+              "label": "Icon",
+              "options": [
+                "ticket",
+                "users",
+                "mail",
+                "map",
+                "card",
+                "chat",
+                "calendar",
+                "tag",
+                "image",
+                "chart",
+                "sun"
+              ],
+              "required": true
+            },
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Title",
+              "max": 40,
+              "required": true
+            },
+            {
+              "key": "media",
+              "kind": "media",
+              "label": "Clip",
+              "accept": [
+                "video",
+                "photo"
+              ],
+              "required": true
+            },
+            {
+              "key": "body",
+              "kind": "text",
+              "label": "Text",
+              "max": 220,
+              "required": true
+            },
+            {
+              "key": "tags",
+              "kind": "list",
+              "label": "Tags",
+              "min": 1,
+              "max": 6,
+              "item": [],
+              "textItem": {
+                "max": 24
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "paras",
+      "version": 1,
+      "name": "Heading with paragraphs",
+      "description": "A heading beside a few paragraphs (About \"why\").",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "paragraphs",
+          "kind": "list",
+          "label": "Paragraphs",
+          "min": 1,
+          "max": 5,
+          "item": [],
+          "textItem": {
+            "max": 400
+          }
+        }
+      ]
+    },
+    {
+      "key": "answer",
+      "version": 1,
+      "name": "Direct answer",
+      "description": "One question and its plain answer, the text search and answer engines quote (About, Going out).",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "question",
+          "kind": "text",
+          "label": "Question",
+          "max": 120,
+          "required": true
+        },
+        {
+          "key": "answer",
+          "kind": "text",
+          "label": "Answer",
+          "max": 600,
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "facts",
+      "version": 1,
+      "name": "Fact cards",
+      "description": "Two cards with a short title and a paragraph (Locals).",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "programme",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Cards",
+          "min": 2,
+          "max": 2,
+          "item": [
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Title",
+              "max": 60,
+              "required": true
+            },
+            {
+              "key": "body",
+              "kind": "text",
+              "label": "Text",
+              "max": 400,
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "toolkit",
+      "version": 1,
+      "name": "Numbered link list",
+      "description": "A heading over numbered rows, each opening a page or the Host app (For hosts toolkit).",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Rows",
+          "min": 2,
+          "max": 8,
+          "item": [
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Title",
+              "max": 40,
+              "required": true
+            },
+            {
+              "key": "line",
+              "kind": "text",
+              "label": "Line",
+              "max": 140,
+              "required": true
+            },
+            {
+              "key": "action",
+              "kind": "action",
+              "label": "Opens",
+              "required": true,
+              "targets": [
+                "internal",
+                "host"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "chips",
+      "version": 1,
+      "name": "Who it is for",
+      "description": "A heading beside a set of chips (host-type pages).",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Chips",
+          "min": 2,
+          "max": 12,
+          "item": [],
+          "textItem": {
+            "max": 32
+          }
+        }
+      ]
+    },
+    {
+      "key": "faq",
+      "version": 1,
+      "name": "Questions",
+      "description": "Questions that open to their answers (host-type pages, city pages).",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "variant",
+          "kind": "enum",
+          "label": "Format",
+          "options": [
+            "icp",
+            "city"
+          ],
+          "required": true,
+          "hidden": true
+        },
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "action",
+          "kind": "action",
+          "label": "Button under the heading",
+          "required": false,
+          "targets": [
+            "internal"
+          ]
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Questions",
+          "min": 1,
+          "max": 12,
+          "item": [
+            {
+              "key": "question",
+              "kind": "text",
+              "label": "Question",
+              "max": 140,
+              "required": true
+            },
+            {
+              "key": "answer",
+              "kind": "text",
+              "label": "Answer",
+              "max": 600,
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "marquee",
+      "version": 1,
+      "name": "Moving words",
+      "description": "A decorative line of words that scrolls sideways (Home).",
+      "category": "story",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "words",
+          "kind": "list",
+          "label": "Words",
+          "min": 3,
+          "max": 16,
+          "item": [],
+          "textItem": {
+            "max": 24
+          }
+        }
+      ]
+    },
+    {
+      "key": "tiles",
+      "version": 1,
+      "name": "Video tiles",
+      "description": "A heading and lead over a grid of clip tiles that open pages (Home audiences, For hosts host types).",
+      "category": "media",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper",
+          "night"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 260,
+          "required": false
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Tiles",
+          "min": 2,
+          "max": 12,
+          "item": [
+            {
+              "key": "media",
+              "kind": "media",
+              "label": "Clip",
+              "accept": [
+                "video",
+                "photo"
+              ],
+              "required": true
+            },
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Title",
+              "max": 40,
+              "required": true
+            },
+            {
+              "key": "line",
+              "kind": "text",
+              "label": "Line",
+              "max": 120,
+              "required": true
+            },
+            {
+              "key": "action",
+              "kind": "action",
+              "label": "Opens",
+              "required": true,
+              "targets": [
+                "internal"
+              ]
+            },
+            {
+              "key": "look",
+              "kind": "enum",
+              "label": "Tile look",
+              "options": [
+                "plain",
+                "tools"
+              ],
+              "required": false,
+              "hidden": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "clipGrid",
+      "version": 1,
+      "name": "Four clips",
+      "description": "Four silent clips in a row (Creators).",
+      "category": "media",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "programme",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Clips",
+          "min": 4,
+          "max": 4,
+          "item": [
+            {
+              "key": "media",
+              "kind": "media",
+              "label": "Clip",
+              "accept": [
+                "video",
+                "photo"
+              ],
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "wideClip",
+      "version": 1,
+      "name": "Wide clip",
+      "description": "One wide ambient clip (About).",
+      "category": "media",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "media",
+          "kind": "media",
+          "label": "Clip",
+          "accept": [
+            "video",
+            "photo"
+          ],
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "vcards",
+      "version": 1,
+      "name": "Video text cards",
+      "description": "Clip cards with the wordmark and text over an ink wash (About app cards, For hosts Ari cards).",
+      "category": "media",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "about": [
+          "cream"
+        ],
+        "ari": [
+          "night"
+        ]
+      },
+      "fields": [
+        {
+          "key": "variant",
+          "kind": "enum",
+          "label": "Format",
+          "options": [
+            "about",
+            "ari"
+          ],
+          "required": true,
+          "hidden": true
+        },
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": false,
+          "em": true
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 260,
+          "required": false
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Cards",
+          "min": 2,
+          "max": 4,
+          "item": [
+            {
+              "key": "media",
+              "kind": "media",
+              "label": "Clip",
+              "accept": [
+                "video",
+                "photo"
+              ],
+              "required": true
+            },
+            {
+              "key": "wordmark",
+              "kind": "text",
+              "label": "Wordmark name (screen readers)",
+              "max": 30,
+              "required": false
+            },
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Title",
+              "max": 60,
+              "required": true,
+              "em": true
+            },
+            {
+              "key": "line",
+              "kind": "text",
+              "label": "Line",
+              "max": 140,
+              "required": true
+            },
+            {
+              "key": "action",
+              "kind": "action",
+              "label": "Opens",
+              "required": false,
+              "targets": [
+                "internal",
+                "explorer"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "filterGrid",
+      "version": 1,
+      "name": "Filtered guides",
+      "description": "A row of filter chips, one wide tile and guide tiles the chips filter (Going out).",
+      "category": "media",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "chips",
+          "kind": "list",
+          "label": "Filter chips",
+          "min": 2,
+          "max": 8,
+          "item": [],
+          "textItem": {
+            "max": 24
+          }
+        },
+        {
+          "key": "wideMedia",
+          "kind": "media",
+          "label": "Wide tile clip",
+          "accept": [
+            "video",
+            "photo"
+          ],
+          "required": true
+        },
+        {
+          "key": "wideTitle",
+          "kind": "text",
+          "label": "Wide tile title",
+          "max": 60,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "wideLine",
+          "kind": "text",
+          "label": "Wide tile line",
+          "max": 120,
+          "required": true
+        },
+        {
+          "key": "wideAction",
+          "kind": "action",
+          "label": "Wide tile opens",
+          "required": true,
+          "targets": [
+            "internal"
+          ]
+        },
+        {
+          "key": "empty",
+          "kind": "text",
+          "label": "Text when a chip has no guides",
+          "max": 60,
+          "required": false
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Guides",
+          "min": 1,
+          "max": 12,
+          "item": [
+            {
+              "key": "media",
+              "kind": "media",
+              "label": "Clip",
+              "accept": [
+                "video",
+                "photo"
+              ],
+              "required": true
+            },
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Title",
+              "max": 40,
+              "required": true
+            },
+            {
+              "key": "line",
+              "kind": "text",
+              "label": "Line",
+              "max": 120,
+              "required": true
+            },
+            {
+              "key": "tags",
+              "kind": "list",
+              "label": "Chips it shows under",
+              "min": 1,
+              "max": 4,
+              "item": [],
+              "textItem": {
+                "max": 24
+              }
+            },
+            {
+              "key": "city",
+              "kind": "city",
+              "label": "City (empty: all cities)",
+              "required": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "videoBand",
+      "version": 1,
+      "name": "Closing video band",
+      "description": "A rounded clip band with a heading and buttons (the closing band of Home, For hosts, host types, Creators, Locals).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": {
+        "*": "own",
+        "creators": "programme",
+        "locals": "programme"
+      },
+      "colours": {
+        "*": [
+          "night"
+        ]
+      },
+      "fields": [
+        {
+          "key": "variant",
+          "kind": "enum",
+          "label": "Format",
+          "options": [
+            "plain",
+            "glass",
+            "icp",
+            "creators",
+            "locals"
+          ],
+          "required": true,
+          "hidden": true
+        },
+        {
+          "key": "media",
+          "kind": "media",
+          "label": "Clip",
+          "accept": [
+            "video",
+            "photo"
+          ],
+          "required": true
+        },
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 80,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "body",
+          "kind": "text",
+          "label": "Text",
+          "max": 260,
+          "required": false
+        },
+        {
+          "key": "bring",
+          "kind": "text",
+          "label": "Line beside the button",
+          "max": 60,
+          "required": false
+        },
+        {
+          "key": "primary",
+          "kind": "action",
+          "label": "Button",
+          "required": true
+        },
+        {
+          "key": "secondary",
+          "kind": "action",
+          "label": "Second button",
+          "required": false
+        }
+      ]
+    },
+    {
+      "key": "toolCard",
+      "version": 1,
+      "name": "Free tool card",
+      "description": "One free tool with its preview form (host-type pages).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "tool",
+          "kind": "enum",
+          "label": "Tool",
+          "options": [
+            "Venue Website Grader",
+            "Event Turnout Predictor",
+            "Quote Any Trip",
+            "The Undercharging Audit"
+          ],
+          "required": true
+        },
+        {
+          "key": "body",
+          "kind": "text",
+          "label": "Text",
+          "max": 260,
+          "required": true
+        },
+        {
+          "key": "cta",
+          "kind": "text",
+          "label": "Button",
+          "max": 30,
+          "required": true
+        },
+        {
+          "key": "fields",
+          "kind": "list",
+          "label": "Preview fields",
+          "min": 1,
+          "max": 6,
+          "item": [
+            {
+              "key": "label",
+              "kind": "text",
+              "label": "Label",
+              "max": 30,
+              "required": true
+            },
+            {
+              "key": "input",
+              "kind": "enum",
+              "label": "Kind",
+              "options": [
+                "text",
+                "select"
+              ],
+              "required": true,
+              "hidden": true
+            },
+            {
+              "key": "example",
+              "kind": "text",
+              "label": "Example",
+              "max": 40,
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "toolCards",
+      "version": 1,
+      "name": "Free tool cards",
+      "description": "A card per free tool with its clip (Free tools).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Tools",
+          "min": 1,
+          "max": 4,
+          "item": [
+            {
+              "key": "tool",
+              "kind": "enum",
+              "label": "Tool page",
+              "options": [
+                "/tools/venues",
+                "/tools/events",
+                "/tools/trips",
+                "/tools/pricing"
+              ],
+              "required": true
+            },
+            {
+              "key": "title",
+              "kind": "text",
+              "label": "Title",
+              "max": 40,
+              "required": true
+            },
+            {
+              "key": "body",
+              "kind": "text",
+              "label": "Text",
+              "max": 220,
+              "required": true
+            },
+            {
+              "key": "forWho",
+              "kind": "text",
+              "label": "Who it is for",
+              "max": 60,
+              "required": true
+            },
+            {
+              "key": "cta",
+              "kind": "text",
+              "label": "Button",
+              "max": 30,
+              "required": true
+            },
+            {
+              "key": "media",
+              "kind": "media",
+              "label": "Clip",
+              "accept": [
+                "video",
+                "photo"
+              ],
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "promptDemo",
+      "version": 1,
+      "name": "Website prompt demo",
+      "description": "Heading, lead and button beside the \"prompt your website\" demo (For hosts).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "cream"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 260,
+          "required": true
+        },
+        {
+          "key": "button",
+          "kind": "text",
+          "label": "Button",
+          "max": 30,
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "getApp",
+      "version": 1,
+      "name": "Get the app",
+      "description": "The Mingla / Mingla Host toggle with QR codes and store buttons (Download).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "explorerTitle",
+          "kind": "text",
+          "label": "Mingla headline",
+          "max": 40,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "explorerLead",
+          "kind": "text",
+          "label": "Mingla lead",
+          "max": 160,
+          "required": true
+        },
+        {
+          "key": "hostTitle",
+          "kind": "text",
+          "label": "Mingla Host headline",
+          "max": 40,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "hostLead",
+          "kind": "text",
+          "label": "Mingla Host lead",
+          "max": 160,
+          "required": true
+        },
+        {
+          "key": "media",
+          "kind": "media",
+          "label": "Phone clip",
+          "accept": [
+            "video",
+            "photo"
+          ],
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "quickLinks",
+      "version": 1,
+      "name": "Quick links",
+      "description": "A row of link cards and a note (Support).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading (screen readers)",
+          "max": 60,
+          "required": true
+        },
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Links",
+          "min": 1,
+          "max": 8,
+          "item": [
+            {
+              "key": "action",
+              "kind": "action",
+              "label": "Link",
+              "required": true,
+              "targets": [
+                "internal"
+              ]
+            }
+          ]
+        },
+        {
+          "key": "note",
+          "kind": "text",
+          "label": "Note",
+          "max": 200,
+          "required": false
+        }
+      ]
+    },
+    {
+      "key": "stillStuck",
+      "version": 1,
+      "name": "Contact card",
+      "description": "A card with a heading, a line and two buttons (Help \"Still stuck?\").",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 60,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "lead",
+          "kind": "text",
+          "label": "Lead",
+          "max": 200,
+          "required": true
+        },
+        {
+          "key": "primary",
+          "kind": "action",
+          "label": "Main button",
+          "required": true,
+          "targets": [
+            "internal",
+            "web",
+            "mail"
+          ]
+        },
+        {
+          "key": "secondary",
+          "kind": "action",
+          "label": "Second button",
+          "required": true,
+          "targets": [
+            "internal",
+            "web",
+            "mail"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "finePrint",
+      "version": 1,
+      "name": "Fine print",
+      "description": "One small line with a link (Creators, Locals agreement line).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "programme",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "before",
+          "kind": "text",
+          "label": "Text before the link",
+          "max": 120,
+          "required": true
+        },
+        {
+          "key": "link",
+          "kind": "action",
+          "label": "Link",
+          "required": true,
+          "targets": [
+            "internal"
+          ]
+        },
+        {
+          "key": "after",
+          "kind": "text",
+          "label": "Text after the link",
+          "max": 120,
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "form",
+      "version": 1,
+      "name": "Form",
+      "description": "A published form from Forms (#4452).",
+      "category": "action",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "formId",
+          "kind": "text",
+          "label": "Form",
+          "max": 64,
+          "required": true
+        },
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 60,
+          "required": false
+        },
+        {
+          "key": "em",
+          "kind": "text",
+          "label": "Italic end of the heading",
+          "max": 40,
+          "required": false
+        },
+        {
+          "key": "sub",
+          "kind": "text",
+          "label": "Line under the heading",
+          "max": 160,
+          "required": false
+        }
+      ]
+    },
+    {
+      "key": "buttons",
+      "version": 1,
+      "name": "Buttons",
+      "description": "One or two buttons in a row (#4452).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "items",
+          "kind": "list",
+          "label": "Buttons",
+          "min": 1,
+          "max": 2,
+          "item": [
+            {
+              "key": "action",
+              "kind": "action",
+              "label": "Button",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "banner",
+      "version": 1,
+      "name": "Banner",
+      "description": "A one-line banner with a button, optionally until a date (#4452).",
+      "category": "action",
+      "live": false,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "text",
+          "kind": "text",
+          "label": "Text",
+          "max": 140,
+          "required": true
+        },
+        {
+          "key": "button",
+          "kind": "text",
+          "label": "Button",
+          "max": 30,
+          "required": true
+        },
+        {
+          "key": "action",
+          "kind": "action",
+          "label": "Opens",
+          "required": true
+        },
+        {
+          "key": "showUntil",
+          "kind": "text",
+          "label": "Show until (YYYY-MM-DD)",
+          "max": 10,
+          "required": false
+        }
+      ]
+    },
+    {
+      "key": "citiesRow",
+      "version": 1,
+      "name": "Live cities",
+      "description": "Every live Mingla city as a clip tile, A to Z (Home row, Cities page). The list stays live.",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "home": [
+          "paper"
+        ],
+        "index": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "variant",
+          "kind": "enum",
+          "label": "Format",
+          "options": [
+            "home",
+            "index"
+          ],
+          "required": true,
+          "hidden": true
+        },
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": false,
+          "em": true
+        },
+        {
+          "key": "action",
+          "kind": "action",
+          "label": "Button",
+          "required": false,
+          "targets": [
+            "internal"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "cityLinks",
+      "version": 1,
+      "name": "City links",
+      "description": "One \"Things to do in <City>\" link per live city (Going out).",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "prefix",
+          "kind": "text",
+          "label": "Link text before the city name",
+          "max": 40,
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "cityWeekend",
+      "version": 1,
+      "name": "This weekend",
+      "description": "The city's live weekend plans with Events / Experiences / Places chips.",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": true
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "city",
+          "kind": "city",
+          "label": "City",
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "topPlaces",
+      "version": 1,
+      "name": "Top places",
+      "description": "The city's ranked places with their detail sheet.",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": true
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "city",
+          "kind": "city",
+          "label": "City",
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "cityPlans",
+      "version": 1,
+      "name": "City plans",
+      "description": "The moss \"More than one mode.\" band with the city's ready-made plans.",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": true
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "moss"
+        ]
+      },
+      "fields": [
+        {
+          "key": "city",
+          "kind": "city",
+          "label": "City",
+          "required": true
+        },
+        {
+          "key": "heading",
+          "kind": "text",
+          "label": "Heading",
+          "max": 90,
+          "required": true,
+          "em": true
+        }
+      ]
+    },
+    {
+      "key": "cityHostBand",
+      "version": 1,
+      "name": "City host band",
+      "description": "\"Run a place in <City>?\" with the Mingla Host button.",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": true
+      },
+      "frame": "own",
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "city",
+          "kind": "city",
+          "label": "City",
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "blogStories",
+      "version": 1,
+      "name": "Blog stories",
+      "description": "The latest blog stories with category tabs and load more. The stories stay live.",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": [
+        {
+          "key": "title",
+          "kind": "text",
+          "label": "Headline",
+          "max": 60,
+          "required": true,
+          "em": true
+        },
+        {
+          "key": "lede",
+          "kind": "text",
+          "label": "Lead",
+          "max": 200,
+          "required": true
+        }
+      ]
+    },
+    {
+      "key": "helpVideos",
+      "version": 1,
+      "name": "Help videos",
+      "description": "The help centre search, chips and video cards. The videos stay live.",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": []
+    },
+    {
+      "key": "openRoles",
+      "version": 1,
+      "name": "Open roles",
+      "description": "The live open roles, or \"No open roles right now.\" (Careers).",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "programme",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "paper"
+        ]
+      },
+      "fields": []
+    },
+    {
+      "key": "scheduler",
+      "version": 1,
+      "name": "Book a call",
+      "description": "The live booking calendar (Schedule).",
+      "category": "live",
+      "live": true,
+      "wrapper": {
+        "landingRoot": true,
+        "city": false
+      },
+      "frame": "own",
+      "maxPerPage": 1,
+      "colours": {
+        "*": [
+          "night"
+        ]
+      },
+      "fields": []
+    }
+  ]
+}

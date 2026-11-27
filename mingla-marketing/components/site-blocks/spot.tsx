@@ -24,7 +24,7 @@ export async function Spot({ page, id }: { page: string; id: string }) {
   return renderBlock(block, content, host)
 }
 
-async function renderBlock(block: NonNullable<ReturnType<typeof blockForSpot>>, content: Awaited<ReturnType<typeof siteContent>>, host: boolean) {
+export async function renderBlock(block: NonNullable<ReturnType<typeof blockForSpot>>, content: Awaited<ReturnType<typeof siteContent>>, host: boolean) {
   if (block.type === 'form' && block.form_id) {
     const form = content.forms[block.form_id]
     return <FormBlock form={form} block={block} pagePath={null} />
