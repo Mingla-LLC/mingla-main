@@ -57,6 +57,10 @@ class FakeServiceClient {
   from(table: string): FakeQuery { return new FakeQuery(this, table); }
   async rpc(name: string, _args: Record<string, unknown>): Promise<DbResult> {
     this.operations.push(`rpc:${name}`);
+    // #4624 item 5a: harness registration only, no assertion changes. Paid rails
+    // now extend a capped discount's hold before the provider call; these
+    // fixtures use no discount, so nothing is extended.
+    if (name === "issue_4624_extend_discount_hold") return { data: 0, error: null };
     // [TEST-MOD-APPROVED #2101] Harness registration only — no assertion
     // changes. #2101 added the named-buyer decision as the FIRST authority in
     // ticket-checkout-create, before any event-date, capacity, session or

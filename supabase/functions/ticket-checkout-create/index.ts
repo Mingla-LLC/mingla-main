@@ -198,6 +198,12 @@ import {
   resolveDoorPayCheckout,
 } from "./doorPayCheckout.ts";
 import { doorPayReturnUrl } from "../_shared/doorPay.ts";
+// Issue #4624 item 5a — capped-discount holds cover the payment window.
+import {
+  cappedDiscountPageEndsMs,
+  discountPageExpiresAtSec,
+  extendCappedDiscountHold,
+} from "./discountHold.ts";
 import {
   PAYOUT_HOLD_UNREADABLE_ERROR,
   PAYOUT_HOLD_UNREADABLE_STATUS,
@@ -4031,6 +4037,35 @@ export const createTicketCheckoutCreateHandler = (
       });
     }
 
+    // Issue #4624 item 5a (D-5a) — every paid rail (web Stripe, native Stripe,
+    // Paystack) reaches here before its provider object exists. A capped
+    // discount's hold is stretched to cover the payment page (door code end, or
+    // Stripe's 30-minute floor) plus a 2-minute margin, and the web page then
+    // closes at the same time. No capped discount: nothing moves and the page
+    // keeps today's 24 hours. A failed extend fails closed, before any provider
+    // call, so no payment can outlive an unextended hold.
+    const discountPageEndsMs = cappedDiscountPageEndsMs(
+      doorPay !== null ? doorStripeExpiresAt(doorPay) : null,
+    );
+    const discountHold = await extendCappedDiscountHold(
+      supabase,
+      checkoutSessionId,
+      discountPageEndsMs,
+    );
+    if (!discountHold.ok) {
+      console.error(
+        "[ticket-checkout-create] capped discount hold extend failed",
+        discountHold.detail,
+      );
+      return jsonResponse(
+        {
+          error: "checkout_session_create_failed",
+          detail: "discount_hold_extend_failed",
+        },
+        500,
+      );
+    }
+
     // ===================================================================
     // META-ORCH-1076 [Paystack Africa] — PAYSTACK ARM (NGN), additive branch.
     // ===================================================================
@@ -4940,8 +4975,16 @@ export const createTicketCheckoutCreateHandler = (
               cancel_url: cancelUrl,
               // Issue #4271 — a door code's page closes with the code (at
               // least Stripe's 30-minute floor), never the 24-hour default.
+              // Issue #4624 (D-5a) — a capped discount's page closes with its
+              // extended hold.
               ...(doorPay !== null
                 ? { expires_at: doorStripeExpiresAt(doorPay) }
+                : discountHold.extended
+                ? {
+                  expires_at: discountPageExpiresAtSec(
+                    discountHold.pageEndsMs,
+                  ),
+                }
                 : {}),
               metadata: {
                 mingla_checkout_session_id: checkoutSessionId,
