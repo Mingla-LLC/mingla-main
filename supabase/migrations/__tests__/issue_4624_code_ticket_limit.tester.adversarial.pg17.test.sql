@@ -1,4 +1,5 @@
 -- MINGLA-INVARIANT: I-4624-18 | issue #4624 | A discount's places come back only for tickets it discounted that are refunded, voided or on a cancelled event, exactly once (no double count across refund, void and event cancel; replays change nothing); a chargeback alone returns nothing; a returned place reopens a run-out code only inside its dates, undeleted, with no live code of the same text.
+-- MINGLA-INVARIANT: I-4624-24 | issue #4624 | A checkout session holds one line per ticket type (a repeat, in any letter case, is refused and holds nothing), an order already holding two lines of one ticket type never gets back more places than tickets refunded or than it consumed, and only a live hold is ever extended.
 -- MINGLA-INVARIANT: I-4624-19 | issue #4624 | A late payment on a lapsed capped hold is honoured and recorded over the limit where the host list reads it, remaining never drops below 0, and a refund never waits on (or deadlocks with) a checkout holding the discount lock.
 -- MINGLA-INVARIANT: I-4624-11 | issue #4624 | A ticket-capped code counts only discounted tickets (one unit per ticket issued, never free or discounts-off lines), releases expired holds, stays capped across multi-line baskets and both limits, and leaves automatic and sale-price pricing unchanged.
 -- Issue #4624 tester adversarial suite: ticket-capped discount codes
@@ -955,7 +956,80 @@ BEGIN
     RAISE EXCEPTION 'A23 3/5 net tickets after a refund must not warn: %',v_m;
   END IF;
 
-  RAISE NOTICE 'issue_4624_code_ticket_limit tester retest: PASS (A11-A23)';
+  -- A25 one session line per ticket type: a repeated ticket type (same id, or
+  -- the same id in another letter case) is refused and holds nothing.
+  v_id := pg_temp.i4624u_code(v_owner,v_brand,'REPEATCAP',10000,jsonb_build_object('endsAfterCount',5));
+  FOREACH v_err IN ARRAY ARRAY[v_ga::text, upper(v_ga::text)] LOOP
+    BEGIN
+      PERFORM public.biz_ticket_checkout_create_session(v_event,NULL,'Repeat','a25@example.test',
+        '+1555'||lpad((abs(hashtext('a25@example.test'))%10000000)::text,7,'0'),false,
+        jsonb_build_array(jsonb_build_object('ticketTypeId',v_ga,'quantity',3),
+                          jsonb_build_object('ticketTypeId',v_err,'quantity',3)),
+        'i4624u-a25-'||v_err,now()+interval '15 minutes',0,'auto',NULL,NULL,NULL,NULL,'REPEATCAP',NULL);
+      RAISE EXCEPTION 'A25 a repeated ticket type (%) was accepted',v_err;
+    EXCEPTION WHEN OTHERS THEN
+      IF SQLERRM NOT LIKE '%checkout_lines_duplicate%' THEN
+        RAISE EXCEPTION 'A25 a repeated ticket type (%): want checkout_lines_duplicate; got %',v_err,SQLERRM;
+      END IF;
+    END;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM public.discount_uses WHERE discount_id=v_id) THEN
+    RAISE EXCEPTION 'A25 a refused basket left a hold';
+  END IF;
+  -- Two different ticket types are still one line each and fit the cap.
+  v_b := pg_temp.i4624u_buy(v_event,jsonb_build_array(
+      jsonb_build_object('ticketTypeId',v_ga,'quantity',2),jsonb_build_object('ticketTypeId',v_vip,'quantity',3)),
+    'REPEATCAP','a25ok@example.test');
+  v_order := (v_b->>'order')::uuid;
+  IF (pg_temp.i4624u_use(v_id,v_order)).units <> 5 OR (SELECT count(*) FROM public.tickets WHERE order_id=v_order) <> 5
+     OR (SELECT count(*) FROM public.order_line_items WHERE order_id=v_order) <> 2 THEN
+    RAISE EXCEPTION 'A25 GA 2 + VIP 3 on cap 5: want 5 tickets on 2 lines and 5 units; got %',to_jsonb(pg_temp.i4624u_use(v_id,v_order));
+  END IF;
+  UPDATE public.brand_discounts SET status='ended',ended_reason='host' WHERE id=v_id;
+
+  -- A26 an order that already holds two lines of one ticket type (the shape the
+  -- old session builder could write) never gets back more than was refunded.
+  v_id := pg_temp.i4624u_code(v_owner,v_brand,'LEGACYTWO',5000,jsonb_build_object('endsAfterCount',10));
+  v_b := pg_temp.i4624u_buy(v_event,pg_temp.i4624u_cart(v_ga,3),'LEGACYTWO','a26@example.test');
+  v_order := (v_b->>'order')::uuid;
+  INSERT INTO public.order_line_items(order_id,ticket_type_id,quantity,unit_price_cents,total_cents)
+    VALUES(v_order,v_ga,3,1250,3750) RETURNING id INTO v_t;
+  INSERT INTO public.order_discount_lines(order_kind,order_id,line_ref,discount_id,brand_id,kind,code_snapshot,
+      name_snapshot,value_type,value_bps,units,amount_minor,applied_seq,currency)
+    VALUES('ticket',v_order,v_t::text,v_id,v_brand,'code','LEGACYTWO','Retest LEGACYTWO','percent',5000,3,3750,1,'USD');
+  UPDATE public.tickets SET status='refunded'
+   WHERE id=(SELECT id FROM public.tickets WHERE order_id=v_order ORDER BY id LIMIT 1);
+  IF (pg_temp.i4624u_use(v_id,v_order)).returned_units <> 1 THEN
+    RAISE EXCEPTION 'A26 one refunded ticket on a two-line order: want 1 back; got %',to_jsonb(pg_temp.i4624u_use(v_id,v_order));
+  END IF;
+  UPDATE public.tickets SET status='refunded' WHERE order_id=v_order;
+  v_u := pg_temp.i4624u_use(v_id,v_order);
+  IF v_u.returned_units <> 3 OR v_u.returned_at IS NULL
+     OR pg_temp.i4624u_cand(v_brand,'LEGACYTWO')->>'remainingUnits' <> '10' THEN
+    RAISE EXCEPTION 'A26 all refunded: want 3 back (never more than consumed), 10 left; got % cand %',
+      to_jsonb(v_u),pg_temp.i4624u_cand(v_brand,'LEGACYTWO');
+  END IF;
+  UPDATE public.brand_discounts SET status='ended',ended_reason='host' WHERE id=v_id;
+
+  -- A27 only a live hold is extended.
+  v_id := pg_temp.i4624u_code(v_owner,v_brand,'LAPSEDHOLD',1000,jsonb_build_object('endsAfterCount',5));
+  v_r := public.biz_ticket_checkout_create_session(v_event,NULL,'Lapsed','a27@example.test',
+    '+1555'||lpad((abs(hashtext('a27@example.test'))%10000000)::text,7,'0'),false,
+    pg_temp.i4624u_cart(v_ga,2),'i4624u-a27',now()+interval '15 minutes',0,'auto',NULL,NULL,NULL,NULL,'LAPSEDHOLD',NULL);
+  v_session := (v_r->>'checkoutSessionId')::uuid;
+  UPDATE public.discount_uses SET expires_at=now()-interval '1 second' WHERE checkout_ref_id=v_session;
+  IF public.issue_4624_extend_discount_hold(v_session,now()+interval '33 minutes') <> 0
+     OR (SELECT expires_at FROM public.discount_uses WHERE checkout_ref_id=v_session) > now() THEN
+    RAISE EXCEPTION 'A27 a lapsed hold was extended';
+  END IF;
+  -- The applied discount carries limited, which is what the edge reads.
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_r->'items') i, jsonb_array_elements(i->'applied') a
+      WHERE (a->>'limited')::boolean) THEN
+    RAISE EXCEPTION 'A27 the capped code''s applied entry does not carry limited: %',v_r;
+  END IF;
+  UPDATE public.brand_discounts SET status='ended',ended_reason='host' WHERE id=v_id;
+
+  RAISE NOTICE 'issue_4624_code_ticket_limit tester retest: PASS (A11-A27)';
 END;
 $retest$;
 
@@ -1131,4 +1205,4 @@ UPDATE public.feature_flags f SET is_enabled=x.is_enabled FROM i4624t_race.flag 
 COMMIT;
 RESET search_path;
 DROP SCHEMA i4624t_race CASCADE;
-\echo 'issue #4624 code ticket limit tester adversarial suite passed (A1-A24)'
+\echo 'issue #4624 code ticket limit tester adversarial suite passed (A1-A27)'
