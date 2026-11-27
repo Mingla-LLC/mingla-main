@@ -1,23 +1,16 @@
-// #4452 §7.6 — the Website pages editor's rules, pure so they are tested
-// without a browser: the page list from the site's manifest, blocks and their
-// limits (the same ones site_validate_content enforces), free spots, the
-// conflict rebase ("Keep both"), the change list, and the editor messages.
+// #4452 §7.6 — the spot rules of the Website pages editor, pure so they are
+// tested without a browser: blocks in a coded page's spots and their limits
+// (the same ones site_validate_content enforces), free spots, the hero words,
+// and the change list. #4636 moved the page list, the canvas messages and the
+// conflict handling to siteEditorModel.js (the CMS editor).
 
-export const NEW_DAYS = 14;
-export const GROUP_ORDER = Object.freeze(["Explore", "Company", "Host", "Host landing pages", "Form pages"]);
 export const HOST_TEMPLATE_KEY = "host-template";
-export const LIST_INTRO = "Every public page on usemingla.com is listed here automatically when it ships. New ones get a New tag.";
-export const MANIFEST_FAILED = "Couldn't load the page list from usemingla.com.";
-export const NO_SPOTS_COPY = "Every page gets the pop-up form straight away. Inline spots appear here once an engineer marks them on the page, which is one line per spot.";
-export const TEMPLATE_NOTE = "Changes apply to this host page only. Choose 'All host pages' when adding a block to use it on every one.";
 export const BRAND_STYLE_NOTE = "Blocks come in the Mingla brand style. You choose the words and where buttons go; the look is fixed.";
 export const ADDED_TOAST = "Added as a draft. Visitors see nothing until you publish.";
 export const REMOVED_TOAST = "Removed. That spot shows the page as designed again.";
 export const NO_FREE_SPOT = "No free spot that way.";
 export const ARCHIVED_BLOCK = "This form is archived. Visitors don't see this block.";
 export const HERO_LIMITS_NOTE = "Limits keep the headline on its designed lines at every screen size";
-export const AUTOSAVE_MS = 800;
-export const TOKEN_REMINT_MS = 50 * 60 * 1000;
 
 /** The limits (site_validate_content, design maxlength). */
 export const LIMITS = Object.freeze({
@@ -66,26 +59,6 @@ export function uuid() {
   return globalThis.crypto.randomUUID();
 }
 
-/** The left list: the manifest's pages by group, each with New, a dirty dot and pop-up only. */
-export function pageList(manifest, state, now = Date.now()) {
-  const byKey = new Map((state || []).map((s) => [s.page_key, s]));
-  const groups = new Map(GROUP_ORDER.map((g) => [g, []]));
-  for (const p of manifest?.pages || []) {
-    const st = byKey.get(p.key);
-    const since = Date.parse(p.since || "");
-    const item = {
-      key: p.key, path: p.path, title: p.title || p.path, group: p.group,
-      spots: p.spots || [], hero: p.hero || null, template: p.template || null, pattern: Boolean(p.pattern),
-      isNew: Number.isFinite(since) && now - since <= NEW_DAYS * 86400000,
-      changes: st?.draft?.changes ?? 0,
-      live: st?.live || null,
-      popupOnly: !(p.spots || []).length && !p.hero,
-    };
-    if (!groups.has(p.group)) groups.set(p.group, []);
-    groups.get(p.group).push(item);
-  }
-  return [...groups].filter(([, items]) => items.length).map(([label, items]) => ({ label, items }));
-}
 
 export function emptyContent() {
   return { blocks: [] };
@@ -175,65 +148,9 @@ function label(block) {
   return { form: "form", popup: "pop-up form", buttons: "button row", banner: "banner" }[block.type] || "block";
 }
 
-/**
- * Keep both (§7.6): my draft rebased on their live version. My blocks go in
- * spots that are still free; a spot they filled keeps THEIR block, and mine
- * for it is listed in `bumped` ("That spot now has their block") and left
- * out. My hero edit wins only when I changed it from the base I started on.
- */
-export function rebaseKeepBoth(mine, theirs, base) {
-  const out = { blocks: (theirs?.blocks || []).slice() };
-  if (theirs?.hero) out.hero = theirs.hero;
-  const bumped = [];
-  const baseIds = new Set((base?.blocks || []).map((b) => b.id));
-  for (const b of mine?.blocks || []) {
-    const sameAsBase = baseIds.has(b.id) && JSON.stringify((base.blocks || []).find((x) => x.id === b.id)) === JSON.stringify(b);
-    if (sameAsBase) continue; // unchanged since I started: theirs is the truth
-    const taken = out.blocks.find((x) => x.spot === b.spot && x.id !== b.id);
-    if (taken) bumped.push({ spot: b.spot, block: b });
-    else out.blocks = [...out.blocks.filter((x) => x.id !== b.id), b];
-  }
-  // A block I removed that they kept is removed again.
-  for (const b of base?.blocks || []) {
-    if (!(mine?.blocks || []).some((x) => x.id === b.id)) out.blocks = out.blocks.filter((x) => x.id !== b.id);
-  }
-  const heroChanged = JSON.stringify(mine?.hero || null) !== JSON.stringify(base?.hero || null);
-  if (heroChanged) {
-    if (mine?.hero) out.hero = mine.hero;
-    else delete out.hero;
-  }
-  return { content: out, bumped };
-}
 
-/** "<Name> published <path> <n> min ago." from the PT409 DETAIL. */
-export function conflictLine(detail, path, now = Date.now()) {
-  let d = {};
-  try { d = typeof detail === "string" ? JSON.parse(detail) : detail || {}; } catch { d = {}; }
-  const mins = Math.max(0, Math.round((now - Date.parse(d.published_at || "")) / 60000));
-  return { line: `${d.published_by || "Someone"} published ${path} ${Number.isFinite(mins) ? mins : 0} min ago.`, liveVersion: Number(d.live_version || 0) };
-}
 
-/** The editor iframe address (the real page, drawn by /site-preview with the editor markers). */
-export function editorFrameUrl(site, token, adminOrigin, y = 0) {
-  const q = new URLSearchParams({ editor: "1", ao: adminOrigin });
-  if (y > 0) q.set("y", String(Math.round(y)));
-  return `${site}/site-preview/${encodeURIComponent(token)}?${q.toString()}`;
-}
 
-/** A message from the editor iframe is acted on only from the site's origin and in the right shape. */
-export function editorMessage(event, siteOrigin) {
-  if (!event || event.origin !== siteOrigin) return null;
-  const d = event.data;
-  if (!d || typeof d !== "object") return null;
-  const id = (v) => typeof v === "string" && /^[a-z0-9-]{1,64}$/.test(v);
-  switch (d.type) {
-    case "editor-ready": case "hero-click": return id(d.page) ? d : null;
-    case "spot-click": return id(d.page) && id(d.spot) ? d : null;
-    case "block-click": return id(d.page) && id(d.spot) && typeof d.block === "string" && /^[0-9a-f-]{36}$/.test(d.block) ? d : null;
-    case "editor-scroll": return id(d.page) && typeof d.y === "number" && d.y >= 0 ? d : null;
-    default: return null;
-  }
-}
 
 /** The content key a block lives under: "all host pages" blocks live on the host template. */
 export function contentKeyFor(pageKey, block) {

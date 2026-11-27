@@ -5,7 +5,8 @@
 // write); a publish then refreshes the site through admin-blog revalidate_page.
 import { supabase } from "../lib/supabase";
 
-export const SITE_ORIGIN = "https://usemingla.com";
+// #4636: VITE_MARKETING_ORIGIN points a local Admin at a local site (the same variable the blog preview uses).
+export const SITE_ORIGIN = String(import.meta.env?.VITE_MARKETING_ORIGIN || "https://usemingla.com").replace(/\/$/, "");
 
 export class PagesError extends Error {
   constructor(code, message, detail = null) {

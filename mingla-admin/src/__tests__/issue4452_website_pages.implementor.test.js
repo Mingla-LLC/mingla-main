@@ -13,8 +13,6 @@
 // Run: node --test src/__tests__/issue4452_website_pages.implementor.test.js (from mingla-admin).
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import { buildHarness, readSrc, SRC } from "./support/issue4452Harness.js";
 
 let h;
@@ -45,47 +43,6 @@ const MANIFEST = {
 const CREATORS = MANIFEST.pages[1];
 const blk = (id, spot, type = "banner", extra = {}) => ({ id: `44520000-0000-4000-8000-${String(id).padStart(12, "0")}`, type, spot, ...extra });
 
-describe("#4452 T-7.6a the page list", () => {
-  it("comes from the site's manifest, fetched with cache: no-store", () => {
-    const svc = readSrc("services/websitePagesService.js");
-    assert.match(svc, /fetch\(`\$\{origin\}\/site-manifest\.json`, \{ cache: "no-store", credentials: "omit" \}\)/);
-    assert.equal(h.M.MANIFEST_FAILED, "Couldn't load the page list from usemingla.com.");
-  });
-  it("groups in order; New within 14 days; the dirty dot; pop-up only for pages without spots", () => {
-    const groups = h.M.pageList(MANIFEST, [{ page_key: "creators", draft: { changes: 2 } }], NOW);
-    assert.deepEqual(groups.map((g) => g.label), ["Explore", "Company", "Host landing pages"]);
-    const all = groups.flatMap((g) => g.items);
-    const by = Object.fromEntries(all.map((p) => [p.key, p]));
-    assert.deepEqual([by.home.isNew, by.creators.isNew, by.events.isNew], [false, true, false]);
-    assert.equal(by.creators.changes, 2);
-    assert.equal(by.home.popupOnly, true);
-    assert.equal(by.creators.popupOnly, false);
-  });
-  it("a page added to the registry appears (with New) without any Admin change", () => {
-    const more = { pages: [...MANIFEST.pages, { key: "new-page", path: "/new", group: "Explore", since: "2026-11-19" }] };
-    const item = h.M.pageList(more, [], NOW).flatMap((g) => g.items).find((p) => p.key === "new-page");
-    assert.ok(item && item.isNew);
-  });
-});
-
-describe("#4452 T-7.6b the iframe channel", () => {
-  const ev = (origin, data) => ({ origin, data });
-  it("a marker click from the site opens that spot; another origin is ignored", () => {
-    const site = "https://usemingla.com";
-    assert.deepEqual(h.M.editorMessage(ev(site, { type: "spot-click", page: "creators", spot: "after-steps" }), site), { type: "spot-click", page: "creators", spot: "after-steps" });
-    assert.equal(h.M.editorMessage(ev("https://evil.com", { type: "spot-click", page: "creators", spot: "after-steps" }), site), null);
-    assert.equal(h.M.editorMessage(ev(site, { type: "spot-click", page: "creators" }), site), null, "malformed");
-    assert.equal(h.M.editorMessage(ev(site, { type: "eval", page: "creators" }), site), null);
-    const src = readSrc("pages/WebsitePagesPage.jsx");
-    assert.match(src, /const msg = editorMessage\(e, new URL\(SITE_ORIGIN\)\.origin\);/);
-    assert.match(src, /if \(msg\.type === "spot-click"\) setPanel\(\{ kind: "spot", spot: msg\.spot \}\);/);
-  });
-  it("the frame is the real page, with this Admin origin for the site to answer", () => {
-    assert.equal(h.M.editorFrameUrl("https://usemingla.com", "tok_en", "https://admin.usemingla.com", 420), "https://usemingla.com/site-preview/tok_en?editor=1&ao=https%3A%2F%2Fadmin.usemingla.com&y=420");
-    assert.equal(h.M.TOKEN_REMINT_MS, 50 * 60 * 1000);
-  });
-});
-
 describe("#4452 T-7.6c the hero editor", () => {
   it("enforces 48 / 24 / 200 / 28 with n/limit counters; Reset restores the designed words", () => {
     const html = h.panel({ page: CREATORS, panel: { kind: "hero" }, canEdit: true, doc: { content: { blocks: [] } } });
@@ -100,63 +57,18 @@ describe("#4452 T-7.6c the hero editor", () => {
     assert.deepEqual(h.M.resetHero(edited), { blocks: [blk(1, "after-hero")] });
     assert.deepEqual(h.M.heroProblems({ h1: "x".repeat(49), em: "y".repeat(25), lead: "", buttons: [{ text: "z".repeat(29) }] }), ["Headline: 1 to 48 characters.", "Italic ending: 24 characters at most.", "Button 1: 1 to 28 characters."]);
   });
-  it("the designed words match the site's coded hero", () => {
-    const creators = fs.readFileSync(path.join(SRC, "..", "..", "mingla-marketing", "app", "creators", "page.tsx"), "utf8");
-    const locals = fs.readFileSync(path.join(SRC, "..", "..", "mingla-marketing", "app", "locals", "page.tsx"), "utf8");
-    for (const [src, key] of [[creators, "creators"], [locals, "locals"]]) {
-      const c = h.M.CODED_HEROES[key];
-      for (const t of [c.h1, c.em, c.lead, c.buttons[0].text, c.buttons[1].text]) assert.ok(src.includes(`'${t}'`), `${key}: ${t}`);
-    }
-  });
 });
 
-describe("#4452 T-7.6d conflicts (risky path)", () => {
-  it('says "<Name> published <path> <n> min ago."', () => {
-    const c = h.M.conflictLine(JSON.stringify({ code: "page_conflict", live_version: 7, published_by: "Ray", published_at: "2026-11-20T11:55:00Z" }), "/creators", NOW);
-    assert.deepEqual(c, { line: "Ray published /creators 5 min ago.", liveVersion: 7 });
-  });
-  it("Keep both: mine go into free spots; a spot they filled keeps theirs and mine is listed, not published", () => {
-    const base = { blocks: [blk(1, "after-hero")] };
-    const mine = { blocks: [blk(1, "after-hero"), blk(2, "after-steps"), blk(3, "before-footer")] };
-    const theirs = { blocks: [blk(1, "after-hero"), blk(9, "before-footer")] };
-    const { content, bumped } = h.M.rebaseKeepBoth(mine, theirs, base);
-    assert.deepEqual(content.blocks.map((b) => [b.spot, b.id.slice(-1)]).sort(), [["after-hero", "1"], ["after-steps", "2"], ["before-footer", "9"]]);
-    assert.deepEqual(bumped.map((b) => [b.spot, b.block.id.slice(-1)]), [["before-footer", "3"]]);
-  });
-  it("Keep both keeps a block I removed removed, and my hero edit wins only if I changed it", () => {
-    const base = { blocks: [blk(1, "after-hero")], hero: { h1: "A" } };
-    const mine = { blocks: [], hero: { h1: "A" } };
-    const theirs = { blocks: [blk(1, "after-hero"), blk(5, "after-clips")], hero: { h1: "Theirs" } };
-    const out = h.M.rebaseKeepBoth(mine, theirs, base).content;
-    assert.deepEqual(out.blocks.map((b) => b.spot), ["after-clips"]);
-    assert.deepEqual(out.hero, { h1: "Theirs" });
-    const out2 = h.M.rebaseKeepBoth({ ...mine, hero: { h1: "Mine" } }, theirs, base).content;
-    assert.deepEqual(out2.hero, { h1: "Mine" });
-  });
-  it("Replace publishes over theirs with their live version; theirs stays in History", () => {
-    const src = readSrc("pages/WebsitePagesPage.jsx");
-    assert.match(src, /onClick=\{\(\) => publish\(\{ replaceOver: conflict\.liveVersion \}\)\}/);
-    assert.match(src, /await publishPage\(selKey, replaceOver \?\? doc\.liveVersion\)/);
-    assert.match(src, /if \(e\.code === "PT409" && \/page_conflict\/\.test\(e\.message \|\| ""\)\)/);
-    assert.match(src, /Keep both puts your blocks in spots that are still free\. Replace publishes your draft over theirs; their version stays in History\./);
-  });
+// [TEST-MOD #4636] The #4452 screen (page list, iframe channel, Keep both / Replace, hero words of the
+// two coded heroes, history source pins) was replaced by the CMS editor; its rules are tested in
+// src/__tests__/issue4636_websiteCms.implementor.test.js. The spot rules below still serve coded pages.
+describe("#4452 T-7.6d the change list", () => {
   it("the change list names each change", () => {
     const lines = h.M.contentChanges({ blocks: [blk(1, "after-hero"), blk(2, "after-steps")] }, { blocks: [{ ...blk(1, "after-hero"), text: "new" }, blk(3, "before-footer", "form")], hero: { h1: "x" } });
     assert.deepEqual(lines, ["Changed the banner at after-hero", "Added form at before-footer", "Removed the banner at after-steps", "Changed the hero words"]);
   });
 });
 
-describe("#4452 T-7.6e history and restore; publish refreshes", () => {
-  it("Restore makes a new live version through admin_site_page_restore; Publish then refreshes the site", () => {
-    const src = readSrc("pages/WebsitePagesPage.jsx");
-    assert.match(src, /await restorePage\(selKey, v, doc\.liveVersion\);/);
-    assert.match(src, /Published\. \$\{page\.path\} refreshes in under a minute\./);
-    assert.match(src, /Saved\. The page did not refresh; Retry/);
-    const svc = readSrc("services/websitePagesService.js");
-    assert.match(svc, /rpc\("admin_site_page_restore", \{ p_page_key: pageKey, p_version: version, p_expected_live_version: expectedLive \}\)/);
-    assert.match(svc, /supabase\.functions\.invoke\("admin-blog", \{ body: \{ action: "revalidate_page" \} \}\)/);
-  });
-});
 
 describe("#4452 blocks: spots, moves and the pop-up spot", () => {
   it("one block per spot", () => {
@@ -194,6 +106,6 @@ describe("#4452 T-7.0 view-only on Website pages", () => {
     const buttons = (html.match(/<button[^>]*>[^<]*(Form|Button row|Banner)<\/button>/g) || []);
     assert.equal(buttons.length, 3);
     assert.ok(buttons.every((b) => /disabled=""/.test(b)));
-    assert.match(readSrc("pages/WebsitePagesPage.jsx"), /\{doc && !canEdit && <ReadOnlyHint \/>\}/);
+    assert.match(readSrc("pages/WebsitePagesPage.jsx"), /\{doc && !doc\.canEdit \? <div [^>]*data-view-only="">\{COPY\.viewOnly\}<\/div> : null\}/); // [TEST-MOD #4636]
   });
 });

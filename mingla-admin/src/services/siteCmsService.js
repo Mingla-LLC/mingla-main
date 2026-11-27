@@ -30,7 +30,18 @@ const MESSAGES = Object.freeze({
   path_taken: "That address is already used.",
   path_locked: "A published page keeps its address.",
   bad_path: "Use lowercase letters, numbers and hyphens, at most two parts (like /summer-socials).",
-  invalid_content: "Something on this page isn't allowed. Check the highlighted block.",
+  invalid_content: "Something on this page isn't allowed. Check the highlighted section.",
+  no_draft: "There's nothing new to publish.",
+  version_not_found: "That version no longer exists.",
+  not_custom_page: "Only pages made here can be renamed or deleted.",
+  bad_name: "Give the page a name (up to 70 characters).",
+  bad_description: "Keep the description under 160 characters, plain words only.",
+  bad_share_image: "Pick a picture (not a video) for sharing.",
+  bad_media: "That file isn't a picture or an MP4 video.",
+  media_empty: "That file is empty.",
+  media_not_found: "That file is no longer in the library.",
+  bad_size: "That file's size couldn't be read. Try again.",
+  bad_duration: "That video's length couldn't be read. Try another MP4.",
   media_in_use: "A live page uses this file. Remove it from the page first.",
   media_not_uploaded: "The upload didn't finish. Try again.",
   media_too_large: "That file is too large.",
@@ -54,12 +65,16 @@ export function siteCmsError(error) {
   const word = typeof error?.message === "string" && /^[a-z_]+$/.test(error.message) ? error.message : null;
   let detail = error?.details ?? null;
   try {
-    detail = typeof detail === "string" && detail.startsWith("{") ? JSON.parse(detail) : detail;
+    detail = typeof detail === "string" && /^[[{]/.test(detail) ? JSON.parse(detail) : detail;
   } catch {
     /* keep the raw detail */
   }
   const code = word ?? error?.code ?? "server";
   const message = MESSAGES[word] ?? MESSAGES[error?.code] ?? "Something on the server failed. Try again.";
+  // A fetch that never reached the server (offline, DNS, CORS): say so plainly (no silent failure).
+  if (!error?.code && /failed to fetch|network|load failed/i.test(String(error?.message ?? ""))) {
+    return new SiteCmsError("offline", "Couldn't reach the server. Check your connection and try again.", null);
+  }
   return new SiteCmsError(code, message, detail);
 }
 
@@ -95,6 +110,15 @@ export function siteCms(client) {
     return data;
   };
   return {
+    // #4452 calls, block-aware since #4636 (draft, publish, history, restore, preview token).
+    pagesState: () => rpc("admin_site_pages_state"),
+    getPage: (pageKey) => rpc("admin_site_page_get", { p_page_key: pageKey }),
+    saveDraft: (pageKey, expectedRev, content) => rpc("admin_site_page_save_draft", { p_page_key: pageKey, p_expected_rev: expectedRev, p_content: content }),
+    publish: (pageKey, expectedLiveVersion, note = null) => rpc("admin_site_page_publish", { p_page_key: pageKey, p_expected_live_version: expectedLiveVersion, p_note: note }),
+    history: (pageKey) => rpc("admin_site_page_history", { p_page_key: pageKey, p_limit: 50 }),
+    restore: (pageKey, version, expectedLiveVersion) => rpc("admin_site_page_restore", { p_page_key: pageKey, p_version: version, p_expected_live_version: expectedLiveVersion }),
+    discardDraft: (pageKey) => rpc("admin_site_page_discard_draft", { p_page_key: pageKey }),
+    previewToken: (pageKey, content) => rpc("admin_site_page_create_preview_token", { p_page_key: pageKey, p_content: content }),
     // Staff-made pages.
     createPage: (path, name, format, sections = null) => rpc("admin_site_page_create", { p_path: path, p_name: name, p_format: format, p_sections: sections }),
     updatePageMeta: (pageKey, patch) => rpc("admin_site_page_update_meta", { p_page_key: pageKey, p_patch: patch }),
