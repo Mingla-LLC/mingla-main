@@ -15,6 +15,8 @@ export interface AppliedLineDiscount {
   lineMinor: number;
   units: number;
   seq: number;
+  /** #4624: the discount has a ticket cap, a total-uses or a per-buyer limit. */
+  limited?: boolean;
 }
 export interface DiscountQuoteLine {
   lineRef: string;
@@ -35,6 +37,8 @@ export interface AppliedDiscount {
   code: string | null;
   amountMinor: number;
   units: number;
+  /** #4624: the discount has a ticket cap, a total-uses or a per-buyer limit. */
+  limited?: boolean;
 }
 
 export type CodeRejectionReason =

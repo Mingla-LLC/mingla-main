@@ -30,6 +30,8 @@
 --      overLimitUnits.
 --   7. issue_3872_discount_maintenance: net counts, tidy lapsed holds, reopen a
 --      run-out code (D-4c), 80% warning on whichever limit is closer (P3-4).
+--   8. One checkout session line per ticket type (normalised basket lines).
+--   Applied discounts carry `limited` so the edge extends only capped holds.
 -- Concurrency: issue_3872_reserve_discount_uses and the late consume both take
 -- issue_3872_lock_limited_discounts (rows in id order) before counting.
 -- Owner, SECURITY DEFINER, search_path and grants of every replaced function are
@@ -297,7 +299,8 @@ BEGIN
           v_ap:=jsonb_build_object(
             'discountId',v_d->>'id','kind',v_d->>'kind','name',v_d->>'name','code',v_d->'code',
             'valueType',v_d->>'valueType','valueBps',v_d->'valueBps','valueMinor',v_d->'valueMinor',
-            'perUnitMinor',v_old-v_new,'lineMinor',v_line_minor,'units',v_units,'seq',v_seq
+            'perUnitMinor',v_old-v_new,'lineMinor',v_line_minor,'units',v_units,'seq',v_seq,
+            'limited',COALESCE((v_d->>'limited')::boolean,false)
           );
           v_line:=jsonb_set(jsonb_set(v_line,'{netUnitMinor}',to_jsonb(v_new)),'{applied}',(v_line->'applied')||jsonb_build_array(v_ap));
         END IF;
@@ -433,7 +436,8 @@ BEGIN
             v_seq:=jsonb_array_length(v_line->'applied')+1; v_units:=v_qty;
             v_ap:=jsonb_build_object('discountId',v_code->>'id','kind',v_code->>'kind','name',v_code->>'name','code',v_code->'code',
               'valueType',v_code->>'valueType','valueBps',v_code->'valueBps','valueMinor',v_code->'valueMinor',
-              'perUnitMinor',v_old-v_new,'lineMinor',v_line_minor,'units',v_units,'seq',v_seq);
+              'perUnitMinor',v_old-v_new,'lineMinor',v_line_minor,'units',v_units,'seq',v_seq,
+              'limited',COALESCE((v_code->>'limited')::boolean,false));
             v_line:=jsonb_set(jsonb_set(v_line,'{netUnitMinor}',to_jsonb(v_new)),'{applied}',(v_line->'applied')||jsonb_build_array(v_ap));
           END IF;
         END IF;
@@ -459,11 +463,12 @@ BEGIN
     INTO v_list_total,v_net_total FROM jsonb_array_elements(v_lines) x;
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
     'discountId',discount_id,'kind',kind,'name',name,'code',code,
-    'amountMinor',amount_minor,'units',units
+    'amountMinor',amount_minor,'units',units,'limited',limited
   ) ORDER BY first_seq,discount_id),'[]'::jsonb) INTO v_applied
   FROM (
     SELECT a->>'discountId' discount_id,min(a->>'kind') kind,min(a->>'name') name,min(a->>'code') code,
-      sum((a->>'lineMinor')::bigint) amount_minor,sum((a->>'units')::integer) units,min((a->>'seq')::integer) first_seq
+      sum((a->>'lineMinor')::bigint) amount_minor,sum((a->>'units')::integer) units,min((a->>'seq')::integer) first_seq,
+      bool_or(COALESCE((a->>'limited')::boolean,false)) limited
     FROM jsonb_array_elements(v_lines) l CROSS JOIN LATERAL jsonb_array_elements(l->'applied') a
     GROUP BY a->>'discountId'
   ) q;
@@ -560,6 +565,11 @@ RETURNS integer LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pub
 DECLARE v_count integer;
 BEGIN
   IF p_order_id IS NULL THEN RETURN 0; END IF;
+  -- Dead tickets per ticket type; the discounted units per (discount, ticket
+  -- type) are summed BEFORE the two are compared, so the same dead ticket is
+  -- never counted once per order line, and a use never gets back more than it
+  -- consumed (LEAST with units below). Checkouts hold one line per ticket type
+  -- (issue_4624_one_item_per_ticket_type), so this is per order line.
   WITH dead AS (
     SELECT t.ticket_type_id, count(*)::integer n
     FROM public.tickets t
@@ -568,14 +578,17 @@ BEGIN
     WHERE t.order_id=p_order_id
       AND (t.status IN ('void','refunded') OR e.status='cancelled')
     GROUP BY t.ticket_type_id
-  ), back AS (
-    SELECT odl.discount_id,
-      sum(LEAST(odl.units,COALESCE(dd.n,0)))::integer returned
+  ), discounted AS (
+    SELECT odl.discount_id, li.ticket_type_id, sum(odl.units)::integer units
     FROM public.order_discount_lines odl
     JOIN public.order_line_items li ON li.id::text=odl.line_ref AND li.order_id=p_order_id
-    LEFT JOIN dead dd ON dd.ticket_type_id=li.ticket_type_id
     WHERE odl.order_kind='ticket' AND odl.order_id=p_order_id
-    GROUP BY odl.discount_id
+    GROUP BY odl.discount_id, li.ticket_type_id
+  ), back AS (
+    SELECT d.discount_id, sum(LEAST(d.units,COALESCE(dd.n,0)))::integer returned
+    FROM discounted d
+    LEFT JOIN dead dd ON dd.ticket_type_id=d.ticket_type_id
+    GROUP BY d.discount_id
   ), target AS (
     SELECT u.id,
       LEAST(u.units,COALESCE(b.returned,0)) returned_units
@@ -655,7 +668,7 @@ BEGIN
      SET expires_at=GREATEST(u.expires_at,p_until)
     FROM public.brand_discounts d
    WHERE u.checkout_kind='ticket' AND u.checkout_ref_id=p_checkout_session_id
-     AND u.status='reserved' AND d.id=u.discount_id
+     AND u.status='reserved' AND u.expires_at>now() AND d.id=u.discount_id
      AND (d.ends_after_count IS NOT NULL OR d.max_total_uses IS NOT NULL OR d.max_uses_per_buyer IS NOT NULL);
   GET DIAGNOSTICS v_count=ROW_COUNT;
   RETURN v_count;
@@ -974,5 +987,31 @@ END;
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_3872_discount_maintenance(timestamptz) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3872_discount_maintenance(timestamptz) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 8. One checkout line per ticket type. Basket lines are normalised by
+-- ticket-checkout-create before the session is created; this refuses any
+-- session that still carries two lines for one ticket type, so pricing,
+-- holds, issuing and place returns all see a single line.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_4624_one_item_per_ticket_type()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $fn$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.ticket_checkout_session_items i
+     WHERE i.checkout_session_id=NEW.checkout_session_id
+       AND i.ticket_type_id=NEW.ticket_type_id
+       AND i.id IS DISTINCT FROM NEW.id
+  ) THEN
+    RAISE EXCEPTION 'checkout_lines_duplicate';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4624_one_item_per_ticket_type() FROM PUBLIC,anon,authenticated;
+DROP TRIGGER IF EXISTS issue_4624_one_item_per_ticket_type ON public.ticket_checkout_session_items;
+CREATE TRIGGER issue_4624_one_item_per_ticket_type
+BEFORE INSERT ON public.ticket_checkout_session_items
+FOR EACH ROW EXECUTE FUNCTION public.issue_4624_one_item_per_ticket_type();
 
 COMMIT;

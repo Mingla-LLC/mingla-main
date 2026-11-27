@@ -3,6 +3,7 @@
 -- MINGLA-INVARIANT: I-4624-12 | issue #4624 | A discount spends cap units only on lines it actually makes cheaper; a line an earlier discount already made free spends none (codes, automatic and sale alike).
 -- MINGLA-INVARIANT: I-4624-13 | issue #4624 | One cap unit is one ticket issued (the line qty): a multi-day pass, a block booking and a group ticket each count once.
 -- MINGLA-INVARIANT: I-4624-14 | issue #4624 | Void, refunded or event-cancelled tickets give their discount units back through one idempotent recompute; a use and the per-buyer limit come back only when every discounted ticket on the order is dead.
+-- MINGLA-INVARIANT: I-4624-22 | issue #4624 | A checkout session holds one line per ticket type (two lines for one type are refused as checkout_lines_duplicate), and place returns count each dead ticket once, never more than the units a use consumed.
 -- MINGLA-INVARIANT: I-4624-15 | issue #4624 | A consume after its hold lapsed re-checks capacity under the discount lock and records any overrun (over_limit_units / over_limit_uses); it never exceeds a cap silently.
 -- Issue #4624: a discount code can stop after N tickets ("Total tickets" =
 -- brand_discounts.ends_after_count) as well as after N checkouts ("Total uses" =
@@ -346,7 +347,7 @@ DECLARE
   v_id uuid; v_id2 uuid; v_auto uuid;
   v_q jsonb; v_r jsonb; v_b jsonb; v_b2 jsonb; v_c jsonb; v_l jsonb; v_m jsonb;
   v_u public.discount_uses;
-  v_order uuid; v_session uuid; v_n integer;
+  v_order uuid; v_session uuid; v_n integer; v_err text; v_line1 uuid; v_line2 uuid;
 BEGIN
   INSERT INTO auth.users(id,email) VALUES (v_owner,'issue4624-rework-owner@example.test');
   INSERT INTO public.creator_accounts(id,email) VALUES(v_owner,'issue4624-rework-owner@example.test');
@@ -762,7 +763,104 @@ BEGIN
     RAISE EXCEPTION 'TP3-4 uses at 4/5, tickets at 4/20: want limit_80 with left 1; got %',v_m;
   END IF;
 
-  RAISE NOTICE 'issue_4624_code_ticket_limit rework: PASS (T2-1..TP3-4)';
+  UPDATE public.brand_discounts SET status='ended',ended_reason='host' WHERE id=v_id;
+
+  -- T6 normalised basket lines -----------------------------------------------------
+  -- T6-1 a session with the same ticket type twice is refused and holds nothing.
+  v_id := (public.issue_3872_upsert_discount(v_owner,'create',jsonb_build_object(
+    'brandId',v_brand,'kind','code','code','DUPCAP','name','Dup cap','valueType','percent',
+    'valueBps',10000,'scopeKind','brand','endsAfterCount',5))->>'id')::uuid;
+  v_err := 'created';
+  BEGIN
+    PERFORM public.biz_ticket_checkout_create_session(v_event,NULL,'Dup','dup@example.test',
+      '+15555557001',false,
+      jsonb_build_array(jsonb_build_object('ticketTypeId',v_ga,'quantity',3),
+                        jsonb_build_object('ticketTypeId',v_ga,'quantity',3)),
+      'i4624r-dup',now()+interval '15 minutes',0,'auto',NULL,NULL,NULL,NULL,'DUPCAP',NULL);
+  EXCEPTION WHEN raise_exception THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+  END;
+  IF v_err <> 'checkout_lines_duplicate'
+     OR EXISTS (SELECT 1 FROM public.discount_uses WHERE discount_id=v_id)
+     OR EXISTS (SELECT 1 FROM public.ticket_checkout_sessions WHERE idempotency_key='i4624r-dup') THEN
+    RAISE EXCEPTION 'T6-1 duplicate basket lines: want checkout_lines_duplicate and nothing held; got %',v_err;
+  END IF;
+  -- The same basket as one line is held and capped as usual.
+  v_r := public.biz_ticket_checkout_create_session(v_event,NULL,'Dup','dup@example.test',
+    '+15555557001',false,jsonb_build_array(jsonb_build_object('ticketTypeId',v_ga,'quantity',6)),
+    'i4624r-dup-one',now()+interval '15 minutes',0,'auto',NULL,NULL,NULL,NULL,'DUPCAP',NULL);
+  IF (v_r->>'discountCents')::integer <> 0
+     OR EXISTS (SELECT 1 FROM public.discount_uses WHERE discount_id=v_id) THEN
+    RAISE EXCEPTION 'T6-1 one line of 6 on cap 5: want no discount and no hold; got %',v_r;
+  END IF;
+  -- T6-4 the applied discount says whether it is limited (the edge extends
+  -- holds only for those).
+  v_q := public.issue_3872_discount_quote_lines(v_brand,'USD',jsonb_build_array(
+    pg_temp.i4624r_line(v_ga,v_event,2500,1)),'DUPCAP',jsonb_build_object('email','t64@example.test'));
+  IF (v_q#>>'{applied,0,limited}')::boolean IS DISTINCT FROM true
+     OR (v_q#>>'{lines,0,applied,0,limited}')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'T6-4 capped code: want limited true on applied; got %',v_q;
+  END IF;
+  UPDATE public.brand_discounts SET status='ended',ended_reason='host' WHERE id=v_id;
+  v_id2 := (public.issue_3872_upsert_discount(v_owner,'create',jsonb_build_object(
+    'brandId',v_brand,'kind','code','code','OPENDUP','name','Open dup','valueType','percent',
+    'valueBps',1000,'scopeKind','brand'))->>'id')::uuid;
+  v_q := public.issue_3872_discount_quote_lines(v_brand,'USD',jsonb_build_array(
+    pg_temp.i4624r_line(v_ga,v_event,2500,1)),'OPENDUP',jsonb_build_object('email','t64@example.test'));
+  IF (v_q#>>'{applied,0,limited}')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'T6-4 uncapped code: want limited false; got %',v_q;
+  END IF;
+  UPDATE public.brand_discounts SET status='ended',ended_reason='host' WHERE id=v_id2;
+  -- T6-2 an order already written with the same ticket type on two lines (the
+  -- pre-normalisation shape): returns count each dead ticket once and never
+  -- exceed the use's units.
+  v_id := (public.issue_3872_upsert_discount(v_owner,'create',jsonb_build_object(
+    'brandId',v_brand,'kind','code','code','LEGACYDUP','name','Legacy dup','valueType','percent',
+    'valueBps',10000,'scopeKind','brand','endsAfterCount',5))->>'id')::uuid;
+  v_order := gen_random_uuid(); v_line1 := gen_random_uuid(); v_line2 := gen_random_uuid();
+  INSERT INTO public.orders(id,event_id,buyer_email,buyer_name,buyer_phone,buyer_phone_e164,total_cents,
+    currency,payment_method,payment_status,source,notification_status)
+  VALUES(v_order,v_event,'legacy@example.test','Legacy','+15555557002','+15555557002',0,'USD','free','paid',
+    'online_checkout','pending');
+  INSERT INTO public.order_line_items(id,order_id,ticket_type_id,quantity,unit_price_cents,total_cents) VALUES
+    (v_line1,v_order,v_ga,3,0,0),(v_line2,v_order,v_ga,3,0,0);
+  INSERT INTO public.order_discount_lines(order_kind,order_id,line_ref,discount_id,brand_id,kind,code_snapshot,
+    name_snapshot,value_type,value_bps,units,amount_minor,applied_seq,currency) VALUES
+    ('ticket',v_order,v_line1::text,v_id,v_brand,'code','LEGACYDUP','Legacy dup','percent',10000,3,7500,1,'USD'),
+    ('ticket',v_order,v_line2::text,v_id,v_brand,'code','LEGACYDUP','Legacy dup','percent',10000,3,7500,1,'USD');
+  INSERT INTO public.discount_uses(discount_id,brand_id,checkout_kind,checkout_ref_id,order_id,buyer_email_norm,
+    status,units,amount_minor,expires_at,consumed_at)
+  VALUES(v_id,v_brand,'ticket',gen_random_uuid(),v_order,'legacy@example.test','consumed',3,7500,now(),now());
+  INSERT INTO public.tickets(order_id,ticket_type_id,event_id,status,qr_code)
+    SELECT v_order,v_ga,v_event,'valid','i4624r-legacy-'||g FROM generate_series(1,6) g;
+  UPDATE public.tickets SET status='refunded'
+   WHERE id=(SELECT id FROM public.tickets WHERE order_id=v_order ORDER BY qr_code LIMIT 1);
+  IF (pg_temp.i4624r_use(v_id,v_order)).returned_units <> 1 THEN
+    RAISE EXCEPTION 'T6-2 one refunded ticket on a two-line order: want 1 back; got %',
+      to_jsonb(pg_temp.i4624r_use(v_id,v_order));
+  END IF;
+  UPDATE public.tickets SET status='refunded' WHERE order_id=v_order;
+  v_u := pg_temp.i4624r_use(v_id,v_order);
+  IF v_u.returned_units <> 3 OR v_u.returned_at IS NULL THEN
+    RAISE EXCEPTION 'T6-2 every ticket refunded: want exactly the 3 consumed units back; got %',to_jsonb(v_u);
+  END IF;
+  UPDATE public.brand_discounts SET status='ended',ended_reason='host' WHERE id=v_id;
+
+  -- T6-3 (P3-1) extending a hold that already lapsed changes nothing.
+  v_id := (public.issue_3872_upsert_discount(v_owner,'create',jsonb_build_object(
+    'brandId',v_brand,'kind','code','code','LAPSED','name','Lapsed','valueType','percent',
+    'valueBps',1000,'scopeKind','brand','endsAfterCount',5))->>'id')::uuid;
+  v_r := public.biz_ticket_checkout_create_session(v_event,NULL,'Lapsed','lapsed@example.test',
+    '+15555557003',false,jsonb_build_array(jsonb_build_object('ticketTypeId',v_ga,'quantity',1)),
+    'i4624r-lapsed',now()+interval '15 minutes',0,'auto',NULL,NULL,NULL,NULL,'LAPSED',NULL);
+  v_session := (v_r->>'checkoutSessionId')::uuid;
+  UPDATE public.discount_uses SET expires_at=now()-interval '1 second' WHERE checkout_ref_id=v_session;
+  v_n := public.issue_4624_extend_discount_hold(v_session,now()+interval '32 minutes');
+  IF v_n <> 0 OR (SELECT expires_at FROM public.discount_uses WHERE checkout_ref_id=v_session) >= now() THEN
+    RAISE EXCEPTION 'T6-3 a lapsed hold was extended (% rows)',v_n;
+  END IF;
+
+  RAISE NOTICE 'issue_4624_code_ticket_limit rework: PASS (T2-1..TP3-4, T6-1..T6-4)';
 END;
 $rework$;
 

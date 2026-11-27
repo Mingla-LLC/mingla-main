@@ -14,6 +14,7 @@ import {
   DISCOUNT_HOLD_GRACE_MS,
   discountPageExpiresAtSec,
   extendCappedDiscountHold,
+  sessionHasCappedDiscount,
 } from "../discountHold.ts";
 
 const NOW = Date.UTC(2026, 10, 26, 18, 0, 0);
@@ -79,6 +80,27 @@ Deno.test("#4624 a failed or malformed extend fails closed", async () => {
     NOW,
   );
   assertEquals(noSession.ok, false);
+});
+
+Deno.test("#4624 P2-2: only a session holding a limited discount asks for the extend", () => {
+  assertEquals(sessionHasCappedDiscount({}), false);
+  assertEquals(sessionHasCappedDiscount({ discounts: [] }), false);
+  assertEquals(
+    sessionHasCappedDiscount({ discounts: [{ discountId: "d1", limited: false }] }),
+    false,
+  );
+  assertEquals(
+    sessionHasCappedDiscount({ discounts: [{ discountId: "d1", limited: true }] }),
+    true,
+  );
+  assertEquals(
+    sessionHasCappedDiscount({ items: [{ applied: [{ discountId: "d2", limited: true }] }] }),
+    true,
+  );
+  assertEquals(sessionHasCappedDiscount({ lineItems: [{ applied: [] }] }), false);
+  // index.ts gates the call on it; an ordinary checkout makes no new call.
+  assert(/const discountHold = sessionHasCappedDiscount\(session\)\s*\? await extendCappedDiscountHold\(/.test(SRC));
+  assert(SRC.includes(": NO_DISCOUNT_HOLD;"));
 });
 
 Deno.test("#4624 index.ts: the extend runs before every provider call and fails closed", () => {

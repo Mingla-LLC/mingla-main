@@ -28,6 +28,8 @@ export interface TicketQuoteDiscount {
   code: string | null;
   amountMinor: number;
   units: number;
+  /** #4624: the discount has a ticket cap, a total-uses or a per-buyer limit. */
+  limited?: boolean;
 }
 
 export interface TicketQuoteLine {

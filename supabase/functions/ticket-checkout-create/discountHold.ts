@@ -11,8 +11,9 @@
 //   2. issue_4624_extend_discount_hold moves every limited discount hold of the
 //      session to T + 2 minutes (never backwards);
 //   3. if it moved any hold, the web Checkout Session closes at T.
-// Checkouts with no capped discount keep today's 24-hour page. A failed extend
-// fails closed: no provider session is created.
+// Checkouts with no capped discount make no extra call at all (the session's
+// applied discounts carry `limited`) and keep today's 24-hour page. A failed
+// extend fails closed: no provider session is created.
 
 import { STRIPE_CHECKOUT_MIN_EXPIRY_MS } from "./doorPayCheckout.ts";
 
@@ -75,3 +76,36 @@ export async function extendCappedDiscountHold(
   }
   return { ok: true, extended: moved > 0, pageEndsMs };
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * True when the session holds a discount with any limit (ticket cap, total
+ * uses or per-buyer). Read from the session's own discounts, or from its
+ * items' applied discounts on a replayed session.
+ */
+export function sessionHasCappedDiscount(session: Record<string, unknown>): boolean {
+  const limited = (entry: unknown): boolean =>
+    isRecord(entry) && entry.limited === true;
+  if (Array.isArray(session.discounts) && session.discounts.some(limited)) {
+    return true;
+  }
+  for (const key of ["lineItems", "items"] as const) {
+    const items = session[key];
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      if (isRecord(item) && Array.isArray(item.applied) && item.applied.some(limited)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** The result when nothing was asked of the database (no capped discount). */
+export const NO_DISCOUNT_HOLD: DiscountHoldResult = {
+  ok: true,
+  extended: false,
+  pageEndsMs: 0,
+};
