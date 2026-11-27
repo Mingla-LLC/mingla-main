@@ -96,10 +96,11 @@ jest.mock("../../../hooks/useBrandListShim", () => ({
 
 jest.mock("../../../hooks/useBrandSetupStates", () => ({
   useBrandSetupStates: () => ({ byId: {}, ...mockSetup }),
-}));
-
-jest.mock("../../../hooks/useBrands", () => ({
-  useBrand: () => ({ data: mockRequestedBrand, isLoading: false }),
+  useDraftBrandCandidate: () => ({
+    data: mockRequestedBrand,
+    isLoading: false,
+    isFetching: false,
+  }),
 }));
 
 jest.mock("../../../hooks/useBrandSetupChecklist", () => ({

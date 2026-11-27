@@ -27,8 +27,10 @@ import { Toast } from "../../src/components/ui/Toast";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import { useBrandSetupChecklist } from "../../src/hooks/useBrandSetupChecklist";
-import { useBrandSetupStates } from "../../src/hooks/useBrandSetupStates";
-import { useBrand } from "../../src/hooks/useBrands";
+import {
+  useBrandSetupStates,
+  useDraftBrandCandidate,
+} from "../../src/hooks/useBrandSetupStates";
 import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 import { decideBrandNewEntry } from "../../src/components/brand/brandNewEntry";
 import { setupFlowHop } from "../../src/services/brandSetupCore";
@@ -87,7 +89,7 @@ export default function BrandNewRoute(): React.ReactElement {
 
   const resume = first(params.resume_brand);
   const requestedDraftId = first(params.draft);
-  const requestedBrand = useBrand(requestedDraftId);
+  const requestedBrand = useDraftBrandCandidate(requestedDraftId);
   const requestedChecklist = useBrandSetupChecklist(requestedDraftId);
   const knownDraftId = flowOpened ? null : setupStates.draftId;
   const knownDraft = brandList.brands.find((b) => b.id === knownDraftId) ?? null;
@@ -98,6 +100,10 @@ export default function BrandNewRoute(): React.ReactElement {
   // an owned draft that biz_create_setup_brand just returned.
   const requestedDraftIsOwned =
     requestedDraftId !== null &&
+    requestedBrand.isFetching !== true &&
+    requestedBrand.isError !== true &&
+    requestedChecklist.isFetching !== true &&
+    requestedChecklist.isError !== true &&
     requestedBrand.data?.id === requestedDraftId &&
     requestedBrand.data.accountId === user?.id &&
     requestedChecklist.data?.facts.isDraft === true;
@@ -109,7 +115,11 @@ export default function BrandNewRoute(): React.ReactElement {
     first(params.partner_mode) !== "client" &&
     (brandList.isLoading ||
       setupStates.isLoading ||
-      (requestedDraftId !== null && (requestedBrand.isLoading || requestedChecklist.isLoading)));
+      (requestedDraftId !== null &&
+        (requestedBrand.isLoading ||
+          requestedBrand.isFetching ||
+          requestedChecklist.isLoading ||
+          requestedChecklist.isFetching)));
   const body = entry === "client" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} />
   ) : draft !== null && !draftGone ? (
