@@ -71,16 +71,55 @@ async function render(quote: TicketQuote): Promise<string> {
 }
 
 describe("#4624 ticket-capped code notice on buyer checkout", () => {
-  test("copy: plural, singular and none left", () => {
-    expect(codeLimitedCopy(3)).toBe(
-      "Only 3 tickets left on this code. Lower the number to use it.",
+  // #4624 item 6: every row of the spec's copy table.
+  test.each([
+    [{ remaining: 0, ticketName: "VIP", lowerTo: 0, multiLine: true },
+      "No tickets left on this code for the rest of your order."],
+    [{ remaining: 3, ticketName: "General admission", lowerTo: 3, multiLine: true },
+      "Only 3 tickets left on this code. Lower General admission to 3 to use it."],
+    [{ remaining: 1, ticketName: "VIP", lowerTo: 1, multiLine: true },
+      "Only 1 ticket left on this code. Lower VIP to 1 to use it."],
+    [{ remaining: 3, ticketName: "General admission", lowerTo: 3, multiLine: false },
+      "Only 3 tickets left on this code. Lower the number to use it."],
+    [{ remaining: 1, ticketName: null, lowerTo: 1, multiLine: true },
+      "Only 1 ticket left on this code. Lower the number to use it."],
+    [{ remaining: 2, ticketName: "Festival day", lowerTo: 0, multiLine: true },
+      "Only 2 tickets left on this code. That's not enough for every day you picked."],
+    [{ remaining: 1, ticketName: "Festival day", lowerTo: 0, multiLine: false },
+      "Only 1 ticket left on this code. That's not enough for every day you picked."],
+    [{ remaining: 3 }, "Only 3 tickets left on this code. Lower the number to use it."],
+  ])("copy %#", (input, expected) => {
+    expect(codeLimitedCopy(input)).toBe(expected);
+  });
+
+  test("two code notices render two named lines in basket order; one line stays generic", async () => {
+    const lines = [
+      { ticketTypeId: "tt-1", ticketName: "General admission", quantity: 3, listUnitCents: 2500, netUnitCents: 2500, lineListCents: 7500, lineNetCents: 7500, discountCents: 0, discounts: [] },
+      { ticketTypeId: "tt-2", ticketName: "VIP", quantity: 3, listUnitCents: 5000, netUnitCents: 5000, lineListCents: 15000, lineNetCents: 15000, discountCents: 0, discounts: [] },
+    ];
+    const json = await render(
+      baseQuote({
+        lines,
+        notices: [
+          { type: "sale_limited", discountId: "code-1", lineRef: "tt-2", remaining: 2, discountKind: "code" },
+          { type: "sale_limited", discountId: "code-1", lineRef: "tt-1", remaining: 2, discountKind: "code" },
+        ],
+      }),
     );
-    expect(codeLimitedCopy(1)).toBe(
-      "Only 1 ticket left on this code. Lower the number to use it.",
+    const ga = json.indexOf("Lower General admission to 2 to use it.");
+    const vip = json.indexOf("Lower VIP to 2 to use it.");
+    expect(ga).toBeGreaterThan(-1);
+    expect(vip).toBeGreaterThan(ga);
+    expect(json).toContain("discount-code-limited-tt-1");
+    expect(json).toContain("discount-code-limited-tt-2");
+    const single = await render(
+      baseQuote({
+        lines: [lines[0]],
+        notices: [{ type: "sale_limited", discountId: "code-1", lineRef: "tt-1", remaining: 2, discountKind: "code" }],
+      }),
     );
-    expect(codeLimitedCopy(0)).toBe(
-      "No tickets left on this code for the rest of your order.",
-    );
+    expect(single).toContain("Only 2 tickets left on this code. Lower the number to use it.");
+    expect(single).not.toContain("Lower General admission");
   });
 
   test("over the limit: no applied chip, the code stays in the field, the code notice shows", async () => {
@@ -93,7 +132,7 @@ describe("#4624 ticket-capped code notice on buyer checkout", () => {
     );
     expect(json).not.toContain("discount-code-applied");
     expect(json).not.toContain("Saving");
-    expect(json).toContain("discount-code-limited");
+    expect(json).toContain("discount-code-limited-tt-1");
     expect(json).toContain("Only 5 tickets left on this code. Lower the number to use it.");
     expect(json).not.toContain("at the sale price");
     expect(json).toContain("Enter code");

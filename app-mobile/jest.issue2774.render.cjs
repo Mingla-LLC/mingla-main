@@ -198,6 +198,9 @@ module.exports = {
     // Hermes) and the rendered blocks (event page, pass, checkout line).
     "**/__tests__/issue_4490_w7_when_you_go_model.implementor.test.ts",
     "**/__tests__/issue_4490_w7_when_you_go.implementor.render.test.tsx",
+    // issue #4624 — the Explorer cart's code notices: code copy, Lower to N /
+    // Keep N at full price, per-line Keep, no Lower when nothing fits.
+    "**/__tests__/issue_4624_cart_code_notices.implementor.render.test.tsx",
     // issue #4490 Explorer W4 — native checkout per offer: the reducer (steps,
     // keys, words), the venue recovery pointer and payment leg, sign-out
     // clearing the pointer, the sheet's pure model and the sheet itself.

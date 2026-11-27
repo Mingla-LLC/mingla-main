@@ -61,6 +61,7 @@ export interface SaleLimitedNotice {
   type: "sale_limited";
   discountId: string;
   lineRef: string;
+  /** #4624: tickets left on the cap (one unit per ticket issued, the line qty). */
   remaining: number;
   /**
    * #4624: "code" when a ticket-capped discount code (ends_after_count) has

@@ -20,7 +20,7 @@ import { Chip, Segmented } from "../ui/Pill";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { PricesWorkspace } from "./PricesWorkspace";
 import { DISCOUNT_SCOPE_LABELS } from "./discountScopeLabels";
-import { discountUsageLabel } from "./discountUsageLabel";
+import { discountOverLimitLabel, discountUsageLabel } from "./discountUsageLabel";
 
 const loadDiscountService = () => import("../../services/discountService");
 const DISCOUNT_QUERY_ROOT = "brand-discounts";
@@ -344,6 +344,7 @@ const DiscountRow: React.FC<{
   const used = row.endsAfterCount ?? row.maxTotalUses;
   const consumed = row.endsAfterCount ? row.consumedUnits : row.liveUses;
   const ratio = used ? Math.min(1, consumed / used) : 0;
+  const overLimit = discountOverLimitLabel(row.overLimitUnits ?? 0);
   return (
     <View style={styles.card}>
       <View style={styles.rowHead}>
@@ -386,8 +387,15 @@ const DiscountRow: React.FC<{
             />
           </View>
           <Text style={styles.usage}>
-            {discountUsageLabel(consumed, used, row.endsAfterCount != null)}
+            {discountUsageLabel(
+              consumed,
+              used,
+              row.kind === "code" && row.endsAfterCount != null,
+            )}
           </Text>
+          {overLimit !== null ? (
+            <Text style={styles.overLimit}>{overLimit}</Text>
+          ) : null}
         </View>
       ) : null}
       <View style={styles.actions}>
@@ -521,5 +529,7 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: 6 },
   usage: { ...type.caption, color: color.text2, marginTop: space[1] },
+  // #4624: payments honoured after their hold ran out (design v2, warnText 12/17).
+  overLimit: { fontSize: 12, lineHeight: 17, color: color.warningText, marginTop: 2 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });
