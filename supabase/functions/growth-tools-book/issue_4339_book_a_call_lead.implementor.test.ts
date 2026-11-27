@@ -139,6 +139,7 @@ function bookingRequest(extra: Record<string, unknown> = {}): Request {
       start: START,
       name: "Ada Lovelace",
       email: "ada@bluenote.com",
+      phone: "+2348012345678",
       source: "venue_grader",
       icp: "restaurants",
       social_platform: "instagram",
@@ -153,7 +154,10 @@ function bookingRequest(extra: Record<string, unknown> = {}): Request {
 // #4452: the booking's conversions now also read the row back and record the
 // event ids (GET + PATCH); a lead WRITE is the insert.
 const leadCalls = (calls: Recorded[]) =>
-  calls.filter((c) => c.url.startsWith(`${SUPABASE}/rest/v1/book_call_leads`) && c.method === "POST");
+  calls.filter((c) =>
+    c.url.startsWith(`${SUPABASE}/rest/v1/book_call_leads`) &&
+    c.method === "POST"
+  );
 
 function withCredentials(on: boolean): void {
   if (on) {
@@ -216,7 +220,7 @@ Deno.test("#4339 A a confirmed booking writes ONE Inbound lead, idempotent on th
       event_url: "https://calendar.example/event",
       source: "venue_grader",
       // #4452 §4.6 / A1: phone, UTM, click source, form link and consent ride along (empty here).
-      phone_e164: null,
+      phone_e164: "+2348012345678",
       utm_source: null,
       utm_medium: null,
       utm_campaign: null,
@@ -228,6 +232,7 @@ Deno.test("#4339 A a confirmed booking writes ONE Inbound lead, idempotent on th
       marketing_consent: false,
       consent_text: null,
       consent_at: null,
+      scheduler_key: "host-demo",
     });
   });
 });

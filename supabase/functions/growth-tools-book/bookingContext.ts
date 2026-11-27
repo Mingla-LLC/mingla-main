@@ -496,22 +496,29 @@ export function buildPrivateProperties(
 
 // ---------------------------------------------------------------------------
 // #4452 §4.6 / A1.3: phone, UTM, click source, the form link and the optional
-// consent box. Phone is required for Creators and Locals calls and optional
-// for Host calls (R-11, normalised to E.164). Consent is true only for a JSON
+// consent box. Phone is required for every call (R-11, normalised to E.164).
+// Consent is true only for a JSON
 // boolean `true` (Q-A1-2: an unticked, optional box).
 // ---------------------------------------------------------------------------
 export interface BookingExtras {
   phoneE164: string | null;
-  utm: Record<"source" | "medium" | "campaign" | "content" | "term" | "id", string | null>;
+  utm: Record<
+    "source" | "medium" | "campaign" | "content" | "term" | "id",
+    string | null
+  >;
   clickSource: "meta" | "google" | "tiktok" | "snap" | "reddit" | null;
   formSubmissionId: string | null;
   marketingConsent: boolean;
   consentText: string | null;
 }
 
-export type BookingExtrasResult = { ok: true; extras: BookingExtras } | { ok: false; field: "phone" };
+export type BookingExtrasResult = { ok: true; extras: BookingExtras } | {
+  ok: false;
+  field: "phone";
+};
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CLICK_SOURCES = ["meta", "google", "tiktok", "snap", "reddit"] as const;
 
 /** {country, dial, number} or "+<digits>" → E.164, else null (R-11). */
@@ -522,9 +529,14 @@ export function parseBookingPhone(raw: unknown): string | null {
     if (/^\s*\+/.test(s)) digits = s.replace(/[^0-9]/g, "");
   } else if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const r = raw as Record<string, unknown>;
-    if (typeof r.dial === "string" && /^\+[1-9][0-9]{0,3}$/.test(r.dial) && typeof r.number === "string") {
+    if (
+      typeof r.dial === "string" && /^\+[1-9][0-9]{0,3}$/.test(r.dial) &&
+      typeof r.number === "string"
+    ) {
       const n = r.number.replace(/\(0\)/g, "");
-      digits = /^\s*\+/.test(n) ? n.replace(/[^0-9]/g, "") : r.dial.slice(1) + n.replace(/[^0-9]/g, "").replace(/^0+/, "");
+      digits = /^\s*\+/.test(n)
+        ? n.replace(/[^0-9]/g, "")
+        : r.dial.slice(1) + n.replace(/[^0-9]/g, "").replace(/^0+/, "");
     }
   }
   return digits && /^[1-9][0-9]{6,14}$/.test(digits) ? `+${digits}` : null;
@@ -534,11 +546,17 @@ function boundedText(v: unknown, max: number): string | null {
   return typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
 }
 
-export function parseBookingExtras(body: Record<string, unknown>, audience: BookingAudience): BookingExtrasResult {
-  const hasPhone = body.phone !== undefined && body.phone !== null && body.phone !== "";
+export function parseBookingExtras(
+  body: Record<string, unknown>,
+  audience: BookingAudience,
+): BookingExtrasResult {
+  const hasPhone = body.phone !== undefined && body.phone !== null &&
+    body.phone !== "";
   const phone = hasPhone ? parseBookingPhone(body.phone) : null;
-  if ((audience !== "host" && !phone) || (hasPhone && !phone)) return { ok: false, field: "phone" };
-  const u = body.utm && typeof body.utm === "object" && !Array.isArray(body.utm) ? body.utm as Record<string, unknown> : {};
+  if (!phone) return { ok: false, field: "phone" };
+  const u = body.utm && typeof body.utm === "object" && !Array.isArray(body.utm)
+    ? body.utm as Record<string, unknown>
+    : {};
   const click = body.click_source;
   const consent = body.marketing_consent === true;
   return {
@@ -546,15 +564,26 @@ export function parseBookingExtras(body: Record<string, unknown>, audience: Book
     extras: {
       phoneE164: phone,
       utm: {
-        source: boundedText(u.source, 100), medium: boundedText(u.medium, 100), campaign: boundedText(u.campaign, 150),
-        content: boundedText(u.content, 150), term: boundedText(u.term, 150), id: boundedText(u.id, 100),
+        source: boundedText(u.source, 100),
+        medium: boundedText(u.medium, 100),
+        campaign: boundedText(u.campaign, 150),
+        content: boundedText(u.content, 150),
+        term: boundedText(u.term, 150),
+        id: boundedText(u.id, 100),
       },
-      clickSource: typeof click === "string" && (CLICK_SOURCES as readonly string[]).includes(click)
-        ? click as BookingExtras["clickSource"] : null,
-      formSubmissionId: typeof body.form_submission_id === "string" && UUID_RE.test(body.form_submission_id)
-        ? body.form_submission_id : null,
+      clickSource: typeof click === "string" &&
+          (CLICK_SOURCES as readonly string[]).includes(click)
+        ? click as BookingExtras["clickSource"]
+        : null,
+      formSubmissionId: typeof body.form_submission_id === "string" &&
+          UUID_RE.test(body.form_submission_id)
+        ? body.form_submission_id
+        : null,
       marketingConsent: consent,
-      consentText: consent ? boundedText(body.consent_text, 300) ?? "Send me occasional emails from Mingla. Unsubscribe anytime." : null,
+      consentText: consent
+        ? boundedText(body.consent_text, 300) ??
+          "Send me occasional emails from Mingla. Unsubscribe anytime."
+        : null,
     },
   };
 }

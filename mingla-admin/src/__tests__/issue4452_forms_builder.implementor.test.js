@@ -36,6 +36,7 @@ export const listForms = () => new Promise(() => {});
 export const libraryPhotos = () => new Promise(() => {});
 export const googleConversionKinds = () => new Promise(() => {});
 export const crmChoices = () => Promise.resolve({ stages: [], team: [] });
+export const getSchedulerProfiles = () => Promise.resolve([]);
 export const uploadFormPhoto = async () => ({});
 export const createGoogleConversion = async () => ({});
 export const sendTestEmails = async () => ({ sent: 1 });

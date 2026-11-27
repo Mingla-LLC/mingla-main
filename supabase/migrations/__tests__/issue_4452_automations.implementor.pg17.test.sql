@@ -340,7 +340,14 @@ BEGIN
   RESET ROLE;
   SET LOCAL ROLE service_role;
   v_sub := public.forms_submit_core(jsonb_build_object('idempotency_key', gen_random_uuid(), 'form_id', v_host, 'email', 'stage@mingla-fixture.org',
-    'answers', jsonb_build_object('name', 'Stage Host Venue', 'email', 'stage@mingla-fixture.org', 'consent', true), 'consent_text', 'x',
+    'answers', jsonb_build_object(
+      'name', 'Stage Host Venue',
+      'email', 'stage@mingla-fixture.org',
+      'phone', jsonb_build_object('country', 'NG', 'dial', '+234', 'number', '801 234 5678'),
+      'venue', 'Stage Host Venue',
+      'icp', 'Events',
+      'social', jsonb_build_object('platform', 'instagram', 'value', '@stage.host'),
+      'consent', true), 'consent_text', 'x',
     'time_zone', 'UTC', 'page_path', '/host/restaurants', 'placement', 'inline', 'ads_allowed', true));
   RESET ROLE;
   v_run := (v_sub->>'run_id')::uuid;

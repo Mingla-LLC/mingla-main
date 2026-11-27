@@ -26,6 +26,14 @@ export type FormGoal = typeof GOALS[number];
 export const PLACEMENTS = ["inline", "popup", "form_page", "book_call_details"] as const;
 export type Placement = typeof PLACEMENTS[number];
 
+export const AFTER_SUBMIT_ACTIONS = ["thank_you", "book_call", "link"] as const;
+export type AfterSubmitAction = typeof AFTER_SUBMIT_ACTIONS[number];
+
+export type AfterSubmit =
+  | { action: "thank_you" }
+  | { action: "book_call"; scheduler_key: string }
+  | { action: "link"; url: string };
+
 export const SOCIAL_PLATFORMS = ["instagram", "tiktok", "youtube", "website"] as const;
 export type SocialPlatform = typeof SOCIAL_PLATFORMS[number];
 
@@ -59,6 +67,7 @@ export interface FormDefinition {
   fields: FormField[];
   ads: { lead_on: boolean; goal: FormGoal };
   routing: FormRouting;
+  after_submit?: AfterSubmit;
   design?: Record<string, unknown>;
   own_page?: {
     on: boolean;
@@ -144,6 +153,8 @@ export function errorMessage(type: FieldType | null, code: string, suggestion?: 
 const KEY_RE = /^[a-z][a-z0-9_]{1,39}$/;
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/;
 const RESERVED_SLUGS = ["thanks", "booked", "preview", "api", "new"];
+const SCHEDULER_KEY_RE = /^[a-z0-9]([a-z0-9-]{0,46}[a-z0-9])?$/;
+const SAFE_AFTER_LINK_RE = /^(?:https:\/\/[^\s]+|\/[A-Za-z0-9][^\s]*)$/;
 const CHOICE_TYPES: FieldType[] = ["single", "multi", "dropdown"];
 const EMAIL_RE = /^[^ \t\n\r\f\u000B@]+@[^ \t\n\r\f\u000B@]+\.[a-z]{2,}$/;
 const HANDLE_RE = /^@?[A-Za-z0-9_.]{2,30}$/;
@@ -259,6 +270,9 @@ export function validateDefinition(def: unknown): ContractError[] {
   });
   if (emails !== 1) push("fields", "email_field_count"); // R-1
   if (names > 1 || phones > 1 || consents > 1) push("fields", "duplicate_singleton"); // R-2
+  if (def.audience === "host" && (phones !== 1 || !(fields as FormField[]).some((f) => f.type === "phone" && f.required === true))) {
+    push("fields", "host_phone_required");
+  }
 
   const ads = def.ads;
   if (!isObj(ads) || typeof ads.lead_on !== "boolean" || !GOALS.includes(ads.goal as FormGoal)) {
@@ -290,6 +304,20 @@ export function validateDefinition(def: unknown): ContractError[] {
           (owner.mode === "round_robin" && list.length < 2) || (owner.mode === "unassigned" && list.length > 0)) {
           push("routing.owner", "bad_owner");
         }
+      }
+    }
+  }
+  const after = def.after_submit;
+  if (after !== undefined && after !== null) {
+    if (!isObj(after) || !AFTER_SUBMIT_ACTIONS.includes(after.action as AfterSubmitAction)) {
+      push("after_submit", "bad_after_submit");
+    } else if (after.action === "book_call") {
+      if (!isStr(after.scheduler_key) || !SCHEDULER_KEY_RE.test(after.scheduler_key)) {
+        push("after_submit.scheduler_key", "bad_after_submit");
+      }
+    } else if (after.action === "link") {
+      if (!isStr(after.url) || cpLength(after.url) > 500 || !SAFE_AFTER_LINK_RE.test(after.url)) {
+        push("after_submit.url", "bad_after_submit");
       }
     }
   }

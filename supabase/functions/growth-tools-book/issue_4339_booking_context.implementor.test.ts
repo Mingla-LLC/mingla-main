@@ -279,6 +279,7 @@ function bookingRequest(extra: Record<string, unknown>): Request {
       start: start.toISOString(),
       name: "Ada Lovelace",
       email: "ada@bluenote.com",
+      phone: "+2348012345678",
       source: "venue_grader",
       ...extra,
     }),
@@ -355,6 +356,7 @@ Deno.test("#4339 a valid booking puts the social link and website at the top of 
       mingla_social_url: "https://instagram.com/bluenote",
       mingla_website: "https://bluenote.com",
       mingla_source: "venue_grader",
+      mingla_scheduler_key: "host-demo",
     });
 
     // The "New Mingla call" notification (the team's record of the lead).

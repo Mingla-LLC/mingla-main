@@ -243,6 +243,7 @@ function request(fields: Record<string, unknown>): Request {
 }
 
 const HOST = {
+  phone: "+2348012345678",
   icp: "restaurants",
   social_platform: "instagram",
   social_handle: "@bluenote",

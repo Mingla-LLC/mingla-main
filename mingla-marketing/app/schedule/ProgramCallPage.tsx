@@ -21,7 +21,7 @@ export async function ProgramCallPage({ audience }: { audience: ProgramAudience 
   return (
     <SitePage surface="explorer">
       <Suspense fallback={<ProgramCallSkeleton audience={audience} />}>
-        <ScheduleClient audience={audience} cities={cities} copy={PROGRAM_CALL_COPY[audience]} />
+        <ScheduleClient audience={audience} schedulerKey={audience === 'creator' ? 'creator-call' : 'local-call'} cities={cities} copy={PROGRAM_CALL_COPY[audience]} />
       </Suspense>
     </SitePage>
   )

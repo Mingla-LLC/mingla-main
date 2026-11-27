@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-booking-reminders/issue_4640_reminders.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4640-booking-reminders",
+  "profile": "deno-2-unit"
+}
