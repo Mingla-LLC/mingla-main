@@ -96,8 +96,14 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // counts tickets and works on codes ("5 free tickets"). The tool count stays
 // 190 and the digest is recomputed the same way. The off path's prompt digests
 // and per-message selections are unchanged.
+// #4624 follow-up 1 intended change: create_discount's description lists the
+// ticket phrasings ('only 5 tickets', '5 tickets max') that are
+// ends_after_count, the use phrasings that are max_total_uses, and asks when a
+// limit has no unit. The tool count stays 190 and the digest is recomputed the
+// same way. The off path's prompt digests and per-message selections are
+// unchanged.
 const MAIN_DECLARATIONS_DIGEST =
-  "d513782332833d686e0fefcf2dea00897a05a1bd73cb4d5383ce95858029762e";
+  "55055915052c1a17fb68a523af063185af114ce2385d4d1d0f6429d08ad525c9";
 const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {
