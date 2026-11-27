@@ -10,7 +10,8 @@
  * Now the list is ONE React Query entry (useChatList → chatListKeys.list) and
  * this loader runs the reads in two waves:
  *   wave 1 (nothing needs ids): conversations + unread, pending session
- *          invites, your brand team rows — all at once;
+ *          invites, your brand team rows, your brand chat activity (#4630)
+ *          — all at once;
  *   wave 2 (needs conversation ids): sessions (name, creator, status), event
  *          meta and ONE profiles read (participants ∪ last-message senders ∪
  *          inviters) — all at once.
@@ -206,6 +207,52 @@ export type ChatRemovedBrandGuests = {
   removedAt: string;
 };
 
+/**
+ * #4630: my times in one brand Guest chat (issue_4630_my_brand_chat_activity).
+ * The Chats list orders a brand row by the later of my last booking with the
+ * brand and the last message I can see there, never by the chat's creation.
+ */
+export type ChatBrandActivity = {
+  conversationId: string;
+  myLastBookingAt: string | null;
+  lastVisibleMessageAt: string | null;
+  nextBookingTitle: string | null;
+  nextBookingStartsAt: string | null;
+};
+
+function isoOrNull(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  return Number.isNaN(new Date(value).getTime()) ? null : value;
+}
+
+/** Reads the activity RPC's rows; malformed rows are dropped. */
+export function parseBrandChatActivityRows(rows: unknown): ChatBrandActivity[] {
+  if (!Array.isArray(rows)) return [];
+  const out: ChatBrandActivity[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    if (typeof r.conversation_id !== "string" || r.conversation_id.length === 0) continue;
+    out.push({
+      conversationId: r.conversation_id,
+      myLastBookingAt: isoOrNull(r.my_last_booking_at),
+      lastVisibleMessageAt: isoOrNull(r.last_visible_message_at),
+      nextBookingTitle: typeof r.next_booking_title === "string" && r.next_booking_title.trim() ? r.next_booking_title : null,
+      nextBookingStartsAt: isoOrNull(r.next_booking_starts_at),
+    });
+  }
+  return out;
+}
+
+/** The later of my last booking and the last visible message, or null. */
+export function brandActivityAt(activity: ChatBrandActivity | undefined): string | null {
+  if (!activity) return null;
+  const booking = activity.myLastBookingAt ? new Date(activity.myLastBookingAt).getTime() : -Infinity;
+  const message = activity.lastVisibleMessageAt ? new Date(activity.lastVisibleMessageAt).getTime() : -Infinity;
+  if (booking === -Infinity && message === -Infinity) return null;
+  return booking >= message ? activity.myLastBookingAt : activity.lastVisibleMessageAt;
+}
+
 export type ChatListPendingInvite = {
   sessionId: string;
   inviteId: string;
@@ -257,6 +304,12 @@ export type ChatListLoadDeps<TCard extends ChatEventPublicCard = ChatEventPublic
   fetchBrandMeta(brandIds: string[]): Promise<Map<string, ChatBrandMeta>>;
   /** #4459: Guest chats the brand removed me from. A failure hides them (logged), never the list. */
   fetchRemovedBrandGuestChats(userId: string): Promise<ChatRemovedBrandGuests[]>;
+  /**
+   * #4630: my activity per brand Guest chat. Rejects on a failed read: the
+   * list still loads (logged), and brand rows then order by their last message
+   * only (an empty one sinks to the bottom), never by the chat's creation.
+   */
+  fetchBrandChatActivity(): Promise<ChatBrandActivity[]>;
   fetchProfiles(userIds: string[]): Promise<ChatListProfile[]>;
   displayName(profile: ChatListProfile | undefined, fallback?: string): string;
   eventPublicUrl(meta: ChatEventMeta<TCard> | null | undefined, linkedEntityType: ChatListLinkedEntity | undefined): string | null;
@@ -307,6 +360,15 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
     deps.warn("[ConnectionsPage] removed Guest chats read failed:", error);
     return [] as ChatRemovedBrandGuests[];
   });
+  // #4630: one read, started with the conversations read (no extra round trip).
+  // null = unknown (the read failed): brand rows then order by their last message only.
+  const brandActivityPromise: Promise<Map<string, ChatBrandActivity> | null> = Promise.resolve()
+    .then(() => deps.fetchBrandChatActivity())
+    .then((rows) => new Map(rows.map((row) => [row.conversationId, row])))
+    .catch((error: unknown) => {
+      deps.warn("[ConnectionsPage] brand chat activity read failed; brand rows order by their last message", error);
+      return null;
+    });
   const teamsPromise = deps.fetchTeamBrandIds(userId).catch((error: unknown) => {
     deps.warn("[ConnectionsPage] brand team read failed; keeping the last known teams", error);
     return null;
@@ -347,7 +409,7 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
 
   // ── Wave 2: everything that needs conversation ids, at once ──
   const sessionIdList = Array.from(groupSessionIds);
-  const [sessions, eventMetaMap, firstProfiles, teamRows, brandMetaMap, removedChats] = await Promise.all([
+  const [sessions, eventMetaMap, firstProfiles, teamRows, brandMetaMap, removedChats, brandActivity] = await Promise.all([
     sessionIdList.length > 0 ? deps.fetchSessions(sessionIdList) : Promise.resolve([] as ChatSessionRow[]),
     deps.fetchEventMeta(Array.from(groupEventIds)).catch((error: unknown) => {
       deps.warn("[ConnectionsPage] Failed to batch-resolve group chat event metadata:", error);
@@ -361,6 +423,7 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
       return new Map<string, ChatBrandMeta>();
     }),
     removedPromise,
+    brandActivityPromise,
   ]);
 
   const profilesMap = new Map<string, ChatListProfile>(firstProfiles.map((profile) => [profile.id, profile]));
@@ -434,6 +497,17 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
           publicBuyerUrl: eventPublicUrl ?? eventMeta.publicCard.publicBuyerUrl,
         }
       : null;
+    // #4630: a Guest chat's own times (my last booking, the last visible
+    // message) and my next booking with the brand.
+    const activity = linkedEntityType === "brand_guests" ? brandActivity?.get(conv.id) : undefined;
+    const brandActivityFields = linkedEntityType === "brand_guests"
+      ? {
+          brand_activity_at: brandActivityAt(activity),
+          brand_activity_known: brandActivity !== null,
+          next_booking_title: activity?.nextBookingTitle ?? null,
+          next_booking_starts_at: activity?.nextBookingStartsAt ?? null,
+        }
+      : {};
     const conversationName = brandMeta?.name?.trim()
       || eventMeta?.title?.trim()
       || conv.name?.trim()
@@ -481,6 +555,7 @@ export async function loadChatList<TCard extends ChatEventPublicCard>(
       // Issue #4114 Wave 5: the 1:1 chat's live collab (from the access RPC).
       live_session_id: conv.live_session_id ?? null,
       live_session_status: conv.live_session_status ?? null,
+      ...brandActivityFields,
     };
   });
 

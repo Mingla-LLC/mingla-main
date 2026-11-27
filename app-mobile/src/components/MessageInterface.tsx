@@ -34,6 +34,7 @@ import { SwipeableMessage } from "./chat/SwipeableMessage";
 import { DoubleTapHeart } from "./chat/DoubleTapHeart";
 import { ChatStatusLine } from "./chat/ChatStatusLine";
 import { TripCountdownBanner } from "./chat/TripCountdownBanner";
+import { BrandChatBanner } from "./chat/BrandChatBanner";
 import { getDisplayName } from "../utils/getDisplayName";
 import {
   useCollabPlanCard,
@@ -173,7 +174,7 @@ import type { BusinessEventCard } from "../types/mergedDiscover";
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import { HapticFeedback } from "../utils/hapticFeedback";
-import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
+import { glass, spacing, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
 import { brandGuestChatTokens, chatTokens } from "../constants/chatTokens";
 import { useMessageBrandFromGuestChat } from "./brandEnquiry/useMessageBrandFromGuestChat";
@@ -3399,7 +3400,7 @@ function MessageInterfaceInner({
           in the strip, 108pt with matches or plans (chatHeaderModel). */}
       <ChatHeader
         topInset={safeInsets.top}
-        title={brandGuest ? t('chat:brandGuestsTitle', { brand: brandGuest.brandName || headerTitle }) : headerTitle}
+        title={brandGuest ? (brandGuest.brandName.trim() || headerTitle) : headerTitle}
         subtitle={
           brandGuest
             ? (brandGuest.removed ? t('chat:brandGuestsRemovedSubtitle') : t('chat:brandGuestsSubtitle', { count: brandGuestMemberTotal ?? headerParticipantCount }))
@@ -3479,6 +3480,12 @@ function MessageInterfaceInner({
         }}
         locale={i18n.language}
       />
+
+      {/* #4630: the brand chat banner (your next booking, your ticket, or the
+          brand's next offering), fixed under the header. */}
+      {brandGuest && !brandGuest.removed && conversationId ? (
+        <BrandChatBanner conversationId={conversationId} brandName={brandGuest.brandName} />
+      ) : null}
 
       {isTripEventGroupChat ? (
         <View style={styles.eventChannelHeaderStack}>
@@ -3593,24 +3600,27 @@ function MessageInterfaceInner({
               </Text>
             </View>
           ) : (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyStateIcon}>
-              <Icon
-                name={isTripEventGroupChat ? (isBroadcastOnlyConsumerChannel ? "megaphone" : "chatbubbles") : "chatbubble"}
-                size={32}
-                color="#eb7825"
-              />
+          <View style={styles.emptyState} testID="chat-thread-empty">
+            {/* #4630: a readable column with 24 pt side padding on every width. */}
+            <View style={styles.emptyStateColumn}>
+              <View style={styles.emptyStateIcon}>
+                <Icon
+                  name={isTripEventGroupChat ? (isBroadcastOnlyConsumerChannel ? "megaphone" : "chatbubbles") : "chatbubble"}
+                  size={30}
+                  color={chatTokens.accent}
+                />
+              </View>
+              <Text style={styles.emptyStateTitle}>
+                {brandGuest
+                  ? t('chat:brandChatWelcomeTitle', { brand: brandGuest.brandName })
+                  : isTripEventGroupChat ? channelLabel : t('chat:startConversation')}
+              </Text>
+              <Text style={styles.emptyStateText}>
+                {brandGuest
+                  ? t('chat:brandChatWelcomeBody', { brand: brandGuest.brandName })
+                  : isTripEventGroupChat ? channelDetail : t('chat:sendMessageTo', { name: cleanName(friend.name) })}
+              </Text>
             </View>
-            <Text style={styles.emptyStateTitle}>
-              {brandGuest
-                ? t('chat:brandGuestsWelcomeTitle', { brand: brandGuest.brandName })
-                : isTripEventGroupChat ? channelLabel : t('chat:startConversation')}
-            </Text>
-            <Text style={styles.emptyStateText}>
-              {brandGuest
-                ? t('chat:brandGuestsWelcomeBody', { brand: brandGuest.brandName })
-                : isTripEventGroupChat ? channelDetail : t('chat:sendMessageTo', { name: cleanName(friend.name) })}
-            </Text>
           </View>
           )}
         </View>
@@ -4681,29 +4691,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  // #4630 (spec 4.8): 24 pt side padding, a 320 pt column, chat tokens.
   emptyState: {
     flex: 1,
+    paddingHorizontal: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
+  },
+  emptyStateColumn: {
+    maxWidth: 320,
+    width: "100%",
+    alignItems: "center",
   },
   emptyStateIcon: {
     width: 64,
     height: 64,
-    backgroundColor: "#fef3e2",
+    backgroundColor: chatTokens.accentSoft,
     borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
   },
   emptyStateTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#FFFFFF",
-    marginBottom: 8,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "600",
+    color: chatTokens.textPrimary,
+    textAlign: "center",
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   emptyStateText: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.65)",
+    lineHeight: 20,
+    color: chatTokens.textSecondary,
     textAlign: "center",
   },  rateLimitNotice: {
     flexDirection: "row",

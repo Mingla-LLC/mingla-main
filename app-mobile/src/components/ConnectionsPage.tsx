@@ -114,6 +114,7 @@ import {
   buildBrowseItems,
   buildSearchItems,
   canPinChat,
+  chatActivityTime,
   chatListLayouts,
   explorerConversations,
   explorerUnreadTotal,
@@ -121,6 +122,7 @@ import {
   isBrandGuestsRow,
   isHostChatForUser,
   isRemovedBrandGuestsRow,
+  isUnreadChat,
   sortChatList,
   type ChatFilter,
   type ChatListItemModel,
@@ -429,6 +431,13 @@ const chatListDeps: ChatListLoadDeps<BusinessEventCard> = {
   // #4459: the brands behind the Guest chat rows, and the ones that removed me.
   fetchBrandMeta: (brandIds) => messagingService.fetchBrandMeta(brandIds),
   fetchRemovedBrandGuestChats: () => messagingService.listRemovedBrandGuestChats(),
+  // #4630: my times per brand chat (the brand rows' order). A failed read
+  // rejects; the loader logs it and keeps the list.
+  fetchBrandChatActivity: async () => {
+    const { rows, error } = await messagingService.listMyBrandChatActivity();
+    if (error) throw new Error(error);
+    return rows;
+  },
   fetchProfiles: async (userIds) => {
     const { data, error } = await supabase.from("profiles").select(CHAT_PROFILE_COLUMNS).in("id", userIds);
     if (error) throw error;
@@ -822,7 +831,7 @@ function ConnectionsPageRefactored({
   // you can rejoin from a booking).
   const confirmLeaveBrandGuests = useCallback((conversationId: string, brandName: string, onLeft?: () => void) => {
     Alert.alert(
-      t('connections:brand_guests_leave_title', { brand: brandName }),
+      t('connections:brand_chat_leave_title', { brand: brandName }),
       t('connections:brand_guests_leave_body', { brand: brandName }),
       [
         { text: t('common:cancel'), style: 'cancel' },
@@ -835,7 +844,7 @@ function ConnectionsPageRefactored({
             AccessibilityInfo.announceForAccessibility(copy); Alert.alert(copy); return;
           }
           setConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
-          showToast({ message: t('connections:brand_guests_left_toast', { brand: brandName }), type: 'success' });
+          showToast({ message: t('connections:brand_chat_left_toast', { brand: brandName }), type: 'success' });
           onLeft?.();
         })() },
       ],
@@ -1230,15 +1239,19 @@ function ConnectionsPageRefactored({
   // fold; buildBrowseItems sorts (pinned first, then activity).
   const listConversations = sortedConversations;
 
+  // #4630 (F-8): the archived list orders by the same activity time as the list.
   const archivedConversations = useMemo(() => {
     return [...explorerChats]
       .filter(c => archivedIds.has(c.id))
-      .sort((a, b) => {
-        const aTime = a.last_message?.created_at || a.created_at;
-        const bTime = b.last_message?.created_at || b.created_at;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      });
+      .sort((a, b) =>
+        chatActivityTime(b as ChatListItemConversation) - chatActivityTime(a as ChatListItemConversation));
   }, [explorerChats, archivedIds]);
+
+  // #4630 D11: the Unread chip shows how many chats are unread.
+  const unreadChatCount = useMemo(
+    () => listConversations.filter((conversation) => isUnreadChat(conversation as ChatListItemConversation)).length,
+    [listConversations],
+  );
 
   // Search-filtered conversations
   const filteredConversations = useMemo(() => {
@@ -2887,7 +2900,7 @@ function ConnectionsPageRefactored({
       const guestChat = isBrandGuestsConversation(conversationId);
       if (guestChat && current.type !== "text") {
         markFailed();
-        showToast({ message: t('chat:brandGuestsTextOnly'), type: "error" });
+        showToast({ message: t('chat:brandChatTextOnly'), type: "error" });
         return;
       }
       const { message: sentMessage, error: sendError } = guestChat
@@ -4246,6 +4259,9 @@ function ConnectionsPageRefactored({
                   >
                     <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>
                       {t(`connections:filter_${filter}`)}
+                      {filter === 'unread' && unreadChatCount > 0 ? (
+                        <Text style={styles.filterChipCount}>{` ${unreadChatCount}`}</Text>
+                      ) : null}
                     </Text>
                   </Pressable>
                 );
@@ -4845,6 +4861,12 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: tokens.chipActiveLabel,
+  },
+  // #4630 D11: the count on the Unread chip (12/700, accent).
+  filterChipCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: tokens.accent,
   },
   sectionLabel: {
     height: CHAT_SECTION_LABEL_HEIGHT,

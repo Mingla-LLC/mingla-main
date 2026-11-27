@@ -133,7 +133,7 @@ Deno.test("#4114 states: skeleton rows in lockstep with the tab scaffold, inline
 
 Deno.test("#4114 wave 2a copy exists in all 29 locales", async () => {
   const keys = ["people_button_a11y", "people_button_a11y_badge", "new_message_title", "new_group", "add_friend_row", "filter_all", "filter_unread",
-    "filter_groups", "filter_brands", "section_invites", "time_yesterday", "tag_brand", "action_pin", "action_mark_unread", "action_mute",
+    "filter_groups", "filter_brands", "section_invites", "time_yesterday", "brand_chat_pill", "action_pin", "action_mark_unread", "action_mute",
     "action_archive", "pin_limit", "archived_row", "error_inline", "offline_bar", "invite_join", "empty_subtitle"];
   for (const locale of LOCALES) {
     const copy = JSON.parse(await read(`i18n/locales/${locale}/connections.json`));

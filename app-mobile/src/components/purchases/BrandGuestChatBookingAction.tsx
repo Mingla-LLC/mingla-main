@@ -61,7 +61,7 @@ export function BrandGuestChatBookingAction({
     const result = await messagingService.rejoinBrandGuestChat(brandId);
     setRejoining(false);
     if (result.error || !result.conversationId) {
-      toastManager.show(t("chat:brandGuestsRejoinFailed"), "error");
+      toastManager.show(t("chat:brandChatRejoinFailed"), "error");
       return;
     }
     // History restarts at the rejoin (server history_visible_from): drop the
@@ -76,9 +76,9 @@ export function BrandGuestChatBookingAction({
 
   if (action === null) return null;
   const label = action === "open"
-    ? t("chat:brandGuestsOpenChat")
+    ? t("chat:brandChatOpen", { brand: brandName })
     : action === "rejoin"
-      ? t("chat:brandGuestsRejoin")
+      ? t("chat:brandChatRejoin", { brand: brandName })
       : t("enquiry:message_brand", { brand: brandName });
   const busy = rejoining || (action === "message" && message.busy);
   const onPress = action === "open"

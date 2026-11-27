@@ -10,23 +10,12 @@ interface TripCountdownBannerProps {
   eventId: string;
   onPress?: () => void;
   stackedWithChannel?: boolean;
-  /**
-   * Issue #4114 Wave 6: the brand channel's "Next up" card — the same countdown,
-   * pointed at the soonest upcoming event of the brand, with "+N more" for the
-   * brand's other events (opens the brand page).
-   */
-  nextUp?: {
-    dateLabel?: string | null;
-    moreCount: number;
-    onMorePress?: () => void;
-  };
 }
 
 export const TripCountdownBanner: React.FC<TripCountdownBannerProps> = ({
   eventId,
   onPress,
   stackedWithChannel = false,
-  nextUp,
 }) => {
   const { t } = useTranslation(['chat']);
   const { days, status, eventName } = useTripCountdown(eventId);
@@ -34,45 +23,6 @@ export const TripCountdownBanner: React.FC<TripCountdownBannerProps> = ({
   if (status === 'unknown' || status === 'past') return null;
 
   const safeName = eventName?.trim() || t('chat:countdownYourTrip');
-
-  if (nextUp) {
-    const kicker = status === 'today'
-      ? t('chat:nextUpToday')
-      : t('chat:nextUpInDays', { count: days ?? 0 });
-    const line = nextUp.dateLabel ? `${safeName} · ${nextUp.dateLabel}` : safeName;
-    return (
-      <View style={styles.nextUpHost} testID="brand-channel-next-up">
-        <TouchableOpacity
-          style={styles.nextUpMain}
-          activeOpacity={onPress ? 0.82 : 1}
-          disabled={!onPress}
-          onPress={onPress}
-          accessibilityRole={onPress ? 'button' : 'text'}
-          accessibilityLabel={onPress ? t('chat:countdownOpenEvent', { copy: `${kicker}, ${line}` }) : `${kicker}, ${line}`}
-        >
-          <View style={styles.iconShell}>
-            <Icon name="calendar" size={17} color="#ffffff" />
-          </View>
-          <View style={styles.nextUpCopy}>
-            <Text style={styles.nextUpKicker} numberOfLines={1}>{kicker}</Text>
-            <Text style={styles.stackedText} numberOfLines={1}>{line}</Text>
-          </View>
-        </TouchableOpacity>
-        {nextUp.moreCount > 0 ? (
-          <TouchableOpacity
-            style={styles.morePill}
-            onPress={nextUp.onMorePress}
-            disabled={!nextUp.onMorePress}
-            accessibilityRole="button"
-            accessibilityLabel={t('chat:moreEventsA11y', { count: nextUp.moreCount })}
-            testID="brand-channel-next-up-more"
-          >
-            <Text style={styles.morePillText}>{t('chat:moreEvents', { count: nextUp.moreCount })}</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    );
-  }
 
   const copy =
     status === 'today'
@@ -162,45 +112,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     lineHeight: 20,
-  },
-  nextUpHost: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingLeft: 16,
-    paddingRight: 12,
-    paddingVertical: 10,
-  },
-  nextUpMain: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  nextUpCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  nextUpKicker: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary[500],
-    lineHeight: 16,
-  },
-  morePill: {
-    flexShrink: 0,
-    minHeight: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-  },
-  morePillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
 });

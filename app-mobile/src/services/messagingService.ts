@@ -9,7 +9,8 @@ import type { ChatLiveChange } from '../utils/chatLiveModel';
 import { idsStillUnread, MARK_READ_CHUNK } from '../utils/threadModel';
 import { markConversationLeft, markConversationRejoined } from '../utils/presenceMembership';
 import { announceBrandGuestLeft } from '../utils/brandGuestLeave';
-import { UNREAD_MESSAGES_SELECT, applyUnreadFilters, countUnreadRows } from '../components/connections/chatListLoad';
+import { UNREAD_MESSAGES_SELECT, applyUnreadFilters, countUnreadRows, parseBrandChatActivityRows, type ChatBrandActivity } from '../components/connections/chatListLoad';
+import { parseBrandChatSummary, type BrandChatSummary } from '../components/chat/brandChatBannerModel';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
@@ -1900,6 +1901,26 @@ export class MessagingService {
         };
       }),
     };
+  }
+
+  /**
+   * #4630: per brand chat I am a guest of, my last booking time, the last
+   * message I can see and my next booking (issue_4630_my_brand_chat_activity).
+   * The Chats list orders brand rows by these times.
+   */
+  async listMyBrandChatActivity(): Promise<{ rows: ChatBrandActivity[]; error: string | null }> {
+    const { data, error } = await supabase.rpc('issue_4630_my_brand_chat_activity');
+    if (error) return { rows: [], error: error.message };
+    return { rows: parseBrandChatActivityRows(data), error: null };
+  }
+
+  /** #4630: the brand chat banner (my upcoming bookings and the brand's next offerings). */
+  async getMyBrandChatSummary(conversationId: string): Promise<{ data: BrandChatSummary | null; error: string | null }> {
+    const { data, error } = await supabase.rpc('issue_4630_my_brand_chat_summary', {
+      p_conversation_id: conversationId,
+    });
+    if (error) return { data: null, error: error.message };
+    return { data: parseBrandChatSummary(data), error: null };
   }
 
   /** Brand Guest chats the brand removed this person from (the "Removed" rows). */

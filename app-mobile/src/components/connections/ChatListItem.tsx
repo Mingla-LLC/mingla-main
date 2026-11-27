@@ -31,6 +31,7 @@ import { Conversation } from "../../hooks/useMessages";
 import { getDisplayName } from "../../utils/getDisplayName";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { glass } from "../../constants/designSystem";
+import { chatTokens } from "../../constants/chatTokens";
 import { ChatAvatar } from "./ChatAvatar";
 import {
   CHAT_ROW_GAP,
@@ -41,6 +42,7 @@ import {
   chatKind,
   chatPreviewLine,
   chatPreviewText,
+  chatListTimeIso,
   chatTombstonePreview,
   type ChatTombstonePreviewMessage,
   type ChatPreviewLineMessage,
@@ -85,6 +87,12 @@ export type ChatListItemConversation = Conversation & {
   marked_unread_at?: string | null;
   /** Reserved for #4111 enquiry threads: renders the Enquiry tag. */
   isEnquiry?: boolean;
+  /** #4630: a brand Guest chat's activity time (ordering and the time label). */
+  brand_activity_at?: string | null;
+  brand_activity_known?: boolean;
+  /** #4630: my next booking with the brand (an empty row's preview). */
+  next_booking_title?: string | null;
+  next_booking_starts_at?: string | null;
 };
 
 export interface ChatListItemProps {
@@ -124,9 +132,10 @@ function ChatListItemImpl({
 
   const kind = chatKind(conversation);
   const isGroup = conversation.type === 'group';
-  // #4459: the brand's one Guest chat: the brand logo in the rounded square,
-  // "<Brand> Guests", a Guests tag, and posts credited to the brand. A Removed
-  // row (the brand removed you) is dimmed, tagged Removed, with no badge.
+  // #4459 / #4630: the brand's one Guest chat: the brand logo in the rounded
+  // square, the brand's name with a "Brand" pill, and posts credited to the
+  // brand. A Removed row (the brand removed you) is dimmed, tagged Removed,
+  // with no badge.
   const isBrandChannel = kind === 'brand_channel';
   const isRemoved = isRemovedBrandGuestsRow(conversation);
   const brandName = conversation.eventBrandName?.trim() || conversation.name?.trim() || '';
@@ -147,7 +156,7 @@ function ChatListItemImpl({
   const otherParticipant = others[0];
 
   const rawName = isBrandChannel
-    ? (brandName ? t('connections:brand_guests_row_name', { brand: brandName }) : t('connections:group_fallback_name'))
+    ? (brandName || t('connections:group_fallback_name'))
     : isGroup
     ? conversation.name?.trim() || t('connections:group_fallback_name')
     : getDisplayName(otherParticipant);
@@ -156,8 +165,9 @@ function ChatListItemImpl({
     : rawName;
 
   const lastMessage = conversation.last_message;
+  // #4630: a brand row's label shows the time it is ordered by (F-4).
   const timeLabel = formatChatListTime(
-    lastMessage?.created_at,
+    chatListTimeIso(conversation),
     new Date(),
     i18n.language,
     t('connections:time_yesterday'),
@@ -174,6 +184,15 @@ function ChatListItemImpl({
     t,
     brandName: isBrandChannel ? brandName : null,
   }), [brandName, conversation.participants, currentUserId, isBrandChannel, lastMessage, t]);
+
+  // #4630: "Next: <title> · <date>" for an empty brand chat with an upcoming booking.
+  const nextBookingDate = isBrandChannel && !isRemoved
+    ? formatUpcomingEventTag(conversation.next_booking_starts_at, new Date(), i18n.language)
+    : null;
+  const nextBookingLine = isBrandChannel && !isRemoved && conversation.next_booking_title?.trim() && nextBookingDate
+    ? t('connections:brand_chat_preview_next', { title: conversation.next_booking_title.trim(), date: nextBookingDate })
+    : null;
+  const showTicketGlyph = Boolean(nextBookingLine) && !lastMessage && !tombstonePreview;
 
   const preview = useMemo(() => {
     if (isRemoved) return t('connections:brand_guests_removed_preview', { brand: brandName });
@@ -193,21 +212,26 @@ function ChatListItemImpl({
         t,
       });
     }
+    // #4630: an empty brand chat names your next booking with the brand, else
+    // says the brand has not posted yet.
+    if (isBrandChannel) {
+      return nextBookingLine ?? t('connections:brand_chat_preview_empty');
+    }
     // Issue #4114 Wave 6: an event chat with nothing in it says so (it used to
     // read "Event chat ready", or "Event broadcast ready" in older builds).
-    if (isEvent || isBrandChannel) return t('connections:preview_no_messages');
+    if (isEvent) return t('connections:preview_no_messages');
     if (isGroup) {
       return conversation.participants.length > 1
         ? t('connections:preview_group_people', { count: conversation.participants.length })
         : t('connections:preview_collab_ready');
     }
     return t('connections:preview_start');
-  }, [brandName, conversation, currentUserId, isBrandChannel, isEvent, isGroup, isRemoved, lastMessage, t, tombstonePreview]);
+  }, [brandName, conversation, currentUserId, isBrandChannel, isEvent, isGroup, isRemoved, lastMessage, nextBookingLine, t, tombstonePreview]);
 
   const tagLabel = isRemoved
     ? t('connections:brand_guests_removed_tag')
     : isBrandChannel
-    ? t('connections:tag_brand')
+    ? t('connections:brand_chat_pill')
     : isEvent
     ? formatUpcomingEventTag(
         conversation.eventPublicCard?.nextStartAtUtc ??
@@ -215,7 +239,6 @@ function ChatListItemImpl({
         new Date(),
         i18n.language,
       )
-      ?? t('connections:tag_brand')
     : conversation.isEnquiry
       ? t('connections:tag_enquiry')
       : isProgram
@@ -293,7 +316,8 @@ function ChatListItemImpl({
   const a11yParts = [
     displayName,
     isPinned ? t('connections:pinned_a11y') : null,
-    tagLabel,
+    // #4630: "<Brand>, brand chat, …" (the pill is visual; Removed reads as itself).
+    isBrandChannel && !isRemoved ? t('connections:brand_chat_a11y_kind') : tagLabel,
     badge.visible
       ? badge.label
         ? t('connections:unread_a11y', { count: conversation.unread_count ?? 0 })
@@ -365,13 +389,13 @@ function ChatListItemImpl({
             {tagLabel ? (
               <View style={[
                 styles.tag,
-                isRemoved ? styles.tagRemoved : isBrandChannel ? styles.tagGuests
+                isRemoved ? styles.tagRemoved : isBrandChannel ? styles.tagBrand
                   : conversation.isEnquiry && !isEvent ? styles.tagEnquiry : styles.tagEvent,
               ]}>
                 <Text
                   style={[
                     styles.tagText,
-                    isRemoved ? styles.tagTextRemoved : isBrandChannel ? styles.tagTextGuests
+                    isRemoved ? styles.tagTextRemoved : isBrandChannel ? styles.tagTextBrand
                       : conversation.isEnquiry && !isEvent ? styles.tagTextEnquiry : null,
                   ]}
                   numberOfLines={1}
@@ -386,6 +410,9 @@ function ChatListItemImpl({
             </Text>
           </View>
           <View style={styles.line}>
+            {showTicketGlyph ? (
+              <Icon name="ticket-outline" size={14} color={tk.accent} style={styles.lineIcon} />
+            ) : null}
             <Text
               style={[styles.preview, tombstonePreview ? styles.previewUnsent : unread ? styles.previewUnread : null]}
               numberOfLines={1}
@@ -485,11 +512,12 @@ const styles = StyleSheet.create({
   lineIcon: {
     flexShrink: 0,
   },
+  // #4630 D8: white 56% (tk.faint failed AA at 13 pt).
   time: {
     marginLeft: 'auto',
     flexShrink: 0,
     fontSize: 13,
-    color: tk.faint,
+    color: tk.dim,
     fontVariant: ['tabular-nums'],
   },
   timeUnread: {
@@ -547,12 +575,13 @@ const styles = StyleSheet.create({
   tagEvent: {
     backgroundColor: tk.eventTagBg,
   },
-  // #4459 design v2: the Guest chat tag and the neutral Removed tag.
-  tagGuests: {
-    backgroundColor: tk.guestTagBg,
+  // #4630 (Q1): the neutral "Brand" pill after the brand's name, and the
+  // neutral Removed tag (#4459 design v2).
+  tagBrand: {
+    backgroundColor: chatTokens.hairline,
   },
-  tagTextGuests: {
-    color: tk.guestTagLabel,
+  tagTextBrand: {
+    color: chatTokens.textSecondary,
   },
   tagRemoved: {
     backgroundColor: tk.removedTagBg,

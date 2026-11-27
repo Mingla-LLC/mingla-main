@@ -55,7 +55,8 @@ const dm = { id: "dm", created_at: "2026-11-16T09:00:00Z", type: "direct", parti
 const group = { id: "grp", created_at: "2026-11-16T08:00:00Z", type: "group", linked_entity_type: "session", participants: [], unread_count: 0 };
 
 Deno.test("#4459 a brand Guest chat is the brand_channel row, and only it fills Brands", () => {
-  const g = guest("bg1", "b1");
+  // #4630: an empty Guest chat is ordered by my brand activity, never by its created_at.
+  const g = guest("bg1", "b1", { brand_activity_known: true, brand_activity_at: "2026-11-16T12:00:00Z" });
   eq(chatKind(g), "brand_channel", "brand_guests renders as brand_channel");
   const removed = guest("removed-brand-guests:b2", "b2", { __removedBrandGuests: { brandId: "b2" } });
   eq(chatKind(removed), "brand_channel", "a Removed row is a brand row too");
@@ -147,14 +148,16 @@ Deno.test("#4459 every locale has the Brands keys and none of the old Events key
   eq(locales.length, 29, "29 locales");
   for (const locale of locales) {
     const connections = JSON.parse(read(`i18n/locales/${locale}/connections.json`));
-    for (const key of ["filter_brands", "filter_empty_brands", "section_brands", "tag_brand", "brand_guests_row_name", "brand_guests_removed_tag"]) {
+    // #4630: the "<Brand> Guests" row name and the Guests tag became the brand name + the "Brand" pill.
+    for (const key of ["filter_brands", "filter_empty_brands", "section_brands", "brand_chat_pill", "brand_chat_preview_empty", "brand_guests_removed_tag"]) {
       assert(typeof connections[key] === "string" && connections[key].trim().length > 0, `${locale} has ${key}`);
     }
     for (const key of ["filter_events", "filter_empty_events", "section_events", "tag_event"]) {
       assert(!(key in connections), `${locale} no longer has ${key}`);
     }
     const chat = JSON.parse(read(`i18n/locales/${locale}/chat.json`));
-    for (const key of ["brandGuestsTitle", "brandGuestsHostChip", "brandGuestsRemovedTitle", "brandGuestsPushNote", "tombstoneHostRemoved"]) {
+    // #4630: the "<Brand> Guests" header title became the brand name; the welcome copy is brandChat*.
+    for (const key of ["brandChatWelcomeTitle", "brandGuestsHostChip", "brandGuestsRemovedTitle", "brandGuestsPushNote", "tombstoneHostRemoved"]) {
       assert(typeof chat[key] === "string" && chat[key].trim().length > 0, `${locale} chat has ${key}`);
     }
     assert(!Object.keys(chat).some((key) => key.startsWith("brandChannelSubtitle") || key.startsWith("sendingTo")), `${locale} drops the fold copy`);

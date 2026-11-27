@@ -71,6 +71,16 @@ export interface ChatListConversationLike {
   __removedBrandGuests?: unknown;
   /** #4111 enquiry threads (D11): a private row of their own, never folded. */
   isEnquiry?: boolean;
+  /**
+   * #4630 (brand Guest chats): the later of my last booking with the brand and
+   * the last message I can see (issue_4630_my_brand_chat_activity), and
+   * whether that read succeeded. Never the chat's created_at.
+   */
+  brand_activity_at?: string | null;
+  brand_activity_known?: boolean;
+  /** #4630: my next booking with the brand (the empty row's preview). */
+  next_booking_title?: string | null;
+  next_booking_starts_at?: string | null;
 }
 
 export interface ChatListFriendLike {
@@ -208,10 +218,49 @@ export function explorerUnreadTotal<C extends ChatListConversationLike>(
   );
 }
 
-function activityTime(conversation: ChatListConversationLike): number {
-  const value = conversation.last_message?.created_at || conversation.created_at;
+function isoTime(value: string | null | undefined): number {
+  if (!value) return 0;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? 0 : time;
+}
+
+/** #4630: a brand Guest chat row (not a Removed one) is ordered by its brand activity. */
+function isLiveBrandRow(conversation: ChatListConversationLike): boolean {
+  return chatKind(conversation) === "brand_channel" && !isRemovedBrandGuestsRow(conversation);
+}
+
+/**
+ * The one ordering time of a chat row (the list, search and the archived list).
+ *
+ * #4630: a brand Guest chat row is ordered by the later of its brand activity
+ * (my last booking with the brand, the last message I can see) and its last
+ * message, which a realtime message or my own send moves at once. When the
+ * activity read failed it is the last message only, and an empty row is 0 (the
+ * bottom). It is never the chat's created_at: every brand's chat was created
+ * the day #4475 was applied, which put empty brand chats above real ones.
+ * A Removed row keeps its removal time (created_at = removedAt). Every other
+ * kind: last message, else created_at (unchanged).
+ */
+export function chatActivityTime(conversation: ChatListConversationLike): number {
+  if (isLiveBrandRow(conversation)) {
+    const last = isoTime(conversation.last_message?.created_at);
+    if (!conversation.brand_activity_known) return last;
+    return Math.max(isoTime(conversation.brand_activity_at), last);
+  }
+  return isoTime(conversation.last_message?.created_at || conversation.created_at);
+}
+
+/**
+ * #4630: the time a row's label shows, so the label matches the order. A brand
+ * row shows its activity time (null when it has none); every other row its
+ * last message, as before.
+ */
+export function chatListTimeIso(conversation: ChatListConversationLike): string | null {
+  if (isLiveBrandRow(conversation)) {
+    const at = chatActivityTime(conversation);
+    return at > 0 ? new Date(at).toISOString() : null;
+  }
+  return conversation.last_message?.created_at ?? null;
 }
 
 /** Pinned chats first (in the order they were pinned), then most recent activity. */
@@ -221,7 +270,7 @@ export function sortChatList<T extends ChatListConversationLike>(conversations: 
     .sort((a, b) => new Date(a.pinned_at as string).getTime() - new Date(b.pinned_at as string).getTime());
   const rest = conversations
     .filter((conversation) => !conversation.pinned_at)
-    .sort((a, b) => activityTime(b) - activityTime(a));
+    .sort((a, b) => chatActivityTime(b) - chatActivityTime(a));
   return [...pinned, ...rest];
 }
 

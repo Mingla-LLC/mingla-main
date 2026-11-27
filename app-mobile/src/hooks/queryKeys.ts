@@ -40,6 +40,9 @@ export const chatKeys = {
   /** #4459: my own state in a brand's Guest chat (booking card). */
   brandGuestStatus: (brandId: string | null) =>
     [...chatKeys.all, 'brandGuestStatus', brandId ?? 'none'] as const,
+  /** #4630: the brand chat banner (my bookings and the brand's next offerings). */
+  brandChatSummary: (conversationId: string | null) =>
+    [...chatKeys.all, 'brandChatSummary', conversationId ?? 'none'] as const,
 };
 
 // #4265 — the Chats tab conversation list (useChatList), per signed-in user.
