@@ -11,6 +11,7 @@ import { useQueries } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import type { BrandSetupChecklist } from "../services/brandSetupService";
+import type { Brand } from "../types/brand";
 import { brandSetupKey } from "./useBrandSetupChecklist";
 
 /**
@@ -36,7 +37,9 @@ export function brandSetupRowState(checklist: BrandSetupChecklist | undefined): 
   return { kind: "incomplete", doneCount: checklist.doneCount };
 }
 
-export function useBrandSetupStates(brandIds: readonly string[]): {
+type BrandSetupSubject = Pick<Brand, "id" | "accountId">;
+
+export function useBrandSetupStates(brands: readonly BrandSetupSubject[]): {
   byId: Record<string, BrandSetupRowState>;
   /** The host's one draft (S-12), when the answers are in. */
   draftId: string | null;
@@ -44,6 +47,7 @@ export function useBrandSetupStates(brandIds: readonly string[]): {
 } {
   const { isAuthReady, user } = useAuth();
   const enabled = isAuthReady && user !== null;
+  const brandIds = brands.map((brand) => brand.id);
   const results = useQueries({
     queries: brandIds.map((brandId) => ({
       queryKey: brandSetupKey(brandId),
@@ -60,12 +64,16 @@ export function useBrandSetupStates(brandIds: readonly string[]): {
   return useMemo(() => {
     const byId: Record<string, BrandSetupRowState> = {};
     let draftId: string | null = null;
-    brandIds.forEach((id, i) => {
+    brands.forEach((brand, i) => {
       const state = brandSetupRowState(results[i]?.data);
-      byId[id] = state;
-      if (state.kind === "draft" && draftId === null) draftId = id;
+      byId[brand.id] = state;
+      // #4627 — show every team brand's progress, but only the account-owned
+      // draft mirrors issue_4389_user_draft_brand and blocks another create.
+      if (state.kind === "draft" && draftId === null && user !== null && brand.accountId === user.id) {
+        draftId = brand.id;
+      }
     });
     return { byId, draftId, isLoading };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `stamp` stands for the rows.
-  }, [brandIds.join(","), stamp, isLoading]);
+  }, [brands.map((brand) => `${brand.id}:${brand.accountId ?? ""}`).join(","), stamp, isLoading, user?.id]);
 }

@@ -93,8 +93,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   // country step) inside this overlay is what froze the app (a native modal
   // sheet over the overlay). "Create brand" closes the sheet and opens the
   // full-screen route.
-  const brandIds = React.useMemo(() => brands.map((b) => b.id), [brands]);
-  const setupStates = useBrandSetupStates(brandIds);
+  const setupStates = useBrandSetupStates(brands);
   const draftBrand = brands.find((b) => b.id === setupStates.draftId) ?? null;
   const openCreate = useCallback((): void => {
     onClose();

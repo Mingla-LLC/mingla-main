@@ -46,13 +46,12 @@ export default function BrandNewRoute(): React.ReactElement {
     draft_name?: string | string[];
     discard?: string | string[];
   }>();
-  const [draftGone, setDraftGone] = useState(false);
+  const [closedDraftId, setClosedDraftId] = useState<string | null>(null);
   const [discardedName, setDiscardedName] = useState<string | null>(null);
   // #4389 N1 up front — a host with a draft sees "You have a brand in
   // progress" before typing, from every way in (switcher, Ari, Hub).
   const brandList = useBrandListState();
-  const brandIds = React.useMemo(() => brandList.brands.map((b) => b.id), [brandList.brands]);
-  const setupStates = useBrandSetupStates(brandIds);
+  const setupStates = useBrandSetupStates(brandList.brands);
   // #881 — partner intent (Step 0) before the self setup.
   const partnerStatus = usePartnerStripeStatus();
   const [selfTyped, setSelfTyped] = useState(false);
@@ -83,34 +82,40 @@ export default function BrandNewRoute(): React.ReactElement {
   }, [router]);
 
   const resume = first(params.resume_brand);
-  const knownDraftId = flowOpened ? null : setupStates.draftId;
-  const knownDraft = brandList.brands.find((b) => b.id === knownDraftId) ?? null;
-  const draft = first(params.draft) ?? knownDraft?.id ?? null;
-  const draftName = first(params.draft_name) ?? knownDraft?.displayName ?? "";
+  const requestedDraftId = first(params.draft);
+  const knownDraft =
+    brandList.brands.find((b) => b.id === (flowOpened ? null : setupStates.draftId)) ?? null;
+  const draftName = knownDraft?.displayName;
+  // #4627 — a direct/server draft hint that the list-wide reader missed is
+  // validated inside the already-lazy setup chunk. A rejected teammate/stale
+  // hint falls through to F1 and never reaches N1 or discard.
+  const guardedDraftId =
+    knownDraft?.id ?? (requestedDraftId !== closedDraftId ? requestedDraftId : null);
+  const showingDraft = guardedDraftId !== null && guardedDraftId !== closedDraftId;
   const waitingForDrafts =
     !flowOpened &&
-    first(params.draft) === null &&
     first(params.partner_mode) !== "client" &&
     (brandList.isLoading || setupStates.isLoading);
   const body = entry === "client" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} />
-  ) : draft !== null && !draftGone ? (
+  ) : showingDraft ? (
     <LazyDraftInProgress
-      draftId={draft}
+      draftId={guardedDraftId}
       draftName={draftName}
-      startConfirming={first(params.discard) === "1"}
-      onContinue={() => router.replace(`/brand/${draft}/setup` as never)}
-      onDiscarded={() => {
-        setDraftGone(true);
-        setDiscardedName(draftName);
+      startConfirming={first(params.discard) === "1" && requestedDraftId === guardedDraftId}
+      onContinue={() => router.replace(`/brand/${guardedDraftId}/setup` as never)}
+      onDiscarded={(name) => {
+        setClosedDraftId(guardedDraftId);
+        setDiscardedName(name);
       }}
+      onRejected={() => setClosedDraftId(guardedDraftId)}
     />
   ) : waitingForDrafts || resume !== null ? null : entry === "partner-intent" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} onSelfChosen={chooseSelf} />
   ) : (
     <LazyBrandCreationFlow brandId={null} onExit={leave} onTypedNameChange={onTypedNameChange} />
   );
-  const showsFlow = body !== null && !(draft !== null && !draftGone);
+  const showsFlow = body !== null && !showingDraft;
   useEffect(() => {
     if (showsFlow && !flowOpened) setFlowOpened(true);
   }, [showsFlow, flowOpened]);

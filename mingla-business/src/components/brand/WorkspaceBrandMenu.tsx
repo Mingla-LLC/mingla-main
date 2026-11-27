@@ -121,8 +121,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
   const viewport = useWindowDimensions();
   const brandList = useBrandListState();
   const brands = brandList.brands;
-  const brandIds = useMemo(() => brands.map((brand) => brand.id), [brands]);
-  const setupStates = useBrandSetupStates(brandIds);
+  const setupStates = useBrandSetupStates(brands);
   const switchTo = useWorkspaceBrandSwitch({ fromBrandId: activeBrandId });
   const [query, setQuery] = useState("");
   const searchable = showsBrandSearch(brands.length);
