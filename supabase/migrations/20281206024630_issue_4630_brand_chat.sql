@@ -23,7 +23,9 @@
 -- Window rule (spec 4.9): an order uses its booked start (experience), else its
 -- own event date, else the event's next not-ended date, else its master date;
 -- an RSVP uses the next not-ended date, else the master. Ended means
--- COALESCE(end, start) < now().
+-- COALESCE(end, start) < now(). A cancelled or draft listing is never a
+-- booking here, and a cancelled occurrence (event_dates.status) is skipped; an
+-- order whose own occurrence was cancelled is dropped (#4630 test P2-1).
 
 -- ── 1. Private helper: my bookings with a brand ────────────────────────────
 CREATE FUNCTION public.issue_4630_brand_bookings(p_brand_id uuid, p_user_id uuid)
@@ -76,19 +78,21 @@ AS $function$
         WHERE t.order_id = o.id AND t.status = 'valid') AS ticket_count
       FROM my_orders o
       LEFT JOIN LATERAL (
-        SELECT d.start_at, d.end_at, d.timezone FROM public.event_dates d
+        SELECT d.start_at, d.end_at, d.timezone, d.status FROM public.event_dates d
          WHERE d.id = o.event_date_id AND d.event_id = o.event_id
       ) od ON true
       LEFT JOIN LATERAL (
         SELECT d.start_at, d.end_at, d.timezone FROM public.event_dates d
          WHERE d.event_id = o.event_id AND COALESCE(d.end_at, d.start_at) >= now()
+           AND d.status IS DISTINCT FROM 'cancelled'
          ORDER BY d.start_at ASC LIMIT 1
       ) nd ON true
       LEFT JOIN LATERAL (
         SELECT d.start_at, d.end_at, d.timezone FROM public.event_dates d
-         WHERE d.event_id = o.event_id
+         WHERE d.event_id = o.event_id AND d.status IS DISTINCT FROM 'cancelled'
          ORDER BY d.is_master DESC, d.start_at DESC LIMIT 1
       ) md ON true
+     WHERE od.status IS DISTINCT FROM 'cancelled'
     UNION ALL
     SELECT 'rsvp'::text, r.id, r.event_id,
       COALESCE(nd.start_at, md.start_at),
@@ -99,18 +103,20 @@ AS $function$
       LEFT JOIN LATERAL (
         SELECT d.start_at, d.end_at, d.timezone FROM public.event_dates d
          WHERE d.event_id = r.event_id AND COALESCE(d.end_at, d.start_at) >= now()
+           AND d.status IS DISTINCT FROM 'cancelled'
          ORDER BY d.start_at ASC LIMIT 1
       ) nd ON true
       LEFT JOIN LATERAL (
         SELECT d.start_at, d.end_at, d.timezone FROM public.event_dates d
-         WHERE d.event_id = r.event_id
+         WHERE d.event_id = r.event_id AND d.status IS DISTINCT FROM 'cancelled'
          ORDER BY d.is_master DESC, d.start_at DESC LIMIT 1
       ) md ON true
   )
   SELECT w.kind, w.booking_id, w.event_id, e.slug, e.event_type, e.title, e.cover_media_url,
          w.starts_at, w.ends_at, COALESCE(w.timezone, e.timezone), w.ticket_count
     FROM windows w
-    JOIN public.events e ON e.id = w.event_id;
+    JOIN public.events e ON e.id = w.event_id
+   WHERE e.status NOT IN ('cancelled', 'draft');
 $function$;
 
 -- Server-side only: it takes a user id, so no client may call it.

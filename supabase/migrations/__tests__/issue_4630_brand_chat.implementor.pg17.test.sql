@@ -85,10 +85,12 @@ CREATE FUNCTION pg_temp.listing(p_tag text, p_type text, p_start interval, p_end
 LANGUAGE plpgsql AS $f$
 DECLARE v uuid := gen_random_uuid();
 BEGIN
-  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility,
-                            timezone, is_multi_date, is_recurring)
-    VALUES (v, pg_temp.u('b1'), 'Listing ' || p_tag, 'i4630-' || p_tag || '-' || v,
-            p_type, 'draft', 'draft', 'UTC', false, false);
+  -- #4630 rework 1: a live (scheduled, published) private listing; drafts
+  -- and cancelled listings are never bookings in the summary.
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility,
+                            published_at, currency, timezone, is_multi_date, is_recurring)
+    VALUES (v, pg_temp.u('b1'), pg_temp.u('owner'), 'Listing ' || p_tag, 'i4630-' || p_tag || '-' || v,
+            p_type, 'scheduled', 'private', now(), 'USD', 'UTC', false, false);
   INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
     VALUES (v, now() + p_start, now() + p_end, 'UTC', true);
   INSERT INTO k VALUES (p_tag, v);
@@ -287,6 +289,52 @@ BEGIN
       = '{"member": false}'::jsonb);
 END $s$;
 
+-- ═══ C: cancelled and unpublished listings (#4630 rework 1, test P2-1) ═══════
+DO $c$
+DECLARE v_order uuid; v_date uuid;
+BEGIN
+  PERFORM pg_temp.person('fay');
+  PERFORM pg_temp.person('gus');
+  PERFORM pg_temp.person('hal');
+  PERFORM pg_temp.listing('cxl', 'event', interval '2 days', interval '2 days 3 hours');
+  PERFORM pg_temp.listing('occ', 'event', interval '4 days', interval '4 days 3 hours');
+  PERFORM pg_temp.listing('drafty', 'event', interval '5 days', interval '5 days 3 hours');
+  -- fay: a paid order, then the brand cancels the whole listing.
+  PERFORM pg_temp.paid_order('cxl', 'fay', now() - interval '2 days');
+  UPDATE public.events SET status = 'cancelled' WHERE id = pg_temp.u('cxl');
+  -- gus: a paid order for one occurrence, then that occurrence is cancelled
+  -- (the listing has another, later, active date).
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+    VALUES (pg_temp.u('occ'), now() + interval '8 days', now() + interval '8 days 3 hours', 'UTC', false);
+  v_order := pg_temp.paid_order('occ', 'gus', now() - interval '2 days');
+  SELECT id INTO v_date FROM public.event_dates WHERE event_id = pg_temp.u('occ') AND is_master;
+  UPDATE public.orders SET event_date_id = v_date WHERE id = v_order;
+  UPDATE public.event_dates SET status = 'cancelled', cancelled_at = now() WHERE id = v_date;
+  -- hal: a paid order on a listing that went back to draft (unpublished).
+  PERFORM pg_temp.paid_order('drafty', 'hal', now() - interval '2 days');
+  UPDATE public.events SET status = 'draft' WHERE id = pg_temp.u('drafty');
+
+  PERFORM pg_temp.ok('C-CANCELLED-EVENT a cancelled listing is neither in myBookings nor the next booking',
+    jsonb_array_length(pg_temp.summary('fay')->'myBookings') = 0
+    AND NOT (pg_temp.summary('fay')->>'hasPastBookings')::boolean
+    AND pg_temp.activity('fay')->0->>'next_booking_title' IS NULL);
+  PERFORM pg_temp.ok('C-CANCELLED-DATE an order on a cancelled occurrence is not upcoming (never moved to another date)',
+    jsonb_array_length(pg_temp.summary('gus')->'myBookings') = 0
+    AND pg_temp.activity('gus')->0->>'next_booking_title' IS NULL);
+  PERFORM pg_temp.ok('C-DRAFT an unpublished (draft) listing is not a booking',
+    jsonb_array_length(pg_temp.summary('hal')->'myBookings') = 0
+    AND pg_temp.activity('hal')->0->>'next_booking_title' IS NULL);
+  PERFORM pg_temp.ok('C-ORDER-STILL-COUNTS the booking time still orders the row (the booking happened)',
+    pg_temp.ts(pg_temp.activity('fay')->0->'my_last_booking_at') = now() - interval '2 days');
+  -- An RSVP whose next date is cancelled moves to the next active date.
+  UPDATE public.event_dates SET status = 'cancelled', cancelled_at = now()
+   WHERE event_id = pg_temp.u('rsvp');
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+    VALUES (pg_temp.u('rsvp'), now() + interval '7 days', now() + interval '7 days 2 hours', 'UTC', false);
+  PERFORM pg_temp.ok('C-NEXT-ACTIVE-DATE an RSVP skips a cancelled date for the next active one',
+    pg_temp.ts(pg_temp.summary('bo')->'myBookings'->0->'startsAt') = now() + interval '7 days');
+END $c$;
+
 -- ═══ P: posture ═════════════════════════════════════════════════════════════
 DO $p$
 DECLARE v jsonb;
@@ -325,12 +373,12 @@ BEGIN
   DROP FUNCTION public.issue_4630_my_brand_chat_summary(uuid);
   DROP FUNCTION public.issue_4630_my_brand_chat_activity();
   DROP FUNCTION public.issue_4630_brand_bookings(uuid, uuid);
-  -- The A-VISIBLE messages arrived after host_before was taken; compare the
-  -- stable columns only (membership and identity), and the unread rule's input.
-  v_chats := pg_temp.rpc_as('mgr', 'SELECT COALESCE(jsonb_agg(to_jsonb(x) - ''last_message_at'' ORDER BY x.conversation_id), ''[]''::jsonb) FROM public.issue_4459_list_my_brand_guest_chats() x');
+  -- The A-VISIBLE messages and the C-* guests arrived after host_before was
+  -- taken; compare the stable columns only (identity, name, logo, mode).
+  v_chats := pg_temp.rpc_as('mgr', 'SELECT COALESCE(jsonb_agg(to_jsonb(x) - ''last_message_at'' - ''member_count'' ORDER BY x.conversation_id), ''[]''::jsonb) FROM public.issue_4459_list_my_brand_guest_chats() x');
   v_activity := pg_temp.rpc_as('mgr', 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''conversation_id'', x.conversation_id) ORDER BY x.conversation_id), ''[]''::jsonb) FROM public.issue_4420_brand_guest_activity() x');
   PERFORM pg_temp.ok('H-SAME-CHATS issue_4459_list_my_brand_guest_chats is unchanged by #4630',
-    v_chats = (SELECT jsonb_agg(e - 'last_message_at') FROM host_before, jsonb_array_elements(chats) e));
+    v_chats = (SELECT jsonb_agg(e - 'last_message_at' - 'member_count') FROM host_before, jsonb_array_elements(chats) e));
   PERFORM pg_temp.ok('H-SAME-ACTIVITY issue_4420_brand_guest_activity is unchanged by #4630',
     v_activity = (SELECT jsonb_agg(jsonb_build_object('conversation_id', e->'conversation_id')) FROM host_before, jsonb_array_elements(activity) e));
 END $h$;

@@ -22188,6 +22188,8 @@
         "supabase/migrations/__tests__/issue_4624_offering_discounts.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4630_brand_chat.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4630_brand_chat.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4630_brand_chat.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4630_brand_chat.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -28271,6 +28273,8 @@
         "supabase/migrations/__tests__/issue_4624_offering_discounts.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4630_brand_chat.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4630_brand_chat.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4630_brand_chat.tester.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4630_brand_chat.tester.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -55587,5 +55591,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "7ae7a36dd3aec92ebbdf62f25a7a3d19bc2b1533f4409536d984f8529efa4283"
+  "phase3eContractSha256": "fec97b6d64519903b7dee2f2a607b467a6025672c1be8f68731ed0be91848c26"
 }
