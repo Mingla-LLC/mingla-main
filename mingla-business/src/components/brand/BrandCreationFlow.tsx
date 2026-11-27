@@ -117,7 +117,7 @@ import {
   writeErrorMessage,
   type WriteError,
 } from "./BrandSetupInterruptions";
-import { isOwnedDraftCandidate } from "./ownedDraftCandidate";
+import { isOwnedDraftCandidate } from "../../hooks/useBrandSetupStates";
 
 // #4389 — F4's "What do you want to make first?" list (and its clips) loads
 // with F4, not with the app: one on-intent chunk keeps it out of __common.

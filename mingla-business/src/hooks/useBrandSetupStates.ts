@@ -39,6 +39,21 @@ export function brandSetupRowState(checklist: BrandSetupChecklist | undefined): 
 
 type BrandSetupSubject = Pick<Brand, "id" | "accountId">;
 
+/** #4627 — a direct/server draft hint is never its own authority. */
+export function isOwnedDraftCandidate(
+  expectedId: string,
+  brand: BrandSetupSubject | null | undefined,
+  checklist: BrandSetupChecklist | undefined,
+  userId: string | null,
+): boolean {
+  return (
+    userId !== null &&
+    brand?.id === expectedId &&
+    brand.accountId === userId &&
+    checklist?.facts.isDraft === true
+  );
+}
+
 export function deriveBrandSetupStates(
   brands: readonly BrandSetupSubject[],
   checklists: readonly (BrandSetupChecklist | undefined)[],

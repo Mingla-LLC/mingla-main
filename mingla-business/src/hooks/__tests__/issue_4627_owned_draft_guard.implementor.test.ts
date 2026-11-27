@@ -2,10 +2,10 @@ import { describe, expect, test } from "@jest/globals";
 
 import {
   deriveBrandSetupStates,
+  isOwnedDraftCandidate,
   type BrandSetupRowState,
 } from "../useBrandSetupStates";
 import type { BrandSetupChecklist } from "../../services/brandSetupService";
-import { isOwnedDraftCandidate } from "../../components/brand/ownedDraftCandidate";
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { canManageBrandPayments } from "../../utils/brandPaymentsPermission";
 
