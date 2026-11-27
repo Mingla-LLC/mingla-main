@@ -189,12 +189,21 @@ export interface BrandGuestsPushCopyInput {
   senderKind: string | null | undefined;
   senderDisplayName: string | null | undefined;
   preview: string;
+  /** #4630 A1: the recipient is on the brand's team (keeps "<Brand> Guests"). */
+  recipientIsTeam: boolean;
 }
 
-/** Title "<Brand> Guests"; a brand post previews as the brand, a tag or reply as "<sender>: <preview>". */
+/**
+ * #4630 (Q3, A1): a guest's push is titled "<Brand>" (fallback "Mingla"); a
+ * brand team member keeps "<Brand> Guests", because the Host app runs two
+ * chats per brand (Team and Guests) and that title tells them apart. A brand
+ * post previews as the brand, a tag or reply as "<sender>: <preview>".
+ */
 export function brandGuestsPushCopy(input: BrandGuestsPushCopyInput): { title: string; body: string } {
   const brand = (input.brandName ?? "").trim();
-  const title = brand ? `${brand} Guests` : "Guests";
+  const title = input.recipientIsTeam
+    ? (brand ? `${brand} Guests` : "Guests")
+    : (brand || "Mingla");
   if (input.senderKind === "brand") return { title, body: input.preview };
   const sender = (input.senderDisplayName ?? "").trim() || "A guest";
   return { title, body: `${sender}: ${input.preview}` };

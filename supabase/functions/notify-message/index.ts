@@ -237,17 +237,23 @@ async function handleBrandGuestsMessage(
   });
   if (recipients.length === 0) return { notified: 0 };
 
-  const copy = brandGuestsPushCopy({
+  // #4630 (Q3, A1): the copy is per recipient. A guest sees "<Brand>"; a team
+  // member (tagged or replied to) keeps "<Brand> Guests", as the Host app runs
+  // a Team and a Guests chat per brand.
+  const preview = truncate(String(message.content ?? ""), 100);
+  const copyFor = (recipientId: string) => brandGuestsPushCopy({
     brandName: conv.name,
     senderKind: message.sender_kind,
     senderDisplayName: message.sender_display_name_snapshot,
-    preview: truncate(String(message.content ?? ""), 100),
+    preview,
+    recipientIsTeam: team.has(recipientId),
   });
   const deepLink = `mingla://chat/${conv.id}?type=group`;
 
   for (const batch of chunked(recipients, BRAND_GUESTS_PUSH_CHUNK)) {
-    await Promise.allSettled(batch.map((recipientId) =>
-      callNotifyDispatch(supabaseUrl, serviceRoleKey, {
+    await Promise.allSettled(batch.map((recipientId) => {
+      const copy = copyFor(recipientId);
+      return callNotifyDispatch(supabaseUrl, serviceRoleKey, {
         userId: recipientId,
         type: "board_message_received",
         title: copy.title,
@@ -260,8 +266,8 @@ async function handleBrandGuestsMessage(
         relatedType: "conversation",
         idempotencyKey: brandGuestsIdempotencyKey(id, recipientId),
         pushOverrides: { androidChannelId: "messages", collapseId: `brand_guests:${conv.id}` },
-      })
-    ));
+      });
+    }));
   }
   return { notified: recipients.length };
 }

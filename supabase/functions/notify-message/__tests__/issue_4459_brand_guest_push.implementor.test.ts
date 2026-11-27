@@ -81,9 +81,9 @@ Deno.test("#4459 stored mentions, batches, keys and copy", () => {
   const many = Array.from({ length: 250 }, (_, i) => id(1000 + i));
   equals(chunked(many, BRAND_GUESTS_PUSH_CHUNK).map((batch) => batch.length), [100, 100, 50], "batches of 100");
   equals(brandGuestsIdempotencyKey("m1", ANA), `brand_guests:m1:${ANA}`, "one key per message and recipient");
-  equals(brandGuestsPushCopy({ brandName: "Lagos Vibes", senderKind: "brand", senderDisplayName: "Lagos Vibes", preview: "Doors at 8" }),
+  equals(brandGuestsPushCopy({ brandName: "Lagos Vibes", senderKind: "brand", senderDisplayName: "Lagos Vibes", preview: "Doors at 8", recipientIsTeam: true }),
     { title: "Lagos Vibes Guests", body: "Doors at 8" }, "brand post copy");
-  equals(brandGuestsPushCopy({ brandName: "Lagos Vibes", senderKind: "guest", senderDisplayName: "Ana", preview: "see you" }),
+  equals(brandGuestsPushCopy({ brandName: "Lagos Vibes", senderKind: "guest", senderDisplayName: "Ana", preview: "see you", recipientIsTeam: true }),
     { title: "Lagos Vibes Guests", body: "Ana: see you" }, "tag or reply copy");
 });
 
@@ -125,4 +125,28 @@ Deno.test("#4459 D2 a reply to a brand post reaches the team member who wrote it
   );
   const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   if (!source.includes("const replyToAuthorId = await resolveReplyAuthor(repliedTo,")) throw new Error("the handler must resolve the reply author");
+});
+
+// #4630 (Q3, A1): guests see "<Brand>"; a brand team member keeps "<Brand> Guests"
+// (the Host app tells its Team and Guests chats apart by it). FAILS-ON-REVERT:
+// title every recipient the same way and one of these cases fails.
+Deno.test("#4630 push title per recipient: guests get <Brand>, the team keeps <Brand> Guests", () => {
+  equals(brandGuestsPushCopy({ brandName: "Lagos Vibes", senderKind: "brand", senderDisplayName: null, preview: "Doors at 8", recipientIsTeam: false }),
+    { title: "Lagos Vibes", body: "Doors at 8" }, "a brand post reaches a guest titled with the brand alone");
+  equals(brandGuestsPushCopy({ brandName: "Lagos Vibes", senderKind: "guest", senderDisplayName: "Ana", preview: "@Host see you", recipientIsTeam: true }),
+    { title: "Lagos Vibes Guests", body: "Ana: @Host see you" }, "a guest reply that tags the host reaches the host as <Brand> Guests");
+  equals(brandGuestsPushCopy({ brandName: "Lagos Vibes", senderKind: "guest", senderDisplayName: "Ana", preview: "hi Cy", recipientIsTeam: false }),
+    { title: "Lagos Vibes", body: "Ana: hi Cy" }, "a guest tag reaches another guest as <Brand>");
+  equals(brandGuestsPushCopy({ brandName: "  ", senderKind: "brand", senderDisplayName: null, preview: "x", recipientIsTeam: false }).title,
+    "Mingla", "no brand name: a guest sees Mingla, never Guests");
+  equals(brandGuestsPushCopy({ brandName: null, senderKind: "brand", senderDisplayName: null, preview: "x", recipientIsTeam: true }).title,
+    "Guests", "no brand name: the team keeps Guests");
+  const source = Deno.readTextFileSync(new URL("../index.ts", import.meta.url));
+  const handler = source.slice(source.indexOf("async function handleBrandGuestsMessage("), source.indexOf("async function handleUnifiedMessage("));
+  if (!handler.includes("recipientIsTeam: team.has(recipientId)")) {
+    throw new Error("the push copy must be built per recipient from the team set");
+  }
+  if (/const copy = brandGuestsPushCopy\(\{/.test(handler)) {
+    throw new Error("one shared copy for every recipient is the #4630 regression");
+  }
 });
