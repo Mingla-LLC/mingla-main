@@ -435,8 +435,11 @@ describe("#2524 guard 4 — ceiling-locked", () => {
         // 838,000 (thresholds 2,928,000 / 585,000 and 813,000). REPOINTED by
         // issue #3493 [TEST-MOD-APPROVED #3493] after Seth approved the
         // 2,943,000 raw correction (threshold 2,931,000) on 2026-11-25.
-        common: { raw: 2_931_000, brotli: 585_000 },
-        eager: { raw: 3_975_000, brotli: 813_000 },
+        // REPOINTED by issue #3493 [TEST-MOD-APPROVED #3493] after Seth raised
+        // common raw to 2,953,000 and eager raw to 4,015,000 on 2026-11-27
+        // (thresholds 2,941,000 and 3,990,000).
+        common: { raw: 2_941_000, brotli: 585_000 },
+        eager: { raw: 3_990_000, brotli: 813_000 },
       },
     );
   });
@@ -497,8 +500,23 @@ describe("#2524 guard 4 — ceiling-locked", () => {
       eager: { raw: 3_972_243, brotli: 812_975 },
     };
     assert.equal(assessCeilingRunway(measured).ok, true);
-    assert.equal(CEILING.common.raw - measured.common.raw, 12_685);
+    assert.equal(CEILING.common.raw - measured.common.raw, 22_685);
     assert.ok(CEILING.common.raw - measured.common.raw >= REFUSAL_RUNWAY.common);
+  });
+
+  test("#3493 2026-11-27: the exact main measurement 2,931,330 / 3,973,258 passes the ordering invariant, and fails at the old ceilings", () => {
+    const measured = {
+      common: { raw: 2_931_330, brotli: 584_775 },
+      eager: { raw: 3_973_258, brotli: 812_975 },
+    };
+    assert.equal(assessCeilingRunway(measured).ok, true);
+    assert.ok(CEILING.common.raw - measured.common.raw >= REFUSAL_RUNWAY.common);
+    assert.ok(CEILING.eager.raw - measured.eager.raw >= REFUSAL_RUNWAY.eager);
+    // At the retired ceilings the same measurement is refused (common raw:
+    // 2,943,000 - 2,931,330 = 11,670 < 12,000).
+    assert.ok(2_943_000 - measured.common.raw < REFUSAL_RUNWAY.common);
+    assert.ok(measured.common.raw > 2_943_000 - REFUSAL_RUNWAY.common);
+    assert.ok(4_000_000 - measured.eager.raw < 30_000);
   });
 
   test("the mirrored ceilings are re-derived from the budget source and cannot rot in silence", () => {
@@ -507,7 +525,7 @@ describe("#2524 guard 4 — ceiling-locked", () => {
     assert.deepEqual(derived.runway, JSON.parse(JSON.stringify(REFUSAL_RUNWAY)));
 
     const drifted = readFileSync(join(ROOT, "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"), "utf8")
-      .replace("raw: 2_943_000", "raw: 3_000_000");
+      .replace("raw: 2_953_000", "raw: 3_000_000");
     assert.throws(() => assertCeilingMirrorMatchesBudgetSource(drifted), (error) =>
       error instanceof AutomergeError && error.code === "MIRROR_DRIFTED");
   });
@@ -534,8 +552,8 @@ describe("#2524 guard 4 — ceiling-locked", () => {
     // [TEST-MOD-APPROVED #3872] [TEST-MOD-APPROVED #4490]
     const source = readFileSync(join(ROOT, "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"), "utf8");
     assert.match(source, /const PR_DELTA_ALLOWANCE = \{ common: 12_000, eager: 25_000 \};/);
-    assert.match(source, /common: \{ raw: 2_943_000, brotli: 597_000 \}/);
-    assert.match(source, /eager: \{ raw: 4_000_000, brotli: 838_000 \}/);
+    assert.match(source, /common: \{ raw: 2_953_000, brotli: 597_000 \}/);
+    assert.match(source, /eager: \{ raw: 4_015_000, brotli: 838_000 \}/);
   });
 });
 

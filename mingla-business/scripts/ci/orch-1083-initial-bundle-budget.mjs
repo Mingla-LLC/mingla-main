@@ -105,9 +105,9 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // deliberate runway above it so the DELTA gate — not this one — is what a
 // normal PR ever meets:
 //   __common  brotli 439,775 → ceiling 597,000   (raised 2026-09-20, 2026-10-27, 2026-11-24)
-//   __common  raw    2,341,978 → ceiling 2,943,000 (raised 2026-09-20, 2026-11-24, 2026-11-25)
+//   __common  raw    2,341,978 → ceiling 2,953,000 (raised 2026-09-20, 2026-11-24, 2026-11-25, 2026-11-27)
 //   eager     brotli 660,678 → ceiling 838,000   (raised 2026-10-17, 2026-11-24)
-//   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
+//   eager     raw    3,349,598 → ceiling 4,015,000 (raised 2026-11-27)
 //
 // RAISED 2026-09-20 — __common ONLY, from raw 2,600,000 / brotli 500,000 to raw
 // 2,800,000 / brotli 550,000. Seth's call (#3493), in the open, for a reason the
@@ -160,6 +160,15 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // 685 B spare beneath the corrected ceiling. Brotli and both eager ceilings,
 // the per-PR allowance, and the machine-maintained baseline are unchanged.
 //
+// RAISED 2026-11-27 — __common raw 2,943,000 → 2,953,000 and eager raw
+// 4,000,000 → 4,015,000 (issue #3493; Seth approved). Main measured __common
+// 2,931,330 B raw and eager 3,973,258 B raw. 2,931,330 + the 12,000 B normal
+// allowance = 2,943,330 B, which is 330 B over the old 2,943,000 ceiling, so
+// the baseline auto-merge (bot PR #4631) refused to bank it and main went red.
+// Eager had only about 1.7 KB of runway left, so it moves in the same step:
+// 3,973,258 + 25,000 = 3,998,258 <= 4,015,000. Brotli ceilings, the per-PR
+// allowance, the 1,024 B movement threshold and the baseline are unchanged.
+//
 // The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
 // unfailable since route splitting landed. This is a tightening, not a
 // relaxation: 4,000,000 is 57% below the number it replaces.
@@ -167,11 +176,15 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 const HARD_CEILING = {
   // 2026-11-25 — __common raw 2_940_000 → 2_943_000 after the measured
   // #4601 main payload left less than one normal allowance (Seth approved).
-  common: { raw: 2_943_000, brotli: 597_000 },
+  // 2026-11-27 — __common raw 2_943_000 → 2_953_000 after main measured
+  // 2,931,330 B (Seth approved).
+  common: { raw: 2_953_000, brotli: 597_000 },
   // 2026-10-17 — eager brotli 775_000 → 800_000 after #3937 recorded
   // eager.brotli at 750,291 B, which left only 24,709 B beneath the old
   // ceiling. Human limit move only; automation still cannot raise this.
-  eager: { raw: 4_000_000, brotli: 838_000 },
+  // 2026-11-27 — eager raw 4_000_000 → 4_015_000 (Seth approved); main
+  // measures 3,973,258 B.
+  eager: { raw: 4_015_000, brotli: 838_000 },
 };
 
 // How much ONE pull request may add on top of main's measured baseline.
