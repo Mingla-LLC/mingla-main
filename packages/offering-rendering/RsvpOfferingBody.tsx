@@ -919,6 +919,9 @@ export const useRsvpOfferingState = (
     setChipAmountCents(chipDefaultAmount);
     setChipInState("idle");
     setChipError(null);
+    // #3645 — a floor learned on another event (maybe another currency)
+    // never carries over.
+    setChipServerFloorCents(null);
   }
   const handleAcquisitionError = useCallback(
     (code: string): boolean => {

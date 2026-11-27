@@ -32,7 +32,7 @@ jest.mock("react-native", () => {
 jest.mock("react-native-svg", () => ({ __esModule: true, default: () => null, Circle: () => null, Path: () => null, Rect: () => null, G: () => null }), { virtual: true });
 jest.mock("react-native-qrcode-svg", () => ({ __esModule: true, default: () => null }), { virtual: true });
 
-type Tree = { unmount: () => void };
+type Tree = { update: (node: React.ReactElement) => void; unmount: () => void };
 const { create, act } = require("react-test-renderer") as {
   create: (node: React.ReactElement, options?: { createNodeMock?: () => unknown }) => Tree;
   act: (callback: () => void | Promise<void>) => Promise<void>;
@@ -60,10 +60,11 @@ type PanelProps = {
 };
 
 let current: RsvpOfferingState;
-function Harness({ onChipIn, currency, hostMinCents }: {
+function Harness({ onChipIn, currency, hostMinCents, eventId = EVENT }: {
   onChipIn: jest.Mock;
   currency: string;
   hostMinCents: number | null;
+  eventId?: string;
 }) {
   const config = {
     capacity: 80, goingCount: 1, allowPlusOnes: false, plusOnesMax: 0, waitlistEnabled: false, manualApproval: false,
@@ -73,7 +74,7 @@ function Harness({ onChipIn, currency, hostMinCents }: {
     settlementCurrency: currency,
   };
   current = useRsvpOfferingState({
-    event: { id: EVENT, name: "Chip Night", dateLine: "Saturday", description: "", format: "in-person", venueName: "Test Venue", address: "Test Street", hideAddressUntilTicket: false, currency, tickets: [] } as unknown as RsvpOfferingBodyProps["event"],
+    event: { id: eventId, name: "Chip Night", dateLine: "Saturday", description: "", format: "in-person", venueName: "Test Venue", address: "Test Street", hideAddressUntilTicket: false, currency, tickets: [] } as unknown as RsvpOfferingBodyProps["event"],
     brand: null, palette, theme, config, isLoggedIn: false, replyIdentity: null,
     initialGuestName: "Guest", initialGuestEmail: "guest@example.test", initialGuestPhone: "+2348012345678",
     restoredRsvp: restored, onSubmit: jest.fn(), onChipIn,
@@ -90,6 +91,10 @@ const mount = async (onChipIn: jest.Mock, currency = "NGN", hostMinCents: number
   await act(async () => {
     trees.push(create(<Harness onChipIn={onChipIn} currency={currency} hostMinCents={hostMinCents} />, { createNodeMock: () => ({ focus: jest.fn(), setAttribute: jest.fn() }) }));
   });
+};
+/** Re-render the SAME mounted hook (surfaces reuse it across events). */
+const rerender = async (props: { onChipIn: jest.Mock; currency: string; hostMinCents: number | null; eventId?: string }) => {
+  await act(async () => { trees[trees.length - 1].update(<Harness {...props} />); });
 };
 /** The inline panel's props: `<Suspense><RsvpChipInPanel …/></Suspense>`. */
 const panel = (): PanelProps => {
@@ -173,5 +178,49 @@ describe("#3645 chip-in refusal copy", () => {
     await typeAmount(200);
     await submit();
     expect(panel().errorText).toBe("Couldn't process that. Try again.");
+  });
+
+  it("a floor learned on one event never carries to the next (same mounted hook, new event and currency)", async () => {
+    const onChipIn = jest.fn().mockRejectedValueOnce(providerFloor(10_000)).mockResolvedValue({ kind: "redirecting" });
+    await mount(onChipIn);
+    await typeAmount(60);
+    await submit();
+    expect(panel().minCents).toBe(10_000);
+    await rerender({ onChipIn, currency: "USD", hostMinCents: null, eventId: "other-event" });
+    expect(panel().minCents).toBeNull();
+    expect(panel().errorText).toBeNull();
+    await typeAmount(5);
+    await submit();
+    expect(onChipIn).toHaveBeenCalledTimes(2);
+    expect(onChipIn).toHaveBeenLastCalledWith({ amountCents: 500 });
+    expect(panel().errorText).toBeNull();
+  });
+
+  it("after a fractional floor the panel minimum and the next tap's copy are whole units (DKK 2.30 -> 3, never 2)", async () => {
+    // The field takes whole units, so a guest can type 2 under a 2.30 floor:
+    // the remembered check refuses it here and must name 3 (nearest says 2).
+    const onChipIn = jest.fn().mockRejectedValue(providerFloor(230));
+    await mount(onChipIn, "DKK", null);
+    await typeAmount(1);
+    await submit();
+    expect(panel().minCents).toBe(300);
+    await typeAmount(2);
+    await submit();
+    expect(onChipIn).toHaveBeenCalledTimes(1);
+    expect(panel().errorText).toMatch(/^Add at least .*3\.$/);
+  });
+
+  it("a host minimum raised above the remembered floor wins", async () => {
+    const onChipIn = jest.fn().mockRejectedValue(providerFloor(10_000));
+    await mount(onChipIn);
+    await typeAmount(60);
+    await submit();
+    expect(panel().minCents).toBe(10_000);
+    await rerender({ onChipIn, currency: "NGN", hostMinCents: 20_000 });
+    expect(panel().minCents).toBe(20_000);
+    await typeAmount(150);
+    await submit();
+    expect(onChipIn).toHaveBeenCalledTimes(1);
+    expect(panel().errorText).toMatch(/^Add at least .*200\.$/);
   });
 });

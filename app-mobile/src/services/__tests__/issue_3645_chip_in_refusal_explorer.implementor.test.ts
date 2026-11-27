@@ -13,7 +13,7 @@
 // the body from the thrown error -> the floor cases fail.
 
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { FunctionsHttpError } from "npm:@supabase/functions-js@2.74.0";
+import { FunctionsHttpError } from "npm:@supabase/functions-js@2.103.0";
 
 import { extractFunctionErrorFields } from "../../utils/edgeFunctionError.ts";
 import {

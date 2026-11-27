@@ -27,6 +27,33 @@ export interface ReservationProviderFloorRefusal {
 }
 
 /**
+ * The refusal leaves no row, so this structured warning is the only trace a
+ * venue whose fee or table hold sits under the floor leaves: every paid
+ * booking there fails until the venue raises it. Ops finds them by
+ * `reservation_below_provider_minimum` in the function logs.
+ */
+export function logReservationFloorRefusal(input: {
+  venueId: string;
+  brandId: string;
+  provider: "paystack" | "stripe";
+  chargedTotalCents: number;
+  depositListCents: number;
+  discountCents: number;
+  refusal: ReservationProviderFloorRefusal;
+}): void {
+  console.warn("[venue-reservation-create] reservation_below_provider_minimum", {
+    venueId: input.venueId,
+    brandId: input.brandId,
+    provider: input.provider,
+    currency: input.refusal.body.currency,
+    chargedTotalCents: input.chargedTotalCents,
+    minCents: input.refusal.body.minCents,
+    depositListCents: input.depositListCents,
+    discountCents: input.discountCents,
+  });
+}
+
+/**
  * `chargedTotalCents` is the exact amount the arm sends to the provider and
  * `chargeCurrency` the currency it sends it in (NGN on Paystack). null lets
  * the charge through: free, at or above the floor, or a currency with no

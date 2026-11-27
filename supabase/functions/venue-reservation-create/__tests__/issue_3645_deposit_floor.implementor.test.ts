@@ -15,6 +15,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
+  logReservationFloorRefusal,
   RESERVATION_BELOW_PROVIDER_MINIMUM,
   reservationProviderFloorRefusal,
 } from "../depositFloor.ts";
@@ -62,7 +63,9 @@ Deno.test("#3645 Paystack arm: the exact NGN charge is checked before reserve, i
   const arm = at('if (providerRouting.provider === "paystack") {', 0);
   const charged = at("const psBuyerTotalCents = depositMoney.totalCents;", arm);
   const check = at("reservationProviderFloorRefusal(\n      psBuyerTotalCents,\n      \"NGN\",", arm);
+  const log = at('provider: "paystack",', check);
   const refuse = at("return jsonResponse(psFloorRefusal.body, psFloorRefusal.status);", check);
+  assert(log < refuse, "the Paystack refusal must be logged before it returns");
   const reserve = at("await reserveDiscountUses(sessionExpiresAt)", arm);
   const insert = at("await insertReservationSession(", arm);
   const provider = at("await paystackInitializeTransaction({", arm);
@@ -76,7 +79,9 @@ Deno.test("#3645 Stripe arm: the exact charged total is checked before reserve, 
   const ready = at('return jsonResponse({ error: "stripe_account_not_ready" }, 409);', arm);
   const charged = at("const totalCents = pricingBreakdown.buyer_total_cents;", arm);
   const check = at("reservationProviderFloorRefusal(\n    totalCents,\n    currency,", arm);
+  const log = at('provider: "stripe",', check);
   const refuse = at("return jsonResponse(stripeFloorRefusal.body, stripeFloorRefusal.status);", check);
+  assert(log < refuse, "the Stripe refusal must be logged before it returns");
   const reserve = at("await reserveDiscountUses(sessionExpiresAt)", arm);
   const insert = at("await insertReservationSession(", arm);
   const provider = source.indexOf("stripe.", insert);
@@ -108,4 +113,40 @@ Deno.test("#3645 the guest copy for the refusal, shared by Host web and Explorer
     "This table's deposit is above what one payment can take. Ask the venue.",
   );
   assertEquals(guestReservationFailureCopy("reservation_session_failed"), null);
+});
+
+Deno.test("#3645 a refusal leaves a structured warning ops can find (it writes no row)", () => {
+  const refusal = reservationProviderFloorRefusal(6_000, "NGN");
+  assert(refusal !== null);
+  const calls: unknown[][] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { calls.push(args); };
+  try {
+    logReservationFloorRefusal({
+      venueId: "venue-1",
+      brandId: "brand-1",
+      provider: "paystack",
+      chargedTotalCents: 6_000,
+      depositListCents: 15_000,
+      discountCents: 9_000,
+      refusal,
+    });
+  } finally {
+    console.warn = original;
+  }
+  assertEquals(calls, [[
+    "[venue-reservation-create] reservation_below_provider_minimum",
+    {
+      venueId: "venue-1",
+      brandId: "brand-1",
+      provider: "paystack",
+      currency: "NGN",
+      chargedTotalCents: 6_000,
+      minCents: 10_000,
+      depositListCents: 15_000,
+      discountCents: 9_000,
+    },
+  ]]);
+  // Exactly the two arms log it.
+  assertEquals(source.split("logReservationFloorRefusal({").length - 1, 2);
 });

@@ -76,7 +76,10 @@ import {
 } from "../_shared/paymentProvider.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import { tableHoldCharge, tablePickStatus } from "./tablePick.ts";
-import { reservationProviderFloorRefusal } from "./depositFloor.ts";
+import {
+  logReservationFloorRefusal,
+  reservationProviderFloorRefusal,
+} from "./depositFloor.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
 import { mintClaimLink } from "../_shared/claimLink.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
@@ -1040,6 +1043,15 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       "NGN",
     );
     if (psFloorRefusal !== null) {
+      logReservationFloorRefusal({
+        venueId,
+        brandId,
+        provider: "paystack",
+        chargedTotalCents: psBuyerTotalCents,
+        depositListCents: baseFeeCents,
+        discountCents: discountQuote.discountMinor,
+        refusal: psFloorRefusal,
+      });
       return jsonResponse(psFloorRefusal.body, psFloorRefusal.status);
     }
 
@@ -1188,6 +1200,15 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     currency,
   );
   if (stripeFloorRefusal !== null) {
+    logReservationFloorRefusal({
+      venueId,
+      brandId,
+      provider: "stripe",
+      chargedTotalCents: totalCents,
+      depositListCents: baseFeeCents,
+      discountCents: discountQuote.discountMinor,
+      refusal: stripeFloorRefusal,
+    });
     return jsonResponse(stripeFloorRefusal.body, stripeFloorRefusal.status);
   }
 
