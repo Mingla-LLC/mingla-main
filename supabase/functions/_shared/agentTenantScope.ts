@@ -29,6 +29,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_guest_roster",
   "list_brand_team",
   "list_event_orders",
+  // #4599 — the event settings read asserts the caller's event membership
+  // inline before returning policy, ticket switches, and PII-free counts.
+  "get_event_settings",
   "get_campaign_report",
   // #3355 — the saved campaign draft readback asserts the draft's brand
   // membership inline (assertAgentReadBrand) before returning any copy.
