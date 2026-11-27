@@ -53,6 +53,10 @@ import type { VenueModuleLeaveHandle } from "../../venueLeaveContract";
 import { MenuItemPicker } from "./MenuItemPicker";
 import { REFUND_PRESETS, offerErrorCopy, refundSummary } from "./offersModel";
 import {
+  canLeavePackageStep,
+  packageReviewAction,
+} from "./packageNavigation";
+import {
   BALANCE_DUE_OPTIONS,
   CHANGE_CUTOFFS,
   ONLINE_PAYMENTS_OFF,
@@ -84,6 +88,7 @@ import {
   type PackageStepId,
 } from "./packageModel";
 import { ExtrasEditor } from "./ExtrasEditor";
+import { writeVenueOfferToCache } from "./venueOfferCache";
 
 const RAIL_MIN_WIDTH = 1280;
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
@@ -169,15 +174,17 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
 
   const step = PACKAGE_STEPS[stepIndex];
   const dirty = draft !== null && base !== null && JSON.stringify(draft) !== JSON.stringify(base);
+  const dirtyStepRef = useRef<PackageStepId | null>(null);
   const issueFor = useCallback(
     (id: PackageStepId): string | null => (draft === null ? null : packageStepIssue(id, draft, pool)),
     [draft, pool],
   );
 
   const patch = useCallback((next: Partial<PackageDraft>): void => {
+    dirtyStepRef.current = step.id;
     setDraft((d) => (d === null ? d : { ...d, ...next }));
     setSavedNote(null);
-  }, []);
+  }, [step.id]);
 
   const refreshLists = useCallback((): void => {
     if (brandId === null || venueId === null) return;
@@ -385,6 +392,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
           if (d !== null) setBase(clone(d));
           return d;
         });
+        dirtyStepRef.current = null;
         setSavedNote("Saved");
         refreshLists();
         return true;
@@ -409,11 +417,46 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
     setFurthest((f) => Math.max(f, index));
   }, []);
 
+  const requestStep = useCallback(
+    async (index: number): Promise<void> => {
+      if (saving || index === stepIndex) return;
+      const originStep = dirtyStepRef.current ?? step.id;
+      const mayLeave = await canLeavePackageStep({
+        dirty,
+        issue: issueFor(originStep),
+        step: originStep,
+        showIssue: () =>
+          setShowErrors((shown) => ({ ...shown, [originStep]: true })),
+        save: runSave,
+      });
+      if (mayLeave) goTo(index);
+    },
+    [dirty, goTo, issueFor, runSave, saving, step.id, stepIndex],
+  );
+
   const handleContinue = useCallback(async (): Promise<void> => {
     if (draft === null) return;
     if (step.id === "review") {
       if (offer === null) return;
-      if (offer.status === "live") {
+      const action = packageReviewAction({
+        status: offer.status,
+        dirty,
+        dirtyStep: dirtyStepRef.current,
+      });
+      if (action === "save") {
+        const dirtyStep = dirtyStepRef.current;
+        if (dirtyStep !== null) await runSave(dirtyStep);
+        return;
+      }
+      if (action === "block") {
+        setError({
+          text: "Go back to the changed step and save it before leaving Review.",
+          stale: false,
+          reasons: [],
+        });
+        return;
+      }
+      if (action === "close") {
         onClose({ published: false, name: offer.name });
         return;
       }
@@ -427,6 +470,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
           expectedVersion: offer.version,
         });
         setSavedOffer(published);
+        writeVenueOfferToCache(queryClient, brandId, venueId, published);
         refreshLists();
         onClose({ published: true, name: published.name });
       } catch (e) {
@@ -444,7 +488,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
     }
     const ok = await runSave(step.id);
     if (ok) goTo(stepIndex + 1);
-  }, [draft, goTo, issueFor, offer, onClose, refreshLists, runSave, step.id, stepIndex, venueId]);
+  }, [brandId, dirty, draft, goTo, issueFor, offer, onClose, queryClient, refreshLists, runSave, step.id, stepIndex, venueId]);
 
   const handleReload = useCallback((): void => {
     setError(null);
@@ -452,6 +496,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
     setSavedPool(null);
     setDraft(null);
     setBase(null);
+    dirtyStepRef.current = null;
     void offersQuery.refetch();
   }, [offersQuery]);
 
@@ -461,17 +506,21 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
     ref,
     (): VenueModuleLeaveHandle => ({
       isDirty: () => dirtyRef.current,
-      changedLabels: () => [PACKAGE_STEPS[stepIndex]?.label ?? "Group package"],
-      isValid: () => issueFor(PACKAGE_STEPS[stepIndex]?.id ?? "basics") === null && PACKAGE_STEPS[stepIndex]?.id !== "review",
+      changedLabels: () => [PACKAGE_STEPS.find((candidate) => candidate.id === (dirtyStepRef.current ?? step.id))?.label ?? "Group package"],
+      isValid: () => {
+        const dirtyStep = dirtyStepRef.current ?? step.id;
+        return issueFor(dirtyStep) === null && dirtyStep !== "review";
+      },
       save: async () => {
-        const ok = await runSave(PACKAGE_STEPS[stepIndex]?.id ?? "basics");
+        const ok = await runSave(dirtyStepRef.current ?? step.id);
         if (!ok) throw new Error("save_failed");
       },
       discard: () => {
         if (base !== null) setDraft(clone(base));
+        dirtyStepRef.current = null;
       },
     }),
-    [base, issueFor, runSave, stepIndex],
+    [base, issueFor, runSave, step.id],
   );
 
   const requestClose = useCallback((): void => {
@@ -523,7 +572,18 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
     };
   });
   const stepErrors = showErrors[step.id] === true;
-  const continueLabel = step.id === "review" ? (offer?.status === "live" ? "Done" : "Publish") : saving ? "Saving" : "Continue";
+  const continueLabel =
+    step.id === "review"
+      ? dirty
+        ? saving
+          ? "Saving changes"
+          : "Save changes"
+        : offer?.status === "live"
+          ? "Done"
+          : "Publish"
+      : saving
+        ? "Saving"
+        : "Continue";
   const continueDisabled = saving || (stepErrors && issueFor(step.id) !== null) || (step.id === "review" && offer === null);
 
   const header = (
@@ -535,8 +595,9 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
         </Text>
       </View>
       <View style={styles.titleActions}>
-        {savedNote !== null && !dirty ? <Text style={styles.saved} accessibilityLiveRegion="polite">{savedNote}</Text> : null}
-        {dirty ? <Text style={styles.saved}>Unsaved changes</Text> : null}
+        {saving ? <Text style={styles.saved} accessibilityLiveRegion="polite">Saving changes…</Text> : null}
+        {!saving && savedNote !== null && !dirty ? <Text style={styles.saved} accessibilityLiveRegion="polite">{savedNote}</Text> : null}
+        {!saving && dirty ? <Text style={styles.saved}>Unsaved changes</Text> : null}
         <Button label="Close" variant="ghost" size="sm" leadingIcon="close" onPress={requestClose} testID="package-editor-close" />
       </View>
     </View>
@@ -555,7 +616,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
             : firstReasonStep !== null
               ? {
                   label: `Go to ${PACKAGE_STEPS.find((s) => s.id === firstReasonStep)?.label ?? "step"}`,
-                  onPress: () => goTo(PACKAGE_STEPS.findIndex((s) => s.id === firstReasonStep)),
+                  onPress: () => void requestStep(PACKAGE_STEPS.findIndex((s) => s.id === firstReasonStep)),
                 }
               : undefined
         }
@@ -580,7 +641,9 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
           pool={pool}
           currency={currency}
           canCollectOnline={canCollectOnline}
-          onGoTo={(id) => goTo(PACKAGE_STEPS.findIndex((s) => s.id === id))}
+          dirty={dirty}
+          saving={saving}
+          onGoTo={(id) => void requestStep(PACKAGE_STEPS.findIndex((s) => s.id === id))}
           onOpenSettings={onOpenSettings}
           onOpenPayments={onOpenPayments}
         />
@@ -592,7 +655,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
   const footer = (
     <StepperFooter
       previousLabel={stepIndex > 0 ? PACKAGE_STEPS[stepIndex - 1].label : undefined}
-      onBack={stepIndex > 0 ? () => goTo(stepIndex - 1) : undefined}
+      onBack={stepIndex > 0 ? () => void requestStep(stepIndex - 1) : undefined}
       backDisabled={saving}
       continueLabel={continueLabel}
       onContinue={() => void handleContinue()}
@@ -604,7 +667,8 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
     />
   );
 
-  const stepIssue = issueFor(step.id);
+  const leaveStep = dirtyStepRef.current ?? step.id;
+  const leaveIssue = issueFor(leaveStep);
   const overlays = (
     <>
       {leaveOpen ? (
@@ -613,7 +677,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
             visible
             variant="leave"
             title="Save your changes?"
-            description={`You changed ${step.label}. If you leave without saving, those changes are gone.`}
+            description={`You changed ${PACKAGE_STEPS.find((candidate) => candidate.id === leaveStep)?.label ?? step.label}. If you leave without saving, those changes are gone.`}
             onClose={() => setLeaveOpen(false)}
             onConfirm={() => {
               setLeaveOpen(false);
@@ -625,16 +689,16 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
             }}
             onSave={async () => {
               setLeaveSaving(true);
-              const ok = step.id === "review" ? false : await runSave(step.id);
+              const ok = leaveStep === "review" ? false : await runSave(leaveStep);
               setLeaveSaving(false);
               if (ok) {
                 setLeaveOpen(false);
                 onClose();
               }
             }}
-            saveDisabled={stepIssue !== null || step.id === "review"}
+            saveDisabled={leaveIssue !== null || leaveStep === "review"}
             confirmLoading={leaveSaving}
-            errorMessage={stepIssue !== null ? "These changes can't be saved yet. Keep editing to fix them." : error !== null ? error.text : null}
+            errorMessage={leaveIssue !== null ? "These changes can't be saved yet. Keep editing to fix them." : error !== null ? error.text : null}
             saveTestID="package-editor-leave-save"
             discardTestID="package-editor-leave-discard"
             keepTestID="package-editor-leave-keep"
@@ -684,7 +748,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
               layout="list"
               furthestValidIndex={furthest}
               onStepPress={(i) => {
-                if (i <= furthest && !saving) goTo(i);
+                if (i <= furthest && !saving) void requestStep(i);
               }}
               testID="package-editor-steps"
             />
@@ -707,7 +771,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
         layout="chips"
         furthestValidIndex={furthest}
         onStepPress={(i) => {
-          if (i <= furthest && !saving) goTo(i);
+          if (i <= furthest && !saving) void requestStep(i);
         }}
         sheetTitle="Steps"
         testID="package-editor-steps"
@@ -1277,6 +1341,8 @@ function ReviewStep({
   pool,
   currency,
   canCollectOnline,
+  dirty,
+  saving,
   onGoTo,
   onOpenSettings,
   onOpenPayments,
@@ -1286,6 +1352,8 @@ function ReviewStep({
   pool: VenueCapacityPool | null;
   currency: string | null;
   canCollectOnline: boolean;
+  dirty: boolean;
+  saving: boolean;
   onGoTo: (id: PackageStepId) => void;
   onOpenSettings?: () => void;
   onOpenPayments?: () => void;
@@ -1295,7 +1363,14 @@ function ReviewStep({
   return (
     <View style={styles.stepBody} testID="package-step-review">
       <StepHead title="Review" />
-      {offer?.status === "live" ? (
+      {dirty || saving ? (
+        <Banner
+          tone="warning"
+          title={saving ? "Saving before Review" : "Unsaved changes"}
+          body="This package stays open until these changes are saved."
+          testID="package-review-unsaved"
+        />
+      ) : offer?.status === "live" ? (
         <Banner tone="ok" title="Live" body="Groups can book this now. Changes you saved are already live." />
       ) : reasons.length === 0 ? (
         <Banner tone="ok" title="Ready to publish" body="Groups can book it on your venue page, with no account needed." testID="package-review-ready" />

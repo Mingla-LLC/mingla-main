@@ -104,6 +104,7 @@ import { openingHoursDefault } from "../hoursModel";
 import { CHANGE_CUTOFFS, ONLINE_PAYMENTS_OFF, extrasPayload } from "./packageModel";
 import { ExtrasEditor } from "./ExtrasEditor";
 import { VENUE_LAYOUTS } from "@mingla/brand-rendering/venueOffers/layoutModel";
+import { writeVenueOfferToCache } from "./venueOfferCache";
 
 const RAIL_MIN_WIDTH = 1280;
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
@@ -507,6 +508,7 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
           expectedVersion: offer.version,
         });
         setSavedOffer(published);
+        writeVenueOfferToCache(queryClient, brandId, venueId, published);
         refreshLists();
         onClose({ published: true, name: published.name });
       } catch (e) {
@@ -524,7 +526,7 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
     }
     const ok = await runSave(step.id);
     if (ok) goTo(stepIndex + 1);
-  }, [draft, goTo, issueFor, offer, onClose, refreshLists, runSave, step.id, stepIndex, venueId]);
+  }, [brandId, draft, goTo, issueFor, offer, onClose, queryClient, refreshLists, runSave, step.id, stepIndex, venueId]);
 
   const handleReload = useCallback((): void => {
     setError(null);

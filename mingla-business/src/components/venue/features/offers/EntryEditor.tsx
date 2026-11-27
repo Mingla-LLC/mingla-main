@@ -92,6 +92,7 @@ import {
   type EntryDraft,
   type EntryStepId,
 } from "./offersModel";
+import { writeVenueOfferToCache } from "./venueOfferCache";
 import { PriceOptionCard } from "./PriceOptionCard";
 
 /** The step rail needs room beside the venue rail: below this the chips layout is used. */
@@ -450,6 +451,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
           expectedVersion: offer.version,
         });
         setSavedOffer(published);
+        writeVenueOfferToCache(queryClient, brandId, venueId, published);
         refreshLists();
         onClose({ published: true, name: published.name });
       } catch (e) {
@@ -472,7 +474,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
     }
     const ok = await runSave(step.id);
     if (ok) goTo(stepIndex + 1);
-  }, [draft, goTo, issueFor, offer, onClose, refreshLists, runSave, step.id, stepIndex, venueId]);
+  }, [brandId, draft, goTo, issueFor, offer, onClose, queryClient, refreshLists, runSave, step.id, stepIndex, venueId]);
 
   const handleReload = useCallback((): void => {
     setError(null);

@@ -4078,6 +4078,7 @@
         "mingla-business/src/components/stay/StayActionBar.tsx",
         "mingla-business/src/components/stay/StayChipRow.tsx",
         "mingla-business/src/components/stay/StayInventoryManager.tsx",
+        "mingla-business/src/components/stay/stayInventoryPresentation.ts",
         "mingla-business/src/components/stay/stayLayoutContracts.ts"
       ]
     },
@@ -6806,7 +6807,9 @@
         "mingla-business/src/components/venue/features/offers/hourModel.ts",
         "mingla-business/src/components/venue/features/offers/offerMoney.ts",
         "mingla-business/src/components/venue/features/offers/offersModel.ts",
+        "mingla-business/src/components/venue/features/offers/packageNavigation.ts",
         "mingla-business/src/components/venue/features/offers/packageModel.ts",
+        "mingla-business/src/components/venue/features/offers/venueOfferCache.ts",
         "mingla-business/src/components/venue/features/requests/RequestsWaitingCard.tsx",
         "mingla-business/src/components/venue/features/requests/VenueRequestsModule.tsx",
         "mingla-business/src/components/venue/features/requests/requestsModel.ts",

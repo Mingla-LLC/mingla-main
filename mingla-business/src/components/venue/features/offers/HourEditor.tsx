@@ -72,6 +72,7 @@ import {
   type HourDraft,
 } from "./hourModel";
 import { money, offerErrorCopy } from "./offersModel";
+import { writeVenueOfferToCache } from "./venueOfferCache";
 
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
 
@@ -224,6 +225,7 @@ export const HourEditor = forwardRef<VenueModuleLeaveHandle, HourEditorProps>(fu
       if (publish) {
         current = await manageVenueOffer({ venueId: venueId ?? "", action: "publish", payload: { offerId: current.id }, expectedVersion: current.version });
         setSavedOffer(current);
+        writeVenueOfferToCache(queryClient, brandId, venueId, current);
         refresh();
         onClose({ published: true, name: current.name });
         return;
