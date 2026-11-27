@@ -91,7 +91,7 @@ import { trackBrandSetup } from "./brandSetupAnalytics";
 import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore";
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { getBrand } from "../../services/brandsService";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { brandKeys } from "../../hooks/brandKeys";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
 import type { BrandCreationPayoutState } from "../../utils/brandCreationPayoutState";
@@ -1156,6 +1156,84 @@ export const DraftInProgress: React.FC<{
     </View>
   );
 };
+
+/**
+ * #4627 — the direct/server `?draft=` fallback lives in this already-lazy
+ * setup chunk. A URL is only a hint: read the canonical brand plus live setup
+ * checklist, then require `brands.account_id` ownership before N1 or discard.
+ */
+const OwnedDraftInProgressGate: React.FC<{
+  draftId: string;
+  onContinue: () => void;
+  onDiscarded: (draftName: string) => void;
+  onRejected: () => void;
+  startConfirming?: boolean;
+}> = ({ draftId, onContinue, onDiscarded, onRejected, startConfirming = false }) => {
+  const { isAuthReady, user } = useAuth();
+  const brand = useQuery<Brand | null, Error>({
+    queryKey: brandKeys.detail(draftId),
+    enabled: isAuthReady && user !== null,
+    staleTime: 0,
+    refetchOnMount: "always",
+    queryFn: () => getBrand(draftId),
+  });
+  const checklist = useBrandSetupChecklist(draftId);
+  const waiting =
+    !isAuthReady ||
+    user === null ||
+    brand.isLoading ||
+    brand.isFetching ||
+    checklist.isLoading ||
+    checklist.isFetching;
+  const accepted =
+    !waiting &&
+    !brand.isError &&
+    !checklist.isError &&
+    brand.data?.id === draftId &&
+    brand.data.accountId === user?.id &&
+    checklist.data?.facts.isDraft === true;
+  useEffect(() => {
+    if (!waiting && !accepted) onRejected();
+  }, [accepted, onRejected, waiting]);
+  if (!accepted || brand.data === null || brand.data === undefined) return null;
+  const draftName = brand.data.displayName;
+  return (
+    <DraftInProgress
+      draftId={draftId}
+      draftName={draftName}
+      startConfirming={startConfirming}
+      onContinue={onContinue}
+      onDiscarded={() => onDiscarded(draftName)}
+    />
+  );
+};
+
+/** One lazy entry keeps both the list-proven and direct-hint N1 paths off the eager bundle. */
+export const DraftInProgressEntry: React.FC<{
+  draftId: string;
+  draftName?: string;
+  onContinue: () => void;
+  onDiscarded: (draftName: string) => void;
+  onRejected: () => void;
+  startConfirming?: boolean;
+}> = ({ draftId, draftName, onContinue, onDiscarded, onRejected, startConfirming }) =>
+  draftName === undefined ? (
+    <OwnedDraftInProgressGate
+      draftId={draftId}
+      onContinue={onContinue}
+      onDiscarded={onDiscarded}
+      onRejected={onRejected}
+      startConfirming={startConfirming}
+    />
+  ) : (
+    <DraftInProgress
+      draftId={draftId}
+      draftName={draftName}
+      onContinue={onContinue}
+      onDiscarded={() => onDiscarded(draftName)}
+      startConfirming={startConfirming}
+    />
+  );
 
 export { Toast };
 

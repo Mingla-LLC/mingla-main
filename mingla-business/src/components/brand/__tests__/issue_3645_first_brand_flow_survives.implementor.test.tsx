@@ -55,6 +55,12 @@ const FIRST_BRAND: BrandRow = {
   accountId: "account-3645",
   role: "owner",
 };
+const TEAM_BRAND: BrandRow = {
+  id: "46270000-0000-4000-8000-000000000002",
+  displayName: "alin",
+  accountId: "another-account",
+  role: "brand_admin",
+};
 const withBrands = (...brands: BrandRow[]): BrandListSeed => ({
   brands,
   isTrueEmpty: false,
@@ -64,6 +70,9 @@ const withBrands = (...brands: BrandRow[]): BrandListSeed => ({
 
 let mockBrandList: BrandListSeed = EMPTY;
 let mockSetup: { draftId: string | null; isLoading: boolean } = { draftId: null, isLoading: false };
+let mockParams: Record<string, string> = {};
+let mockRequestedBrand: BrandRow | null = null;
+let mockRequestedDraft = false;
 const mockFlowLifecycle = { mounts: 0, unmounts: 0 };
 const mockPush = jest.fn();
 const mockClose = jest.fn();
@@ -73,7 +82,7 @@ const mockClose = jest.fn();
 jest.mock("../WorkspaceBrandMenu", () => ({ WorkspaceBrandMenu: () => null }));
 jest.mock("expo-router", () => ({
   Redirect: () => null,
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockParams,
   useRouter: () => ({ push: mockPush, replace: jest.fn(), back: jest.fn(), canGoBack: () => true }),
 }));
 
@@ -87,6 +96,13 @@ jest.mock("../../../hooks/useBrandListShim", () => ({
 
 jest.mock("../../../hooks/useBrandSetupStates", () => ({
   useBrandSetupStates: () => ({ byId: {}, ...mockSetup }),
+}));
+
+jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
+  useBrandSetupChecklist: () => ({
+    data: mockRequestedBrand === null ? undefined : { facts: { isDraft: mockRequestedDraft } },
+    isLoading: false,
+  }),
 }));
 
 jest.mock("../../../hooks/usePartnerStripe", () => ({
@@ -129,10 +145,29 @@ jest.mock("../LazyBrandCreationFlow", () => {
     }, []);
     return <View testID="creation-flow" />;
   };
+  const DraftGate = ({
+    draftId,
+    draftName,
+    onRejected,
+  }: {
+    draftId: string;
+    draftName?: string;
+    onRejected: () => void;
+  }): React.ReactElement | null => {
+    const accepted =
+      draftName !== undefined ||
+      (mockRequestedBrand?.id === draftId &&
+        mockRequestedBrand.accountId === "account-3645" &&
+        mockRequestedDraft);
+    ReactLocal.useEffect(() => {
+      if (draftName === undefined && !accepted) onRejected();
+    }, [accepted, draftName, onRejected]);
+    return accepted ? <View testID="draft-in-progress" /> : null;
+  };
   return {
     LazyBrandCreationFlow: Flow,
     LazyPartnerClientBrandCreationFlow: () => <View testID="partner-flow" />,
-    LazyDraftInProgress: () => <View testID="draft-in-progress" />,
+    LazyDraftInProgress: DraftGate,
   };
 });
 
@@ -205,6 +240,9 @@ describe("#3645 — the first brand's setup stays mounted (/brand/new since #438
   beforeEach(() => {
     mockBrandList = EMPTY;
     mockSetup = { draftId: null, isLoading: false };
+    mockParams = {};
+    mockRequestedBrand = null;
+    mockRequestedDraft = false;
     mockFlowLifecycle.mounts = 0;
     mockFlowLifecycle.unmounts = 0;
     mockPush.mockReset();
@@ -286,5 +324,31 @@ describe("#3645 — the first brand's setup stays mounted (/brand/new since #438
     expect(mockPush).toHaveBeenCalledWith("/brand/new");
     expect(count(sheet, "creation-flow")).toBe(0);
     TestRenderer.act(() => sheet.unmount());
+  });
+
+  test("#4627: a stale direct URL for a teammate's draft cannot open N1", async () => {
+    mockBrandList = withBrands(TEAM_BRAND);
+    mockSetup = { draftId: null, isLoading: false };
+    mockParams = { draft: TEAM_BRAND.id, draft_name: TEAM_BRAND.displayName, discard: "1" };
+    mockRequestedBrand = TEAM_BRAND;
+    mockRequestedDraft = true;
+    tree = await renderRoute(null);
+
+    expect(count(tree, "draft-in-progress")).toBe(0);
+    expect(count(tree, "creation-flow")).toBe(1);
+  });
+
+  test("#4627: a matching direct URL still opens the account owner's draft", async () => {
+    mockBrandList = withBrands(FIRST_BRAND);
+    // Server-refusal fallback: the list-wide guard can be stale and still miss
+    // this draft; the explicit brand + checklist readers validate it instead.
+    mockSetup = { draftId: null, isLoading: false };
+    mockParams = { draft: FIRST_BRAND.id, draft_name: FIRST_BRAND.displayName };
+    mockRequestedBrand = FIRST_BRAND;
+    mockRequestedDraft = true;
+    tree = await renderRoute(null);
+
+    expect(count(tree, "draft-in-progress")).toBe(1);
+    expect(count(tree, "creation-flow")).toBe(0);
   });
 });
