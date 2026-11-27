@@ -38,7 +38,7 @@ export const HOST_KINDS: TilesContent = {
   items: [
     ...ICP_SLUGS.map((slug) => {
       const d = ICP_LANDINGS[slug]
-      return { media: d.hero, title: d.short, line: `${d.l1} ${d.l2}`, action: { label: d.short, to: icpLandingPath(slug) } }
+      return { media: d.hero, title: d.short, line: d.l1, lineEnd: d.l2, action: { label: d.short, to: icpLandingPath(slug) } }
     }),
     { media: 'v:bg-exp', title: 'Free tools', line: 'No sign-up, no sales call.', action: { label: 'Free tools', to: '/tools' }, look: 'tools' },
   ],

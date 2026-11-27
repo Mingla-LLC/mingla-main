@@ -9,6 +9,8 @@ import type { LandingMediaRef } from '@/lib/landing-media-ref'
 import type { BlockAction, BlockProps } from './shared'
 
 export interface IcpHeroContent {
+  /** "For": rendered as its own text run before the pill words, as the coded hero did. */
+  pillLead: string
   pill: string
   line1: string
   line2: string
@@ -26,6 +28,7 @@ export function IcpHeroBlock({ content: d }: BlockProps<IcpHeroContent>) {
       <div className="in wrap">
         <span className="pill glass">
           <span className="dot" aria-hidden="true" />
+          {`${d.pillLead} `}
           {d.pill}
         </span>
         <h1 id="lp-title">

@@ -155,7 +155,7 @@ test('2. /host Free tools tile: a clip under the ink wash of its neighbours, no 
   assert.match(host, /\{ media: 'v:bg-exp', title: 'Free tools', line: 'No sign-up, no sales call\.', action: \{ label: 'Free tools', to: '\/tools' \}, look: 'tools' \}/)
   assert.match(
     host,
-    /<Link className=\{tile\.look === 'tools' \? 'tile tools reveal' : 'tile reveal'\} href=\{tile\.action\.to\}[^>]*>\s*<div className="ph scrim">\s*<LandingMedia media=\{tile\.media\} \/>\s*<\/div>\s*<div className="ov">\s*<h3>\{tile\.title\}<\/h3>\s*<p>\{tile\.line\}<\/p>/,
+    /<Link className=\{tile\.look === 'tools' \? 'tile tools reveal' : 'tile reveal'\} href=\{tile\.action\.to\}[^>]*>\s*<div className="ph scrim">\s*<LandingMedia media=\{tile\.media\} \/>\s*<\/div>\s*<div className="ov">\s*<h3>\{tile\.title\}<\/h3>\s*<p>\s*\{tile\.line\}/,
   )
   assert.doesNotMatch(host, /\d+ free tools/i)
   // The neighbours (the host-type tiles) use the same wash: same block, each opening its landing page.

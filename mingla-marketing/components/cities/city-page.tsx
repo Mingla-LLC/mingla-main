@@ -82,7 +82,7 @@ export function CityPage({
         <TopPlacesBlock content={city} record={record} catalogue={catalogue} blockId="city-places-title" />
         <CityPlansBlock content={{ ...city, heading: 'More than *one mode.*' }} colour="moss" record={record} catalogue={catalogue} blockId="city-guide-title" />
         <FaqBlock
-          content={{ variant: 'city', heading: `${record.city} questions, *answered.*`, items: record.faqs.map((faq) => ({ question: faq.question, answer: faq.answer })) }}
+          content={{ variant: 'city', prefix: record.city, heading: ' questions, *answered.*', items: record.faqs.map((faq) => ({ question: faq.question, answer: faq.answer })) }}
           colour="paper"
           blockId="city-faq-title"
         />

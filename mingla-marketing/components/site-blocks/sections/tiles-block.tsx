@@ -11,6 +11,8 @@ export interface TileItem {
   media: LandingMediaRef
   title: string
   line: string
+  /** A second half of the line, kept as its own text run (the host-type tiles' two lines). */
+  lineEnd?: string
   action: BlockAction
   look?: 'plain' | 'tools'
 }
@@ -39,7 +41,11 @@ export function TilesBlock({ content, colour, blockId }: BlockProps<TilesContent
               </div>
               <div className="ov">
                 <h3>{tile.title}</h3>
-                <p>{tile.line}</p>
+                <p>
+                  {tile.line}
+                  {tile.lineEnd !== undefined ? ' ' : null}
+                  {tile.lineEnd}
+                </p>
               </div>
               <span className="go" aria-hidden="true">
                 <ArrowUpRight />

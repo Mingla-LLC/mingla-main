@@ -255,6 +255,13 @@
       },
       "fields": [
         {
+          "key": "pillLead",
+          "kind": "text",
+          "label": "Label pill, first word",
+          "max": 20,
+          "required": true
+        },
+        {
           "key": "pill",
           "kind": "text",
           "label": "Label pill",
@@ -877,6 +884,13 @@
           "hidden": true
         },
         {
+          "key": "prefix",
+          "kind": "text",
+          "label": "Words before the heading (the city name)",
+          "max": 40,
+          "required": false
+        },
+        {
           "key": "heading",
           "kind": "text",
           "label": "Heading",
@@ -1013,6 +1027,13 @@
               "label": "Line",
               "max": 120,
               "required": true
+            },
+            {
+              "key": "lineEnd",
+              "kind": "text",
+              "label": "Line, second half",
+              "max": 120,
+              "required": false
             },
             {
               "key": "action",

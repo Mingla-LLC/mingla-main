@@ -178,7 +178,7 @@ test('I-4636-BLOCKS-ARE-EXISTING-SECTIONS: every page\'s default content passes 
     for (const key of ['cityHero', 'cityWeekend', 'topPlaces', 'cityHostBand']) ok(key, city)
     ok('cityPlans', { ...city, heading: 'More than *one mode.*' }, 'moss')
     if (record.faqs.length) {
-      ok('faq', { variant: 'city', heading: `${record.city} questions, *answered.*`, items: record.faqs.map((f) => ({ question: f.question, answer: f.answer })) }, 'paper')
+      ok('faq', { variant: 'city', prefix: record.city, heading: ' questions, *answered.*', items: record.faqs.map((f) => ({ question: f.question, answer: f.answer })) }, 'paper')
     }
   }
 })

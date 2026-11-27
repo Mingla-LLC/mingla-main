@@ -8,6 +8,8 @@ import { Em, secClass, type BlockAction, type BlockProps } from './shared'
 
 export interface FaqContent {
   variant: 'icp' | 'city'
+  /** Words before the heading, kept as their own text run (the city name). */
+  prefix?: string
   heading: string
   action?: BlockAction
   items: readonly { question: string; answer: string }[]
@@ -20,6 +22,7 @@ export function FaqBlock({ content, colour, blockId }: BlockProps<FaqContent>) {
       <section className={secClass(colour)} aria-labelledby={blockId}>
         <div className="wrap">
           <h2 className="h2 reveal" id={blockId}>
+            {content.prefix}
             <Em text={content.heading} />
           </h2>
           <div className="faq mt-40">

@@ -30,7 +30,8 @@ export function icpBlocks(slug: IcpSlug): IcpBlocks {
   const d = ICP_LANDINGS[slug]
   return {
     hero: {
-      pill: `For ${d.name.toLowerCase()}`,
+      pillLead: 'For',
+      pill: d.name.toLowerCase(),
       line1: d.l1,
       line2: d.l2,
       sub: d.sub,

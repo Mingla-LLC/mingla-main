@@ -177,6 +177,7 @@ export const BLOCKS: readonly BlockDef[] = [
     maxPerPage: 1,
     colours: { '*': ['night'] },
     fields: [
+      text('pillLead', 'Label pill, first word', 20),
       text('pill', 'Label pill', 40),
       text('line1', 'Headline line one', 40),
       text('line2', 'Headline line two (italic)', 40),
@@ -363,6 +364,7 @@ export const BLOCKS: readonly BlockDef[] = [
     colours: { '*': ['paper'] },
     fields: [
       variant(['icp', 'city']),
+      optText('prefix', 'Words before the heading (the city name)', 40),
       text('heading', 'Heading', 90, { em: true }),
       action('action', 'Button under the heading', false, INTERNAL),
       { key: 'items', kind: 'list', label: 'Questions', min: 1, max: 12, item: [text('question', 'Question', 140), text('answer', 'Answer', 600)] },
@@ -404,6 +406,7 @@ export const BLOCKS: readonly BlockDef[] = [
           video('media', 'Clip'),
           text('title', 'Title', 40),
           text('line', 'Line', 120),
+          optText('lineEnd', 'Line, second half', 120),
           action('action', 'Opens', true, INTERNAL),
           { key: 'look', kind: 'enum', label: 'Tile look', options: ['plain', 'tools'], required: false, hidden: true },
         ],
