@@ -347,7 +347,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v41"); // #4572 header button and logo steps on top of v40
+    assertEquals(PROMPT_VERSION, "v42"); // #4599 confirm-before-claim rules on top of v41
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

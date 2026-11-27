@@ -152,7 +152,7 @@ Deno.test("#1982 implementor: auth + read-only pins", () => {
 });
 
 Deno.test("#1982 implementor: PROMPT_VERSION v22 ads team surface", () => {
-  assertEquals(PROMPT_VERSION, "v41"); // #4572 header button and logo steps on top of v40
+  assertEquals(PROMPT_VERSION, "v42"); // #4599 confirm-before-claim rules on top of v41
   // #3355 Wave B: tools are advertised by the capability index (it feeds
   // each tool's generated description), no longer pasted into the prompt.
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +

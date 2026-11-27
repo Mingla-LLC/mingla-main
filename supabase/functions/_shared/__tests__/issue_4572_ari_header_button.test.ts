@@ -75,7 +75,7 @@ Deno.test("#4572 item 17: the tool text tells the menu and the header button apa
   assertStringIncludes(text, "never changes the header button: use set_header_button");
   assertStringIncludes(text, "set_header_button: button_label");
   assertStringIncludes(SITE_WORKSPACE_PROMPT_RULES, "never rename a menu item for it");
-  assertEquals(PROMPT_VERSION, "v41");
+  assertEquals(PROMPT_VERSION, "v42"); // #4599 confirm-before-claim rules on top of v41
 });
 
 Deno.test("#4572 item 17: the Kolanut plan (menu only) is sent back; the header-button plan passes", () => {

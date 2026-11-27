@@ -92,7 +92,7 @@ Deno.test("#1980 implementor: auth + read-only pins", () => {
 // [TEST-MOD-APPROVED #1980] prompt bumped with draft mutate + growth report tools.
 Deno.test("#1980 implementor: PROMPT_VERSION v17 advertises new tools", () => {
   // [TEST-MOD-APPROVED #1981] prompt v17→v18 for refund/cancel discovery (append-only auth).
-  assertEquals(PROMPT_VERSION, "v41"); // #4572 header button and logo steps on top of v40
+  assertEquals(PROMPT_VERSION, "v42"); // #4599 confirm-before-claim rules on top of v41
   // #3355 Wave B: tools are advertised by the capability index (it feeds
   // each tool's generated description), no longer pasted into the prompt.
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false }) +
