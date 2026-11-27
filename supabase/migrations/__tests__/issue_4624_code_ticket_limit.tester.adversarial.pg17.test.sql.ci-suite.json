@@ -7,7 +7,7 @@
   "profile": "psql-pg17-post-replay",
   "database": {
     "database": "postgres",
-    "user": "postgres",
+    "user": "supabase_admin",
     "reset": "suite-owned"
   }
 }
