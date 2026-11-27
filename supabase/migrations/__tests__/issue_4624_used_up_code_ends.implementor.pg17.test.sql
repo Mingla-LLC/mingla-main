@@ -24,6 +24,9 @@
 --      has left gets a code notice on lineRef 001; a deposit line (qty 1) on a
 --      code with none left is rejected used_up with no notice, so the deposit
 --      screen's reason line already covers it.
+--   U11 (rework P0-1, P2-2) automatics keep their real status: an ended
+--      automatic with Total uses gives no more discounts, and an ended sold-out
+--      automatic gives no discount and no notice.
 --   U10 (committed fixtures, dblink) the consume never waits on another
 --      checkout of the same code: while that one holds the discount row FOR KEY
 --      SHARE (its order_discount_lines insert), the checkout that takes the last
@@ -292,7 +295,39 @@ BEGIN
     RAISE EXCEPTION 'U9 deposit on a code with none left: want used_up and no notice; got %',v_q;
   END IF;
 
-  RAISE NOTICE 'issue_4624_used_up_code_ends: PASS (U1-U9)';
+  -- U11 (rework P0-1, P2-2) automatics keep their real status: one with Total
+  -- uses 2 that ended gives no third discount, and a sold-out automatic sale
+  -- gives no discount and no "sold out" notice once ended.
+  v_id := (public.issue_3872_upsert_discount(v_owner,'create',jsonb_build_object(
+    'brandId',v_brand,'kind','automatic','name','Two-use sale','valueType','percent','valueBps',1000,
+    'scopeKind','brand','combinesWith','any','maxTotalUses',2))->>'id')::uuid;
+  PERFORM pg_temp.i4624e_buy(v_event,v_ga,1,NULL,'u11a@example.test');
+  PERFORM pg_temp.i4624e_buy(v_event,v_ga,1,NULL,'u11b@example.test');
+  IF pg_temp.i4624e_state(v_id) <> 'ended/uses' THEN
+    RAISE EXCEPTION 'U11 setup: want the automatic ended/uses at consume; got %',pg_temp.i4624e_state(v_id);
+  END IF;
+  v_q := public.issue_3872_discount_quote_lines(v_brand,'USD',jsonb_build_array(jsonb_build_object(
+      'lineRef',v_ga,'itemKind','ticket_type','itemId',v_ga,'listingId',v_event,'listingKind','event',
+      'listUnitMinor',2500,'qty',1,'valueScale',1,'countScale',1,'allowed',true,'tz','UTC')),NULL,'{}'::jsonb);
+  IF (v_q->>'discountMinor')::integer <> 0 THEN
+    RAISE EXCEPTION 'U11 an automatic with Total uses 2 that ended still discounts: %',v_q;
+  END IF;
+  UPDATE public.brand_discounts SET ended_reason='host' WHERE id=v_id;
+  v_id := (public.issue_3872_upsert_discount(v_owner,'create',jsonb_build_object(
+    'brandId',v_brand,'kind','automatic','name','Two-ticket sale','valueType','percent','valueBps',1000,
+    'scopeKind','brand','combinesWith','any','endsAfterCount',2))->>'id')::uuid;
+  PERFORM pg_temp.i4624e_buy(v_event,v_ga,2,NULL,'u11c@example.test');
+  IF pg_temp.i4624e_state(v_id) <> 'ended/count' THEN
+    RAISE EXCEPTION 'U11 setup: want the sold-out automatic ended/count; got %',pg_temp.i4624e_state(v_id);
+  END IF;
+  v_q := public.issue_3872_discount_quote_lines(v_brand,'USD',jsonb_build_array(jsonb_build_object(
+      'lineRef',v_ga,'itemKind','ticket_type','itemId',v_ga,'listingId',v_event,'listingKind','event',
+      'listUnitMinor',2500,'qty',1,'valueScale',1,'countScale',1,'allowed',true,'tz','UTC')),NULL,'{}'::jsonb);
+  IF (v_q->>'discountMinor')::integer <> 0 OR jsonb_array_length(v_q->'notices') <> 0 THEN
+    RAISE EXCEPTION 'U11 an ended sold-out automatic: want no discount and no notice; got %',v_q;
+  END IF;
+
+  RAISE NOTICE 'issue_4624_used_up_code_ends: PASS (U1-U9, U11)';
 END;
 $used_up$;
 

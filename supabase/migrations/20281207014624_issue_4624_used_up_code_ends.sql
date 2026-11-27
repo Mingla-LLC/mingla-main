@@ -17,10 +17,13 @@
 --      order_discount_lines insert), so a blocking FOR UPDATE could deadlock
 --      them; a row another transaction holds is left to the next settle (the
 --      next consume or the sweep).
---   3. issue_3872_discount_candidates reads a discount ended only because it
---      ran out ('count' / 'uses') as active, so buyers keep the engine's own
+--   3. issue_3872_discount_candidates reads a CODE ended only because it ran
+--      out ('count' / 'uses') as active, so buyers keep the engine's own
 --      answer: "has been fully used" (used_up) while nothing is left, and a
---      place a refund frees is usable at once.
+--      place a refund frees is usable at once. Codes only: the engine re-checks
+--      remaining Total uses and tickets for a code, but for an automatic or
+--      sale price the status is the only stop, so the automatics list keeps
+--      reading the real status (exactly as 20281206014624).
 --   4. issue_3872_discount_maintenance calls the same function for every
 --      discount; its notices (the "ended" message to the host included) are
 --      unchanged, so a code ended at consume is still announced by the sweep.
@@ -275,13 +278,15 @@ REVOKE ALL ON FUNCTION public.issue_3872_copy_session_totals_to_order(uuid) FROM
 GRANT EXECUTE ON FUNCTION public.issue_3872_copy_session_totals_to_order(uuid) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- 3. Candidates (body of 20281206014624 section 3): a discount ended only
+-- 3. Candidates (body of 20281206014624 section 3): a CODE ended only
 --    because it ran out ('count' / 'uses') is read as active, so the engine
 --    keeps its own answer for it: no places left is used_up ("has been fully
 --    used", as before the code was ended at consume, never "has ended"), and a
 --    place a refund freed is usable at once, before the sweep reopens the row.
 --    The engine still refuses it past its end date, and the newest code with
 --    that text is the one looked up, so this is exactly the D-4c reopen rule.
+--    The automatics list reads the real status: an ended automatic or sale
+--    price stays ended (the engine has no other stop for its Total uses).
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.issue_3872_discount_candidates(
   p_brand_id uuid,p_lines jsonb,p_code text,p_buyer jsonb,p_at timestamptz
@@ -305,7 +310,7 @@ BEGIN
       'id',d.id,'kind',d.kind,'code',d.code,'name',d.name,'valueType',d.value_type,
       'valueBps',d.value_bps,'valueMinor',d.value_minor,'currency',d.currency,'scopeKind',d.scope_kind,
       'combinesWith',d.combines_with,'startsAt',d.starts_at,'endsAt',d.ends_at,'schedule',d.schedule,
-      'minSubtotalMinor',d.min_subtotal_minor,'status',CASE WHEN d.status='ended' AND d.ended_reason IN ('count','uses') THEN 'active' ELSE d.status END,'needsAttention',d.needs_attention,
+      'minSubtotalMinor',d.min_subtotal_minor,'status',d.status,'needsAttention',d.needs_attention,
       'deletedAt',d.deleted_at,'createdAt',d.created_at,
       'targets',COALESCE((SELECT jsonb_agg(jsonb_build_object('targetKind',t.target_kind,'listingKind',t.listing_kind,'targetId',t.target_id))
                           FROM public.brand_discount_targets t WHERE t.discount_id=d.id AND t.orphaned_at IS NULL),'[]'::jsonb),
