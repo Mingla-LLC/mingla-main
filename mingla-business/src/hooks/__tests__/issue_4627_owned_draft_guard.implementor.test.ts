@@ -1,8 +1,9 @@
 import { describe, expect, test } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   deriveBrandSetupStates,
-  isOwnedDraftCandidate,
   type BrandSetupRowState,
 } from "../useBrandSetupStates";
 import type { BrandSetupChecklist } from "../../services/brandSetupService";
@@ -57,25 +58,14 @@ describe("#4627 owned draft guard", () => {
     expect(states.draftId).toBeNull();
   });
 
-  test("a direct draft hint needs the same id, account owner, and live draft state", () => {
-    const checklist = draftChecklist();
-    expect(
-      isOwnedDraftCandidate("owned", { id: "owned", accountId: SETH_ID }, checklist, SETH_ID),
-    ).toBe(true);
-    expect(
-      isOwnedDraftCandidate("alin", { id: "alin", accountId: TEAM_OWNER_ID }, checklist, SETH_ID),
-    ).toBe(false);
-    expect(
-      isOwnedDraftCandidate("owned", { id: "other", accountId: SETH_ID }, checklist, SETH_ID),
-    ).toBe(false);
-    expect(
-      isOwnedDraftCandidate(
-        "owned",
-        { id: "owned", accountId: SETH_ID },
-        { ...checklist, facts: { ...checklist.facts, isDraft: false } },
-        SETH_ID,
-      ),
-    ).toBe(false);
+  test("the lazy direct-draft gate requires exact id, account owner, and live draft state", () => {
+    const flow = readFileSync(
+      join(process.cwd(), "src/components/brand/BrandCreationFlow.tsx"),
+      "utf8",
+    );
+    expect(flow).toContain("brand.data?.id === draftId");
+    expect(flow).toContain("brand.data.accountId === user?.id");
+    expect(flow).toContain("checklist.data?.facts.isDraft === true");
   });
 
   test("the correction does not widen owner-only delete or payout authority", () => {

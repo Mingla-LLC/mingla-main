@@ -117,7 +117,6 @@ import {
   writeErrorMessage,
   type WriteError,
 } from "./BrandSetupInterruptions";
-import { isOwnedDraftCandidate } from "../../hooks/useBrandSetupStates";
 
 // #4389 — F4's "What do you want to make first?" list (and its clips) loads
 // with F4, not with the app: one on-intent chunk keeps it out of __common.
@@ -1190,7 +1189,9 @@ const OwnedDraftInProgressGate: React.FC<{
     !waiting &&
     !brand.isError &&
     !checklist.isError &&
-    isOwnedDraftCandidate(draftId, brand.data, checklist.data, user?.id ?? null);
+    brand.data?.id === draftId &&
+    brand.data.accountId === user?.id &&
+    checklist.data?.facts.isDraft === true;
   useEffect(() => {
     if (!waiting && !accepted) onRejected();
   }, [accepted, onRejected, waiting]);
