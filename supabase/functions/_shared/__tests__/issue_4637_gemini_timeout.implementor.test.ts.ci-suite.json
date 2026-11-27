@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4637_gemini_timeout.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4637-gemini-timeout",
+  "profile": "deno-2-unit"
+}

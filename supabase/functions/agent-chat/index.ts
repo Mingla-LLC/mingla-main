@@ -45,7 +45,13 @@ import {
   compileGeminiToolDeclarations,
   GeminiContentMessage,
   GeminiError,
+  type GeminiUsage,
 } from "../_shared/agentGemini.ts";
+import { AriTurnMeter } from "../_shared/ariTurnMeter.ts";
+import {
+  ariModelCallBudget,
+  ariModelCallSignal,
+} from "../_shared/ariModelDeadline.ts";
 import {
   AriAttachmentError,
   assertAttemptRunning,
@@ -135,7 +141,6 @@ import {
   isCreateEventPlanningRequest,
   isReadInterruption,
   planEventTurn,
-  PlannerClassification,
   PlannerContext,
 } from "../_shared/agentConversationPlanner.ts";
 import {
@@ -540,6 +545,7 @@ async function appendActivity(args: {
   userId: string;
   attemptNumber: number;
   eventType: string;
+  meter?: AriTurnMeter;
 }): Promise<boolean> {
   const { error } = await args.client.rpc("append_agent_activity_event", {
     p_attempt_id: args.attemptId,
@@ -548,7 +554,63 @@ async function appendActivity(args: {
     p_event_type: args.eventType,
     p_now: new Date().toISOString(),
   });
+  if (error === null) args.meter?.markFirstProgress();
   return error === null;
+}
+
+async function meteredModelCall<T extends { usage: GeminiUsage }>(
+  meter: AriTurnMeter,
+  call: () => Promise<T>,
+): Promise<T> {
+  meter.markModelCallStarted();
+  try {
+    const result = await call();
+    meter.addModelUsage(result.usage);
+    return result;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function meteredAnswerCall<T extends { usage: GeminiUsage }>(args: {
+  meter: AriTurnMeter;
+  phase: "main_call" | "followup_call";
+  turnStartedAt: number;
+  call: (signal: AbortSignal, canRetry: () => boolean) => Promise<T>;
+}): Promise<T> {
+  const budget = ariModelCallBudget({
+    turnStartedAtMs: args.turnStartedAt,
+    turnDeadlineMs: ARI_TURN_DEADLINE_MS,
+  });
+  const signal = ariModelCallSignal(budget);
+  args.meter.startPhase(args.phase);
+  try {
+    return await meteredModelCall(
+      args.meter,
+      () =>
+        args.call(
+          signal,
+          () =>
+            ariModelCallBudget({
+              turnStartedAtMs: args.turnStartedAt,
+              turnDeadlineMs: ARI_TURN_DEADLINE_MS,
+            }).canRetry,
+        ),
+    );
+  } finally {
+    args.meter.endPhase(args.phase);
+  }
+}
+
+function isAriModelTimeout(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "TimeoutError";
+}
+
+interface AriTrainingContext {
+  conversationId: string;
+  clientTurnId: string;
+  meter: AriTurnMeter;
+  promptVersion: string;
 }
 
 async function failAttempt(args: {
@@ -557,7 +619,8 @@ async function failAttempt(args: {
   userId: string;
   attemptNumber: number;
   errorCode: string;
-}): Promise<void> {
+  training?: AriTrainingContext;
+}): Promise<boolean> {
   const now = new Date().toISOString();
   const { data } = await args.client.from("agent_turn_attempts")
     .update({
@@ -579,8 +642,28 @@ async function failAttempt(args: {
       userId: args.userId,
       attemptNumber: args.attemptNumber,
       eventType: "failed",
+      meter: args.training?.meter,
     });
+    if (args.training) {
+      await recordCommittedTraining({
+        client: args.client,
+        userId: args.userId,
+        conversationId: args.training.conversationId,
+        clientTurnId: args.training.clientTurnId,
+        assistantMessageId: null,
+        // Slice 0 does not invent an assistant transcript for an error
+        // envelope. Slice 1 supplies the exact atomically committed failure
+        // reply here.
+        assistantText: "",
+        errorCodes: [args.errorCode],
+        meter: args.training.meter,
+        promptVersion: args.training.promptVersion,
+        attemptStatus: "failed",
+      });
+    }
+    return true;
   }
+  return false;
 }
 
 async function recordCommittedTraining(args: {
@@ -588,18 +671,19 @@ async function recordCommittedTraining(args: {
   userId: string;
   conversationId: string;
   clientTurnId: string;
-  assistantMessageId: string;
+  assistantMessageId: string | null;
   assistantText: string;
   toolTrace?: unknown[];
   errorCodes?: string[];
-  latencyMs: number;
-  inputTokens?: number;
-  outputTokens?: number;
+  meter: AriTurnMeter;
+  promptVersion: string;
+  attemptStatus: "completed" | "failed" | "stopped";
   loopBudgetExhausted?: boolean;
   researchExpected?: boolean;
   hasSources?: boolean;
   capabilityIds?: string[];
 }): Promise<void> {
+  const meter = args.meter.snapshot({ attemptStatus: args.attemptStatus });
   const { data: userMessage } = await args.client.from("agent_messages")
     .select("id,content")
     .eq("user_id", args.userId)
@@ -619,13 +703,30 @@ async function recordCommittedTraining(args: {
     userText,
     assistantText: args.assistantText,
     toolTrace: args.toolTrace,
-    promptVersion: TENANT_CONTEXT_VERSION,
+    promptVersion: args.promptVersion,
     modelVersion: ARI_MODEL_VERSION,
     capabilityIds: args.capabilityIds,
     errorCodes: args.errorCodes,
-    latencyMs: args.latencyMs,
-    inputTokens: args.inputTokens,
-    outputTokens: args.outputTokens,
+    latencyMs: meter.complete_ms,
+    inputTokens: meter.input_tokens,
+    outputTokens: meter.output_tokens,
+    cachedInputTokens: meter.cached_input_tokens,
+    thinkingTokens: meter.thinking_tokens,
+    modelCalls: meter.model_calls,
+    estimatedCostMicros: meter.estimated_cost_micros,
+    routeTier: meter.route_tier,
+    streamMode: meter.stream_mode,
+    runtimeKeys: meter.runtime_keys,
+    phaseMs: meter.phase_ms,
+    firstProgressMs: meter.first_progress_ms,
+    firstTextMs: meter.first_text_ms,
+    completeMs: meter.complete_ms,
+    pricingVersion: meter.pricing_version,
+    attemptStatus: meter.attempt_status,
+    answerReadyMs: meter.answer_ready_ms,
+    firstWordShownMs: meter.first_word_shown_ms,
+    paceTier: meter.pace_tier,
+    heldMs: meter.held_ms,
     loopBudgetExhausted: args.loopBudgetExhausted,
     researchExpected: args.researchExpected,
     hasSources: args.hasSources,
@@ -642,6 +743,7 @@ async function failUnstartedAttempt(args: {
   userId: string;
   attemptNumber: number;
   errorCode: string;
+  training?: AriTrainingContext;
 }): Promise<void> {
   const now = new Date().toISOString();
   const { data } = await args.client.from("agent_turn_attempts")
@@ -664,7 +766,22 @@ async function failUnstartedAttempt(args: {
       userId: args.userId,
       attemptNumber: args.attemptNumber,
       eventType: "failed",
+      meter: args.training?.meter,
     });
+    if (args.training) {
+      await recordCommittedTraining({
+        client: args.client,
+        userId: args.userId,
+        conversationId: args.training.conversationId,
+        clientTurnId: args.training.clientTurnId,
+        assistantMessageId: null,
+        assistantText: "",
+        errorCodes: [args.errorCode],
+        meter: args.training.meter,
+        promptVersion: args.training.promptVersion,
+        attemptStatus: "failed",
+      });
+    }
   }
 }
 
@@ -861,6 +978,7 @@ type CommitTextTurnArgs = {
   text: string;
   classification: string;
   startedAt: number;
+  meter: AriTurnMeter;
   choices?: AgentChoicesV2;
   handoffRoute?: string;
   structuredData?: Record<string, unknown>;
@@ -985,6 +1103,9 @@ async function commitTextTurn(
       "Ari stopped. Your message is still here.",
     );
   }
+  args.meter.markFirstText();
+  args.meter.markAnswerReady();
+  args.meter.startPhase("commit");
   if (
     !await appendActivity({
       client: args.client,
@@ -992,6 +1113,7 @@ async function commitTextTurn(
       userId: args.userId,
       attemptNumber: currentAttempt.attempt_number,
       eventType: "finalizing_started",
+      meter: args.meter,
     })
   ) {
     await failAttempt({
@@ -1000,7 +1122,14 @@ async function commitTextTurn(
       userId: args.userId,
       attemptNumber: currentAttempt.attempt_number,
       errorCode: "ACTIVITY_EVENT_FAILED",
+      training: {
+        conversationId: args.conversationId,
+        clientTurnId: args.clientTurnId,
+        meter: args.meter,
+        promptVersion: ariPromptVersionFor(args.understandFirst !== false),
+      },
     });
+    args.meter.endPhase("commit");
     return errorResponse(
       500,
       "INTERNAL",
@@ -1026,6 +1155,7 @@ async function commitTextTurn(
       p_now: nowIso,
     },
   );
+  args.meter.endPhase("commit");
   if (won !== true) {
     emitTaskEvent({
       intent: args.previousState.active_task?.intent ?? null,
@@ -1045,6 +1175,7 @@ async function commitTextTurn(
       ),
     );
   }
+  args.meter.markFirstWordShown();
   const agentRun = args.structuredData?.agent_run as
     | {
       status?: unknown;
@@ -1073,13 +1204,9 @@ async function commitTextTurn(
     assistantText: publicText,
     toolTrace: qualityTrace,
     errorCodes,
-    latencyMs: Date.now() - args.startedAt,
-    inputTokens: typeof agentRun?.usage?.input === "number"
-      ? agentRun.usage.input
-      : undefined,
-    outputTokens: typeof agentRun?.usage?.output === "number"
-      ? agentRun.usage.output
-      : undefined,
+    meter: args.meter,
+    promptVersion: ariPromptVersionFor(args.understandFirst !== false),
+    attemptStatus: "completed",
     loopBudgetExhausted: agentRun?.reason === "budget" ||
       agentRun?.reason === "deadline",
     researchExpected: agentRun?.research_used === true,
@@ -1233,6 +1360,7 @@ Deno.serve(async (req) => {
 async function handle(req: Request): Promise<Response> {
   const turnStartedAt = Date.now();
   const requestNow = new Date();
+  const turnMeter = new AriTurnMeter({ startedAtMs: requestNow.getTime() });
   // Parse + validate body
   let body: RequestBody;
   try {
@@ -1413,6 +1541,7 @@ async function handle(req: Request): Promise<Response> {
 
   // #3355: the flow engine switch is a feature flag (no secret), read once.
   const engineOn = await readFlowEngineEnabled(serviceClient);
+  if (engineOn) turnMeter.markRuntimeKey("ari_flow_engine");
 
   // #3355 P1 (D-1): the cap is judged after turn recognition. A client turn
   // that was already claimed is a replay and always returns its stored
@@ -1472,7 +1601,6 @@ async function handle(req: Request): Promise<Response> {
   // #3429: one service-owned claim creates or recovers the conversation,
   // provisional title, one user row, exact attachment binding, and one logical
   // attempt. Neither the app nor a second HTTP retry can create another row.
-  let conversationId: string;
   let conversationSummary: string | null = null;
   let activeBrand: AccessibleAgentBrand | null = null;
   let taskState = IDLE_TASK_STATE;
@@ -1702,10 +1830,27 @@ async function handle(req: Request): Promise<Response> {
         : "Failed to accept this message safely.",
     );
   }
-  conversationId = claimed.conversation_id;
+  const conversationId = claimed.conversation_id;
   const userMessageId = claimed.message_id;
   const attemptId = claimed.attempt_id;
   const attemptNumber = claimed.attempt_number;
+  // Resolve the runtime identity immediately after the durable claim. A turn
+  // that fails before prompt construction still archives the rollout's real
+  // prompt version instead of guessing the on-path version.
+  const understandFirst = await readAriUnderstandFirst(
+    serviceClient,
+    activeBrand?.id ?? null,
+  );
+  const turnPromptVersion = ariPromptVersionFor(understandFirst);
+  if (understandFirst) {
+    turnMeter.markRuntimeKey("ari-understand-first-3355");
+  }
+  const turnTraining = (): AriTrainingContext => ({
+    conversationId,
+    clientTurnId: body.client_turn_id,
+    meter: turnMeter,
+    promptVersion: turnPromptVersion,
+  });
   if (websiteKickoff && engineOn) {
     await markEngineOriginTurn(serviceClient, userId, attemptId);
   }
@@ -2046,6 +2191,7 @@ async function handle(req: Request): Promise<Response> {
       );
     }
     executionOwned = true;
+    turnMeter.startPhase("pre_model");
     if (
       attemptNumber > 1 && !await appendActivity({
         client: serviceClient,
@@ -2053,6 +2199,7 @@ async function handle(req: Request): Promise<Response> {
         userId,
         attemptNumber,
         eventType: "automated_retry_started",
+        meter: turnMeter,
       })
     ) {
       return errorResponse(
@@ -2098,6 +2245,7 @@ async function handle(req: Request): Promise<Response> {
         text: flowSideFailureText(flowSide?.artefact ?? null),
         classification: "flow_engine_side_failed",
         startedAt: turnStartedAt,
+        meter: turnMeter,
         ...(sideChoices ? { choices: sideChoices } : {}),
         ...flowReplyStructured(flowSide?.artefact ?? null),
         flowArtefact: flowSide?.artefact ?? null,
@@ -2117,10 +2265,6 @@ async function handle(req: Request): Promise<Response> {
     // Off: the turn runs as before #3355 — no intent read or start_flow, no
     // brand snapshot, screen context or memory lines in the prompt, no
     // reply claim check and no ask-the-team offer.
-    const understandFirst = await readAriUnderstandFirst(
-      serviceClient,
-      activeBrand?.id ?? null,
-    );
     // #4453 Website workspace: the turn came from the workspace's Ari panel.
     // Its tools exist only on the switch's on path; with the switch off (or
     // no brand) the turn runs as an ordinary one.
@@ -2196,6 +2340,7 @@ async function handle(req: Request): Promise<Response> {
     const intentHints = collectAriIntentHints(semanticMessage, intentOpenFlow);
     const intentSafetyReply = ariDeterministicSafetyReply(semanticMessage) !==
       null;
+    turnMeter.endPhase("pre_model");
     const intentResult = await readAriIntent({
       input: {
         message: semanticMessage,
@@ -2224,14 +2369,24 @@ async function handle(req: Request): Promise<Response> {
         : injection.flagged
         ? "injection"
         : null,
-      call: async (request) =>
-        (await callGeminiStructured({
-          systemPrompt: request.systemPrompt,
-          contents: request.contents,
-          responseSchema: request.schema,
-          signal: request.signal,
-        })).value,
+      call: async (request) => {
+        turnMeter.markModelCallStarted();
+        try {
+          return (await callGeminiStructured({
+            systemPrompt: request.systemPrompt,
+            contents: request.contents,
+            responseSchema: request.schema,
+            signal: request.signal,
+          }).then((result) => {
+            turnMeter.addModelUsage(result.usage);
+            return result;
+          })).value;
+        } catch (error) {
+          throw error;
+        }
+      },
     });
+    turnMeter.addPhase("intent", intentResult.elapsedMs);
     const turnRoute = routeAriTurn({
       result: intentResult,
       hints: intentHints,
@@ -2315,6 +2470,7 @@ async function handle(req: Request): Promise<Response> {
             ),
             classification: "flow_engine_refused",
             startedAt: turnStartedAt,
+            meter: turnMeter,
             flowState: decision.state,
           });
         }
@@ -2364,6 +2520,7 @@ async function handle(req: Request): Promise<Response> {
           : null,
         classification: "flow_engine_proposal",
         startedAt: turnStartedAt,
+        meter: turnMeter,
       });
     };
     const commitFlowReply = async (
@@ -2385,6 +2542,7 @@ async function handle(req: Request): Promise<Response> {
         text: decision.text,
         classification: decision.classification,
         startedAt: turnStartedAt,
+        meter: turnMeter,
         ...(choices ? { choices } : {}),
         ...(decision.handoff_route
           ? { handoffRoute: decision.handoff_route }
@@ -2508,6 +2666,7 @@ async function handle(req: Request): Promise<Response> {
             : "That question isn't open any more, so nothing changed.",
           classification: "flow_engine_stale",
           startedAt: turnStartedAt,
+          meter: turnMeter,
           flowState: decision.state,
         });
       }
@@ -2671,6 +2830,7 @@ async function handle(req: Request): Promise<Response> {
           "I couldn't start that setup just now, so nothing was changed. Tell me what you'd like to create and I'll help with it here.",
         classification: "flow_start_unavailable",
         startedAt: turnStartedAt,
+        meter: turnMeter,
         ...(flowParked ? { flowState: flowParked.state } : {}),
       });
     };
@@ -2764,6 +2924,7 @@ async function handle(req: Request): Promise<Response> {
             },
             classification: "ari_escalation_ask_team",
             startedAt: turnStartedAt,
+            meter: turnMeter,
           });
         };
         return { response: await commitAskTeamCard(), note: null };
@@ -3018,6 +3179,7 @@ async function handle(req: Request): Promise<Response> {
         userId,
         attemptNumber,
         eventType: "attachments_processing_started",
+        meter: turnMeter,
       });
       if (!activityWritten) {
         await failAttempt({
@@ -3026,6 +3188,7 @@ async function handle(req: Request): Promise<Response> {
           userId,
           attemptNumber,
           errorCode: "ACTIVITY_EVENT_FAILED",
+          training: turnTraining(),
         });
         return errorResponse(
           500,
@@ -3053,6 +3216,7 @@ async function handle(req: Request): Promise<Response> {
           userId,
           attemptNumber,
           errorCode: "ATTACHMENT_SCOPE_DENIED",
+          training: turnTraining(),
         });
         return errorResponse(
           400,
@@ -3078,6 +3242,7 @@ async function handle(req: Request): Promise<Response> {
           userId,
           attemptNumber,
           errorCode: code,
+          training: turnTraining(),
         });
         return errorResponse(400, code, code);
       }
@@ -3089,6 +3254,7 @@ async function handle(req: Request): Promise<Response> {
     // #3355 Wave D (D1): the notes worth having this turn, read as the caller.
     // #3355 rework 3b (I-ARI-READS-IN-BRAND-TIME): the brand's display zone,
     // so every instant the model reads carries its brand-local rendering.
+    turnMeter.startPhase("context");
     const [turnSnapshot, turnScreen, turnMemory, turnZone] = await Promise.all([
       activeBrand && understandFirst
         ? getAriBrandSnapshot({
@@ -3121,7 +3287,7 @@ async function handle(req: Request): Promise<Response> {
       activeBrand
         ? readAriBrandDisplayZone(userClient, activeBrand.id)
         : Promise.resolve(null),
-    ]);
+    ]).finally(() => turnMeter.endPhase("context"));
     const turnContextPart = ariTurnContextPart({
       snapshot: turnSnapshot,
       screen: turnScreen,
@@ -3346,6 +3512,7 @@ async function handle(req: Request): Promise<Response> {
             toolArgs: planned.proposal.tool_args,
             classification: planned.classification,
             startedAt: turnStartedAt,
+            meter: turnMeter,
           });
         }
         return await commitTextTurn({
@@ -3361,6 +3528,7 @@ async function handle(req: Request): Promise<Response> {
           text: planned.text,
           classification: planned.classification,
           startedAt: turnStartedAt,
+          meter: turnMeter,
           choices: planned.choices,
           handoffRoute: planned.handoffRoute,
         });
@@ -3454,6 +3622,7 @@ async function handle(req: Request): Promise<Response> {
             toolArgs: planned.proposal.tool_args,
             classification: planned.classification,
             startedAt: turnStartedAt,
+            meter: turnMeter,
           });
         }
         return await commitTextTurn({
@@ -3469,6 +3638,7 @@ async function handle(req: Request): Promise<Response> {
           text: planned.text,
           classification: planned.classification,
           startedAt: turnStartedAt,
+          meter: turnMeter,
           choices: planned.choices,
         });
       } catch (err: unknown) {
@@ -3574,6 +3744,7 @@ async function handle(req: Request): Promise<Response> {
             text: retry.text,
             classification: "website_setup_structured_retry",
             startedAt: turnStartedAt,
+            meter: turnMeter,
             structuredData: { rendition: retry.rendition },
           });
         }
@@ -3600,6 +3771,7 @@ async function handle(req: Request): Promise<Response> {
             text: storyRetry.text,
             classification: "website_setup_structured_retry",
             startedAt: turnStartedAt,
+            meter: turnMeter,
             structuredData: { rendition: storyRetry.rendition },
           });
         }
@@ -3661,6 +3833,7 @@ async function handle(req: Request): Promise<Response> {
           toolArgs: proposalArgs,
           classification: "website_setup_structured_answer",
           startedAt: turnStartedAt,
+          meter: turnMeter,
         });
       } catch (err: unknown) {
         if (err instanceof ToolError) {
@@ -3696,10 +3869,10 @@ async function handle(req: Request): Promise<Response> {
     // the governed flag is disabled or unavailable.
     const { data: agentLoopFlag, error: agentLoopFlagError } = await userClient
       .rpc("ari_agent_loop_enabled");
-    if (
-      websiteSetupBoundary || websiteWorkspace ||
-      (!agentLoopFlagError && agentLoopFlag === true)
-    ) {
+    const useAgentLoop = websiteSetupBoundary || websiteWorkspace ||
+      (!agentLoopFlagError && agentLoopFlag === true);
+    turnMeter.markRuntimeKey(useAgentLoop ? "loop_on" : "loop_off");
+    if (useAgentLoop) {
       if (
         !await appendActivity({
           client: serviceClient,
@@ -3707,6 +3880,7 @@ async function handle(req: Request): Promise<Response> {
           userId,
           attemptNumber,
           eventType: "model_started",
+          meter: turnMeter,
         })
       ) {
         return errorResponse(
@@ -3899,19 +4073,19 @@ ${boundedAgentContext}
       // route agrees the turn is a tool use or a question.
       const deterministicRead =
         !turnRoute.allowDeterministicReads || websiteWorkspace
-        ? null
-        : ariDeterministicReadPlan(
-          semanticMessage,
-          activeBrand?.id ?? null,
-          typeof taskState.active_task?.slots.title.value === "string"
-            ? taskState.active_task.slots.title.value
-            : recentEventTitle,
-          currentAttachmentParts.length > 0,
-          needsAriCampaignDraftReview(semanticMessage)
-            ? findAriCampaignDraftId(history)
-            : null,
-          { legacy: !understandFirst },
-        );
+          ? null
+          : ariDeterministicReadPlan(
+            semanticMessage,
+            activeBrand?.id ?? null,
+            typeof taskState.active_task?.slots.title.value === "string"
+              ? taskState.active_task.slots.title.value
+              : recentEventTitle,
+            currentAttachmentParts.length > 0,
+            needsAriCampaignDraftReview(semanticMessage)
+              ? findAriCampaignDraftId(history)
+              : null,
+            { legacy: !understandFirst },
+          );
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
       );
@@ -4008,6 +4182,7 @@ ${boundedAgentContext}
         : ariGuideInitialCalls(semanticMessage);
       let lastProgressEvent: string | null = null;
       let sideModelFailed = false;
+      let loopModelTimedOut = false;
       // #4453: this turn's draft snapshot, kept so the plan's ids are
       // checked against what was actually read.
       let workspaceSnapshot: unknown = null;
@@ -4134,7 +4309,7 @@ ${boundedAgentContext}
               : []),
             ...ariGuideRecoveryCalls(text, observations, semanticMessage),
           ],
-        callModel: async (observations, step) => {
+        callModel: async (observations, _step) => {
           await assertAttemptRunning(
             serviceClient,
             attemptId,
@@ -4175,23 +4350,35 @@ ${boundedAgentContext}
           emitAriPhase("model_start", { operationState: "sending" });
           let model: Awaited<ReturnType<typeof callGemini>>;
           try {
-            model = await callGemini({
-              systemPrompt: loopSystemPrompt,
-              // #3355 ship-prep: brand-local times only with the switch on.
-              contents: understandFirst
-                ? withAriLocalTimesForModel(
-                  [...contents, ...observationContents],
-                  turnZone,
-                )
-                : [...contents, ...observationContents],
-              // #3355 Wave B (B3): generated per-tool descriptions (the
-              // tools' own descriptions with the switch off).
-              tools: [
-                ...ariTurnToolDeclarations(selectedTools, understandFirst),
-                ...startFlowDeclarations,
-              ],
+            model = await meteredAnswerCall({
+              meter: turnMeter,
+              phase: "main_call",
+              turnStartedAt: turnStartedAt,
+              call: async (signal, canRetry) =>
+                await callGemini({
+                  systemPrompt: loopSystemPrompt,
+                  // #3355 ship-prep: brand-local times only with the switch on.
+                  contents: understandFirst
+                    ? withAriLocalTimesForModel(
+                      [...contents, ...observationContents],
+                      turnZone,
+                    )
+                    : [...contents, ...observationContents],
+                  // #3355 Wave B (B3): generated per-tool descriptions (the
+                  // tools' own descriptions with the switch off).
+                  tools: [
+                    ...ariTurnToolDeclarations(
+                      selectedTools,
+                      understandFirst,
+                    ),
+                    ...startFlowDeclarations,
+                  ],
+                  signal,
+                  canRetry,
+                }),
             });
           } catch (modelError) {
+            if (isAriModelTimeout(modelError)) loopModelTimedOut = true;
             if (flowSide && !(modelError instanceof AriAttachmentError)) {
               sideModelFailed = true;
             }
@@ -4256,7 +4443,10 @@ ${boundedAgentContext}
           if (call.name === "update_experience") {
             const optionIssue = experiencePriceOptionsIssue(call.args);
             if (optionIssue) {
-              return { code: "EXPERIENCE_PRICE_OPTION_PARTIAL", message: optionIssue };
+              return {
+                code: "EXPERIENCE_PRICE_OPTION_PARTIAL",
+                message: optionIssue,
+              };
             }
           }
           if (call.name === "manage_experience_stops") {
@@ -4492,6 +4682,7 @@ ${boundedAgentContext}
             userId,
             attemptNumber,
             eventType,
+            meter: turnMeter,
           });
         },
         // #3355 Wave B (B4): a failed call reaches the model with its
@@ -4510,10 +4701,28 @@ ${boundedAgentContext}
         if (sideModelFailed) return await flowSideFailure();
         throw loopError;
       }
+      for (const observation of loopResult.observations) {
+        turnMeter.addPhase("tools", observation.elapsedMs);
+      }
       // The loop turns a model failure into a stop; during Website setup
       // that is the same plain words and the current card.
       if (sideModelFailed && loopResult.kind === "stopped") {
         return await flowSideFailure();
+      }
+      if (loopModelTimedOut && loopResult.kind === "stopped") {
+        await failAttempt({
+          client: serviceClient,
+          attemptId,
+          userId,
+          attemptNumber,
+          errorCode: "MODEL_TIMEOUT",
+          training: turnTraining(),
+        });
+        return errorResponse(
+          504,
+          "ACCEPTED_RESPONSE_FAILED",
+          "I couldn't finish that in time. Nothing was changed. Try again.",
+        );
       }
       // #3355 Wave E (D3a): the model started a guided setup.
       if (loopResult.kind === "flow_start") {
@@ -4541,6 +4750,7 @@ ${boundedAgentContext}
             text: `Your event plan is still active. ${resumePrompt}`,
             classification: "question_interruption",
             startedAt: turnStartedAt,
+            meter: turnMeter,
             choices: liveChoices ?? undefined,
             resumed: true,
           });
@@ -4644,6 +4854,7 @@ ${boundedAgentContext}
               text: statedSlots.text,
               classification: "stated_slot_ask",
               startedAt: turnStartedAt,
+              meter: turnMeter,
               ...(flowParked ? { flowState: flowParked.state } : {}),
             });
           }
@@ -4710,6 +4921,7 @@ ${boundedAgentContext}
               : null,
             classification: "agent_loop_write_proposal",
             startedAt: turnStartedAt,
+            meter: turnMeter,
           });
         } catch (error: unknown) {
           if (
@@ -4731,6 +4943,7 @@ ${boundedAgentContext}
               text: error.message,
               classification: "owner_refusal",
               startedAt: turnStartedAt,
+              meter: turnMeter,
             });
           }
           if (error instanceof ToolError) {
@@ -4888,6 +5101,7 @@ ${boundedAgentContext}
           intentFromModel: intentResult.source === "model",
           observations: loopResult.observations,
           turnStartedAt,
+          meter: turnMeter,
         })
         : lintedLoopText;
       const guideCitations = ariGuideCitations(loopResult.observations);
@@ -4936,6 +5150,7 @@ ${boundedAgentContext}
         classification: flowParked ? "agent_loop_flow_parked" : "agent_loop",
         gapOwnerText: semanticMessage,
         startedAt: turnStartedAt,
+        meter: turnMeter,
         choices: (readInterruption || questionInterruption) && liveChoices
           ? liveChoices
           : undefined,
@@ -4987,6 +5202,7 @@ ${boundedAgentContext}
         userId,
         attemptNumber,
         eventType: "model_started",
+        meter: turnMeter,
       })
     ) {
       await failAttempt({
@@ -4995,6 +5211,7 @@ ${boundedAgentContext}
         userId,
         attemptNumber,
         errorCode: "ACTIVITY_EVENT_FAILED",
+        training: turnTraining(),
       });
       return errorResponse(
         500,
@@ -5010,21 +5227,29 @@ ${boundedAgentContext}
         userId,
         attemptNumber,
       );
-      gemini = await callGemini({
-        systemPrompt,
-        // #3355 ship-prep: origin/main's contents and tools with the switch off.
-        contents: understandFirst
-          ? withAriLocalTimesForModel(contents, turnZone)
-          : contents,
-        tools: [
-          ...ariTurnToolDeclarations(
-            ariTurnAgentTools(understandFirst),
-            understandFirst,
-          ),
-          // #3355 Wave E (D3a): the legacy single-call path can start a
-          // guided setup too.
-          ...(startFlowAllowed ? [ARI_START_FLOW_DECLARATION] : []),
-        ],
+      gemini = await meteredAnswerCall({
+        meter: turnMeter,
+        phase: "main_call",
+        turnStartedAt: turnStartedAt,
+        call: async (signal, canRetry) =>
+          await callGemini({
+            systemPrompt,
+            // #3355 ship-prep: origin/main's contents and tools with the switch off.
+            contents: understandFirst
+              ? withAriLocalTimesForModel(contents, turnZone)
+              : contents,
+            tools: [
+              ...ariTurnToolDeclarations(
+                ariTurnAgentTools(understandFirst),
+                understandFirst,
+              ),
+              // #3355 Wave E (D3a): the legacy single-call path can start a
+              // guided setup too.
+              ...(startFlowAllowed ? [ARI_START_FLOW_DECLARATION] : []),
+            ],
+            signal,
+            canRetry,
+          }),
       });
     } catch (err: any) {
       // #3355 — a side question during Website setup: plain words and the
@@ -5049,13 +5274,23 @@ ${boundedAgentContext}
         attemptNumber,
         errorCode: err instanceof AriAttachmentError
           ? "TURN_STOPPED"
+          : isAriModelTimeout(err)
+          ? "MODEL_TIMEOUT"
           : "ACCEPTED_RESPONSE_FAILED",
+        training: turnTraining(),
       });
       if (err instanceof AriAttachmentError) {
         return errorResponse(
           409,
           "TURN_STOPPED",
           "Ari stopped. Your message is still here.",
+        );
+      }
+      if (isAriModelTimeout(err)) {
+        return errorResponse(
+          504,
+          "ACCEPTED_RESPONSE_FAILED",
+          "I couldn't finish that in time. Nothing was changed. Try again.",
         );
       }
       const schemaResponse = schemaErrorResponse(err);
@@ -5135,7 +5370,8 @@ ${boundedAgentContext}
       return await commitModelFlowStart(gemini.toolCall.args);
     }
     if (gemini.toolCall) {
-      let tool = findAriTurnTool(gemini.toolCall.name, understandFirst);
+      const modelToolCall = gemini.toolCall;
+      let tool = findAriTurnTool(modelToolCall.name, understandFirst);
       if (!tool) {
         return errorResponse(
           500,
@@ -5157,6 +5393,7 @@ ${boundedAgentContext}
               userId,
               attemptNumber,
               eventType: "workspace_read_started",
+              meter: turnMeter,
             })
           ) {
             throw new ToolError(
@@ -5170,14 +5407,21 @@ ${boundedAgentContext}
             userId,
             attemptNumber,
           );
-          const result = await tool.executor(
-            gemini.toolCall.args,
-            userClient,
-            userId,
-            {
-              operationId: null,
-            },
-          );
+          turnMeter.startPhase("tools");
+          const result = await (async () => {
+            try {
+              return await tool.executor(
+                modelToolCall.args,
+                userClient,
+                userId,
+                {
+                  operationId: null,
+                },
+              );
+            } finally {
+              turnMeter.endPhase("tools");
+            }
+          })();
           await assertAttemptRunning(
             serviceClient,
             attemptId,
@@ -5236,19 +5480,42 @@ ${boundedAgentContext}
           ];
           let followup;
           try {
-            followup = await callGemini({
-              systemPrompt,
-              contents: understandFirst
-                ? withAriLocalTimesForModel(followupContents, turnZone)
-                : followupContents,
-              tools: ariTurnToolDeclarations(
-                ariTurnAgentTools(understandFirst),
-                understandFirst,
-              ),
+            followup = await meteredAnswerCall({
+              meter: turnMeter,
+              phase: "followup_call",
+              turnStartedAt: turnStartedAt,
+              call: async (signal, canRetry) =>
+                await callGemini({
+                  systemPrompt,
+                  contents: understandFirst
+                    ? withAriLocalTimesForModel(followupContents, turnZone)
+                    : followupContents,
+                  tools: ariTurnToolDeclarations(
+                    ariTurnAgentTools(understandFirst),
+                    understandFirst,
+                  ),
+                  signal,
+                  canRetry,
+                }),
             });
           } catch (err: unknown) {
             const schemaResponse = schemaErrorResponse(err);
             if (schemaResponse) return schemaResponse;
+            if (isAriModelTimeout(err)) {
+              await failAttempt({
+                client: serviceClient,
+                attemptId,
+                userId,
+                attemptNumber,
+                errorCode: "MODEL_TIMEOUT",
+                training: turnTraining(),
+              });
+              return errorResponse(
+                504,
+                "ACCEPTED_RESPONSE_FAILED",
+                "I couldn't finish that in time. Nothing was changed. Try again.",
+              );
+            }
             // issue #3605 — this catch used to be silent. A dead follow-up is
             // indistinguishable from a terse model reply once it becomes
             // "Here's what I found.", so #3605 sat in production answering
@@ -5315,6 +5582,7 @@ ${boundedAgentContext}
                 elapsedMs: 0,
               }],
               turnStartedAt,
+              meter: turnMeter,
             })
             : "Here's what I found.";
           await assertAttemptRunning(
@@ -5358,6 +5626,7 @@ ${boundedAgentContext}
               ? "read_interruption"
               : "general_read",
             startedAt: turnStartedAt,
+            meter: turnMeter,
             choices: readInterruption && liveChoices ? liveChoices : undefined,
             structuredData: {
               ...structuredResult,
@@ -5430,6 +5699,7 @@ ${boundedAgentContext}
                   `I couldn't complete that read safely. Back to your event plan: ${resumePrompt}`,
                 classification: "read_interruption",
                 startedAt: turnStartedAt,
+                meter: turnMeter,
                 choices: liveChoices ?? undefined,
                 resumed: true,
               });
@@ -5464,6 +5734,7 @@ ${boundedAgentContext}
                 `That read didn't finish. Back to your event plan: ${resumePrompt}`,
               classification: "read_interruption",
               startedAt: turnStartedAt,
+              meter: turnMeter,
               choices: liveChoices ?? undefined,
               resumed: true,
             });
@@ -5501,6 +5772,7 @@ ${boundedAgentContext}
           text: `Your event plan is still active. ${resumePrompt}`,
           classification: "question_interruption",
           startedAt: turnStartedAt,
+          meter: turnMeter,
           choices: liveChoices ?? undefined,
           resumed: true,
         });
@@ -5564,6 +5836,7 @@ ${boundedAgentContext}
             text: err.message,
             classification: "owner_refusal",
             startedAt: turnStartedAt,
+            meter: turnMeter,
           });
         }
         if (err instanceof ToolError) {
@@ -5623,6 +5896,7 @@ ${boundedAgentContext}
             text: singleStatedSlots.text,
             classification: "stated_slot_ask",
             startedAt: turnStartedAt,
+            meter: turnMeter,
           });
         }
         gemini.toolCall.args = singleStatedSlots.args;
@@ -5690,6 +5964,7 @@ ${boundedAgentContext}
             text: err.message,
             classification: "owner_refusal",
             startedAt: turnStartedAt,
+            meter: turnMeter,
           });
         }
         if (err instanceof ToolError) {
@@ -5730,6 +6005,7 @@ ${boundedAgentContext}
         proposalContext,
         classification: "general_write_proposal",
         startedAt: turnStartedAt,
+        meter: turnMeter,
       });
     }
 
@@ -5757,6 +6033,7 @@ ${boundedAgentContext}
       intent: intentResult.read,
       intentFromModel: intentResult.source === "model",
       turnStartedAt,
+      meter: turnMeter,
     });
     const resumedState = interruptionState.status === "interrupted"
       ? resumeInterruption(interruptionState)
@@ -5802,6 +6079,7 @@ ${boundedAgentContext}
         : "general",
       gapOwnerText: semanticMessage,
       startedAt: turnStartedAt,
+      meter: turnMeter,
       choices: (readInterruption || questionInterruption) && liveChoices
         ? liveChoices
         : undefined,
@@ -5812,13 +6090,37 @@ ${boundedAgentContext}
     // attempt. This catches validation/provider/tool exits without weakening
     // the atomic late-result gate used by successful commits.
     if (executionOwned) {
-      await failAttempt({
+      const failed = await failAttempt({
         client: serviceClient,
         attemptId,
         userId,
         attemptNumber,
         errorCode: "TURN_ABORTED",
+        training: turnTraining(),
       });
+      if (!failed) {
+        const { data: terminalAttempt } = await serviceClient.from(
+          "agent_turn_attempts",
+        )
+          .select("status")
+          .eq("id", attemptId)
+          .eq("user_id", userId)
+          .eq("attempt_number", attemptNumber)
+          .maybeSingle();
+        if (terminalAttempt?.status === "stopped") {
+          await recordCommittedTraining({
+            client: serviceClient,
+            userId,
+            conversationId,
+            clientTurnId: body.client_turn_id,
+            assistantMessageId: null,
+            assistantText: "",
+            meter: turnMeter,
+            promptVersion: turnPromptVersion,
+            attemptStatus: "stopped",
+          });
+        }
+      }
     } else {
       await failUnstartedAttempt({
         client: serviceClient,
@@ -5826,6 +6128,7 @@ ${boundedAgentContext}
         userId,
         attemptNumber,
         errorCode: "PRE_EXECUTION_ABORTED",
+        training: turnTraining(),
       });
     }
   }
@@ -5923,6 +6226,7 @@ async function guardReplyClaims(args: {
   intentFromModel?: boolean;
   observations?: readonly AgentLoopObservation[];
   turnStartedAt: number;
+  meter: AriTurnMeter;
 }): Promise<string> {
   if (!args.understandFirst) return args.text;
   const evidence = claimEvidenceFromHistory(args.history);
@@ -6058,14 +6362,19 @@ async function guardReplyClaims(args: {
     ...(target ? { askedKinds: new Set([claimKindOfTool(target)]) } : {}),
     timeoutMs: ARI_TURN_DEADLINE_MS - (Date.now() - args.turnStartedAt),
     call: async (request) =>
-      (await callGeminiStructured({
-        systemPrompt: request.systemPrompt,
-        contents: request.contents,
-        responseSchema: request.schema,
-        signal: request.signal,
-        maxOutputTokens: 512,
-      })).value,
+      (await meteredModelCall(
+        args.meter,
+        () =>
+          callGeminiStructured({
+            systemPrompt: request.systemPrompt,
+            contents: request.contents,
+            responseSchema: request.schema,
+            signal: request.signal,
+            maxOutputTokens: 512,
+          }),
+      )).value,
   });
+  args.meter.addPhase("claim_check", check.elapsedMs);
   console.info(
     "[agent-chat] claim check",
     JSON.stringify({
@@ -6216,6 +6525,7 @@ async function commitPendingTurn(args: {
   uiCapabilities?: AriUiCapabilitiesV2 | null;
   classification: string;
   startedAt: number;
+  meter: AriTurnMeter;
   /**
    * #3355 ship-prep: the rollout switch. False: origin/main's card (no
    * brand time zone, currency or discount titles added). Unset: on.
@@ -6251,6 +6561,7 @@ async function commitPendingTurn(args: {
     id: pendingActionId,
     user_id: args.userId,
     conversation_id: args.conversationId,
+    origin_client_turn_id: args.clientTurnId,
     tool_name: args.toolName,
     tool_args: args.toolArgs,
     status: "pending",
@@ -6310,6 +6621,8 @@ async function commitPendingTurn(args: {
       "Ari stopped. Your message is still here.",
     );
   }
+  args.meter.markAnswerReady();
+  args.meter.startPhase("commit");
   if (
     !await appendActivity({
       client: args.client,
@@ -6317,6 +6630,7 @@ async function commitPendingTurn(args: {
       userId: args.userId,
       attemptNumber: currentAttempt.attempt_number,
       eventType: "finalizing_started",
+      meter: args.meter,
     })
   ) {
     await args.pendingClient.from("agent_pending_actions")
@@ -6328,7 +6642,14 @@ async function commitPendingTurn(args: {
       userId: args.userId,
       attemptNumber: currentAttempt.attempt_number,
       errorCode: "ACTIVITY_EVENT_FAILED",
+      training: {
+        conversationId: args.conversationId,
+        clientTurnId: args.clientTurnId,
+        meter: args.meter,
+        promptVersion: ariPromptVersionFor(args.understandFirst !== false),
+      },
     });
+    args.meter.endPhase("commit");
     return errorResponse(
       500,
       "INTERNAL",
@@ -6360,6 +6681,7 @@ async function commitPendingTurn(args: {
       p_now: nowIso,
     },
   );
+  args.meter.endPhase("commit");
   if (won !== true) {
     await args.pendingClient.from("agent_pending_actions")
       .update({ status: "cancelled", failure_reason: "TASK_STATE_CONFLICT" })
@@ -6393,7 +6715,9 @@ async function commitPendingTurn(args: {
       tool: args.toolName,
       outcome: "waiting_for_approval",
     }],
-    latencyMs: Date.now() - args.startedAt,
+    meter: args.meter,
+    promptVersion: ariPromptVersionFor(args.understandFirst !== false),
+    attemptStatus: "completed",
     capabilityIds: [args.toolName],
   });
   emitTaskEvent({

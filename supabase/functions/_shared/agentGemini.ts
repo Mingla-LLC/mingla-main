@@ -14,6 +14,7 @@ import {
   geminiErrorFingerprint,
   geminiGenerateContentUrl,
 } from "./geminiModel.ts";
+import { ARI_MODEL_CALL_MAX_MS } from "./ariModelDeadline.ts";
 
 const MAX_MALFORMED_RETRIES = 2;
 const MAX_OUTPUT_TOKENS = 1500;
@@ -57,6 +58,8 @@ export interface GeminiUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  cached_input_tokens?: number;
+  thinking_tokens?: number;
 }
 
 export interface GeminiToolCall {
@@ -487,6 +490,8 @@ export async function callGemini(args: {
   systemPrompt: string;
   contents: GeminiContentMessage[];
   tools: GeminiToolDef[];
+  signal?: AbortSignal;
+  canRetry?: () => boolean;
   /**
    * #3355 evaluation-only override. Runtime callers omit this. A candidate is
    * accepted only when the operator has explicitly listed it in the local
@@ -516,8 +521,13 @@ export async function callGemini(args: {
       systemPrompt: args.systemPrompt,
       contents: args.contents,
       toolDefinitions: args.tools,
+      signal: args.signal,
     });
   }
+  // Callers with a tighter turn-aware deadline pass it explicitly. This
+  // default keeps older Ari continuations bounded while they migrate to the
+  // shared turn-budget helper.
+  const signal = args.signal ?? AbortSignal.timeout(ARI_MODEL_CALL_MAX_MS);
 
   // GEMINI_API_KEY_ARI is the ONLY accepted secret. No fallbacks — Ari
   // gets its own isolated quota by design. If this key is missing, the
@@ -584,10 +594,12 @@ export async function callGemini(args: {
 
   let attempt = 0;
   let lastFinishReason = "";
-  let lastUsage: GeminiUsage = {
+  const totalUsage: GeminiUsage = {
     prompt_tokens: 0,
     completion_tokens: 0,
     total_tokens: 0,
+    cached_input_tokens: 0,
+    thinking_tokens: 0,
   };
 
   while (attempt <= MAX_MALFORMED_RETRIES) {
@@ -598,6 +610,7 @@ export async function callGemini(args: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     if (!response.ok) {
@@ -616,7 +629,10 @@ export async function callGemini(args: {
         depErr,
       ); // ORCH-1201 Layer-C
       // 5xx is transient — retry once via the malformed loop.
-      if (response.status >= 500 && attempt <= MAX_MALFORMED_RETRIES) {
+      if (
+        response.status >= 500 && attempt <= MAX_MALFORMED_RETRIES &&
+        (args.canRetry?.() ?? true)
+      ) {
         continue;
       }
       throw makeError("http", `Gemini HTTP ${response.status}`, {
@@ -630,11 +646,14 @@ export async function callGemini(args: {
 
     // Capture usage if present
     if (payload.usageMetadata) {
-      lastUsage = {
-        prompt_tokens: payload.usageMetadata.promptTokenCount ?? 0,
-        completion_tokens: payload.usageMetadata.candidatesTokenCount ?? 0,
-        total_tokens: payload.usageMetadata.totalTokenCount ?? 0,
-      };
+      totalUsage.prompt_tokens += payload.usageMetadata.promptTokenCount ?? 0;
+      totalUsage.completion_tokens +=
+        payload.usageMetadata.candidatesTokenCount ?? 0;
+      totalUsage.total_tokens += payload.usageMetadata.totalTokenCount ?? 0;
+      totalUsage.cached_input_tokens = (totalUsage.cached_input_tokens ?? 0) +
+        (payload.usageMetadata.cachedContentTokenCount ?? 0);
+      totalUsage.thinking_tokens = (totalUsage.thinking_tokens ?? 0) +
+        (payload.usageMetadata.thoughtsTokenCount ?? 0);
     }
 
     const candidate = payload.candidates?.[0];
@@ -644,7 +663,7 @@ export async function callGemini(args: {
     // call mid-emit when output tokens are tight.
     if (
       lastFinishReason === "MALFORMED_FUNCTION_CALL" &&
-      attempt <= MAX_MALFORMED_RETRIES
+      attempt <= MAX_MALFORMED_RETRIES && (args.canRetry?.() ?? true)
     ) {
       continue;
     }
@@ -652,7 +671,7 @@ export async function callGemini(args: {
     // Successful candidate — extract either a tool call or text
     const parts = candidate?.content?.parts ?? [];
     const toolCalls: GeminiToolCall[] = [];
-    let textParts: string[] = [];
+    const textParts: string[] = [];
     for (const part of parts) {
       if ("functionCall" in part && part.functionCall) {
         // issue #3605 — Gemini 3.x puts the signature on the PART (sibling of
@@ -677,7 +696,9 @@ export async function callGemini(args: {
     const toolCall = toolCalls.at(-1);
     if (!toolCall && textParts.length === 0) {
       // Empty response — final attempt
-      if (attempt <= MAX_MALFORMED_RETRIES) continue;
+      if (attempt <= MAX_MALFORMED_RETRIES && (args.canRetry?.() ?? true)) {
+        continue;
+      }
       throw makeError("empty", "Gemini returned no usable content", {
         detail: `finishReason=${lastFinishReason}`,
       });
@@ -687,7 +708,7 @@ export async function callGemini(args: {
       textResponse: textParts.length > 0 ? textParts.join("") : undefined,
       toolCalls,
       toolCall,
-      usage: lastUsage,
+      usage: totalUsage,
       finishReason: lastFinishReason,
       attemptCount: attempt,
     };
@@ -774,6 +795,8 @@ export async function callGeminiStructured(args: {
       prompt_tokens: payload.usageMetadata?.promptTokenCount ?? 0,
       completion_tokens: payload.usageMetadata?.candidatesTokenCount ?? 0,
       total_tokens: payload.usageMetadata?.totalTokenCount ?? 0,
+      cached_input_tokens: payload.usageMetadata?.cachedContentTokenCount ?? 0,
+      thinking_tokens: payload.usageMetadata?.thoughtsTokenCount ?? 0,
     },
   };
 }
@@ -877,6 +900,8 @@ interface GeminiResponse {
     promptTokenCount?: number;
     candidatesTokenCount?: number;
     totalTokenCount?: number;
+    cachedContentTokenCount?: number;
+    thoughtsTokenCount?: number;
   };
 }
 
@@ -1016,12 +1041,14 @@ async function callLocalOllama(
     systemPrompt: string;
     contents: GeminiContentMessage[];
     toolDefinitions: GeminiToolDef[];
+    signal?: AbortSignal;
   },
 ): Promise<GeminiResult> {
   const response = await fetch(`${config.baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS),
+    signal: args.signal ??
+      AbortSignal.timeout(ARI_LOCAL_MODEL_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       model: config.modelId,
       stream: false,

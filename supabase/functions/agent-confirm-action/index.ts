@@ -93,6 +93,7 @@ import {
   siteWorkspaceFollowupText,
 } from "../_shared/agentSiteWorkspaceTools.ts";
 import { siteStepActivityWriter } from "./siteStepActivity.ts";
+import { AriTurnMeter } from "../_shared/ariTurnMeter.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -198,6 +199,51 @@ async function appendPendingActivity(args: {
     console.error(JSON.stringify({
       event: "ari_activity_write_failed",
       phase: args.eventType,
+    }));
+  }
+}
+
+/**
+ * Issue #4637 slice 0: a confirmation continuation belongs to the owner turn
+ * that produced the proposal. The database RPC resolves that proposal and
+ * applies this delta once per pending action, so a receipt replay cannot bill
+ * the turn twice. Telemetry is fail-soft after the write has been verified.
+ */
+async function recordPostApprovalMetering(args: {
+  client: SupabaseClient;
+  userId: string;
+  pendingActionId: string;
+  meter: AriTurnMeter;
+}): Promise<void> {
+  const delta = args.meter.snapshot({ attemptStatus: "completed" });
+  if (delta.model_calls === 0) return;
+  try {
+    const { data, error } = await args.client.rpc(
+      "add_ari_pending_action_turn_metering",
+      {
+        p_pending_action_id: args.pendingActionId,
+        p_user_id: args.userId,
+        p_input_tokens: delta.input_tokens,
+        p_output_tokens: delta.output_tokens,
+        p_cached_input_tokens: delta.cached_input_tokens,
+        p_thinking_tokens: delta.thinking_tokens,
+        p_model_calls: delta.model_calls,
+        p_phase_ms: delta.phase_ms,
+        p_pricing_version: delta.pricing_version,
+      },
+    );
+    if (error || data !== true) {
+      console.error(JSON.stringify({
+        event: "ari_post_approval_metering_not_applied",
+        pending_action_id: args.pendingActionId,
+        error: error?.message ?? "source_missing_or_already_applied",
+      }));
+    }
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "ari_post_approval_metering_failed",
+      pending_action_id: args.pendingActionId,
+      error: error instanceof Error ? error.name : "unknown",
     }));
   }
 }
@@ -557,7 +603,7 @@ Deno.serve(async (req) => {
     const { data: pending, error: pendingErr } = await userClient
       .from("agent_pending_actions")
       .select(
-        "id, conversation_id, tool_name, tool_args, status, failure_reason, expires_at, source, related_brand_id, server_proposed_at",
+        "id, conversation_id, tool_name, tool_args, status, failure_reason, expires_at, source, related_brand_id, server_proposed_at, origin_client_turn_id",
       )
       .eq("id", body.pending_action_id)
       .eq("user_id", userId)
@@ -593,6 +639,7 @@ async function handleConfirmAction(args: {
   pending: {
     id: string;
     conversation_id: string | null;
+    origin_client_turn_id: string | null;
     tool_name: string;
     tool_args: unknown;
     status: string;
@@ -1499,6 +1546,7 @@ async function handleConfirmAction(args: {
       "ari_agent_loop_enabled",
     );
     if (!loopFlagError && loopEnabled === true) {
+      const continuationMeter = new AriTurnMeter();
       try {
         continuation = await continueAfterApprovedAction({
           client: userClient,
@@ -1507,6 +1555,7 @@ async function handleConfirmAction(args: {
           conversationId: pending.conversation_id,
           toolName: tool.name,
           result,
+          meter: continuationMeter,
           toolArgs: finalArgs,
           brandId: pending.related_brand_id ?? null,
         });
@@ -1550,6 +1599,12 @@ async function handleConfirmAction(args: {
         }));
         continuation = null;
       }
+      await recordPostApprovalMetering({
+        client: pendingStateClient,
+        userId,
+        pendingActionId: pending.id,
+        meter: continuationMeter,
+      });
     }
   }
   const continuationHasScopeFailure =
@@ -1669,6 +1724,7 @@ async function handleConfirmAction(args: {
       id: nextPendingActionId,
       user_id: userId,
       conversation_id: pending.conversation_id,
+      origin_client_turn_id: pending.origin_client_turn_id,
       related_brand_id: pending.related_brand_id,
       // #3355 P3: the column only accepts 'ari' | 'hub_*'; 'ari_chat' was
       // refused, so chained follow-on proposals never persisted.

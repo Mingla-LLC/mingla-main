@@ -15,7 +15,8 @@ export type AriQualitySignal =
   | "loop_budget_exhausted"
   | "negative_feedback"
   | "intent_mismatch"
-  | "presentation_defect";
+  | "presentation_defect"
+  | "turn_failed";
 
 export interface AriQualityInput {
   userId: string;
@@ -32,7 +33,23 @@ export interface AriQualityInput {
   latencyMs?: number | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  cachedInputTokens?: number | null;
+  thinkingTokens?: number | null;
+  modelCalls?: number | null;
   estimatedCostMicros?: number | null;
+  routeTier?: "quick" | "considered" | "deep" | null;
+  streamMode?: "streamed" | "buffered" | "none" | null;
+  runtimeKeys?: string[];
+  phaseMs?: Record<string, number> | null;
+  firstProgressMs?: number | null;
+  firstTextMs?: number | null;
+  completeMs?: number | null;
+  pricingVersion?: string | null;
+  attemptStatus?: string | null;
+  answerReadyMs?: number | null;
+  firstWordShownMs?: number | null;
+  paceTier?: string | null;
+  heldMs?: number | null;
   loopBudgetExhausted?: boolean;
   researchExpected?: boolean;
   hasSources?: boolean;
@@ -67,6 +84,7 @@ export function detectAriQualitySignals(
   }
   if ((input.latencyMs ?? 0) > 25_000) signals.add("excessive_latency");
   if (input.loopBudgetExhausted) signals.add("loop_budget_exhausted");
+  if (input.attemptStatus === "failed") signals.add("turn_failed");
   if (
     /\b(no|wrong|that is not|you misunderstood|again|still not|bad answer)\b/
       .test(request)
@@ -112,6 +130,7 @@ const SIGNAL_TITLE: Record<AriQualitySignal, string> = {
   negative_feedback: "The user corrected Ari",
   intent_mismatch: "Ari pursued the wrong goal",
   presentation_defect: "Ari emitted a presentation defect",
+  turn_failed: "Ari failed to finish the turn",
 };
 
 function stableGapHash(value: string): string {
@@ -173,6 +192,7 @@ function severityFor(
   if (
     signals.includes("tool_failure") || signals.includes("repeated_request") ||
     signals.includes("loop_budget_exhausted") ||
+    signals.includes("turn_failed") ||
     signals.includes("intent_mismatch")
   ) return "high";
   if (
@@ -217,7 +237,23 @@ export async function recordAriTrainingTurn(
     latency_ms: input.latencyMs ?? null,
     input_tokens: input.inputTokens ?? null,
     output_tokens: input.outputTokens ?? null,
+    cached_input_tokens: input.cachedInputTokens ?? null,
+    thinking_tokens: input.thinkingTokens ?? null,
+    model_calls: input.modelCalls ?? null,
     estimated_cost_micros: input.estimatedCostMicros ?? null,
+    route_tier: input.routeTier ?? null,
+    stream_mode: input.streamMode ?? null,
+    runtime_keys: input.runtimeKeys ?? [],
+    phase_ms: input.phaseMs ?? {},
+    first_progress_ms: input.firstProgressMs ?? null,
+    first_text_ms: input.firstTextMs ?? null,
+    complete_ms: input.completeMs ?? null,
+    pricing_version: input.pricingVersion ?? null,
+    attempt_status: input.attemptStatus ?? null,
+    answer_ready_ms: input.answerReadyMs ?? null,
+    first_word_shown_ms: input.firstWordShownMs ?? null,
+    pace_tier: input.paceTier ?? null,
+    held_ms: input.heldMs ?? 0,
   }).select("id").maybeSingle();
   if (turnError) {
     console.error(
