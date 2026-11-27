@@ -61,6 +61,7 @@ CREATE OR REPLACE FUNCTION pg_temp.f_submit(p_form uuid, p_email text, p_consent
 RETURNS jsonb LANGUAGE plpgsql AS $a$
 DECLARE
   v_creator boolean := EXISTS (SELECT 1 FROM public.forms WHERE id = p_form AND template = 'creators');
+  v_host boolean := EXISTS (SELECT 1 FROM public.forms WHERE id = p_form AND audience = 'host');
 BEGIN
   RETURN public.forms_submit_core(jsonb_build_object(
     'idempotency_key', p_key, 'form_id', p_form, 'email', lower(btrim(p_email)),
@@ -69,7 +70,12 @@ BEGIN
            'phone', jsonb_build_object('country', 'NG', 'dial', '+234', 'number', '801 234 5678'),
            'what_do_you_make', 'Both',
            'your_main_social', jsonb_build_object('platform', 'instagram', 'value', '@ada.films'),
-           'city', jsonb_build_object('label', 'Lagos, Nigeria', 'city', 'Lagos', 'country', 'NG')) ELSE '{}'::jsonb END,
+           'city', jsonb_build_object('label', 'Lagos, Nigeria', 'city', 'Lagos', 'country', 'NG')) ELSE '{}'::jsonb END
+      || CASE WHEN v_host THEN jsonb_build_object(
+           'phone', jsonb_build_object('country', 'NG', 'dial', '+234', 'number', '801 234 5678'),
+           'venue', 'Ada Events Lagos',
+           'icp', 'Events',
+           'social', jsonb_build_object('platform', 'instagram', 'value', '@ada.events')) ELSE '{}'::jsonb END,
     'consent_text', 'Send me occasional emails from Mingla. Unsubscribe anytime.',
     'time_zone', 'Africa/Lagos', 'time_zone_source', 'browser', 'page_path', '/creators', 'placement', 'inline',
     'spot_key', 'after-steps', 'utm', jsonb_build_object('source', 'meta', 'campaign', 'creators-lagos-nov'),
