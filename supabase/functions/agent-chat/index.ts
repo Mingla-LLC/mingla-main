@@ -204,11 +204,23 @@ import {
 } from "../_shared/agentLaunchPlan.ts";
 import { sanitizeAriUserFacingDiagnostics } from "../_shared/agentSanitization.ts";
 import {
-  assertOwnerCopy,
   OWNER_PROSE_FALLBACK,
   reconciledApprovalLine,
   speakToHost,
 } from "../_shared/ariOwnerCopy.ts";
+import { emitOwnerText } from "../_shared/ariOwnerEmit.ts";
+import { buildAriFailureReply } from "../_shared/ariFailureCopy.ts";
+import {
+  ariAmendmentSystemNote,
+  isBareAriAffirmation,
+  type SupersededAriProposal,
+} from "../_shared/ariAmendment.ts";
+import {
+  ariScopeTextForTurn,
+  proposalScopeIssue,
+  resolveAriStatedScope,
+} from "../_shared/ariRequirements.ts";
+import { proposalOwnerLead } from "../_shared/ariPresentation/registry.ts";
 import {
   sweepIdleAriFlowRunsForUser,
   sweepInterruptedAriTurnAttemptsForUser,
@@ -516,6 +528,9 @@ type Response_ =
     kind: "error";
     code: string;
     message: string;
+    conversation_id?: string;
+    client_turn_id?: string;
+    attempt_status?: "failed";
     retry_after_seconds?: number;
     cooldown_until?: string;
   };
@@ -620,22 +635,75 @@ async function failAttempt(args: {
   attemptNumber: number;
   errorCode: string;
   training?: AriTrainingContext;
+  expectedStatus?: "accepted" | "running";
 }): Promise<boolean> {
-  const now = new Date().toISOString();
-  const { data } = await args.client.from("agent_turn_attempts")
-    .update({
-      status: "failed",
-      error_code: args.errorCode.slice(0, 80),
-      terminal_at: now,
-      updated_at: now,
-    })
-    .eq("id", args.attemptId)
-    .eq("user_id", args.userId)
-    .eq("attempt_number", args.attemptNumber)
-    .in("status", ["accepted", "running"])
-    .select("id")
-    .maybeSingle();
-  if (data) {
+  const expectedStatus = args.expectedStatus ?? "running";
+  const failure = buildAriFailureReply({ errorCode: args.errorCode });
+  const assistantMessageId = crypto.randomUUID();
+  let won = false;
+  let failureReplyCommitted = false;
+  if (args.training) {
+    const { data, error } = await args.client.rpc(
+      "commit_agent_chat_failure_turn",
+      {
+        p_attempt_id: args.attemptId,
+        p_attempt_number: args.attemptNumber,
+        p_user_id: args.userId,
+        p_conversation_id: args.training.conversationId,
+        p_client_turn_id: args.training.clientTurnId,
+        p_assistant_message_id: assistantMessageId,
+        p_content: failure,
+        p_error_code: args.errorCode,
+        p_prompt_version: args.training.promptVersion,
+        p_model_version: ARI_MODEL_VERSION,
+        p_expected_status: expectedStatus,
+      },
+    );
+    won = error === null && data === true;
+    failureReplyCommitted = won;
+    if (error) {
+      console.error(JSON.stringify({
+        event: "failure_reply_commit_failed",
+        code: error.code ?? "unknown",
+      }));
+    }
+  }
+  if (!args.training) {
+    const now = new Date().toISOString();
+    const { data } = await args.client.from("agent_turn_attempts")
+      .update({
+        status: "failed",
+        error_code: args.errorCode.slice(0, 80),
+        terminal_at: now,
+        updated_at: now,
+      })
+      .eq("id", args.attemptId)
+      .eq("user_id", args.userId)
+      .eq("attempt_number", args.attemptNumber)
+      .eq("status", expectedStatus)
+      .select("id")
+      .maybeSingle();
+    won = Boolean(data);
+  } else if (!won) {
+    // A migration/deploy mismatch must not leave the attempt running. The
+    // client copy covers this rare path; log above keeps it visible.
+    const now = new Date().toISOString();
+    const { data } = await args.client.from("agent_turn_attempts")
+      .update({
+        status: "failed",
+        error_code: args.errorCode.slice(0, 80),
+        terminal_at: now,
+        updated_at: now,
+      })
+      .eq("id", args.attemptId)
+      .eq("user_id", args.userId)
+      .eq("attempt_number", args.attemptNumber)
+      .eq("status", expectedStatus)
+      .select("id")
+      .maybeSingle();
+    won = Boolean(data);
+  }
+  if (won) {
     await appendActivity({
       client: args.client,
       attemptId: args.attemptId,
@@ -650,11 +718,8 @@ async function failAttempt(args: {
         userId: args.userId,
         conversationId: args.training.conversationId,
         clientTurnId: args.training.clientTurnId,
-        assistantMessageId: null,
-        // Slice 0 does not invent an assistant transcript for an error
-        // envelope. Slice 1 supplies the exact atomically committed failure
-        // reply here.
-        assistantText: "",
+        assistantMessageId: failureReplyCommitted ? assistantMessageId : null,
+        assistantText: failureReplyCommitted ? failure.text : "",
         errorCodes: [args.errorCode],
         meter: args.training.meter,
         promptVersion: args.training.promptVersion,
@@ -745,44 +810,7 @@ async function failUnstartedAttempt(args: {
   errorCode: string;
   training?: AriTrainingContext;
 }): Promise<void> {
-  const now = new Date().toISOString();
-  const { data } = await args.client.from("agent_turn_attempts")
-    .update({
-      status: "failed",
-      error_code: args.errorCode.slice(0, 80),
-      terminal_at: now,
-      updated_at: now,
-    })
-    .eq("id", args.attemptId)
-    .eq("user_id", args.userId)
-    .eq("attempt_number", args.attemptNumber)
-    .eq("status", "accepted")
-    .select("id")
-    .maybeSingle();
-  if (data) {
-    await appendActivity({
-      client: args.client,
-      attemptId: args.attemptId,
-      userId: args.userId,
-      attemptNumber: args.attemptNumber,
-      eventType: "failed",
-      meter: args.training?.meter,
-    });
-    if (args.training) {
-      await recordCommittedTraining({
-        client: args.client,
-        userId: args.userId,
-        conversationId: args.training.conversationId,
-        clientTurnId: args.training.clientTurnId,
-        assistantMessageId: null,
-        assistantText: "",
-        errorCodes: [args.errorCode],
-        meter: args.training.meter,
-        promptVersion: args.training.promptVersion,
-        attemptStatus: "failed",
-      });
-    }
-  }
+  await failAttempt({ ...args, expectedStatus: "accepted" });
 }
 
 function taskStateResponse(err: TaskStateError): Response {
@@ -1037,14 +1065,14 @@ async function commitTextTurn(
   // #3355 P1 (D-6): the owner copy gate is the last word on what is shown.
   // #3355 rework 3 (R3-11): a reply never says the same line twice (the
   // model echoing a state line the server also adds, a resume prompt …).
-  const publicText = assertOwnerCopy(
+  const publicText = emitOwnerText(
+    "reply",
     legacyText
       ? sanitizeAriUserFacingDiagnostics(args.text)
       : dedupeReplySentences(sanitizeAriUserFacingDiagnostics(args.text)),
     {
       fallback: OWNER_PROSE_FALLBACK,
       surface: "chat_text_turn",
-      mode: "prose",
     },
   );
   const assistantMessageId = crypto.randomUUID();
@@ -1851,6 +1879,8 @@ async function handle(req: Request): Promise<Response> {
     meter: turnMeter,
     promptVersion: turnPromptVersion,
   });
+  let bareAffirmationPendingId: string | null = null;
+  let amendmentSystemContext = "";
   if (websiteKickoff && engineOn) {
     await markEngineOriginTurn(serviceClient, userId, attemptId);
   }
@@ -2046,6 +2076,27 @@ async function handle(req: Request): Promise<Response> {
             "string"
           ? (existingAssistant.content as { text: string }).text
           : "";
+      const storedFailure = (existingAssistant.content as {
+        structured?: { failure?: { v?: unknown } };
+      })?.structured?.failure;
+      if (storedFailure?.v === 1) {
+        const { data: failedAttempt } = await serviceClient
+          .from("agent_turn_attempts")
+          .select("status,error_code")
+          .eq("id", attemptId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        return jsonResponse(200, {
+          kind: "error",
+          code: typeof failedAttempt?.error_code === "string"
+            ? failedAttempt.error_code
+            : "ACCEPTED_RESPONSE_FAILED",
+          message: storedText,
+          conversation_id: conversationId,
+          client_turn_id: body.client_turn_id,
+          attempt_status: "failed",
+        });
+      }
       const storedChoices = validateAgentChoicesV2(
         (existingAssistant.content as { structured?: { choices?: unknown } })
           ?.structured?.choices,
@@ -2097,6 +2148,87 @@ async function handle(req: Request): Promise<Response> {
           }
           : {}),
       });
+    }
+
+    // #4637 Slice 1: replay has already returned above. A retried old turn
+    // therefore cannot mutate a proposal that a newer turn created.
+    const { data: pendingRows, error: pendingReadError } = await serviceClient
+      .from("agent_pending_actions")
+      .select("id,tool_name,tool_args")
+      .eq("user_id", userId)
+      .eq("conversation_id", conversationId)
+      .eq("source", "ari")
+      .eq("status", "pending")
+      .order("server_proposed_at", { ascending: false })
+      .limit(3);
+    if (pendingReadError) {
+      await failUnstartedAttempt({
+        client: serviceClient,
+        attemptId,
+        userId,
+        attemptNumber,
+        errorCode: "AMENDMENT_GUARD_UNAVAILABLE",
+        training: turnTraining(),
+      });
+      return errorResponse(
+        503,
+        "DEPENDENCY_UNAVAILABLE",
+        "I couldn't safely check the waiting card. Ask me to show it again.",
+      );
+    }
+    const pending = (pendingRows ?? []) as SupersededAriProposal[];
+    const isBareAffirmation = pending.length > 0 &&
+      !choiceSubmission && !flowAnswer && attachmentIds.length === 0 &&
+      isBareAriAffirmation(requestMessage);
+    if (isBareAffirmation) {
+      bareAffirmationPendingId = pending[0].id;
+      const { data: affirmationBound, error: affirmationError } =
+        await serviceClient.rpc("ari_bind_pending_affirmation", {
+          p_user_id: userId,
+          p_conversation_id: conversationId,
+          p_user_message_id: userMessageId,
+          p_pending_action_id: bareAffirmationPendingId,
+        });
+      if (affirmationError || affirmationBound !== true) {
+        await failUnstartedAttempt({
+          client: serviceClient,
+          attemptId,
+          userId,
+          attemptNumber,
+          errorCode: "AFFIRMATION_BIND_FAILED",
+          training: turnTraining(),
+        });
+        return errorResponse(
+          503,
+          "DEPENDENCY_UNAVAILABLE",
+          "I couldn't safely bind that answer to the card. Tap Confirm on the card instead.",
+        );
+      }
+    } else if (pending.length > 0) {
+      const { data: superseded, error: supersedeError } = await serviceClient
+        .rpc("ari_supersede_pending_on_owner_turn", {
+          p_user_id: userId,
+          p_conversation_id: conversationId,
+          p_user_message_id: userMessageId,
+        });
+      if (supersedeError) {
+        await failUnstartedAttempt({
+          client: serviceClient,
+          attemptId,
+          userId,
+          attemptNumber,
+          errorCode: "AMENDMENT_SUPERSEDE_FAILED",
+          training: turnTraining(),
+        });
+        return errorResponse(
+          503,
+          "DEPENDENCY_UNAVAILABLE",
+          "That card changed after your message. Ask Ari to show it again.",
+        );
+      }
+      amendmentSystemContext = ariAmendmentSystemNote(
+        (superseded ?? []) as SupersededAriProposal[],
+      );
     }
 
     let liveChoices: AgentChoicesV2 | null = null;
@@ -2192,6 +2324,23 @@ async function handle(req: Request): Promise<Response> {
     }
     executionOwned = true;
     turnMeter.startPhase("pre_model");
+    if (bareAffirmationPendingId) {
+      return await commitTextTurn({
+        understandFirst,
+        client: serviceClient,
+        userId,
+        conversationId,
+        clientTurnId: body.client_turn_id,
+        previousState: taskState,
+        nextState: taskState,
+        expectedRevision: taskStateRevision,
+        previousSummary: conversationSummary,
+        text: "Tap Confirm on the card to go ahead.",
+        classification: "pending_action_affirmation",
+        startedAt: turnStartedAt,
+        meter: turnMeter,
+      });
+    }
     if (
       attemptNumber > 1 && !await appendActivity({
         client: serviceClient,
@@ -2455,7 +2604,8 @@ async function handle(req: Request): Promise<Response> {
             nextState: taskState,
             expectedRevision: taskStateRevision,
             previousSummary: conversationSummary,
-            text: assertOwnerCopy(
+            text: emitOwnerText(
+              "failure",
               err.code === "ROLE_CHECK_UNAVAILABLE"
                 ? "I couldn't check your role on this brand just now, so nothing was changed. Try again in a moment."
                 : OWNER_SPOKEN_REFUSAL_CODES.has(err.code)
@@ -2465,7 +2615,6 @@ async function handle(req: Request): Promise<Response> {
                 fallback:
                   "Only a brand admin or the owner can make that change. Nothing was changed.",
                 surface: "flow_refusal",
-                mode: "prose",
               },
             ),
             classification: "flow_engine_refused",
@@ -2481,10 +2630,9 @@ async function handle(req: Request): Promise<Response> {
           service: serviceClient,
           userId,
           conversationId,
-          text: assertOwnerCopy(decision.ack, {
+          text: emitOwnerText("reply", decision.ack, {
             fallback: "Okay.",
             surface: "flow_ack",
-            mode: "prose",
           }),
           artefact: null,
           state: decision.state,
@@ -2509,6 +2657,7 @@ async function handle(req: Request): Promise<Response> {
         previousSummary: conversationSummary,
         toolName: tool.name,
         toolArgs: decision.tool_args,
+        scopeText: semanticMessage,
         proposalContext: decision.rows.length > 0
           ? {
             flow_rows: decision.rows,
@@ -2634,10 +2783,9 @@ async function handle(req: Request): Promise<Response> {
           service: serviceClient,
           userId,
           conversationId,
-          text: assertOwnerCopy(decision.resume.text, {
+          text: emitOwnerText("reply", decision.resume.text, {
             fallback: "I've paused this setup so I can help with that first.",
             surface: "flow_parked",
-            mode: "prose",
           }),
           artefact: decision.resume,
           state: decision.state,
@@ -2680,10 +2828,9 @@ async function handle(req: Request): Promise<Response> {
             service: serviceClient,
             userId,
             conversationId,
-            text: assertOwnerCopy(decision.ack, {
+            text: emitOwnerText("reply", decision.ack, {
               fallback: "Okay.",
               surface: "flow_ack",
-              mode: "prose",
             }),
             artefact: null,
             state: decision.state,
@@ -2787,10 +2934,9 @@ async function handle(req: Request): Promise<Response> {
           service: serviceClient,
           userId,
           conversationId,
-          text: assertOwnerCopy(decision.ack, {
+          text: emitOwnerText("reply", decision.ack, {
             fallback: "Okay.",
             surface: "flow_ack",
-            mode: "prose",
           }),
           artefact: null,
           state: decision.state,
@@ -2869,10 +3015,9 @@ async function handle(req: Request): Promise<Response> {
           service: serviceClient,
           userId,
           conversationId,
-          text: assertOwnerCopy(leadGuard.text, {
+          text: emitOwnerText("reply", leadGuard.text, {
             fallback: ASK_TEAM_LEAD,
             surface: "ask_team_lead",
-            mode: "prose",
           }),
           artefact: null,
           state: flowParked?.state ?? null,
@@ -2914,6 +3059,7 @@ async function handle(req: Request): Promise<Response> {
             previousSummary: conversationSummary,
             toolName: tool.name,
             toolArgs: askArgs,
+            scopeText: semanticMessage,
             proposalContext: {
               flow_title: ARI_ASK_TEAM_TITLE,
               flow_rows: [
@@ -2944,7 +3090,7 @@ async function handle(req: Request): Promise<Response> {
 
     // Load last N messages
     // deno-fmt-ignore -- protected #2013 provenance gate requires this exact select boundary.
-    const { data: historyRows } = await userClient
+    const { data: historyRows, error: historyRowsError } = await userClient
     .from("agent_messages")
     .select(
       "role, content, tool_calls, tool_results, prompt_version, created_at",
@@ -2958,6 +3104,21 @@ async function handle(req: Request): Promise<Response> {
         : HISTORY_WINDOW,
     );
     const history = (historyRows ?? []).reverse(); // oldest -> newest
+    const proposalScopeText = ariScopeTextForTurn(
+      history.map((row) => ({
+        role: row.role,
+        text: typeof (row.content as { text?: unknown } | null)?.text ===
+            "string"
+          ? String((row.content as { text: string }).text)
+          : "",
+      })),
+      semanticMessage,
+    );
+    const proposalStatedScope = await resolveAriStatedScope(
+      userClient,
+      activeBrand?.id ?? null,
+      proposalScopeText,
+    );
     const trustedCampaignSourceText = [
       ...history.filter((row) => row.role === "user").map((row) => {
         const content = row.content as Record<string, unknown> | null;
@@ -3154,7 +3315,7 @@ async function handle(req: Request): Promise<Response> {
     // Build system prompt
     // #3355 ship-prep: the switch off builds origin/main's prompt verbatim
     // (PROMPT_VERSION v30, agentSystemPromptLegacy.ts).
-    const systemPrompt = buildAriTurnSystemPrompt(
+    const baseSystemPrompt = buildAriTurnSystemPrompt(
       understandFirst,
       profile,
       brandsList,
@@ -3170,6 +3331,9 @@ async function handle(req: Request): Promise<Response> {
           : null,
       },
     );
+    const systemPrompt = amendmentSystemContext
+      ? `${baseSystemPrompt}\n\n${amendmentSystemContext}`
+      : baseSystemPrompt;
 
     let currentAttachmentParts: GeminiContentMessage["parts"] = [];
     if (attachmentIds.length > 0) {
@@ -3510,6 +3674,7 @@ async function handle(req: Request): Promise<Response> {
             previousSummary: conversationSummary,
             toolName: planned.proposal.tool_name,
             toolArgs: planned.proposal.tool_args,
+            scopeText: semanticMessage,
             classification: planned.classification,
             startedAt: turnStartedAt,
             meter: turnMeter,
@@ -3620,6 +3785,7 @@ async function handle(req: Request): Promise<Response> {
             previousSummary: conversationSummary,
             toolName: planned.proposal.tool_name,
             toolArgs: planned.proposal.tool_args,
+            scopeText: semanticMessage,
             classification: planned.classification,
             startedAt: turnStartedAt,
             meter: turnMeter,
@@ -3831,6 +3997,7 @@ async function handle(req: Request): Promise<Response> {
           previousSummary: conversationSummary,
           toolName: tool.name,
           toolArgs: proposalArgs,
+          scopeText: semanticMessage,
           classification: "website_setup_structured_answer",
           startedAt: turnStartedAt,
           meter: turnMeter,
@@ -4407,6 +4574,14 @@ ${boundedAgentContext}
           return "write";
         },
         validateProposal: (call) => {
+          const scopeIssue = proposalScopeIssue({
+            toolName: call.name,
+            args: call.args,
+            hostText: proposalScopeText,
+            statedScope: proposalStatedScope,
+            scopeReadFailed: Boolean(historyRowsError),
+          });
+          if (scopeIssue) return scopeIssue;
           // #4453 Website workspace: the plan is checked while the model can
           // still repair it (shape, plain labels, and the selected section's
           // scope), and no other website write is taken from this surface.
@@ -4912,6 +5087,7 @@ ${boundedAgentContext}
             previousSummary: conversationSummary,
             toolName: tool.name,
             toolArgs: loopResult.toolCall.args,
+            scopeText: semanticMessage,
             proposalContext: pricingContext || moneyContext || readinessContext
               ? {
                 ...(pricingContext ?? {}),
@@ -6002,6 +6178,7 @@ ${boundedAgentContext}
         previousSummary: conversationSummary,
         toolName: tool.name,
         toolArgs: gemini.toolCall.args,
+        scopeText: semanticMessage,
         proposalContext,
         classification: "general_write_proposal",
         startedAt: turnStartedAt,
@@ -6522,6 +6699,8 @@ async function commitPendingTurn(args: {
   toolName: string;
   toolArgs: Record<string, unknown>;
   proposalContext?: Record<string, unknown> | null;
+  /** Owner words used by the deterministic money-scope backstop. */
+  scopeText: string;
   uiCapabilities?: AriUiCapabilitiesV2 | null;
   classification: string;
   startedAt: number;
@@ -6554,6 +6733,54 @@ async function commitPendingTurn(args: {
         "TASK_STATE_INVALID",
         "Ari couldn't safely prepare that action.",
       );
+  }
+  const { data: scopeRows, error: scopeRowsError } = await args.client.from(
+    "agent_messages",
+  )
+    .select("role,content,client_turn_id,created_at")
+    .eq("conversation_id", args.conversationId)
+    .or(`client_turn_id.is.null,client_turn_id.neq.${args.clientTurnId}`)
+    .order("created_at", { ascending: false })
+    .limit(4);
+  const scopeText = ariScopeTextForTurn(
+    (scopeRows ?? []).reverse().map((row) => ({
+      role: row.role,
+      text: typeof (row.content as { text?: unknown } | null)?.text === "string"
+        ? String((row.content as { text: string }).text)
+        : "",
+    })),
+    args.scopeText,
+  );
+  const statedScope = await resolveAriStatedScope(
+    args.client,
+    args.brandId ?? null,
+    scopeText,
+  );
+  const scopeIssue = proposalScopeIssue({
+    toolName: args.toolName,
+    args: args.toolArgs,
+    hostText: scopeText,
+    statedScope,
+    scopeReadFailed: Boolean(scopeRowsError),
+  });
+  if (scopeIssue) {
+    return await commitTextTurn({
+      understandFirst: args.understandFirst,
+      client: args.client,
+      userId: args.userId,
+      conversationId: args.conversationId,
+      clientTurnId: args.clientTurnId,
+      previousState: args.previousState,
+      nextState: args.previousState,
+      expectedRevision: args.expectedRevision,
+      previousSummary: args.previousSummary,
+      text: scopeIssue.message.includes("ticket type")
+        ? "Which ticket type should this apply to?"
+        : "Which event or listing should this apply to?",
+      classification: `${args.classification}_scope_question`,
+      startedAt: args.startedAt,
+      meter: args.meter,
+    });
   }
   const { error: pendingError } = await args.pendingClient.from(
     "agent_pending_actions",
@@ -6594,6 +6821,7 @@ async function commitPendingTurn(args: {
       : args.proposalContext ?? null,
     args.toolName,
   );
+  const proposalLead = proposalOwnerLead(args.toolName, proposalArgs);
   const rendition = buildGenericProposalRendition({
     toolName: args.toolName,
     toolArgs: proposalArgs,
@@ -6621,6 +6849,7 @@ async function commitPendingTurn(args: {
       "Ari stopped. Your message is still here.",
     );
   }
+  args.meter.markFirstText();
   args.meter.markAnswerReady();
   args.meter.startPhase("commit");
   if (
@@ -6671,7 +6900,7 @@ async function commitPendingTurn(args: {
       ),
       p_assistant_message_id: assistantMessageId,
       p_content: {
-        text: "",
+        text: proposalLead,
         ...(rendition ? { structured: { rendition } } : {}),
       },
       p_tool_calls: toolCalls,
@@ -6710,7 +6939,7 @@ async function commitPendingTurn(args: {
     conversationId: args.conversationId,
     clientTurnId: args.clientTurnId,
     assistantMessageId,
-    assistantText: `Prepared ${args.toolName} for confirmation.`,
+    assistantText: proposalLead,
     toolTrace: [{
       tool: args.toolName,
       outcome: "waiting_for_approval",

@@ -215,13 +215,16 @@ Deno.test("#1985 R2-4 edited and expired proposals are terminal before refresh c
   const confirm = await source(
     "supabase/functions/agent-confirm-action/index.ts",
   );
-  assertMatch(confirm, /EDITED_REPLACEMENT:/);
-  assertMatch(confirm, /terminalizePending\(pendingStateClient/);
-  assertMatch(
-    confirm,
-    /failureReason: `EDITED_REPLACEMENT:\$\{replacementPendingActionId\}`/,
+  const amendmentMigration = await source(
+    "supabase/migrations/20281207014637_issue_4637_ari_amendment_guard.sql",
   );
-  assertMatch(confirm, /outcome: "cancelled"/);
+  assertMatch(confirm, /replace_agent_pending_action_for_edit/);
+  assertMatch(amendmentMigration, /EDITED_REPLACEMENT:/);
+  assertMatch(
+    amendmentMigration,
+    /public\.terminalize_agent_pending_action\(/,
+  );
+  assertMatch(amendmentMigration, /'cancelled'/);
   assertMatch(confirm, /kind: "proposal_replaced"/);
   assert(
     /pending_action_id: pending\.id,[\s\S]{0,120}outcome: "expired"/.test(

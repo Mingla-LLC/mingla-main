@@ -21,6 +21,7 @@ export type PendingClaimAnswer =
   | "claimed"
   | "expired"
   | "executing"
+  | "stale_amended"
   | "not_found"
   | "other";
 
@@ -45,6 +46,7 @@ function normalize(answer: unknown): PendingClaimAnswer {
     case "claimed":
     case "expired":
     case "executing":
+    case "stale_amended":
     case "not_found":
       return answer;
     default:
@@ -60,6 +62,18 @@ export async function pendingExpiredByDbClock(
   client: RpcClient,
   input: { id: string; userId: string; expiresAt: string },
 ): Promise<boolean> {
+  const probe = await probePendingForConfirm(client, input);
+  return probe.answer === "expired";
+}
+
+/**
+ * Read the database-clock confirm decision before any confirm-side mutation.
+ * The RPC also commits stale-amendment superseding while it holds the row lock.
+ */
+export async function probePendingForConfirm(
+  client: RpcClient,
+  input: { id: string; userId: string; expiresAt: string },
+): Promise<{ answer: PendingClaimAnswer; legacy: boolean }> {
   const { data, error } = await client.rpc(
     "agent_pending_action_claim_for_confirm",
     {
@@ -73,11 +87,16 @@ export async function pendingExpiredByDbClock(
     if (isMissingRpc(error)) {
       // [TRANSITIONAL] edge-clock fallback for the deploy window before
       // 20280306003355 is applied — exit: the migration is live everywhere.
-      return new Date(input.expiresAt).getTime() < Date.now();
+      return {
+        answer: new Date(input.expiresAt).getTime() < Date.now()
+          ? "expired"
+          : "pending",
+        legacy: true,
+      };
     }
     throw new Error(`expiry_probe_failed: ${String(error.message ?? "")}`);
   }
-  return normalize(data) === "expired";
+  return { answer: normalize(data), legacy: false };
 }
 
 /**

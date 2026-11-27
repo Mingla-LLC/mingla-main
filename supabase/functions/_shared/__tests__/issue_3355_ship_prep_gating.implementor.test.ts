@@ -283,7 +283,11 @@ Deno.test("ship-prep 1: switch ON builds the current prompt, which differs", asy
 Deno.test("ship-prep 1: agent-chat builds the turn's prompt through the switch", () => {
   assertMatch(
     AGENT_CHAT,
-    /const systemPrompt = buildAriTurnSystemPrompt\(\s*understandFirst,/,
+    /const baseSystemPrompt = buildAriTurnSystemPrompt\(\s*understandFirst,/,
+  );
+  assertMatch(
+    AGENT_CHAT,
+    /const systemPrompt = amendmentSystemContext\s*\? `\$\{baseSystemPrompt\}/,
   );
   assert(!/\bbuildSystemPrompt\(/.test(AGENT_CHAT));
   // The loop's extra prompt lines are on-path only.

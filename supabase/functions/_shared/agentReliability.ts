@@ -37,6 +37,7 @@ export type AriErrorCode =
   | "ROLE_REVOKED"
   | "TENANT_MISMATCH"
   | "STALE_PROPOSAL"
+  | "STALE_AMENDED"
   | "FLOW_TAKEN_OVER"
   | "PROPOSAL_EXPIRED"
   | "CONFLICT"
@@ -158,6 +159,14 @@ export const ARI_ERROR_REGISTRY: Readonly<
     operationState: "pending",
     userMessage:
       "This proposal changed. Review the latest version before confirming.",
+  },
+  STALE_AMENDED: {
+    httpStatus: 409,
+    retryability: "never",
+    safeToRetry: false,
+    operationState: "pending",
+    userMessage:
+      "This card changed after your last message. Ask Ari to show it again.",
   },
   // #2830 — a teammate took this Website setup over, so this card can't save.
   // SC-8: the person is told why, in the approved words.

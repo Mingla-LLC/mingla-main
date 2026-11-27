@@ -121,6 +121,7 @@ import { copyAddressText as copyTextToClipboard } from "../../utils/copyAddressT
 import { submitAriMessageFeedback } from "../../services/ariFeedbackService";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
+import { isAriFailureMessageForPending } from "../../services/ariFailureParity";
 import { useAriAttachments } from "../../hooks/useAriAttachments";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
@@ -1096,6 +1097,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
         );
       } catch {
         const message = ariChatErrorCopy("EDGE_ERROR");
+        try {
+          const canonical = await chat.refreshMessages();
+          if (canonical.some((row) =>
+            isAriFailureMessageForPending(row, proposal.pending_action_id)
+          )) {
+            chat.clearPendingAction();
+            void chat.resumeFlow("resume");
+            return { ok: false, terminal: "resolved" };
+          }
+        } catch {
+          // The local copy below is the fallback when canonical history cannot load.
+        }
         setLocalError(message);
         return { ok: false, error: message };
       }
@@ -1157,6 +1170,18 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           return { ok: false, terminal: "resolved" };
         }
         const message = ariChatErrorCopy(result.code);
+        try {
+          const canonical = await chat.refreshMessages();
+          if (canonical.some((row) =>
+            isAriFailureMessageForPending(row, proposal.pending_action_id)
+          )) {
+            chat.clearPendingAction();
+            void chat.resumeFlow("resume");
+            return { ok: false, terminal: "resolved" };
+          }
+        } catch {
+          // The local copy below is the fallback when the durable row cannot load.
+        }
         setLocalError(message);
         // #3355 P7: a refused write inside a flow comes back with the step
         // re-presented (the server saved it); read it so the chat never

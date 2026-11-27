@@ -978,10 +978,13 @@ Deno.test("R4-7: when the fill-in has to ask, the question is the continuation t
     new URL("../../agent-confirm-action/index.ts", import.meta.url),
   );
   assertMatch(source, /prepareContinuationProposal\(\{/);
-  assert(
-    source.indexOf("prepareContinuationProposal({") <
-      source.indexOf("await authorizeAgentTool(\n                nextTool,"),
+  const prepared = source.indexOf("prepareContinuationProposal({");
+  const scopeChecked = source.indexOf(
+    "const continuationScopeIssue = await originatingAriScopeIssue(",
+    prepared,
   );
+  const authorized = source.indexOf("await authorizeAgentTool(", scopeChecked);
+  assert(prepared < scopeChecked && scopeChecked < authorized);
   assertEquals(typeof bindDiscountTargetDefault, "function");
 });
 

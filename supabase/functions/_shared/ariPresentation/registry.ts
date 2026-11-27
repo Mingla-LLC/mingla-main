@@ -14,12 +14,9 @@
  * rendition show the same words without a protocol change.
  */
 
-import {
-  assertOwnerCopy,
-  isOwnerSafe,
-  isOwnerSafeValue,
-} from "../ariOwnerCopy.ts";
+import { isOwnerSafeValue } from "../ariOwnerCopy.ts";
 import { toolOwnerCopy } from "./toolLabels.ts";
+import { emitOwnerText } from "../ariOwnerEmit.ts";
 import { readinessItemLabel } from "../readinessCatalog.ts";
 import { formatMinor } from "../money/formatMinor.ts";
 
@@ -256,9 +253,14 @@ export function presentationFields(
     }
     const text = displayValue(key, value, zoned);
     if (text === null || !isOwnerSafeValue(text)) return;
-    const label = labelFor(key);
-    if (!isOwnerSafe(label, "label")) return;
-    out.push({ label, value: text });
+    const label = emitOwnerText("card_label", labelFor(key), {
+      surface: "proposal_field_label",
+    });
+    const ownerValue = emitOwnerText("card_value", text, {
+      surface: "proposal_field_value",
+    });
+    if (!label || !ownerValue) return;
+    out.push({ label, value: ownerValue });
   };
   for (const [key, value] of Object.entries(args)) visit(key, value, 0);
   return out;
@@ -290,12 +292,16 @@ function flowRows(context: unknown): PresentationField[] {
   return rows.slice(0, 6).flatMap((row) => {
     if (row === null || typeof row !== "object") return [];
     const { label, value } = row as Record<string, unknown>;
-    if (
-      typeof label !== "string" || typeof value !== "string" ||
-      !label.trim() || !value.trim() || !isOwnerSafe(label, "label") ||
-      !isOwnerSafeValue(value)
-    ) return [];
-    return [{ label: label.trim(), value: value.trim().slice(0, MAX_VALUE) }];
+    if (typeof label !== "string" || typeof value !== "string") return [];
+    const ownerLabel = emitOwnerText("card_label", label, {
+      surface: "proposal_flow_label",
+    });
+    const ownerValue = emitOwnerText("card_value", value.slice(0, MAX_VALUE), {
+      surface: "proposal_flow_value",
+    });
+    return ownerLabel && ownerValue
+      ? [{ label: ownerLabel, value: ownerValue }]
+      : [];
   });
 }
 
@@ -308,8 +314,9 @@ function flowTitleOf(context: unknown): string | null {
   }
   const title = (context as Record<string, unknown>).flow_title;
   if (typeof title !== "string" || !title.trim()) return null;
-  const trimmed = title.trim().slice(0, 120);
-  return isOwnerSafe(trimmed, "label") ? trimmed : null;
+  return emitOwnerText("card_label", title.trim().slice(0, 120), {
+    surface: "proposal_flow_title",
+  }) || null;
 }
 
 const isRow = (value: unknown): value is Record<string, unknown> =>
@@ -318,12 +325,20 @@ const isRow = (value: unknown): value is Record<string, unknown> =>
 function gatedRows(
   rows: Array<[string, unknown]>,
 ): PresentationField[] {
-  return rows.flatMap(([label, value]) =>
-    typeof value === "string" && value.trim() && isOwnerSafe(label, "label") &&
-      isOwnerSafeValue(value.trim())
-      ? [{ label, value: value.trim().slice(0, MAX_VALUE) }]
-      : []
-  );
+  return rows.flatMap(([label, value]) => {
+    if (typeof value !== "string") return [];
+    const ownerLabel = emitOwnerText("card_label", label, {
+      surface: "proposal_workspace_label",
+    });
+    const ownerValue = emitOwnerText(
+      "card_value",
+      value.trim().slice(0, MAX_VALUE),
+      { surface: "proposal_workspace_value" },
+    );
+    return ownerLabel && ownerValue
+      ? [{ label: ownerLabel, value: ownerValue }]
+      : [];
+  });
 }
 
 /**
@@ -396,8 +411,12 @@ export function buildProposalPresentation(
   const identity = identityOf(clean) ?? planSummary;
   // #3355: an engine proposal may name its own card ("Import 48 contacts").
   const flowTitle = flowTitleOf(context);
-  const title = flowTitle ??
+  const rawTitle = flowTitle ??
     (identity && isOwnerSafeValue(identity) ? identity : copy.title);
+  const title = emitOwnerText("card_label", rawTitle, {
+    fallback: copy.title,
+    surface: "proposal_title",
+  });
   // #3355 P7: an engine proposal whose rows are all written in plain words
   // shows only those (never raw arguments such as coordinates).
   const rowsOnly = context !== null && typeof context === "object" &&
@@ -406,13 +425,15 @@ export function buildProposalPresentation(
     flowRows(context).length > 0;
   return {
     version: 1,
-    verb: assertOwnerCopy(copy.verb, {
+    verb: emitOwnerText("card_label", copy.verb, {
       fallback: "Review this change",
       surface: "proposal_verb",
     }),
     title,
     fields: [
-      ...(rowsOnly ? [] : workspaceRows ?? presentationFields(clean, brandZone)),
+      ...(rowsOnly
+        ? []
+        : workspaceRows ?? presentationFields(clean, brandZone)),
       ...flowRows(context),
     ].slice(
       0,
@@ -421,9 +442,30 @@ export function buildProposalPresentation(
   };
 }
 
+/** One sentence that makes a proposal card understandable on every client. */
+export function proposalOwnerLead(
+  toolName: string,
+  args: Record<string, unknown>,
+): string {
+  const presentation = buildProposalPresentation(toolName, args);
+  const highlights = presentation.fields.slice(0, 3)
+    .map((field) => `${field.label.toLowerCase()} ${field.value}`)
+    .join(", ");
+  return emitOwnerText(
+    "reply",
+    `Review ${presentation.title}${
+      highlights ? `: ${highlights}` : ""
+    }. Confirm to save it.`,
+    {
+      fallback: "Review this change. Confirm to save it.",
+      surface: "proposal_lead",
+    },
+  );
+}
+
 /** The receipt title after a write saved. */
 export function receiptTitle(toolName: string): string {
-  return assertOwnerCopy(toolOwnerCopy(toolName).done, {
+  return emitOwnerText("card_label", toolOwnerCopy(toolName).done, {
     fallback: "Saved in Mingla",
     surface: "receipt_title",
   });

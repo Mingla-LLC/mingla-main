@@ -7,6 +7,7 @@
 // executable action.
 
 import { isOwnerSafe, isOwnerSafeValue } from "./ariOwnerCopy.ts";
+import { emitOwnerText } from "./ariOwnerEmit.ts";
 import {
   buildProposalPresentation,
   receiptTitle,
@@ -124,7 +125,6 @@ export function isAriRenditionInputField(
   return true;
 }
 
-const BLOCK_TYPE_SET = new Set<string>(ARI_RENDITION_BLOCK_TYPES);
 const PLATFORM_SET = new Set(["ios", "android", "web", "unknown"]);
 const MAX_BLOCKS = 18;
 const MAX_ROWS = 12;
@@ -424,7 +424,50 @@ function receiptScalar(value: unknown, humanizeValue = false): string | null {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   const text = boundedText(value, 220);
   if (!text || UUID_VALUE.test(text) || /^https?:\/\//i.test(text)) return null;
-  return humanizeValue ? humanize(text) : text;
+  const ownerRaw = emitOwnerText("card_value", text);
+  if (!ownerRaw) return null;
+  const ownerValue = emitOwnerText(
+    "card_value",
+    humanizeValue ? humanize(ownerRaw) : ownerRaw,
+  );
+  return ownerValue || null;
+}
+
+function ownerReceiptBlocks(
+  blocks: readonly Record<string, unknown>[],
+): Record<string, unknown>[] {
+  return blocks.flatMap((block) => {
+    if (block.type === "key_value" && Array.isArray(block.rows)) {
+      const rows = block.rows.flatMap((raw) => {
+        const row = record(raw);
+        const label = emitOwnerText("card_label", String(row?.label ?? ""));
+        const value = emitOwnerText("card_value", String(row?.value ?? ""));
+        return label && value ? [{ ...row, label, value }] : [];
+      });
+      return rows.length > 0 ? [{ ...block, rows }] : [];
+    }
+    if (block.type === "callout") {
+      const title = emitOwnerText(
+        "card_label",
+        String(block.title ?? ""),
+        { fallback: "Next" },
+      );
+      const body = emitOwnerText("reply", String(block.body ?? ""), {
+        fallback: "Review the saved details before continuing.",
+        surface: "receipt_callout",
+      });
+      return [{ ...block, title, body }];
+    }
+    if (block.type === "paragraph") {
+      return [{
+        ...block,
+        text: emitOwnerText("reply", String(block.text ?? ""), {
+          surface: "receipt_paragraph",
+        }),
+      }];
+    }
+    return [block];
+  });
 }
 
 function genericReceiptRows(
@@ -788,6 +831,23 @@ export function buildToolReceiptRendition(args: {
   const genericRows = args.toolName === "upsert_ticket_tier"
     ? ticketTierReceiptRows(args.result)
     : genericReceiptRows(args.result);
+  const fallbackTitle = receiptTitle(args.toolName);
+  const title = emitOwnerText(
+    "reply",
+    eventPresentation?.title ?? fallbackTitle,
+    { fallback: fallbackTitle, surface: "receipt_title" },
+  );
+  const body = emitOwnerText(
+    "reply",
+    eventPresentation?.body ?? "Saved and checked in Mingla.",
+    { fallback: "Saved and checked in Mingla.", surface: "receipt_body" },
+  );
+  const blocks = ownerReceiptBlocks(
+    eventPresentation?.blocks ??
+      (genericRows.length > 0
+        ? [{ type: "key_value", version: 1, id: "receipt", rows: genericRows }]
+        : []),
+  );
   return {
     schema_version: 2,
     // The receipt identity links the premium card to the canonical tool row so
@@ -795,22 +855,16 @@ export function buildToolReceiptRendition(args: {
     rendition_id: `receipt:${args.pendingActionId}`,
     kind: "receipt",
     eyebrow: eventPresentation ? "Event draft" : "Saved in Mingla",
-    title: eventPresentation?.title ?? receiptTitle(args.toolName),
+    title,
     // #2830 P4 — one clear line. (It used to say the result was "below",
     // then, in a callout under it, that it was "shown above".)
-    body: eventPresentation?.body ??
-      (genericRows.length > 0
-        ? "Saved and checked in Mingla:"
-        : "Saved and checked in Mingla."),
+    body,
     tone: "success",
     state: "submitted",
     ...(graphicFor(args.toolName)
       ? { graphic: graphicFor(args.toolName) }
       : {}),
-    blocks: eventPresentation?.blocks ??
-      (genericRows.length > 0
-        ? [{ type: "key_value", version: 1, id: "receipt", rows: genericRows }]
-        : []),
+    blocks,
   };
 }
 

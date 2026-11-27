@@ -178,6 +178,9 @@ export type AgentChatResponse =
       kind: "error";
       code: string;
       message: string;
+      conversation_id?: string;
+      client_turn_id?: string;
+      attempt_status?: "failed";
       retry_after_seconds?: number;
       cooldown_until?: string;
     };

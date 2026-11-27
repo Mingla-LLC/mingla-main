@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/agent-chat/__tests__/issue_4637_failure_reply.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4637-failure-reply",
+  "profile": "deno-2-unit"
+}

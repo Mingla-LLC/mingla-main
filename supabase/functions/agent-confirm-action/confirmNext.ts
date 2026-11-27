@@ -24,7 +24,7 @@ import {
   websiteSetupInitialCalls,
 } from "../_shared/agentWebsiteSetup.ts";
 import type { AgentLoopObservation } from "../_shared/agentLoop.ts";
-import { assertOwnerCopy } from "../_shared/ariOwnerCopy.ts";
+import { emitOwnerText } from "../_shared/ariOwnerEmit.ts";
 import {
   flowChoices,
   flowStateOf,
@@ -132,10 +132,9 @@ export async function websiteSetupNextAfterConfirm(args: {
     args.brand.id,
   );
   if (!presentation) return null;
-  const text = assertOwnerCopy(presentation.text, {
+  const text = emitOwnerText("reply", presentation.text, {
     fallback: "Here's the next Website setup step.",
     surface: "confirm_next_website",
-    mode: "prose",
   });
   const messageId = await insertRow({
     service: args.service,
@@ -225,8 +224,14 @@ export async function flowNextAfterConfirm(args: {
     ...(args.probes ? { probes: args.probes } : {}),
     // #2830 — the next brand-details question may carry what Ari found.
     research: ({ userId, brandId, plan }) =>
-      prepareBrandResearch({ service: args.service, userId, brandId, plan }) as
-        Promise<Record<string, Record<string, unknown>[] | undefined> | null>,
+      prepareBrandResearch({
+        service: args.service,
+        userId,
+        brandId,
+        plan,
+      }) as Promise<
+        Record<string, Record<string, unknown>[] | undefined> | null
+      >,
   });
   const state = flowStateOf(run);
   if (
@@ -238,10 +243,9 @@ export async function flowNextAfterConfirm(args: {
   const artefact = outcome.kind === "notice" ? null : (
     outcome as { artefact: FlowArtefact }
   ).artefact;
-  const text = assertOwnerCopy((outcome as { text: string }).text, {
+  const text = emitOwnerText("reply", (outcome as { text: string }).text, {
     fallback: artefact?.title ?? "Here's the next step.",
     surface: "confirm_next_flow",
-    mode: "prose",
   });
   const choices = artefact ? flowChoices(artefact) : undefined;
   const messageId = await insertRow({

@@ -67,6 +67,7 @@ import {
   isCurrentAriTurnEpoch,
   reduceAriClientIntent,
 } from "../services/agentReliability";
+import { isAriFailureMessageForTurn } from "../services/ariFailureParity";
 import { agentQueryKeys } from "./agentQueryKeys";
 import {
   ariRateLimitCopy,
@@ -169,6 +170,8 @@ export interface UseAgentChatResult {
   applyFlowState: (state: AriFlowState | null | undefined) => void;
   /** #3355 P3 — mount / reconnect / back from a handoff. Never a turn. */
   resumeFlow: (trigger?: "resume" | "handoff_return") => Promise<void>;
+  /** Re-read persisted assistant rows after a confirmation or failed turn. */
+  refreshMessages: () => Promise<AgentMessage[]>;
   retryTurn: (clientTurnId: string) => Promise<AgentChatResponse | null>;
   retryTenantRecovery: () => Promise<AgentChatResponse | null>;
   editTurn: (clientTurnId: string) => AriEditableTurn | null;
@@ -606,14 +609,17 @@ export function useAgentChat(
   );
 
   const refreshCanonicalMessages = useCallback(
-    async (targetConversationId: string): Promise<void> => {
-      qc.setQueryData(
-        agentQueryKeys.messages(targetConversationId),
-        await fetchMessages(targetConversationId),
-      );
+    async (targetConversationId: string): Promise<AgentMessage[]> => {
+      const canonical = await fetchMessages(targetConversationId);
+      qc.setQueryData(agentQueryKeys.messages(targetConversationId), canonical);
+      return canonical;
     },
     [qc],
   );
+  const refreshMessages = useCallback(async (): Promise<AgentMessage[]> => {
+    const target = conversationIdRef.current;
+    return target ? await refreshCanonicalMessages(target) : [];
+  }, [refreshCanonicalMessages]);
 
   // #3355 P3 — the server owns which flow card is current, per chat.
   const applyFlowStateFor = useCallback(
@@ -680,6 +686,18 @@ export function useAgentChat(
         )
           return;
         const status = canonical.attempt.status;
+        let durableFailure = false;
+        if (status === "completed" || status === "failed") {
+          const canonicalMessages = await refreshCanonicalMessages(
+            canonical.attempt.conversation_id,
+          );
+          durableFailure = status === "failed" && canonicalMessages.some(
+            (message) => isAriFailureMessageForTurn(message, clientTurnId),
+          );
+          if (
+            !isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)
+          ) return;
+        }
         const delivery =
           status === "stopped"
             ? ("stopped" as const)
@@ -702,8 +720,9 @@ export function useAgentChat(
             ? {
                 errorCode:
                   canonical.attempt.error_code ?? "ACCEPTED_RESPONSE_FAILED",
-                errorMessage:
-                  "Ari couldn’t finish this response. Your message is safe.",
+                errorMessage: durableFailure
+                  ? null
+                  : "Ari couldn’t finish this response. Your message is safe.",
               }
             : status === "stopped"
               ? {
@@ -720,13 +739,6 @@ export function useAgentChat(
           )
         ) {
           selectConversation(canonical.attempt.conversation_id);
-        }
-        if (status === "completed") {
-          await refreshCanonicalMessages(canonical.attempt.conversation_id);
-          if (
-            !isCurrentAriTurnEpoch(before.epoch, scopeEpoch, brandEpoch.current)
-          )
-            return;
         }
       } catch {
         if (
@@ -1593,6 +1605,7 @@ export function useAgentChat(
       : undefined,
     applyFlowState,
     resumeFlow,
+    refreshMessages,
     retryTurn,
     retryTenantRecovery,
     editTurn,

@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
+  flowOwnerText,
   flowStateOf,
   persistFlowRow,
   runFlowForConversation,
@@ -96,11 +97,12 @@ export async function resumeFlowForHost(args: {
       outcome &&
       (outcome.kind === "artefact" || outcome.kind === "completed")
     ) {
+      const ownerText = flowOwnerText(outcome.text, outcome.artefact);
       const messageId = await persistFlowRow({
         service: args.service,
         userId: args.userId,
         conversationId: args.conversationId,
-        text: outcome.text,
+        text: ownerText,
         artefact: outcome.artefact,
         state,
         promptVersion: PROMPT_VERSION,
@@ -109,7 +111,7 @@ export async function resumeFlowForHost(args: {
       if (messageId) {
         next = {
           message_id: messageId,
-          text: outcome.text,
+          text: ownerText,
           artefact: outcome.artefact,
         };
       }

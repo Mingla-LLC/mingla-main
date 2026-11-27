@@ -60,7 +60,8 @@ describe("#3184 T-I6 Ari chat error copy never blames the connection for a refus
     // #2830 adds PROPOSAL_EXPIRED on both sides (25/25).
     // #3355 adds PAYOUT_NOT_READY on both sides; merged registry 26/26.
     // #2830 adds FLOW_TAKEN_OVER on both sides (27/27), with its approved words.
-    expect(REGISTRY_CODES).toHaveLength(27);
+    // #4637 adds STALE_AMENDED on both sides (28/28).
+    expect(REGISTRY_CODES).toHaveLength(28);
     expect(REGISTRY_CODES).toContain("TRANSPORT_UNAVAILABLE");
   });
 

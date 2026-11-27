@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import type { AgentChoicesV2 } from "../agentChoices.ts";
+import { emitOwnerText } from "../ariOwnerEmit.ts";
 import {
   type BrandReadiness,
   readBrandReadiness,
@@ -2090,6 +2091,17 @@ export async function runFlowForConversation(args: {
   }
 }
 
+/** The single owner-copy boundary for every flow-engine assistant row. */
+export function flowOwnerText(
+  text: string,
+  artefact: FlowArtefact | null,
+): string {
+  return emitOwnerText("reply", text, {
+    fallback: artefact?.title ?? "Here's the next step.",
+    surface: "flow_row",
+  });
+}
+
 /** Insert one engine-authored assistant row (never a user turn). */
 export async function persistFlowRow(args: {
   service: SupabaseClient;
@@ -2102,12 +2114,13 @@ export async function persistFlowRow(args: {
   modelVersion: string;
 }): Promise<string | null> {
   const id = crypto.randomUUID();
+  const text = flowOwnerText(args.text, args.artefact);
   const { error } = await args.service.from("agent_messages").insert({
     id,
     conversation_id: args.conversationId,
     user_id: args.userId,
     role: "assistant",
-    content: flowMessageContent(args.text, args.artefact, args.state),
+    content: flowMessageContent(text, args.artefact, args.state),
     prompt_version: args.promptVersion,
     model_version: args.modelVersion,
   });

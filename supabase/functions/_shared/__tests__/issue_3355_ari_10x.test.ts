@@ -2224,7 +2224,7 @@ Deno.test("#3355 every committed assistant reply crosses the diagnostic sanitize
     // #3355 P1 (D-6): the sanitizer's output then crosses the owner copy gate
     // (rework 3, R3-11: after the repeated-line dedupe; #3355 ship-prep: the
     // rollout switch's off path skips only the dedupe, never the sanitizer).
-    /const publicText = assertOwnerCopy\(\s*legacyText\s*\? sanitizeAriUserFacingDiagnostics\(args\.text\)\s*: dedupeReplySentences\(sanitizeAriUserFacingDiagnostics\(args\.text\)\)/,
+    /const publicText = emitOwnerText\(\s*"reply",\s*legacyText\s*\? sanitizeAriUserFacingDiagnostics\(args\.text\)\s*: dedupeReplySentences\(sanitizeAriUserFacingDiagnostics\(args\.text\)\)/,
   );
   assertMatch(commitBoundary, /const content = \{\s*text: publicText,/);
   assertMatch(commitBoundary, /assistantText: publicText,/);

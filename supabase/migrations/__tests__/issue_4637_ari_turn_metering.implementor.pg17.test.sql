@@ -213,7 +213,7 @@ BEGIN
   INSERT INTO public.agent_messages(
     conversation_id,user_id,role,content,tool_calls,prompt_version,model_version
   ) VALUES (
-    v_chat,v_user,'assistant','{"text":""}'::jsonb,
+    v_chat,v_user,'assistant','{"text":"Review this change. Confirm to save it."}'::jsonb,
     jsonb_build_object('pending_action_id',v_chained_pending),
     'tenant-v1','fixture'
   );

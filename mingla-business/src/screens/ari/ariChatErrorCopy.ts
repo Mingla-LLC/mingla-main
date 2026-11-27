@@ -32,8 +32,7 @@ const REGISTRY_COPY: Readonly<Record<AriErrorCode, string>> = Object.freeze({
     "Ari couldn't use those details. Nothing was changed; try rephrasing.",
   UNAUTHENTICATED:
     "Your session expired. Sign in again to keep chatting with Ari.",
-  FORBIDDEN:
-    "Your role on this brand doesn't allow that. Nothing was changed.",
+  FORBIDDEN: "Your role on this brand doesn't allow that. Nothing was changed.",
   PAYOUT_NOT_READY:
     "This brand can't accept paid tickets yet. Finish its payout setup first.",
   ROLE_REVOKED: "Your access to this brand changed. Nothing was changed.",
@@ -41,6 +40,8 @@ const REGISTRY_COPY: Readonly<Record<AriErrorCode, string>> = Object.freeze({
     "This chat belongs to a different brand. Start a new chat for this brand.",
   STALE_PROPOSAL:
     "That request is out of date. Nothing was changed; ask Ari again.",
+  STALE_AMENDED:
+    "This card changed after your last message. Ask Ari to show it again.",
   // #2830 — the screen shows the server's sentence, which names who; this is the
   // same words for a reply that has no name in it.
   FLOW_TAKEN_OVER:
@@ -141,7 +142,9 @@ export function flowTakenOverCopy(serverMessage: string): string {
   const tail = fixed.slice("A teammate".length);
   if (!serverMessage.endsWith(tail)) return fixed;
   const name = serverMessage.slice(0, -tail.length).trim();
-  return name.length > 0 && name.length <= 80 && !/[\n<>]/.test(name) ? `${name}${tail}` : fixed;
+  return name.length > 0 && name.length <= 80 && !/[\n<>]/.test(name)
+    ? `${name}${tail}`
+    : fixed;
 }
 
 export function shouldReportAriChatError(code: string): boolean {

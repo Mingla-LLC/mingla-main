@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4637_answer_shape.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4637-answer-shape",
+  "profile": "deno-2-unit"
+}

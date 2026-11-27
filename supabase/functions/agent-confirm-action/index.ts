@@ -73,11 +73,21 @@ import {
 } from "./executionOutcome.ts";
 import {
   claimPendingForConfirm,
-  pendingExpiredByDbClock,
+  probePendingForConfirm,
 } from "./pendingClaim.ts";
 import { retypeAriRefusal } from "../_shared/agentToolHelpers.ts";
-import { assertOwnerCopy } from "../_shared/ariOwnerCopy.ts";
-import { withProposalPresentation } from "../_shared/ariPresentation/registry.ts";
+import { emitOwnerText } from "../_shared/ariOwnerEmit.ts";
+import {
+  type AriScopeIssue,
+  ariScopeTextForTurn,
+  proposalScopeIssue,
+  resolveAriStatedScope,
+} from "../_shared/ariRequirements.ts";
+import {
+  proposalOwnerLead,
+  receiptTitle,
+  withProposalPresentation,
+} from "../_shared/ariPresentation/registry.ts";
 import {
   closeSweptProposal,
   type ConfirmNext,
@@ -94,6 +104,10 @@ import {
 } from "../_shared/agentSiteWorkspaceTools.ts";
 import { siteStepActivityWriter } from "./siteStepActivity.ts";
 import { AriTurnMeter } from "../_shared/ariTurnMeter.ts";
+import {
+  type AriFailureReply,
+  buildAriFailureReply,
+} from "../_shared/ariFailureCopy.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -347,24 +361,47 @@ async function terminalizePending(
     result?: unknown;
     failureReason?: string;
     requireOperationReceipt?: boolean;
+    failureReply?: AriFailureReply;
   },
 ): Promise<
-  { id: string; status: string; casWon: boolean; terminalMessageId?: string }
+  {
+    id: string;
+    status: string;
+    casWon: boolean;
+    terminalMessageId?: string;
+    failureMessageId?: string;
+  }
 > {
-  const { data, error } = await pendingStateClient.rpc(
-    "terminalize_agent_pending_action",
-    {
-      p_pending_action_id: input.id,
-      p_user_id: input.userId,
-      p_expected_status: input.expectedStatus,
-      p_outcome: input.outcome,
-      p_result: input.result ?? null,
-      p_failure_reason: input.failureReason ?? null,
-      p_prompt_version: TENANT_CONTEXT_VERSION,
-      p_model_version: ARI_MODEL_VERSION,
-      p_require_operation_receipt: input.requireOperationReceipt ?? false,
-    },
-  ).select("id, status, conversation_id, cas_won").maybeSingle();
+  const failureReply = input.outcome === "failed" ? input.failureReply : null;
+  const { data, error } = failureReply
+    ? await pendingStateClient.rpc(
+      "terminalize_agent_pending_failure",
+      {
+        p_pending_action_id: input.id,
+        p_user_id: input.userId,
+        p_expected_status: input.expectedStatus,
+        p_failure_reason: input.failureReason ?? "EXECUTION_FAILED",
+        p_content: failureReply,
+        p_prompt_version: TENANT_CONTEXT_VERSION,
+        p_model_version: ARI_MODEL_VERSION,
+      },
+    ).select(
+      "id, status, conversation_id, cas_won, failure_message_id",
+    ).maybeSingle()
+    : await pendingStateClient.rpc(
+      "terminalize_agent_pending_action",
+      {
+        p_pending_action_id: input.id,
+        p_user_id: input.userId,
+        p_expected_status: input.expectedStatus,
+        p_outcome: input.outcome,
+        p_result: input.result ?? null,
+        p_failure_reason: input.failureReason ?? null,
+        p_prompt_version: TENANT_CONTEXT_VERSION,
+        p_model_version: ARI_MODEL_VERSION,
+        p_require_operation_receipt: input.requireOperationReceipt ?? false,
+      },
+    ).select("id, status, conversation_id, cas_won").maybeSingle();
   if (error || !data) {
     throw new Error(error?.message ?? "terminal_state_not_committed");
   }
@@ -374,13 +411,114 @@ async function terminalizePending(
     userId: input.userId,
     outcome: input.outcome,
   });
+  const failureMessageId = (data as unknown as {
+    failure_message_id?: unknown;
+  }).failure_message_id;
   return {
     id: data.id as string,
     status: data.status as string,
     // false when another request already terminalized it (a replay).
     casWon: (data as { cas_won?: unknown }).cas_won !== false,
     ...(terminalMessageId ? { terminalMessageId } : {}),
+    ...(typeof failureMessageId === "string" ? { failureMessageId } : {}),
   };
+}
+
+async function amendedCardError(
+  client: ReturnType<typeof buildServiceClient>,
+  pending: { id: string; user_id?: string; conversation_id: string | null },
+  userId: string,
+): Promise<Response> {
+  const { data } = pending.conversation_id
+    ? await client.from("agent_pending_actions")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("conversation_id", pending.conversation_id)
+      .eq("source", "ari")
+      .eq("status", "pending")
+      .neq("id", pending.id)
+      .limit(1)
+    : { data: [] };
+  return data && data.length > 0
+    ? errorResponse(
+      409,
+      "STALE",
+      "A newer version of this change is waiting for you.",
+    )
+    : errorResponse(
+      409,
+      "STALE_AMENDED",
+      "This card changed after your last message. Ask Ari to show it again.",
+    );
+}
+
+function scopeQuestion(issue: AriScopeIssue): string {
+  return issue.message.includes("ticket type")
+    ? "Which ticket type should this apply to?"
+    : "Which event or listing should this apply to?";
+}
+
+async function originatingAriScopeIssue(args: {
+  client: SupabaseClient;
+  userId: string;
+  conversationId: string | null;
+  originClientTurnId: string | null;
+  brandId: string | null;
+  source: string | null;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+}): Promise<AriScopeIssue | null> {
+  if (args.source !== "ari") return null;
+  if (!args.conversationId || !args.originClientTurnId) {
+    return proposalScopeIssue({
+      toolName: args.toolName,
+      args: args.toolArgs,
+      scopeReadFailed: true,
+    });
+  }
+  const { data: ownerMessage, error: ownerError } = await args.client.from(
+    "agent_messages",
+  )
+    .select("id,content,created_at")
+    .eq("user_id", args.userId)
+    .eq("conversation_id", args.conversationId)
+    .eq("client_turn_id", args.originClientTurnId)
+    .eq("role", "user")
+    .maybeSingle();
+  const currentText =
+    typeof (ownerMessage?.content as { text?: unknown } | null)
+        ?.text === "string"
+      ? String((ownerMessage?.content as { text: string }).text)
+      : "";
+  const { data: scopeRows, error: historyError } = ownerMessage
+    ? await args.client.from("agent_messages")
+      .select("role,content,created_at")
+      .eq("user_id", args.userId)
+      .eq("conversation_id", args.conversationId)
+      .lte("created_at", ownerMessage.created_at)
+      .order("created_at", { ascending: false })
+      .limit(4)
+    : { data: null, error: ownerError };
+  const ownerText = ariScopeTextForTurn(
+    (scopeRows ?? []).reverse().map((row) => ({
+      role: row.role,
+      text: typeof (row.content as { text?: unknown } | null)?.text === "string"
+        ? String((row.content as { text: string }).text)
+        : "",
+    })),
+    currentText,
+  );
+  const readFailed = Boolean(ownerError || !ownerMessage || historyError);
+  const statedScope = readFailed
+    ? null
+    : await resolveAriStatedScope(args.client, args.brandId, ownerText);
+  return proposalScopeIssue({
+    toolName: args.toolName,
+    args: args.toolArgs,
+    hostText: ownerText,
+    statedScope,
+    scopeReadFailed: readFailed,
+  });
 }
 
 // The status map and the ambiguity decision live in executionOutcome.ts so
@@ -825,11 +963,13 @@ async function handleConfirmAction(args: {
   // #3355 P1: a newer proposal in this chat replaced this one. Nothing ran;
   // the owner reviews the newest card instead.
   if (pending.status === "superseded") {
-    return errorResponse(
-      409,
-      "STALE",
-      "A newer version of this change is waiting for you.",
-    );
+    return pending.failure_reason === "OWNER_AMENDED"
+      ? await amendedCardError(pendingStateClient, pending, userId)
+      : errorResponse(
+        409,
+        "STALE",
+        "A newer version of this change is waiting for you.",
+      );
   }
   // #3355 bundle 5 (3(b).6): an approval that timed out inside a live flow
   // re-presents its step from a fresh read instead of dead-ending.
@@ -888,11 +1028,15 @@ async function handleConfirmAction(args: {
   let expiredByDbClock = false;
   if (pending.status === "pending") {
     try {
-      expiredByDbClock = await pendingExpiredByDbClock(pendingStateClient, {
+      const probe = await probePendingForConfirm(pendingStateClient, {
         id: pending.id,
         userId,
         expiresAt: pending.expires_at,
       });
+      expiredByDbClock = probe.answer === "expired";
+      if (probe.answer === "stale_amended") {
+        return await amendedCardError(pendingStateClient, pending, userId);
+      }
     } catch {
       return errorResponse(
         503,
@@ -1030,16 +1174,105 @@ async function handleConfirmAction(args: {
   }
   const finalArgs = canonicalArgs;
 
+  const editedScopeIssue = await originatingAriScopeIssue({
+    client: userClient,
+    userId,
+    conversationId: pending.conversation_id,
+    originClientTurnId: pending.origin_client_turn_id,
+    brandId: pending.related_brand_id ?? conversationTask?.row.brand_id ?? null,
+    source: pending.source,
+    toolName: pending.tool_name,
+    toolArgs: finalArgs,
+  });
+  if (editedScopeIssue) {
+    return errorResponse(400, "INVALID_ARGS", scopeQuestion(editedScopeIssue));
+  }
+
+  const editedCreateEventTask = body.edited_args && pending.conversation_id &&
+      conversationTask?.state.active_task?.intent === "create_event"
+    ? conversationTask
+    : null;
+  let claimEstablished = pending.status === "executing";
+  const ensureFinalClaim = async (): Promise<Response | null> => {
+    if (claimEstablished) return null;
+    let claim: Awaited<ReturnType<typeof claimPendingForConfirm>>;
+    try {
+      claim = await claimPendingForConfirm(pendingStateClient, {
+        id: pending.id,
+        userId,
+        status: "executing",
+        toolArgs: finalArgs,
+      });
+    } catch {
+      return errorResponse(
+        409,
+        "WRONG_STATE",
+        "Race detected — this action was already handled",
+      );
+    }
+    if (claim.answer === "expired") {
+      return await answerClaimExpired({
+        source: pending.source,
+        terminalize: () =>
+          terminalizePending(pendingStateClient, {
+            id: pending.id,
+            userId,
+            expectedStatus: "pending",
+            outcome: "expired",
+          }).then((done) => {
+            if (!done.casWon) throw new Error("expired_elsewhere");
+          }),
+        represent: representExpired,
+        hubExpired: () =>
+          errorResponse(409, "EXPIRED", "This suggestion expired."),
+      });
+    }
+    if (claim.answer === "stale_amended") {
+      return await amendedCardError(pendingStateClient, pending, userId);
+    }
+    if (claim.answer !== "claimed") {
+      return errorResponse(
+        409,
+        "WRONG_STATE",
+        "Race detected — this action was already handled",
+      );
+    }
+    claimEstablished = true;
+    emitAriPhase("execution_claimed", { operationState: "executing" });
+    await appendPendingActivity({
+      client: pendingStateClient,
+      userId,
+      conversationId: pending.conversation_id,
+      pendingActionId: pending.id,
+      eventType: "approved_action_started",
+    });
+    return null;
+  };
+
+  // A normal confirmation acquires the final database claim before any path
+  // can terminalize or execute it. Edited event cards use the atomic
+  // claim-and-replace RPC below instead.
+  if (!editedCreateEventTask) {
+    const claimResponse = await ensureFinalClaim();
+    if (claimResponse) return claimResponse;
+  }
+
   // Find tool + validate
   const tool = findTool(pending.tool_name);
   if (!tool) {
+    const claimResponse = await ensureFinalClaim();
+    if (claimResponse) return claimResponse;
     try {
       await terminalizePending(pendingStateClient, {
         id: pending.id,
         userId,
-        expectedStatus: "pending",
+        expectedStatus: "executing",
         outcome: "failed",
         failureReason: "Unknown tool",
+        failureReply: buildAriFailureReply({
+          errorCode: "UNKNOWN_TOOL",
+          toolName: pending.tool_name,
+        }),
       });
     } catch (error) {
       return errorResponse(500, "TERMINALIZATION_FAILED", String(error));
@@ -1050,6 +1283,8 @@ async function handleConfirmAction(args: {
   try {
     await authorizeAgentTool(tool, finalArgs, userClient, userId);
   } catch (err: unknown) {
+    const claimResponse = await ensureFinalClaim();
+    if (claimResponse) return claimResponse;
     const code = err instanceof ToolError ? err.code : "ROLE_CHECK_UNAVAILABLE";
     const status = code === "ROLE_CHECK_UNAVAILABLE"
       ? 503
@@ -1061,11 +1296,16 @@ async function handleConfirmAction(args: {
       const terminalized = await terminalizePending(pendingStateClient, {
         id: pending.id,
         userId,
-        expectedStatus: "pending",
+        expectedStatus: "executing",
         outcome: "failed",
         failureReason: code,
+        failureReply: buildAriFailureReply({
+          errorCode: code,
+          toolName: pending.tool_name,
+        }),
       });
-      terminalMessageId = terminalized.terminalMessageId;
+      terminalMessageId = terminalized.failureMessageId ??
+        terminalized.terminalMessageId;
     } catch (terminalError) {
       return errorResponse(
         500,
@@ -1102,10 +1342,7 @@ async function handleConfirmAction(args: {
     );
   }
 
-  if (
-    body.edited_args && pending.conversation_id &&
-    conversationTask?.state.active_task?.intent === "create_event"
-  ) {
+  if (editedCreateEventTask && pending.conversation_id) {
     const replacementPendingActionId = crypto.randomUUID();
     const replacementMessageId = crypto.randomUUID();
     const nowIso = new Date().toISOString();
@@ -1113,7 +1350,7 @@ async function handleConfirmAction(args: {
     let canonicalArgs: Record<string, unknown>;
     try {
       const readyState = replaceCreateEventProposalArgs({
-        state: conversationTask.state,
+        state: editedCreateEventTask.state,
         pendingActionId: pending.id,
         toolArgs: finalArgs,
         nowIso,
@@ -1142,38 +1379,47 @@ async function handleConfirmAction(args: {
       );
     }
 
-    try {
-      await terminalizePending(pendingStateClient, {
-        id: pending.id,
-        userId,
-        expectedStatus: "pending",
-        outcome: "cancelled",
-        failureReason: `EDITED_REPLACEMENT:${replacementPendingActionId}`,
+    const { data: replacementAnswer, error: replacementError } =
+      await pendingStateClient.rpc("replace_agent_pending_action_for_edit", {
+        p_pending_action_id: pending.id,
+        p_user_id: userId,
+        p_replacement_pending_action_id: replacementPendingActionId,
+        p_tool_args: canonicalArgs,
+        p_prompt_version: TENANT_CONTEXT_VERSION,
+        p_model_version: ARI_MODEL_VERSION,
       });
-    } catch {
+    if (replacementError) {
+      return errorResponse(
+        503,
+        "DEPENDENCY_UNAVAILABLE",
+        "Ari couldn't safely replace this proposal right now.",
+      );
+    }
+    if (replacementAnswer === "stale_amended") {
+      return await amendedCardError(pendingStateClient, pending, userId);
+    }
+    if (replacementAnswer === "expired") {
+      return await answerClaimExpired({
+        source: pending.source,
+        terminalize: () =>
+          terminalizePending(pendingStateClient, {
+            id: pending.id,
+            userId,
+            expectedStatus: "pending",
+            outcome: "expired",
+          }).then((done) => {
+            if (!done.casWon) throw new Error("expired_elsewhere");
+          }),
+        represent: representExpired,
+        hubExpired: () =>
+          errorResponse(409, "EXPIRED", "This suggestion expired."),
+      });
+    }
+    if (replacementAnswer !== "replaced") {
       return errorResponse(
         409,
         "WRONG_STATE",
         "This proposal was already handled. Refresh the chat.",
-      );
-    }
-
-    const { error: replacementError } = await pendingStateClient
-      .from("agent_pending_actions")
-      .insert({
-        id: replacementPendingActionId,
-        user_id: userId,
-        conversation_id: pending.conversation_id,
-        tool_name: pending.tool_name,
-        tool_args: canonicalArgs,
-        status: "pending",
-        server_proposed_at: nowIso,
-      });
-    if (replacementError) {
-      return errorResponse(
-        409,
-        "TASK_RECOVERY_REQUIRED",
-        "The old proposal was stopped, but Ari could not save the replacement. Refresh the chat.",
       );
     }
 
@@ -1188,14 +1434,16 @@ async function handleConfirmAction(args: {
         {
           p_user_id: userId,
           p_conversation_id: pending.conversation_id,
-          p_expected_revision: conversationTask.row.task_state_revision,
+          p_expected_revision: editedCreateEventTask.row.task_state_revision,
           p_task_state: replacementState,
           p_summary: safeSummary(
-            conversationTask.row.summary,
+            editedCreateEventTask.row.summary,
             `Edited proposal replaced for ${pending.tool_name}.`,
           ),
           p_assistant_message_id: replacementMessageId,
-          p_content: { text: "" },
+          p_content: {
+            text: proposalOwnerLead(pending.tool_name, canonicalArgs),
+          },
           p_tool_calls: toolCalls,
           p_client_turn_id: null,
           p_prompt_version: TENANT_CONTEXT_VERSION,
@@ -1222,88 +1470,7 @@ async function handleConfirmAction(args: {
       replaced_pending_action_id: pending.id,
       tool_name: pending.tool_name,
       tool_args: canonicalArgs,
-      task_state_revision: conversationTask.row.task_state_revision + 1,
-    });
-  }
-
-  // Persist edited args together with the atomic pending -> executing flip.
-  // A recovery request therefore replays the exact confirmed payload.
-  if (pending.status === "pending") {
-    // #1985 retest coordination: the assistant proposal row is the canonical
-    // refresh surface. Replace its structured args before execution so a
-    // reload cannot resurrect the model's pre-edit slots as confirmable.
-    if (pending.conversation_id) {
-      const { error: proposalErr } = await pendingStateClient
-        .from("agent_messages")
-        .update({
-          tool_calls: {
-            tool_name: pending.tool_name,
-            args: finalArgs,
-            pending_action_id: pending.id,
-          },
-        })
-        .eq("user_id", userId)
-        .eq("conversation_id", pending.conversation_id)
-        .eq("role", "assistant")
-        .contains("tool_calls", { pending_action_id: pending.id });
-      if (proposalErr) {
-        return errorResponse(
-          500,
-          "INTERNAL",
-          `Proposal update failed: ${proposalErr.message}`,
-        );
-      }
-    }
-    // #3355 P1 (D-14): claim on the database clock. An approval that expired
-    // between the probe above and this flip is refused, never executed.
-    let claim: Awaited<ReturnType<typeof claimPendingForConfirm>>;
-    try {
-      claim = await claimPendingForConfirm(pendingStateClient, {
-        id: pending.id,
-        userId,
-        status: "executing",
-        toolArgs: finalArgs,
-      });
-    } catch {
-      return errorResponse(
-        409,
-        "WRONG_STATE",
-        "Race detected — this action was already handled",
-      );
-    }
-    if (claim.answer === "expired") {
-      // #3355 bundle 5: only the request that expired it re-presents.
-      return await answerClaimExpired({
-        source: pending.source,
-        terminalize: () =>
-          terminalizePending(pendingStateClient, {
-            id: pending.id,
-            userId,
-            expectedStatus: "pending",
-            outcome: "expired",
-          }).then((done) => {
-            // A replay of another request's expiry is not this request's.
-            if (!done.casWon) throw new Error("expired_elsewhere");
-          }),
-        represent: representExpired,
-        hubExpired: () =>
-          errorResponse(409, "EXPIRED", "This suggestion expired."),
-      });
-    }
-    if (claim.answer !== "claimed") {
-      return errorResponse(
-        409,
-        "WRONG_STATE",
-        "Race detected — this action was already handled",
-      );
-    }
-    emitAriPhase("execution_claimed", { operationState: "executing" });
-    await appendPendingActivity({
-      client: pendingStateClient,
-      userId,
-      conversationId: pending.conversation_id,
-      pendingActionId: pending.id,
-      eventType: "approved_action_started",
+      task_state_revision: editedCreateEventTask.row.task_state_revision + 1,
     });
   }
 
@@ -1366,8 +1533,13 @@ async function handleConfirmAction(args: {
           expectedStatus: "executing",
           outcome: "failed",
           failureReason: reason,
+          failureReply: buildAriFailureReply({
+            errorCode: err instanceof ToolError ? err.code : "EXECUTION_FAILED",
+            toolName: tool.name,
+          }),
         });
-        terminalMessageId = terminalized.terminalMessageId;
+        terminalMessageId = terminalized.failureMessageId ??
+          terminalized.terminalMessageId;
       } catch (terminalError) {
         return errorResponse(
           500,
@@ -1582,12 +1754,33 @@ async function handleConfirmAction(args: {
                 canonicalize: canonicalizeAgentProposalArgs,
               });
             if (continuation.kind === "proposal") {
-              await authorizeAgentTool(
-                nextTool,
-                continuation.toolArgs,
-                userClient,
+              const continuationScopeIssue = await originatingAriScopeIssue({
+                client: userClient,
                 userId,
-              );
+                conversationId: pending.conversation_id,
+                originClientTurnId: pending.origin_client_turn_id,
+                brandId: pending.related_brand_id ??
+                  conversationTask?.row.brand_id ?? null,
+                source: pending.source,
+                toolName: continuation.toolName,
+                toolArgs: continuation.toolArgs,
+              });
+              if (continuationScopeIssue) {
+                continuation = {
+                  kind: "text",
+                  text: `That's saved. ${
+                    scopeQuestion(continuationScopeIssue)
+                  }`,
+                  observations: continuation.observations,
+                };
+              } else {
+                await authorizeAgentTool(
+                  nextTool,
+                  continuation.toolArgs,
+                  userClient,
+                  userId,
+                );
+              }
             }
           }
         }
@@ -1641,14 +1834,17 @@ async function handleConfirmAction(args: {
     (result as { status?: unknown } | null)?.status !== "applied";
   // #3355 P1 (D-6): the owner copy gate is the last word on follow-up text.
   const followupText = rawFollowupText
-    ? assertOwnerCopy(sanitizeAriUserFacingDiagnostics(rawFollowupText), {
-      // Never "saved" for a plan that was not applied.
-      fallback: siteChangeSetNotApplied
-        ? "That change could not be applied to your draft."
-        : "That's saved.",
-      surface: "confirm_followup",
-      mode: "prose",
-    })
+    ? emitOwnerText(
+      "reply",
+      sanitizeAriUserFacingDiagnostics(rawFollowupText),
+      {
+        // Never "saved" for a plan that was not applied.
+        fallback: siteChangeSetNotApplied
+          ? "That change could not be applied to your draft."
+          : "That's saved.",
+        surface: "confirm_followup",
+      },
+    )
     : undefined;
   const rendition = siteChangeSetNotApplied ? null : buildToolReceiptRendition({
     toolName: tool.name,
@@ -1662,6 +1858,8 @@ async function handleConfirmAction(args: {
   const resource = createdResource(tool.name, result);
   const choices = proactiveChoices(resource);
   const assistantMessageId = crypto.randomUUID();
+  const persistedFollowupText = followupText ??
+    (rendition ? `${receiptTitle(tool.name)}.` : undefined);
   if ((followupText || rendition) && pending.conversation_id) {
     await pendingStateClient.from("agent_messages").insert({
       id: assistantMessageId,
@@ -1669,7 +1867,7 @@ async function handleConfirmAction(args: {
       user_id: userId,
       role: "assistant",
       content: {
-        text: followupText ?? "",
+        text: persistedFollowupText ?? "",
         ...((choices || rendition)
           ? {
             structured: {
@@ -1749,7 +1947,10 @@ async function handleConfirmAction(args: {
         user_id: userId,
         role: "assistant",
         content: {
-          text: "",
+          text: proposalOwnerLead(
+            continuation.toolName,
+            continuation.toolArgs,
+          ),
           ...(nextRendition
             ? { structured: { rendition: nextRendition } }
             : {}),
