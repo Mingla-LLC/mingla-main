@@ -149,7 +149,7 @@ import { useTranslation } from "react-i18next";
 import { weatherService, type WeatherData } from "../../services/weatherService";
 import { onTheNightFacts } from "./onTheNight";
 import { shareContent } from "../../services/contentShareAdapter";
-import { useRecommendations } from "../../contexts/RecommendationsContext";
+import { useRecommendationsOptional } from "../../contexts/RecommendationsContext";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
@@ -270,7 +270,11 @@ export default function ConsumerExperienceDetailScreen({
   const user = useAppStore((s) => s.user);
   // #1708 — the viewer's resolved position. Absent (permission denied, or the
   // public web page) → no travel row at all, which is the honest outcome.
-  const { userLocation: viewerLocation } = useRecommendations();
+  // #4630 (retest D-1): /exp/{brand}/{slug} is a root stack screen OUTSIDE the
+  // RecommendationsProvider (it wraps app/index.tsx only), so the strict hook
+  // threw on every open since #1709. The optional hook returns null there; no
+  // provider means no position: no travel row, as with a denied permission.
+  const viewerLocation = useRecommendationsOptional()?.userLocation ?? null;
   const profile = useAppStore((s) => s.profile);
   const { t, i18n } = useTranslation(["cards"]);
   const explorerCheckoutContact = resolveExplorerCheckoutContact({

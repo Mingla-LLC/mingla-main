@@ -240,8 +240,16 @@ jest.mock("../../../utils/mutateCuratedCard", () => ({
   estimateTravelMinutes: () => 12,
   haversineKm: () => 4,
 }));
+// #4630 (retest D-1): /exp/ is a root stack screen outside the
+// RecommendationsProvider. The mock behaves like the real module there: the
+// strict hook throws, the optional hook returns null. FAILS-ON-REVERT: put the
+// strict useRecommendations back in ConsumerExperienceDetailScreen and the
+// mount below throws "must be used within a RecommendationsProvider".
 jest.mock("../../../contexts/RecommendationsContext", () => ({
-  useRecommendations: () => ({ userLocation: null }),
+  useRecommendations: () => {
+    throw new Error("useRecommendations must be used within a RecommendationsProvider");
+  },
+  useRecommendationsOptional: () => null,
 }));
 jest.mock("../../../constants/designSystem", () => ({
   glass: { bottomSheet: { snapPoints: ["50%", "90%"] } },
