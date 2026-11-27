@@ -18,7 +18,7 @@ import type { VenueOrderingConfig } from "../../../../../packages/brand-renderin
 import {
   itemCodeLimitedCopy,
   venueCodeLimitedNotices,
-} from "@mingla/offering-rendering/saleLimitedCopy";
+} from "@mingla/offering-rendering/venueCodeLimitedCopy";
 
 interface RenderNode {
   type?: unknown;

@@ -46,7 +46,7 @@ import type {
   ThemePalette,
 } from "@mingla/offering-rendering";
 import { type DiscountCodeReason } from "@mingla/offering-rendering/discountQuote";
-import { venueCodeLimitedNotices } from "@mingla/offering-rendering/saleLimitedCopy";
+import { venueCodeLimitedNotices } from "@mingla/offering-rendering/venueCodeLimitedCopy";
 
 import { formatMenuPrice } from "../PublicMenuSections";
 import type {
