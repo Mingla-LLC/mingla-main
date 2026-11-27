@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import { searchRouteMetadata } from '@/lib/search/metadata'
-import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
-import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
-import { LandingMedia } from '@/components/landing/landing-media'
 import { SitePage } from '@/components/site/site-page'
 import { HeroWords } from '@/components/site-blocks/hero-words'
 import { Spot } from '@/components/site-blocks/spot'
+import { FactsBlock } from '@/components/site-blocks/sections/facts-block'
+import { FinePrintBlock } from '@/components/site-blocks/sections/fine-print-block'
+import { StepsBlock } from '@/components/site-blocks/sections/steps-block'
+import { VideoBandBlock } from '@/components/site-blocks/sections/video-band-block'
+import { LOCALS_BAND, LOCALS_FACTS, LOCALS_FINE, LOCALS_HERO, LOCALS_STEPS } from '@/content/site-blocks/programmes'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4339 phase 2b — Mingla Locals, in the approved design: the headline, "Get
@@ -20,99 +21,29 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // (/schedule/locals) replaces the agreement button and sits beside "Get Mingla
 // to apply" in the closing band. The Local agreement is accepted in the app;
 // one line of fine print links to it.
+//
+// #4636: every section is a registry block (components/site-blocks/sections/)
+// with this page's default content (content/site-blocks/programmes.ts). The
+// steps, facts, band and fine print share the programme frame (pb-100 > wrap).
 
 // #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
 export const metadata: Metadata = searchRouteMetadata('/locals')
-
-const STEPS = [
-  {
-    title: 'Choose one eligible place',
-    body: 'Pick somewhere in your city that no Mingla Local has covered recently and where you have no personal or paid connection.',
-  },
-  {
-    title: 'Visit on your own terms',
-    body: 'Go during the month and pay for your own visit. The $150 monthly payment is designed to cover the outing and your work.',
-  },
-  {
-    title: 'Publish a useful first-hand review',
-    body: 'Share a specific written review, strong photos or a short video, and your disclosed social post. Mingla reviews the work, not the place.',
-  },
-]
 
 export default function LocalsPage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <SitePage surface="explorer">
-        <HeroWords
-          page="locals"
-          coded={{
-            h1: 'One honest review,',
-            em: 'every month.',
-            lead: 'Mingla chooses up to three Locals in each open city. Complete one useful, independent place review each month and earn $150 after approval.',
-            app: { text: 'Get Mingla to apply', location: 'locals_apply' },
-            call: { text: 'Book a call', href: '/schedule/locals' },
-          }}
-        />
+        <HeroWords page="locals" coded={LOCALS_HERO} />
         <Spot page="locals" id="after-hero" />
 
         <section className="pb-100" aria-labelledby="locals-how">
           <div className="wrap">
-            <h2 className="h2 reveal" id="locals-how">
-              Independent by design, <em>paid by Mingla.</em>
-            </h2>
-            <ol className="grid3 mt-40 steps-list">
-              {STEPS.map((step, index) => (
-                <li key={step.title} className="step reveal">
-                  <span className="n">{String(index + 1).padStart(2, '0')}</span>
-                  <h3>{step.title}</h3>
-                  <p className="muted">{step.body}</p>
-                </li>
-              ))}
-            </ol>
+            <StepsBlock content={LOCALS_STEPS} blockId="locals-how" />
             <Spot page="locals" id="after-steps" />
-            <div className="grid2 mt-24">
-              <div className="card pad fact-card reveal">
-                <h3 className="h3">$150 after approval</h3>
-                <p>
-                  Your payout is converted into your payout currency when it is queued, shown to you, and sent through your
-                  connected payout provider. It never comes from the place you reviewed.
-                </p>
-              </div>
-              <div className="card pad fact-card reveal">
-                <h3 className="h3">Trust comes first</h3>
-                <p>
-                  You must disclose the Mingla Local relationship. Personal ties and recent paid work with a place make it
-                  ineligible. A place may reply publicly, but it cannot choose, pay or silence you.
-                </p>
-              </div>
-            </div>
+            <FactsBlock content={LOCALS_FACTS} blockId="locals-facts" />
             <Spot page="locals" id="after-facts" />
-            <div className="band reveal mt-24">
-              <LandingMedia media="v:amb-locals" />
-              <div className="in">
-                <div className="band-copy">
-                  <h2>
-                    Your city, <em>in your words.</em>
-                  </h2>
-                  <p>
-                    Applications appear in Mingla only when a city is open. With three seats per city, a thoughtful sample
-                    matters more than a giant following.
-                  </p>
-                </div>
-                <div className="band-actions">
-                  <ExplorerHandoffButton location="locals_band" className="btn white">
-                    Get Mingla to apply <ArrowRight aria-hidden="true" />
-                  </ExplorerHandoffButton>
-                  <Link className="btn glass" href="/schedule/locals">
-                    Book a call
-                  </Link>
-                </div>
-              </div>
-            </div>
-            <p className="fine-legal">
-              You’ll read and accept the <Link href="/local-agreement">Local agreement</Link> inside Mingla when you
-              apply.
-            </p>
+            <VideoBandBlock content={LOCALS_BAND} blockId="locals-band" />
+            <FinePrintBlock content={LOCALS_FINE} blockId="locals-fine" />
           </div>
         </section>
         <Spot page="locals" id="before-footer" />

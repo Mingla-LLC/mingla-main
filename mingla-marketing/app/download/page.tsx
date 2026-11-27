@@ -19,20 +19,15 @@
 // store, OneLink and host-web href comes from lib/app-handoff.ts →
 // lib/cta-destination.ts (#4137); the Explorer QR still encodes /download.
 // The phone redirect above is unchanged. No form, no PII, no email field.
+// #4636: the section is the registry block `getApp` (components/site-blocks/
+// sections/get-app-block.tsx, the hrefs move with it).
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { ArrowRight } from 'lucide-react'
-import { AppStoreBadges } from '@/components/ui/app-store-badges'
-import { AppleMark, PlayMark } from '@/components/ui/store-marks'
-import { DownloadQr } from '@/components/marketing/download-qr'
-import { LandingMedia } from '@/components/landing/landing-media'
-import { DownloadToggle } from '@/components/site/download-toggle'
-import { AppQr } from '@/components/site/app-qr'
 import { SitePage } from '@/components/site/site-page'
-import { appHandoffHrefs, hostWebLabel } from '@/lib/app-handoff'
+import { GetAppBlock } from '@/components/site-blocks/sections/get-app-block'
+import { GET_APP } from '@/content/site-blocks/core'
 import { resolvePlatformFromUa } from '@/lib/device-platform'
-import { siteAttribution } from '@/lib/links-src'
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
@@ -58,74 +53,11 @@ export default async function DownloadPage({ searchParams }: Props) {
 
   // Desktop / other → the QR + store buttons page.
   const initial = (await searchParams).app === 'host' ? 'host' : 'explorer'
-  const explorer = appHandoffHrefs('explorer', siteAttribution('explorer_nav'))
-  const host = appHandoffHrefs('host', siteAttribution('business_download'))
-
-  const explorerPanel = (
-    <>
-      <h1>
-        Get <em>Mingla.</em>
-      </h1>
-      <p className="lead">Scan this with your phone, or pick your store.</p>
-      <div className="qr-row">
-        <div className="qr">
-          <DownloadQr size={172} />
-        </div>
-        <div className="stores">
-          <AppStoreBadges size="lg" iosHref={explorer.stores.appStore} androidHref={explorer.stores.googlePlay} />
-        </div>
-      </div>
-    </>
-  )
-
-  const hostPanel = (
-    <>
-      <h1>
-        Get <em>Mingla Host.</em>
-      </h1>
-      <p className="lead">Scan this with your phone, pick your store, or run it in your browser.</p>
-      <div className="qr-row">
-        <div className="qr">
-          <AppQr value={host.phoneHref} title="QR code that opens the Mingla Host app on your phone" size={172} />
-        </div>
-        <div className="stores">
-          <a className="store" href={host.stores.appStore} aria-label="Get Mingla Host on the App Store">
-            <AppleMark />
-            <span>
-              <small>Get Mingla Host on the</small>
-              <b>App Store</b>
-            </span>
-          </a>
-          <a className="store" href={host.stores.googlePlay} aria-label="Get Mingla Host on Google Play">
-            <PlayMark />
-            <span>
-              <small>Get Mingla Host on</small>
-              <b>Google Play</b>
-            </span>
-          </a>
-          <a className="btn soft" href={host.computerHref}>
-            Or use Mingla Host on web <ArrowRight aria-hidden="true" />
-          </a>
-          <span className="sr-only">Mingla Host on web is at {hostWebLabel(host.computerHref)}</span>
-        </div>
-      </div>
-    </>
-  )
 
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <SitePage surface={initial === 'host' ? 'host' : 'explorer'}>
-        <section className="sec get-app">
-          <div className="wrap split split-center">
-            <DownloadToggle initial={initial} explorer={explorerPanel} host={hostPanel} />
-            <div className="phone" aria-hidden="true">
-              <span className="notch" />
-              <div className="scr">
-                <LandingMedia media="v:cozy" />
-              </div>
-            </div>
-          </div>
-        </section>
+        <GetAppBlock content={GET_APP} initial={initial} blockId="get-app" />
       </SitePage>
     </div>
   )

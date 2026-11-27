@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
-import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
-import { LandingMedia } from '@/components/landing/landing-media'
 import { SitePage } from '@/components/site/site-page'
-import { Wordmark } from '@/components/site/wordmark'
+import { AnswerBlock } from '@/components/site-blocks/sections/answer-block'
+import { PageHeroBlock } from '@/components/site-blocks/sections/page-hero-block'
+import { ParasBlock } from '@/components/site-blocks/sections/paras-block'
+import { VCardsBlock } from '@/components/site-blocks/sections/vcards-block'
+import { WideClipBlock } from '@/components/site-blocks/sections/wide-clip-block'
+import { ABOUT_ANSWER, ABOUT_CARDS, ABOUT_CLIP, ABOUT_HERO, ABOUT_WHY } from '@/content/site-blocks/core'
 import { CORE_PAGES } from '@/content/core-pages'
 import { corePageMetadata } from '@/lib/search/metadata'
 import { corePageStructuredData, serializeCorePageStructuredData } from '@/lib/search/core-page-schema'
@@ -15,6 +17,9 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // goes to the store, a computer gets the scan-to-download sheet) and "For
 // places with soul" (→ /host). The SEO contract is unchanged: the record's
 // metadata and its AboutPage/Breadcrumb JSON-LD.
+//
+// #4636: every section is a registry block (components/site-blocks/sections/)
+// with this page's default content (content/site-blocks/core.ts).
 
 const record = CORE_PAGES.about
 export const metadata: Metadata = corePageMetadata(record)
@@ -25,80 +30,13 @@ export default function AboutPage() {
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <SitePage surface="explorer">
         {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
-        <section className="page-hero about-hero">
-          <div className="wrap">
-            <h1>
-              Making real life <em>easier to find.</em>
-            </h1>
-            <p className="lead">
-              Mingla is the app for what to do, and the operating system for the places that make a city worth going out
-              in.
-            </p>
-          </div>
-        </section>
-
+        <PageHeroBlock content={ABOUT_HERO} blockId="about-hero" />
         {/* #4339 round B (SEO audit 3): "What is Mingla?" and its direct
             answer, visible, from the page's own record (answer engines quote it). */}
-        <section className="answer-sec" aria-labelledby="about-what">
-          <div className="wrap answer-block">
-            <h2 className="h2" id="about-what">
-              {record.directQuestion}
-            </h2>
-            <p className="lead">{record.directAnswer}</p>
-          </div>
-        </section>
-
-        <section className="about-clip" aria-hidden="true">
-          <div className="wrap">
-            <div className="ph reveal">
-              <LandingMedia media="v:amb-about" />
-            </div>
-          </div>
-        </section>
-
-        <section className="sec" aria-labelledby="about-why">
-          <div className="wrap split about-split">
-            <h2 className="h2 reveal" id="about-why">
-              Good plans shouldn’t be <em>hard to find.</em>
-            </h2>
-            <div className="about-copy reveal">
-              <p>
-                The best places in a city are often the hardest to find: the class with ten spots, the gallery late night,
-                the café everyone’s friend knows about. Mingla puts them where people plan.
-              </p>
-              <p>
-                We don’t match strangers. Mingla is for couples, friends, groups and solo plans: the people you already
-                have, and the plans you haven’t made yet.
-              </p>
-              <p>And for hosts, Mingla is the growth and operating system that helps places with soul get found and booked.</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="sec sandbg" aria-label="Mingla and Mingla Host">
-          <div className="wrap grid2">
-            <ExplorerHandoffButton location="about_explorer" className="vcard text-card reveal">
-              <LandingMedia media="v:ab-explorer" />
-              <span className="vc-top">
-                <Wordmark height={26} title="Mingla" />
-              </span>
-              <span className="h2">
-                For people <em>going out.</em>
-              </span>
-              <span className="card-line">Find plans that fit the vibe. Save them, schedule them, go.</span>
-            </ExplorerHandoffButton>
-            <Link className="vcard text-card reveal" href="/host">
-              <LandingMedia media="v:ab-host" />
-              <span className="vc-top">
-                <Wordmark height={26} title="Mingla Host" />
-              </span>
-              <span className="h2">
-                For places <em>with soul.</em>
-              </span>
-              <span className="card-line">Get found, sell out and bring people back.</span>
-            </Link>
-          </div>
-        </section>
+        <AnswerBlock content={ABOUT_ANSWER} blockId="about-what" />
+        <WideClipBlock content={ABOUT_CLIP} blockId="about-clip" />
+        <ParasBlock content={ABOUT_WHY} colour="paper" blockId="about-why" />
+        <VCardsBlock content={ABOUT_CARDS} colour="cream" blockId="about-cards" />
       </SitePage>
     </div>
   )

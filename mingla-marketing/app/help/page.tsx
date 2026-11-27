@@ -1,13 +1,12 @@
-import Link from 'next/link'
-import { Mail } from 'lucide-react'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 // #4339 round B (speed): direct module imports, not the barrel (the
 // barrel pulls framer-motion into every route that touches it).
 import { BreadcrumbSchema } from '@/components/cutout/schema'
-import { HelpBrowser } from '@/components/help/help-browser'
-import { HelpChapters } from '@/components/help/help-video-grid'
-import { PageHero, SitePage } from '@/components/site/site-page'
-import { HELP_INTENTS, HELP_VIDEOS } from '@/content/help/registry'
+import { SitePage } from '@/components/site/site-page'
+import { HelpVideosBlock } from '@/components/site-blocks/sections/help-videos-block'
+import { PageHeroBlock } from '@/components/site-blocks/sections/page-hero-block'
+import { StillStuckBlock } from '@/components/site-blocks/sections/still-stuck-block'
+import { HELP_HERO, HELP_STUCK } from '@/content/site-blocks/core'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // The help centre. Every feature of the platform, shown rather than described.
@@ -22,6 +21,8 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // /support page. There is no "Send to support" form (§7). The registry and the
 // player pages are unchanged. app/help/layout.tsx keeps the <main id="main">
 // that carries the #3431 copy opt-in, so the shell adds no second <main>.
+// #4636: the headline, the videos and "Still stuck?" are registry blocks
+// (pageHero, helpVideos, stillStuck).
 
 export const metadata = searchRouteMetadata('/help')
 
@@ -35,43 +36,11 @@ export default function HelpCentrePage() {
             { name: 'Help centre', path: '/help' },
           ]}
         />
-        <PageHero
-          title={
-            <>
-              How can we <em>help?</em>
-            </>
-          }
-          lead="Short videos for every step, from your first event to your first payout, on the web, on iPhone and on Android."
-        />
-        <section className="pb-100" aria-label="Help centre">
-          <div className="wrap">
-            {/* #4339 speed fix: the cards render here, on the server; the
-                browser island only filters them (no registry in the payload). */}
-            <HelpBrowser intents={HELP_INTENTS}>
-              <HelpChapters videos={HELP_VIDEOS} />
-            </HelpBrowser>
-          </div>
-        </section>
-        <section className="pb-100" aria-labelledby="help-stuck">
-          <div className="wrap">
-            <div className="card pad stuck reveal">
-              <div>
-                <h2 className="h2" id="help-stuck">
-                  Still <em>stuck?</em>
-                </h2>
-                <p className="lead">The team reads every message and aims to respond within 1–2 business days.</p>
-              </div>
-              <div className="row">
-                <a className="btn ink" href="mailto:support@usemingla.com">
-                  <Mail aria-hidden="true" /> support@usemingla.com
-                </a>
-                <Link className="btn soft" href="/schedule">
-                  Book a call
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
+        <PageHeroBlock content={HELP_HERO} blockId="help-hero" />
+        {/* #4339 speed fix: the cards render on the server; the browser
+            island only filters them (no registry in the payload). */}
+        <HelpVideosBlock />
+        <StillStuckBlock content={HELP_STUCK} blockId="help-stuck" />
       </SitePage>
     </div>
   )

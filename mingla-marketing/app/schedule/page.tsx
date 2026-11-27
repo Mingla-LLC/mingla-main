@@ -7,11 +7,11 @@
 // nav (Host surface), the dark booking section and the canonical footer, with
 // the brand faces route-scoped here (#3548). `?icp=<slug>` from a Host landing
 // page preselects "What do you run?".
+// #4636: the booking section is the registry block `scheduler`.
 
-import { Suspense } from 'react'
-import { ScheduleClient } from './ScheduleClient'
 import { SitePage } from '@/components/site/site-page'
 import { Spot } from '@/components/site-blocks/spot'
+import { SchedulerBlock } from '@/components/site-blocks/sections/scheduler-block'
 import { publicNoindexMetadata } from '@/lib/search/metadata'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
@@ -26,32 +26,9 @@ export default function SchedulePage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <SitePage surface="host">
-        <Suspense fallback={<ScheduleSkeleton />}>
-          <ScheduleClient />
-        </Suspense>
+        <SchedulerBlock />
         <Spot page="schedule" id="before-footer" />
       </SitePage>
     </div>
-  )
-}
-
-function ScheduleSkeleton() {
-  return (
-    <section className="sec dark sched-sec">
-      <div className="wrap sched">
-        <div>
-          <h1 className="sched-title">
-            Grab 20 minutes <em>with Mingla.</em>
-          </h1>
-          <p className="lead">Pick a time. You’ll get a calendar invite with a video link.</p>
-        </div>
-        <div className="panel">
-          <div className="sched-state" role="status">
-            <span className="spin" aria-hidden="true" />
-            <p className="muted">Loading…</p>
-          </div>
-        </div>
-      </div>
-    </section>
   )
 }

@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import { searchRouteMetadata } from '@/lib/search/metadata'
-import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
-import { LandingMedia } from '@/components/landing/landing-media'
 import { SitePage } from '@/components/site/site-page'
 import { HeroWords } from '@/components/site-blocks/hero-words'
 import { Spot } from '@/components/site-blocks/spot'
-import type { LandingMediaRef } from '@/content/host-landing/icps'
+import { ClipGridBlock } from '@/components/site-blocks/sections/clip-grid-block'
+import { FinePrintBlock } from '@/components/site-blocks/sections/fine-print-block'
+import { StepsBlock } from '@/components/site-blocks/sections/steps-block'
+import { VideoBandBlock } from '@/components/site-blocks/sections/video-band-block'
+import { CREATORS_BAND, CREATORS_CLIPS, CREATORS_FINE, CREATORS_HERO, CREATORS_STEPS } from '@/content/site-blocks/programmes'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4339 phase 2b — Mingla Creators, in the approved design: the headline, four
@@ -18,26 +19,13 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // computer gets the QR sheet with no web option). The second button and the
 // closing band are "Book a call" (/schedule/creators). The Creator agreement
 // is accepted in the app; one line of fine print links to it.
+//
+// #4636: every section is a registry block (components/site-blocks/sections/)
+// with this page's default content (content/site-blocks/programmes.ts). The
+// clips, steps, band and fine print share the programme frame (pb-100 > wrap).
 
 // #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
 export const metadata: Metadata = searchRouteMetadata('/creators')
-
-const CLIPS: readonly LandingMediaRef[] = ['v:amapiano', 'v:salsa', 'v:pottery', 'v:beach']
-
-const STEPS = [
-  {
-    title: 'Set up your profile',
-    body: 'Build your profile in Mingla. Creator mode stays private until every readiness check is complete.',
-  },
-  {
-    title: 'Get hired',
-    body: 'See the city, format, dates and budget before you raise your hand. Host names stay private until a hire is agreed.',
-  },
-  {
-    title: 'Get paid',
-    body: 'Your contract, delivery and payout status stay together. Mingla does not turn your earnings into a wallet balance.',
-  },
-]
 
 export default function CreatorsPage() {
   return (
@@ -45,56 +33,17 @@ export default function CreatorsPage() {
       {/* #4339 (Seth): Creators sign up in Explorer, so the page is on the
           Explorer surface and its top bar's "Use Mingla" goes to Explorer. */}
       <SitePage surface="explorer">
-        <HeroWords
-          page="creators"
-          coded={{
-            h1: 'Get hired to show people what a city',
-            em: 'feels like.',
-            lead: 'Mingla Creators make the videos and photos that help people choose. Become a Creator and complete paid gigs for places and events on Mingla.',
-            app: { text: 'Get Mingla to join', location: 'creators_join' },
-            call: { text: 'Book a call', href: '/schedule/creators' },
-          }}
-        />
+        <HeroWords page="creators" coded={CREATORS_HERO} />
         <Spot page="creators" id="after-hero" />
 
         <section className="pb-100" aria-label="How Mingla Creators works">
           <div className="wrap">
-            <div className="grid4 reel-grid" aria-hidden="true">
-              {CLIPS.map((clip) => (
-                <div className="ph reveal" key={clip}>
-                  <LandingMedia media={clip} />
-                </div>
-              ))}
-            </div>
+            <ClipGridBlock content={CREATORS_CLIPS} blockId="creators-clips" />
             <Spot page="creators" id="after-clips" />
-            <ol className="grid3 mt-24 steps-list">
-              {STEPS.map((step, index) => (
-                <li key={step.title} className="step reveal">
-                  <span className="n">{String(index + 1).padStart(2, '0')}</span>
-                  <h2 className="step-title">{step.title}</h2>
-                  <p className="muted">{step.body}</p>
-                </li>
-              ))}
-            </ol>
+            <StepsBlock content={CREATORS_STEPS} blockId="creators-steps" />
             <Spot page="creators" id="after-steps" />
-            <div className="band reveal mt-24">
-              <LandingMedia media="v:salsa" />
-              <div className="in">
-                <h2>
-                  Questions <em>first?</em>
-                </h2>
-                <div className="glassbar">
-                  <span className="bring">Talk to the Creators team</span>
-                  <Link className="btn white" href="/schedule/creators">
-                    Book a call <ArrowRight aria-hidden="true" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-            <p className="fine-legal">
-              You’ll read and accept the <Link href="/creator-agreement">Creator agreement</Link> inside Mingla before
-              your first gig.
-            </p>
+            <VideoBandBlock content={CREATORS_BAND} blockId="creators-band" />
+            <FinePrintBlock content={CREATORS_FINE} blockId="creators-fine" />
           </div>
         </section>
         <Spot page="creators" id="before-footer" />

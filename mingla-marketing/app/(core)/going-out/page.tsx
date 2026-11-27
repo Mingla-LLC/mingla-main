@@ -1,12 +1,11 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
-import { ArrowUpRight } from 'lucide-react'
-import { LandingMedia } from '@/components/landing/landing-media'
-import { FilterGrid, type FilterItem } from '@/components/site/filter-row'
-import { PageHero, SitePage } from '@/components/site/site-page'
-import { cityHubForSlug, cityHubPath } from '@/content/cities/registry'
+import { SitePage } from '@/components/site/site-page'
+import { AnswerBlock } from '@/components/site-blocks/sections/answer-block'
+import { CityLinksBlock } from '@/components/site-blocks/sections/city-links-block'
+import { FilterGridBlock } from '@/components/site-blocks/sections/filter-grid-block'
+import { PageHeroBlock } from '@/components/site-blocks/sections/page-hero-block'
+import { GOING_OUT_ANSWER, GOING_OUT_CITIES, GOING_OUT_GUIDES, GOING_OUT_HERO } from '@/content/site-blocks/core'
 import { CORE_PAGES } from '@/content/core-pages'
-import type { LandingMediaRef } from '@/content/host-landing/icps'
 import { getCityTiles } from '@/lib/live-cities'
 import { corePageMetadata } from '@/lib/search/metadata'
 import { corePageStructuredData, serializeCorePageStructuredData } from '@/lib/search/core-page-schema'
@@ -18,131 +17,30 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // no page of its own yet (it is a social carousel), so each tile opens its
 // city page, or /cities when it spans cities (#4339 §8). The SEO contract is
 // unchanged: the record's metadata and its WebPage/Breadcrumb JSON-LD.
+//
+// #4636: every section is a registry block (components/site-blocks/sections/)
+// with this page's default content (content/site-blocks/core.ts).
 
 const record = CORE_PAGES['going-out']
 export const metadata: Metadata = corePageMetadata(record)
-
-const CHIPS = ['Date ideas', 'With friends', 'Solo', 'Family', 'Side quests'] as const
-type Chip = (typeof CHIPS)[number]
-
-interface Guide {
-  media: LandingMediaRef
-  title: string
-  line: string
-  tags: readonly Chip[]
-  /** A city hub slug, or null for /cities. */
-  city: string | null
-}
-
-const GUIDES: readonly Guide[] = [
-  { media: 'v:g-solo', title: 'Solo Saturday', line: 'Some of the best plans only need you.', tags: ['Solo'], city: null },
-  { media: 'v:g-culture', title: 'Lagos, not parties', line: 'Four plans this week that aren’t parties.', tags: ['With friends'], city: 'lagos' },
-  { media: 'v:g-under', title: 'Underrated Durham', line: 'The places people tell their friends about.', tags: ['With friends'], city: 'durham-nc' },
-  { media: 'v:g-date', title: 'Cary has range', line: 'Not the Cary you remember.', tags: ['Date ideas'], city: 'cary-nc' },
-  { media: 'v:g-family', title: 'With the grandparents', line: 'Plans for every age at the table.', tags: ['Family'], city: null },
-  { media: 'v:g-quests', title: 'Lagos side quests', line: 'Pottery, paint, galleries and more.', tags: ['Side quests'], city: 'lagos' },
-]
-
-function guideHref(city: string | null): string {
-  if (city === null) return '/cities'
-  const hub = cityHubForSlug(city)
-  if (!hub) throw new Error(`#4339 going-out: city hub "${city}" is not in the registry`)
-  return cityHubPath(hub)
-}
-
-function GuideTile({ guide }: { guide: Guide }) {
-  return (
-    <Link className="tile" href={guideHref(guide.city)}>
-      <div className="ph scrim">
-        {/* #4339 round B: below the LCP tile, the posters wait for the screen. */}
-        <LandingMedia media={guide.media} lazyPoster />
-      </div>
-      <div className="ov">
-        <h3>{guide.title}</h3>
-        <p>{guide.line}</p>
-      </div>
-      <span className="go" aria-hidden="true">
-        <ArrowUpRight />
-      </span>
-    </Link>
-  )
-}
 
 export const revalidate = 300
 
 export default async function GoingOutPage() {
   const { tiles: cityTiles } = await getCityTiles()
   const schema = corePageStructuredData(record)
-  const items: FilterItem[] = GUIDES.map((guide) => ({ key: guide.title, tags: guide.tags, node: <GuideTile guide={guide} /> }))
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <SitePage surface="explorer" current="going-out">
         {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
-        <PageHero
-          title={
-            <>
-              Going out, <em>sorted.</em>
-            </>
-          }
-          lead="Discover places, events, trips and experiences, inspect the details that change the decision, and save the useful options together."
-        />
+        <PageHeroBlock content={GOING_OUT_HERO} blockId="going-out-hero" />
         {/* #4339 round B (SEO audit 2): the direct question and answer that
             search and answer engines quote, from the page's own record. */}
-        <section className="answer-sec" aria-labelledby="going-out-answer">
-          <div className="wrap answer-block">
-            <h2 className="h2" id="going-out-answer">
-              {record.directQuestion}
-            </h2>
-            <p className="lead">{record.directAnswer}</p>
-          </div>
-        </section>
-        <section className="pb-100" aria-label="Guides">
-          <div className="wrap">
-            <FilterGrid
-              label="Filter guides"
-              options={CHIPS}
-              items={items}
-              gridClassName="grid3 mt-24"
-              noun="guide"
-              empty="No guides for that yet."
-              between={
-                <Link className="tile wide mt-24" href="/cities">
-                  <div className="ph scrim">
-                    {/* #4339 round B: the LCP image on phones. */}
-                    <LandingMedia media="v:cozy" priority />
-                  </div>
-                  <div className="ov">
-                    <h3>
-                      Movie nights, <em>under the stars.</em>
-                    </h3>
-                    <p>Events, trips and places picked for the weekend in your city.</p>
-                  </div>
-                  <span className="go" aria-hidden="true">
-                    <ArrowUpRight />
-                  </span>
-                </Link>
-              }
-            />
-          </div>
-        </section>
+        <AnswerBlock content={GOING_OUT_ANSWER} blockId="going-out-answer" />
+        <FilterGridBlock content={GOING_OUT_GUIDES} blockId="going-out-guides" />
         {/* #4339 round B (SEO audit 2): one internal link to every city page,
             anchored on the phrase people search for. */}
-        <section className="sec city-links-sec" aria-labelledby="going-out-cities">
-          <div className="wrap">
-            <h2 className="h2" id="going-out-cities">
-              Plans, <em>city by city.</em>
-            </h2>
-            <ul className="city-links mt-24">
-              {cityTiles.map((city) => (
-                <li key={city.slug}>
-                  <Link href={`/cities/${city.slug}`}>
-                    Things to do in {city.name} <ArrowUpRight aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+        <CityLinksBlock content={GOING_OUT_CITIES} blockId="going-out-cities" tiles={cityTiles} />
       </SitePage>
     </div>
   )
