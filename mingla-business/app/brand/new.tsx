@@ -19,18 +19,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   LazyBrandCreationFlow,
   LazyDraftInProgress,
+  LazyOwnedDraftInProgressGate,
   LazyPartnerClientBrandCreationFlow,
 } from "../../src/components/brand/LazyBrandCreationFlow";
 
 import { BRAND_NEW_COPY } from "../../src/components/brand/brandNewCopy";
 import { Toast } from "../../src/components/ui/Toast";
-import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
-import { useBrandSetupChecklist } from "../../src/hooks/useBrandSetupChecklist";
-import {
-  useBrandSetupStates,
-  useDraftBrandCandidate,
-} from "../../src/hooks/useBrandSetupStates";
+import { useBrandSetupStates } from "../../src/hooks/useBrandSetupStates";
 import { usePartnerStripeStatus } from "../../src/hooks/usePartnerStripe";
 import { decideBrandNewEntry } from "../../src/components/brand/brandNewEntry";
 import { setupFlowHop } from "../../src/services/brandSetupCore";
@@ -51,9 +47,9 @@ export default function BrandNewRoute(): React.ReactElement {
     draft_name?: string | string[];
     discard?: string | string[];
   }>();
-  const { user } = useAuth();
   const [draftGone, setDraftGone] = useState(false);
   const [discardedName, setDiscardedName] = useState<string | null>(null);
+  const [rejectedDraftHint, setRejectedDraftHint] = useState<string | null>(null);
   // #4389 N1 up front — a host with a draft sees "You have a brand in
   // progress" before typing, from every way in (switcher, Ari, Hub).
   const brandList = useBrandListState();
@@ -89,56 +85,50 @@ export default function BrandNewRoute(): React.ReactElement {
 
   const resume = first(params.resume_brand);
   const requestedDraftId = first(params.draft);
-  const requestedBrand = useDraftBrandCandidate(requestedDraftId);
-  const requestedChecklist = useBrandSetupChecklist(requestedDraftId);
   const knownDraftId = flowOpened ? null : setupStates.draftId;
   const knownDraft = brandList.brands.find((b) => b.id === knownDraftId) ?? null;
-  // #4627 — query params are navigation hints, not authority. Old history or
-  // a hand-written URL can name a teammate's draft; N1 may only open for the
-  // account-owned draft independently proven by the brand + setup readers.
-  // This also preserves the server-refusal path when the cached list missed
-  // an owned draft that biz_create_setup_brand just returned.
-  const requestedDraftIsOwned =
-    requestedDraftId !== null &&
-    requestedBrand.isFetching !== true &&
-    requestedBrand.isError !== true &&
-    requestedChecklist.isFetching !== true &&
-    requestedChecklist.isError !== true &&
-    requestedBrand.data?.id === requestedDraftId &&
-    requestedBrand.data.accountId === user?.id &&
-    requestedChecklist.data?.facts.isDraft === true;
-  const draftBrand = requestedDraftIsOwned ? requestedBrand.data : knownDraft;
-  const draft = draftBrand?.id ?? null;
-  const draftName = draftBrand?.displayName ?? "";
+  const draft = knownDraft?.id ?? null;
+  const draftName = knownDraft?.displayName ?? "";
+  const requestedDraftMatchesKnown = requestedDraftId !== null && requestedDraftId === draft;
+  // #4627 — a direct/server draft hint that the list-wide reader missed is
+  // validated inside the already-lazy setup chunk. A rejected teammate/stale
+  // hint falls through to F1 and never reaches N1 or discard.
+  const recoveringRequestedDraft =
+    requestedDraftId !== null && draft === null && rejectedDraftHint !== requestedDraftId && !draftGone;
   const waitingForDrafts =
     !flowOpened &&
     first(params.partner_mode) !== "client" &&
-    (brandList.isLoading ||
-      setupStates.isLoading ||
-      (requestedDraftId !== null &&
-        (requestedBrand.isLoading ||
-          requestedBrand.isFetching ||
-          requestedChecklist.isLoading ||
-          requestedChecklist.isFetching)));
+    (brandList.isLoading || setupStates.isLoading);
   const body = entry === "client" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} />
   ) : draft !== null && !draftGone ? (
     <LazyDraftInProgress
       draftId={draft}
       draftName={draftName}
-      startConfirming={requestedDraftIsOwned && first(params.discard) === "1"}
+      startConfirming={requestedDraftMatchesKnown && first(params.discard) === "1"}
       onContinue={() => router.replace(`/brand/${draft}/setup` as never)}
       onDiscarded={() => {
         setDraftGone(true);
         setDiscardedName(draftName);
       }}
     />
+  ) : recoveringRequestedDraft && requestedDraftId !== null ? (
+    <LazyOwnedDraftInProgressGate
+      draftId={requestedDraftId}
+      startConfirming={first(params.discard) === "1"}
+      onContinue={() => router.replace(`/brand/${requestedDraftId}/setup` as never)}
+      onDiscarded={(name) => {
+        setDraftGone(true);
+        setDiscardedName(name);
+      }}
+      onRejected={() => setRejectedDraftHint(requestedDraftId)}
+    />
   ) : waitingForDrafts || resume !== null ? null : entry === "partner-intent" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} onSelfChosen={chooseSelf} />
   ) : (
     <LazyBrandCreationFlow brandId={null} onExit={leave} onTypedNameChange={onTypedNameChange} />
   );
-  const showsFlow = body !== null && !(draft !== null && !draftGone);
+  const showsFlow = body !== null && !(draft !== null && !draftGone) && !recoveringRequestedDraft;
   useEffect(() => {
     if (showsFlow && !flowOpened) setFlowOpened(true);
   }, [showsFlow, flowOpened]);

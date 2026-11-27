@@ -96,11 +96,6 @@ jest.mock("../../../hooks/useBrandListShim", () => ({
 
 jest.mock("../../../hooks/useBrandSetupStates", () => ({
   useBrandSetupStates: () => ({ byId: {}, ...mockSetup }),
-  useDraftBrandCandidate: () => ({
-    data: mockRequestedBrand,
-    isLoading: false,
-    isFetching: false,
-  }),
 }));
 
 jest.mock("../../../hooks/useBrandSetupChecklist", () => ({
@@ -150,10 +145,27 @@ jest.mock("../LazyBrandCreationFlow", () => {
     }, []);
     return <View testID="creation-flow" />;
   };
+  const OwnedDraftGate = ({
+    draftId,
+    onRejected,
+  }: {
+    draftId: string;
+    onRejected: () => void;
+  }): React.ReactElement | null => {
+    const accepted =
+      mockRequestedBrand?.id === draftId &&
+      mockRequestedBrand.accountId === "account-3645" &&
+      mockRequestedDraft;
+    ReactLocal.useEffect(() => {
+      if (!accepted) onRejected();
+    }, [accepted, onRejected]);
+    return accepted ? <View testID="draft-in-progress" /> : null;
+  };
   return {
     LazyBrandCreationFlow: Flow,
     LazyPartnerClientBrandCreationFlow: () => <View testID="partner-flow" />,
     LazyDraftInProgress: () => <View testID="draft-in-progress" />,
+    LazyOwnedDraftInProgressGate: OwnedDraftGate,
   };
 });
 

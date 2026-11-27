@@ -5,6 +5,7 @@ import {
   type BrandSetupRowState,
 } from "../useBrandSetupStates";
 import type { BrandSetupChecklist } from "../../services/brandSetupService";
+import { isOwnedDraftCandidate } from "../../components/brand/ownedDraftCandidate";
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { canManageBrandPayments } from "../../utils/brandPaymentsPermission";
 
@@ -54,6 +55,27 @@ describe("#4627 owned draft guard", () => {
       doneCount: 1,
     });
     expect(states.draftId).toBeNull();
+  });
+
+  test("a direct draft hint needs the same id, account owner, and live draft state", () => {
+    const checklist = draftChecklist();
+    expect(
+      isOwnedDraftCandidate("owned", { id: "owned", accountId: SETH_ID }, checklist, SETH_ID),
+    ).toBe(true);
+    expect(
+      isOwnedDraftCandidate("alin", { id: "alin", accountId: TEAM_OWNER_ID }, checklist, SETH_ID),
+    ).toBe(false);
+    expect(
+      isOwnedDraftCandidate("owned", { id: "other", accountId: SETH_ID }, checklist, SETH_ID),
+    ).toBe(false);
+    expect(
+      isOwnedDraftCandidate(
+        "owned",
+        { id: "owned", accountId: SETH_ID },
+        { ...checklist, facts: { ...checklist.facts, isDraft: false } },
+        SETH_ID,
+      ),
+    ).toBe(false);
   });
 
   test("the correction does not widen owner-only delete or payout authority", () => {

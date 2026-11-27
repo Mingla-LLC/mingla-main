@@ -7,19 +7,12 @@
  * for now" and has published nothing (S-12, server `is_draft`).
  */
 import { useMemo } from "react";
-import {
-  useQueries,
-  useQuery,
-  type UseQueryResult,
-} from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import type { BrandSetupChecklist } from "../services/brandSetupService";
 import type { Brand } from "../types/brand";
-import { brandKeys } from "./brandKeys";
 import { brandSetupKey } from "./useBrandSetupChecklist";
-
-const DRAFT_CANDIDATE_DISABLED_KEY = ["brand-draft-candidate-disabled"] as const;
 
 /**
  * #4389 N3 (Seth 2026-11-11) — every brand whose setup checklist is not
@@ -45,29 +38,6 @@ export function brandSetupRowState(checklist: BrandSetupChecklist | undefined): 
 }
 
 type BrandSetupSubject = Pick<Brand, "id" | "accountId">;
-
-/**
- * #4627 — validate a server-returned/direct draft id without importing the
- * large eager useBrands module into /brand/new. The service stays behind an
- * on-intent dynamic import and the canonical brand-detail cache key is reused.
- */
-export function useDraftBrandCandidate(
-  brandId: string | null,
-): UseQueryResult<Brand | null, Error> {
-  const { isAuthReady, user } = useAuth();
-  const enabled = isAuthReady && user !== null && brandId !== null;
-  return useQuery<Brand | null, Error>({
-    queryKey: enabled && brandId !== null ? brandKeys.detail(brandId) : DRAFT_CANDIDATE_DISABLED_KEY,
-    enabled,
-    staleTime: 0,
-    refetchOnMount: "always",
-    queryFn: async (): Promise<Brand | null> => {
-      if (brandId === null) return null;
-      const { getBrand } = await import("../services/brandsService");
-      return getBrand(brandId);
-    },
-  });
-}
 
 export function deriveBrandSetupStates(
   brands: readonly BrandSetupSubject[],

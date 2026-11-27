@@ -19,6 +19,11 @@ export const LazyDraftInProgress = React.lazy(async () => {
   return { default: mod.DraftInProgress };
 });
 
+export const LazyOwnedDraftInProgressGate = React.lazy(async () => {
+  const mod = await import("./BrandCreationFlow");
+  return { default: mod.OwnedDraftInProgressGate };
+});
+
 export const LazyPartnerClientBrandCreationFlow = React.lazy(async () => {
   const mod = await import("./PartnerClientBrandCreationFlow");
   return { default: mod.BrandCreationFlow };
