@@ -61,7 +61,8 @@ import {
 } from "@mingla/offering-rendering";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 import { discountReasonCopy } from "@mingla/offering-rendering/discountReasonCopy";
-import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
+// Issue #4624 item 1 — sale and ticket-capped code notices (CartDiscountNotices.tsx).
+import { CartDiscountNotices } from "./CartDiscountNotices";
 import {
   checkoutReviewReasonCopy,
   ticketQuoteFeesAndTaxCents,
@@ -1386,8 +1387,17 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             )}.`,
           })
         : null;
-  const activeSaleNotices = (quote?.notices ?? []).filter(
-    (notice) => !dismissedSaleNotices.includes(notice.discountId),
+  // #4624 item 6 — the buyer's own number per ticket type; per-date lines have
+  // no single number to lower to.
+  const pickerQuantityByLineRef = useMemo(
+    () =>
+      Object.fromEntries(
+        lines.map((line) => [
+          line.ticketTypeId,
+          perDateActive ? null : line.quantity,
+        ]),
+      ),
+    [lines, perDateActive],
   );
   const reviewQuote =
     terminalOutcome?.outcome === "review" ? terminalOutcome.review.quote : null;
@@ -1432,9 +1442,18 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       });
     }
     for (const notice of quote.notices) {
-      captureOnce("sale_limited_shown", notice.discountId, {
-        surface: "explorer_cart",
-      });
+      // #4624 — a code notice is its own event, keyed per line.
+      if (notice.discountKind === "code") {
+        captureOnce(
+          "discount_code_limited_shown",
+          `${notice.discountId}:${notice.lineRef}`,
+          { surface: "explorer_cart" },
+        );
+      } else {
+        captureOnce("sale_limited_shown", notice.discountId, {
+          surface: "explorer_cart",
+        });
+      }
     }
   }, [discountCode, quote, quoteIsReady]);
   useEffect(() => {
@@ -2074,82 +2093,57 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               </Pressable>
             </View>
           ) : null}
-          {activeSaleNotices.map((notice) => {
-            const quoteLine = quote?.lines.find(
-              (line) => line.ticketTypeId === notice.lineRef,
-            );
-            const ticket = tickets?.find((row) => row.id === notice.lineRef);
-            const sale = quote?.discounts.find(
-              (discount) => discount.discountId === notice.discountId,
-            );
-            const name = sale?.name ?? ticket?.saleName ?? "sale";
-            const currentQuantity = quoteLine?.quantity ?? 0;
-            return (
-              <View
-                key={`${notice.discountId}:${notice.lineRef}`}
-                style={styles.saleNotice}
-              >
-                <Text style={styles.saleNoticeText}>
-                  {saleLimitedCopy(name, notice.remaining)}
-                </Text>
-                <View style={styles.saleNoticeActions}>
-                  {notice.remaining > 0 &&
-                  ticket !== undefined &&
-                  !perDateActive ? (
-                    <Pressable
-                      onPress={() => {
-                        postHogService.capture("sale_limited_choice", {
-                          choice: "reduce",
-                          surface: "explorer_cart",
-                        });
-                        const seed: CartLineSeed = {
-                          ticketTypeId: ticket.id,
-                          ticketName: ticket.name,
-                          unitPriceCents: Math.round(
-                            (ticket.priceGbp ?? 0) * 100,
-                          ),
-                          currency: ticket.currency ?? fallbackCurrency,
-                          isFree: ticket.isFree,
-                        };
-                        setLineQuantity(seed, notice.remaining);
-                      }}
-                      accessibilityRole="button"
-                      style={styles.saleNoticeButton}
-                    >
-                      <Text style={styles.saleNoticeButtonText}>
-                        {t("sale_limited.buy", {
-                          count: notice.remaining,
-                          sale: name,
-                          defaultValue: `Buy ${notice.remaining} at ${name}`,
-                        })}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  <Pressable
-                    onPress={() => {
-                      postHogService.capture("sale_limited_choice", {
-                        choice: "keep",
-                        surface: "explorer_cart",
-                      });
-                      setDismissedSaleNotices((current) => [
-                        ...current,
-                        notice.discountId,
-                      ]);
-                    }}
-                    accessibilityRole="button"
-                    style={styles.saleNoticeButton}
-                  >
-                    <Text style={styles.saleNoticeButtonText}>
-                      {t("sale_limited.keep", {
-                        count: currentQuantity,
-                        defaultValue: `Keep ${currentQuantity} at list`,
-                      })}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            );
-          })}
+          {quote ? (
+            <CartDiscountNotices
+              quote={quote}
+              dismissedKeys={dismissedSaleNotices}
+              perDateActive={perDateActive}
+              pickerQuantityByLineRef={pickerQuantityByLineRef}
+              hasTicket={(lineRef) =>
+                tickets?.some((row) => row.id === lineRef) ?? false
+              }
+              ticketSaleName={(lineRef) =>
+                tickets?.find((row) => row.id === lineRef)?.saleName
+              }
+              onLower={(lineRef, quantity, kind) => {
+                const ticket = tickets?.find((row) => row.id === lineRef);
+                if (ticket === undefined) return;
+                postHogService.capture(
+                  kind === "code"
+                    ? "discount_code_limited_choice"
+                    : "sale_limited_choice",
+                  { choice: "reduce", surface: "explorer_cart" },
+                );
+                const seed: CartLineSeed = {
+                  ticketTypeId: ticket.id,
+                  ticketName: ticket.name,
+                  unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
+                  currency: ticket.currency ?? fallbackCurrency,
+                  isFree: ticket.isFree,
+                };
+                setLineQuantity(seed, quantity);
+              }}
+              onKeep={(key, kind) => {
+                postHogService.capture(
+                  kind === "code"
+                    ? "discount_code_limited_choice"
+                    : "sale_limited_choice",
+                  { choice: "keep", surface: "explorer_cart" },
+                );
+                // #4624 — keyed per discount and line, so keeping one line at
+                // full price leaves the other lines' notices showing.
+                setDismissedSaleNotices((current) => [...current, key]);
+              }}
+              t={(key, options) => t(key, options)}
+              styles={{
+                notice: styles.saleNotice,
+                text: styles.saleNoticeText,
+                actions: styles.saleNoticeActions,
+                button: styles.saleNoticeButton,
+                buttonText: styles.saleNoticeButtonText,
+              }}
+            />
+          ) : null}
         </View>
 
         {/* #3859 — purchase terms only; Explorer marketing has no cart toggle. */}

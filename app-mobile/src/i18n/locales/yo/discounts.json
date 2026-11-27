@@ -27,6 +27,10 @@
     "buy": "Buy {{count}} at {{sale}}",
     "keep": "Keep {{count}} at list"
   },
+  "code_limited": {
+    "lower": "Lower to {{count}}",
+    "keep": "Keep {{count}} at full price"
+  },
   "review": {
     "title": "Your total changed"
   }
