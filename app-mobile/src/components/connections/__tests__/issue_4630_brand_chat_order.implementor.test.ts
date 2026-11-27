@@ -10,6 +10,9 @@
 // "<Brand> Guests" name or the Guests tag and the row guard fails; restore a
 // deleted key in any locale and the locale case fails.
 import {
+  NEXT_PREVIEW_DATE_TOKEN,
+  NEXT_PREVIEW_TITLE_TOKEN,
+  splitNextBookingPreview,
   buildBrowseItems,
   buildSearchItems,
   chatActivityTime,
@@ -256,3 +259,26 @@ Deno.test("#4630 SC-6 every locale has the new keys (same placeholders) and none
     }
   }
 });
+
+Deno.test("#4630 retest P3-2: the row's Next preview truncates the title, never the date", () => {
+  const template = `Next: ${NEXT_PREVIEW_TITLE_TOKEN} · ${NEXT_PREVIEW_DATE_TOKEN}`;
+  eq(splitNextBookingPreview(template, "The Extremely Long Sunday Brunch Rave", "Wed 2 Dec"),
+    { lead: "Next: The Extremely Long Sunday Brunch Rave", tail: " · Wed 2 Dec" }, "the date is its own part");
+  eq(splitNextBookingPreview(`${NEXT_PREVIEW_DATE_TOKEN} – ${NEXT_PREVIEW_TITLE_TOKEN}`, "T", "D"), null, "date before title: the one plain line");
+  eq(splitNextBookingPreview("no tokens", "T", "D"), null, "a template without tokens: the plain line");
+  // Every locale keeps the title before the date, so every locale gets the split.
+  for (const locale of [...Deno.readDirSync(new URL("i18n/locales/", root))].filter((e) => e.isDirectory).map((e) => e.name)) {
+    const value = JSON.parse(read(`i18n/locales/${locale}/connections.json`)).brand_chat_preview_next;
+    assert(value.indexOf("{{title}}") < value.indexOf("{{date}}"), `${locale}: title before date`);
+  }
+  const row = read("components/connections/ChatListItem.tsx");
+  assert(row.includes("splitNextBookingPreview(") && row.includes("styles.previewLead") && row.includes("styles.previewTail"), "the row renders the two parts");
+  assert(/previewLead: \{\s*flexShrink: 1,/.test(row) && /previewTail: \{\s*flexShrink: 0,/.test(row), "only the title part shrinks");
+});
+
+Deno.test("#4630 retest D-1: the experience page reads the optional recommendations hook", () => {
+  const screen = read("screens/Experience/ConsumerExperienceDetailScreen.tsx");
+  assert(screen.includes("const viewerLocation = useRecommendationsOptional()?.userLocation ?? null;"), "optional hook, null location outside the provider");
+  assert(!/\buseRecommendations\(\)/.test(screen), "the strict (throwing) hook is gone from the /exp/ screen");
+});
+

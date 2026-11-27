@@ -43,6 +43,9 @@ import {
   chatPreviewLine,
   chatPreviewText,
   chatListTimeIso,
+  NEXT_PREVIEW_DATE_TOKEN,
+  NEXT_PREVIEW_TITLE_TOKEN,
+  splitNextBookingPreview,
   chatTombstonePreview,
   type ChatTombstonePreviewMessage,
   type ChatPreviewLineMessage,
@@ -193,6 +196,14 @@ function ChatListItemImpl({
     ? t('connections:brand_chat_preview_next', { title: conversation.next_booking_title.trim(), date: nextBookingDate })
     : null;
   const showTicketGlyph = Boolean(nextBookingLine) && !lastMessage && !tombstonePreview;
+  // #4630 (retest P3-2): the title truncates, the date stays whole.
+  const nextBookingParts = showTicketGlyph && nextBookingDate && conversation.next_booking_title?.trim()
+    ? splitNextBookingPreview(
+        t('connections:brand_chat_preview_next', { title: NEXT_PREVIEW_TITLE_TOKEN, date: NEXT_PREVIEW_DATE_TOKEN }),
+        conversation.next_booking_title.trim(),
+        nextBookingDate,
+      )
+    : null;
 
   const preview = useMemo(() => {
     if (isRemoved) return t('connections:brand_guests_removed_preview', { brand: brandName });
@@ -413,12 +424,24 @@ function ChatListItemImpl({
             {showTicketGlyph ? (
               <Icon name="ticket-outline" size={14} color={tk.accent} style={styles.lineIcon} />
             ) : null}
-            <Text
-              style={[styles.preview, tombstonePreview ? styles.previewUnsent : unread ? styles.previewUnread : null]}
-              numberOfLines={1}
-            >
-              {preview}
-            </Text>
+            {nextBookingParts ? (
+              <>
+                <Text style={[styles.previewLead, unread ? styles.previewUnread : null]} numberOfLines={1}>
+                  {nextBookingParts.lead}
+                </Text>
+                <Text style={[styles.previewTail, unread ? styles.previewUnread : null]} numberOfLines={1}>
+                  {nextBookingParts.tail}
+                </Text>
+                <View style={styles.previewFill} />
+              </>
+            ) : (
+              <Text
+                style={[styles.preview, tombstonePreview ? styles.previewUnsent : unread ? styles.previewUnread : null]}
+                numberOfLines={1}
+              >
+                {preview}
+              </Text>
+            )}
             {isMuted ? <Icon name="volume-mute" size={13} color={tk.faint} style={styles.lineIcon} /> : null}
             {badge.visible ? (
               <View
@@ -529,6 +552,23 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 14,
     color: tk.dim,
+  },
+  // #4630: the split "Next: <title> · <date>" preview (the line row gap is 6,
+  // so the two parts sit flush with no gap of their own).
+  previewLead: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: 14,
+    color: tk.dim,
+    marginRight: -6,
+  },
+  previewTail: {
+    flexShrink: 0,
+    fontSize: 14,
+    color: tk.dim,
+  },
+  previewFill: {
+    flex: 1,
   },
   previewUnread: {
     color: tk.ink,

@@ -38,6 +38,16 @@ const THUMB_MIN_WINDOW_WIDTH = 360;
 const ENTER_MS = 150;
 /** "+N more" hit area overlaps the ticket pill's by 6 pt (design). */
 const MORE_HIT_OVERLAP = 6;
+/**
+ * #4630 (retest P3-1): with "Your ticket" and "+N more" both shown, the title
+ * collapsed to "T.." at 393 pt. Under this width that combination drops the
+ * thumbnail and shows "+N" (the full "+N more" stays the accessibility label),
+ * and the title keeps TITLE_MIN_WIDTH before the date gives way.
+ */
+const COMPACT_MORE_MAX_WINDOW_WIDTH = 420;
+const TITLE_MIN_WIDTH = 72;
+/** A title this short already fits in TITLE_MIN_WIDTH; no floor (no gap before the date). */
+const TITLE_FLOOR_MIN_CHARS = 10;
 
 export interface BrandChatBannerProps {
   conversationId: string;
@@ -203,7 +213,9 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
       ? t("chat:brandChatYourTickets", { count: state.booking.ticketCount })
       : t("chat:brandChatYourTicket");
   const mainLabel = onMain ? t("chat:countdownOpenEvent", { copy: `${kicker}, ${line}` }) : `${kicker}, ${line}`;
-  const showThumb = width >= THUMB_MIN_WINDOW_WIDTH;
+  const hasMore = state.kind !== "next_no_ticket" && state.kind !== "next_with_ticket" && state.moreCount > 0;
+  const compactMore = hasMore && width < COMPACT_MORE_MAX_WINDOW_WIDTH;
+  const showThumb = width >= THUMB_MIN_WINDOW_WIDTH && !compactMore;
 
   return (
     <Animated.View style={[styles.host, { opacity }]} testID={`brand-chat-banner-${state.kind}`}>
@@ -231,7 +243,7 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
           </View>
           {/* #4630 (test P3-1): the title truncates; the date or time stays whole. */}
           <View style={styles.lineRow}>
-            <Text style={[styles.line, styles.lineTitle]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
+            <Text style={[styles.line, styles.lineTitle, title.length > TITLE_FLOOR_MIN_CHARS ? styles.lineTitleFloor : null]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{title}</Text>
             {when ? (
               <Text style={[styles.line, styles.lineWhen]} numberOfLines={1} maxFontSizeMultiplier={1.3}>{` · ${when}`}</Text>
             ) : null}
@@ -284,7 +296,7 @@ export function BrandChatBanner({ conversationId, brandName }: BrandChatBannerPr
             >
               {({ pressed }) => (
                 <View style={[styles.morePill, pressedPill({ pressed })]}>
-                  <Text style={styles.morePillText} numberOfLines={1}>{t("chat:moreEvents", { count: state.moreCount })}</Text>
+                  <Text style={styles.morePillText} numberOfLines={1}>{compactMore ? `+${state.moreCount}` : t("chat:moreEvents", { count: state.moreCount })}</Text>
                 </View>
               )}
             </Pressable>
@@ -383,12 +395,17 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     minWidth: 0,
   },
+  // The title gives way first (large shrink weight) down to TITLE_MIN_WIDTH;
+  // only then does the date shorten, so a name always stays readable.
   lineTitle: {
-    flexShrink: 1,
+    flexShrink: 1000,
     minWidth: 0,
   },
+  lineTitleFloor: {
+    minWidth: TITLE_MIN_WIDTH,
+  },
   lineWhen: {
-    flexShrink: 0,
+    flexShrink: 1,
   },
   line: {
     fontSize: 15,

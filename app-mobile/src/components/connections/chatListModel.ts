@@ -330,6 +330,34 @@ export function formatUpcomingEventTag(
   return date.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" });
 }
 
+// ── #4630: "Next: <title> · <date>" with the date kept whole ─────────────
+/** Placeholder tokens: the translated template is split around the date. */
+export const NEXT_PREVIEW_TITLE_TOKEN = "\u0001T\u0001";
+export const NEXT_PREVIEW_DATE_TOKEN = "\u0001D\u0001";
+
+/**
+ * Splits a translated "Next: {{title}} · {{date}}" (rendered with the tokens
+ * above) into the part that may truncate (everything up to the end of the
+ * title) and the part that never does (the separator, the date and the rest). Null
+ * when a locale puts the date before the title: the caller then renders the
+ * one plain line.
+ */
+export function splitNextBookingPreview(
+  template: string,
+  title: string,
+  date: string,
+): { lead: string; tail: string } | null {
+  const titleAt = template.indexOf(NEXT_PREVIEW_TITLE_TOKEN);
+  const dateAt = template.indexOf(NEXT_PREVIEW_DATE_TOKEN);
+  if (titleAt < 0 || dateAt < 0 || titleAt > dateAt) return null;
+  // Cut right after the title, so the separator stays with the date.
+  const cut = titleAt + NEXT_PREVIEW_TITLE_TOKEN.length;
+  return {
+    lead: template.slice(0, cut).replace(NEXT_PREVIEW_TITLE_TOKEN, title),
+    tail: template.slice(cut).replace(NEXT_PREVIEW_DATE_TOKEN, date),
+  };
+}
+
 // ── Unread badge (orange; grey when muted — it used to be hidden) ───────────
 export interface UnreadBadge {
   visible: boolean;

@@ -110,7 +110,15 @@ Deno.test("#4630 rework 1: my booking's row opens its own page type (event, RSVP
   eq(offeringPageHref("trip", "  ", "x"), null, "a blank slug has no page");
   const component = read("components/chat/BrandChatBanner.tsx");
   assert(component.includes("styles.lineTitle") && component.includes("styles.lineWhen"), "test P3-1: the title truncates, the date stays");
-  assert(/lineWhen: \{\s*flexShrink: 0,/.test(component) && /lineTitle: \{\s*flexShrink: 1,/.test(component), "only the title shrinks");
+  // Retest P3-1: the title gives way first, down to a readable floor; then the date.
+  assert(/lineTitle: \{\s*flexShrink: 1000,/.test(component) && /lineWhen: \{\s*flexShrink: 1,/.test(component), "the title shrinks first");
+  assert(component.includes("const TITLE_MIN_WIDTH = 72;") && /lineTitleFloor: \{\s*minWidth: TITLE_MIN_WIDTH,/.test(component), "the title keeps a readable minimum width");
+  assert(component.includes("title.length > TITLE_FLOOR_MIN_CHARS ? styles.lineTitleFloor : null"), "a short title gets no floor (no gap before the date)");
+  // Retest P3-1: Your ticket + "+N more" at 393 / 320 pt: no thumbnail, "+N" (full label for a11y).
+  assert(component.includes("const COMPACT_MORE_MAX_WINDOW_WIDTH = 420;"), "the compact threshold covers 320-393 pt phones");
+  assert(component.includes("const showThumb = width >= THUMB_MIN_WINDOW_WIDTH && !compactMore;"), "the thumbnail gives its room to the title");
+  assert(component.includes("{compactMore ? `+${state.moreCount}` : t(\"chat:moreEvents\", { count: state.moreCount })}"), "+N when compact");
+  assert(component.includes('accessibilityLabel={t("chat:brandChatMoreBookingsA11y", { count: state.moreCount })}'), "the a11y label stays the full sentence");
 });
 
 Deno.test("#4630 nothing_upcoming: with or without past bookings, the slim View <Brand> line", () => {
