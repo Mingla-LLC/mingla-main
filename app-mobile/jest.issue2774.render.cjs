@@ -204,6 +204,9 @@ module.exports = {
     // issue #4624 tester — sale notices byte-identical to the #3872 cart, code
     // notices never in sale wording when the row or line is missing.
     "**/__tests__/issue_4624_cart_notices.tester.adversarial.render.test.tsx",
+    // issue #4624 follow-up 3 — the Explorer venue order review shows the
+    // code-limit notice on a line the code could not cover.
+    "**/__tests__/issue_4624_venue_code_limited.implementor.render.test.tsx",
     // issue #4490 Explorer W4 — native checkout per offer: the reducer (steps,
     // keys, words), the venue recovery pointer and payment leg, sign-out
     // clearing the pointer, the sheet's pure model and the sheet itself.

@@ -46,6 +46,7 @@ import type {
   ThemePalette,
 } from "@mingla/offering-rendering";
 import { type DiscountCodeReason } from "@mingla/offering-rendering/discountQuote";
+import { venueCodeLimitedNotices } from "@mingla/offering-rendering/venueCodeLimitedCopy";
 
 import { formatMenuPrice } from "../PublicMenuSections";
 import type {
@@ -235,6 +236,13 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
     "min_subtotal",
     "incompatible_better_automatic",
   ]);
+  // #4624 follow-up 3: a ticket-capped code with fewer left than a line holds
+  // leaves that line at full price; say so on the line (the server's notice).
+  const codeLimitedByLineNo = new Map(
+    (priced && preview !== null ? venueCodeLimitedNotices(preview) : []).map(
+      (notice) => [notice.lineNo, notice],
+    ),
+  );
   const codeReason = preview?.codeOutcome?.reason ?? null;
   const hasKnownCodeReason =
     codeReason !== null &&
@@ -417,6 +425,17 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                   </View>
                 </View>
               </View>
+              {codeLimitedByLineNo.has(index + 1) ? (
+                <Text
+                  style={[styles.codeLimited, { color: palette.secondaryText }]}
+                  accessibilityRole="alert"
+                  testID={`venue-order-code-limited-${
+                    codeLimitedByLineNo.get(index + 1)?.lineRef ?? ""
+                  }`}
+                >
+                  {codeLimitedByLineNo.get(index + 1)?.text}
+                </Text>
+              ) : null}
               {notesAllowedByItemId[line.menuItemId] === true ? (
                 <Input
                   value={line.notes ?? ""}
@@ -861,6 +880,7 @@ const styles = StyleSheet.create({
   codeAppliedName: { fontSize: 14, lineHeight: 19, fontWeight: "800" },
   codeRemove: { fontSize: 13, lineHeight: 18, fontWeight: "800" },
   codeError: { fontSize: 13, lineHeight: 18 },
+  codeLimited: { fontSize: 13, lineHeight: 18 },
   totals: { gap: 8 },
   moneyRow: {
     flexDirection: "row",

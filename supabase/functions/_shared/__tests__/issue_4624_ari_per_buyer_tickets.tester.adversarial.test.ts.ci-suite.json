@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4624_ari_per_buyer_tickets.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4624-ari-per-buyer-tickets-tester",
+  "profile": "deno-2-unit"
+}

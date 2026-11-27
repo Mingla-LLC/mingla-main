@@ -482,11 +482,13 @@ BEGIN
   PERFORM public.biz_refund_order_commit_from_webhook(v_order,'re_i4624r_1',4500,'USD',NULL,NULL);
   v_u := pg_temp.i4624r_use(v_id,v_order);
   v_c := pg_temp.i4624r_remaining(v_brand,'REFUND10');
-  v_l := pg_temp.i4624r_list(v_brand,v_id);
+  -- #4624 follow-up 2: Total uses 1 is used by this checkout, so the code
+  -- ended at consume and the Host list shows it under Ended.
+  v_l := pg_temp.i4624r_list(v_brand,v_id,'ended');
   IF (SELECT count(*) FROM public.tickets WHERE order_id=v_order AND status='refunded') <> 2
      OR v_u.returned_units <> 2 OR v_u.returned_at IS NOT NULL
-     OR v_c->>'remainingUnits' <> '2' OR (v_l->>'consumedUnits')::integer <> 3
-     OR (v_l->>'returnedUnits')::integer <> 2 THEN
+     OR v_c->>'remainingUnits' <> '2' OR (v_l->>'consumedUnits')::integer IS DISTINCT FROM 3
+     OR (v_l->>'returnedUnits')::integer IS DISTINCT FROM 2 THEN
     RAISE EXCEPTION 'T4-1 refund 2 of 5: want returned 2, remainingUnits 2, list 3 used; got use % cand % list %',
       to_jsonb(v_u),v_c,v_l;
   END IF;
@@ -692,9 +694,11 @@ BEGIN
   PERFORM public.issue_3872_copy_session_totals_to_order(v_session);
   v_c := jsonb_build_object('outcome','finalized','orderId',(SELECT order_id FROM public.ticket_checkout_sessions WHERE id=v_session));
   v_u := pg_temp.i4624r_use(v_id,(v_c->>'orderId')::uuid);
-  v_l := pg_temp.i4624r_list(v_brand,v_id,'live');
+  -- #4624 follow-up 2: the fast buyer's 5 ended the code at consume.
+  v_l := pg_temp.i4624r_list(v_brand,v_id,'ended');
   IF v_c->>'outcome' <> 'finalized' OR v_u.status <> 'consumed' OR v_u.over_limit_units <> 3
-     OR v_u.over_limit_uses OR (v_l->>'consumedUnits')::integer <> 8 OR (v_l->>'overLimitUnits')::integer <> 3 THEN
+     OR v_u.over_limit_uses OR (v_l->>'consumedUnits')::integer IS DISTINCT FROM 8
+     OR (v_l->>'overLimitUnits')::integer IS DISTINCT FROM 3 THEN
     RAISE EXCEPTION 'T5-1 late consume past the cap: want consumed, 3 over the limit, list 8 used / 3 over; got % use % list %',
       v_c,to_jsonb(v_u),v_l;
   END IF;

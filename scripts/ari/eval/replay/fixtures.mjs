@@ -182,6 +182,186 @@ export const REPLAY_FIXTURES = [
       },
     ],
   },
+  {
+    // #4624 follow-up 1: ticket-capped codes. "N free tickets", "only / first
+    // / up to N tickets" and "N tickets max" are a ticket limit
+    // (ends_after_count); "N uses", "N times" and "N people can use it" are
+    // Total uses (max_total_uses); a bare "limit it to N" is asked about. The
+    // stubs make the model put each number in the wrong field, as Flash did
+    // before the intent read had a ticket field.
+    id: "issue_4624_ticket_limit_phrasings",
+    source:
+      "#4624 implementor discovery 1 and tester risk (7206081911): Ari read ticket limits as Total uses.",
+    brand: "ng",
+    account: "ng_owner",
+    timezone: "Africa/Lagos",
+    turns: [
+      {
+        say: "Create a code FREE5 for 100% off, 5 free tickets",
+        expect: {
+          route: "proposal:create_discount",
+          no_new_flow_run: true,
+          proposal: {
+            tool: "create_discount",
+            args: { code: "FREE5", ends_after_count: 5, max_total_uses: null },
+          },
+        },
+        stub: {
+          read: discountRead({ code: "FREE5", percent_off: 100, max_total_uses: 5 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "FREE5",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 10000,
+              max_total_uses: 5,
+            },
+          },
+        },
+      },
+      {
+        say: "Make EARLY20 20% off for the first 20 tickets",
+        expect: {
+          route: "proposal:create_discount",
+          no_new_flow_run: true,
+          proposal: {
+            tool: "create_discount",
+            args: { code: "EARLY20", ends_after_count: 20, max_total_uses: null },
+          },
+        },
+        stub: {
+          read: discountRead({ code: "EARLY20", percent_off: 20, ends_after_count: 20 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "EARLY20",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 2000,
+              ends_after_count: 20,
+            },
+          },
+        },
+      },
+      {
+        say: "Create VIP10 for 10% off, only 30 tickets",
+        expect: {
+          route: "proposal:create_discount",
+          no_new_flow_run: true,
+          proposal: {
+            tool: "create_discount",
+            args: { code: "VIP10", ends_after_count: 30, max_total_uses: null },
+          },
+        },
+        stub: {
+          read: discountRead({ code: "VIP10", percent_off: 10, max_total_uses: 30 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "VIP10",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 1000,
+              max_total_uses: 30,
+            },
+          },
+        },
+      },
+      {
+        say: "Create SQUAD15 for 15% off, 5 people can use it",
+        expect: {
+          route: "proposal:create_discount",
+          no_new_flow_run: true,
+          proposal: {
+            tool: "create_discount",
+            args: { code: "SQUAD15", max_total_uses: 5, ends_after_count: null },
+          },
+        },
+        stub: {
+          read: discountRead({ code: "SQUAD15", percent_off: 15, max_total_uses: 5 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "SQUAD15",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 1500,
+              ends_after_count: 5,
+            },
+          },
+        },
+      },
+      {
+        say: "Create TEN10 for 10% off, it can be used 10 times",
+        expect: {
+          route: "proposal:create_discount",
+          no_new_flow_run: true,
+          proposal: {
+            tool: "create_discount",
+            args: { code: "TEN10", max_total_uses: 10, ends_after_count: null },
+          },
+        },
+        stub: {
+          read: discountRead({ code: "TEN10", percent_off: 10, max_total_uses: 10 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "TEN10",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 1000,
+              max_total_uses: 10,
+            },
+          },
+        },
+      },
+      {
+        // Rework (tester P1-1): tickets per person are neither a ticket limit
+        // nor Total uses; a code can only cap uses per buyer, so Ari asks.
+        say: "Create EACH5 for 100% off, max 5 tickets per person",
+        expect: {
+          route: "text",
+          no_new_flow_run: true,
+          reply_must: ["how many times each buyer uses it"],
+        },
+        stub: {
+          read: discountRead({ code: "EACH5", percent_off: 100, max_total_uses: 5 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "EACH5",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 10000,
+              ends_after_count: 5,
+            },
+          },
+        },
+      },
+      {
+        say: "Create HALF50 for 50% off and limit it to 50",
+        expect: {
+          route: "text",
+          no_new_flow_run: true,
+          reply_must: ["count tickets or checkouts"],
+        },
+        stub: {
+          read: discountRead({ code: "HALF50", percent_off: 50, max_total_uses: 50 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "HALF50",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 5000,
+              max_total_uses: 50,
+            },
+          },
+        },
+      },
+    ],
+  },
 ];
 
 /** The flow evals (scripts/ari/eval/flows/) the live run also scores. */

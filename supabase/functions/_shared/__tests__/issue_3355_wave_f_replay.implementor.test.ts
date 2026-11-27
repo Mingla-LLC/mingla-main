@@ -246,6 +246,8 @@ Deno.test("F1 CI replay: the fixtures cover this morning's thread and the #3355 
     "host_thread_2026_11_10",
     "issue_3355_customer_list_upload",
     "issue_3355_website_no_site",
+    // #4624 follow-up 1: ticket limits vs Total uses.
+    "issue_4624_ticket_limit_phrasings",
   ]);
   const thread = REPLAY_FIXTURES[0];
   assert(
