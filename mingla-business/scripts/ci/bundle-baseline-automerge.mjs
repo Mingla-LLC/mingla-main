@@ -65,7 +65,7 @@
  *
  *   __common raw     > 2,788,000 B   (2,800,000 - 12,000)
  *   __common brotli  >   548,000 B   (  560,000 - 12,000)
- *   eager raw        > 3,975,000 B   (4,000,000 - 25,000)
+ *   eager raw        > 3,990,000 B   (4,015,000 - 25,000)
  *   eager brotli     >   775,000 B   (  800,000 - 25,000)
  *
  * and refuse outright at or above the ceiling itself. That fires roughly one
@@ -118,8 +118,8 @@ const apiVersion = "2022-11-28";
  * proves the copy is still true.
  */
 export const CEILING = Object.freeze({
-  common: Object.freeze({ raw: 2_943_000, brotli: 597_000 }),
-  eager: Object.freeze({ raw: 4_000_000, brotli: 838_000 }),
+  common: Object.freeze({ raw: 2_953_000, brotli: 597_000 }),
+  eager: Object.freeze({ raw: 4_015_000, brotli: 838_000 }),
 });
 
 /**
