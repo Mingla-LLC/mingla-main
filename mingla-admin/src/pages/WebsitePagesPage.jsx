@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { History, ImageIcon, Link2, Monitor, Plus, Redo2, RefreshCw, Search, Smartphone, Tablet, Undo2 } from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { Skeleton } from "../components/ui/Skeleton";
 import { LoadError } from "../components/ui/LoadError";
 import { useToast } from "../context/ToastContext";
@@ -29,7 +30,7 @@ import { supabase, SUPABASE_URL } from "../lib/supabase";
 import { siteCms } from "../services/siteCmsService";
 import { SITE_ORIGIN, fetchManifest } from "../services/websitePagesService";
 import { listForms } from "../services/formsService";
-import { PAGE_DEFAULTS, REGISTRY, RESERVED_SEGMENTS } from "../lib/siteBlocksRegistry";
+import { BUNDLED_MANIFEST, PAGE_DEFAULTS, REGISTRY, RESERVED_SEGMENTS } from "../lib/siteBlocksRegistry";
 import {
   AUTOSAVE_MS, COPY, DEVICE_LABELS, FORMATS, SITE_SETTINGS_KEY, TOKEN_REMINT_MS, acceptPageMessage, blockDef, canAdd, checkSections,
   defaultSections, duplicateSection, frameUrl, insertSection, moveSection, pageRows, removeSection, sectionChanges, serverErrors,
@@ -85,7 +86,9 @@ export function WebsitePagesPage() {
   const loadList = useCallback(async () => {
     setListError(null);
     try {
-      const [m, s] = await Promise.all([fetchManifest(SITE_ORIGIN), cms.pagesState()]);
+      // The live manifest lists pages the site shipped after this Admin build; the bundled list
+      // (the same file, as of this build) keeps the editor working when it can't be fetched.
+      const [m, s] = await Promise.all([fetchManifest(SITE_ORIGIN).catch(() => BUNDLED_MANIFEST), cms.pagesState()]);
       setManifest(m);
       setState(s || []);
     } catch (e) {
@@ -178,6 +181,8 @@ export function WebsitePagesPage() {
       setDoc((d) => (d && d.key === doc.key ? { ...d, rev: r.rev } : d));
       setSrvErrs({ byIndex: {}, page: [] });
       setSave(contentRef.current === content ? { state: "saved", at: Date.now() } : { state: "dirty" });
+      if (doc.rev === 0) void loadList(); // the first draft changes the page's status in the list
+      else setState((list) => (list || []).map((x) => (x.page_key === doc.key ? { ...x, draft: { ...(x.draft || {}), rev: r.rev, changes: Math.max(1, x.draft?.changes ?? 0) } } : x)));
       return true;
     } catch (e) {
       if (e.code === "page_draft_conflict" || e.code === "PT409") setSave({ state: "conflict", message: COPY.conflict });
@@ -254,10 +259,11 @@ export function WebsitePagesPage() {
   const post = useCallback((msg) => { frameRef.current?.contentWindow?.postMessage(msg, siteOrigin); }, [siteOrigin]);
   // Each edit redraws the page in place (block pages and the menu / footer).
   useEffect(() => {
-    if (!ready || !doc || (doc.kind !== "blocks" && doc.kind !== "settings")) return undefined;
+    // A draft that fails the checks stays out of the preview (the fields say what to fix).
+    if (!ready || !doc || (doc.kind !== "blocks" && doc.kind !== "settings") || !clientOk) return undefined;
     const t = setTimeout(() => post({ type: "editor-draft", page: doc.key, seq: ++seq.current, content: contentRef.current }), 200);
     return () => clearTimeout(t);
-  }, [doc?.content, ready, doc?.kind, doc?.key, post]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [doc?.content, ready, doc?.kind, doc?.key, post, clientOk]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (ready && doc?.kind === "blocks") post({ type: "editor-select", page: doc.key, index: sel }); }, [sel, ready, doc?.kind, doc?.key, post]);
   const [previewNote, setPreviewNote] = useState(null);
   useEffect(() => {
@@ -429,10 +435,10 @@ export function WebsitePagesPage() {
   // ---- render
   if (noAccess) {
     return (
-      <div className="grid min-h-[60vh] place-items-center" data-no-access="">
-        <div className="max-w-md text-center">
-          <h1 className="font-serif text-3xl">Website pages</h1>
-          <p className="mt-2 text-sm text-[var(--a-text2)]">{COPY.noAccess}</p>
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Website pages" />
+        <div className="grid min-h-[40vh] place-items-center rounded-2xl border border-[var(--a-line)] bg-[var(--a-panel)] p-6 text-center" data-no-access="">
+          <p className="max-w-md text-sm text-[var(--a-text2)]">{COPY.noAccess}</p>
         </div>
       </div>
     );
@@ -446,7 +452,9 @@ export function WebsitePagesPage() {
   const liveTargets = ["/", ...allRows.filter((r) => r.path.startsWith("/") && !r.pattern && r.path !== "/" && r.status !== "draft" && r.status !== "deleted").map((r) => r.path)];
 
   return (
-    <div className="flex h-[calc(100vh-120px)] min-h-[600px] flex-col overflow-hidden rounded-2xl border border-[var(--a-line)] bg-[var(--a-panel)] shadow-[var(--a-shadow)]" data-website-pages="">
+    <div className="flex flex-col gap-6">
+    <PageHeader title="Website pages" description="Edit usemingla.com: click any words or picture on the page, add sections from the site's own blocks, then publish." />
+    <div className="flex h-[calc(100vh-190px)] min-h-[600px] flex-col overflow-hidden rounded-2xl border border-[var(--a-line)] bg-[var(--a-panel)] shadow-[var(--a-shadow)]" data-website-pages="">
       {/* Top bar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--a-line)] px-3 py-2" data-editor-top="">
         <div className="mr-auto flex min-w-0 flex-col">
@@ -462,7 +470,7 @@ export function WebsitePagesPage() {
             return <button key={d} type="button" aria-pressed={device === d} data-device={d} onClick={() => setDevice(d)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${device === d ? "bg-[var(--a-text)] text-[var(--a-panel)]" : "text-[var(--a-text2)]"}`}><I size={12} aria-hidden="true" />{DEVICE_LABELS[d]}</button>;
           })}
         </div>
-        <select aria-label="Zoom" className={`${FIELD} w-auto py-1 text-xs`} value={zoom} onChange={(e) => setZoom(e.target.value)} data-zoom-select="">
+        <select aria-label="Zoom" className="h-8 rounded-full border border-[var(--a-line)] bg-[var(--a-panel)] px-2 text-xs text-[var(--color-text-primary)]" value={zoom} onChange={(e) => setZoom(e.target.value)} data-zoom-select="">
           <option value="fit">Fit</option><option value="full">100%</option>
         </select>
         {canEdit ? (
@@ -582,6 +590,7 @@ export function WebsitePagesPage() {
           <Button size="sm" variant="danger" onClick={() => { const go = leaving; setLeaving(null); setSave({ state: "saved" }); go(); }}>Leave without saving</Button>
         </div>
       ) : null}
+    </div>
     </div>
   );
 }

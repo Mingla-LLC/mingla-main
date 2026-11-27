@@ -149,12 +149,15 @@ function Field({ index, field, path, value, onChange, errors, ctx }) {
 export function BlockPanel({ def, block, index, count, errors = {}, canEdit, focusField, onChange, onAction, onAddBelow, openMedia, media, forms, supabaseUrl }) {
   // A click on words in the preview focuses that field here.
   useEffect(() => {
-    if (!focusField) return;
-    const el = document.getElementById(fieldId(index, focusField)) || document.querySelector(`[data-field="${fieldId(index, focusField.split(/[.[]/)[0])}"]`);
-    if (el) {
+    if (!focusField) return undefined;
+    // After the click inside the preview settles (the frame keeps focus until then).
+    const t = setTimeout(() => {
+      const el = document.getElementById(fieldId(index, focusField)) || document.querySelector(`[data-field="${fieldId(index, focusField.split(/[.[]/)[0])}"]`);
+      if (!el) return;
       el.scrollIntoView({ block: "center", behavior: "smooth" });
       if (typeof el.focus === "function") el.focus({ preventScroll: true });
-    }
+    }, 80);
+    return () => clearTimeout(t);
   }, [focusField, index]);
 
   if (!def) return <Note tone="bad">This section type isn't known to the site. Delete it, or ask engineering.</Note>;
