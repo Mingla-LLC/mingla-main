@@ -1780,7 +1780,7 @@ Deno.test("#3355 terse continuation requests read the durable onboarding plan", 
 });
 
 Deno.test("#3355 onboarding stays on the selected brand and treats future materials as absent", () => {
-  assertEquals(PROMPT_VERSION, "v41"); // #4572 header button and logo steps on top of v40
+  assertEquals(PROMPT_VERSION, "v42"); // #4599 confirm-before-claim rules on top of v41
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   for (
     const phrase of [

@@ -11,7 +11,7 @@
  *     `ends_at = NULL`. The stated end date was dropped silently.
  *
  * I-ARI-CLAIM-MATCHES-RECEIPT is declared beside its enforcing check in ariClaimCheck.ts (rework 3).
- * MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages (digits, number words, pc / pct / per cent, half off), fixed amounts off (in the currency's minor units), start and end dates (incl. "between … and …", "the end of <month>") and use limits the host stated (last 6 owner messages since the previous proposal of the same tool) are compared with the proposal args for every tool whose schema has that field, on both agent paths: per code and field the latest statement wins (a percent replaces an amount and the reverse), values bind to the code in their own clause in either word order, the intent read's values are primary and the words the cross-check; a stated end day is bound to 23:59:59 local and a future start day to 00:00 local; anything else missing, different or in conflict makes Ari ask instead of proposing (same test files).
+ * MINGLA-INVARIANT: I-ARI-STATED-SLOTS-PRESERVED | issue #3355 | Codes, percentages (digits, number words, pc / pct / per cent, half off), fixed amounts off (in the currency's minor units), start and end dates (incl. "between … and …", "the end of <month>") and use limits the host stated without hedging (last 6 owner messages since the previous proposal of the same tool) are compared with the proposal args for every tool whose schema has that field, on both agent paths: hedged intent-read keys are excluded, per code and field the latest statement wins (a percent replaces an amount and the reverse), values bind to the code in their own clause in either word order, the intent read's values are primary and the words the cross-check; a stated end day is bound to 23:59:59 local and a future start day to 00:00 local; anything else missing, different or in conflict makes Ari ask instead of proposing (same test files).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -1819,8 +1819,14 @@ export function mergeModelStatedSlots(
   base: StatedSlots,
   model: ModelStatedValues | null | undefined,
   ownerMessages: readonly string[],
+  hedgedKeys: readonly string[] = [],
 ): StatedSlots {
   if (!model) return base;
+  const hedged = new Set(hedgedKeys);
+  const unhedged = Object.fromEntries(
+    Object.entries(model).filter(([key]) => !hedged.has(key)),
+  ) as ModelStatedValues;
+  model = unhedged;
   const lastWords = ownerMessages.at(-1) ?? "";
   const allWords = ownerMessages.join("\n");
   const out: StatedSlots = {
@@ -2380,6 +2386,8 @@ export async function preserveStatedSlots(args: {
   now?: Date;
   /** #3355 Wave E — the intent read's stated values (grounded again here). */
   modelStated?: ModelStatedValues | null;
+  /** Intent-read fields qualified as uncertain; never copied to a proposal. */
+  modelHedgedKeys?: readonly string[];
   /** #3355 rework 8 (R8-12): fields Ari already asked about (see checkStatedSlots). */
   askedBefore?: ReadonlySet<string>;
 }): Promise<StatedSlotCheck> {
@@ -2387,10 +2395,58 @@ export async function preserveStatedSlots(args: {
   const schemaKeys = new Set(
     properties && typeof properties === "object" ? Object.keys(properties) : [],
   );
+  const hedgedSchemaKey: Readonly<Record<string, string>> = {
+    code: "code",
+    percent_off: "value_bps",
+    amount_off: "value_minor",
+    ends_on: "ends_at",
+    starts_on: "starts_at",
+    max_total_uses: "max_total_uses",
+    max_uses_per_buyer: "max_uses_per_buyer",
+  };
+  const hedgedProposalFields = (args.modelHedgedKeys ?? []).flatMap((key) => {
+    const schemaKey = hedgedSchemaKey[key];
+    return schemaKey && schemaKeys.has(schemaKey) &&
+        args.toolArgs[schemaKey] !== undefined
+      ? [schemaKey]
+      : [];
+  });
+  if (hedgedProposalFields.length > 0) {
+    return {
+      kind: "ask",
+      missing: [...new Set(hedgedProposalFields)],
+      text:
+        "Before I prepare that for approval, please confirm the value you marked as uncertain. Nothing has been saved yet.",
+    };
+  }
+  const extracted = extractStatedSlots(args.ownerMessages, args.now);
+  for (const key of args.modelHedgedKeys ?? []) {
+    if (key === "code") {
+      delete extracted.code;
+      delete extracted.codes;
+    }
+    if (key === "per_code") {
+      delete extracted.per_code;
+      delete extracted.codes;
+    }
+    const targets: StatedValues[] = [
+      extracted,
+      ...Object.values(extracted.per_code ?? {}),
+    ];
+    for (const target of targets) {
+      if (key === "percent_off") delete target.value_bps;
+      if (key === "amount_off") delete target.amount;
+      if (key === "ends_on") delete target.ends_on;
+      if (key === "starts_on") delete target.starts_on;
+      if (key === "max_total_uses") delete target.max_total_uses;
+      if (key === "max_uses_per_buyer") delete target.max_uses_per_buyer;
+    }
+  }
   const stated = mergeModelStatedSlots(
-    extractStatedSlots(args.ownerMessages, args.now),
+    extracted,
     args.modelStated,
     args.ownerMessages,
+    args.modelHedgedKeys,
   );
   // #3355 Wave F (live eval): Flash proposed "VIP10, 10% off" for a host who
   // had named no code at all. A code is the host's to choose: one the

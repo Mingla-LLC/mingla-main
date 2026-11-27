@@ -155,14 +155,16 @@ Deno.test("D2: replaying this morning's host thread yields the expected gap type
   }
 });
 
-Deno.test("D2: the frustration lexicon (why, again, not working, useless, !!, ALL CAPS)", () => {
+Deno.test("D2: the frustration lexicon ignores neutral again/still and requires two weak cues", () => {
   const cases: [string, boolean, boolean][] = [
     ["why is this not working", true, true],
-    ["Why again?", true, true],
+    ["Why again?", false, false],
     ["This is useless", true, true],
     ["I SAID CREATE THE CODE", true, true],
-    ["please!!", true, false],
-    ["again", true, false],
+    ["please!!", false, false],
+    ["again", false, false],
+    ["still", false, false],
+    ["still not working", true, true],
     ["I already told you the end date", true, true],
     ["Why is my payout pending?", false, false],
     ["Create a code called FAVY10 for 10% off", false, false],
@@ -557,7 +559,7 @@ Deno.test("D4: once per Ari conversation per hour — at the offer and at the se
   assertEquals((offered as ToolError).code, "ASK_TEAM_RECENTLY_SENT");
   assertMatch(
     (offered as ToolError).user_reason,
-    /already asked the Mingla team/,
+    /A note to the Mingla team already went from this chat/,
   );
 
   const client = hostClient({ sendError: "ask_team_recently_sent" });

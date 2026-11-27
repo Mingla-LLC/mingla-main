@@ -4,8 +4,9 @@
  *
  *   node scripts/ari/eval/run-live.mjs \
  *     --env-file=<local stack env: ARI_EVAL_URL, ANON_KEY, SERVICE_ROLE_KEY> \
- *     --functions-env=<local functions env with GEMINI_API_KEY_ARI> \
- *     [--out=<dir>] [--only=replay,flows,route_table] [--write-baseline]
+ *     [--functions-env=<local functions env with GEMINI_API_KEY_ARI>] \
+ *     [--out=<dir>] [--only=replay,flows,route_table,answers,claim_check,kunle] \
+ *     [--loop=on|off] [--write-baseline]
  *
  * Three suites, one score each (out of 100), and their mean:
  *   - replay: the scripted host threads in replay/fixtures.mjs, sent through
@@ -20,6 +21,8 @@
  *   - claim_check (#3355 rework 3): the reply claim check on the real model,
  *     the tester's must-catch list and the must-keep answers
  *     (replay/claim_check_live.ts), with the check's own latency.
+ *   - kunle (#4599): ten host-truth scenarios, each with deterministic hard
+ *     predicates and a three-vote response-quality judge.
  * "overall" is the mean of replay, flows and route_table (the baseline the
  * gate has always compared); answers and claim_check have their own scores.
  * Latency: p50 / p95 per turn for setup starts, typed turns and card answers.
@@ -55,6 +58,7 @@ import {
 } from "./seed-flow-brands.mjs";
 import { runFlowEvals } from "./flows/run.mjs";
 import { ANSWER_EVALS } from "./answers/index.mjs";
+import { KUNLE_EVALS, kunleVerdict } from "./kunle/index.mjs";
 import { LIVE_FLOW_EVAL_IDS, REPLAY_FIXTURES } from "./replay/fixtures.mjs";
 import {
   baselineFromRun,
@@ -66,6 +70,8 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 export const BASELINE_PATH = "docs/contracts/ari-live-eval-baseline.json";
+
+// MINGLA-INVARIANT: I-ARI-LOOP-FLIP-NEEDS-KUNLE-EVAL | issue #4599 | Every governed Ari loop flip is exercised by the ten-scenario Kunle suite, recorded in the live run, and protected by the stored eval baseline.
 
 function readEnvFile(path) {
   const out = {};
@@ -105,6 +111,89 @@ export function assertBaselineWritable(model) {
       `--write-baseline refused: this run uses the local model ${model.id} (ARI_LOCAL_MODEL_ENABLED=true). The baseline is Gemini-only.`,
     );
   }
+}
+
+/**
+ * The suite score makes both verdict boundaries gate-visible: across ten
+ * scenarios, Pass -> Partial and Partial -> Fail each cost five points.
+ */
+export function kunleScore(results) {
+  if (!results.length) return 0;
+  const points = results.reduce(
+    (sum, item) =>
+      sum +
+      (item.verdict === "Pass" ? 1 : item.verdict === "Partial" ? 0.5 : 0),
+    0,
+  );
+  return round(points / results.length * 100);
+}
+
+/** Set the local-only loop flag for this run and return an idempotent restore. */
+export async function configureLocalLoop(
+  rest,
+  requested,
+  { restoreRetryDelays = [500, 1_500] } = {},
+) {
+  if (requested !== null && !["on", "off"].includes(requested)) {
+    throw new Error("--loop must be on or off");
+  }
+  const rows = await rest.select(
+    "feature_flags",
+    "select=flag_key,is_enabled&flag_key=eq.ari_agent_loop_v2&limit=1",
+  );
+  if (rows.length !== 1 || typeof rows[0].is_enabled !== "boolean") {
+    throw new Error("local feature flag ari_agent_loop_v2 is missing");
+  }
+  const previous = rows[0].is_enabled;
+  const enabled = requested === null ? previous : requested === "on";
+  if (requested !== null) {
+    const updated = await rest.update(
+      "feature_flags",
+      "flag_key=eq.ari_agent_loop_v2",
+      { is_enabled: enabled },
+    );
+    if (updated.length !== 1 || updated[0].is_enabled !== enabled) {
+      throw new Error("could not set local ari_agent_loop_v2 for the eval");
+    }
+  }
+  let restored = false;
+  return {
+    enabled,
+    previous,
+    async restore() {
+      if (restored || requested === null) return;
+      let failure;
+      for (
+        let attempt = 0;
+        attempt <= restoreRetryDelays.length;
+        attempt += 1
+      ) {
+        try {
+          const updated = await rest.update(
+            "feature_flags",
+            "flag_key=eq.ari_agent_loop_v2",
+            { is_enabled: previous },
+          );
+          if (updated.length !== 1 || updated[0].is_enabled !== previous) {
+            throw new Error("local feature flag update was not confirmed");
+          }
+          restored = true;
+          return;
+        } catch (error) {
+          failure = error;
+          if (attempt < restoreRetryDelays.length) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, restoreRetryDelays[attempt])
+            );
+          }
+        }
+      }
+      throw new Error(
+        "could not restore local ari_agent_loop_v2 after the eval",
+        { cause: failure },
+      );
+    },
+  };
 }
 
 function revision() {
@@ -294,10 +383,11 @@ function runDenoSuite(functionsEnv, script, suiteName) {
   return JSON.parse(line);
 }
 
-function latencyBuckets(replay, flows) {
+function latencyBuckets(replay, flows, kunle = []) {
   const setup = [];
   const typed = [];
   const answers = [];
+  const kunleTurns = [];
   for (const thread of replay) {
     for (const turn of thread.turns) {
       (turn.observed.setup_start ? setup : typed).push(turn.observed.ms);
@@ -314,10 +404,16 @@ function latencyBuckets(replay, flows) {
       else answers.push(line.ms);
     }
   }
+  for (const result of kunle) {
+    for (const line of result.transcript ?? []) {
+      if (typeof line.ms === "number" && line.typed) kunleTurns.push(line.ms);
+    }
+  }
   return {
     setup_start: percentiles(setup),
     typed_turn: percentiles(typed),
     card_answer_or_confirm: percentiles(answers),
+    kunle_turn: percentiles(kunleTurns),
   };
 }
 
@@ -327,7 +423,9 @@ function markdown(run) {
     "",
     `Revision ${run.revision.sha ?? "?"}${
       run.revision.functions_dirty ? " (functions dirty)" : ""
-    }, ${run.ran_at}, model ${run.model}, target local.`,
+    }, ${run.ran_at}, model ${run.model}, target local, loop ${
+      run.loop_enabled ? "on" : "off"
+    }.`,
     "",
     "| Suite | Score |",
     "|---|---|",
@@ -430,6 +528,32 @@ function markdown(run) {
       }`
     )),
     "",
+    "## Kunle truth suite (#4599)",
+    "",
+    "| Scenario | Verdict | Hard | Judge |",
+    "|---|---|---|---|",
+    ...(run.suites.kunle ?? []).map((item) => {
+      const hard = (item.facts ?? []).filter((fact) =>
+        fact.fact.startsWith("hard:")
+      );
+      const judge = (item.facts ?? []).filter((fact) =>
+        fact.fact.startsWith("judge:")
+      );
+      return `| ${item.id} | ${item.verdict} | ${
+        hard.filter((fact) => fact.passed).length
+      }/${hard.length} | ${
+        judge.filter((fact) => fact.passed).length
+      }/${judge.length} |`;
+    }),
+    "",
+    ...(run.suites.kunle ?? []).flatMap((item) =>
+      (item.facts ?? []).filter((fact) => !fact.passed).map((fact) =>
+        `- ${item.id}: ${fact.fact}: expected ${
+          JSON.stringify(fact.expected)
+        }, got ${JSON.stringify(fact.actual).slice(0, 300)}`
+      ).concat(item.error ? [`- ${item.id}: error ${item.error}`] : [])
+    ),
+    "",
     "## Latency (per turn, ms)",
     "",
     "| Bucket | n | p50 | p95 |",
@@ -443,108 +567,169 @@ function markdown(run) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const functionsEnv = readEnvFile(option("functions-env"));
+  // A local operator may inject secrets from Keychain or another process
+  // environment without materialising a second plaintext env file. An
+  // explicit --functions-env remains the override for existing workflows.
+  const inheritedFunctionsEnv = Object.fromEntries(
+    [
+      "GEMINI_API_KEY_ARI",
+      "GEMINI_MODEL_ID",
+      "SUPABASE_URL",
+      "ARI_LOCAL_MODEL_ENABLED",
+      "ARI_LOCAL_MODEL_BASE_URL",
+      "ARI_LOCAL_MODEL_ID",
+    ].flatMap((name) =>
+      process.env[name] === undefined ? [] : [[name, process.env[name]]]
+    ),
+  );
+  const functionsEnv = {
+    ...inheritedFunctionsEnv,
+    ...readEnvFile(option("functions-env")),
+  };
   const model = evalModel(process.env, functionsEnv);
   if (process.argv.includes("--write-baseline")) assertBaselineWritable(model);
   const only = option("only")?.split(",").filter(Boolean) ??
-    ["replay", "flows", "route_table", "answers", "claim_check"];
+    ["replay", "flows", "route_table", "answers", "claim_check", "kunle"];
   const config = localConfig();
   const rest = serviceRest(config);
-  const { brands, users } = await seedFlowBrands(config);
-  await resetTurnWindow(rest, Object.values(users));
-  const runId = `live-${
-    new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)
-  }Z-${randomUUID().slice(0, 8)}`;
-  const suites = {
-    replay: [],
-    flows: [],
-    route_table: null,
-    answers: [],
-    claim_check: null,
-  };
-  if (only.includes("replay")) {
-    suites.replay = await runReplay(config, rest, brands);
-  }
-  if (only.includes("flows")) {
+  const loop = await configureLocalLoop(rest, option("loop"));
+  try {
+    const { brands, users } = await seedFlowBrands(config);
+    const seeded = { brands, users };
     await resetTurnWindow(rest, Object.values(users));
-    suites.flows = (await runFlowEvals({ ids: LIVE_FLOW_EVAL_IDS })).map((
-      item,
-    ) => ({
-      id: item.id,
-      passed: item.passed ?? false,
-      skipped: item.skipped ?? null,
-      facts: item.facts,
-      error: item.error ?? null,
-      transcript: item.transcript,
-    }));
-  }
-  if (only.includes("answers")) {
-    await resetTurnWindow(rest, Object.values(users));
-    suites.answers = (await runFlowEvals({ evals: ANSWER_EVALS })).map((
-      item,
-    ) => ({
-      id: item.id,
-      passed: item.passed ?? false,
-      facts: item.facts,
-      error: item.error ?? null,
-      transcript: item.transcript,
-    }));
-  }
-  if (only.includes("claim_check")) {
-    if (!functionsEnv.GEMINI_API_KEY_ARI) {
-      throw new Error(
-        "--functions-env must name a local env with GEMINI_API_KEY_ARI",
-      );
+    const runId = `live-${
+      new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)
+    }Z-${randomUUID().slice(0, 8)}`;
+    const suites = {
+      replay: [],
+      flows: [],
+      route_table: null,
+      answers: [],
+      claim_check: null,
+      kunle: [],
+    };
+    if (only.includes("replay")) {
+      suites.replay = await runReplay(config, rest, brands);
     }
-    suites.claim_check = runClaimCheck(functionsEnv);
-  }
-  if (only.includes("route_table")) {
-    if (!functionsEnv.GEMINI_API_KEY_ARI) {
-      throw new Error(
-        "--functions-env must name a local env with GEMINI_API_KEY_ARI",
-      );
+    if (only.includes("flows")) {
+      await resetTurnWindow(rest, Object.values(users));
+      suites.flows = (await runFlowEvals({
+        ids: LIVE_FLOW_EVAL_IDS,
+        seeded,
+      })).map((item) => ({
+        id: item.id,
+        passed: item.passed ?? false,
+        skipped: item.skipped ?? null,
+        facts: item.facts,
+        error: item.error ?? null,
+        transcript: item.transcript,
+      }));
     }
-    suites.route_table = runRouteTable(functionsEnv);
-  }
-  const run = {
-    run_id: runId,
-    ran_at: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-    revision: revision(),
-    target: "local",
-    model: model.label,
-    model_local: model.local,
-    model_id: model.id,
-    scores: scoreRun(suites),
-    latency: latencyBuckets(suites.replay, suites.flows),
-    suites: {
-      ...suites,
-      route_table: suites.route_table ??
-        {
-          total: 0,
-          misroutes: 0,
-          misroute_rate: 0,
-          model_reads: 0,
-          rows: [],
-          latency_ms: {},
-        },
-    },
-  };
-  const out = option("out") ?? join(homedir(), ".mingla-private/3355/evals");
-  mkdirSync(out, { recursive: true });
-  writeFileSync(
-    join(out, `${runId}.json`),
-    `${JSON.stringify(run, null, 2)}\n`,
-  );
-  writeFileSync(join(out, `${runId}.md`), markdown(run));
-  if (process.argv.includes("--write-baseline")) {
-    assertBaselineWritable(model);
-    const baseline = baselineFromRun(run);
+    if (only.includes("answers")) {
+      await resetTurnWindow(rest, Object.values(users));
+      suites.answers = (await runFlowEvals({
+        evals: ANSWER_EVALS,
+        seeded,
+      })).map((item) => ({
+        id: item.id,
+        passed: item.passed ?? false,
+        facts: item.facts,
+        error: item.error ?? null,
+        transcript: item.transcript,
+      }));
+    }
+    if (only.includes("kunle")) {
+      if (!functionsEnv.GEMINI_API_KEY_ARI) {
+        throw new Error(
+          "--functions-env must name a local env with GEMINI_API_KEY_ARI",
+        );
+      }
+      await resetTurnWindow(rest, Object.values(users));
+      const previousKey = process.env.GEMINI_API_KEY_ARI;
+      const previousModel = process.env.GEMINI_MODEL_ID;
+      process.env.GEMINI_API_KEY_ARI = functionsEnv.GEMINI_API_KEY_ARI;
+      if (functionsEnv.GEMINI_MODEL_ID) {
+        process.env.GEMINI_MODEL_ID = functionsEnv.GEMINI_MODEL_ID;
+      }
+      try {
+        suites.kunle = (await runFlowEvals({
+          evals: KUNLE_EVALS,
+          seeded,
+        })).map((item) => ({
+          id: item.id,
+          verdict: kunleVerdict(item),
+          facts: item.facts,
+          error: item.error ?? null,
+          transcript: item.transcript,
+        }));
+      } finally {
+        if (previousKey === undefined) delete process.env.GEMINI_API_KEY_ARI;
+        else process.env.GEMINI_API_KEY_ARI = previousKey;
+        if (previousModel === undefined) delete process.env.GEMINI_MODEL_ID;
+        else process.env.GEMINI_MODEL_ID = previousModel;
+      }
+    }
+    if (only.includes("claim_check")) {
+      if (!functionsEnv.GEMINI_API_KEY_ARI) {
+        throw new Error(
+          "--functions-env must name a local env with GEMINI_API_KEY_ARI",
+        );
+      }
+      suites.claim_check = runClaimCheck(functionsEnv);
+    }
+    if (only.includes("route_table")) {
+      if (!functionsEnv.GEMINI_API_KEY_ARI) {
+        throw new Error(
+          "--functions-env must name a local env with GEMINI_API_KEY_ARI",
+        );
+      }
+      suites.route_table = runRouteTable(functionsEnv);
+    }
+    const scores = scoreRun(suites);
+    if (suites.kunle.length) scores.kunle = kunleScore(suites.kunle);
+    const run = {
+      run_id: runId,
+      ran_at: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+      revision: revision(),
+      target: "local",
+      loop_enabled: loop.enabled,
+      model: model.label,
+      model_local: model.local,
+      model_id: model.id,
+      scores,
+      latency: latencyBuckets(suites.replay, suites.flows, suites.kunle),
+      suites: {
+        ...suites,
+        route_table: suites.route_table ??
+          {
+            total: 0,
+            misroutes: 0,
+            misroute_rate: 0,
+            model_reads: 0,
+            rows: [],
+            latency_ms: {},
+          },
+      },
+    };
+    const out = option("out") ?? join(homedir(), ".mingla-private/3355/evals");
+    mkdirSync(out, { recursive: true });
     writeFileSync(
-      join(ROOT, BASELINE_PATH),
-      `${JSON.stringify(baseline, null, 2)}\n`,
+      join(out, `${runId}.json`),
+      `${JSON.stringify(run, null, 2)}\n`,
     );
-    console.log(`baseline written to ${BASELINE_PATH}`);
+    writeFileSync(join(out, `${runId}.md`), markdown(run));
+    if (process.argv.includes("--write-baseline")) {
+      assertBaselineWritable(model);
+      const baseline = baselineFromRun(run);
+      writeFileSync(
+        join(ROOT, BASELINE_PATH),
+        `${JSON.stringify(baseline, null, 2)}\n`,
+      );
+      console.log(`baseline written to ${BASELINE_PATH}`);
+    }
+    console.log(markdown(run));
+    console.log(`\nwrote ${join(out, `${runId}.json`)} and .md`);
+  } finally {
+    await loop.restore();
   }
-  console.log(markdown(run));
-  console.log(`\nwrote ${join(out, `${runId}.json`)} and .md`);
 }

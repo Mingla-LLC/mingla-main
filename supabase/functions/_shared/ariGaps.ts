@@ -34,6 +34,7 @@ export const ARI_GAP_TYPES = [
   "empty_reply",
   "tool_error",
   "dropped_route",
+  "unconfirmed",
 ] as const;
 export type AriGapType = typeof ARI_GAP_TYPES[number];
 
@@ -75,8 +76,6 @@ const STRONG_CUES: ReadonlyArray<[string, RegExp]> = [
 
 const WEAK_CUES: ReadonlyArray<[string, RegExp]> = [
   ["why", /\bwhy\b/i],
-  ["again", /\bagain\b/i],
-  ["still", /\bstill\b/i],
   ["seriously", /\b(?:seriously|come on|please just)\b/i],
   ["punctuation", /(?:!{2,}|\?{2,}|\?!|!\?)/],
 ];
@@ -122,8 +121,7 @@ export function detectAriFrustration(text: string): AriFrustration {
     [name],
   ) => name);
   cues.push(...weak);
-  const loneWhy = strongCount === 0 && weak.length === 1 && weak[0] === "why";
-  const frustrated = strongCount > 0 || (weak.length > 0 && !loneWhy);
+  const frustrated = strongCount > 0 || weak.length >= 2;
   return {
     frustrated,
     strong: strongCount > 0 || weak.length >= 2,
@@ -265,6 +263,9 @@ export function classifyAriReplyGaps(args: {
       excerpt,
       detail: { reply: scrubAriExcerpt(reply, 160) },
     });
+  }
+  if (/\bI couldn['’]t confirm\b/i.test(reply)) {
+    signals.push({ type: "unconfirmed", excerpt });
   }
   if (!reply.trim() && !args.hasRendition) {
     signals.push({ type: "empty_reply", excerpt });
@@ -549,6 +550,7 @@ const TRIED_WORDS: Readonly<Record<string, string>> = Object.freeze({
   tool_error: "hit an error",
   dropped_route: "couldn't link the right screen",
   negative_feedback: "got a thumbs down",
+  unconfirmed: "couldn't confirm the answer",
 });
 
 /**
@@ -685,4 +687,4 @@ export function withAskTeamLead(replyText: string): string {
 
 /** What Ari says when the team was already asked in this chat this hour. */
 export const ASK_TEAM_ALREADY_SENT =
-  "I've already asked the Mingla team about this in the last hour. They'll reply in your brand group chat.";
+  "A note to the Mingla team already went from this chat in the last hour; they'll reply in your brand group chat.";

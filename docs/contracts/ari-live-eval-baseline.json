@@ -2,19 +2,20 @@
   "schemaVersion": 1,
   "ownerIssue": "#3355",
   "description": "Ari live-eval baseline (local stack, Gemini Flash). scripts/ari/eval/gate.mjs fails a run that drops 2+ points on any suite or overall. overall is the mean of replay, flows and route_table; answers (read, how-to, remember and support answers, graded on the host-visible words; per-eval facts in the answers section) and claim_check (the reply claim check on the real model; totals and latency in the claim_check section) are scored and gated on their own. Refresh with run-live.mjs --write-baseline, or gate.mjs --promote --run=<run.json>, after a reviewed improvement.",
-  "run_id": "live-20261111T151146Z-9b6e1756",
-  "ran_at": "2026-11-11T15:15:24Z",
+  "run_id": "live-20261127T151811Z-13284107",
+  "ran_at": "2026-11-27T15:29:10Z",
   "revision": {
-    "sha": "ac7b1639aa2a87b4b4ae8684f8813a2e6eaeba96",
-    "functions_dirty": false
+    "sha": "c3118295b082a1fcb1a176bd87465076a5edd53f",
+    "functions_dirty": true
   },
   "scores": {
     "replay": 100,
-    "flows": 84.6,
+    "flows": 100,
     "route_table": 100,
-    "overall": 94.9,
+    "overall": 100,
     "answers": 100,
-    "claim_check": 100
+    "claim_check": 98.6,
+    "kunle": 65
   },
   "replay": [
     {
@@ -53,11 +54,11 @@
     },
     {
       "id": "stay_create_on_approved_venue",
-      "verdict": "fail"
+      "verdict": "pass"
     },
     {
       "id": "website_setup_phone",
-      "verdict": "fail"
+      "verdict": "pass"
     },
     {
       "id": "refund_role_refused_event_manager",
@@ -91,18 +92,23 @@
   "latency": {
     "setup_start": {
       "n": 11,
-      "p50": 2521,
-      "p95": 3046
+      "p50": 8084,
+      "p95": 9789
     },
     "typed_turn": {
       "n": 11,
-      "p50": 3397,
-      "p95": 7027
+      "p50": 5859,
+      "p95": 12857
     },
     "card_answer_or_confirm": {
       "n": 56,
-      "p50": 161,
-      "p95": 240
+      "p50": 340,
+      "p95": 1397
+    },
+    "kunle_turn": {
+      "n": 10,
+      "p50": 9622,
+      "p95": 13631
     }
   },
   "answers": [
@@ -148,11 +154,11 @@
     }
   ],
   "claim_check": {
-    "total": 35,
-    "passed": 35,
+    "total": 71,
+    "passed": 70,
     "latency_ms": {
-      "p50": 1052,
-      "p95": 1330
+      "p50": 1382,
+      "p95": 1992
     }
   }
 }

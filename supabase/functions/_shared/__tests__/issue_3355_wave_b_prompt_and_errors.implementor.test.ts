@@ -60,7 +60,7 @@ function ruleLines(prompt: string): string[] {
 }
 
 Deno.test("B3: the prompt is principles — no capability list, about 80 rule lines (at most 150), v30", () => {
-  assertEquals(PROMPT_VERSION, "v41"); // #4572 header button and logo steps on top of v40
+  assertEquals(PROMPT_VERSION, "v42"); // #4599 confirm-before-claim rules on top of v41
   const prompt = buildSystemPrompt(null, []);
   assert(!prompt.includes("CAPABILITIES (your tools):"));
   assert(!/^- create_brand — /m.test(prompt), "no per-tool advertisement");

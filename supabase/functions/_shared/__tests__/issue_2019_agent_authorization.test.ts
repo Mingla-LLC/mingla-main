@@ -76,16 +76,18 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // #4453 milestone 7: get_site_design_brief, propose_site_design_pass, propose_site_chrome (on-path only); 188→191.
   // #4453 milestone 11: propose_site_page, answer_site_page_question (on-path only); 191→193; plus #4238 W5 (2) and #3281 get_experience (1) from main; 196.
   // #4453 Website workspace: get_site_workspace, propose_site_change_set, propose_website_team_request (on-path only); 196→199.
+  // [TEST-MOD-APPROVED #4599] get_event_settings adds one caller-bound event
+  // read with the canonical finance-manager authorization; 199→200.
   assert(
-    AGENT_TOOLS.length === 199,
-    `expected 199 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 200,
+    `expected 200 tools, got ${AGENT_TOOLS.length}`,
   );
   assert(
-    new Set(AGENT_TOOLS.map((t) => t.name)).size === 199,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 200,
     "duplicate tool",
   );
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 199,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 200,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {

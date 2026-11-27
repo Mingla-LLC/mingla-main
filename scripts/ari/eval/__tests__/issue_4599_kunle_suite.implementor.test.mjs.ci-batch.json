@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4599",
+  "suite": {
+    "id": "issue-4599-kunle-live-eval",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "scripts/ari/eval/**",
+      "docs/contracts/ari-live-eval-baseline.json"
+    ],
+    "steps": [
+      {
+        "name": "Kunle scenarios, verdicts, loop restore and baseline registration",
+        "cwd": "scripts/ari/eval",
+        "run": "node --test __tests__/issue_4599_kunle_suite.implementor.test.mjs",
+        "commandId": "assert:issue-4599-kunle-live-eval:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test __tests__/issue_4599_kunle_suite.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "The self-registering Node suite validates the local-only live-eval contract without installing packages."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "scripts/ari/eval",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "scripts/ari/eval/__tests__/issue_4599_kunle_suite.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-25"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite avoids changing a shared workflow registry.",
+    "timeoutSeconds": 60
+  }
+}
