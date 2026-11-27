@@ -39,5 +39,6 @@ Deno.test("#4452 P-3 revalidate_page is gated by forms_can_edit, before the blog
   assert(at > 0 && blog > at, "revalidate_page is answered before the blog permission check");
   const block = src.slice(at, blog);
   assert(block.includes('userClient.rpc("forms_can_edit")') && block.includes('return json({ error: "forbidden" }, 403)'));
-  assert(block.includes("pagesRevalidateRequest(MARKETING_ORIGIN, REVALIDATE_SECRET)"));
+  // #4636: the call now passes the optional page key (issue_4636_admin_blog_page_revalidate.implementor.test.ts).
+  assert(block.includes("pagesRevalidateRequest(MARKETING_ORIGIN, REVALIDATE_SECRET, pageKey)"));
 });

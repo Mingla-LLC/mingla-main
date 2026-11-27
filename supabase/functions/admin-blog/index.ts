@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isLinksRevalidated, isPagesRevalidated, isPrivateAddress, linksRevalidateRequest, pagesRevalidateRequest, resolveMarketingRevalidateSecret, validateLinkCheckUrl } from "./model.ts";
+import { classifyLinkStatus, collectBlogLinkReferences, isBlogNotReadyError, isLinksRevalidated, isPagesRevalidated, isPrivateAddress, linksRevalidateRequest, pagesRevalidateRequest, resolveMarketingRevalidateSecret, revalidatePageKey, validateLinkCheckUrl } from "./model.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -66,17 +66,20 @@ serve(async (req) => {
   // #4452 §2.10: the Website pages editor refreshes the site after a publish. Its
   // gate is the Website editor role (forms_can_edit, the same gate as the
   // admin_site_page_* RPCs), not blog writing, so it is answered before the blog check.
-  const early = await req.clone().json().catch(() => ({})) as { action?: string };
+  const early = await req.clone().json().catch(() => ({})) as { action?: string; pageKey?: unknown };
   if (early.action === "revalidate_page") {
     const can = await userClient.rpc("forms_can_edit");
     if (can.error) return json({ error: "server" }, 500);
     if (can.data !== true) return json({ error: "forbidden" }, 403);
+    // #4636: {pageKey} also refreshes that page's own cache (its block list, a staff page, or 'site-settings').
+    const pageKey = revalidatePageKey(early);
+    if (pageKey === null) return json({ error: "bad_page" }, 400);
     if (!REVALIDATE_SECRET) return json({ error: "revalidate_not_configured" }, 503);
-    const request = pagesRevalidateRequest(MARKETING_ORIGIN, REVALIDATE_SECRET);
+    const request = pagesRevalidateRequest(MARKETING_ORIGIN, REVALIDATE_SECRET, pageKey);
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 5000);
     try {
       const response = await fetch(request.url, { ...request.init, signal: controller.signal });
-      const ok = isPagesRevalidated(response.status, await response.json().catch(() => null));
+      const ok = isPagesRevalidated(response.status, await response.json().catch(() => null), pageKey);
       return json({ ok, status: response.status }, ok ? 200 : 502);
     } catch { return json({ ok: false, status: 0 }, 502); }
     finally { clearTimeout(timer); }

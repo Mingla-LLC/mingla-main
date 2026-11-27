@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-blog/issue_4636_admin_blog_page_revalidate.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4636-admin-blog-page-revalidate",
+  "profile": "deno-1.46-stripe"
+}

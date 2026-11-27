@@ -32,21 +32,34 @@ export function linksRevalidateRequest(origin: string, secret: string): { url: s
 }
 
 /** #4452 §2.10: the same route refreshes the site pages (blocks, form pages, forms) with {"tag":"pages"}. */
-export function pagesRevalidateRequest(origin: string, secret: string): { url: string; init: RequestInit } {
+export function pagesRevalidateRequest(origin: string, secret: string, pageKey?: string | null): { url: string; init: RequestInit } {
   return {
     url: `${origin}${MARKETING_REVALIDATE_PATH}`,
     init: {
       method: "POST",
       headers: { "x-mingla-revalidate-secret": secret, "Content-Type": "application/json" },
-      body: JSON.stringify({ tag: "pages" }),
+      // #4636: with a page key the route also drops that page's own cache (`site-page:<key>`).
+      body: JSON.stringify(pageKey ? { tag: "pages", page: pageKey } : { tag: "pages" }),
     },
   };
 }
 
-/** True only for the route's exact success answer for the pages tag (the site-pages cache tag). */
-export function isPagesRevalidated(status: number, payload: unknown): boolean {
+/** #4636: a Website pages key (a site page, a staff-made page `p-<hex>`, or 'site-settings'). */
+const PAGE_KEY = /^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/;
+
+/** The page key a revalidate_page call names: undefined for none (the whole-site refresh), null when malformed. */
+export function revalidatePageKey(body: unknown): string | null | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const key = (body as Record<string, unknown>).pageKey;
+  if (key === undefined || key === null) return undefined;
+  return typeof key === "string" && PAGE_KEY.test(key) ? key : null;
+}
+
+/** True only for the route's exact success answer for the pages tag (and, when one was asked, that page). */
+export function isPagesRevalidated(status: number, payload: unknown, pageKey?: string | null): boolean {
   if (status !== 200 || typeof payload !== "object" || payload === null) return false;
   const body = payload as Record<string, unknown>;
+  if (pageKey && body.page !== pageKey) return false;
   return body.revalidated === true && body.tag === "site-pages";
 }
 
