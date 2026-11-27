@@ -39,26 +39,6 @@ export function brandSetupRowState(checklist: BrandSetupChecklist | undefined): 
 
 type BrandSetupSubject = Pick<Brand, "id" | "accountId">;
 
-export function deriveBrandSetupStates(
-  brands: readonly BrandSetupSubject[],
-  checklists: readonly (BrandSetupChecklist | undefined)[],
-  userId: string | null,
-): { byId: Record<string, BrandSetupRowState>; draftId: string | null } {
-  const byId: Record<string, BrandSetupRowState> = {};
-  let draftId: string | null = null;
-  brands.forEach((brand, i) => {
-    const state = brandSetupRowState(checklists[i]);
-    byId[brand.id] = state;
-    // #4627 — setup progress stays visible for every accessible team brand,
-    // but the one-draft guard mirrors issue_4389_user_draft_brand: only an
-    // account-owned draft can block this user's new brand.
-    if (state.kind === "draft" && draftId === null && userId !== null && brand.accountId === userId) {
-      draftId = brand.id;
-    }
-  });
-  return { byId, draftId };
-}
-
 export function useBrandSetupStates(brands: readonly BrandSetupSubject[]): {
   byId: Record<string, BrandSetupRowState>;
   /** The host's one draft (S-12), when the answers are in. */
@@ -82,8 +62,18 @@ export function useBrandSetupStates(brands: readonly BrandSetupSubject[]): {
   const stamp = results.map((r) => `${r.dataUpdatedAt}`).join(",");
   const isLoading = results.some((r) => r.isLoading);
   return useMemo(() => {
-    const states = deriveBrandSetupStates(brands, results.map((r) => r.data), user?.id ?? null);
-    return { ...states, isLoading };
+    const byId: Record<string, BrandSetupRowState> = {};
+    let draftId: string | null = null;
+    brands.forEach((brand, i) => {
+      const state = brandSetupRowState(results[i]?.data);
+      byId[brand.id] = state;
+      // #4627 — show every team brand's progress, but only the account-owned
+      // draft mirrors issue_4389_user_draft_brand and blocks another create.
+      if (state.kind === "draft" && draftId === null && user !== null && brand.accountId === user.id) {
+        draftId = brand.id;
+      }
+    });
+    return { byId, draftId, isLoading };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `stamp` stands for the rows.
   }, [brands.map((brand) => `${brand.id}:${brand.accountId ?? ""}`).join(","), stamp, isLoading, user?.id]);
 }

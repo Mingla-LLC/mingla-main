@@ -72,7 +72,7 @@ describe("#4389 N1 up front", () => {
     // While drafts load nothing shows (no F1 flash). #881 partner Step 0 and
     // the #3645 open-time latch sit in the same branch.
     expect(route).toContain("waitingForDrafts || resume !== null ? null : ");
-    expect(route).toContain('(draft === null || requestedDraftId === draft)');
+    expect(route).toContain("requestedDraftId === guardedDraftId");
     expect(route).toContain("BRAND_NEW_COPY.n1.discarded(discardedName)");
     expect(read("src/components/brand/BrandCreationFlow.tsx")).toContain(
       "const [confirming, setConfirming] = useState(startConfirming);",

@@ -83,28 +83,26 @@ export default function BrandNewRoute(): React.ReactElement {
 
   const resume = first(params.resume_brand);
   const requestedDraftId = first(params.draft);
-  const knownDraftId = flowOpened ? null : setupStates.draftId;
-  const knownDraft = brandList.brands.find((b) => b.id === knownDraftId) ?? null;
-  const draft = knownDraft?.id ?? null;
+  const knownDraft =
+    brandList.brands.find((b) => b.id === (flowOpened ? null : setupStates.draftId)) ?? null;
   const draftName = knownDraft?.displayName;
   // #4627 — a direct/server draft hint that the list-wide reader missed is
   // validated inside the already-lazy setup chunk. A rejected teammate/stale
   // hint falls through to F1 and never reaches N1 or discard.
   const guardedDraftId =
-    draft ?? (requestedDraftId !== closedDraftId ? requestedDraftId : null);
+    knownDraft?.id ?? (requestedDraftId !== closedDraftId ? requestedDraftId : null);
+  const showingDraft = guardedDraftId !== null && guardedDraftId !== closedDraftId;
   const waitingForDrafts =
     !flowOpened &&
     first(params.partner_mode) !== "client" &&
     (brandList.isLoading || setupStates.isLoading);
   const body = entry === "client" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} />
-  ) : guardedDraftId !== null && guardedDraftId !== closedDraftId ? (
+  ) : showingDraft ? (
     <LazyDraftInProgress
       draftId={guardedDraftId}
       draftName={draftName}
-      startConfirming={
-        first(params.discard) === "1" && (draft === null || requestedDraftId === draft)
-      }
+      startConfirming={first(params.discard) === "1" && requestedDraftId === guardedDraftId}
       onContinue={() => router.replace(`/brand/${guardedDraftId}/setup` as never)}
       onDiscarded={(name) => {
         setClosedDraftId(guardedDraftId);
@@ -117,8 +115,7 @@ export default function BrandNewRoute(): React.ReactElement {
   ) : (
     <LazyBrandCreationFlow brandId={null} onExit={leave} onTypedNameChange={onTypedNameChange} />
   );
-  const showsFlow =
-    body !== null && (guardedDraftId === null || guardedDraftId === closedDraftId);
+  const showsFlow = body !== null && !showingDraft;
   useEffect(() => {
     if (showsFlow && !flowOpened) setFlowOpened(true);
   }, [showsFlow, flowOpened]);
