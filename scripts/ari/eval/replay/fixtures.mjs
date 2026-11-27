@@ -317,6 +317,29 @@ export const REPLAY_FIXTURES = [
         },
       },
       {
+        // Rework (tester P1-1): tickets per person are neither a ticket limit
+        // nor Total uses; a code can only cap uses per buyer, so Ari asks.
+        say: "Create EACH5 for 100% off, max 5 tickets per person",
+        expect: {
+          route: "text",
+          no_new_flow_run: true,
+          reply_must: ["how many times each buyer uses it"],
+        },
+        stub: {
+          read: discountRead({ code: "EACH5", percent_off: 100, max_total_uses: 5 }),
+          proposal: {
+            tool: "create_discount",
+            args: {
+              code: "EACH5",
+              kind: "code",
+              value_type: "percent",
+              value_bps: 10000,
+              ends_after_count: 5,
+            },
+          },
+        },
+      },
+      {
         say: "Create HALF50 for 50% off and limit it to 50",
         expect: {
           route: "text",

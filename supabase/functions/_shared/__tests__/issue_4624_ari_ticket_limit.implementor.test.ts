@@ -369,3 +369,139 @@ Deno.test("#4624 Ari: create_discount tells the model which phrasings are ticket
   assertMatch(description, /'5 people can use it' is max_total_uses 5/);
   assertMatch(description, /ask whether it counts tickets or checkouts/);
 });
+
+// ── Rework (tester verdict 7227456725) ──────────────────────────────────────
+
+Deno.test("#4624 rework P1-1: tickets per person are never a ticket limit or Total uses; Ari asks", () => {
+  for (
+    const words of [
+      "FREE5 100% off, max 5 tickets per person",
+      "FREE5 100% off, max of 5 tickets per buyer",
+      "FREE5 100% off, up to 5 tickets each",
+      "FREE5 100% off, 5 tickets per customer",
+      "FREE5 100% off, 5 tickets max per person",
+    ]
+  ) {
+    const stated = extractStatedSlots([words], NOW);
+    assertEquals(stated.ends_after_count, undefined, words);
+    assertEquals(stated.max_total_uses, undefined, words);
+    assertEquals(stated.per_buyer_tickets, 5, words);
+    for (
+      const proposal of [
+        args({ ends_after_count: 5 }),
+        args({ max_total_uses: 5 }),
+        args({ max_uses_per_buyer: 5 }),
+        args(),
+      ]
+    ) {
+      const asked = checkStatedSlots({
+        toolName: "create_discount",
+        toolArgs: proposal,
+        schemaKeys: KEYS,
+        stated,
+        timezone: "Africa/Lagos",
+      });
+      assertEquals(asked.kind, "ask", words);
+      if (asked.kind !== "ask") continue;
+      assertEquals(asked.missing, ["per_buyer_unit"]);
+      assertEquals(
+        asked.text,
+        "Before I set this up: a code can limit how many times each buyer uses it (one use is one checkout), not how many tickets each buyer gets. Should each buyer be able to use it 5 times? Tell me and I'll prepare it for you to approve. Nothing has been saved yet.",
+      );
+    }
+    // Asked once: the host's answer goes on the card, nothing is moved.
+    const before = statedSlotsAskedBefore({
+      history: [{
+        role: "assistant",
+        content: {
+          text:
+            "Before I set this up: a code can limit how many times each buyer uses it (one use is one checkout), not how many tickets each buyer gets.",
+        },
+      }],
+      toolName: "create_discount",
+    });
+    assert(before.has("per_buyer_unit"));
+    const answered = checkStatedSlots({
+      toolName: "create_discount",
+      toolArgs: args({ max_uses_per_buyer: 5 }),
+      schemaKeys: KEYS,
+      stated,
+      timezone: "Africa/Lagos",
+      askedBefore: before,
+    });
+    assertEquals(answered.kind, "ok", words);
+    if (answered.kind === "ok") {
+      assertEquals(answered.args.max_uses_per_buyer, 5);
+      assertEquals("ends_after_count" in answered.args, false);
+    }
+  }
+  const one = checkStatedSlots({
+    toolName: "create_discount",
+    toolArgs: args(),
+    schemaKeys: KEYS,
+    stated: extractStatedSlots(["FREE5 100% off, 1 ticket per person"], NOW),
+    timezone: "Africa/Lagos",
+  });
+  assertEquals(one.kind, "ask");
+  if (one.kind === "ask") assertMatch(one.text, /use it once\?/);
+});
+
+Deno.test("#4624 rework P2-1: 'max 5 per person' (no unit) is the per-buyer limit, never Total uses", () => {
+  for (
+    const words of [
+      "FREE5 100% off, max 5 per person",
+      "FREE5 100% off, up to 5 each",
+      "FREE5 100% off, max 5 uses per person",
+      "FREE5 100% off, limit it to 5 per buyer",
+    ]
+  ) {
+    const base = extractStatedSlots([words], NOW);
+    assertEquals(base.max_uses_per_buyer, 5, words);
+    assertEquals(base.max_total_uses, undefined, words);
+    assertEquals(base.ends_after_count, undefined, words);
+    assertEquals(base.unclear_limit, undefined, words);
+    // The model read it as Total uses or tickets: dropped, never grounded.
+    const merged = mergeModelStatedSlots(
+      base,
+      { code: "FREE5", percent_off: 100, max_total_uses: 5, ends_after_count: 5 },
+      [words],
+    );
+    assertEquals(merged.max_total_uses, undefined, words);
+    assertEquals(merged.ends_after_count, undefined, words);
+    assertEquals(merged.max_uses_per_buyer, 5, words);
+    const checked = checkStatedSlots({
+      toolName: "create_discount",
+      toolArgs: args({ max_total_uses: 5 }),
+      schemaKeys: KEYS,
+      stated: merged,
+      timezone: "Africa/Lagos",
+    });
+    assertEquals(checked.kind, "ask", words);
+    if (checked.kind === "ask") assertEquals(checked.missing, ["max_uses_per_buyer"]);
+  }
+});
+
+Deno.test("#4624 rework (tester P3): more ticket phrasings are a ticket limit", () => {
+  for (
+    const [words, count] of [
+      ["FREE5 100% off, 5 tickets for free", 5],
+      ["FREE5 100% off, let 5 people in free", 5],
+      ["FREE5 100% off, let the first 5 people in for free", 5],
+      ["FREE5 100% off for 5 tickets", 5],
+      ["FREE5 100% off, good for 5 tickets", 5],
+    ] as Array<[string, number]>
+  ) {
+    const stated = extractStatedSlots([words], NOW);
+    assertEquals(stated.ends_after_count, count, words);
+    assertEquals(stated.max_total_uses, undefined, words);
+  }
+  // A minimum, not a limit.
+  for (
+    const words of [
+      "FREE5 10% off for 2 tickets or more",
+      "FREE5 10% off for 3 tickets and up",
+    ]
+  ) {
+    assertEquals(extractStatedSlots([words], NOW).ends_after_count, undefined, words);
+  }
+});

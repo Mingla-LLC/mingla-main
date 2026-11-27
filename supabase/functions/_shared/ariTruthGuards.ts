@@ -396,6 +396,11 @@ export interface StatedValues {
    * the host's to say, so Ari asks.
    */
   unclear_limit?: number;
+  /**
+   * #4624 rework (P1-1): a ticket count per buyer ("max 5 tickets per
+   * person"). A code limits uses per buyer, not tickets, so Ari asks.
+   */
+  per_buyer_tickets?: number;
 }
 
 export interface StatedSlots extends StatedValues {
@@ -438,6 +443,7 @@ const VALUE_KEYS: ReadonlyArray<keyof StatedValues> = [
   "max_uses_per_buyer",
   "ends_after_count",
   "unclear_limit",
+  "per_buyer_tickets",
 ];
 
 const MONTHS: Record<string, number> = {
@@ -504,8 +510,10 @@ const CODE_CAPS = /\b([A-Z][A-Z0-9]{4,15})\b/;
 // checkouts ("5 uses", "5 times", "5 people can use it").
 const TOTAL_USES =
   /\b(?:first|max(?:imum)?(?:\s+of)?|up\s+to|limit(?:ed)?\s+(?:it\s+)?to|only)\s+(\d{1,6})\s+(?:people|uses|buyers|times|redemptions|customers|guests)\b|\b(\d{1,6})\s+(?:uses|redemptions)\b(?!\s+per\b)|\b(\d{1,6})\s+(?:people|persons|buyers|customers|guests)\s+can\s+(?:use|redeem)\b|\b(?:used|redeemed|use\s+it|usable)\s+(\d{1,6})\s+times\b(?!\s+per\b)/i;
+// #4624 rework (P2-1): "max 5 per person" / "up to 2 each" (no unit, or uses)
+// is the per-buyer limit too, never Total uses.
 const PER_BUYER =
-  /\b(?:once|one\s+use|1\s+use)\s+per\s+(?:person|buyer|customer)\b|\b(\d{1,3})\s+(?:uses?|times)\s+per\s+(?:person|buyer|customer)\b/i;
+  /\b(?:once|one\s+use|1\s+use)\s+per\s+(?:person|buyer|customer)\b|\b(\d{1,3})\s+(?:uses?|times)\s+per\s+(?:person|buyer|customer)\b|\b(?:max(?:imum)?(?:\s+of)?|up\s+to|at\s+most|no\s+more\s+than|limit(?:ed)?\s+(?:it\s+)?to|only)\s+(\d{1,3})\s+(?:(?:uses?|times)\s+)?(?:per\s+(?:person|buyer|customer|head)|each)\b/i;
 
 // #3355 rework 1 (P1-3): a fixed amount off, with or without its currency.
 const AMOUNT_NUMBER =
@@ -668,7 +676,8 @@ export type StatedField =
   | "max_total_uses"
   | "max_uses_per_buyer"
   | "ends_after_count"
-  | "unclear_limit";
+  | "unclear_limit"
+  | "per_buyer_tickets";
 
 interface ValueMention {
   field: StatedField;
@@ -722,7 +731,7 @@ const LIMIT_NUMBER = `(\\d{1,6}|${NUMBER_WORD})`;
 const TICKET_WORD = "(?:free\\s+)?(?:tickets?|tix)";
 const TICKET_LIMIT_PATTERNS: readonly RegExp[] = [
   new RegExp(
-    `\\b(?:first|only|just|up\\s+to|at\\s+most|no\\s+more\\s+than|max(?:imum)?(?:\\s+of)?|limit(?:ed)?\\s+(?:it\\s+|this\\s+|the\\s+code\\s+)?to|cap(?:ped)?\\s+(?:it\\s+)?(?:at|to)|a\\s+(?:limit|cap)\\s+of|stops?\\s+after|ends?\\s+after|valid\\s+for)\\s+(?:the\\s+first\\s+)?${LIMIT_NUMBER}\\s+${TICKET_WORD}\\b`,
+    `\\b(?:first|only|just|up\\s+to|at\\s+most|no\\s+more\\s+than|max(?:imum)?(?:\\s+of)?|limit(?:ed)?\\s+(?:it\\s+|this\\s+|the\\s+code\\s+)?to|cap(?:ped)?\\s+(?:it\\s+)?(?:at|to)|a\\s+(?:limit|cap)\\s+of|stops?\\s+after|ends?\\s+after|valid\\s+for|good\\s+for)\\s+(?:the\\s+first\\s+)?${LIMIT_NUMBER}\\s+${TICKET_WORD}\\b`,
     "gi",
   ),
   new RegExp(
@@ -730,7 +739,36 @@ const TICKET_LIMIT_PATTERNS: readonly RegExp[] = [
     "gi",
   ),
   new RegExp(`\\b${LIMIT_NUMBER}\\s+free\\s+(?:tickets?|tix)\\b`, "gi"),
+  // #4624 rework (tester P3): "5 tickets for free", "let 5 people in free"
+  // (one admission each), "for 5 tickets" (not "for 2 tickets or more").
+  new RegExp(`\\b${LIMIT_NUMBER}\\s+(?:tickets?|tix)\\s+(?:for\\s+)?free\\b`, "gi"),
+  new RegExp(
+    `\\blet\\s+(?:the\\s+first\\s+)?${LIMIT_NUMBER}\\s+(?:people|persons|guests)\\s+in\\s+(?:for\\s+)?free\\b`,
+    "gi",
+  ),
+  new RegExp(
+    `\\bfor\\s+${LIMIT_NUMBER}\\s+(?:tickets?|tix)\\b(?!\\s*(?:or\\s+more|and\\s+(?:up|over|above|more)|\\+|or\\s+over))`,
+    "gi",
+  ),
 ];
+/**
+ * #4624 rework (P1-1): "per person / per buyer / each" right after a count
+ * makes it a per-buyer limit, never a ticket limit or Total uses.
+ */
+const PER_PERSON_TAIL =
+  /^\s+(?:max(?:imum)?\s+)?(?:per\s+(?:person|buyer|customer|head|guest)|each|a\s+(?:person|head))\b/i;
+function perPersonAfter(text: string, end: number): boolean {
+  return PER_PERSON_TAIL.test(text.slice(end));
+}
+/**
+ * #4624 rework (P1-1): a ticket count per buyer ("max 5 tickets per person",
+ * "up to 5 tickets each"). A code can limit uses per buyer (checkouts), not
+ * tickets per buyer, so Ari asks.
+ */
+const PER_BUYER_TICKETS = new RegExp(
+  `\\b(?:(?:max(?:imum)?(?:\\s+of)?|up\\s+to|at\\s+most|no\\s+more\\s+than|limit(?:ed)?\\s+(?:it\\s+)?to|only|just)\\s+)?${LIMIT_NUMBER}\\s+${TICKET_WORD}\\s+(?:max(?:imum)?\\s+)?(?:per\\s+(?:person|buyer|customer|head|guest)|each|a\\s+(?:person|head))\\b`,
+  "gi",
+);
 /**
  * #4624: a limit with no unit ("limit it to 50", "cap it at 20", "max 10.").
  * Tickets or checkouts is the host's to say.
@@ -749,10 +787,15 @@ function limitNumber(raw: string): number | null {
 function numbersStated(
   words: string,
   patterns: readonly RegExp[],
+  skipPerPerson = false,
 ): Set<number> {
   const out = new Set<number>();
   for (const pattern of patterns) {
     for (const match of words.matchAll(globalOf(pattern))) {
+      if (
+        skipPerPerson &&
+        perPersonAfter(words, (match.index ?? 0) + match[0].length)
+      ) continue;
       const raw = match.slice(1).find((group) => group !== undefined);
       const value = raw === undefined ? null : limitNumber(raw);
       if (value !== null && value > 0) out.add(value);
@@ -1238,7 +1281,8 @@ function valueMentions(text: string, now: Date): ValueMention[] {
   }
   for (const match of text.matchAll(globalOf(PER_BUYER))) {
     const index = match.index ?? 0;
-    const value = match[1] ? Number(match[1]) : 1;
+    const raw = match.slice(1).find((group) => group !== undefined);
+    const value = raw ? Number(raw) : 1;
     push({
       field: "max_uses_per_buyer",
       index,
@@ -1252,6 +1296,7 @@ function valueMentions(text: string, now: Date): ValueMention[] {
   for (const pattern of TICKET_LIMIT_PATTERNS) {
     for (const match of text.matchAll(globalOf(pattern))) {
       const index = match.index ?? 0;
+      if (perPersonAfter(text, index + match[0].length)) continue;
       const value = limitNumber(match[1]);
       if (value === null || value <= 0) continue;
       push({
@@ -1263,6 +1308,19 @@ function valueMentions(text: string, now: Date): ValueMention[] {
         words: ticketLimitWords(value),
       });
     }
+  }
+  for (const match of text.matchAll(PER_BUYER_TICKETS)) {
+    const index = match.index ?? 0;
+    const value = limitNumber(match[1]);
+    if (value === null || value <= 0) continue;
+    push({
+      field: "per_buyer_tickets",
+      index,
+      end: index + match[0].length,
+      values: { per_buyer_tickets: value },
+      key: String(value),
+      words: `${value} ${value === 1 ? "ticket" : "tickets"} per buyer`,
+    });
   }
   for (const match of text.matchAll(UNCLEAR_LIMIT)) {
     const index = match.index ?? 0;
@@ -1279,6 +1337,10 @@ function valueMentions(text: string, now: Date): ValueMention[] {
   }
   for (const match of text.matchAll(globalOf(TOTAL_USES))) {
     const index = match.index ?? 0;
+    // "max 5 uses per person" is the per-buyer limit (PER_BUYER above).
+    if (perPersonAfter(text, index + match[0].length)) continue;
+    // "let the first 5 people in free" was read as a ticket limit above.
+    if (overlaps("ends_after_count", index, index + match[0].length)) continue;
     const value = Number(
       match.slice(1).find((group) => group !== undefined),
     );
@@ -1818,15 +1880,18 @@ function groundedModelValues(
   }
   // #4624: a number the host gave as tickets (or with no unit at all) is not
   // Total uses, whatever the model read; and the reverse.
-  const ticketNumbers = numbersStated(words, TICKET_LIMIT_PATTERNS);
-  const useNumbers = numbersStated(words, [TOTAL_USES]);
+  const ticketNumbers = numbersStated(words, TICKET_LIMIT_PATTERNS, true);
+  const useNumbers = numbersStated(words, [TOTAL_USES], true);
   const unclearNumbers = numbersStated(words, [UNCLEAR_LIMIT]);
+  // #4624 rework (P1-1, P2-1): a count the host gave per person.
+  const perPersonNumbers = numbersStated(words, [PER_BUYER, PER_BUYER_TICKETS]);
   if (
     typeof model.max_total_uses === "number" &&
     Number.isInteger(model.max_total_uses) && model.max_total_uses > 0 &&
     wordsHaveNumber(words, model.max_total_uses) &&
     !((ticketNumbers.has(model.max_total_uses) ||
-      unclearNumbers.has(model.max_total_uses)) &&
+      unclearNumbers.has(model.max_total_uses) ||
+      perPersonNumbers.has(model.max_total_uses)) &&
       !useNumbers.has(model.max_total_uses))
   ) {
     out.push({
@@ -1842,7 +1907,8 @@ function groundedModelValues(
     wordsHaveNumber(words, model.ends_after_count) &&
     /\btick(?:et)?s?\b|\btix\b/i.test(context) &&
     !((useNumbers.has(model.ends_after_count) ||
-      unclearNumbers.has(model.ends_after_count)) &&
+      unclearNumbers.has(model.ends_after_count) ||
+      perPersonNumbers.has(model.ends_after_count)) &&
       !ticketNumbers.has(model.ends_after_count))
   ) {
     out.push({
@@ -1858,7 +1924,7 @@ function groundedModelValues(
     model.max_uses_per_buyer > 0 &&
     (wordsHaveNumber(words, model.max_uses_per_buyer) ||
       (model.max_uses_per_buyer === 1 && /\b(?:once|one)\b/i.test(words))) &&
-    /\bper\s+(?:person|buyer|customer)\b/i.test(context)
+    /\bper\s+(?:person|buyer|customer|head)\b|\beach\b/i.test(context)
   ) {
     out.push({
       field: "max_uses_per_buyer",
@@ -1903,6 +1969,10 @@ function keyOfValues(field: StatedField, values: StatedValues): string | null {
       return values.unclear_limit !== undefined
         ? String(values.unclear_limit)
         : null;
+    case "per_buyer_tickets":
+      return values.per_buyer_tickets !== undefined
+        ? String(values.per_buyer_tickets)
+        : null;
     default: {
       const never: never = field;
       return never;
@@ -1930,6 +2000,8 @@ function saidOfValues(field: StatedField, values: StatedValues): string {
       return ticketLimitWords(values.ends_after_count ?? 0);
     case "unclear_limit":
       return `a limit of ${values.unclear_limit}`;
+    case "per_buyer_tickets":
+      return `${values.per_buyer_tickets} tickets per buyer`;
     default: {
       const never: never = field;
       return never;
@@ -2260,6 +2332,22 @@ export function checkStatedSlots(args: {
       missing: ["limit_unit"],
       text:
         `Before I set${subject}: should the limit of ${unclear} count tickets or checkouts? A ticket limit ends the code after ${tickets}; a checkout limit ends it after ${checkouts}, however many tickets each one has. Tell me which and I'll prepare it for you to approve. Nothing has been saved yet.`,
+    };
+  }
+  // #4624 rework (P1-1): a ticket count per buyer. A code limits how many
+  // times each buyer uses it, not how many tickets they get: Ari asks once.
+  const perBuyerTickets = stated.per_buyer_tickets;
+  if (
+    perBuyerTickets !== undefined && args.toolName === "create_discount" &&
+    schemaKeys.has("max_uses_per_buyer") && !askedBefore.has("per_buyer_unit")
+  ) {
+    const subject = proposedCode && own ? ` up ${proposedCode}` : " this up";
+    const times = perBuyerTickets === 1 ? "once" : `${perBuyerTickets} times`;
+    return {
+      kind: "ask",
+      missing: ["per_buyer_unit"],
+      text:
+        `Before I set${subject}: a code can limit how many times each buyer uses it (one use is one checkout), not how many tickets each buyer gets. Should each buyer be able to use it ${times}? Tell me and I'll prepare it for you to approve. Nothing has been saved yet.`,
     };
   }
   /** What the proposal had instead, in plain words, for the question. */
@@ -2616,7 +2704,8 @@ export async function preserveStatedSlots(args: {
     (anyStated("max_total_uses") && schemaKeys.has("max_total_uses")) ||
     (anyStated("max_uses_per_buyer") && schemaKeys.has("max_uses_per_buyer")) ||
     (anyStated("ends_after_count") && schemaKeys.has("ends_after_count")) ||
-    (anyStated("unclear_limit") && schemaKeys.has("ends_after_count"));
+    (anyStated("unclear_limit") && schemaKeys.has("ends_after_count")) ||
+    (anyStated("per_buyer_tickets") && schemaKeys.has("max_uses_per_buyer"));
   // #3355 rework 9 (fix 2): "from now" / a past start is "as soon as you
   // confirm" (I-ARI-NOW-MEANS-ON-CONFIRM). A stated start day is kept.
   const immediate = (
@@ -2723,6 +2812,9 @@ export function statedSlotsAskedBefore(args: {
     if (/\ba limit of \d+ tickets?\b/i.test(asked)) out.add("ends_after_count");
     if (/\bshould the limit of \d+ count tickets or checkouts\b/i.test(text)) {
       out.add("limit_unit");
+    }
+    if (/\ba code can limit how many times each buyer uses it\b/i.test(text)) {
+      out.add("per_buyer_unit");
     }
     if (/\b(?:the code|one of the codes)\b/i.test(asked)) out.add("code");
     if (
