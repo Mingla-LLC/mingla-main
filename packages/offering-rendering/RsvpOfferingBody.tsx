@@ -98,6 +98,10 @@ import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira chip-in copy shows "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
+import {
+  chipInRefusalFloorCents,
+  chipInWholeUnitFloorCents,
+} from "./chipInRefusal";
 import { normalizeCityCountry } from "./normalizeCityCountry";
 // issue #2468 — the ONE privacy gate + label composer for the venue card.
 import {
@@ -866,6 +870,17 @@ export const useRsvpOfferingState = (
     contributionState === "paid" ? "success" : "idle",
   );
   const [chipError, setChipError] = useState<string | null>(null);
+  // #3645 — a floor the server named that is above the host minimum (the
+  // payment provider's minimum charge). Once known, it is checked here and
+  // shown as the panel's minimum.
+  const [chipServerFloorCents, setChipServerFloorCents] = useState<
+    number | null
+  >(null);
+  const chipEffectiveMinCents: number | null =
+    chipServerFloorCents !== null &&
+    (chipMinCents === null || chipServerFloorCents > chipMinCents)
+      ? chipServerFloorCents
+      : chipMinCents;
   const [renderedContext, setRenderedContext] = useState(context);
   if (renderedContext !== context) {
     acceptedRevision.current += 1;
@@ -1561,8 +1576,10 @@ export const useRsvpOfferingState = (
       setChipInState("error");
       return;
     }
-    if (chipMinCents !== null && chipAmountCents < chipMinCents) {
-      setChipError(`Add at least ${fmtChipWhole(chipMinCents)}.`);
+    if (chipEffectiveMinCents !== null && chipAmountCents < chipEffectiveMinCents) {
+      setChipError(
+        `Add at least ${fmtChipWhole(chipInWholeUnitFloorCents(chipEffectiveMinCents))}.`,
+      );
       setChipInState("error");
       return;
     }
@@ -1584,9 +1601,15 @@ export const useRsvpOfferingState = (
         setChipInState("paused");
         setChipError(null);
       } else if (code.includes("amount_below_min")) {
+        // #3645 — name the server's floor (the provider minimum can be above
+        // the host's), and remember it so the next tap is checked here.
+        const floor = chipInRefusalFloorCents(err, chipMinCents);
+        if (floor !== null && (chipMinCents === null || floor > chipMinCents)) {
+          setChipServerFloorCents(floor);
+        }
         setChipError(
-          chipMinCents !== null
-            ? `Add at least ${fmtChipWhole(chipMinCents)}.`
+          floor !== null
+            ? `Add at least ${fmtChipWhole(chipInWholeUnitFloorCents(floor))}.`
             : "Add a little more.",
         );
         setChipInState("error");
@@ -1603,6 +1626,7 @@ export const useRsvpOfferingState = (
     chipInState,
     chipAmountCents,
     chipMinCents,
+    chipEffectiveMinCents,
     fmtChipWhole,
     isCurrent,
   ]);
@@ -1969,7 +1993,11 @@ export const useRsvpOfferingState = (
           currency={chipCurrency}
           hostShortName={chipHostName}
           suggestedCents={chipSuggestedCents}
-          minCents={chipMinCents}
+          minCents={
+            chipEffectiveMinCents === null
+              ? null
+              : chipInWholeUnitFloorCents(chipEffectiveMinCents)
+          }
           state={chipInState}
           amountCents={chipAmountCents}
           onAmountChange={(c) => {

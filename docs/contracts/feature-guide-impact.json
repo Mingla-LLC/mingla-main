@@ -4063,7 +4063,9 @@
         "packages/offering-rendering/rsvpPhoneFieldTypes.ts",
         "packages/offering-rendering/socialProofTypes.ts",
         "app-mobile/src/components/forms/RsvpFormWebDateInput.native.tsx",
-        "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx"
+        "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx",
+        "packages/offering-rendering/chipInRefusal.ts",
+        "mingla-business/src/services/rsvpErrorCodes.ts"
       ]
     },
     {
@@ -7011,7 +7013,8 @@
         "supabase/migrations/20281203754490_issue_4490_ops_o5_fix3.sql",
         "supabase/migrations/20281203764490_issue_4490_ops_o5_fix4.sql",
         "supabase/migrations/20281203774490_issue_4490_ops_mingla_team_names.sql",
-        "supabase/migrations/20281203784490_issue_4490_ops_o5_fix5_swap_rule.sql"
+        "supabase/migrations/20281203784490_issue_4490_ops_o5_fix5_swap_rule.sql",
+        "supabase/functions/venue-reservation-create/depositFloor.ts"
       ]
     },
     {
