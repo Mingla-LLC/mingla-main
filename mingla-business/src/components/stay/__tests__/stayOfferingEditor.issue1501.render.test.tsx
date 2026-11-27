@@ -335,6 +335,42 @@ describe("#1501 §2 — six sections, in the order a hotelier reasons", () => {
     expect(text).toContain("Confirmed instantly");
     expect(text).toContain("Any one will do");
   });
+
+  it("S-1c — a live room remains visibly Live while its setup checklist is shown", async () => {
+    const tree = await mount(
+      <OfferingEditor
+        {...PROPS}
+        existing={
+          {
+            id: "off-live",
+            name: "Ocean suite",
+            kind: "room",
+            description: "A quiet ocean-facing suite.",
+            quantity: 1,
+            capacity: null,
+            max_guests: 2,
+            amenities: [],
+            units: [],
+            media: [],
+            status: "live",
+            version: 3,
+            confirmation_mode: "instant",
+            unit_naming_mode: "interchangeable",
+            inventory_basis: "pooled_units",
+            access_scope: "public",
+            hasOpenAvailability: true,
+          } as never
+        }
+      />,
+    );
+    await layoutAt(tree, WORKSPACE_1440);
+    const text = renderedText(tree);
+
+    expect(text).toContain("Live Room");
+    expect(text).toContain("Guests can book this room now");
+    expect(text).toContain("Booking setup");
+    expect(text).not.toContain("Nothing here can be booked yet");
+  });
 });
 
 describe("#1501 §5 — the rail is a CONTAINER query", () => {
@@ -394,7 +430,7 @@ describe("#1501 §5 — the rail is a CONTAINER query", () => {
     const text = renderedText(tree);
     expect(text).toContain("You’re creating");
     expect(text).toContain("1 Room draft");
-    expect(text).toContain("Before these can go live");
+    expect(text).toContain("Before this can go live");
 
     // The checklist MIRRORS `stayOfferingReadinessErrors` label-for-label, so a
     // draft and a saved row never describe the same requirement two ways.
@@ -403,6 +439,7 @@ describe("#1501 §5 — the rail is a CONTAINER query", () => {
       photoCount: 0,
       hasPrice: false,
       hasPolicy: false,
+      hasOpenAvailability: false,
       namedUnits: false,
       unitNameCount: 0,
     })) {
@@ -419,6 +456,7 @@ describe("#1501 — the draft readiness mirror is honest", () => {
       photoCount: 0,
       hasPrice: false,
       hasPolicy: false,
+      hasOpenAvailability: false,
       namedUnits: false,
       unitNameCount: 0,
     });
@@ -430,6 +468,7 @@ describe("#1501 — the draft readiness mirror is honest", () => {
         photoCount: 0,
         hasPrice: false,
         hasPolicy: false,
+        hasOpenAvailability: false,
         namedUnits: false,
         unitNameCount: 0,
       })[0].done,
@@ -440,6 +479,7 @@ describe("#1501 — the draft readiness mirror is honest", () => {
       photoCount: 2,
       hasPrice: true,
       hasPolicy: true,
+      hasOpenAvailability: false,
       namedUnits: true,
       unitNameCount: 3,
     });
@@ -448,8 +488,19 @@ describe("#1501 — the draft readiness mirror is honest", () => {
     expect(filled.find((item) => item.id === "price")?.done).toBe(true);
     expect(filled.find((item) => item.id === "policy")?.done).toBe(true);
     expect(filled.find((item) => item.id === "units")?.done).toBe(true);
-    // Availability lives on another screen — never claimed done from here.
+    // A new draft has no saved calendar state, so its caller passes false.
     expect(filled.find((item) => item.id === "availability")?.done).toBe(false);
+    expect(
+      stayDraftReadiness({
+        description: "A quiet garden room.",
+        photoCount: 2,
+        hasPrice: true,
+        hasPolicy: true,
+        hasOpenAvailability: true,
+        namedUnits: false,
+        unitNameCount: 0,
+      }).find((item) => item.id === "availability")?.done,
+    ).toBe(true);
     // The unit row only exists when units are actually named.
     expect(empty.some((item) => item.id === "units")).toBe(false);
   });
