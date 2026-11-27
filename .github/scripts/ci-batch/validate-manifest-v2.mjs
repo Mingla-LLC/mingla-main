@@ -795,7 +795,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4624 ticket-capped codes: registered migration 20281206014624 in the #1857, #1931 and #2117 replay inventories, its implementor pg17 suite with sidecar in the #1931 and #2117 inventories, and an EXACT filtered-replay skip in the #1931 template replay (which skips the #3872 discount schema); MANIFEST.json phase3eContractSha256 matches.
 // issue #4624 tester: re-sealed after the ticket-limit tester adversarial pg17 suite and its sidecar joined the #1931 and #2117 inventories beside the implementor suite; MANIFEST.json phase3eContractSha256 matches.
 // issue #4640 Host demo conversion: registered the migration in all three replay inventories, its pg17 proof in the two proof inventories, and exact skips on the two historical filtered replays; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "65c9e8127507344aea0ab1a0985d20b498fcb0a40deb34b5f5dbcf67118898be";
+// issue #4636 website CMS: registered the migration in all three replay inventories, its two pg17 proofs (implementor happy + adversarial) in the two proof inventories, and exact skips on the two historical filtered replays; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "08d141f6a84badc322aca4704f0c706766d133fb13cec86dcd03227acd293499";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

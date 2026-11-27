@@ -72,7 +72,8 @@ BEGIN
             )
   LOOP
     v_n := v_n + 1;
-    IF r.proname IN ('site_public_content', 'site_public_preview') THEN
+    -- #4636 adds two anonymous reads for usemingla.com: one page's block list and the staff-made page index.
+    IF r.proname IN ('site_public_content', 'site_public_preview', 'site_public_page', 'site_public_custom_index') THEN
       PERFORM pg_temp.t_assert(has_function_privilege('anon', r.oid, 'EXECUTE'), 'ADV-1 anon reads ' || r.proname);
     ELSE
       PERFORM pg_temp.t_assert(NOT has_function_privilege('anon', r.oid, 'EXECUTE'), 'ADV-1 anon cannot execute ' || r.proname);
