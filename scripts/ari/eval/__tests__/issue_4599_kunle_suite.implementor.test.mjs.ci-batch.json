@@ -23,10 +23,11 @@
             "node --test __tests__/issue_4599_kunle_suite.implementor.test.mjs"
           ]
         },
-        "exceptionRationale": "The self-registering Node suite validates the local-only live-eval contract without installing packages."
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit and validates the local-only live-eval contract without installing packages."
       }
     ],
     "lifecycle": "batched-active",
+    "ownerIssue": "#4599",
     "runtime": {
       "name": "node",
       "version": "22"

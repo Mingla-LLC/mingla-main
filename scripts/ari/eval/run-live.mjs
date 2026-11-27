@@ -71,8 +71,6 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 export const BASELINE_PATH = "docs/contracts/ari-live-eval-baseline.json";
 
-// MINGLA-INVARIANT: I-ARI-LOOP-FLIP-NEEDS-KUNLE-EVAL | issue #4599 | Every governed Ari loop flip is exercised by the ten-scenario Kunle suite, recorded in the live run, and protected by the stored eval baseline.
-
 function readEnvFile(path) {
   const out = {};
   if (!path) return out;
