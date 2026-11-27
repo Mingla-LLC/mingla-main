@@ -19,7 +19,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   LazyBrandCreationFlow,
   LazyDraftInProgress,
-  LazyOwnedDraftInProgressGate,
   LazyPartnerClientBrandCreationFlow,
 } from "../../src/components/brand/LazyBrandCreationFlow";
 
@@ -88,47 +87,39 @@ export default function BrandNewRoute(): React.ReactElement {
   const knownDraftId = flowOpened ? null : setupStates.draftId;
   const knownDraft = brandList.brands.find((b) => b.id === knownDraftId) ?? null;
   const draft = knownDraft?.id ?? null;
-  const draftName = knownDraft?.displayName ?? "";
-  const requestedDraftMatchesKnown = requestedDraftId !== null && requestedDraftId === draft;
+  const draftName = knownDraft?.displayName;
   // #4627 — a direct/server draft hint that the list-wide reader missed is
   // validated inside the already-lazy setup chunk. A rejected teammate/stale
   // hint falls through to F1 and never reaches N1 or discard.
   const recoveringRequestedDraft =
     requestedDraftId !== null && draft === null && rejectedDraftHint !== requestedDraftId && !draftGone;
+  const guardedDraftId = draft ?? (recoveringRequestedDraft ? requestedDraftId : null);
   const waitingForDrafts =
     !flowOpened &&
     first(params.partner_mode) !== "client" &&
     (brandList.isLoading || setupStates.isLoading);
   const body = entry === "client" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} />
-  ) : draft !== null && !draftGone ? (
+  ) : guardedDraftId !== null && !draftGone ? (
     <LazyDraftInProgress
-      draftId={draft}
+      draftId={guardedDraftId}
       draftName={draftName}
-      startConfirming={requestedDraftMatchesKnown && first(params.discard) === "1"}
-      onContinue={() => router.replace(`/brand/${draft}/setup` as never)}
-      onDiscarded={() => {
-        setDraftGone(true);
-        setDiscardedName(draftName);
-      }}
-    />
-  ) : recoveringRequestedDraft && requestedDraftId !== null ? (
-    <LazyOwnedDraftInProgressGate
-      draftId={requestedDraftId}
-      startConfirming={first(params.discard) === "1"}
-      onContinue={() => router.replace(`/brand/${requestedDraftId}/setup` as never)}
+      startConfirming={
+        first(params.discard) === "1" && (draft === null || requestedDraftId === draft)
+      }
+      onContinue={() => router.replace(`/brand/${guardedDraftId}/setup` as never)}
       onDiscarded={(name) => {
         setDraftGone(true);
         setDiscardedName(name);
       }}
-      onRejected={() => setRejectedDraftHint(requestedDraftId)}
+      onRejected={() => setRejectedDraftHint(guardedDraftId)}
     />
   ) : waitingForDrafts || resume !== null ? null : entry === "partner-intent" ? (
     <LazyPartnerClientBrandCreationFlow onComplete={leave} onCancel={leave} onSelfChosen={chooseSelf} />
   ) : (
     <LazyBrandCreationFlow brandId={null} onExit={leave} onTypedNameChange={onTypedNameChange} />
   );
-  const showsFlow = body !== null && !(draft !== null && !draftGone) && !recoveringRequestedDraft;
+  const showsFlow = body !== null && !(guardedDraftId !== null && !draftGone);
   useEffect(() => {
     if (showsFlow && !flowOpened) setFlowOpened(true);
   }, [showsFlow, flowOpened]);

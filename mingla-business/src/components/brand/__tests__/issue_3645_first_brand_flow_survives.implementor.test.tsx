@@ -145,27 +145,29 @@ jest.mock("../LazyBrandCreationFlow", () => {
     }, []);
     return <View testID="creation-flow" />;
   };
-  const OwnedDraftGate = ({
+  const DraftGate = ({
     draftId,
+    draftName,
     onRejected,
   }: {
     draftId: string;
+    draftName?: string;
     onRejected: () => void;
   }): React.ReactElement | null => {
     const accepted =
-      mockRequestedBrand?.id === draftId &&
-      mockRequestedBrand.accountId === "account-3645" &&
-      mockRequestedDraft;
+      draftName !== undefined ||
+      (mockRequestedBrand?.id === draftId &&
+        mockRequestedBrand.accountId === "account-3645" &&
+        mockRequestedDraft);
     ReactLocal.useEffect(() => {
-      if (!accepted) onRejected();
-    }, [accepted, onRejected]);
+      if (draftName === undefined && !accepted) onRejected();
+    }, [accepted, draftName, onRejected]);
     return accepted ? <View testID="draft-in-progress" /> : null;
   };
   return {
     LazyBrandCreationFlow: Flow,
     LazyPartnerClientBrandCreationFlow: () => <View testID="partner-flow" />,
-    LazyDraftInProgress: () => <View testID="draft-in-progress" />,
-    LazyOwnedDraftInProgressGate: OwnedDraftGate,
+    LazyDraftInProgress: DraftGate,
   };
 });
 

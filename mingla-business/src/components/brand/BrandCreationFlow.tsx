@@ -1163,7 +1163,7 @@ export const DraftInProgress: React.FC<{
  * setup chunk. A URL is only a hint: read the canonical brand plus live setup
  * checklist, then require `brands.account_id` ownership before N1 or discard.
  */
-export const OwnedDraftInProgressGate: React.FC<{
+const OwnedDraftInProgressGate: React.FC<{
   draftId: string;
   onContinue: () => void;
   onDiscarded: (draftName: string) => void;
@@ -1206,6 +1206,33 @@ export const OwnedDraftInProgressGate: React.FC<{
     />
   );
 };
+
+/** One lazy entry keeps both the list-proven and direct-hint N1 paths off the eager bundle. */
+export const DraftInProgressEntry: React.FC<{
+  draftId: string;
+  draftName?: string;
+  onContinue: () => void;
+  onDiscarded: (draftName: string) => void;
+  onRejected: () => void;
+  startConfirming?: boolean;
+}> = ({ draftId, draftName, onContinue, onDiscarded, onRejected, startConfirming }) =>
+  draftName === undefined ? (
+    <OwnedDraftInProgressGate
+      draftId={draftId}
+      onContinue={onContinue}
+      onDiscarded={onDiscarded}
+      onRejected={onRejected}
+      startConfirming={startConfirming}
+    />
+  ) : (
+    <DraftInProgress
+      draftId={draftId}
+      draftName={draftName}
+      onContinue={onContinue}
+      onDiscarded={() => onDiscarded(draftName)}
+      startConfirming={startConfirming}
+    />
+  );
 
 export { Toast };
 
