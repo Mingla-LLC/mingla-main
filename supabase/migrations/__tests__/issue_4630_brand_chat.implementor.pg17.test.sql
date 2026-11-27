@@ -272,6 +272,12 @@ BEGIN
     AND v->'myBookings'->0->>'id' = pg_temp.u('bo_rsvp')::text
     AND NOT (v->>'hasPastBookings')::boolean);
 
+  v := pg_temp.summary('cy');
+  PERFORM pg_temp.ok('S-PLUS-ONE a plus-one''s booking is their own guest row (the id Purchases opens)',
+    jsonb_array_length(v->'myBookings') = 1 AND v->'myBookings'->0->>'kind' = 'rsvp'
+    AND v->'myBookings'->0->>'id' = (SELECT g.id::text FROM public.event_rsvp_guests g
+                                       WHERE g.matched_user_id = pg_temp.u('cy')));
+
   PERFORM pg_temp.ok('S-OUTSIDER a non-member gets {"member": false} and nothing else',
     pg_temp.summary('outsider') = '{"member": false}'::jsonb);
   PERFORM pg_temp.ok('S-TEAM a team member gets {"member": false}',

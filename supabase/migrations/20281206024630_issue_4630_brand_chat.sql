@@ -45,8 +45,13 @@ AS $function$
               WHERE pc.order_id = o.id AND pc.claimed_by_user_id = p_user_id
                 AND pc.claimed_at IS NOT NULL))
   ),
+  -- A plus-one's booking is their own guest row (the id Purchases opens).
   my_rsvps AS (
-    SELECT r.id, r.event_id
+    SELECT CASE WHEN r.user_id = p_user_id THEN r.id
+                ELSE (SELECT g.id FROM public.event_rsvp_guests g
+                       WHERE g.rsvp_id = r.id AND g.matched_user_id = p_user_id AND g.claimed_at IS NOT NULL
+                       ORDER BY g.created_at ASC, g.id ASC LIMIT 1) END AS id,
+           r.event_id
       FROM public.event_rsvps r
       JOIN public.events e ON e.id = r.event_id
      WHERE p_brand_id IS NOT NULL AND p_user_id IS NOT NULL
