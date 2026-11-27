@@ -36,7 +36,7 @@ import { ArrowRight, Check, Mail } from 'lucide-react'
 import { captureMarketing, captureSearchMeasurement } from '@/components/marketing/marketing-capture'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
-import { bookCall, fetchBookingHandoff, fetchBookingSlots, scheduleTokenFrom, type BookingSlot } from '@/lib/booking-call'
+import { bookCall, fetchBookingSlots, scheduleTokenFrom, type BookingSlot } from '@/lib/booking-call'
 import { marketingAdContext } from '@/lib/marketing-ad-context'
 import { sessionUtm } from '@/lib/forms/utm'
 import {
@@ -182,21 +182,8 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
     captureMarketing('tool_book_view', { audience, source, venue: venue || undefined, icp: presetIcp || undefined })
     void (async () => {
       if (handoffToken) {
-        const handoff = await fetchBookingHandoff(handoffToken, schedulerKey)
-        if (handoff.ok) {
-          const p = handoff.payload
-          if (typeof p.name === 'string') setName(p.name)
-          if (typeof p.email === 'string') setEmail(p.email)
-          if (typeof p.phone === 'string') setPhone(p.phone)
-          if (typeof p.icp === 'string') setIcp(p.icp)
-          if (typeof p.social_platform === 'string') setSocialPlatform(p.social_platform)
-          if (typeof p.social_handle === 'string') setSocialHandle(p.social_handle)
-          if (typeof p.venue === 'string') setVenue(p.venue)
-          if (typeof p.website === 'string') setWebsite(p.website)
-          if (typeof p.city === 'string') setCity(p.city)
-          if (typeof p.makes === 'string') setMakes(p.makes)
-          if (typeof p.first_place === 'string') setFirstPlace(p.first_place)
-        }
+        const { hydrateBookingHandoff } = await import('@/lib/booking-handoff')
+        await hydrateBookingHandoff(handoffToken, schedulerKey, [setName, setEmail, setPhone, setIcp, setSocialPlatform, setSocialHandle, setVenue, setWebsite, setCity, setMakes, setFirstPlace])
       }
       await load()
     })()
@@ -232,8 +219,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
   const errors: Partial<Record<Field, string>> = isHost
     ? bookingErrors({ name, email, icp, socialPlatform, socialHandle, venue, website })
     : programBookingErrors({ audience, name, email, city: bookedCity, socialPlatform, socialHandle, makes, workUrl, firstPlace })
-  const phoneDigits = phone.replace(/[^0-9]/g, '')
-  const phoneOk = /^\s*\+/.test(phone) && phoneDigits.length >= 7 && phoneDigits.length <= 15 && phoneDigits[0] !== '0'
+  const phoneOk = /^\s*\+/.test(phone) && /^[1-9]\d{6,14}$/.test(phone.replace(/\D/g, ''))
   const phoneMessage = (phoneTouched || phoneServer) && !phoneOk ? 'That number looks short. Start with your country code, like +234.' : undefined
   const valid = Object.keys(errors).length === 0 && phoneOk
   const fieldOrder = FIELD_ORDER[audience]
@@ -244,7 +230,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
   }
   const touch = (field: Field) => setTouched((t) => (t[field] ? t : { ...t, [field]: true }))
   const clearServer = (field: Field) => setServerField((f) => (f === field ? null : f))
-  const focusField = (field: Field) =>
+  const focusField = (field: Field | 'phone') =>
     window.requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>(`[data-field="${field}"]`)?.focus())
 
   async function confirm(event: FormEvent<HTMLFormElement>) {
@@ -255,7 +241,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
       setPhoneTouched(true)
       const first = fieldOrder.find((f) => errors[f])
       if (first) focusField(first)
-      else if (!phoneOk) window.requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[data-field="phone"]')?.focus())
+      else if (!phoneOk) focusField('phone')
       return
     }
     setPhase('confirming')
@@ -346,7 +332,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
     setPhase('ready')
     if (res.error === 'validation' && res.field === 'phone') {
       setPhoneServer(true)
-      window.requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[data-field="phone"]')?.focus())
+      focusField('phone')
       return
     }
     if (res.error === 'validation' && res.field && (fieldOrder as readonly string[]).includes(res.field)) {

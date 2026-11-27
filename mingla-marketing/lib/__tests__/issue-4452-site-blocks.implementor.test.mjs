@@ -23,7 +23,11 @@ const content = (pages) => ({ pages, forms: { f1: FORM }, form_pages: {} })
 test('T-2.2 SC-92 a spot with no block renders nothing (the page is unchanged)', () => {
   assert.equal(m.blockForSpot(m.EMPTY_CONTENT, 'creators', 'after-steps', false), null)
   const spot = read('components/site-blocks/spot.tsx')
+  const lazy = read('components/site-blocks/lazy.tsx')
   assert.match(spot, /if \(!block\) return null/)
+  assert.match(lazy, /import \{ lazy, Suspense, type ComponentType \} from 'react'/)
+  assert.doesNotMatch(lazy, /from 'next\/dynamic'/, 'empty spots do not ship the next/dynamic loader runtime')
+  assert.match(lazy, /<Suspense fallback=\{null\}>/)
   const mount = read('components/forms/popup-mount.tsx')
   assert.match(mount, /if \(Object\.keys\(byPage\)\.length === 0\) return null/, 'no pop-up host markup without a pop-up')
   // every marked spot is one line on its page
