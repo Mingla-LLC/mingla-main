@@ -22196,6 +22196,8 @@
         "supabase/migrations/__tests__/issue_4624_offering_discounts.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4624_used_up_code_ends.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4624_used_up_code_ends.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4624_used_up_code_ends.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4624_used_up_code_ends.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4640_host_demo_conversion.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4640_host_demo_conversion.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
@@ -28287,6 +28289,8 @@
         "supabase/migrations/__tests__/issue_4624_offering_discounts.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4624_used_up_code_ends.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4624_used_up_code_ends.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4624_used_up_code_ends.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4624_used_up_code_ends.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4640_host_demo_conversion.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4640_host_demo_conversion.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
@@ -55605,5 +55609,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "fec7a29d5e855629278fde3ccec796dd1d181277b249aa3dbbaffeb93775e532"
+  "phase3eContractSha256": "11aac06649c8e4ad01479524f8fd92ce575c19e9e66bf644dd5cf079ce12a268"
 }
