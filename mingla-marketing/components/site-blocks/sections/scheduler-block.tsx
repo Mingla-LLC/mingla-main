@@ -28,10 +28,11 @@ function ScheduleSkeleton() {
   )
 }
 
-export function SchedulerBlock() {
+// #4641: /schedule books the "host-demo" scheduler explicitly.
+export function SchedulerBlock({ schedulerKey = 'host-demo' }: { schedulerKey?: string } = {}) {
   return (
     <Suspense fallback={<ScheduleSkeleton />}>
-      <ScheduleClient />
+      <ScheduleClient schedulerKey={schedulerKey} />
     </Suspense>
   )
 }

@@ -57,11 +57,93 @@ export interface StayDraftReadinessItem {
   readonly done: boolean;
 }
 
+export interface StayEditorLifecycleCopy {
+  readonly helper: string;
+  readonly pillLabel: string;
+  readonly pillReady: boolean;
+  readonly readinessHeading: string;
+  readonly summaryEyebrow: string;
+  readonly summaryHeadline: string;
+}
+
+/**
+ * #4490 truthful edit state: an existing offering keeps its saved lifecycle
+ * identity while it is edited. Readiness gaps are separate from status; a
+ * Live room with a bad row must say Live and show the gap, never pretend it is
+ * a new draft.
+ */
+export function stayEditorLifecycleCopy(input: {
+  status: StayOfferingRecord["status"] | null;
+  kind: "room" | "place";
+  draftCount: number;
+  pendingReadiness: number;
+}): StayEditorLifecycleCopy {
+  const subject = input.kind === "room" ? "room" : "place";
+  const label = input.kind === "room" ? "Room" : "Place";
+  const readinessLabel =
+    input.pendingReadiness <= 0 ? "Ready" : `${input.pendingReadiness} to go`;
+
+  if (input.status === "live") {
+    return {
+      helper: `Guests can book this ${subject} now. Saved changes update the live listing.`,
+      pillLabel: "Live",
+      pillReady: true,
+      readinessHeading: "Booking setup",
+      summaryEyebrow: "You’re editing",
+      summaryHeadline: `Live ${label}`,
+    };
+  }
+  if (input.status === "paused") {
+    return {
+      helper: `Guests can’t book this ${subject} while it’s paused. Saved changes will be ready when you resume it.`,
+      pillLabel: "Paused",
+      pillReady: false,
+      readinessHeading: "Booking setup",
+      summaryEyebrow: "You’re editing",
+      summaryHeadline: `Paused ${label}`,
+    };
+  }
+  if (input.status === "archived") {
+    return {
+      helper: `This ${subject} is archived and can’t be booked.`,
+      pillLabel: "Archived",
+      pillReady: false,
+      readinessHeading: "Booking setup",
+      summaryEyebrow: "You’re viewing",
+      summaryHeadline: `Archived ${label}`,
+    };
+  }
+  if (input.status === "draft") {
+    return {
+      helper: `This ${subject} is a draft. Finish the checklist, then make it live from the list.`,
+      pillLabel: readinessLabel,
+      pillReady: input.pendingReadiness <= 0,
+      readinessHeading: "Before this can go live",
+      summaryEyebrow: "You’re editing",
+      summaryHeadline: `${label} draft`,
+    };
+  }
+
+  return {
+    helper:
+      "Nothing here can be booked yet. Fill in the details, then make it live from the list.",
+    pillLabel: readinessLabel,
+    pillReady: input.pendingReadiness <= 0,
+    readinessHeading:
+      input.draftCount === 1
+        ? "Before this can go live"
+        : "Before these can go live",
+    summaryEyebrow: "You’re creating",
+    summaryHeadline: `${input.draftCount} ${label} draft${input.draftCount === 1 ? "" : "s"}`,
+  };
+}
+
 export function stayDraftReadiness(input: {
   description: string;
   photoCount: number;
   hasPrice: boolean;
   hasPolicy: boolean;
+  hasOpenAvailability: boolean;
   namedUnits: boolean;
   unitNameCount: number;
 }): StayDraftReadinessItem[] {
@@ -78,9 +160,14 @@ export function stayDraftReadiness(input: {
       label: "Add cancellation and no-show rules",
       done: input.hasPolicy,
     },
-    // Availability lives on its own screen, so it is never satisfiable from
-    // here. Showing it anyway is the point: it is the step operators forget.
-    { id: "availability", label: "Open future availability", done: false },
+    // Availability lives on its own screen. A new draft passes false; an
+    // existing offering passes the saved server fact so this editor never
+    // lies about a calendar that is already open.
+    {
+      id: "availability",
+      label: "Open future availability",
+      done: input.hasOpenAvailability,
+    },
   ];
   if (input.namedUnits) {
     items.push({

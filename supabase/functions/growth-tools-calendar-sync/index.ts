@@ -14,24 +14,41 @@
 // America/New_York), all as growth-tools-book reads them.
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { handleCalendarSync, restSyncDb } from "./sync.ts";
+import {
+  handleCalendarRegistrySync,
+  loadCalendarSyncProfiles,
+  restSyncDb,
+} from "./sync.ts";
 
 export async function handler(req: Request): Promise<Response> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
-  return await handleCalendarSync(req, {
+  const defaultCalendarId = Deno.env.get("BOOKING_CALENDAR_ID") ?? "primary";
+  const defaultNotifyTo = Deno.env.get("BOOKING_NOTIFY_TO") ??
+    "seth@usemingla.com";
+  const defaultTimeZone = Deno.env.get("BOOKING_TZ") ?? "America/New_York";
+  if (req.method !== "POST") {
+    return Response.json({ error: "method_not_allowed" }, { status: 405 });
+  }
+  if (
+    !serviceKey || req.headers.get("authorization") !== `Bearer ${serviceKey}`
+  ) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const profiles = await loadCalendarSyncProfiles({
+    supabaseUrl,
+    serviceKey,
+    defaultCalendarId,
+    defaultNotifyTo,
+    defaultTimeZone,
+  });
+  return await handleCalendarRegistrySync(req, {
     serviceRoleKey: serviceKey,
     calendarKeysPacked: Deno.env.get("GOOGLE_CALENDAR_KEYS") ?? "",
-    calendarId: Deno.env.get("BOOKING_CALENDAR_ID") ?? "primary",
+    profiles,
     db: restSyncDb(supabaseUrl, serviceKey),
-    notify: resendKey
-      ? {
-        resendKey,
-        notifyTo: Deno.env.get("BOOKING_NOTIFY_TO") ?? "seth@usemingla.com",
-        timeZone: Deno.env.get("BOOKING_TZ") ?? "America/New_York",
-      }
-      : null,
+    resendKey,
   });
 }
 

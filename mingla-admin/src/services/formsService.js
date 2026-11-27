@@ -74,6 +74,8 @@ export const unarchiveForm = (id) => refreshSiteAfter(() => rpc("admin_form_unar
 export const getForm = (id) => rpc("admin_form_get", { p_form_id: id });
 /** Raises PT409 form_draft_conflict on a stale rev; returns { draft_rev }. */
 export const saveFormDraft = (id, rev, draft) => rpc("admin_form_save_draft", { p_form_id: id, p_expected_rev: rev, p_draft: draft });
+/** Stable destinations for the form builder; public routes remain aliases for these keys. */
+export const getSchedulerProfiles = () => rpc("admin_scheduler_profiles");
 /** Raises 22023 publish_check_failed (DETAIL = the failing list) or PT409; returns { version }. */
 export const publishForm = (id, rev) => refreshSiteAfter(() => rpc("admin_form_publish", { p_form_id: id, p_expected_rev: rev }));
 
@@ -191,6 +193,9 @@ export function formsErrorWords(error) {
   if (code === "22023" && /locked_field/.test(error?.message || "")) return "Name, email and phone are locked by the template.";
   if (code === "22023" && /publish_check_failed/.test(error?.message || "")) return "Some checks failed. Fix the items marked ! to publish.";
   if (code === "22023" && /form_archived/.test(error?.message || "")) return "This form is archived. Unarchive it to edit.";
+  if (code === "22023" && /host_phone_required/.test(error?.message || "")) return "Host forms need one required phone-number question.";
+  if (code === "22023" && /scheduler_not_found/.test(error?.message || "")) return "Choose a call calendar that is available.";
+  if (code === "22023" && /bad_after_submit/.test(error?.message || "")) return "Check what should happen after someone sends the form.";
   if (/slug/.test(error?.message || "")) return "That link was used before. Pick another.";
   return error?.message || "That did not go through. Try again.";
 }

@@ -17,12 +17,13 @@ import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
 import { AUTOSAVE_MS, BUILDER_TABS, CONFLICT_COPY, autosaveReducer, TOOL_FORM_BADGE, TOOL_FORM_HINT, UNARCHIVED_TOAST, builderSubLine, isToolForm, publishReview } from "../../lib/formsModel";
 import { kindsOf, normalizeStops } from "../../lib/flowModel";
-import { formsErrorWords, getAutomation, getForm, saveFormDraft, sendTestEmails, siteRefreshWarning, unarchiveForm } from "../../services/formsService";
+import { formsErrorWords, getAutomation, getForm, getSchedulerProfiles, saveFormDraft, sendTestEmails, siteRefreshWarning, unarchiveForm } from "../../services/formsService";
 import { ReadOnlyHint } from "./formsUi";
 import { FieldsTab } from "./FieldsTab";
 import { DesignTab } from "./DesignTab";
 import { AutomationsTab } from "./AutomationsTab";
 import { RoutingTab } from "./RoutingTab";
+import { AfterSendTab } from "./AfterSendTab";
 import { OwnPageTab } from "./OwnPageTab";
 import { WhereTab } from "./WhereTab";
 import { PublishTab } from "./PublishTab";
@@ -40,6 +41,7 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
   const [flowDirty, setFlowDirty] = useState(false);
   const [leaving, setLeaving] = useState(null);
   const [testing, setTesting] = useState(false);
+  const [schedulers, setSchedulers] = useState([]);
   const timer = useRef(null);
   const stateRef = useRef(s);
   useEffect(() => { stateRef.current = s; }, [s]);
@@ -60,10 +62,17 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
     setStatus((cur) => (cur === "ready" ? "refreshing" : "loading"));
     setError(null);
     try {
-      const [f, a] = await Promise.all([getForm(formId), getAutomation(formId)]);
+      // The web deploy can briefly lead the database migration. Forms must
+      // still open during that window; only the new scheduler choices wait.
+      const [f, a, schedulerRows] = await Promise.all([
+        getForm(formId),
+        getAutomation(formId),
+        getSchedulerProfiles().catch(() => []),
+      ]);
       setMeta({ form: f.form, live_version: f.live_version, versions: f.versions, own_page: f.own_page });
       dispatch({ type: "load", draft: f.draft, rev: f.draft_rev });
       setAuto(a);
+      setSchedulers(Array.isArray(schedulerRows) ? schedulerRows : []);
       setFlow(a.draft || { v: 1, steps: [] });
       setStops(normalizeStops(a.stops));
       setFlowDirty(false);
@@ -145,7 +154,7 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
   const pill = form.status === "live" ? ["live", `Live v${liveV}`] : form.status === "archived" ? ["stop", "Archived"] : ["draft", `Draft v${(meta.versions || 0) + 1}`];
   const tabs = BUILDER_TABS.filter((t) => !(t.id === "automations" && form.template === "book_call_extra"))
     .map((t) => ({ ...t, label: t.id === "publish" && publishBad ? <span className="inline-flex items-center gap-1.5">Publish <span aria-label="Some checks fail" className="h-2 w-2 rounded-full bg-[#eb7825]" /></span> : t.id === "fields" ? `Fields ${def.fields.length}` : t.label }));
-  const common = { form, def, edit, canEdit, flow, setFlow: (f) => { setFlow(f); setFlowDirty(true); }, stops, setStops: (x) => { setStops(x); setFlowDirty(true); }, kinds, auto, reloadAuto: async () => { const a = await getAutomation(formId); setAuto(a); setFlow(a.draft); setStops(normalizeStops(a.stops)); setFlowDirty(false); }, meta, setMeta, review, reload: load, onTab };
+  const common = { form, def, edit, canEdit, schedulers, flow, setFlow: (f) => { setFlow(f); setFlowDirty(true); }, stops, setStops: (x) => { setStops(x); setFlowDirty(true); }, kinds, auto, reloadAuto: async () => { const a = await getAutomation(formId); setAuto(a); setFlow(a.draft); setStops(normalizeStops(a.stops)); setFlowDirty(false); }, meta, setMeta, review, reload: load, onTab };
 
   return (
     <div className="flex flex-col gap-6" data-form-builder={formId}>
@@ -191,6 +200,7 @@ export function FormBuilder({ formId, tab, onTab, onBack }) {
         {tab === "design" && <DesignTab {...common} />}
         {tab === "automations" && <AutomationsTab {...common} />}
         {tab === "routing" && <RoutingTab {...common} />}
+        {tab === "aftersend" && <AfterSendTab {...common} />}
         {tab === "ownpage" && <OwnPageTab {...common} />}
         {tab === "where" && <WhereTab {...common} />}
         {tab === "publish" && <PublishTab {...common} rev={s.rev} dirty={s.dirty || s.saving} flush={save} />}

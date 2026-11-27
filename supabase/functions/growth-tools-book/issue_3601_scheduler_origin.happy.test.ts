@@ -254,7 +254,10 @@ Deno.test("#3601 the builders are actually wired into the booking handler", () =
   const stripped = executable(indexSource);
   assertStringIncludes(stripped, "buildEventDescription(");
   assertStringIncludes(stripped, "buildAttendees(");
-  assertStringIncludes(stripped, "buildNotifyRecipients(NOTIFY_TO)");
+  assertStringIncludes(
+    stripped,
+    "buildNotifyRecipients(input.scheduler?.notifyTo ?? NOTIFY_TO)",
+  );
   assertStringIncludes(stripped, "sanitizeLine(body.source, 40)");
   // #1203 secret-capacity pin must stay visible from this suite.
   assertStringIncludes(stripped, "resolveRuntimeString");

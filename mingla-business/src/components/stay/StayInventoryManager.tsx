@@ -90,13 +90,13 @@ import {
   STAY_PAGE_BOTTOM_PAD,
   STAY_SPACING,
   resolveStayEditorClose,
-  stayEditorReadinessLabel,
   stayEditorTitle,
   type StayEditorCloseSource,
 } from "./stayLayoutContracts";
 import {
   matchesStayInventoryFilter,
   stayDraftReadiness,
+  stayEditorLifecycleCopy,
   stayOfferingReadinessErrors,
   type StayInventoryFilter,
 } from "./stayInventoryPresentation";
@@ -1136,13 +1136,13 @@ export function OfferingEditor({
     photoCount: (existing?.media?.length ?? 0) + media.length,
     hasPrice: canManageFinance && Number(price) > 0 && currencyCode !== null,
     hasPolicy: canManageFinance && policy.trim().length > 0,
+    hasOpenAvailability: existing?.hasOpenAvailability ?? false,
     namedUnits: namedUnitsActive,
     unitNameCount: unitNames.length,
   });
 
   const draftNames = bulk ? normalizeList(bulkNames) : [name.trim()].filter(Boolean);
   const draftCount = bulk ? draftNames.length : 1;
-  const kindLabel = kind === "room" ? "Room" : "Place";
   const ctaLabel = existing
     ? "Save changes"
     : bulk
@@ -1201,6 +1201,12 @@ export function OfferingEditor({
     bulk,
   });
   const pendingReadiness = readiness.filter((item) => !item.done).length;
+  const lifecycleCopy = stayEditorLifecycleCopy({
+    status: existing?.status ?? null,
+    kind,
+    draftCount,
+    pendingReadiness,
+  });
 
   // The rail renders only when the CONTAINER can actually hold
   // form column + gap + rail. Below the threshold the same summary stacks above
@@ -1224,10 +1230,8 @@ export function OfferingEditor({
 
   const summary = (
     <View style={styles.summaryBody} testID="stay-offering-summary">
-      <Text style={styles.summaryEyebrow}>You’re creating</Text>
-      <Text style={styles.summaryHeadline}>
-        {`${draftCount} ${kindLabel} draft${draftCount === 1 ? "" : "s"}`}
-      </Text>
+      <Text style={styles.summaryEyebrow}>{lifecycleCopy.summaryEyebrow}</Text>
+      <Text style={styles.summaryHeadline}>{lifecycleCopy.summaryHeadline}</Text>
       {draftNames.length > 0 ? (
         <Text style={styles.summaryNames} testID="stay-offering-summary-names">
           {draftNames.length > 4
@@ -1268,7 +1272,7 @@ export function OfferingEditor({
           }`}
         </Text>
       </View>
-      <Text style={styles.summaryEyebrow}>Before these can go live</Text>
+      <Text style={styles.summaryEyebrow}>{lifecycleCopy.readinessHeading}</Text>
       <View style={styles.summaryChecks} testID="stay-offering-readiness">
         {readiness.map((item) => (
           <Text
@@ -1352,7 +1356,11 @@ export function OfferingEditor({
       <View style={styles.editorHeaderTop}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Cancel and close this draft"
+          accessibilityLabel={
+            existing === null
+              ? "Cancel and close this draft"
+              : "Cancel and close these changes"
+          }
           onPress={() =>
             onRequestClose === undefined
               ? onClose()
@@ -1367,17 +1375,17 @@ export function OfferingEditor({
           <Text style={styles.headerCancelText}>Cancel</Text>
         </Pressable>
         <View
-          style={pendingReadiness === 0 ? styles.pillReady : styles.pillPending}
+          style={lifecycleCopy.pillReady ? styles.pillReady : styles.pillPending}
           testID="stay-offering-readiness-pill"
         >
           <Text
             style={
-              pendingReadiness === 0
+              lifecycleCopy.pillReady
                 ? styles.pillReadyText
                 : styles.pillPendingText
             }
           >
-            {stayEditorReadinessLabel(pendingReadiness)}
+            {lifecycleCopy.pillLabel}
           </Text>
         </View>
       </View>
@@ -1389,10 +1397,7 @@ export function OfferingEditor({
         >
           {headerTitle}
         </Text>
-        <Text style={styles.helper}>
-          Nothing here can be booked yet. Fill in the details, then make it live
-          from the list.
-        </Text>
+        <Text style={styles.helper}>{lifecycleCopy.helper}</Text>
       </View>
       {!canManageInventory && canManageFinance ? (
         <Text style={styles.warning}>

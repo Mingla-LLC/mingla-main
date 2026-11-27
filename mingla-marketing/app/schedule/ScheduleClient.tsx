@@ -36,7 +36,7 @@ import { ArrowRight, Check, Mail } from 'lucide-react'
 import { captureMarketing, captureSearchMeasurement } from '@/components/marketing/marketing-capture'
 import { ExplorerHandoffButton } from '@/components/landing/explorer-handoff'
 import { landingIcp } from '@/lib/page-measurement'
-import { bookCall, fetchBookingSlots, scheduleTokenFrom, type BookingSlot } from '@/lib/booking-call'
+import { bookCall, fetchBookingHandoff, fetchBookingSlots, scheduleTokenFrom, type BookingSlot } from '@/lib/booking-call'
 import { marketingAdContext } from '@/lib/marketing-ad-context'
 import { sessionUtm } from '@/lib/forms/utm'
 import {
@@ -116,11 +116,15 @@ interface ScheduleClientProps {
   copy?: ProgramCallCopy
   /** #4452 §2.2: the /schedule details-step spot (a server-rendered <Spot>), or nothing. */
   detailsSlot?: ReactNode
+  /** Stable registry key; the route is only a friendly alias. */
+  schedulerKey?: string
 }
 
-export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], copy, detailsSlot = null }: ScheduleClientProps = {}) {
+export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], copy, detailsSlot = null, schedulerKey: routeSchedulerKey }: ScheduleClientProps = {}) {
   const params = useSearchParams()
   const isHost = audience === 'host'
+  const schedulerKey = (params.get('profile') || routeSchedulerKey || (audience === 'creator' ? 'creator-call' : audience === 'local' ? 'local-call' : 'host-demo')).slice(0, 48)
+  const handoffToken = (params.get('handoff') || '').slice(0, 80)
   // No live city could be read: "Somewhere else" and a free-text city, so nobody is blocked.
   const cityFallback = !cities.some((c) => c !== SOMEWHERE_ELSE)
   const reportUrl = (params.get('report_url') ?? '').slice(0, 500)
@@ -132,6 +136,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
 
   const [phase, setPhase] = useState<Phase>('loading')
   const [slots, setSlots] = useState<BookingSlot[]>([])
+  const [durationMinutes, setDurationMinutes] = useState(20)
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [name, setName] = useState(params.get('name') ?? '')
@@ -146,7 +151,8 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
   const [makes, setMakes] = useState('')
   const [workUrl, setWorkUrl] = useState('')
   const [firstPlace, setFirstPlace] = useState('')
-  // #4452 §4.6: a phone (required for Creators and Locals calls) and the optional, unticked consent box (Q-A1-2).
+  // #4452 §4.6 / #4640: a phone required for every call, plus the optional,
+  // unticked consent box (Q-A1-2).
   const [phone, setPhone] = useState('')
   const [phoneTouched, setPhoneTouched] = useState(false)
   const [phoneServer, setPhoneServer] = useState(false)
@@ -162,18 +168,38 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
   // a post-conflict refresh (only the taken slot drops out).
   async function load(keep = false) {
     if (!keep) setPhase('loading')
-    const res = await fetchBookingSlots()
+    const res = await fetchBookingSlots(schedulerKey)
     if (!res.ok || res.slots.length === 0) {
       setPhase('unavailable')
       return
     }
     setSlots(res.slots)
+    setDurationMinutes(res.durationMinutes)
     setPhase('ready')
   }
 
   useEffect(() => {
     captureMarketing('tool_book_view', { audience, source, venue: venue || undefined, icp: presetIcp || undefined })
-    void load()
+    void (async () => {
+      if (handoffToken) {
+        const handoff = await fetchBookingHandoff(handoffToken, schedulerKey)
+        if (handoff.ok) {
+          const p = handoff.payload
+          if (typeof p.name === 'string') setName(p.name)
+          if (typeof p.email === 'string') setEmail(p.email)
+          if (typeof p.phone === 'string') setPhone(p.phone)
+          if (typeof p.icp === 'string') setIcp(p.icp)
+          if (typeof p.social_platform === 'string') setSocialPlatform(p.social_platform)
+          if (typeof p.social_handle === 'string') setSocialHandle(p.social_handle)
+          if (typeof p.venue === 'string') setVenue(p.venue)
+          if (typeof p.website === 'string') setWebsite(p.website)
+          if (typeof p.city === 'string') setCity(p.city)
+          if (typeof p.makes === 'string') setMakes(p.makes)
+          if (typeof p.first_place === 'string') setFirstPlace(p.first_place)
+        }
+      }
+      await load()
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -207,7 +233,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
     ? bookingErrors({ name, email, icp, socialPlatform, socialHandle, venue, website })
     : programBookingErrors({ audience, name, email, city: bookedCity, socialPlatform, socialHandle, makes, workUrl, firstPlace })
   const phoneDigits = phone.replace(/[^0-9]/g, '')
-  const phoneOk = phone.trim() === '' ? isHost : /^\s*\+/.test(phone) && phoneDigits.length >= 7 && phoneDigits.length <= 15 && phoneDigits[0] !== '0'
+  const phoneOk = /^\s*\+/.test(phone) && phoneDigits.length >= 7 && phoneDigits.length <= 15 && phoneDigits[0] !== '0'
   const phoneMessage = (phoneTouched || phoneServer) && !phoneOk ? 'That number looks short. Start with your country code, like +234.' : undefined
   const valid = Object.keys(errors).length === 0 && phoneOk
   const fieldOrder = FIELD_ORDER[audience]
@@ -229,6 +255,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
       setPhoneTouched(true)
       const first = fieldOrder.find((f) => errors[f])
       if (first) focusField(first)
+      else if (!phoneOk) window.requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[data-field="phone"]')?.focus())
       return
     }
     setPhase('confirming')
@@ -246,7 +273,9 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
       // backend maps 'direct' and absent to the same shared-scheduler-link label.
       source,
       time_zone: bookerTimeZone(),
-      ...(phone.trim() ? { phone: phone.trim() } : {}),
+      phone: phone.trim(),
+      scheduler_key: schedulerKey,
+      ...(handoffToken ? { handoff_token: handoffToken } : {}),
       utm: sessionUtm(),
       ...(formSubmissionId ? { form_submission_id: formSubmissionId } : {}),
       ...(consent ? { marketing_consent: true, consent_text: 'Send me occasional emails from Mingla. Unsubscribe anytime.' } : {}),
@@ -436,7 +465,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
           })}
         </div>
         <h2 className="h6" id={`${ids}-times`}>
-          {selectedDay ? selectedDay.key : 'Pick a time'} · your time zone · 20 min
+          {selectedDay ? selectedDay.key : 'Pick a time'} · your time zone · {durationMinutes} min
         </h2>
         <div className="slots" role="group" aria-labelledby={`${ids}-times`} data-schedule-slots="">
           {selectedDay?.slots.map((s) => {
@@ -498,7 +527,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
             </div>
             <div className="field">
               <label htmlFor={`${ids}-phone`}>
-                Your phone{isHost ? ' (optional)' : <> <span className="req" aria-hidden="true">*</span></>}
+                Your phone <span className="req" aria-hidden="true">*</span>
               </label>
               <input
                 id={`${ids}-phone`}
@@ -509,7 +538,7 @@ export function ScheduleClient({ audience = 'host', cities = [SOMEWHERE_ELSE], c
                 value={phone}
                 maxLength={24}
                 data-field="phone"
-                required={!isHost}
+                required
                 aria-invalid={phoneMessage ? true : undefined}
                 onBlur={() => setPhoneTouched(true)}
                 onChange={(e) => { setPhone(e.target.value); setPhoneServer(false) }}

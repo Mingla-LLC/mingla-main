@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-calendar-sync/issue_4640_registry_calendars.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4640-registry-calendars",
+  "profile": "deno-2-unit"
+}

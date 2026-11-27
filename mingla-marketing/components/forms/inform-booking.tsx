@@ -20,12 +20,15 @@ export function InformBooking({ basics, submissionId, first, preview, onBooked }
   const [day, setDay] = useState<string | null>(null)
   const [pick, setPick] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [durationMinutes, setDurationMinutes] = useState(20)
+  const schedulerKey = basics.audience === 'creator' ? 'creator-call' : 'local-call'
   const load = useCallback(async () => {
     setSlots(null)
-    const res = await fetchBookingSlots()
+    const res = await fetchBookingSlots(schedulerKey)
     if (!res.ok) { setProblem(calendarDown(basics.audience)); setSlots([]); return }
     setSlots(res.slots)
-  }, [basics.audience])
+    setDurationMinutes(res.durationMinutes)
+  }, [basics.audience, schedulerKey])
   useEffect(() => { void load() }, [load])
   const days = slots ? slotsByDay(slots, tz) : []
   const shown = days.find((d) => d.day === day) ?? days[0]
@@ -38,7 +41,7 @@ export function InformBooking({ basics, submissionId, first, preview, onBooked }
     const res = await bookCall({
       start: pick, name: basics.name, email: basics.email, time_zone: tz, audience: basics.audience, city: basics.city,
       social_platform: basics.social_platform, social_handle: basics.social_handle, ...(basics.makes ? { makes: basics.makes } : {}),
-      phone: basics.phone as unknown as string, form_submission_id: submissionId, source: 'form',
+      phone: basics.phone as unknown as string, form_submission_id: submissionId, source: 'form', scheduler_key: schedulerKey,
     })
     setBusy(false)
     if (res.ok) {
@@ -54,7 +57,7 @@ export function InformBooking({ basics, submissionId, first, preview, onBooked }
   return (
     <div className="fk-booking" data-inform-booking="">
       <h3>Pick a time{first ? `, ${first}` : ''}.</h3>
-      <p className="fk-help">20 minutes on video with the {TEAM_WORDS[basics.audience]} team. Times are in your time zone.</p>
+      <p className="fk-help">{durationMinutes} minutes on video with the {TEAM_WORDS[basics.audience]} team. Times are in your time zone.</p>
       {problem ? <p className="fk-failure" role="alert">{problem}</p> : null}
       {slots === null ? <p className="fk-help">Loading times…</p> : !days.length ? (
         problem ? null : <p className="fk-help">No times this week. <a href={`/schedule/${basics.audience === 'creator' ? 'creators' : 'locals'}`}>See more times</a></p>

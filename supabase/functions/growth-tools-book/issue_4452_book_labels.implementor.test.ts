@@ -79,12 +79,12 @@ Deno.test("T-4.6d SC-54 a form_submission_id with another email, 9 days old, or 
   assertEquals(await resolveFormLink(SUB, "ada@example.org", config, { db: test.db.client }), null);
 });
 
-Deno.test("T-4.6e SC-55 Creators and Locals need a valid phone (field phone); Host does not", () => {
+Deno.test("T-4.6e SC-55 every booked call needs a valid phone (field phone)", () => {
   assertEquals(parseBookingExtras({}, "creator"), { ok: false, field: "phone" });
   assertEquals(parseBookingExtras({ phone: { country: "NG", dial: "+234", number: "12" } }, "local"), { ok: false, field: "phone" });
   const ok = parseBookingExtras({ phone: { country: "IE", dial: "+353", number: "(0)87 123 4567" } }, "creator");
   assert(ok.ok && ok.extras.phoneE164 === "+353871234567");
-  assert(parseBookingExtras({}, "host").ok, "a host booking without a phone is fine");
+  assertEquals(parseBookingExtras({}, "host"), { ok: false, field: "phone" });
 });
 
 Deno.test("T-4.6f SC-56 the booking row stores utm_source and utm_campaign from the page", () => {
@@ -98,10 +98,10 @@ Deno.test("T-4.6f SC-56 the booking row stores utm_source and utm_campaign from 
 });
 
 Deno.test("A1-T-11 A1-SC-30 the consent box: strict true ticks it; anything else leaves it off", () => {
-  const on = parseBookingExtras({ marketing_consent: true }, "host");
+  const on = parseBookingExtras({ phone: "+2348012345678", marketing_consent: true }, "host");
   assert(on.ok && on.extras.marketingConsent && on.extras.consentText !== null);
   for (const v of ["true", 1, undefined, false]) {
-    const off = parseBookingExtras({ marketing_consent: v }, "host");
+    const off = parseBookingExtras({ phone: "+2348012345678", marketing_consent: v }, "host");
     assert(off.ok && off.extras.marketingConsent === false && off.extras.consentText === null, String(v));
   }
   const ctx = parseBookingContext({ audience: "host", icp: "restaurants", social_platform: "instagram", social_handle: "@x" });
