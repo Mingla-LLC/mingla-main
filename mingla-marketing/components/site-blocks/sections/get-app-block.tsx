@@ -9,7 +9,7 @@ import { AppStoreBadges } from '@/components/ui/app-store-badges'
 import { AppleMark, PlayMark } from '@/components/ui/store-marks'
 import { DownloadQr } from '@/components/marketing/download-qr'
 import { LandingMedia } from '@/components/landing/landing-media'
-import { DownloadToggle } from '@/components/site/download-toggle'
+import { LazyDownloadToggle as DownloadToggle } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import { AppQr } from '@/components/site/app-qr'
 import { appHandoffHrefs, hostWebLabel } from '@/lib/app-handoff'
 import { siteAttribution } from '@/lib/links-src'

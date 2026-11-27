@@ -3,7 +3,7 @@
 // Events / Experiences / Places chips). The view is
 // components/cities/city-this-weekend.tsx, unchanged; the editor sets only the
 // city (R7). Needs the city wrapper.
-import { CityThisWeekend } from '@/components/cities/city-this-weekend'
+import { LazyCityThisWeekend as CityThisWeekend } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import type { CityWeekendModel } from '@/lib/city-weekend'
 import { cityIdentity, cityWeekendFor, type CityIdentity, type CityParams } from './city-data'
 import type { BlockProps } from './shared'

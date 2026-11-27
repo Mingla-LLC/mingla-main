@@ -2,7 +2,7 @@
 // detail sheet. The view is components/cities/city-weekend.tsx, unchanged; the
 // places stay the #4137 catalogue snapshot (R7). The editor sets only the
 // city, which must have a hand-made guide. Needs the city wrapper.
-import { CityWeekend } from '@/components/cities/city-weekend'
+import { LazyCityWeekend as CityWeekend } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import type { CityHubCatalogue } from '@/components/cities/city-lifecycle'
 import { cityHubPath, type CityHubRecord } from '@/content/cities/registry'
 import { cataloguePlaceView } from '@/content/page-system/shared'

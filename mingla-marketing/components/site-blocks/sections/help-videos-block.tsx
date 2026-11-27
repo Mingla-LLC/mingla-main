@@ -2,7 +2,7 @@
 // video cards (the registry in content/help/registry.ts stays the source, R7).
 // Moved as-is (R1) from app/help/page.tsx. The cards render on the server; the
 // browser island only filters them (no registry in the payload, #4339 speed).
-import { HelpBrowser } from '@/components/help/help-browser'
+import { LazyHelpBrowser as HelpBrowser } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import { HelpChapters } from '@/components/help/help-video-grid'
 import { HELP_INTENTS, HELP_VIDEOS } from '@/content/help/registry'
 

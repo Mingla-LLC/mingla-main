@@ -2,7 +2,7 @@
 // moved from components/site/home-page.tsx and host-page.tsx (R1).
 import type { LandingMediaRef } from '@/lib/landing-media-ref'
 import { ReelHero } from '@/components/site/reel-hero'
-import { RotatingPhrase } from '@/components/site/rotating-phrase'
+import { LazyRotatingPhrase as RotatingPhrase } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import { ActionButton, Em, type BlockAction, type BlockProps } from './shared'
 
 export interface ReelHeroContent {

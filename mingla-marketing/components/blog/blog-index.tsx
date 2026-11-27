@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { blogCardCoverSrc, BLOG_PAGE_SIZE, type BlogIndex } from '@/lib/blog/data'
 import { BlogCategoryTabs } from './blog-category-tabs'
 import { BlogFeaturedCard } from './blog-featured-card'
-import { BlogLoadMore } from './blog-load-more'
+import { LazyBlogLoadMore as BlogLoadMore } from '@/components/site-blocks/lazy-islands'  // #4636: own chunk (first-load budget)
 import { BlogStoryCard } from './blog-story-card'
 import { BlogCollectionSchema } from './blog-article-schema'
 

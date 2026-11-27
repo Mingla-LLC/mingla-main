@@ -17,7 +17,7 @@
 // NOTHING and is reported (console.error, tagged [site-blocks]); the rest of
 // the page still renders. A hidden block renders nothing, silently.
 // Invariant I-4636-BLOCKS-ARE-EXISTING-SECTIONS (declared in its test): every registry block renders through the same component its original page uses (lib/__tests__/issue-4636-block-registry.implementor.test.mjs).
-import type { ReactNode } from 'react'
+import type { ComponentType } from 'react'
 import { SitePage } from '@/components/site/site-page'
 import type { SiteFooterSurface } from '@/components/marketing/footer'
 import type { SiteNavKey } from '@/components/site/site-nav'
@@ -29,6 +29,7 @@ import '@/components/cutout/cutout.css'
 import '@/components/page-system/page-system.css'
 import '@/components/cities/city-hubs.css'
 import '@/components/cities/city-page.css'
+
 import { AnswerBlock } from './sections/answer-block'
 import { BlogStoriesBlock } from './sections/blog-stories-block'
 import { ChipsBlock } from './sections/chips-block'
@@ -76,7 +77,8 @@ interface AnyBlockProps {
 }
 
 /** Block key → the extracted section component (one per registry entry). */
-type BlockComponent = (props: AnyBlockProps) => ReactNode | Promise<ReactNode>
+/** The section components (each typed for its own content; cast at the call site). */
+type BlockComponent = unknown
 
 export const BLOCK_COMPONENTS: Readonly<Record<string, BlockComponent>> = {
   reelHero: ReelHeroBlock,
@@ -159,7 +161,7 @@ export function BlockRenderer({ blocks, surface = 'explorer', current, layoutMai
   const plan = planBlocks(blocks, report, (type) => BLOCK_COMPONENTS[type] !== undefined)
 
   const render = ({ block, index }: PlannedBlock) => {
-    const Component = BLOCK_COMPONENTS[block.type]
+    const Component = BLOCK_COMPONENTS[block.type] as ComponentType<AnyBlockProps & Record<string, unknown>> | undefined
     if (!Component) return null
     const resolved = resolveLibraryRefs(block.content, media)
     if (resolved.missing.length) {

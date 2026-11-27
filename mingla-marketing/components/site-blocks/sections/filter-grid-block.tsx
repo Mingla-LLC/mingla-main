@@ -6,7 +6,8 @@
 import Link from 'next/link'
 import { ArrowUpRight } from 'lucide-react'
 import { LandingMedia } from '@/components/landing/landing-media'
-import { FilterGrid, type FilterItem } from '@/components/site/filter-row'
+import type { FilterItem } from '@/components/site/filter-row'
+import { LazyFilterGrid as FilterGrid } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import { cityHubForSlug, cityHubPath } from '@/content/cities/registry'
 import type { LandingMediaRef } from '@/lib/landing-media-ref'
 import { Em, type BlockAction, type BlockProps } from './shared'

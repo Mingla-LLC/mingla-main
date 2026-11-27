@@ -3,7 +3,7 @@
 // ?venue / ?report_url / ?source / ?icp. Moved as-is (R1) from
 // app/schedule/page.tsx, with its loading skeleton.
 import { Suspense } from 'react'
-import { ScheduleClient } from '@/app/schedule/ScheduleClient'
+import { LazyScheduleClient as ScheduleClient } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 
 export type SchedulerContent = Record<string, never>
 

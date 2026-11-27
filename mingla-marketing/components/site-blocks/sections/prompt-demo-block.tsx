@@ -2,7 +2,7 @@
 // visual demo (For hosts), moved as-is (R1). The section keeps id="site" (the
 // in-page anchor) and the `data-focus-gen` button the demo listens for.
 import { ArrowRight } from 'lucide-react'
-import { SitePromptDemo } from '@/components/site/site-prompt-demo'
+import { LazySitePromptDemo as SitePromptDemo } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import { Em, secClass, type BlockProps } from './shared'
 
 export interface PromptDemoContent {

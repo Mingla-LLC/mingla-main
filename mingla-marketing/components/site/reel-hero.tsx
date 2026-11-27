@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { ReelStage, type ReelCard } from './reel-stage'
+import type { ReelCard } from './reel-stage'
+import { LazyReelStage as ReelStage } from '@/components/site-blocks/lazy-islands'  // #4636: own chunk (first-load budget)
 
 // #4339 — the "Reelmark" hero shared by Home (paper) and Mingla Host (dark):
 // the headline, the subline, ONE call to action inside a dashed ring with ONE

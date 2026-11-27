@@ -4,7 +4,7 @@
 // re-exports CityHostBand. The editor sets only the city (R7).
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
-import { CityTrackedLink } from '@/components/cities/city-actions'
+import { LazyCityTrackedLink as CityTrackedLink } from '../lazy-islands'  // #4636: own chunk (first-load budget)
 import { cityIdentity, type CityIdentity, type CityParams } from './city-data'
 import type { BlockProps } from './shared'
 
