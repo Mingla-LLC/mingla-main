@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import { SitePage } from '@/components/site/site-page'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { HeroWords } from '@/components/site-blocks/hero-words'
 import { Spot } from '@/components/site-blocks/spot'
 import { ClipGridBlock } from '@/components/site-blocks/sections/clip-grid-block'
@@ -27,27 +28,30 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
 export const metadata: Metadata = searchRouteMetadata('/creators')
 
+// #4636: a published block list replaces the coded sections; with none, the coded page renders unchanged.
 export default function CreatorsPage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       {/* #4339 (Seth): Creators sign up in Explorer, so the page is on the
           Explorer surface and its top bar's "Use Mingla" goes to Explorer. */}
-      <SitePage surface="explorer">
-        <HeroWords page="creators" coded={CREATORS_HERO} />
-        <Spot page="creators" id="after-hero" />
+      <PublishedOr pageKey="creators">
+        <SitePage surface="explorer">
+          <HeroWords page="creators" coded={CREATORS_HERO} />
+          <Spot page="creators" id="after-hero" />
 
-        <section className="pb-100" aria-label="How Mingla Creators works">
-          <div className="wrap">
-            <ClipGridBlock content={CREATORS_CLIPS} blockId="creators-clips" />
-            <Spot page="creators" id="after-clips" />
-            <StepsBlock content={CREATORS_STEPS} blockId="creators-steps" />
-            <Spot page="creators" id="after-steps" />
-            <VideoBandBlock content={CREATORS_BAND} blockId="creators-band" />
-            <FinePrintBlock content={CREATORS_FINE} blockId="creators-fine" />
-          </div>
-        </section>
-        <Spot page="creators" id="before-footer" />
-      </SitePage>
+          <section className="pb-100" aria-label="How Mingla Creators works">
+            <div className="wrap">
+              <ClipGridBlock content={CREATORS_CLIPS} blockId="creators-clips" />
+              <Spot page="creators" id="after-clips" />
+              <StepsBlock content={CREATORS_STEPS} blockId="creators-steps" />
+              <Spot page="creators" id="after-steps" />
+              <VideoBandBlock content={CREATORS_BAND} blockId="creators-band" />
+              <FinePrintBlock content={CREATORS_FINE} blockId="creators-fine" />
+            </div>
+          </section>
+          <Spot page="creators" id="before-footer" />
+        </SitePage>
+      </PublishedOr>
     </div>
   )
 }

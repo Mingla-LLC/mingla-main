@@ -33,6 +33,8 @@ const AV1_SMALL: ReadonlySet<string> = new Set(AV1.small)
 
 /** The copy of `src` (a `/…/<name>.mp4` master) this browser should load. */
 export function clipSourceFor(src: string, env: ClipEnvironment): string {
+  // #4636: a media library clip has no phone-size or AV1 sibling.
+  if (src.includes('/storage/v1/object/public/site-')) return src
   const match = /^(.*\/)([a-z0-9-]+)\.mp4$/.exec(src)
   if (!match) return src
   const [, dir, name] = match
@@ -43,6 +45,8 @@ export function clipSourceFor(src: string, env: ClipEnvironment): string {
 
 /** The small WebP poster beside a clip's JPEG poster (same name). */
 export function webpPoster(poster: string): string {
+  // #4636: a media library poster has no WebP sibling.
+  if (poster.includes('/storage/v1/object/public/site-')) return poster
   return poster.replace(/\.jpg$/, '.webp')
 }
 

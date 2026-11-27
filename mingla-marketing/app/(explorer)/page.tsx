@@ -1,4 +1,5 @@
 import { HomePage } from '@/components/site/home-page'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { MinglaEntityGraph } from '@/components/marketing/entity-graph'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
@@ -13,6 +14,9 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // with the footer like every other page. The SEO contract is unchanged: the
 // search_ready metadata for "/" and the Organization/WebSite entity graph.
 // The brand faces are route-scoped through app/site-fonts.ts (#3548).
+//
+// #4636: a published block list (Admin, Website pages) replaces the coded
+// sections; with none, the coded page renders unchanged.
 
 export const metadata = searchRouteMetadata('/')
 
@@ -22,7 +26,9 @@ export default function ExplorerHomePage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
       <MinglaEntityGraph />
-      <HomePage />
+      <PublishedOr pageKey="home">
+        <HomePage />
+      </PublishedOr>
     </div>
   )
 }

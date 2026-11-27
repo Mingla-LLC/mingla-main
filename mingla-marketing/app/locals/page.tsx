@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import { SitePage } from '@/components/site/site-page'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { HeroWords } from '@/components/site-blocks/hero-words'
 import { Spot } from '@/components/site-blocks/spot'
 import { FactsBlock } from '@/components/site-blocks/sections/facts-block'
@@ -29,25 +30,28 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // #4339 round B: registered in lib/search/route-registry.ts (one absolute title).
 export const metadata: Metadata = searchRouteMetadata('/locals')
 
+// #4636: a published block list replaces the coded sections; with none, the coded page renders unchanged.
 export default function LocalsPage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface="explorer">
-        <HeroWords page="locals" coded={LOCALS_HERO} />
-        <Spot page="locals" id="after-hero" />
+      <PublishedOr pageKey="locals">
+        <SitePage surface="explorer">
+          <HeroWords page="locals" coded={LOCALS_HERO} />
+          <Spot page="locals" id="after-hero" />
 
-        <section className="pb-100" aria-labelledby="locals-how">
-          <div className="wrap">
-            <StepsBlock content={LOCALS_STEPS} blockId="locals-how" />
-            <Spot page="locals" id="after-steps" />
-            <FactsBlock content={LOCALS_FACTS} blockId="locals-facts" />
-            <Spot page="locals" id="after-facts" />
-            <VideoBandBlock content={LOCALS_BAND} blockId="locals-band" />
-            <FinePrintBlock content={LOCALS_FINE} blockId="locals-fine" />
-          </div>
-        </section>
-        <Spot page="locals" id="before-footer" />
-      </SitePage>
+          <section className="pb-100" aria-labelledby="locals-how">
+            <div className="wrap">
+              <StepsBlock content={LOCALS_STEPS} blockId="locals-how" />
+              <Spot page="locals" id="after-steps" />
+              <FactsBlock content={LOCALS_FACTS} blockId="locals-facts" />
+              <Spot page="locals" id="after-facts" />
+              <VideoBandBlock content={LOCALS_BAND} blockId="locals-band" />
+              <FinePrintBlock content={LOCALS_FINE} blockId="locals-fine" />
+            </div>
+          </section>
+          <Spot page="locals" id="before-footer" />
+        </SitePage>
+      </PublishedOr>
     </div>
   )
 }

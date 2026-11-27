@@ -277,9 +277,10 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
 
 test('the redesigned pages use the site nav, one <main> and the canonical footer, and the brand faces', () => {
   const shell = code(read('components/site/site-page.tsx'))
-  assert.match(shell, /<SiteNav surface=\{surface\} current=\{current\} origin=\{origin\} \/>/)
+  // #4636: the shell's nav and footer carry the published site settings (coded when none).
+  assert.match(shell, /<SiteNavLive surface=\{surface\} current=\{current\} origin=\{origin\} \/>/)
   assert.match(shell, /\{layoutMain \? children : <main id="main">\{children\}<\/main>\}/)
-  assert.match(shell, /<SiteFooter surface=\{surface\} origin=\{origin\} \/>/)
+  assert.match(shell, /<SiteFooterLive surface=\{surface\} origin=\{origin\} \/>/)
   for (const rel of PAGES) {
     const source = code(read(rel))
     // #4339 phase 2c: the /tools hub takes the faces from app/tools/layout.tsx.

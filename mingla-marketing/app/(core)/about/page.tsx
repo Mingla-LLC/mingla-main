@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { SitePage } from '@/components/site/site-page'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { AnswerBlock } from '@/components/site-blocks/sections/answer-block'
 import { PageHeroBlock } from '@/components/site-blocks/sections/page-hero-block'
 import { ParasBlock } from '@/components/site-blocks/sections/paras-block'
@@ -26,18 +27,22 @@ export const metadata: Metadata = corePageMetadata(record)
 
 export default function AboutPage() {
   const schema = corePageStructuredData(record)
+  const ld = schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null
+  // #4636: a published block list replaces the coded sections (the structured data stays); with none, the coded page renders unchanged.
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface="explorer">
-        {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
-        <PageHeroBlock content={ABOUT_HERO} blockId="about-hero" />
-        {/* #4339 round B (SEO audit 3): "What is Mingla?" and its direct
-            answer, visible, from the page's own record (answer engines quote it). */}
-        <AnswerBlock content={ABOUT_ANSWER} blockId="about-what" />
-        <WideClipBlock content={ABOUT_CLIP} blockId="about-clip" />
-        <ParasBlock content={ABOUT_WHY} colour="paper" blockId="about-why" />
-        <VCardsBlock content={ABOUT_CARDS} colour="cream" blockId="about-cards" />
-      </SitePage>
+      <PublishedOr pageKey="about" extra={ld}>
+        <SitePage surface="explorer">
+          {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
+          <PageHeroBlock content={ABOUT_HERO} blockId="about-hero" />
+          {/* #4339 round B (SEO audit 3): "What is Mingla?" and its direct
+              answer, visible, from the page's own record (answer engines quote it). */}
+          <AnswerBlock content={ABOUT_ANSWER} blockId="about-what" />
+          <WideClipBlock content={ABOUT_CLIP} blockId="about-clip" />
+          <ParasBlock content={ABOUT_WHY} colour="paper" blockId="about-why" />
+          <VCardsBlock content={ABOUT_CARDS} colour="cream" blockId="about-cards" />
+        </SitePage>
+      </PublishedOr>
     </div>
   )
 }

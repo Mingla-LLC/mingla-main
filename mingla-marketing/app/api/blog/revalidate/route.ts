@@ -2,8 +2,8 @@ import { timingSafeEqual } from 'node:crypto'
 import { revalidateTag } from 'next/cache'
 import { BLOG_CACHE_TAG } from '@/lib/blog/data'
 import { LINKS_CACHE_TAG } from '@/lib/links-data'
-import { revalidateTargetFor } from '@/lib/revalidate-tag'
-import { SITE_PAGES_CACHE_TAG } from '@/lib/site-pages/tags'
+import { revalidatePageKeyFor, revalidateTargetFor } from '@/lib/revalidate-tag'
+import { SITE_PAGES_CACHE_TAG, sitePageTag } from '@/lib/site-pages/tags'
 
 // #4137 — the admin-blog edge function calls this after publish, unpublish
 // and feature changes so /blog shows the change on the next request. Without
@@ -15,6 +15,9 @@ import { SITE_PAGES_CACHE_TAG } from '@/lib/site-pages/tags'
 // behaviour byte for byte; any other tag is refused (400) before anything runs.
 const NO_STORE = { 'Cache-Control': 'no-store' }
 // #4452: {"tag":"pages"} drops the site-pages cache (blocks, form pages, forms).
+// #4636: {"tag":"pages","page":"<key>"} also drops that page's own cache
+// (`site-page:<key>`: its published block list, or the nav and footer for
+// 'site-settings'); a malformed page key is refused (400) before anything runs.
 const TAGS = { blog: BLOG_CACHE_TAG, links: LINKS_CACHE_TAG, pages: SITE_PAGES_CACHE_TAG } as const
 
 function secretMatches(given: string | null): boolean {
@@ -29,9 +32,13 @@ export async function POST(request: Request) {
   if (!secretMatches(request.headers.get('x-mingla-revalidate-secret'))) {
     return Response.json({ revalidated: false }, { status: 401, headers: NO_STORE })
   }
-  const target = revalidateTargetFor(await request.text())
+  const body = await request.text()
+  const target = revalidateTargetFor(body)
   if (target === null) return Response.json({ revalidated: false, error: 'unknown_tag' }, { status: 400, headers: NO_STORE })
+  const page = target === 'pages' ? revalidatePageKeyFor(body) : undefined
+  if (page === null) return Response.json({ revalidated: false, error: 'unknown_page' }, { status: 400, headers: NO_STORE })
   const tag = TAGS[target]
   revalidateTag(tag)
-  return Response.json({ revalidated: true, tag }, { headers: NO_STORE })
+  if (page) revalidateTag(sitePageTag(page))
+  return Response.json(page ? { revalidated: true, tag, page } : { revalidated: true, tag }, { headers: NO_STORE })
 }

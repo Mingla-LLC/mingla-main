@@ -1,4 +1,5 @@
 import { HostPage } from '@/components/site/host-page'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { searchRouteMetadata } from '@/lib/search/metadata'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
@@ -8,13 +9,17 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 // the Ari cards, the toolkit and the closing band, over the canonical footer
 // (components/site/host-page.tsx). The SEO contract is unchanged: the
 // search_ready metadata for "/host". Brand faces: app/site-fonts.ts (#3548).
+// #4636: a published block list replaces the coded sections; with none, the
+// coded page renders unchanged.
 
 export const metadata = searchRouteMetadata('/host')
 
 export default function MinglaHostPage() {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <HostPage />
+      <PublishedOr pageKey="host">
+        <HostPage />
+      </PublishedOr>
     </div>
   )
 }

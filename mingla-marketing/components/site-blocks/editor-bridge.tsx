@@ -7,10 +7,17 @@
 // to the one allowlisted Admin origin (lib/site-pages/editor.ts), never "*".
 import { useEffect, type ReactNode } from 'react'
 import type { EditorMessage } from '@/lib/site-pages/editor'
+import type { PageMessage } from '@/lib/site-pages/editor-protocol'
 
 let ORIGIN: string | null = null
 
-export function postToEditor(msg: EditorMessage): void {
+/** The one Admin origin this page talks to (null outside the editor). */
+export function editorOriginNow(): string | null {
+  return ORIGIN
+}
+
+/** #4636: the #4452 spot messages and the block canvas messages (lib/site-pages/editor-protocol.ts). */
+export function postToEditor(msg: EditorMessage | PageMessage): void {
   if (!ORIGIN || window.parent === window) return
   window.parent.postMessage(msg, ORIGIN)
 }

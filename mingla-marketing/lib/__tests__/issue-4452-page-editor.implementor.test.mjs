@@ -24,8 +24,10 @@ const d = await L.load('forms/design')
 const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
 
 test('PE-1 SC-159 the editor origin allowlist and message shapes', () => {
-  for (const ok of ['https://admin.usemingla.com', 'https://mingla-admin.vercel.app', 'https://mingla-admin-git-4452-mingla.vercel.app', 'http://localhost:5173']) assert.equal(e.editorOrigin(ok), ok, ok)
-  for (const bad of ['https://evil.com', 'https://admin.usemingla.com.evil.com', 'http://admin.usemingla.com', 'https://usemingla.com', '*', '', null, 'javascript:alert(1)', 'https://mingla-admin.vercel.app.evil.io']) assert.equal(e.editorOrigin(bad), null, String(bad))
+  for (const ok of ['https://admin.usemingla.com', 'http://localhost:5173']) assert.equal(e.editorOrigin(ok), ok, ok)
+  for (const bad of ['https://evil.com', 'https://admin.usemingla.com.evil.com', 'http://admin.usemingla.com', 'https://usemingla.com', '*', '', null, 'javascript:alert(1)', 'https://mingla-admin.vercel.app.evil.io',
+    // #4636: a vercel.app Admin preview may not frame the page, so it is not an editor origin either.
+    'https://mingla-admin.vercel.app', 'https://mingla-admin-git-4452-mingla.vercel.app']) assert.equal(e.editorOrigin(bad), null, String(bad))
   assert.equal(e.isEditorMessage({ type: 'spot-click', page: 'creators', spot: 'after-steps' }), true)
   assert.equal(e.isEditorMessage({ type: 'block-click', page: 'creators', spot: 'after-steps', block: '44520000-0000-4000-8000-000000000001' }), true)
   for (const bad of [{ type: 'spot-click', page: 'Creators!', spot: 'x' }, { type: 'run', page: 'x' }, { type: 'editor-scroll', page: 'x', y: -1 }, null, 'spot-click'])

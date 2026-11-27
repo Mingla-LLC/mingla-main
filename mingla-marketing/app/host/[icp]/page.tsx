@@ -4,6 +4,9 @@ import { searchRouteMetadata } from '@/lib/search/metadata'
 import { ICP_LANDINGS, ICP_SLUGS, icpLandingPath, isIcpSlug } from '@/content/host-landing/icps'
 import { hostLandingStructuredData, serializeStructuredData } from '@/lib/search/page-schema'
 import { IcpLandingPage } from '@/components/landing/icp-landing'
+import { IcpLandingAnalytics } from '@/components/landing/icp-landing-analytics'
+import { CallButtonAnalytics } from '@/components/forms/call-button-analytics'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #4339 — the seven Host landing pages, one per ICP: /host/events, /host/trips,
@@ -47,7 +50,10 @@ export default async function HostIcpLandingPage({ params }: { params: Params })
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeStructuredData(hostLandingStructuredData(icpLandingPath(icp), ICP_LANDINGS[icp].name)) }}
       />
-      <IcpLandingPage slug={icp} />
+      {/* #4636: a published block list replaces the coded sections (analytics stay); with none, the coded page renders unchanged. */}
+      <PublishedOr pageKey={icp} extra={<><IcpLandingAnalytics slug={icp} /><CallButtonAnalytics /></>}>
+        <IcpLandingPage slug={icp} />
+      </PublishedOr>
     </div>
   )
 }

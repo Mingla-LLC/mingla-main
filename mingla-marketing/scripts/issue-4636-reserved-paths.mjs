@@ -29,7 +29,7 @@ const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 export const RESERVED_JSON = path.join(MARKETING, 'lib/site-pages/reserved-paths.json')
 
 /** Platform words no page should take, whatever the code says today. */
-const PLATFORM = ['_next', 'admin', 'api', 'assets', 'static', 'well-known', 'site-preview', 'preview', 'login', 'logout', 'auth', 'sitemap', 'robots', 'feed', 'rss', 'index', 'search', 'home', 'host', 'help', 'blog', 'page', 'pages', 'new', 'edit']
+const PLATFORM = ['_next', 'admin', 'api', 'assets', 'static', 'well-known', 'site-preview', 'preview', 'login', 'logout', 'auth', 'sitemap', 'robots', 'feed', 'rss', 'index', 'search', 'home', 'host', 'help', 'blog', 'page', 'pages', 'new', 'edit', 'careers-not-found']
 
 /** First segments of every route folder under app/ (route groups are transparent). */
 export function appSegments(dir = path.join(MARKETING, 'app')) {

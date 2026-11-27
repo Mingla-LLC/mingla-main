@@ -83,14 +83,15 @@ test('blog posts: the new frame around the same story; only the staff preview ke
 test('the four tools and their reports: the new frame, the dark stage and their content untouched', () => {
   const layout = code(read('app/tools/layout.tsx'))
   assert.match(layout, FACES)
-  assert.match(layout, /<RouteFrame bare=\{\['\/tools'\]\} variant="site-tools" header=\{<ToolsBreadcrumb \/>\} footer=\{null\}>/)
+  // #4636: the layout also hands the frame the nav and footer with the published site settings.
+  assert.match(layout, /<RouteFrame\s+bare=\{\['\/tools'\]\}\s+variant="site-tools"\s+header=\{<ToolsBreadcrumb \/>\}\s+footer=\{null\}\s+siteNav=\{<SiteNavLive surface="host" current="tools" \/>\}\s+siteFooter=\{<SiteFooterLive surface="host" \/>\}\s*>/)
   assert.doesNotMatch(layout, /ToolsAudienceMenu|mingla-wordmark\.svg|<Footer\b|<header/, 'no old top bar, audience menu or footer')
   assert.equal(fs.existsSync(path.join(MARKETING, 'components/marketing/tools-audience-menu.tsx')), false, 'the old audience menu is gone (no other user)')
   const frame = code(read('components/site/route-frame.tsx'))
   const block = frame.slice(frame.indexOf("if (variant === 'site-tools')"), frame.indexOf("if (variant === 'tools')"))
-  assert.match(block, /<LandingRoot>\s*<SiteNav surface="host" current="tools" \/>\s*<\/LandingRoot>/)
+  assert.match(block, /<LandingRoot>\s*\{siteNav \?\? <SiteNav surface="host" current="tools" \/>\}\s*<\/LandingRoot>/)
   assert.match(block, /<main id="main" className="tools-stage bg-smoke text-text-primary" data-tools-stage="">\s*\{header\}\s*\{children\}\s*<\/main>/)
-  assert.match(block, /<LandingRoot>\s*<SiteFooter surface="host" \/>\s*<\/LandingRoot>/)
+  assert.match(block, /<LandingRoot>\s*\{siteFooter \?\? <SiteFooter surface="host" \/>\}\s*<\/LandingRoot>/)
   assert.ok(block.indexOf('</LandingRoot>') < block.indexOf('<main'), 'the stage sits outside the brand root (its element resets would override the tools’ Tailwind)')
   const css = code(read('components/site/pages.css'))
   assert.match(css, /\.tools-stage\[data-tools-stage\] \{[^}]*--font-display: var\(--font-landing-serif\)[^}]*--font-sans: var\(--font-landing-sans\)/)

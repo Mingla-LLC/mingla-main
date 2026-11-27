@@ -1,6 +1,7 @@
 'use client'
 import type { ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
+import { usePreviewPath } from './preview-path'
 import { CutoutShell } from '@/components/cutout/primitives'
 import { SiteFooter } from '@/components/marketing/footer'
 import { LandingRoot } from '@/components/landing/landing-root'
@@ -32,6 +33,13 @@ interface RouteFrameProps {
   variant: FrameVariant
   header: ReactNode
   footer: ReactNode
+  /**
+   * #4636: the site nav and footer with the published site-wide settings
+   * (server elements from components/site/site-chrome.tsx, passed in by the
+   * layout). Absent: the coded nav and footer.
+   */
+  siteNav?: ReactNode
+  siteFooter?: ReactNode
   children: ReactNode
 }
 
@@ -47,8 +55,11 @@ export function isBarePath(
   return bare.includes(path) || barePrefixes.some((prefix) => path.startsWith(prefix))
 }
 
-export function RouteFrame({ bare, barePrefixes = [], framedPrefixes = [], variant, header, footer, children }: RouteFrameProps) {
-  const pathname = usePathname()
+export function RouteFrame({ bare, barePrefixes = [], framedPrefixes = [], variant, header, footer, siteNav, siteFooter, children }: RouteFrameProps) {
+  // #4636: inside /site-preview the frame follows the previewed page's real address.
+  const previewPath = usePreviewPath()
+  const routePath = usePathname()
+  const pathname = previewPath ?? routePath
   if (isBarePath(pathname, bare, barePrefixes, framedPrefixes)) return <>{children}</>
   if (variant === 'site-tools') {
     // #4339 phase 2c — the four free tools and their report pages on the new
@@ -61,14 +72,14 @@ export function RouteFrame({ bare, barePrefixes = [], framedPrefixes = [], varia
     return (
       <>
         <LandingRoot>
-          <SiteNav surface="host" current="tools" />
+          {siteNav ?? <SiteNav surface="host" current="tools" />}
         </LandingRoot>
         <main id="main" className="tools-stage bg-smoke text-text-primary" data-tools-stage="">
           {header}
           {children}
         </main>
         <LandingRoot>
-          <SiteFooter surface="host" />
+          {siteFooter ?? <SiteFooter surface="host" />}
         </LandingRoot>
       </>
     )

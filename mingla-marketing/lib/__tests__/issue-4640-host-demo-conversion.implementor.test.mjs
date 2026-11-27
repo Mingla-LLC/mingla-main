@@ -32,7 +32,9 @@ test('#4640 the scheduler hydrates server-saved answers and requires phone for e
 });
 
 test('#4640 route aliases select stable profiles while future keys remain data', () => {
-  assert.match(read('app/schedule/page.tsx'), /schedulerKey="host-demo"/)
+  // #4636: /schedule renders the registry block `scheduler`, which carries the key.
+  assert.match(read('app/schedule/page.tsx'), /<SchedulerBlock\b/)
+  assert.match(read('components/site-blocks/sections/scheduler-block.tsx'), /schedulerKey="host-demo"/)
   const programs = read('app/schedule/ProgramCallPage.tsx')
   assert.match(programs, /audience === 'creator' \? 'creator-call' : 'local-call'/)
   assert.match(read('app/schedule/ScheduleClient.tsx'), /scheduler_key: schedulerKey/)

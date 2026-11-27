@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { SiteFooter, type SiteFooterSurface } from '@/components/marketing/footer'
+import type { SiteFooterSurface } from '@/components/marketing/footer'
 import { LandingRoot } from '@/components/landing/landing-root'
-import { SiteNav, type SiteNavKey } from './site-nav'
+import type { SiteNavKey } from './site-nav'
+import { SiteFooterLive, SiteNavLive } from './site-chrome'
 import '@/components/landing/landing.css'
 import './site.css'
 import './pages.css'
@@ -13,6 +14,10 @@ import './pages.css'
 //
 // The page applies the three brand-face variables from app/site-fonts.ts on
 // its own wrapper (the #3548 per-route font gate reads the page module).
+//
+// #4636: the nav and footer carry the published site-wide settings
+// (components/site/site-chrome.tsx; coded when none). Server only: a client
+// module draws the coded chrome through components/site/site-shell.tsx.
 
 interface SitePageProps {
   surface: SiteFooterSurface
@@ -24,15 +29,17 @@ interface SitePageProps {
    * carries the #3431 copy opt-in on that element), so the shell adds none.
    */
   layoutMain?: boolean
+  /** #4636: a host-type page passes its ICP slug to the landing root (as the coded template does). */
+  slug?: string
   children: ReactNode
 }
 
-export function SitePage({ surface, current, origin, layoutMain = false, children }: SitePageProps) {
+export function SitePage({ surface, current, origin, layoutMain = false, slug, children }: SitePageProps) {
   return (
-    <LandingRoot>
-      <SiteNav surface={surface} current={current} origin={origin} />
+    <LandingRoot slug={slug}>
+      <SiteNavLive surface={surface} current={current} origin={origin} />
       {layoutMain ? children : <main id="main">{children}</main>}
-      <SiteFooter surface={surface} origin={origin} />
+      <SiteFooterLive surface={surface} origin={origin} />
     </LandingRoot>
   )
 }

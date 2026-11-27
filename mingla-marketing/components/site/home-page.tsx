@@ -1,4 +1,3 @@
-import { SiteFooter } from '@/components/marketing/footer'
 import { LandingRoot } from '@/components/landing/landing-root'
 import { CitiesRowBlock } from '@/components/site-blocks/sections/cities-row-block'
 import { MarqueeBlock } from '@/components/site-blocks/sections/marquee-block'
@@ -8,7 +7,7 @@ import { TilesBlock } from '@/components/site-blocks/sections/tiles-block'
 import { VideoBandBlock } from '@/components/site-blocks/sections/video-band-block'
 import { AUDIENCES, HOME_BAND, HOME_CITIES, HOME_HERO, HOME_HOW, MARQUEE } from '@/content/site-blocks/home'
 import { getCityTiles } from '@/lib/live-cities'
-import { SiteNav } from './site-nav'
+import { SiteFooterLive, SiteNavLive } from './site-chrome'
 import '@/components/landing/landing.css'
 import './site.css'
 
@@ -32,7 +31,7 @@ export async function HomePage() {
   const { tiles: cityTiles } = await getCityTiles()
   return (
     <LandingRoot>
-      <SiteNav surface="explorer" current="home" />
+      <SiteNavLive surface="explorer" current="home" />
       <ReelHeroBlock content={HOME_HERO} colour="paper" blockId="rm-title" />
       {/* 1. How it works */}
       <StepsBlock content={HOME_HOW} colour="paper" blockId="home-how" />
@@ -44,7 +43,7 @@ export async function HomePage() {
       <MarqueeBlock content={MARQUEE} blockId="home-marquee" />
       {/* 5. Run a place with soul? */}
       <VideoBandBlock content={HOME_BAND} blockId="home-host" />
-      <SiteFooter surface="explorer" />
+      <SiteFooterLive surface="explorer" />
     </LandingRoot>
   )
 }

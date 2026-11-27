@@ -22,3 +22,26 @@ export function revalidateTargetFor(rawBody: string): RevalidateTarget | null {
     return null
   }
 }
+
+//   {"tag":"pages","page":"<key>"} → 'pages' plus that page's own tag
+//                                    (#4636: `site-page:<key>`, its published block
+//                                    list or the 'site-settings' nav and footer).
+//                                    A malformed key is refused (null → 400).
+
+const PAGE_KEY = /^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/
+
+/**
+ * #4636: the page key a pages revalidate names: undefined when the body names
+ * none (the whole-site #4452 call, unchanged), null when it is not a page key.
+ */
+export function revalidatePageKeyFor(rawBody: string): string | null | undefined {
+  try {
+    const body: unknown = JSON.parse(rawBody.trim() || '{}')
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined
+    const page = (body as Record<string, unknown>).page
+    if (page === undefined) return undefined
+    return typeof page === 'string' && PAGE_KEY.test(page) ? page : null
+  } catch {
+    return undefined
+  }
+}

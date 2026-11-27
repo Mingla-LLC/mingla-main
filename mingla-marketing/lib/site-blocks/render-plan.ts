@@ -8,6 +8,7 @@
 //   - a hidden block is skipped silently;
 //   - consecutive `programme` blocks share one frame;
 //   - the page needs the city wrapper when any rendered block does.
+import { resolveLibraryRefs, type MediaMap } from './media'
 import { blockDef, blockFrame, validateBlock, validatePage, type PageBlock } from './registry'
 
 export type BlockReporter = (message: string) => void
@@ -70,4 +71,14 @@ export function planBlocks(blocks: unknown, report: BlockReporter, renderable: (
   }
   const city = items.some(({ block }) => blockDef(block.type)?.wrapper.city === true)
   return { groups, city, skipped }
+}
+
+/**
+ * #4636: how many blocks of a list would actually draw (valid, renderable, not
+ * hidden, every media library item present). 0 means a converted page keeps its
+ * coded sections and a staff page is not served.
+ */
+export function usableBlockCount(blocks: unknown, media: MediaMap | null | undefined, renderable: (type: string) => boolean = () => true): number {
+  const plan = planBlocks(blocks, () => undefined, renderable)
+  return plan.groups.flatMap((g) => g.items).filter(({ block }) => resolveLibraryRefs(block.content, media).missing.length === 0).length
 }

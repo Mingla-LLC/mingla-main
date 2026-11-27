@@ -115,7 +115,9 @@ test('home headline is three lines: "Find" / the rotating italic phrase / "that 
 test('canonical footer: columns, tagline, cross-link, and no "Privacy choices"', () => {
   const footer = code(read('components/marketing/footer.tsx'))
   assert.match(footer, /SITE_FOOTER_TAGLINE = 'Making real life easier to find\.'/)
-  assert.match(footer, /© \{new Date\(\)\.getFullYear\(\)\} Mingla\. \{SITE_FOOTER_TAGLINE\}/)
+  // #4636: the tagline is the published one when set, else SITE_FOOTER_TAGLINE (footerModel).
+  assert.match(footer, /© \{new Date\(\)\.getFullYear\(\)\} Mingla\. \{tagline\}/)
+  assert.match(footer, /if \(!settings\) return \{ columns: SITE_FOOTER_COLUMNS, tagline: SITE_FOOTER_TAGLINE \}/)
   const columns = [...footer.matchAll(/title: '(\w+)',\s*links: \[([\s\S]*?)\]/g)].map((m) => [m[1], [...m[2].matchAll(/label: '([^']+)'/g)].map((l) => l[1])])
   assert.deepEqual(columns, [
     ['Explore', ['Home', 'Going out', 'Cities', 'Blog']],
@@ -133,9 +135,10 @@ test('canonical footer: columns, tagline, cross-link, and no "Privacy choices"',
   // Every page gets the same one.
   assert.match(code(read('components/cutout/footer.tsx')), /return <SiteFooter surface=\{surface\} \/>/)
   assert.match(footer, /export function Footer\(\{ surface \}: \{ surface: Surface \}\) \{\s*return <SiteFooter surface=\{surface === 'organiser' \? 'host' : 'explorer'\} \/>/)
-  assert.match(code(read('components/site/home-page.tsx')), /<SiteFooter surface="explorer" \/>/)
-  assert.match(code(read('components/site/host-page.tsx')), /<SiteFooter surface="host" \/>/)
-  assert.match(code(read('components/landing/icp-landing.tsx')), /<SiteFooter surface="host" \/>/)
+  // #4636: server pages render the footer through SiteFooterLive (the published site settings, coded when none).
+  assert.match(code(read('components/site/home-page.tsx')), /<SiteFooterLive surface="explorer" \/>/)
+  assert.match(code(read('components/site/host-page.tsx')), /<SiteFooterLive surface="host" \/>/)
+  assert.match(code(read('components/landing/icp-landing.tsx')), /<SiteFooterLive surface="host" \/>/)
   const css = code(read('components/marketing/site-footer.css'))
   assert.match(css, /padding: 72px 0 calc\(48px \+ var\(--mingla-privacy-strip\)\)/, 'clears the #4318 strip')
   assert.doesNotMatch(css, /position:\s*fixed/)
@@ -236,7 +239,7 @@ test('site nav: wordmark, five links, surface CTA, the 300ms ink menu with every
   assert.match(css, /\.nav-in \{[^}]*background: #fff;/, 'opaque white pill, readable over any section')
   // The landing pages and both redesigned pages use it; the old nav is gone from them.
   for (const rel of ['components/landing/icp-landing.tsx', 'components/site/home-page.tsx', 'components/site/host-page.tsx']) {
-    assert.match(code(read(rel)), /<SiteNav surface="(?:host|explorer)"/, `${rel} uses the site nav`)
+    assert.match(code(read(rel)), /<SiteNavLive surface="(?:host|explorer)"/, `${rel} uses the site nav (#4636: with the published settings)`)
     assert.doesNotMatch(code(read(rel)), /CutoutNav|CutoutFooter/, `${rel} drops the old chrome`)
   }
 })

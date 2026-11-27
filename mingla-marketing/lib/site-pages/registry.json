@@ -619,6 +619,10 @@
     {
       "route": "/host/[icp]",
       "reason": "the seven ICP pages are listed one by one"
+    },
+    {
+      "route": "/[...slug]",
+      "reason": "#4636: staff-made pages from Admin (Website pages, New page); each is its own content key (p-<id>), served only when live"
     }
   ]
 }

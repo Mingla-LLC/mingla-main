@@ -1,4 +1,3 @@
-import { SiteFooter } from '@/components/marketing/footer'
 import { LandingRoot } from '@/components/landing/landing-root'
 import { PromptDemoBlock } from '@/components/site-blocks/sections/prompt-demo-block'
 import { ReelHeroBlock } from '@/components/site-blocks/sections/reel-hero-block'
@@ -7,7 +6,7 @@ import { ToolkitBlock } from '@/components/site-blocks/sections/toolkit-block'
 import { VCardsBlock } from '@/components/site-blocks/sections/vcards-block'
 import { VideoBandBlock } from '@/components/site-blocks/sections/video-band-block'
 import { ARI_CARDS, HOST_BAND, HOST_HERO, HOST_KINDS, HOST_SITE, TOOLKIT } from '@/content/site-blocks/host'
-import { SiteNav } from './site-nav'
+import { SiteFooterLive, SiteNavLive } from './site-chrome'
 import '@/components/landing/landing.css'
 import './site.css'
 
@@ -28,7 +27,7 @@ export { HOST_REEL } from '@/content/site-blocks/host'
 export function HostPage() {
   return (
     <LandingRoot>
-      <SiteNav surface="host" current="host" />
+      <SiteNavLive surface="host" current="host" />
       <ReelHeroBlock content={HOST_HERO} colour="night" blockId="rm-title" />
       {/* Host types */}
       <TilesBlock content={HOST_KINDS} colour="paper" blockId="host-kinds" />
@@ -40,7 +39,7 @@ export function HostPage() {
       <ToolkitBlock content={TOOLKIT} colour="paper" blockId="host-kit" />
       {/* Closing band */}
       <VideoBandBlock content={HOST_BAND} blockId="host-end" />
-      <SiteFooter surface="host" />
+      <SiteFooterLive surface="host" />
     </LandingRoot>
   )
 }

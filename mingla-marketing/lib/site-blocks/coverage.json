@@ -5,6 +5,9 @@
     "SitePage": "page shell: nav, <main> and footer",
     "SiteNav": "site-wide nav (site settings, not a page block)",
     "SiteFooter": "site-wide footer (site settings, not a page block)",
+    "SiteNavLive": "site-wide nav with the published site settings (#4636 build 2; not a page block)",
+    "SiteFooterLive": "site-wide footer with the published site settings (#4636 build 2; not a page block)",
+    "PublishedOr": "#4636 build 2: the page's published block list when one exists, else these coded sections (I-4452-NO-BLOCKS-NO-CHANGE)",
     "Spot": "#4452 spot: renders a staff form / buttons / banner block only when one is published",
     "IcpLandingAnalytics": "analytics listener, renders nothing visible",
     "CallButtonAnalytics": "analytics listener, renders nothing visible",
@@ -22,13 +25,13 @@
       "key": "home",
       "path": "/",
       "source": "components/site/home-page.tsx#HomePage",
-      "sections": ["LandingRoot", "SiteNav", "block:reelHero", "block:steps", "block:tiles", "block:citiesRow", "block:marquee", "block:videoBand", "SiteFooter"]
+      "sections": ["LandingRoot", "SiteNavLive", "block:reelHero", "block:steps", "block:tiles", "block:citiesRow", "block:marquee", "block:videoBand", "SiteFooterLive"]
     },
     {
       "key": "host",
       "path": "/host",
       "source": "components/site/host-page.tsx#HostPage",
-      "sections": ["LandingRoot", "SiteNav", "block:reelHero", "block:tiles", "block:promptDemo", "block:vcards", "block:toolkit", "block:videoBand", "SiteFooter"]
+      "sections": ["LandingRoot", "SiteNavLive", "block:reelHero", "block:tiles", "block:promptDemo", "block:vcards", "block:toolkit", "block:videoBand", "SiteFooterLive"]
     },
     {
       "key": "host-template",
@@ -38,7 +41,7 @@
         "LandingRoot",
         "IcpLandingAnalytics",
         "CallButtonAnalytics",
-        "SiteNav",
+        "SiteNavLive",
         "block:icpHero",
         "Spot",
         "block:litAbout",
@@ -50,33 +53,33 @@
         "block:faq",
         "block:videoBand",
         "Spot",
-        "SiteFooter"
+        "SiteFooterLive"
       ]
     },
-    { "key": "host-icp-route", "path": "/host/[icp]", "source": "app/host/[icp]/page.tsx", "sections": ["IcpLandingPage"] },
+    { "key": "host-icp-route", "path": "/host/[icp]", "source": "app/host/[icp]/page.tsx", "sections": ["PublishedOr", "IcpLandingAnalytics", "CallButtonAnalytics", "IcpLandingPage"] },
     {
       "key": "creators",
       "path": "/creators",
       "source": "app/creators/page.tsx",
-      "sections": ["SitePage", "block:heroWords", "Spot", "frame:programme", "block:clipGrid", "Spot", "block:steps", "Spot", "block:videoBand", "block:finePrint", "Spot"]
+      "sections": ["PublishedOr", "SitePage", "block:heroWords", "Spot", "frame:programme", "block:clipGrid", "Spot", "block:steps", "Spot", "block:videoBand", "block:finePrint", "Spot"]
     },
     {
       "key": "locals",
       "path": "/locals",
       "source": "app/locals/page.tsx",
-      "sections": ["SitePage", "block:heroWords", "Spot", "frame:programme", "block:steps", "Spot", "block:facts", "Spot", "block:videoBand", "block:finePrint", "Spot"]
+      "sections": ["PublishedOr", "SitePage", "block:heroWords", "Spot", "frame:programme", "block:steps", "Spot", "block:facts", "Spot", "block:videoBand", "block:finePrint", "Spot"]
     },
     {
       "key": "about",
       "path": "/about",
       "source": "app/(core)/about/page.tsx",
-      "sections": ["SitePage", "block:pageHero", "block:answer", "block:wideClip", "block:paras", "block:vcards"]
+      "sections": ["PublishedOr", "SitePage", "block:pageHero", "block:answer", "block:wideClip", "block:paras", "block:vcards"]
     },
     {
       "key": "going-out",
       "path": "/going-out",
       "source": "app/(core)/going-out/page.tsx",
-      "sections": ["SitePage", "block:pageHero", "block:answer", "block:filterGrid", "block:cityLinks"]
+      "sections": ["PublishedOr", "SitePage", "block:pageHero", "block:answer", "block:filterGrid", "block:cityLinks"]
     },
     { "key": "cities", "path": "/cities", "source": "app/(core)/cities/page.tsx", "sections": ["SitePage", "block:pageHero", "block:citiesRow"] },
     {
@@ -102,7 +105,7 @@
       "source": "components/cities/live-city-page.tsx#LiveCityPage",
       "sections": ["CityHubImpression", "SitePage", "block:cityHero", "CityBreadcrumb", "block:cityWeekend", "block:cityHostBand"]
     },
-    { "key": "download", "path": "/download", "source": "app/download/page.tsx", "sections": ["SitePage", "block:getApp"] },
+    { "key": "download", "path": "/download", "source": "app/download/page.tsx", "sections": ["PublishedOr", "SitePage", "block:getApp"] },
     { "key": "support", "path": "/support", "source": "app/support/page.tsx", "sections": ["SitePage", "block:pageHero", "block:quickLinks"] },
     {
       "key": "help",
@@ -119,8 +122,8 @@
     { "key": "tools", "path": "/tools", "source": "app/tools/page.tsx", "sections": ["SitePage", "block:pageHero", "block:toolCards"] },
     { "key": "schedule", "path": "/schedule", "source": "app/schedule/page.tsx", "sections": ["SitePage", "block:scheduler", "Spot"] },
     { "key": "blog", "path": "/blog", "source": "app/blog/page.tsx", "sections": ["SitePage", "block:blogStories"] },
-    { "key": "home-route", "path": "/", "source": "app/(explorer)/page.tsx", "sections": ["MinglaEntityGraph", "HomePage"] },
-    { "key": "host-route", "path": "/host", "source": "app/host/page.tsx", "sections": ["HostPage"] }
+    { "key": "home-route", "path": "/", "source": "app/(explorer)/page.tsx", "sections": ["MinglaEntityGraph", "PublishedOr", "HomePage"] },
+    { "key": "host-route", "path": "/host", "source": "app/host/page.tsx", "sections": ["PublishedOr", "HostPage"] }
   ],
   "notBlocks": [
     { "key": "blog-post", "path": "/blog/[slug]", "reason": "blog article body: edited in Admin Blog (#4137)" },

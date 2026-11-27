@@ -1,6 +1,5 @@
 import { IcpLandingAnalytics } from './icp-landing-analytics'
 import { CallButtonAnalytics } from '@/components/forms/call-button-analytics'
-import { SiteFooter } from '@/components/marketing/footer'
 import { Spot } from '@/components/site-blocks/spot'
 import { ChipsBlock } from '@/components/site-blocks/sections/chips-block'
 import { FaqBlock } from '@/components/site-blocks/sections/faq-block'
@@ -9,7 +8,7 @@ import { IcpHeroBlock } from '@/components/site-blocks/sections/icp-hero-block'
 import { LitAboutBlock } from '@/components/site-blocks/sections/lit-about-block'
 import { ToolCardBlock } from '@/components/site-blocks/sections/tool-card-block'
 import { VideoBandBlock } from '@/components/site-blocks/sections/video-band-block'
-import { SiteNav } from '@/components/site/site-nav'
+import { SiteFooterLive, SiteNavLive } from '@/components/site/site-chrome'
 import '@/components/site/site.css'
 import type { IcpSlug } from '@/content/host-landing/icps'
 import { icpBlocks } from '@/content/site-blocks/icp'
@@ -42,7 +41,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
     <LandingRoot slug={slug}>
       <IcpLandingAnalytics slug={slug} />
       <CallButtonAnalytics />
-      <SiteNav surface="host" current="host" />
+      <SiteNavLive surface="host" current="host" />
 
       {/* 1. Hero */}
       <IcpHeroBlock content={b.hero} blockId="lp-title" />
@@ -69,7 +68,7 @@ export function IcpLandingPage({ slug }: { slug: IcpSlug }) {
       <VideoBandBlock content={b.band} blockId="lp-end" />
 
       <Spot page={slug} id="before-footer" />
-      <SiteFooter surface="host" />
+      <SiteFooterLive surface="host" />
     </LandingRoot>
   )
 }

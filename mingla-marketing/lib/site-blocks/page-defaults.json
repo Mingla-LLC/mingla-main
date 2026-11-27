@@ -1,0 +1,2032 @@
+{
+  "registry_version": 1,
+  "pages": {
+    "home": [
+      {
+        "type": "reelHero",
+        "version": 1,
+        "content": {
+          "lines": [
+            "Find",
+            "that fit the vibe."
+          ],
+          "phrases": [
+            "romantic plans",
+            "weekend plans",
+            "side quests",
+            "group plans",
+            "solo plans"
+          ],
+          "srTitle": "Find plans that fit the vibe.",
+          "sub": "Mingla is the app for what to do. Real places, events and experiences, picked for the mood you’re in, in the city you’re in.",
+          "cta": {
+            "label": "Use Mingla",
+            "to": "app:explorer",
+            "track": "hero"
+          },
+          "cards": [
+            {
+              "media": "v:amapiano",
+              "caption": "Amapiano night"
+            },
+            {
+              "media": "v:h-boat",
+              "caption": "Boat day"
+            },
+            {
+              "media": "v:salsa",
+              "caption": "Salsa social"
+            },
+            {
+              "media": "v:h-arcade",
+              "caption": "Arcade night"
+            },
+            {
+              "media": "v:cozy",
+              "caption": "Movie under the stars"
+            },
+            {
+              "media": "v:h-garden",
+              "caption": "Garden walk"
+            },
+            {
+              "media": "v:grandplace",
+              "caption": "Old-town evening"
+            },
+            {
+              "media": "v:h-pottery",
+              "caption": "Pottery class"
+            },
+            {
+              "media": "v:beach",
+              "caption": "Beach day"
+            },
+            {
+              "media": "v:h-music",
+              "caption": "Live music"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "steps",
+        "version": 1,
+        "content": {
+          "variant": "home",
+          "heading": "From *“what should we do?”* to a date in the calendar.",
+          "lead": "Discover places, events, trips and experiences, compare the details that change the decision, and save the good ones together.",
+          "items": [
+            {
+              "title": "Pick a *vibe.*",
+              "body": "Tell Mingla the mood. It shows real plans nearby, not a wall of map pins.",
+              "visual": "pills",
+              "words": [
+                "Chill",
+                "Romantic",
+                "Adventurous"
+              ]
+            },
+            {
+              "title": "Keep the *good ones.*",
+              "body": "Everything you like goes to your Saved tab, ready when the group chat wakes up.",
+              "visual": "saved",
+              "words": [
+                "Saved · 12 plans"
+              ]
+            },
+            {
+              "title": "Pick a *date.*",
+              "body": "Tap Schedule and it’s on your Calendar. The date is the plan.",
+              "visual": "scheduled",
+              "words": [
+                "Sat · Scheduled"
+              ]
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "tiles",
+        "version": 1,
+        "content": {
+          "heading": "Not a dating app. *A plans app.*",
+          "lead": "Mingla doesn’t match strangers. It finds the plan for the people you already have, or for just you.",
+          "items": [
+            {
+              "media": "v:bachata",
+              "title": "Couples",
+              "line": "Date nights that aren’t dinner again.",
+              "action": {
+                "label": "Couples",
+                "to": "/going-out"
+              }
+            },
+            {
+              "media": "v:a-friends",
+              "title": "Friends",
+              "line": "The plan the whole chat agrees on.",
+              "action": {
+                "label": "Friends",
+                "to": "/going-out"
+              }
+            },
+            {
+              "media": "v:a-family",
+              "title": "Family",
+              "line": "Something for every age.",
+              "action": {
+                "label": "Family",
+                "to": "/going-out"
+              }
+            },
+            {
+              "media": "v:a-solo",
+              "title": "Solo",
+              "line": "Some of the best plans only need you.",
+              "action": {
+                "label": "Solo",
+                "to": "/going-out"
+              }
+            }
+          ]
+        },
+        "colour": "night"
+      },
+      {
+        "type": "citiesRow",
+        "version": 1,
+        "content": {
+          "variant": "home",
+          "heading": "Your city, *but better.*",
+          "action": {
+            "label": "All cities",
+            "to": "/cities"
+          }
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "marquee",
+        "version": 1,
+        "content": {
+          "words": [
+            "Date night",
+            "Side quests",
+            "Live music",
+            "Brunch",
+            "Boat day",
+            "Gallery hop",
+            "Game night",
+            "Solo Saturday"
+          ]
+        }
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "plain",
+          "media": "v:crowd",
+          "heading": "Run a place *with soul?*",
+          "body": "Mingla Host is the growth and operating system that helps the right people find and book you.",
+          "primary": {
+            "label": "See Mingla Host",
+            "to": "/host"
+          }
+        }
+      }
+    ],
+    "host": [
+      {
+        "type": "reelHero",
+        "version": 1,
+        "content": {
+          "lines": [
+            "Everything",
+            "*a host needs.*"
+          ],
+          "sub": "The growth and operating system for places with soul: get found by people looking for something to do, then run the night, the trip or the room.",
+          "cta": {
+            "to": "app:host",
+            "track": "hero"
+          },
+          "cards": [
+            {
+              "media": "v:amapiano",
+              "caption": "Events"
+            },
+            {
+              "media": "v:sailing",
+              "caption": "Trips"
+            },
+            {
+              "media": "v:pottery",
+              "caption": "Experiences"
+            },
+            {
+              "media": "v:cafe",
+              "caption": "Cafés"
+            },
+            {
+              "media": "v:beach",
+              "caption": "Resorts"
+            },
+            {
+              "media": "v:hc-gallery",
+              "caption": "Galleries"
+            },
+            {
+              "media": "v:nightlife",
+              "caption": "Play spaces"
+            },
+            {
+              "media": "v:hostess",
+              "caption": "Restaurants"
+            },
+            {
+              "media": "v:salsa",
+              "caption": "Dance socials"
+            },
+            {
+              "media": "v:hc-bowling",
+              "caption": "Play spaces"
+            }
+          ]
+        },
+        "colour": "night"
+      },
+      {
+        "type": "tiles",
+        "version": 1,
+        "content": {
+          "heading": "Built for *every kind* of host.",
+          "lead": "Pick yours.",
+          "items": [
+            {
+              "media": "v:crowd",
+              "title": "Events",
+              "line": "Fill the room,",
+              "lineEnd": "not just the timeline.",
+              "action": {
+                "label": "Events",
+                "to": "/host/events"
+              }
+            },
+            {
+              "media": "v:hikers",
+              "title": "Trips",
+              "line": "Plan the trip,",
+              "lineEnd": "let the group pay in parts.",
+              "action": {
+                "label": "Trips",
+                "to": "/host/trips"
+              }
+            },
+            {
+              "media": "v:pottery",
+              "title": "Experiences",
+              "line": "Your class is the plan,",
+              "lineEnd": "make it easy to book.",
+              "action": {
+                "label": "Experiences",
+                "to": "/host/experiences"
+              }
+            },
+            {
+              "media": "v:cafe",
+              "title": "Restaurants",
+              "line": "Get found by people",
+              "lineEnd": "choosing where to eat.",
+              "action": {
+                "label": "Restaurants",
+                "to": "/host/restaurants"
+              }
+            },
+            {
+              "media": "v:lp-hotel",
+              "title": "Hotels",
+              "line": "Be the reason",
+              "lineEnd": "they book the weekend.",
+              "action": {
+                "label": "Hotels",
+                "to": "/host/hotels"
+              }
+            },
+            {
+              "media": "v:lp-art",
+              "title": "Art & culture",
+              "line": "Culture is a plan,",
+              "lineEnd": "make it the obvious one.",
+              "action": {
+                "label": "Art & culture",
+                "to": "/host/art"
+              }
+            },
+            {
+              "media": "v:nightlife",
+              "title": "Play",
+              "line": "Make your place",
+              "lineEnd": "the group’s yes.",
+              "action": {
+                "label": "Play",
+                "to": "/host/play"
+              }
+            },
+            {
+              "media": "v:bg-exp",
+              "title": "Free tools",
+              "line": "No sign-up, no sales call.",
+              "action": {
+                "label": "Free tools",
+                "to": "/tools"
+              },
+              "look": "tools"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "promptDemo",
+        "version": 1,
+        "content": {
+          "heading": "Prompt your website *into existence.*",
+          "lead": "Describe your place and get a free site in seconds, connected to your listings, tickets and bookings.",
+          "button": "Make my site"
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "vcards",
+        "version": 1,
+        "content": {
+          "variant": "ari",
+          "heading": "Marketing that *doesn’t sleep.*",
+          "lead": "Ari works across every channel you have: the ones you own, the ones people share, the ones you earn and the ones you pay for.",
+          "items": [
+            {
+              "media": "v:cafe",
+              "title": "Owned",
+              "line": "Your site, listings, email and SMS."
+            },
+            {
+              "media": "v:crowd",
+              "title": "Shared",
+              "line": "The posts and links people pass on."
+            },
+            {
+              "media": "v:salsa",
+              "title": "Earned",
+              "line": "Reviews, creators and word of mouth."
+            },
+            {
+              "media": "v:nightlife",
+              "title": "Paid",
+              "line": "Ads that point to pages that convert."
+            }
+          ]
+        },
+        "colour": "night"
+      },
+      {
+        "type": "toolkit",
+        "version": 1,
+        "content": {
+          "heading": "Run it *all* from one place.",
+          "items": [
+            {
+              "title": "Events",
+              "line": "Ticketing, guest lists, door scanning and an AI demand forecast.",
+              "action": {
+                "label": "Events",
+                "to": "/host/events"
+              }
+            },
+            {
+              "title": "Trips",
+              "line": "Group chat, instalments and itineraries.",
+              "action": {
+                "label": "Trips",
+                "to": "/host/trips"
+              }
+            },
+            {
+              "title": "Venue management",
+              "line": "Reservations, table ordering, menu intelligence and a demand forecast.",
+              "action": {
+                "label": "Venue management",
+                "to": "/host/restaurants"
+              }
+            },
+            {
+              "title": "Marketing",
+              "line": "Email, SMS and CRM nurturing that brings people back.",
+              "action": {
+                "to": "app:host",
+                "track": "toolkit"
+              }
+            },
+            {
+              "title": "Ari AI",
+              "line": "Owned, shared, earned and paid, in one assistant.",
+              "action": {
+                "to": "app:host",
+                "track": "toolkit"
+              }
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "glass",
+          "media": "v:hostess",
+          "heading": "Get found. *Get booked.*",
+          "bring": "Questions first?",
+          "primary": {
+            "label": "Book a call",
+            "to": "/schedule"
+          }
+        }
+      }
+    ],
+    "creators": [
+      {
+        "type": "heroWords",
+        "version": 1,
+        "content": {
+          "title": "Get hired to show people what a city",
+          "em": "feels like.",
+          "lead": "Mingla Creators make the videos and photos that help people choose. Become a Creator and complete paid gigs for places and events on Mingla.",
+          "primary": {
+            "label": "Get Mingla to join",
+            "to": "app:explorer",
+            "track": "creators_join"
+          },
+          "secondary": {
+            "label": "Book a call",
+            "to": "/schedule/creators"
+          }
+        }
+      },
+      {
+        "type": "clipGrid",
+        "version": 1,
+        "content": {
+          "items": [
+            {
+              "media": "v:amapiano"
+            },
+            {
+              "media": "v:salsa"
+            },
+            {
+              "media": "v:pottery"
+            },
+            {
+              "media": "v:beach"
+            }
+          ]
+        }
+      },
+      {
+        "type": "steps",
+        "version": 1,
+        "content": {
+          "variant": "creators",
+          "items": [
+            {
+              "title": "Set up your profile",
+              "body": "Build your profile in Mingla. Creator mode stays private until every readiness check is complete."
+            },
+            {
+              "title": "Get hired",
+              "body": "See the city, format, dates and budget before you raise your hand. Host names stay private until a hire is agreed."
+            },
+            {
+              "title": "Get paid",
+              "body": "Your contract, delivery and payout status stay together. Mingla does not turn your earnings into a wallet balance."
+            }
+          ]
+        }
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "creators",
+          "media": "v:salsa",
+          "heading": "Questions *first?*",
+          "bring": "Talk to the Creators team",
+          "primary": {
+            "label": "Book a call",
+            "to": "/schedule/creators"
+          }
+        }
+      },
+      {
+        "type": "finePrint",
+        "version": 1,
+        "content": {
+          "before": "You’ll read and accept the",
+          "link": {
+            "label": "Creator agreement",
+            "to": "/creator-agreement"
+          },
+          "after": "inside Mingla before your first gig."
+        }
+      }
+    ],
+    "locals": [
+      {
+        "type": "heroWords",
+        "version": 1,
+        "content": {
+          "title": "One honest review,",
+          "em": "every month.",
+          "lead": "Mingla chooses up to three Locals in each open city. Complete one useful, independent place review each month and earn $150 after approval.",
+          "primary": {
+            "label": "Get Mingla to apply",
+            "to": "app:explorer",
+            "track": "locals_apply"
+          },
+          "secondary": {
+            "label": "Book a call",
+            "to": "/schedule/locals"
+          }
+        }
+      },
+      {
+        "type": "steps",
+        "version": 1,
+        "content": {
+          "variant": "locals",
+          "heading": "Independent by design, *paid by Mingla.*",
+          "items": [
+            {
+              "title": "Choose one eligible place",
+              "body": "Pick somewhere in your city that no Mingla Local has covered recently and where you have no personal or paid connection."
+            },
+            {
+              "title": "Visit on your own terms",
+              "body": "Go during the month and pay for your own visit. The $150 monthly payment is designed to cover the outing and your work."
+            },
+            {
+              "title": "Publish a useful first-hand review",
+              "body": "Share a specific written review, strong photos or a short video, and your disclosed social post. Mingla reviews the work, not the place."
+            }
+          ]
+        }
+      },
+      {
+        "type": "facts",
+        "version": 1,
+        "content": {
+          "items": [
+            {
+              "title": "$150 after approval",
+              "body": "Your payout is converted into your payout currency when it is queued, shown to you, and sent through your connected payout provider. It never comes from the place you reviewed."
+            },
+            {
+              "title": "Trust comes first",
+              "body": "You must disclose the Mingla Local relationship. Personal ties and recent paid work with a place make it ineligible. A place may reply publicly, but it cannot choose, pay or silence you."
+            }
+          ]
+        }
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "locals",
+          "media": "v:amb-locals",
+          "heading": "Your city, *in your words.*",
+          "body": "Applications appear in Mingla only when a city is open. With three seats per city, a thoughtful sample matters more than a giant following.",
+          "primary": {
+            "label": "Get Mingla to apply",
+            "to": "app:explorer",
+            "track": "locals_band"
+          },
+          "secondary": {
+            "label": "Book a call",
+            "to": "/schedule/locals"
+          }
+        }
+      },
+      {
+        "type": "finePrint",
+        "version": 1,
+        "content": {
+          "before": "You’ll read and accept the",
+          "link": {
+            "label": "Local agreement",
+            "to": "/local-agreement"
+          },
+          "after": "inside Mingla when you apply."
+        }
+      }
+    ],
+    "about": [
+      {
+        "type": "pageHero",
+        "version": 1,
+        "content": {
+          "variant": "centred",
+          "title": "Making real life *easier to find.*",
+          "lead": "Mingla is the app for what to do, and the operating system for the places that make a city worth going out in."
+        }
+      },
+      {
+        "type": "answer",
+        "version": 1,
+        "content": {
+          "question": "What is Mingla?",
+          "answer": "Mingla is one platform with an Explorer experience for people choosing what to do and a Host experience for businesses and organisers creating, promoting and running the places, events and experiences they can choose."
+        }
+      },
+      {
+        "type": "wideClip",
+        "version": 1,
+        "content": {
+          "media": "v:amb-about"
+        }
+      },
+      {
+        "type": "paras",
+        "version": 1,
+        "content": {
+          "heading": "Good plans shouldn’t be *hard to find.*",
+          "paragraphs": [
+            "The best places in a city are often the hardest to find: the class with ten spots, the gallery late night, the café everyone’s friend knows about. Mingla puts them where people plan.",
+            "We don’t match strangers. Mingla is for couples, friends, groups and solo plans: the people you already have, and the plans you haven’t made yet.",
+            "And for hosts, Mingla is the growth and operating system that helps places with soul get found and booked."
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "vcards",
+        "version": 1,
+        "content": {
+          "variant": "about",
+          "items": [
+            {
+              "media": "v:ab-explorer",
+              "wordmark": "Mingla",
+              "title": "For people *going out.*",
+              "line": "Find plans that fit the vibe. Save them, schedule them, go.",
+              "action": {
+                "label": "For people going out",
+                "to": "app:explorer",
+                "track": "about_explorer"
+              }
+            },
+            {
+              "media": "v:ab-host",
+              "wordmark": "Mingla Host",
+              "title": "For places *with soul.*",
+              "line": "Get found, sell out and bring people back.",
+              "action": {
+                "label": "For places with soul",
+                "to": "/host"
+              }
+            }
+          ]
+        },
+        "colour": "cream"
+      }
+    ],
+    "going-out": [
+      {
+        "type": "pageHero",
+        "version": 1,
+        "content": {
+          "variant": "plain",
+          "title": "Going out, *sorted.*",
+          "lead": "Discover places, events, trips and experiences, inspect the details that change the decision, and save the useful options together."
+        }
+      },
+      {
+        "type": "answer",
+        "version": 1,
+        "content": {
+          "question": "What does Mingla Explorer help you do?",
+          "answer": "Mingla helps you move from “what should we do?” to a plan that fits the people, timing, budget, location and mood—then save it, share it and take the real booking, RSVP or ticket action when one is available."
+        }
+      },
+      {
+        "type": "filterGrid",
+        "version": 1,
+        "content": {
+          "chips": [
+            "Date ideas",
+            "With friends",
+            "Solo",
+            "Family",
+            "Side quests"
+          ],
+          "wideMedia": "v:cozy",
+          "wideTitle": "Movie nights, *under the stars.*",
+          "wideLine": "Events, trips and places picked for the weekend in your city.",
+          "wideAction": {
+            "label": "Movie nights, under the stars.",
+            "to": "/cities"
+          },
+          "empty": "No guides for that yet.",
+          "items": [
+            {
+              "media": "v:g-solo",
+              "title": "Solo Saturday",
+              "line": "Some of the best plans only need you.",
+              "tags": [
+                "Solo"
+              ],
+              "city": null
+            },
+            {
+              "media": "v:g-culture",
+              "title": "Lagos, not parties",
+              "line": "Four plans this week that aren’t parties.",
+              "tags": [
+                "With friends"
+              ],
+              "city": "lagos"
+            },
+            {
+              "media": "v:g-under",
+              "title": "Underrated Durham",
+              "line": "The places people tell their friends about.",
+              "tags": [
+                "With friends"
+              ],
+              "city": "durham-nc"
+            },
+            {
+              "media": "v:g-date",
+              "title": "Cary has range",
+              "line": "Not the Cary you remember.",
+              "tags": [
+                "Date ideas"
+              ],
+              "city": "cary-nc"
+            },
+            {
+              "media": "v:g-family",
+              "title": "With the grandparents",
+              "line": "Plans for every age at the table.",
+              "tags": [
+                "Family"
+              ],
+              "city": null
+            },
+            {
+              "media": "v:g-quests",
+              "title": "Lagos side quests",
+              "line": "Pottery, paint, galleries and more.",
+              "tags": [
+                "Side quests"
+              ],
+              "city": "lagos"
+            }
+          ]
+        }
+      },
+      {
+        "type": "cityLinks",
+        "version": 1,
+        "content": {
+          "heading": "Plans, *city by city.*",
+          "prefix": "Things to do in"
+        }
+      }
+    ],
+    "download": [
+      {
+        "type": "getApp",
+        "version": 1,
+        "content": {
+          "explorerTitle": "Get *Mingla.*",
+          "explorerLead": "Scan this with your phone, or pick your store.",
+          "hostTitle": "Get *Mingla Host.*",
+          "hostLead": "Scan this with your phone, pick your store, or run it in your browser.",
+          "media": "v:cozy"
+        }
+      }
+    ],
+    "events": [
+      {
+        "type": "icpHero",
+        "version": 1,
+        "content": {
+          "pillLead": "For",
+          "pill": "event organisers",
+          "line1": "Fill the room,",
+          "line2": "not just the timeline.",
+          "sub": "Tickets, guest lists, door scanning and an AI demand forecast, in one place built for the people who throw the night, from the first post to a packed room.",
+          "media": "v:crowd",
+          "call": {
+            "label": "Book a call",
+            "to": "/schedule?icp=events"
+          },
+          "app": {
+            "to": "app:host",
+            "track": "hero"
+          }
+        }
+      },
+      {
+        "type": "litAbout",
+        "version": 1,
+        "content": {
+          "intro": "You bring the night. Mingla puts it where people are already deciding what to do this weekend, then gives you the tools to sell it, run the door and bring the same crowd back.",
+          "call": {
+            "label": "Talk to the team",
+            "to": "/schedule?icp=events"
+          },
+          "insideLabel": "See what’s inside",
+          "duoA": "Posted",
+          "duoB": "Packed",
+          "big": "People don’t search for a category. They search for a plan. Put the *date, the place and the price* together, say what’s included in plain words, and give them *one link to book.*"
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "icpFeatures",
+        "version": 1,
+        "content": {
+          "heading": "Everything between *the flyer and the door.*",
+          "lead": "Built around how events actually run: the build, the sale, the night and the follow-up.",
+          "background": "v:bg-events",
+          "cta": {
+            "to": "app:host",
+            "track": "features"
+          },
+          "items": [
+            {
+              "icon": "ticket",
+              "title": "Sell it your way",
+              "media": "v:salsa",
+              "body": "One night, a whole weekend or every Friday. Online, in person or both. Free RSVPs or paid tickets, priced in your currency.",
+              "tags": [
+                "One-night",
+                "Multi-day",
+                "Weekly",
+                "Online & hybrid",
+                "Free RSVP"
+              ]
+            },
+            {
+              "icon": "users",
+              "title": "Know who’s coming",
+              "media": "v:amapiano",
+              "body": "Guest lists and groups, ticket scanning at the door, and an AI demand forecast so you can plan the room before you book it.",
+              "tags": [
+                "Guest lists",
+                "Groups",
+                "Door scanning",
+                "Demand forecast"
+              ]
+            },
+            {
+              "icon": "mail",
+              "title": "Bring them back",
+              "media": "v:cozy",
+              "body": "Send the next date to the people who came last time, before the flyer. Email campaigns to a group, discount codes and referrals.",
+              "tags": [
+                "Email campaigns",
+                "Discount codes",
+                "Referrals"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "chips",
+        "version": 1,
+        "content": {
+          "heading": "Built for *events* of every size.",
+          "items": [
+            "Promoters",
+            "Party series",
+            "Concerts & live music",
+            "Comedy nights",
+            "Dance socials",
+            "Festivals",
+            "Community events",
+            "Conferences"
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "toolCard",
+        "version": 1,
+        "content": {
+          "tool": "Event Turnout Predictor",
+          "body": "How many people will actually show up? Get a turnout forecast, and see what your promo budget can buy. Free, in under a minute.",
+          "cta": "Forecast my turnout",
+          "fields": [
+            {
+              "label": "Event type",
+              "input": "select",
+              "example": "Party / club night"
+            },
+            {
+              "label": "City",
+              "input": "text",
+              "example": "Lagos"
+            },
+            {
+              "label": "Ticket price",
+              "input": "text",
+              "example": "₦9,999"
+            },
+            {
+              "label": "Promo budget",
+              "input": "text",
+              "example": "₦50,000"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "faq",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "heading": "The *short* answers.",
+          "action": {
+            "label": "Help centre",
+            "to": "/help"
+          },
+          "items": [
+            {
+              "question": "Can I publish a free event without connecting a bank?",
+              "answer": "Yes. Free events publish without one. You only connect a bank when you sell paid tickets."
+            },
+            {
+              "question": "Can I sell in naira?",
+              "answer": "Yes. Nigerian brands price in naira, and your address chooses the payment network that pays you out."
+            },
+            {
+              "question": "Does Mingla see my bank details?",
+              "answer": "No. Your bank details are handled by the payment provider and never touch Mingla."
+            },
+            {
+              "question": "What about weekly or multi-day events?",
+              "answer": "Both are built in: set it once as a recurring or multi-day event and sell each date."
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "media": "v:cozy",
+          "heading": "Your next night, *on Mingla.*",
+          "bring": "Set it up today.",
+          "primary": {
+            "to": "app:host",
+            "track": "band"
+          }
+        }
+      }
+    ],
+    "trips": [
+      {
+        "type": "icpHero",
+        "version": 1,
+        "content": {
+          "pillLead": "For",
+          "pill": "trip organisers",
+          "line1": "Plan the trip,",
+          "line2": "let the group pay in parts.",
+          "sub": "Itineraries, payment plans and a group chat that keeps everyone on the same page, from the first deposit to the last day of the trip you planned together.",
+          "media": "v:hikers",
+          "call": {
+            "label": "Book a call",
+            "to": "/schedule?icp=trips"
+          },
+          "app": {
+            "to": "app:host",
+            "track": "hero"
+          }
+        }
+      },
+      {
+        "type": "litAbout",
+        "version": 1,
+        "content": {
+          "intro": "Group trips fall apart in the chat. Mingla gives the plan a home: one page with the itinerary, the price and the way to pay, and one place to talk.",
+          "call": {
+            "label": "Talk to the team",
+            "to": "/schedule?icp=trips"
+          },
+          "insideLabel": "See what’s inside",
+          "duoA": "Planned",
+          "duoB": "Paid",
+          "big": "Price it *per person,* show the *whole day by day,* and let people pay *in parts.* The trip stops being a maybe in a group chat and becomes a plan with a date."
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "icpFeatures",
+        "version": 1,
+        "content": {
+          "heading": "From idea to *wheels up.*",
+          "lead": "Everything a trip host juggles, in the order it actually happens.",
+          "background": "v:bg-trips",
+          "cta": {
+            "to": "app:host",
+            "track": "features"
+          },
+          "items": [
+            {
+              "icon": "map",
+              "title": "Itineraries people trust",
+              "media": "v:f-trip",
+              "body": "Lay out every day with times, places and what’s included, so people can see the trip before they commit to it.",
+              "tags": [
+                "Day by day",
+                "What’s included",
+                "Shareable page"
+              ]
+            },
+            {
+              "icon": "card",
+              "title": "Pay in instalments",
+              "media": "v:beach",
+              "body": "Take a deposit, then the rest in parts. Fewer drop-outs, and no chasing people for money in DMs.",
+              "tags": [
+                "Deposits",
+                "Instalments",
+                "One link to pay"
+              ]
+            },
+            {
+              "icon": "chat",
+              "title": "One group chat",
+              "media": "v:sailing",
+              "body": "Updates, reminders and questions live with the trip, not scattered across five apps.",
+              "tags": [
+                "Group chat",
+                "Updates",
+                "Reminders"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "chips",
+        "version": 1,
+        "content": {
+          "heading": "Built for *trips* of every size.",
+          "items": [
+            "Group trips",
+            "Weekend getaways",
+            "Boat days",
+            "Hiking & outdoors",
+            "Travel clubs",
+            "Retreats",
+            "Tours",
+            "Festival trips"
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "toolCard",
+        "version": 1,
+        "content": {
+          "tool": "Quote Any Trip",
+          "body": "Price a group trip in a minute: real hotels and activities, a full cost sheet, and exactly what to charge per person. Free.",
+          "cta": "Quote a trip",
+          "fields": [
+            {
+              "label": "Destination",
+              "input": "text",
+              "example": "Zanzibar"
+            },
+            {
+              "label": "Group size",
+              "input": "text",
+              "example": "12 people"
+            },
+            {
+              "label": "Nights",
+              "input": "text",
+              "example": "4"
+            },
+            {
+              "label": "Style",
+              "input": "select",
+              "example": "Comfort"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "faq",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "heading": "The *short* answers.",
+          "action": {
+            "label": "Help centre",
+            "to": "/help"
+          },
+          "items": [
+            {
+              "question": "Can people pay in instalments?",
+              "answer": "Yes. Instalments are built into trips, so people can pay a deposit and then the rest in parts."
+            },
+            {
+              "question": "Where does the group talk?",
+              "answer": "Each trip has its own group chat, so updates and questions stay with the plan."
+            },
+            {
+              "question": "Can I share the itinerary before people book?",
+              "answer": "Yes. The trip page shows the day by day, so people can see the plan before they pay."
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "media": "v:sailing",
+          "heading": "Your next trip, *booked out.*",
+          "bring": "Set it up today.",
+          "primary": {
+            "to": "app:host",
+            "track": "band"
+          }
+        }
+      }
+    ],
+    "experiences": [
+      {
+        "type": "icpHero",
+        "version": 1,
+        "content": {
+          "pillLead": "For",
+          "pill": "experience hosts",
+          "line1": "Your class is the plan,",
+          "line2": "make it easy to book.",
+          "sub": "Workshops, classes, tastings and tours: list the sessions, take bookings, sell the spots and fill the next one with the people who loved the last one.",
+          "media": "v:pottery",
+          "call": {
+            "label": "Book a call",
+            "to": "/schedule?icp=experiences"
+          },
+          "app": {
+            "to": "app:host",
+            "track": "hero"
+          }
+        }
+      },
+      {
+        "type": "litAbout",
+        "version": 1,
+        "content": {
+          "intro": "Experiences sell when people can picture themselves there. Mingla shows the moment, the time and the price in one place, and makes the next step one tap.",
+          "call": {
+            "label": "Talk to the team",
+            "to": "/schedule?icp=experiences"
+          },
+          "insideLabel": "See what’s inside",
+          "duoA": "Booked",
+          "duoB": "Rebooked",
+          "big": "Give people three things: *context,* what it is and why it matters; *vibe,* real moments and what to expect; and *a next step,* the date, place, price and one link to book."
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "icpFeatures",
+        "version": 1,
+        "content": {
+          "heading": "Run sessions, *not spreadsheets.*",
+          "lead": "For the hosts whose product is an afternoon people remember.",
+          "background": "v:bg-exp",
+          "cta": {
+            "to": "app:host",
+            "track": "features"
+          },
+          "items": [
+            {
+              "icon": "calendar",
+              "title": "Sessions on repeat",
+              "media": "v:pottery",
+              "body": "Set up a weekly class or a one-off workshop, with spots, prices and what’s included on every date.",
+              "tags": [
+                "Weekly classes",
+                "Workshops",
+                "Spots per session"
+              ]
+            },
+            {
+              "icon": "tag",
+              "title": "Price it properly",
+              "media": "v:salsa",
+              "body": "Sale prices, automatic discounts and codes for regulars, so a full class doesn’t mean an underpriced one.",
+              "tags": [
+                "Sale prices",
+                "Auto discounts",
+                "Codes"
+              ]
+            },
+            {
+              "icon": "mail",
+              "title": "Fill the next one",
+              "media": "v:bachata",
+              "body": "Send the next date to everyone who came before, and let referrals do the rest.",
+              "tags": [
+                "Campaigns",
+                "Referrals",
+                "Guest lists"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "chips",
+        "version": 1,
+        "content": {
+          "heading": "Built for *experiences* of every size.",
+          "items": [
+            "Pottery & craft",
+            "Dance classes",
+            "Cooking classes",
+            "Tastings",
+            "Wellness",
+            "Walking tours",
+            "Workshops",
+            "Kids’ activities"
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "toolCard",
+        "version": 1,
+        "content": {
+          "tool": "The Undercharging Audit",
+          "body": "Priced by guilt? See your true cost per head, including your own time, and the price you should actually charge. Free.",
+          "cta": "Audit my pricing",
+          "fields": [
+            {
+              "label": "Experience",
+              "input": "text",
+              "example": "Pottery class"
+            },
+            {
+              "label": "Price per person",
+              "input": "text",
+              "example": "₦15,000"
+            },
+            {
+              "label": "Spots per session",
+              "input": "text",
+              "example": "10"
+            },
+            {
+              "label": "Hours of your time",
+              "input": "text",
+              "example": "4"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "faq",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "heading": "The *short* answers.",
+          "action": {
+            "label": "Help centre",
+            "to": "/help"
+          },
+          "items": [
+            {
+              "question": "Can I run the same class every week?",
+              "answer": "Yes. Set it up as a recurring event and each date sells on its own."
+            },
+            {
+              "question": "Can I offer a discount to regulars?",
+              "answer": "Yes: discount codes, sale prices and automatic discounts are built in."
+            },
+            {
+              "question": "Can I take free RSVPs for a taster session?",
+              "answer": "Yes. Free RSVP events publish without a bank account."
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "media": "v:salsa",
+          "heading": "Your next session, *full.*",
+          "bring": "Set it up today.",
+          "primary": {
+            "to": "app:host",
+            "track": "band"
+          }
+        }
+      }
+    ],
+    "restaurants": [
+      {
+        "type": "icpHero",
+        "version": 1,
+        "content": {
+          "pillLead": "For",
+          "pill": "restaurants, cafés & diners",
+          "line1": "Get found by people",
+          "line2": "choosing where to eat.",
+          "sub": "A venue listing that sells the room, with reservations, table ordering, menu intelligence and a demand forecast for the nights ahead, all in one place.",
+          "media": "v:cafe",
+          "call": {
+            "label": "Book a call",
+            "to": "/schedule?icp=restaurants"
+          },
+          "app": {
+            "to": "app:host",
+            "track": "hero"
+          }
+        }
+      },
+      {
+        "type": "litAbout",
+        "version": 1,
+        "content": {
+          "intro": "People don’t pick a restaurant from a map pin. They pick a feeling. Mingla matches your place to the people already looking for it, then helps you run the service.",
+          "call": {
+            "label": "Talk to the team",
+            "to": "/schedule?icp=restaurants"
+          },
+          "insideLabel": "See what’s inside",
+          "duoA": "Listed",
+          "duoB": "Recommended",
+          "big": "Fill in the checklist once: a *hero cover,* at least *five photos,* your website, *typical spend,* the *“best for”* tags that match how people use your place, and a few quick yes-or-no answers. Then Mingla can *match you to the right people.*"
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "icpFeatures",
+        "version": 1,
+        "content": {
+          "heading": "From first look to *last table.*",
+          "lead": "The listing that gets you chosen, and the tools that run the room once they arrive.",
+          "background": "v:bg-rest",
+          "cta": {
+            "to": "app:host",
+            "track": "features"
+          },
+          "items": [
+            {
+              "icon": "image",
+              "title": "A listing that sells the room",
+              "media": "v:cafe",
+              "body": "A video cover, up to twenty photos, typical spend and “best for” tags, so people see the experience, not just the address.",
+              "tags": [
+                "Video cover",
+                "5–20 photos",
+                "Typical spend",
+                "Best for"
+              ]
+            },
+            {
+              "icon": "calendar",
+              "title": "Reservations & table ordering",
+              "media": "v:hostess",
+              "body": "Take bookings and orders in one place, and build your menu once for every surface.",
+              "tags": [
+                "Reservations",
+                "Table ordering",
+                "Menu builder"
+              ]
+            },
+            {
+              "icon": "chart",
+              "title": "Know the nights ahead",
+              "media": "v:grandplace",
+              "body": "Menu intelligence and a demand forecast show what’s selling and which nights need a push.",
+              "tags": [
+                "Menu intelligence",
+                "Demand forecast"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "chips",
+        "version": 1,
+        "content": {
+          "heading": "Built for *restaurants* of every size.",
+          "items": [
+            "Restaurants",
+            "Cafés",
+            "Diners",
+            "Brunch spots",
+            "Bakeries",
+            "Dessert & ice cream",
+            "Food halls",
+            "Supper clubs"
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "toolCard",
+        "version": 1,
+        "content": {
+          "tool": "Venue Website Grader",
+          "body": "Find out what your website says to a first-timer, and exactly what it’s costing you. Free report in 60 seconds.",
+          "cta": "Grade my website",
+          "fields": [
+            {
+              "label": "Your website",
+              "input": "text",
+              "example": "yourplace.com"
+            },
+            {
+              "label": "Type of place",
+              "input": "select",
+              "example": "Restaurant"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "faq",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "heading": "The *short* answers.",
+          "action": {
+            "label": "Help centre",
+            "to": "/help"
+          },
+          "items": [
+            {
+              "question": "What does Mingla need to recommend my venue?",
+              "answer": "A hero cover (a short video stands out most), at least five photos, your website, typical spend, “best for” tags and a few quick yes-or-no questions."
+            },
+            {
+              "question": "How many photos can I add?",
+              "answer": "At least five and up to twenty."
+            },
+            {
+              "question": "Can I build my menu in Mingla?",
+              "answer": "Yes. The menu builder sets it up once for your listing and table ordering."
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "media": "v:hostess",
+          "heading": "Your best table, *found.*",
+          "bring": "Set it up today.",
+          "primary": {
+            "to": "app:host",
+            "track": "band"
+          }
+        }
+      }
+    ],
+    "hotels": [
+      {
+        "type": "icpHero",
+        "version": 1,
+        "content": {
+          "pillLead": "For",
+          "pill": "hotels & resorts",
+          "line1": "Be the reason",
+          "line2": "they book the weekend.",
+          "sub": "List the stay, the day passes and the events on your grounds, and market them to the people planning their next getaway or a day by the pool.",
+          "media": "v:lp-hotel",
+          "call": {
+            "label": "Book a call",
+            "to": "/schedule?icp=hotels"
+          },
+          "app": {
+            "to": "app:host",
+            "track": "hero"
+          }
+        }
+      },
+      {
+        "type": "litAbout",
+        "version": 1,
+        "content": {
+          "intro": "A getaway starts as a plan someone makes with friends. Mingla puts your property, your beach days and your events in front of them while they’re still deciding.",
+          "call": {
+            "label": "Talk to the team",
+            "to": "/schedule?icp=hotels"
+          },
+          "insideLabel": "See what’s inside",
+          "duoA": "Seen",
+          "duoB": "Stayed",
+          "big": "Sell more than the room. *Beach days, pool parties, brunches* and *weekend packages* are plans people share, and every one of them is a way *back to your property.*"
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "icpFeatures",
+        "version": 1,
+        "content": {
+          "heading": "The stay is the start, *not the whole story.*",
+          "lead": "Turn your grounds into a calendar people want to be part of.",
+          "background": "v:bg-hotel",
+          "cta": {
+            "to": "app:host",
+            "track": "features"
+          },
+          "items": [
+            {
+              "icon": "sun",
+              "title": "Days and events on your grounds",
+              "media": "v:beach",
+              "body": "Sell day passes, beach days and parties as events, with tickets, guest lists and scanning at the gate.",
+              "tags": [
+                "Day passes",
+                "Events",
+                "Door scanning"
+              ]
+            },
+            {
+              "icon": "image",
+              "title": "A listing that feels like a getaway",
+              "media": "v:sailing",
+              "body": "Video cover, galleries and “best for” tags show the experience, not just the room types.",
+              "tags": [
+                "Video cover",
+                "Gallery",
+                "Best for"
+              ]
+            },
+            {
+              "icon": "mail",
+              "title": "Email and SMS that bring them back",
+              "media": "v:hikers",
+              "body": "Nurture past guests with campaigns for the next season, the next long weekend and the next event.",
+              "tags": [
+                "Email",
+                "SMS",
+                "CRM"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "chips",
+        "version": 1,
+        "content": {
+          "heading": "Built for *hotels* of every size.",
+          "items": [
+            "Resorts",
+            "Boutique hotels",
+            "Beach clubs",
+            "Guesthouses",
+            "Lodges",
+            "Day-pass pools",
+            "Retreat centres",
+            "Glamping"
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "toolCard",
+        "version": 1,
+        "content": {
+          "tool": "Venue Website Grader",
+          "body": "Find out what your website says to a first-timer, and exactly what it’s costing you. Free report in 60 seconds.",
+          "cta": "Grade my website",
+          "fields": [
+            {
+              "label": "Your website",
+              "input": "text",
+              "example": "yourresort.com"
+            },
+            {
+              "label": "Type of place",
+              "input": "select",
+              "example": "Resort"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "faq",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "heading": "The *short* answers.",
+          "action": {
+            "label": "Help centre",
+            "to": "/help"
+          },
+          "items": [
+            {
+              "question": "Can I sell day passes and events, not just stays?",
+              "answer": "Yes. Anything on your grounds can be listed and sold as an event with tickets."
+            },
+            {
+              "question": "Can I market to past guests?",
+              "answer": "Yes. Email and SMS campaigns go to the groups you build from your guest lists."
+            },
+            {
+              "question": "Can I price in my own currency?",
+              "answer": "Yes. Prices follow your brand’s country, including naira for Nigeria."
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "media": "v:beach",
+          "heading": "Your next season, *booked.*",
+          "bring": "Set it up today.",
+          "primary": {
+            "to": "app:host",
+            "track": "band"
+          }
+        }
+      }
+    ],
+    "art": [
+      {
+        "type": "icpHero",
+        "version": 1,
+        "content": {
+          "pillLead": "For",
+          "pill": "galleries, museums & art spaces",
+          "line1": "Culture is a plan,",
+          "line2": "make it the obvious one.",
+          "sub": "Openings, exhibitions, talks and late nights, listed where people plan their weekend, with tickets or free RSVPs and a guest list that comes back.",
+          "media": "v:lp-art",
+          "call": {
+            "label": "Book a call",
+            "to": "/schedule?icp=art"
+          },
+          "app": {
+            "to": "app:host",
+            "track": "hero"
+          }
+        }
+      },
+      {
+        "type": "litAbout",
+        "version": 1,
+        "content": {
+          "intro": "People want more from a weekend than another dinner. Mingla puts your exhibitions and events in the plan, with the context that makes them easy to say yes to.",
+          "call": {
+            "label": "Talk to the team",
+            "to": "/schedule?icp=art"
+          },
+          "insideLabel": "See what’s inside",
+          "duoA": "Seen",
+          "duoB": "Visited",
+          "big": "Local discovery is *bigger than restaurants.* Culture competes for the same weekend, and people are really asking: *is it worth leaving the house,* who is it for, and *how do I book?* Answer those and you’re in the plan."
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "icpFeatures",
+        "version": 1,
+        "content": {
+          "heading": "From the opening *to the next visit.*",
+          "lead": "For spaces whose calendar is the reason to come back.",
+          "background": "v:bg-art",
+          "cta": {
+            "to": "app:host",
+            "track": "features"
+          },
+          "items": [
+            {
+              "icon": "calendar",
+              "title": "Every opening, listed",
+              "media": "v:f-museum",
+              "body": "Exhibitions, openings, talks and late nights, each with its own page, date and way in.",
+              "tags": [
+                "Exhibitions",
+                "Openings",
+                "Talks",
+                "Late nights"
+              ]
+            },
+            {
+              "icon": "ticket",
+              "title": "Tickets or free RSVPs",
+              "media": "v:grandplace",
+              "body": "Charge for entry or take free RSVPs so you know who’s coming, and scan them in at the door.",
+              "tags": [
+                "Tickets",
+                "Free RSVP",
+                "Door scanning"
+              ]
+            },
+            {
+              "icon": "mail",
+              "title": "A list that comes back",
+              "media": "v:f-stage",
+              "body": "Every visitor joins your list, so the next exhibition starts with an audience.",
+              "tags": [
+                "Guest lists",
+                "Campaigns"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "chips",
+        "version": 1,
+        "content": {
+          "heading": "Built for *art & culture* of every size.",
+          "items": [
+            "Galleries",
+            "Museums",
+            "Art spaces",
+            "Studios",
+            "Theatres",
+            "Cultural centres",
+            "Libraries",
+            "Pop-up shows"
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "toolCard",
+        "version": 1,
+        "content": {
+          "tool": "The Undercharging Audit",
+          "body": "Priced by guilt? See your true cost per head, including your own time, and the price you should actually charge. Free.",
+          "cta": "Audit my pricing",
+          "fields": [
+            {
+              "label": "Event",
+              "input": "text",
+              "example": "Late opening"
+            },
+            {
+              "label": "Ticket price",
+              "input": "text",
+              "example": "$20"
+            },
+            {
+              "label": "Capacity",
+              "input": "text",
+              "example": "120"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "faq",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "heading": "The *short* answers.",
+          "action": {
+            "label": "Help centre",
+            "to": "/help"
+          },
+          "items": [
+            {
+              "question": "Can we take free RSVPs?",
+              "answer": "Yes. Free events publish without a bank account, and you still get a guest list."
+            },
+            {
+              "question": "Can we list a long-running exhibition?",
+              "answer": "Yes. Multi-day and recurring events cover exhibitions and regular late nights."
+            },
+            {
+              "question": "Can visitors find us without an event on?",
+              "answer": "Yes. Your venue listing stays on Mingla between events."
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "media": "v:grandplace",
+          "heading": "Your next opening, *full.*",
+          "bring": "Set it up today.",
+          "primary": {
+            "to": "app:host",
+            "track": "band"
+          }
+        }
+      }
+    ],
+    "play": [
+      {
+        "type": "icpHero",
+        "version": 1,
+        "content": {
+          "pillLead": "For",
+          "pill": "play spaces, bowling & arcades",
+          "line1": "Make your place",
+          "line2": "the group’s yes.",
+          "sub": "Bowling, arcades, karaoke, escape rooms and game nights: take bookings for lanes, rooms and parties, and be the answer when a group asks what to do tonight.",
+          "media": "v:nightlife",
+          "call": {
+            "label": "Book a call",
+            "to": "/schedule?icp=play"
+          },
+          "app": {
+            "to": "app:host",
+            "track": "hero"
+          }
+        }
+      },
+      {
+        "type": "litAbout",
+        "version": 1,
+        "content": {
+          "intro": "Groups are the hardest plans to make and the best customers to win. Mingla puts your place in front of them with the details that get the whole chat to say yes.",
+          "call": {
+            "label": "Talk to the team",
+            "to": "/schedule?icp=play"
+          },
+          "insideLabel": "See what’s inside",
+          "duoA": "Open",
+          "duoB": "Booked out",
+          "big": "Show the *fun,* not the floor plan. A *short video,* the *typical spend,* who it’s *best for* and one way to *book the group,* and you stop being a maybe."
+        },
+        "colour": "cream"
+      },
+      {
+        "type": "icpFeatures",
+        "version": 1,
+        "content": {
+          "heading": "Nights that sell *themselves.*",
+          "lead": "From walk-ins to tournament nights, run the busy side of fun.",
+          "background": "v:bg-play",
+          "cta": {
+            "to": "app:host",
+            "track": "features"
+          },
+          "items": [
+            {
+              "icon": "image",
+              "title": "A listing that shows the fun",
+              "media": "v:nightlife",
+              "body": "Video cover, galleries and “best for” tags like groups, birthdays and date night.",
+              "tags": [
+                "Video cover",
+                "Best for",
+                "Typical spend"
+              ]
+            },
+            {
+              "icon": "ticket",
+              "title": "Theme nights & tournaments",
+              "media": "v:f-arcade",
+              "body": "Sell league nights, tournaments and parties as events with tickets, guest lists and scanning.",
+              "tags": [
+                "Tickets",
+                "Guest lists",
+                "Door scanning"
+              ]
+            },
+            {
+              "icon": "calendar",
+              "title": "Reservations for groups",
+              "media": "v:crowd",
+              "body": "Take bookings for lanes, rooms and tables, and see the busy nights coming with a demand forecast.",
+              "tags": [
+                "Reservations",
+                "Demand forecast"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "chips",
+        "version": 1,
+        "content": {
+          "heading": "Built for *play* of every size.",
+          "items": [
+            "Bowling",
+            "Arcades",
+            "Karaoke",
+            "Escape rooms",
+            "Mini golf",
+            "Trampoline parks",
+            "Board-game cafés",
+            "Go-karts"
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "toolCard",
+        "version": 1,
+        "content": {
+          "tool": "Venue Website Grader",
+          "body": "Find out what your website says to a first-timer, and exactly what it’s costing you. Free report in 60 seconds.",
+          "cta": "Grade my website",
+          "fields": [
+            {
+              "label": "Your website",
+              "input": "text",
+              "example": "yourarcade.com"
+            },
+            {
+              "label": "Type of place",
+              "input": "select",
+              "example": "Arcade"
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "faq",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "heading": "The *short* answers.",
+          "action": {
+            "label": "Help centre",
+            "to": "/help"
+          },
+          "items": [
+            {
+              "question": "Can I sell tournament nights?",
+              "answer": "Yes. List them as events with tickets, a guest list and scanning at the door."
+            },
+            {
+              "question": "Can groups book ahead?",
+              "answer": "Yes. Reservations let groups book lanes, rooms or tables."
+            },
+            {
+              "question": "What should my listing show?",
+              "answer": "A hero cover (a short video stands out most), at least five photos, typical spend and “best for” tags."
+            }
+          ]
+        },
+        "colour": "paper"
+      },
+      {
+        "type": "videoBand",
+        "version": 1,
+        "content": {
+          "variant": "icp",
+          "media": "v:nightlife",
+          "heading": "Your busiest night, *next.*",
+          "bring": "Set it up today.",
+          "primary": {
+            "to": "app:host",
+            "track": "band"
+          }
+        }
+      }
+    ]
+  }
+}

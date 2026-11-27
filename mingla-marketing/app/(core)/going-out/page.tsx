@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { SitePage } from '@/components/site/site-page'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { AnswerBlock } from '@/components/site-blocks/sections/answer-block'
 import { CityLinksBlock } from '@/components/site-blocks/sections/city-links-block'
 import { FilterGridBlock } from '@/components/site-blocks/sections/filter-grid-block'
@@ -29,19 +30,23 @@ export const revalidate = 300
 export default async function GoingOutPage() {
   const { tiles: cityTiles } = await getCityTiles()
   const schema = corePageStructuredData(record)
+  const ld = schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null
+  // #4636: a published block list replaces the coded sections (the structured data stays); with none, the coded page renders unchanged.
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface="explorer" current="going-out">
-        {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
-        <PageHeroBlock content={GOING_OUT_HERO} blockId="going-out-hero" />
-        {/* #4339 round B (SEO audit 2): the direct question and answer that
-            search and answer engines quote, from the page's own record. */}
-        <AnswerBlock content={GOING_OUT_ANSWER} blockId="going-out-answer" />
-        <FilterGridBlock content={GOING_OUT_GUIDES} blockId="going-out-guides" />
-        {/* #4339 round B (SEO audit 2): one internal link to every city page,
-            anchored on the phrase people search for. */}
-        <CityLinksBlock content={GOING_OUT_CITIES} blockId="going-out-cities" tiles={cityTiles} />
-      </SitePage>
+      <PublishedOr pageKey="going-out" extra={ld}>
+        <SitePage surface="explorer" current="going-out">
+          {schema ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeCorePageStructuredData(schema) }} /> : null}
+          <PageHeroBlock content={GOING_OUT_HERO} blockId="going-out-hero" />
+          {/* #4339 round B (SEO audit 2): the direct question and answer that
+              search and answer engines quote, from the page's own record. */}
+          <AnswerBlock content={GOING_OUT_ANSWER} blockId="going-out-answer" />
+          <FilterGridBlock content={GOING_OUT_GUIDES} blockId="going-out-guides" />
+          {/* #4339 round B (SEO audit 2): one internal link to every city page,
+              anchored on the phrase people search for. */}
+          <CityLinksBlock content={GOING_OUT_CITIES} blockId="going-out-cities" tiles={cityTiles} />
+        </SitePage>
+      </PublishedOr>
     </div>
   )
 }

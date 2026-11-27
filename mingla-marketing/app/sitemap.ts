@@ -8,6 +8,8 @@ import {
   sitemapLastModified,
 } from '@/lib/search/route-registry'
 import { blogCategoriesWithPosts, listBlogSitemapEntries } from '@/lib/blog/data'
+import { SITE_ORIGIN, sitemapEntries } from '@/lib/site-pages/custom'
+import { customIndex } from '@/lib/site-pages/published'
 
 // #4137 — registry routes first (exact, in registry order), then one entry
 // per PUBLIC blog post from the database. With no database configured (CI)
@@ -18,6 +20,9 @@ import { blogCategoriesWithPosts, listBlogSitemapEntries } from '@/lib/blog/data
 // SITE_REDESIGN_LAST_MODIFIED, for every rebuilt page), and a blog category
 // with no public post leaves the sitemap (its page is noindex until a post
 // lands; see app/blog/category/[category]/page.tsx).
+//
+// #4636 — then every live staff-made page that is not hidden from search
+// (app/[...slug]), dated by its last publish.
 export const dynamic = 'force-dynamic'
 
 const CATEGORY_PATHS: ReadonlySet<string> = new Set(BLOG_CATEGORY_ROUTE_CONTRACTS.map((route) => route.match.pathname))
@@ -38,5 +43,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: blogPostCanonicalUrl(contract.match.pathname.slice('/blog/'.length)),
       lastModified: new Date(`${contract.lastModified}T00:00:00.000Z`),
     }))
-  return [...routes, ...posts]
+  const staff = sitemapEntries(await customIndex()).map((entry) => ({
+    url: `${SITE_ORIGIN}${entry.path}`,
+    lastModified: entry.published_at ? new Date(entry.published_at) : new Date(),
+  }))
+  return [...routes, ...posts, ...staff]
 }

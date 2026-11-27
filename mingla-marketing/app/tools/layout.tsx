@@ -1,6 +1,7 @@
 import '@/components/cutout/cutout.css'
 import { ToolsBreadcrumb } from '@/components/marketing/tools-breadcrumb'
 import { RouteFrame } from '@/components/site/route-frame'
+import { SiteFooterLive, SiteNavLive } from '@/components/site/site-chrome'
 import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 
 // #1003 [Venue Website Grader — growth tools, test cut] — the /tools shell.
@@ -19,7 +20,14 @@ import { landingMono, landingSans, landingSerif } from '@/app/site-fonts'
 export default function ToolsLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <RouteFrame bare={['/tools']} variant="site-tools" header={<ToolsBreadcrumb />} footer={null}>
+      <RouteFrame
+        bare={['/tools']}
+        variant="site-tools"
+        header={<ToolsBreadcrumb />}
+        footer={null}
+        siteNav={<SiteNavLive surface="host" current="tools" />}
+        siteFooter={<SiteFooterLive surface="host" />}
+      >
         {children}
       </RouteFrame>
     </div>

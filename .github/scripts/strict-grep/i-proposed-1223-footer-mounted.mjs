@@ -98,7 +98,7 @@ const importRe = new RegExp(
   `import\\s*\\{[^}]*\\bFooter\\b[^}]*\\}\\s*from\\s*(['"\`])${FOOTER_MODULE_RE}\\1`,
 );
 // any `<Footer surface="..." ...>` render (used for the MUST-NOT-MOUNT check too).
-const anyRenderRe = /<(?:Footer|CutoutFooter|SiteFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
+const anyRenderRe = /<(?:Footer|CutoutFooter|SiteFooter|SiteFooterLive)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
 
 /**
  * Business layout satisfies the MUST-MOUNT invariant iff (after comment-stripping)
@@ -106,7 +106,8 @@ const anyRenderRe = /<(?:Footer|CutoutFooter|SiteFooter)\b[^>]*\bsurface\s*=\s*[
  */
 // Either footer counts as mounted: the legacy marketing one or the #2902 one.
 // #4339: <SiteFooter> is the canonical one; the other two delegate to it.
-const anyFooterMountRe = /<(?:Footer|CutoutFooter|SiteFooter)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
+// #4636: server pages mount it as <SiteFooterLive> (the published site settings, coded when none).
+const anyFooterMountRe = /<(?:Footer|CutoutFooter|SiteFooter|SiteFooterLive)\b[^>]*\bsurface\s*=\s*['"][^'"]*['"]/;
 
 const evaluateMustMount = ({ label, code }) => {
   const failures = [];

@@ -26,6 +26,7 @@ export const LANDING_FONT_CONSUMERS = [
   'app/(core)/cities/page.tsx',
   'app/(core)/going-out/page.tsx',
   'app/(explorer)/page.tsx',
+  'app/[...slug]/page.tsx', // #4636: staff-made pages render the same blocks in the brand faces
   'app/apply/[slug]/page.tsx', // #4452 §2.6: form pages are drawn in the brand faces
   'app/blog/[slug]/page.tsx',
   'app/blog/category/[category]/page.tsx',

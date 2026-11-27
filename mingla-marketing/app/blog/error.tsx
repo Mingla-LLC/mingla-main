@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { SitePage } from '@/components/site/site-page'
+import { SiteShell } from '@/components/site/site-shell'
 
 // #4137 — the blog's data could not be read. Says so; never shows made-up
 // stories in their place.
@@ -25,8 +25,8 @@ export default function BlogError({ error, reset }: { readonly error: Error & { 
   )
   if (pathname?.startsWith('/blog/preview/')) return section
   return (
-    <SitePage surface="explorer">
+    <SiteShell surface="explorer">
       <div className="blog-post">{section}</div>
-    </SitePage>
+    </SiteShell>
   )
 }

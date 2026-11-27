@@ -5,6 +5,7 @@ import { HostHandoffButton } from '@/components/landing/host-handoff'
 import { LogoPill } from './logo-pill'
 import { NavCallLink } from './nav-call-link'
 import type { CallAudience } from '@/lib/cta-destination'
+import { isExternal, navKeyForHref, type NavSettings } from '@/lib/site-pages/settings'
 import { SiteNavMenu } from './site-nav-menu'
 
 // #4339 — the site nav on every redesigned page: a floating white pill.
@@ -90,10 +91,33 @@ interface SiteNavProps {
   origin?: string
   /** #4452: an /apply/<slug> page passes its form's audience for the call button. */
   callAudience?: CallAudience | null
+  /**
+   * #4636: the published site-wide nav (components/site/site-chrome.tsx reads
+   * it). null or absent: the coded links and menu, unchanged.
+   */
+  settings?: NavSettings | null
+  /** #4636: live staff-made pages that asked to be in the menu (added to the first group). */
+  extraMenu?: readonly { href: string; label: string }[]
 }
 
-export function SiteNav({ surface, current, origin, callAudience }: SiteNavProps) {
+/** The top links and menu groups to draw: the published nav, or the coded ones. */
+export function navModel(settings: NavSettings | null | undefined, extraMenu: readonly { href: string; label: string }[] = []): { top: { key: string; href: string; label: string }[]; groups: { title: string; links: MenuLink[] }[] } {
+  const top: { key: string; href: string; label: string }[] = settings
+    ? settings.top.map((l, i) => ({ key: navKeyForHref(l.to) ?? `link-${i}`, href: l.to, label: l.label }))
+    : TOP_LINKS.map((l) => ({ ...l }))
+  const groups: { title: string; links: MenuLink[] }[] = settings
+    ? settings.menu.map((g) => ({ title: g.title, links: g.links.map((l) => ({ href: l.to, label: l.label, ...(isExternal(l.to) ? { external: true } : {}) })) }))
+    : MENU_GROUPS
+  if (extraMenu.length === 0) return { top, groups }
+  const [first, ...rest] = groups
+  const seen = new Set(first?.links.map((l) => l.href) ?? [])
+  const added: MenuLink[] = extraMenu.filter((l) => !seen.has(l.href)).map((l) => ({ href: l.href, label: l.label }))
+  return { top, groups: first ? [{ ...first, links: [...first.links, ...added] }, ...rest] : [{ title: 'Explore', links: added }] }
+}
+
+export function SiteNav({ surface, current, origin, callAudience, settings, extraMenu }: SiteNavProps) {
   const abs = (href: string) => (origin && href.startsWith('/') ? `${origin}${href}` : href)
+  const { top, groups } = navModel(settings, extraMenu)
   return (
     <SiteNavMenu
       surface={surface}
@@ -103,7 +127,7 @@ export function SiteNav({ surface, current, origin, callAudience }: SiteNavProps
             <LogoPill />
           </Link>
           <nav className="nav-links" aria-label="Main">
-            {TOP_LINKS.map((l) => (
+            {top.map((l) => (
               <Link key={l.key} href={abs(l.href)} className={current === l.key ? 'on' : undefined} aria-current={current === l.key ? 'page' : undefined}>
                 {l.label}
               </Link>
@@ -118,7 +142,7 @@ export function SiteNav({ surface, current, origin, callAudience }: SiteNavProps
         </>
       }
     >
-      {MENU_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.title}>
           {/* #4339 round B: a menu label, not a page heading. */}
           <p className="drop-label">{group.title}</p>

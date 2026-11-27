@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4636",
+  "suite": {
+    "id": "issue-4636-db-parity",
+    "class": "node22-noinstall",
+    "originPaths": [
+      "mingla-marketing/app/**",
+      "mingla-marketing/components/**",
+      "mingla-marketing/content/**",
+      "mingla-marketing/lib/**",
+      "mingla-marketing/scripts/**",
+      "supabase/migrations/**",
+      "mingla-admin/src/services/**"
+    ],
+    "steps": [
+      {
+        "name": "Marketing #4636: the database registry, reserved addresses and converted keys equal the site's; no image transforms",
+        "cwd": "mingla-marketing",
+        "run": "node --test lib/__tests__/issue-4636-db-parity.implementor.test.mjs",
+        "commandId": "assert:issue-4636-db-parity:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test lib/__tests__/issue-4636-db-parity.implementor.test.mjs"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution for #4636 replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4636",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "node22-noinstall",
+    "cwd": "mingla-marketing",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-marketing/lib/__tests__/issue-4636-db-parity.implementor.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node22-noinstall",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-27"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell runs the reviewed #4636 assertion as a self-registering suite.",
+    "timeoutSeconds": 60
+  }
+}

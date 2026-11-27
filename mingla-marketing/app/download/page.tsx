@@ -25,6 +25,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { SitePage } from '@/components/site/site-page'
+import { PublishedOr } from '@/components/site-blocks/published-page'
 import { GetAppBlock } from '@/components/site-blocks/sections/get-app-block'
 import { GET_APP } from '@/content/site-blocks/core'
 import { resolvePlatformFromUa } from '@/lib/device-platform'
@@ -54,11 +55,14 @@ export default async function DownloadPage({ searchParams }: Props) {
   // Desktop / other → the QR + store buttons page.
   const initial = (await searchParams).app === 'host' ? 'host' : 'explorer'
 
+  // #4636: a published block list replaces the coded section (the toggle keeps ?app=); with none, the coded page renders unchanged.
   return (
     <div className={`${landingSerif.variable} ${landingSans.variable} ${landingMono.variable}`}>
-      <SitePage surface={initial === 'host' ? 'host' : 'explorer'}>
-        <GetAppBlock content={GET_APP} initial={initial} blockId="get-app" />
-      </SitePage>
+      <PublishedOr pageKey="download" surface={initial === 'host' ? 'host' : 'explorer'} blockProps={{ getApp: { initial } }}>
+        <SitePage surface={initial === 'host' ? 'host' : 'explorer'}>
+          <GetAppBlock content={GET_APP} initial={initial} blockId="get-app" />
+        </SitePage>
+      </PublishedOr>
     </div>
   )
 }

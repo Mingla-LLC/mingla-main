@@ -4,9 +4,12 @@
 // clicks to Admin. Messages go ONLY to an allowlisted Admin origin, and the
 // page acts on messages ONLY from it (both sides check). Pure, unit tested.
 
-const ADMIN_ORIGINS: RegExp[] = [
+// #4636 (investigation F-5 / D-2): only origins that may also FRAME the preview
+// (SITE_PREVIEW_FRAME_ANCESTORS in next.config.ts). The vercel.app Admin
+// previews were accepted here but refused by frame-ancestors, so they are gone;
+// a test keeps the two lists in step (lib/__tests__/issue-4636-preview-editor.implementor.test.mjs).
+export const ADMIN_ORIGINS: readonly RegExp[] = [
   /^https:\/\/admin\.usemingla\.com$/,
-  /^https:\/\/mingla-admin(?:-[a-z0-9-]+)?\.vercel\.app$/,
   /^http:\/\/localhost:\d{2,5}$/,
   /^http:\/\/127\.0\.0\.1:\d{2,5}$/,
 ]

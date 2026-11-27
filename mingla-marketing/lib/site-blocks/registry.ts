@@ -835,6 +835,8 @@ export interface PageBlock {
   content: Record<string, unknown>
   colour?: string
   hidden?: boolean
+  /** #4636: an optional stable id the editor keeps across moves. */
+  id?: string
 }
 
 export type BlockCheck = { ok: true } | { ok: false; errors: string[] }
@@ -966,6 +968,8 @@ export function validateBlock(block: unknown): BlockCheck {
   if (typeof block.version !== 'number' || !Number.isInteger(block.version) || block.version < 1) errors.push('block.version: must be a whole number')
   else if (block.version > def.version) errors.push(`block.version: ${block.version} is newer than this site knows (${def.version})`)
   if (block.hidden !== undefined && typeof block.hidden !== 'boolean') errors.push('block.hidden: must be true or false')
+  // #4636: the same rule as the database (site_block_errors): a stable id for the editor, if any.
+  if (block.id !== undefined && (typeof block.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(block.id))) errors.push('block.id: must be 1-64 letters, digits, - or _')
   if (!isRecord(block.content)) {
     errors.push('block.content: must be an object')
     return { ok: false, errors }

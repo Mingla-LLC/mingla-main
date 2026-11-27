@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Wordmark } from '@/components/site/wordmark'
 import type { Surface } from '@/lib/subdomain'
+import { isExternal, type FooterSettings } from '@/lib/site-pages/settings'
 import './site-footer.css'
 
 // #4339 §9 — THE canonical marketing footer. Every page renders this one:
@@ -89,7 +90,21 @@ const CROSS_LINK: Record<SiteFooterSurface, FooterLink> = {
  * where a relative link would resolve inside the careers segment (ORCH-1225):
  * every internal link then becomes absolute on that origin.
  */
-export function SiteFooter({ surface, origin }: { surface: SiteFooterSurface; origin?: string }) {
+/** The columns and tagline to draw: the published footer (#4636), or the coded ones. */
+export function footerModel(settings: FooterSettings | null | undefined): { columns: FooterColumn[]; tagline: string } {
+  if (!settings) return { columns: SITE_FOOTER_COLUMNS, tagline: SITE_FOOTER_TAGLINE }
+  return {
+    columns: settings.columns.map((c) => ({ title: c.title, links: c.links.map((l) => ({ href: l.to, label: l.label, ...(isExternal(l.to) ? { external: true } : {}) })) })),
+    tagline: settings.tagline ?? SITE_FOOTER_TAGLINE,
+  }
+}
+
+/**
+ * #4636: `settings` is the published site-wide footer (components/site/site-chrome.tsx
+ * reads it); null or absent keeps the coded columns and tagline, unchanged.
+ */
+export function SiteFooter({ surface, origin, settings }: { surface: SiteFooterSurface; origin?: string; settings?: FooterSettings | null }) {
+  const { columns, tagline } = footerModel(settings)
   const cross = CROSS_LINK[surface]
   const abs = (href: string) => (origin && href.startsWith('/') ? `${origin}${href}` : href)
   return (
@@ -101,7 +116,7 @@ export function SiteFooter({ surface, origin }: { surface: SiteFooterSurface; or
               <Wordmark height={26} title={null} />
             </Link>
           </div>
-          {SITE_FOOTER_COLUMNS.map((col) => (
+          {columns.map((col) => (
             <div className="sf-col" key={col.title}>
               {/* #4339 round B: a group label, not a page heading. */}
               <p className="sf-label">{col.title}</p>
@@ -118,7 +133,7 @@ export function SiteFooter({ surface, origin }: { surface: SiteFooterSurface; or
         </div>
         <div className="sf-bot">
           <p>
-            © {new Date().getFullYear()} Mingla. {SITE_FOOTER_TAGLINE}
+            © {new Date().getFullYear()} Mingla. {tagline}
           </p>
           <Link className="sf-cross" href={abs(cross.href)}>
             {cross.label}
