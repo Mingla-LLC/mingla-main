@@ -1,5 +1,7 @@
 -- #4640 executable contract: hashed handoff, scheduler registry, reminders,
 -- and the two ordinary Work cards remain one idempotent booking lifecycle.
+-- MINGLA-INVARIANT: I-4640-HANDOFF-HASHED | issue #4640 | A form-to-scheduler bearer is stored only as SHA-256, expires within two hours and is resolved only by service-role RPCs.
+-- MINGLA-INVARIANT: I-4640-BOOKING-ACTIONS-ONCE | issue #4640 | Each reminder and confirmation action is unique by booking and kind; Work actions create ordinary ops_work_cards linked to the booking.
 BEGIN;
 
 CREATE FUNCTION pg_temp.issue_4640_assert(p_ok boolean, p_words text) RETURNS void

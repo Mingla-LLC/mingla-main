@@ -2,13 +2,6 @@
 -- first-party scheduler without retyping, then receive Mingla reminders while
 -- Kunle receives ordinary Work cards for the two confirmation calls.
 --
--- MINGLA-INVARIANT: I-4640-HANDOFF-HASHED | issue #4640 | a form-to-scheduler
--- bearer is stored only as SHA-256, expires within two hours and is resolved
--- only by service-role RPCs (issue_4640_host_demo_conversion pg17 test).
--- MINGLA-INVARIANT: I-4640-BOOKING-ACTIONS-ONCE | issue #4640 | each reminder
--- and confirmation action is unique by booking and kind; Work actions create
--- ordinary ops_work_cards linked to the booking (same test).
-
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 
