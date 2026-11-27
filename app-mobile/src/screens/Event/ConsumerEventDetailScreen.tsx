@@ -207,6 +207,8 @@ import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
 import { supabase } from "../../services/supabase";
 import { type ChipInResult } from "@mingla/offering-rendering";
+import { chipInRefusalFromBody } from "@mingla/offering-rendering/chipInRefusal";
+import { extractFunctionErrorFields } from "../../utils/edgeFunctionError";
 import { toastManager } from "../../components/ui/Toast";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
@@ -1626,7 +1628,11 @@ export default function ConsumerEventDetailScreen({
         },
       });
       if (error) {
-        throw new Error(String((error as { message?: string }).message ?? "contribution_failed"));
+        // #3645 — read the response BODY: `error.message` is supabase-js's
+        // generic "non-2xx" text, so every refusal read "Couldn't process
+        // that". Carry `minCents` / `reason` so the panel names the server's floor.
+        const fields = await extractFunctionErrorFields(error, "contribution_failed");
+        throw chipInRefusalFromBody(fields.token, fields.body);
       }
       const res = (data ?? {}) as {
         kind?: string;

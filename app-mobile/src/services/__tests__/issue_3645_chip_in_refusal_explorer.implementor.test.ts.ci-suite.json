@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_3645_chip_in_refusal_explorer.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3645-chip-in-refusal-explorer",
+  "profile": "deno-2-unit"
+}

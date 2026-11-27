@@ -26,31 +26,6 @@ export async function fetchBookingSlots(schedulerKey: string): Promise<
   return { ok: true, slots, durationMinutes: Number.isInteger(duration) && duration > 0 ? duration : 20 }
 }
 
-export interface BookingHandoffPayload {
-  audience?: 'host' | 'creator' | 'local'
-  name?: string
-  email?: string
-  phone?: string
-  icp?: string
-  social_platform?: string
-  social_handle?: string
-  venue?: string
-  website?: string
-  city?: string
-  makes?: string
-  first_place?: string
-}
-
-export async function fetchBookingHandoff(handoffToken: string, schedulerKey: string): Promise<
-  { ok: true; payload: BookingHandoffPayload; schedulerKey: string } | { ok: false; error: GrowthToolsError }
-> {
-  const result = await postGrowthTools('growth-tools-book', { action: 'handoff', handoff_token: handoffToken, scheduler_key: schedulerKey })
-  if (!result.ok) return result
-  const body = result.body as { payload?: unknown; scheduler?: { key?: unknown } } | null
-  if (!body?.payload || typeof body.payload !== 'object' || Array.isArray(body.payload) || typeof body.scheduler?.key !== 'string') return { ok: false, error: 'server' }
-  return { ok: true, payload: body.payload as BookingHandoffPayload, schedulerKey: body.scheduler.key }
-}
-
 /**
  * Book a call: creates the event + Meet link and emails the invite.
  *
