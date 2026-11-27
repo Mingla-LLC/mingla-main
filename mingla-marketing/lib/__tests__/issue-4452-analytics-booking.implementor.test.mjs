@@ -74,7 +74,9 @@ test('AN-4 every event fires from its place, and only through formEvent', () => 
   assert.match(booking, /formEvent\('call_booked_inform', null\)/)
   assert.match(read('components/site/nav-call-link.tsx'), /formEvent\('call_button_clicked', null, \{ where: 'top_bar', dest: call\.href \}\)/)
   assert.match(read('components/forms/call-button-analytics.tsx'), /formEvent\('call_button_clicked', null, \{ where: 'cta_bar', dest:/)
-  assert.match(read('components/landing/icp-landing.tsx'), /data-call-button="cta_bar"/)
+  // #4636: the CTA bar lives in the `icpHero` block the template renders.
+  assert.match(read('components/landing/icp-landing.tsx'), /<IcpHeroBlock\b/)
+  assert.match(read('components/site-blocks/sections/icp-hero-block.tsx'), /data-call-button="cta_bar"/)
   assert.match(read('components/site-blocks/banner.tsx'), /formEvent\('site_block_clicked', null, \{ block: 'banner', dest_kind: kind \}\)/)
   assert.match(read('components/forms/virtual-page.ts'), /formEvent\('success_viewed', null, \{ screen:/)
   const names = Object.keys(SPEC).join('|')

@@ -28,9 +28,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 const FACES = /className=\{`\$\{landingSerif\.variable\} \$\{landingSans\.variable\} \$\{landingMono\.variable\}`\}/
@@ -135,7 +138,10 @@ test('no empty gap: a section the reader jumped past is still revealed', () => {
   assert.match(root, /root\.querySelectorAll<HTMLElement>\('\.reveal:not\(\.in\)'\)\.forEach\(\(el\) => \{\s*if \(el\.getBoundingClientRect\(\)\.top < window\.innerHeight\) \{\s*el\.classList\.add\('in'\)/)
   assert.match(root, /window\.addEventListener\('scroll', onCatchUp, \{ passive: true \}\)/)
   // The city guide band keeps its serif heading in every city, plans or not.
-  assert.match(code(read('components/cities/city-page.tsx')), /<h2 className="h2" id="city-guide-title">\s*More than <em>one mode\.<\/em>\s*<\/h2>/)
+  // #4636: the band is the `cityPlans` block; the page gives it its heading.
+  const cityPage = code(read('components/cities/city-page.tsx'))
+  assert.match(cityPage, /<CityPlansBlock content=\{\{ \.\.\.city, heading: 'More than \*one mode\.\*' \}\}[^>]*blockId="city-guide-title"/)
+  assert.match(cityPage, /<h2 className="h2" id=\{blockId\}>\s*<Em text=\{content\.heading\} \/>\s*<\/h2>/)
 })
 
 test('Cary never shows the cover with drinks in shot (no alcohol, §11); it now uses its picked c-cary loop', () => {

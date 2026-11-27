@@ -32,9 +32,12 @@ import { stripTypeScriptTypes } from 'node:module'
 import { after, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { CHROME, hydratedExpr, typeExpr, withBrowser } from './issue-4339-browser-harness.mjs'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 

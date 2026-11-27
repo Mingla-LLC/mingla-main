@@ -61,9 +61,12 @@ function visibleText(html) {
 
 function verifySource(overrides = {}) {
   const source = (relative) => overrides[relative] ?? read(relative)
-  const about = source('mingla-marketing/app/(core)/about/page.tsx')
-  const explorer = source('mingla-marketing/app/(core)/going-out/page.tsx')
-  const cities = source('mingla-marketing/app/(core)/cities/page.tsx')
+  // #4636: the sections are registry blocks (mingla-marketing/components/site-blocks/sections/)
+  // and their copy is block content (mingla-marketing/content/site-blocks/core.ts): read them with the page.
+  const blockContent = source('mingla-marketing/content/site-blocks/core.ts')
+  const about = `${source('mingla-marketing/app/(core)/about/page.tsx')}\n${blockContent}`
+  const explorer = `${source('mingla-marketing/app/(core)/going-out/page.tsx')}\n${blockContent}\n${source('mingla-marketing/components/site-blocks/sections/filter-grid-block.tsx')}`
+  const cities = `${source('mingla-marketing/app/(core)/cities/page.tsx')}\n${source('mingla-marketing/components/site-blocks/sections/cities-row-block.tsx')}`
   const media = source('mingla-marketing/components/site/city-media.tsx')
   const answer = source('mingla-marketing/components/cutout/answer.tsx')
   // #4339 speed fix: the lifecycle notice moved from city-hub.tsx to

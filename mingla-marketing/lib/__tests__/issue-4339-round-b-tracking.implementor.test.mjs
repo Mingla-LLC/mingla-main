@@ -21,9 +21,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { after, test } from 'node:test'
 import { MARKETING, makeLoader } from './issue-4339-round-b-load.mjs'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const REPO = path.resolve(MARKETING, '..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const readRepo = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8')
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const loader = makeLoader()
@@ -179,7 +182,8 @@ test('10. funnel events fire where they should and every event is allowlisted', 
   // ICP pages: the delegated listener and the tagged elements.
   const landing = code(read('components/landing/icp-landing.tsx'))
   for (const e of ['icp_talk_to_team_clicked', 'icp_see_inside_clicked', 'icp_tool_card_clicked']) assert.match(landing, new RegExp(`data-icp-event="${e}"`))
-  assert.match(landing, /<details key=\{q\} open=\{i === 0\} data-icp-faq=\{i\}>/)
+  // #4636: the FAQ is the `faq` block (icp variant).
+  assert.match(landing, /<details key=\{question\} open=\{i === 0\} data-icp-faq=\{i\}>/)
   assert.match(landing, /<IcpLandingAnalytics slug=\{slug\} \/>/)
   const listener = code(read('components/landing/icp-landing-analytics.tsx'))
   assert.match(listener, /captureMarketing\(name, \{ icp \}\)/)

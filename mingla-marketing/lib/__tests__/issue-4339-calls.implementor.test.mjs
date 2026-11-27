@@ -35,9 +35,12 @@ import path from 'node:path'
 import { stripTypeScriptTypes } from 'node:module'
 import { after, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 
@@ -118,6 +121,8 @@ test('every link on /creators and /locals goes to a real route; none to host.use
     const hrefs = [...source.matchAll(/href="([^"]+)"/g)].map((m) => m[1])
     // #4452: the hero moved into <HeroWords coded={…}> (editable words), so its call href is a prop.
     hrefs.push(...[...source.matchAll(/href: '([^']+)'/g)].map((m) => m[1]))
+    // #4636: block content says where a button goes as `to: '/…'`.
+    hrefs.push(...[...source.matchAll(/\bto: '(\/[^']*)'/g)].map((m) => m[1]))
     assert.ok(hrefs.length >= 3, `${rel}: links found`)
     for (const href of hrefs) {
       assert.ok(href.startsWith('/'), `${rel}: ${href} is a site route`)
@@ -128,14 +133,18 @@ test('every link on /creators and /locals goes to a real route; none to host.use
   // #4452: the hero's coded words and buttons (rendered by components/site-blocks/hero-words.tsx).
   assert.match(creators, /app: \{ text: 'Get Mingla to join', location: 'creators_join' \}/)
   assert.match(creators, /call: \{ text: 'Book a call', href: '\/schedule\/creators' \}/)
-  assert.match(creators, /<span className="bring">Talk to the Creators team<\/span>\s*<Link className="btn white" href="\/schedule\/creators">\s*Book a call/)
-  assert.match(creators, /Questions <em>first\?<\/em>/)
+  // #4636: the band and fine print are blocks (video-band-block.tsx, fine-print-block.tsx) fed by content.
+  assert.match(creators, /bring: 'Talk to the Creators team',\s*primary: \{ label: 'Book a call', to: '\/schedule\/creators' \}/)
+  assert.match(creators, /<span className="bring">\{c\.bring\}<\/span>\s*<ActionButton action=\{c\.primary\} className="btn white"/)
+  assert.match(creators, /heading: 'Questions \*first\?\*'/)
   assert.match(creators, /Build your profile in Mingla\. Creator mode stays private until every readiness check is complete\./)
-  assert.match(creators, /You’ll read and accept the <Link href="\/creator-agreement">Creator agreement<\/Link> inside Mingla before\s+your first gig\./)
+  assert.match(creators, /before: 'You’ll read and accept the',\s*link: \{ label: 'Creator agreement', to: '\/creator-agreement' \},\s*after: 'inside Mingla before your first gig\.'/)
+  assert.match(creators, /\{content\.before\} <Link href=\{content\.link\.to\}>\{content\.link\.label\}<\/Link> \{content\.after\}/)
   const locals = code(read('app/locals/page.tsx'))
   assert.match(locals, /call: \{ text: 'Book a call', href: '\/schedule\/locals' \}/)
-  assert.match(locals, /<div className="band-actions">\s*<ExplorerHandoffButton location="locals_band" className="btn white">\s*Get Mingla to apply[\s\S]*?<Link className="btn glass" href="\/schedule\/locals">\s*Book a call/)
-  assert.match(locals, /You’ll read and accept the <Link href="\/local-agreement">Local agreement<\/Link> inside Mingla when you\s+apply\./)
+  assert.match(locals, /primary: \{ label: 'Get Mingla to apply', to: 'app:explorer', track: 'locals_band' \},\s*secondary: \{ label: 'Book a call', to: '\/schedule\/locals' \}/)
+  assert.match(locals, /<div className="band-actions">\s*<ActionButton action=\{c\.primary\} className="btn white"[\s\S]*?<ActionButton action=\{c\.secondary\} className="btn glass"/)
+  assert.match(locals, /link: \{ label: 'Local agreement', to: '\/local-agreement' \},\s*after: 'inside Mingla when you apply\.'/)
   assert.doesNotMatch(locals, />\s*Local agreement\s*<\/Link>\s*<\/div>/, 'the agreement is no longer a hero button')
   // The Explorer store constants the hand-off resolves to (Seth, 9 Nov).
   const stores = read('lib/store-links.ts')

@@ -28,9 +28,12 @@ import { stripTypeScriptTypes } from 'node:module'
 import { test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { CHROME, withBrowser } from './issue-4339-browser-harness.mjs'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 const SITE = path.join(MARKETING, 'public/marketing/site')
@@ -67,8 +70,11 @@ const CLIPS = [
   ['app/(core)/going-out/page.tsx', /'v:g-date', title: 'Cary has range'/, 'g-date'],
   ['app/(core)/going-out/page.tsx', /'v:g-family', title: 'With the grandparents'/, 'g-family'],
   ['app/(core)/going-out/page.tsx', /'v:g-quests', title: 'Lagos side quests'/, 'g-quests'],
-  ['app/(core)/about/page.tsx', /<section className="about-clip" aria-hidden="true">\s*<div className="wrap">\s*<div className="ph reveal">\s*<LandingMedia media="v:amb-about" \/>/, 'amb-about'],
-  ['app/locals/page.tsx', /<div className="band reveal mt-24">\s*<LandingMedia media="v:amb-locals" \/>/, 'amb-locals'],
+  // #4636: About's clip is the `wideClip` block, the Locals band the `videoBand` block (content in content/site-blocks/).
+  ['app/(core)/about/page.tsx', /ABOUT_CLIP: WideClipContent = \{ media: 'v:amb-about' \}/, 'amb-about'],
+  ['app/(core)/about/page.tsx', /<section className="about-clip" aria-hidden="true">\s*<div className="wrap">\s*<div className="ph reveal">\s*<LandingMedia media=\{content\.media\} \/>/, 'amb-about'],
+  ['app/locals/page.tsx', /variant: 'locals',\s*media: 'v:amb-locals',/, 'amb-locals'],
+  ['app/locals/page.tsx', /<div className="band reveal mt-24">\s*<LandingMedia media=\{c\.media\} \/>/, 'amb-locals'],
 ]
 const CITY_CLIPS = {
   lagos: 'c-lagos',
@@ -145,13 +151,15 @@ test('1. every media reference resolves to a file, and no file in public/marketi
 // ---- 2. Free tools tile --------------------------------------------------------
 test('2. /host Free tools tile: a clip under the ink wash of its neighbours, no "4 free tools" pill', () => {
   const host = code(read('components/site/host-page.tsx'))
+  // #4636: the tiles are the `tiles` block; the Free tools tile is content with the `tools` look.
+  assert.match(host, /\{ media: 'v:bg-exp', title: 'Free tools', line: 'No sign-up, no sales call\.', action: \{ label: 'Free tools', to: '\/tools' \}, look: 'tools' \}/)
   assert.match(
     host,
-    /<Link className="tile tools reveal" href="\/tools">\s*<div className="ph scrim">\s*<LandingMedia media="v:bg-exp" \/>\s*<\/div>\s*<div className="ov">\s*<h3>Free tools<\/h3>\s*<p>No sign-up, no sales call\.<\/p>/,
+    /<Link className=\{tile\.look === 'tools' \? 'tile tools reveal' : 'tile reveal'\} href=\{tile\.action\.to\}[^>]*>\s*<div className="ph scrim">\s*<LandingMedia media=\{tile\.media\} \/>\s*<\/div>\s*<div className="ov">\s*<h3>\{tile\.title\}<\/h3>\s*<p>\{tile\.line\}<\/p>/,
   )
   assert.doesNotMatch(host, /\d+ free tools/i)
-  // The neighbours (the host-type tiles) use the same wash.
-  assert.match(host, /<Link className="tile reveal" href=\{icpLandingPath\(slug\)\} key=\{slug\}>\s*<div className="ph scrim">/)
+  // The neighbours (the host-type tiles) use the same wash: same block, each opening its landing page.
+  assert.match(host, /action: \{ label: d\.short, to: icpLandingPath\(slug\) \}/)
 })
 
 // ---- 3. every wordmark goes Home ----------------------------------------------

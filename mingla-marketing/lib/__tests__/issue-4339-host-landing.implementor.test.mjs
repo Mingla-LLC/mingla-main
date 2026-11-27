@@ -30,9 +30,12 @@ import path from 'node:path'
 import { stripTypeScriptTypes } from 'node:module'
 import { after, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 
@@ -143,9 +146,11 @@ test('the hero headline is two lines, the second italic, and the scroll paragrap
   const template = code(read('components/landing/icp-landing.tsx'))
   assert.match(
     template,
-    /<h1 id="lp-title">\s*<span>\{d\.l1\}<\/span>\s*<span>\s*<em>\{d\.l2\}<\/em>\s*<\/span>\s*<\/h1>/,
+    // #4636: the hero is the `icpHero` block, fed line1 / line2 from icps.ts (content/site-blocks/icp.ts).
+    /<h1 id="lp-title">\s*<span>\{d\.line1\}<\/span>\s*<span>\s*<em>\{d\.line2\}<\/em>\s*<\/span>\s*<\/h1>/,
     'h1 = line one, then line two in <em>',
   )
+  assert.match(template, /line1: d\.l1,\s*line2: d\.l2,/)
   assert.deepEqual(icps.litWords('Put the *date, the place* now').map((w) => [w.word, w.em]), [
     ['Put', false],
     ['the', false],
@@ -194,7 +199,11 @@ test('"Use Mingla Host" resolves through the #4137 seam: phone → Host OneLink,
   // Talk to the team opens /schedule with the ICP chosen.
   const template = code(read('components/landing/icp-landing.tsx'))
   assert.match(template, /return `\/schedule\?icp=\$\{encodeURIComponent\(slug\)\}`/)
-  assert.equal((template.match(/<HostHandoffButton /g) ?? []).length, 3, 'hero, features and closing band')
+  // #4636: the hero and features blocks render the hand-off; the closing band's is its content (ActionButton).
+  assert.equal((template.match(/<HostHandoffButton /g) ?? []).length, 2, 'hero and features')
+  assert.match(template, /app: \{ to: 'app:host', track: 'hero' \}/)
+  assert.match(template, /cta: \{ to: 'app:host', track: 'features' \}/)
+  assert.match(template, /primary: \{ to: 'app:host', track: 'band' \}/)
 })
 
 test('no store, OneLink or host URL is hard-coded in the new files', () => {
@@ -249,7 +258,9 @@ test('every ICP: the features background is its own approved bg-<icp> loop under
   // never a bare <img> or <video> of its own, and the clip gets the still's
   // brightness filter.
   const template = code(read('components/landing/icp-landing.tsx'))
-  assert.match(template, /<div className="feat-bg" aria-hidden="true">\s*(?:\{\}\s*)?<LandingMedia media=\{landingBackgroundMedia\(d\.bg\)\} \/>\s*<\/div>/)
+  // #4636: the features are the `icpFeatures` block; its background is landingBackgroundMedia(d.bg) in content/site-blocks/icp.ts.
+  assert.match(template, /<div className="feat-bg" aria-hidden="true">\s*(?:\{\}\s*)?<LandingMedia media=\{d\.background\} \/>\s*<\/div>/)
+  assert.match(template, /background: landingBackgroundMedia\(d\.bg\),/)
   assert.doesNotMatch(template, /landingBackground\(d\.bg\)/)
   const css = read('components/landing/landing.css')
   assert.match(css, /\[data-landing\] \.feat-bg img,\s*\[data-landing\] \.feat-bg video \{[^}]*object-fit: cover;[^}]*filter: brightness\(0\.5\) saturate\(0\.9\);/)

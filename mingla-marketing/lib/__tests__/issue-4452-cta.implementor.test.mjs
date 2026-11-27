@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { after, test } from 'node:test'
 import { loader, MARKETING } from './issue-4452-ts-loader.mjs'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const L = loader('issue-4452-cta-')
 after(L.cleanup)
@@ -48,9 +49,12 @@ test('T-2.11 the nav renders the call link before the hand-off CTA, with an aria
 })
 
 test('T-2.12 SC-124/125 the CTA bar text half is a "Book a call" link to /schedule?icp=; Get Mingla Host is unchanged', () => {
-  const icp = read('components/landing/icp-landing.tsx')
-  assert.match(icp, /<Link className="btn bring-call" href=\{scheduleHref\(slug\)\} data-icp-event="icp_talk_to_team_clicked" data-call-button="cta_bar">\s*Book a call\s*<\/Link>/)
-  assert.match(icp, /<HostHandoffButton location="hero" className="btn white" \/>/)
+  // #4636: the hero is the `icpHero` block (icp-hero-block.tsx) fed by content/site-blocks/icp.ts.
+  const icp = pageSource('components/landing/icp-landing.tsx')
+  assert.match(icp, /<Link className="btn bring-call" href=\{d\.call\.to\} data-icp-event="icp_talk_to_team_clicked" data-call-button="cta_bar">\s*\{d\.call\.label\}\s*<\/Link>/)
+  assert.match(icp, /call: \{ label: 'Book a call', to: scheduleHref\(slug\) \}/)
+  assert.match(icp, /<HostHandoffButton location=\{d\.app\.track \?\? 'hero'\} className="btn white">\s*\{d\.app\.label\}\s*<\/HostHandoffButton>/)
+  assert.match(icp, /app: \{ to: 'app:host', track: 'hero' \}/)
   assert.doesNotMatch(icp, /<span className="bring">\{d\.bring\}<\/span>/)
   const css = read('components/landing/landing.css')
   assert.match(css, /\.glassbar \.btn\.bring-call \{[^}]*min-height: 47px;[^}]*background: rgba\(255, 255, 255, 0\.14\);/s)

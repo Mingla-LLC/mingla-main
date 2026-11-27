@@ -40,9 +40,12 @@ import { spawn } from 'node:child_process'
 import { stripTypeScriptTypes } from 'node:module'
 import { after, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
@@ -201,7 +204,8 @@ test('filter chips are <button aria-pressed> in one swipeable row, and they filt
   assert.match(css, /\.tabs button,\s*\[data-landing\] \.tabs a \{[^}]*flex: none;[^}]*white-space: nowrap;[^}]*min-height: 44px;/, 'chips never squash and keep a 44px target')
   // Going out: every chip has at least one guide (no dead chip), every guide a real destination.
   const goingOut = code(read('app/(core)/going-out/page.tsx'))
-  const chips = /const CHIPS = \[([^\]]+)\] as const/.exec(goingOut)[1].match(/'([^']+)'/g).map((c) => c.slice(1, -1))
+  // #4636: the guides are the `filterGrid` block; its chips are content (content/site-blocks/core.ts).
+  const chips = /chips: \[([^\]]+)\]/.exec(goingOut)[1].match(/'([^']+)'/g).map((c) => c.slice(1, -1))
   assert.deepEqual(chips, ['Date ideas', 'With friends', 'Solo', 'Family', 'Side quests'])
   const tagged = [...goingOut.matchAll(/tags: \[([^\]]*)\], city: (null|'[a-z-]+')/g)]
   assert.equal(tagged.length, 6, 'six guide tiles')
@@ -232,12 +236,16 @@ test('hand-offs go through the seam; no new file holds a store, OneLink or host 
   }
   // #4452: the /locals hero's hand-off is rendered by HeroWords from the coded words.
   assert.match(code(read('app/locals/page.tsx')), /app: \{ text: 'Get Mingla to apply', location: 'locals_apply' \}/)
-  assert.match(code(read('components/site-blocks/hero-words.tsx')), /<ExplorerHandoffButton location=\{coded\.app\.location\}/)
+  // #4636: the hero markup is the `heroWords` block; hero-words.tsx passes the coded location as the track.
+  assert.match(code(read('components/site-blocks/hero-words.tsx')), /to: 'app:explorer', track: coded\.app\.location/)
+  assert.match(code(read('components/site-blocks/hero-words.tsx')), /<ExplorerHandoffButton location=\{primary\.track \?\? 'hero'\}/)
   // #4339 calls: the agreement button became Book a call (issue-4339-calls pins the rest).
   // #4452: the hero's Book a call is HeroWords' coded call (the band keeps its own link).
   assert.match(code(read('app/locals/page.tsx')), /call: \{ text: 'Book a call', href: '\/schedule\/locals' \}/)
-  assert.match(code(read('components/site-blocks/hero-words.tsx')), /<Link className="btn soft" href=\{b1Href \?\? coded\.call\.href\}>/)
-  assert.match(code(read('app/(core)/about/page.tsx')), /<Link className="vcard text-card reveal" href="\/host">/, 'the Mingla Host card opens /host')
+  assert.match(code(read('components/site-blocks/hero-words.tsx')), /secondary: \{ label: b1\?\.text \?\? coded\.call\.text, to: b1Href \?\? coded\.call\.href \}/)
+  assert.match(code(read('components/site-blocks/hero-words.tsx')), /<Link className="btn soft" href=\{secondary\.to\}>/)
+  assert.match(code(read('app/(core)/about/page.tsx')), /wordmark: 'Mingla Host',[\s\S]*?action: \{ label: 'For places with soul', to: '\/host' \}/, 'the Mingla Host card opens /host')
+  assert.match(code(read('app/(core)/about/page.tsx')), /<Link className="vcard text-card reveal" href=\{card\.action\?\.to \?\? '\/'\}>/)
   assert.match(code(read('components/cities/city-page.tsx')), /<Link className="btn ink" href="\/host">\s*See Mingla Host/, 'the city page has one host button, to /host')
   assert.doesNotMatch(code(read('components/cities/city-page.tsx')), /surface="host"|HostHandoffButton|CityDeviceAction/, 'no other host button on the city page')
   // #4339 phase 4a (§4 rule 4): the one exception is the empty week's "Host

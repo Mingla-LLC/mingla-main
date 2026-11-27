@@ -33,9 +33,12 @@ import path from 'node:path'
 import { stripTypeScriptTypes } from 'node:module'
 import { after, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 const SLUGS = ['events', 'trips', 'experiences', 'restaurants', 'hotels', 'art', 'play']
@@ -90,9 +93,11 @@ const landing = await load('app-link-landing')
 // ---------------------------------------------------------------------------
 test('home headline is three lines: "Find" / the rotating italic phrase / "that fit the vibe."', () => {
   const home = code(read('components/site/home-page.tsx'))
+  // #4636: the hero is the `reelHero` block: the first line, the rotating phrase line, then the rest.
+  assert.match(home, /lines: \['Find', 'that fit the vibe\.'\],\s*phrases: HOME_PHRASES,/, 'Find / the rotating phrase / that fit the vibe.')
   assert.match(
     home,
-    /title=\{\s*<>\s*<span>Find<\/span>\s*<span className="rot">\s*<RotatingPhrase phrases=\{HOME_PHRASES\} \/>\s*<\/span>\s*<span>that fit the vibe\.<\/span>\s*<\/>\s*\}/,
+    /<span>\s*<Em text=\{first \?\? ''\} \/>\s*<\/span>\s*\{phrases\.length \? \(\s*<span className="rot">\s*<RotatingPhrase phrases=\{phrases\} \/>\s*<\/span>\s*\) : null\}\s*\{rest\.map/,
     'three spans, the middle one the rotating phrase',
   )
   assert.match(home, /HOME_PHRASES = \['romantic plans', 'weekend plans', 'side quests', 'group plans', 'solo plans'\] as const/)
@@ -161,7 +166,10 @@ test('Explorer hand-off: phone → Explorer OneLink, computer → "Mingla lives 
   assert.match(sheet, /<QRCode value=\{hrefs\.phoneHref\}/)
   // Every Explorer CTA on the redesigned pages is this button.
   const home = code(read('components/site/home-page.tsx'))
-  assert.match(home, /<ExplorerHandoffButton location="hero" className="btn cta" withArrow>\s*Use Mingla\s*<\/ExplorerHandoffButton>/)
+  // #4636: the hero button is content through the block's ActionButton (sections/shared.tsx).
+  assert.match(home, /cta: \{ label: 'Use Mingla', to: 'app:explorer', track: 'hero' \}/)
+  assert.match(home, /cta=\{<ActionButton action=\{content\.cta\} className="btn cta" location="hero" arrow="prop" \/>\}/)
+  assert.match(code(read('components/site-blocks/sections/shared.tsx')), /if \(action\.to === 'app:explorer'\) \{\s*return \(\s*<ExplorerHandoffButton location=\{action\.track \?\? location\} className=\{className\} withArrow=\{arrow === 'prop'\}>/)
   assert.doesNotMatch(home, /DeviceCta|href="\/download"/)
 })
 
@@ -172,7 +180,9 @@ test('Host hand-off keeps phase 1: phone → Host OneLink, computer → Host she
   assert.deepEqual(handoff.resolveAppHandoff('host', 'other', attribution), { action: 'sheet', sheet: 'host' })
   assert.equal(handoff.appHandoffHrefs('host', attribution).computerHref, stores.BUSINESS_WEB_URL)
   const host = code(read('components/site/host-page.tsx'))
-  assert.match(host, /cta=\{<HostHandoffButton location="hero" className="btn cta" withArrow \/>\}/)
+  // #4636: the hero button is content (no label: the hand-off's own device labels).
+  assert.match(host, /cta: \{ to: 'app:host', track: 'hero' \},/)
+  assert.match(code(read('components/site-blocks/sections/shared.tsx')), /<HostHandoffButton location=\{action\.track \?\? location\} className=\{className\} withArrow=\{arrow === 'prop'\}>\s*\{label === undefined \? undefined :/)
   assert.match(code(read('components/landing/host-handoff.tsx')), /<HandoffSheet sheet="host" attribution=\{attribution\}/)
   // The website demo continues to host web through the seam on every device.
   // Phase 4b: the description is POSTed to the draft endpoint and only the
@@ -182,9 +192,10 @@ test('Host hand-off keeps phase 1: phone → Host OneLink, computer → Host she
   assert.match(demo, /href=\{href\} target="_blank"/)
   assert.doesNotMatch(demo, /encodeURIComponent|searchParams|location\.href|fetch\(/, 'the description is never put in a URL')
   // Book a call and the host-type tiles.
-  assert.match(host, /<Link className="btn white" href="\/schedule">\s*Book a call\s*<\/Link>/)
-  assert.match(host, /ICP_SLUGS\.map\(\(slug\) => \{[\s\S]*?href=\{icpLandingPath\(slug\)\}/)
-  assert.match(host, /<Link className="tile tools reveal" href="\/tools">/)
+  assert.match(host, /bring: 'Questions first\?',\s*primary: \{ label: 'Book a call', to: '\/schedule' \}/)
+  assert.match(host, /<ActionButton action=\{c\.primary\} className="btn white" location="band" \/>/)
+  assert.match(host, /ICP_SLUGS\.map\(\(slug\) => \{[\s\S]*?to: icpLandingPath\(slug\)/)
+  assert.match(host, /action: \{ label: 'Free tools', to: '\/tools' \}, look: 'tools'/)
 })
 
 test('no store, OneLink or host URL is hard-coded in the new files', () => {

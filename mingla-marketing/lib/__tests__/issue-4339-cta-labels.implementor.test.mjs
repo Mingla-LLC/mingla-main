@@ -28,6 +28,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+// #4636: the table reads every file itself (block sections add their content rows).
 const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
@@ -176,9 +177,29 @@ function childLabels(children, where) {
     .filter(Boolean)
 }
 
-export function ctaTable() {
+/**
+ * #4636: a block section renders its hand-off from content (`{ label?, to: 'app:host' | 'app:explorer' }`
+ * in content/site-blocks/); its tags are pass-through wrappers, so the content values are the rows.
+ */
+export function contentCtaRows() {
   const rows = []
+  for (const rel of walk('content/site-blocks')) {
+    const src = code(read(rel))
+    for (const m of src.matchAll(/\{ (?:label: '([^']*)', )?to: 'app:(host|explorer)'/g)) {
+      const where = `${rel}:${src.slice(0, m.index).split('\n').length}`
+      const destination = m[2]
+      const labels = m[1] !== undefined ? [m[1]] : destination === 'host' ? hostHandoffDefaults() : [explorerHandoffDefault()]
+      rows.push({ where, tag: 'content', destination, labels })
+    }
+  }
+  return rows
+}
+
+export function ctaTable() {
+  const rows = contentCtaRows()
   for (const rel of [...walk('app'), ...walk('components')]) {
+    // #4636: block sections pass the label through from content (rows above).
+    if (rel.startsWith(path.join('components', 'site-blocks', 'sections'))) continue
     const src = code(read(rel))
     const re = new RegExp(`<(${TAGS.join('|')})\\b`, 'g')
     let m
@@ -248,7 +269,8 @@ test('source: the Host sheets, /download, /host/download, /links and Ari name Ho
   assert.match(sheet, /\{host \? 'Get Mingla Host on' : 'Get it on'\}/)
   assert.match(sheet, /Continue on \{hostWebLabel\(hrefs\.computerHref\)\}/, 'Continue on host.usemingla.com')
 
-  const download = code(read('app/download/page.tsx'))
+  // #4636: the /download section is the `getApp` block (get-app-block.tsx).
+  const download = code(read('components/site-blocks/sections/get-app-block.tsx'))
   const hostPanel = download.slice(download.indexOf('const hostPanel'), download.indexOf('return ('))
   assert.match(hostPanel, /aria-label="Get Mingla Host on the App Store"[\s\S]*<small>Get Mingla Host on the<\/small>/)
   assert.match(hostPanel, /aria-label="Get Mingla Host on Google Play"[\s\S]*<small>Get Mingla Host on<\/small>/)

@@ -136,7 +136,13 @@ if (!fs.existsSync(abs)) {
   process.exit(1);
 }
 const failures = [];
-checkRoute(fs.readFileSync(abs, "utf8"), failures);
+// #4636: the desktop branch renders the `getApp` registry block; its markup
+// (the QR and the badges) is read with the route.
+const GET_APP_BLOCK = "mingla-marketing/components/site-blocks/sections/get-app-block.tsx";
+const routeSource = fs.readFileSync(abs, "utf8");
+const blockAbs = path.join(root, GET_APP_BLOCK);
+const blockSource = /<GetAppBlock\b/.test(routeSource) && fs.existsSync(blockAbs) ? fs.readFileSync(blockAbs, "utf8") : "";
+checkRoute(`${routeSource}\n${blockSource}`, failures);
 
 if (failures.length > 0) {
   console.error(

@@ -21,8 +21,11 @@ import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { after, test } from 'node:test'
 import { MARKETING, makeLoader } from './issue-4339-round-b-load.mjs'
+import { pageSource } from './issue-4636-page-source.mjs'
 
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 const CLIPS = path.join(MARKETING, 'public/marketing/site/m')
@@ -92,7 +95,9 @@ test('LCP: priority and lazy posters, lazy city place photos, sized help thumbna
   assert.match(media, /video\.poster = poster/)
   const goingOut = code(read('app/(core)/going-out/page.tsx'))
   assert.match(goingOut, /<LandingMedia media=\{guide\.media\} lazyPoster \/>/)
-  assert.match(goingOut, /<LandingMedia media="v:cozy" priority \/>/)
+  // #4636: the wide tile is in the `filterGrid` block; its clip is content (wideMedia).
+  assert.match(goingOut, /<LandingMedia media=\{content\.wideMedia\} priority \/>/)
+  assert.match(goingOut, /wideMedia: 'v:cozy',/)
   assert.match(code(read('components/cities/city-weekend.tsx')), /eager=\{false\}/)
   // #4339 speed fix: the cards render on the server (help-video-grid.tsx);
   // thumbnails are srcsets over next/image's optimiser built on the server

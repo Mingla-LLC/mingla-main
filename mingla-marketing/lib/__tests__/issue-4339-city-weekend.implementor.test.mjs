@@ -40,9 +40,12 @@ import path from 'node:path'
 import { stripTypeScriptTypes } from 'node:module'
 import { after, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pageSource } from './issue-4636-page-source.mjs'
 
 const MARKETING = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 
@@ -290,8 +293,9 @@ test('strips render first and the empty-rule copy is verbatim', () => {
   assert.match(ui, /Plans in \{model\.plansIn\.name\} <ArrowRight/)
   assert.match(ui, /<p className="filter-note">\{model\.text\}<\/p>\s*<div className="row quiet-row">\s*\{model\.plansIn \? \(/, 'the fallback line, then Plans in')
   // The page keeps its existing content below "This weekend".
-  const page = code(read('components/cities/city-page.tsx'))
-  const order = ['<CityHero', '<CityThisWeekend', '<CityWeekend', '<CityGuideBand', '<CityQuestions', '<CityHostBand'].map((tag) => page.indexOf(tag))
+  // #4636: each section is a block (components/site-blocks/sections/), in this order on the page.
+  const page = code(fs.readFileSync(path.join(MARKETING, 'components/cities/city-page.tsx'), 'utf8'))
+  const order = ['<CityHeroBlock', '<CityWeekendBlock', '<TopPlacesBlock', '<CityPlansBlock', '<FaqBlock', '<CityHostBandBlock'].map((tag) => page.indexOf(tag))
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'hero, This weekend, the ranked places, plans, FAQ, host band')
   assert.ok(order.every((i) => i > 0))
   assert.match(code(read('components/cities/city-weekend.tsx')), /Top places <em>in \{cityName\}\.<\/em>/)

@@ -1,0 +1,147 @@
+{
+  "_": "#4636 R5 — every public usemingla.com page, its sections in order: a registry block key, or an explicit not-a-block reason. Checked by lib/__tests__/issue-4636-section-coverage.implementor.test.mjs against the page source (the JSX components the page function renders, in order). A page rendering a section listed in neither fails the test.",
+  "chrome": {
+    "LandingRoot": "page wrapper: [data-landing] and the reveal / lit / feature behaviours",
+    "SitePage": "page shell: nav, <main> and footer",
+    "SiteNav": "site-wide nav (site settings, not a page block)",
+    "SiteFooter": "site-wide footer (site settings, not a page block)",
+    "Spot": "#4452 spot: renders a staff form / buttons / banner block only when one is published",
+    "IcpLandingAnalytics": "analytics listener, renders nothing visible",
+    "CallButtonAnalytics": "analytics listener, renders nothing visible",
+    "CityHubImpression": "analytics impression, renders nothing visible",
+    "CityBreadcrumb": "breadcrumb trail matching the BreadcrumbList; follows the city",
+    "CityLifecycleNotice": "guide review notice driven by the registry lifecycle, not content",
+    "BreadcrumbSchema": "JSON-LD only",
+    "IcpLandingPage": "the host-type template (its sections are listed on the template entry)",
+    "HomePage": "the home component (its sections are listed on its entry)",
+    "HostPage": "the For hosts component (its sections are listed on its entry)",
+    "MinglaEntityGraph": "JSON-LD only"
+  },
+  "pages": [
+    {
+      "key": "home",
+      "path": "/",
+      "source": "components/site/home-page.tsx#HomePage",
+      "sections": ["LandingRoot", "SiteNav", "block:reelHero", "block:steps", "block:tiles", "block:citiesRow", "block:marquee", "block:videoBand", "SiteFooter"]
+    },
+    {
+      "key": "host",
+      "path": "/host",
+      "source": "components/site/host-page.tsx#HostPage",
+      "sections": ["LandingRoot", "SiteNav", "block:reelHero", "block:tiles", "block:promptDemo", "block:vcards", "block:toolkit", "block:videoBand", "SiteFooter"]
+    },
+    {
+      "key": "host-template",
+      "path": "/host/[icp] (events, trips, experiences, restaurants, hotels, art, play)",
+      "source": "components/landing/icp-landing.tsx#IcpLandingPage",
+      "sections": [
+        "LandingRoot",
+        "IcpLandingAnalytics",
+        "CallButtonAnalytics",
+        "SiteNav",
+        "block:icpHero",
+        "Spot",
+        "block:litAbout",
+        "block:icpFeatures",
+        "Spot",
+        "block:chips",
+        "block:toolCard",
+        "Spot",
+        "block:faq",
+        "block:videoBand",
+        "Spot",
+        "SiteFooter"
+      ]
+    },
+    { "key": "host-icp-route", "path": "/host/[icp]", "source": "app/host/[icp]/page.tsx", "sections": ["IcpLandingPage"] },
+    {
+      "key": "creators",
+      "path": "/creators",
+      "source": "app/creators/page.tsx",
+      "sections": ["SitePage", "block:heroWords", "Spot", "frame:programme", "block:clipGrid", "Spot", "block:steps", "Spot", "block:videoBand", "block:finePrint", "Spot"]
+    },
+    {
+      "key": "locals",
+      "path": "/locals",
+      "source": "app/locals/page.tsx",
+      "sections": ["SitePage", "block:heroWords", "Spot", "frame:programme", "block:steps", "Spot", "block:facts", "Spot", "block:videoBand", "block:finePrint", "Spot"]
+    },
+    {
+      "key": "about",
+      "path": "/about",
+      "source": "app/(core)/about/page.tsx",
+      "sections": ["SitePage", "block:pageHero", "block:answer", "block:wideClip", "block:paras", "block:vcards"]
+    },
+    {
+      "key": "going-out",
+      "path": "/going-out",
+      "source": "app/(core)/going-out/page.tsx",
+      "sections": ["SitePage", "block:pageHero", "block:answer", "block:filterGrid", "block:cityLinks"]
+    },
+    { "key": "cities", "path": "/cities", "source": "app/(core)/cities/page.tsx", "sections": ["SitePage", "block:pageHero", "block:citiesRow"] },
+    {
+      "key": "city",
+      "path": "/cities/[city] (guide cities)",
+      "source": "components/cities/city-page.tsx#CityPage",
+      "sections": [
+        "CityHubImpression",
+        "SitePage",
+        "block:cityHero",
+        "CityBreadcrumb",
+        "CityLifecycleNotice",
+        "block:cityWeekend",
+        "block:topPlaces",
+        "block:cityPlans",
+        "block:faq",
+        "block:cityHostBand"
+      ]
+    },
+    {
+      "key": "city-live",
+      "path": "/cities/[city] (live cities with no guide)",
+      "source": "components/cities/live-city-page.tsx#LiveCityPage",
+      "sections": ["CityHubImpression", "SitePage", "block:cityHero", "CityBreadcrumb", "block:cityWeekend", "block:cityHostBand"]
+    },
+    { "key": "download", "path": "/download", "source": "app/download/page.tsx", "sections": ["SitePage", "block:getApp"] },
+    { "key": "support", "path": "/support", "source": "app/support/page.tsx", "sections": ["SitePage", "block:pageHero", "block:quickLinks"] },
+    {
+      "key": "help",
+      "path": "/help",
+      "source": "app/help/page.tsx",
+      "sections": ["SitePage", "BreadcrumbSchema", "block:pageHero", "block:helpVideos", "block:stillStuck"]
+    },
+    {
+      "key": "careers",
+      "path": "/ (careers.usemingla.com)",
+      "source": "app/careers/page.tsx",
+      "sections": ["SitePage", "block:pageHero", "frame:programme", "block:steps", "block:openRoles"]
+    },
+    { "key": "tools", "path": "/tools", "source": "app/tools/page.tsx", "sections": ["SitePage", "block:pageHero", "block:toolCards"] },
+    { "key": "schedule", "path": "/schedule", "source": "app/schedule/page.tsx", "sections": ["SitePage", "block:scheduler", "Spot"] },
+    { "key": "blog", "path": "/blog", "source": "app/blog/page.tsx", "sections": ["SitePage", "block:blogStories"] },
+    { "key": "home-route", "path": "/", "source": "app/(explorer)/page.tsx", "sections": ["MinglaEntityGraph", "HomePage"] },
+    { "key": "host-route", "path": "/host", "source": "app/host/page.tsx", "sections": ["HostPage"] }
+  ],
+  "notBlocks": [
+    { "key": "blog-post", "path": "/blog/[slug]", "reason": "blog article body: edited in Admin Blog (#4137)" },
+    { "key": "blog-category", "path": "/blog/category/[category]", "reason": "blog category index: the blogStories view per category, driven by the URL (not a page of its own to edit)" },
+    { "key": "help-video", "path": "/help/[slug]", "reason": "help video player page: generated from the help registry" },
+    { "key": "links", "path": "/links", "reason": "the Links page: its own live data and layout (#4318), edited in Admin Links" },
+    { "key": "creator-agreement", "path": "/creator-agreement", "reason": "legal document: a test hashes the wording (locked, D4)" },
+    { "key": "local-agreement", "path": "/local-agreement", "reason": "legal document: a test hashes the wording (locked, D4)" },
+    { "key": "organiser-terms", "path": "/organiser-terms", "reason": "legal document: a test hashes the wording (locked, D4)" },
+    { "key": "privacy-policy", "path": "/privacy-policy", "reason": "legal document: a test hashes the wording (locked, D4)" },
+    { "key": "terms-of-service", "path": "/terms-of-service", "reason": "legal document: a test hashes the wording (locked, D4)" },
+    { "key": "sms-terms", "path": "/sms-terms", "reason": "legal document: a test hashes the wording (locked, D4)" },
+    { "key": "delete-account", "path": "/delete-account", "reason": "utility screen (account deletion steps), older styling" },
+    { "key": "host-download", "path": "/host/download", "reason": "smart redirect route to the Host stores, no sections" },
+    { "key": "schedule-creators", "path": "/schedule/creators", "reason": "programme call booking (ProgramCallPage): a form flow, owned by Forms / #4339 calls" },
+    { "key": "schedule-locals", "path": "/schedule/locals", "reason": "programme call booking (ProgramCallPage): a form flow, owned by Forms / #4339 calls" },
+    { "key": "tools-venues", "path": "/tools/venues", "reason": "free tool form and report (#1003): an app, not content" },
+    { "key": "tools-events", "path": "/tools/events", "reason": "free tool form and report (#1003): an app, not content" },
+    { "key": "tools-trips", "path": "/tools/trips", "reason": "free tool form and report (#1003): an app, not content" },
+    { "key": "tools-pricing", "path": "/tools/pricing", "reason": "free tool form and report (#1003): an app, not content" },
+    { "key": "apply", "path": "/apply/[slug]", "reason": "form pages: built in Admin Forms (#4452)" },
+    { "key": "careers-role", "path": "/roles/[slug] (careers.usemingla.com)", "reason": "careers role pages and apply form: older Tailwind styling, data from the roles table" }
+  ]
+}

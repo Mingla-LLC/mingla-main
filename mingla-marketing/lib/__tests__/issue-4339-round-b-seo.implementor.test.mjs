@@ -25,8 +25,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { after, test } from 'node:test'
 import { MARKETING, makeLoader } from './issue-4339-round-b-load.mjs'
+import { pageSource } from './issue-4636-page-source.mjs'
 
-const read = (rel) => fs.readFileSync(path.join(MARKETING, rel), 'utf8')
+// #4636: a page's sections moved into block components and content modules;
+// read a page together with the blocks it renders (issue-4636-page-source.mjs).
+const read = (rel) => pageSource(rel)
 const code = (source) => source.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 const BUILT = process.env.ISSUE_4339_BUILT === '1'
 const loader = makeLoader()
@@ -42,7 +45,8 @@ test('1. city page: H1 pill, brand line, H2s, breadcrumb and BreadcrumbList', as
   assert.match(page, /<p className="city-brand-line">\s*<span>\{record\.city\}, what are we<\/span>/)
   assert.equal((page.match(/<h1\b/g) ?? []).length, 1, 'one H1 in the city template')
   assert.match(page, /<nav className="city-crumbs wrap" aria-label="Breadcrumb">[\s\S]*href="\/">Home<[\s\S]*href="\/cities">Cities<[\s\S]*aria-current="page">\{record\.city\}</)
-  assert.match(page, /<CityHero record=\{record\} \/>\s*<CityBreadcrumb record=\{record\} \/>/)
+  // #4636: the hero is the `cityHero` block; the breadcrumb follows it.
+  assert.match(page, /<CityHeroBlock content=\{city\} identity=\{record\} blockId="city-hub-title" \/>\s*<CityBreadcrumb record=\{record\} \/>/)
   assert.match(code(read('components/cities/city-this-weekend.tsx')), /Things to do in \{cityName\} <em>this weekend\.<\/em>/)
   assert.match(code(read('components/cities/city-weekend.tsx')), /Top places <em>in \{cityName\}\.<\/em>/)
   // The brand line keeps the hero headline look.
@@ -80,14 +84,23 @@ test('1b. city descriptions are 140–155 characters and keyword first', async (
 
 test('2. /going-out renders its direct answer and links every live city', async () => {
   const page = code(read('app/(core)/going-out/page.tsx'))
-  assert.match(page, /<h2 className="h2" id="going-out-answer">\s*\{record\.directQuestion\}\s*<\/h2>\s*<p className="lead">\{record\.directAnswer\}<\/p>/)
+  // #4636: the answer is the `answer` block, fed the page record's question and answer (content/site-blocks/core.ts).
+  assert.match(page, /<h2 className="h2" id=\{blockId\}>\s*\{content\.question\}\s*<\/h2>\s*<p className="lead">\{content\.answer\}<\/p>/)
+  assert.match(page, /question: CORE_PAGES\[key\]\.directQuestion,\s*answer: CORE_PAGES\[key\]\.directAnswer,/)
+  assert.match(page, /<AnswerBlock content=\{GOING_OUT_ANSWER\} blockId="going-out-answer" \/>/)
+  assert.match(page, /GOING_OUT_ANSWER: AnswerContent = answerOf\('going-out'\)/)
   // #4339 (live cities): one link per LIVE city, A to Z (lib/live-cities.ts).
-  assert.match(page, /cityTiles\.map\(\(city\) => \([\s\S]*<Link href=\{`\/cities\/\$\{city\.slug\}`\}>\s*Things to do in \{city\.name\}/)
+  assert.match(page, /cityTiles\.map\(\(city\) => \([\s\S]*<Link href=\{`\/cities\/\$\{city\.slug\}`\}>\s*\{content\.prefix\} \{city\.name\}/)
+  assert.match(page, /GOING_OUT_CITIES: CityLinksContent = \{ heading: 'Plans, \*city by city\.\*', prefix: 'Things to do in' \}/)
 })
 
 test('3. /about renders "What is Mingla?" and its direct answer', async () => {
   const page = code(read('app/(core)/about/page.tsx'))
-  assert.match(page, /<h2 className="h2" id="about-what">\s*\{record\.directQuestion\}\s*<\/h2>\s*<p className="lead">\{record\.directAnswer\}<\/p>/)
+  // #4636: the answer is the `answer` block, fed the page record's question and answer (content/site-blocks/core.ts).
+  assert.match(page, /<h2 className="h2" id=\{blockId\}>\s*\{content\.question\}\s*<\/h2>\s*<p className="lead">\{content\.answer\}<\/p>/)
+  assert.match(page, /question: CORE_PAGES\[key\]\.directQuestion,\s*answer: CORE_PAGES\[key\]\.directAnswer,/)
+  assert.match(page, /<AnswerBlock content=\{ABOUT_ANSWER\} blockId="about-what" \/>/)
+  assert.match(page, /ABOUT_ANSWER: AnswerContent = answerOf\('about'\)/)
   const core = read('content/core-pages.ts')
   assert.match(core, /directQuestion: 'What is Mingla\?'/)
 })

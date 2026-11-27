@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-const source = fs.readFileSync(path.resolve("app/locals/page.tsx"), "utf8");
+// #4636: the page's copy moved into its block content (content/site-blocks/programmes.ts).
+const source = ["app/locals/page.tsx", "content/site-blocks/programmes.ts"].map((f) => fs.readFileSync(path.resolve(f), "utf8")).join("\n");
 for (const truth of [
   "up to three Locals",
   "earn $150 after approval",

@@ -58,7 +58,8 @@ const CARVE_OUT =
 const LINK_SURFACES = [
   'components/marketing/footer.tsx',
   'components/page-system/page-system-shell.tsx',
-  'app/support/page.tsx',
+  // #4636: /support's quick links are its `quickLinks` block content.
+  'content/site-blocks/core.ts',
 ]
 
 function verifySource(files) {
@@ -103,7 +104,7 @@ function verifySource(files) {
 
   // Every link surface reaches the page.
   for (const surface of LINK_SURFACES) {
-    assert.match(files[surface], /href(?:=|: )["']\/organiser-terms["']/, `${surface} must link /organiser-terms`)
+    assert.match(files[surface], /(?:href(?:=|: )|\bto: )["']\/organiser-terms["']/, `${surface} must link /organiser-terms`)
     assert.match(files[surface], /Organiser Terms/, `${surface} must label the link Organiser Terms`)
   }
 
