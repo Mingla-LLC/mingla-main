@@ -866,6 +866,14 @@ export const useRsvpOfferingState = (
     contributionState === "paid" ? "success" : "idle",
   );
   const [chipError, setChipError] = useState<string | null>(null);
+  // #3645 — a floor the server named that is above the host minimum (the
+  // payment provider's minimum charge). Once known, it is checked here and
+  // shown as the panel's minimum.
+  const [chipServerFloorCents, setChipServerFloorCents] = useState<
+    number | null
+  >(null);
+  const chipEffectiveMinCents: number | null =
+    Math.max(chipServerFloorCents ?? 0, chipMinCents ?? 0) || null;
   const [renderedContext, setRenderedContext] = useState(context);
   if (renderedContext !== context) {
     acceptedRevision.current += 1;
@@ -904,6 +912,9 @@ export const useRsvpOfferingState = (
     setChipAmountCents(chipDefaultAmount);
     setChipInState("idle");
     setChipError(null);
+    // #3645 — a floor learned on another event (maybe another currency)
+    // never carries over.
+    setChipServerFloorCents(null);
   }
   const handleAcquisitionError = useCallback(
     (code: string): boolean => {
@@ -1537,17 +1548,20 @@ export const useRsvpOfferingState = (
   // ── ORCH-1291 — server-code → gift-framed copy (DESIGN §4.7). ──
   const fmtChipWhole = useCallback(
     (cents: number): string => {
+      // #3645 — the chip-in field takes whole units, so a floor is named
+      // rounded UP (DKK 2.30 -> 3; GBP 30p -> £1, never £0).
+      const major = Math.ceil(cents / 100);
       try {
         return withCurrencyGlyph(
           new Intl.NumberFormat(undefined, {
             style: "currency",
             currency: chipCurrency || "USD",
             maximumFractionDigits: 0,
-          }).format(cents / 100),
+          }).format(major),
           chipCurrency,
         );
       } catch {
-        return `${Math.round(cents / 100)} ${chipCurrency}`;
+        return `${major} ${chipCurrency}`;
       }
     },
     [chipCurrency],
@@ -1561,8 +1575,10 @@ export const useRsvpOfferingState = (
       setChipInState("error");
       return;
     }
-    if (chipMinCents !== null && chipAmountCents < chipMinCents) {
-      setChipError(`Add at least ${fmtChipWhole(chipMinCents)}.`);
+    if (chipEffectiveMinCents !== null && chipAmountCents < chipEffectiveMinCents) {
+      setChipError(
+        `Add at least ${fmtChipWhole(chipEffectiveMinCents)}.`,
+      );
       setChipInState("error");
       return;
     }
@@ -1584,9 +1600,18 @@ export const useRsvpOfferingState = (
         setChipInState("paused");
         setChipError(null);
       } else if (code.includes("amount_below_min")) {
+        // #3645 — name the server's floor (the provider minimum can be above
+        // the host's), and remember it so the next tap is checked here.
+        // `minCents` is set (and validated) by chipInRefusalFromBody; an older
+        // caller's plain Error has none, so the host minimum is named.
+        const sent = (err as { minCents?: unknown } | null)?.minCents;
+        const floor = typeof sent === "number" ? sent : chipMinCents;
+        if (floor !== null && (chipMinCents === null || floor > chipMinCents)) {
+          setChipServerFloorCents(floor);
+        }
         setChipError(
-          chipMinCents !== null
-            ? `Add at least ${fmtChipWhole(chipMinCents)}.`
+          floor !== null
+            ? `Add at least ${fmtChipWhole(floor)}.`
             : "Add a little more.",
         );
         setChipInState("error");
@@ -1603,6 +1628,7 @@ export const useRsvpOfferingState = (
     chipInState,
     chipAmountCents,
     chipMinCents,
+    chipEffectiveMinCents,
     fmtChipWhole,
     isCurrent,
   ]);
@@ -1969,7 +1995,9 @@ export const useRsvpOfferingState = (
           currency={chipCurrency}
           hostShortName={chipHostName}
           suggestedCents={chipSuggestedCents}
-          minCents={chipMinCents}
+          minCents={
+            chipEffectiveMinCents && Math.ceil(chipEffectiveMinCents / 100) * 100
+          }
           state={chipInState}
           amountCents={chipAmountCents}
           onAmountChange={(c) => {
