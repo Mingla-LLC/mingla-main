@@ -15,8 +15,9 @@ import {
   getStoredAdMatchData,
   getStoredClickAttribution,
 } from "../analytics/webAnalytics";
+import { chipInRefusalFromBody } from "@mingla/offering-rendering/chipInRefusal";
 import {
-  parseRsvpErrorCode,
+  readRsvpErrorBody,
   readRsvpErrorCode,
   type RsvpInvokeError,
 } from "./rsvpErrorCodes";
@@ -362,8 +363,12 @@ export const submitRsvpContribution = async (
   );
   // Bubble the edge fn's { error } code (amount_below_min / brand_cannot_collect /
   // amount_invalid / …) so the panel maps it to the right gift-framed copy.
+  // #3645 — read the response BODY (the sync parse only ever saw the generic
+  // "non-2xx" message, so every refusal read "Couldn't process that"), and
+  // carry `minCents` / `reason` so the panel names the floor the server used.
   if (error !== null) {
-    throw new Error(parseRsvpErrorCode(error as RsvpInvokeError));
+    const refusal = await readRsvpErrorBody(error as RsvpInvokeError);
+    throw chipInRefusalFromBody(refusal.code, refusal.body);
   }
   const res = (data ?? {}) as Partial<SubmitRsvpContributionResult> & {
     kind?: string;

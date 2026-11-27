@@ -54,7 +54,17 @@ export const parseRsvpErrorCode = (error: RsvpInvokeError | null): string => {
  */
 export const readRsvpErrorCode = async (
   error: RsvpInvokeError | null,
-): Promise<string> => {
+): Promise<string> => (await readRsvpErrorBody(error)).code;
+
+/**
+ * #3645 — `readRsvpErrorCode` plus the parsed `{ error, … }` body, for a
+ * refusal that carries more than its code (the chip-in's `amount_below_min`
+ * names its floor in `minCents`). `body` is null unless a readable JSON body
+ * carried the code.
+ */
+export const readRsvpErrorBody = async (
+  error: RsvpInvokeError | null,
+): Promise<{ code: string; body: Record<string, unknown> | null }> => {
   const context = (error as { context?: unknown } | null)?.context;
   if (context !== null && typeof context === "object") {
     const response = context as {
@@ -67,14 +77,17 @@ export const readRsvpErrorCode = async (
       const readable =
         typeof response.clone === "function" ? response.clone() : response;
       if (typeof readable.text === "function") {
-        const parsed = JSON.parse(await readable.text()) as { error?: unknown };
-        if (typeof parsed.error === "string" && parsed.error.length > 0) {
-          return parsed.error;
+        const parsed = JSON.parse(await readable.text()) as unknown;
+        if (parsed !== null && typeof parsed === "object") {
+          const record = parsed as Record<string, unknown>;
+          if (typeof record.error === "string" && record.error.length > 0) {
+            return { code: record.error, body: record };
+          }
         }
       }
     } catch {
       // Consumed, unreadable or non-JSON body: the synchronous parse below decides.
     }
   }
-  return parseRsvpErrorCode(error);
+  return { code: parseRsvpErrorCode(error), body: null };
 };

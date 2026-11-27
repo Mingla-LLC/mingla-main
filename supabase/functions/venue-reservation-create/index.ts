@@ -76,6 +76,10 @@ import {
 } from "../_shared/paymentProvider.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import { tableHoldCharge, tablePickStatus } from "./tablePick.ts";
+import {
+  logReservationFloorRefusal,
+  reservationProviderFloorRefusal,
+} from "./depositFloor.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
 import { mintClaimLink } from "../_shared/claimLink.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
@@ -1032,6 +1036,25 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     const psBuyerTotalCents = depositMoney.totalCents;
     const psBreakdown = discountPricingBreakdown;
 
+    // Issue #3645 — below Paystack's minimum: refuse before any discount use,
+    // session row or provider call.
+    const psFloorRefusal = reservationProviderFloorRefusal(
+      psBuyerTotalCents,
+      "NGN",
+    );
+    if (psFloorRefusal !== null) {
+      logReservationFloorRefusal({
+        venueId,
+        brandId,
+        provider: "paystack",
+        chargedTotalCents: psBuyerTotalCents,
+        depositListCents: baseFeeCents,
+        discountCents: discountQuote.discountMinor,
+        refusal: psFloorRefusal,
+      });
+      return jsonResponse(psFloorRefusal.body, psFloorRefusal.status);
+    }
+
     const reserveFailure = await reserveDiscountUses(sessionExpiresAt);
     if (reserveFailure !== null) return reserveFailure;
 
@@ -1169,6 +1192,25 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     buyerSubtotal.serviceFeeCents;
   const pricingBreakdown = discountPricingBreakdown;
   const totalCents = pricingBreakdown.buyer_total_cents;
+
+  // Issue #3645 — below Stripe's minimum for this currency: refuse before any
+  // discount use, session row or provider call.
+  const stripeFloorRefusal = reservationProviderFloorRefusal(
+    totalCents,
+    currency,
+  );
+  if (stripeFloorRefusal !== null) {
+    logReservationFloorRefusal({
+      venueId,
+      brandId,
+      provider: "stripe",
+      chargedTotalCents: totalCents,
+      depositListCents: baseFeeCents,
+      discountCents: discountQuote.discountMinor,
+      refusal: stripeFloorRefusal,
+    });
+    return jsonResponse(stripeFloorRefusal.body, stripeFloorRefusal.status);
+  }
 
   const reserveFailure = await reserveDiscountUses(sessionExpiresAt);
   if (reserveFailure !== null) return reserveFailure;

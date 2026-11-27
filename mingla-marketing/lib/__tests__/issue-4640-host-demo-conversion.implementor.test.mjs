@@ -22,10 +22,14 @@ test('#4640 the form redirect carries only a profile key and opaque handoff toke
 test('#4640 the scheduler hydrates server-saved answers and requires phone for every audience', () => {
   const client = read('app/schedule/ScheduleClient.tsx')
   const transport = read('lib/booking-call.ts')
-  assert.match(client, /fetchBookingHandoff\(handoffToken, schedulerKey\)/)
+  const handoff = read('lib/booking-handoff.ts')
+  assert.match(client, /await import\('\@\/lib\/booking-handoff'\)/)
+  assert.doesNotMatch(client, /import \{[^}]*hydrateBookingHandoff[^}]*\} from/)
+  assert.match(client, /hydrateBookingHandoff\(handoffToken, schedulerKey, \[setName, setEmail, setPhone, setIcp, setSocialPlatform, setSocialHandle/)
   for (const setter of ['setName', 'setEmail', 'setPhone', 'setIcp', 'setSocialPlatform', 'setSocialHandle']) {
-    assert.match(client, new RegExp(`${setter}\\(p\\.`))
+    assert.match(client, new RegExp(`hydrateBookingHandoff\\([^\\n]*${setter}`))
   }
+  assert.match(handoff, /\[p\.name, p\.email, p\.phone, p\.icp, p\.social_platform, p\.social_handle/)
   assert.match(client, /Your phone[\s\S]*data-field="phone"[\s\S]*required/)
   assert.match(client, /phone: phone\.trim\(\)/)
   assert.match(transport, /export interface BookCallExtras \{\s+phone: string/)

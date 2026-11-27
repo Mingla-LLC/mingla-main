@@ -252,9 +252,10 @@ async function markRsvpProviderUnknown(
  * at the provider (`provider_unknown`), and its recovery path (Paystack
  * verify, Stripe's exact idempotency key) must stay reachable.
  *
- * Clients: the chip-in panel still words the refusal from the host minimum
- * it holds (RsvpOfferingBody / rsvpEvents, being edited on the #4522 branch);
- * reading `minCents` there is a tracked #3645 follow-up.
+ * Clients: Host / buyer web (`rsvpEvents.submitRsvpContribution`) and
+ * Explorer (`ConsumerEventDetailScreen.handleChipIn`) read this body into
+ * `@mingla/offering-rendering/chipInRefusal`, and the chip-in panel names
+ * `minCents` (rounded up to a whole unit) in "Add at least …".
  */
 function providerFloorRefusal(
   amountCents: number,
