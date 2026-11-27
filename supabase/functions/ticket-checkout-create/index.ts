@@ -198,6 +198,15 @@ import {
   resolveDoorPayCheckout,
 } from "./doorPayCheckout.ts";
 import { doorPayReturnUrl } from "../_shared/doorPay.ts";
+// Issue #4624 item 5a — capped-discount holds cover the payment window.
+import { normaliseBasketLines } from "./basketLines.ts";
+import {
+  cappedDiscountPageEndsMs,
+  discountPageExpiresAtSec,
+  extendCappedDiscountHold,
+  NO_DISCOUNT_HOLD,
+  sessionHasCappedDiscount,
+} from "./discountHold.ts";
 import {
   PAYOUT_HOLD_UNREADABLE_ERROR,
   PAYOUT_HOLD_UNREADABLE_STATUS,
@@ -920,8 +929,16 @@ export const createTicketCheckoutCreateHandler = (
       checkoutAttemptId = body.checkoutAttemptId;
       checkoutV2Lines = parsedLines.lines;
     }
-    const lines = checkoutV2Lines ??
-      (Array.isArray(body.lines) ? body.lines.filter(isCheckoutLine) : []);
+    // Issue #4624 — normalise basket lines: one line per ticket type, merged
+    // when the copies differ only in quantity, refused when they can't be.
+    // Checkout v2's parser already refuses repeats.
+    const basket = normaliseBasketLines(
+      Array.isArray(body.lines) ? body.lines.filter(isCheckoutLine) : [],
+    );
+    if (!basket.ok) {
+      return jsonResponse({ error: basket.error }, 400);
+    }
+    const lines = checkoutV2Lines ?? basket.lines;
     // Refusal telemetry stores opaque JSON rows; cast at the boundary so
     // typed CheckoutV2Line / CheckoutLine arrays type-check under deno check.
     refusal.lines = lines as Record<string, unknown>[];
@@ -2506,6 +2523,11 @@ export const createTicketCheckoutCreateHandler = (
       if (sessionError?.message?.includes("discount_code_invalid")) {
         return await checkoutReviewResponse("discount_code_invalid");
       }
+      // Issue #4624 — the database refuses a session with two lines for one
+      // ticket type; the basket is normalised above, so this is a backstop.
+      if (sessionError?.message?.includes("checkout_lines_duplicate")) {
+        return jsonResponse({ error: "checkout_lines_duplicate" }, 400);
+      }
       // ═══ issue #2579 — RECORD THE REFUSAL, BECAUSE NOTHING ELSE DOES ═══
       //
       // The RPC refuses by RAISE, which rolls its transaction back, so no
@@ -4031,6 +4053,38 @@ export const createTicketCheckoutCreateHandler = (
       });
     }
 
+    // Issue #4624 item 5a (D-5a) — every paid rail (web Stripe, native Stripe,
+    // Paystack) reaches here before its provider object exists. A capped
+    // discount's hold is stretched to cover the payment page (door code end, or
+    // Stripe's 30-minute floor) plus a 2-minute margin, and the web page then
+    // closes at the same time. No capped discount: nothing moves and the page
+    // keeps today's 24 hours. A failed extend fails closed, before any provider
+    // call, so no payment can outlive an unextended hold.
+    const discountPageEndsMs = cappedDiscountPageEndsMs(
+      doorPay !== null ? doorStripeExpiresAt(doorPay) : null,
+    );
+    // Only a basket that holds a capped discount makes the call (P2-2).
+    const discountHold = sessionHasCappedDiscount(session)
+      ? await extendCappedDiscountHold(
+        supabase,
+        checkoutSessionId,
+        discountPageEndsMs,
+      )
+      : NO_DISCOUNT_HOLD;
+    if (!discountHold.ok) {
+      console.error(
+        "[ticket-checkout-create] capped discount hold extend failed",
+        discountHold.detail,
+      );
+      return jsonResponse(
+        {
+          error: "checkout_session_create_failed",
+          detail: "discount_hold_extend_failed",
+        },
+        500,
+      );
+    }
+
     // ===================================================================
     // META-ORCH-1076 [Paystack Africa] — PAYSTACK ARM (NGN), additive branch.
     // ===================================================================
@@ -4940,8 +4994,16 @@ export const createTicketCheckoutCreateHandler = (
               cancel_url: cancelUrl,
               // Issue #4271 — a door code's page closes with the code (at
               // least Stripe's 30-minute floor), never the 24-hour default.
+              // Issue #4624 (D-5a) — a capped discount's page closes with its
+              // extended hold.
               ...(doorPay !== null
                 ? { expires_at: doorStripeExpiresAt(doorPay) }
+                : discountHold.extended
+                ? {
+                  expires_at: discountPageExpiresAtSec(
+                    discountHold.pageEndsMs,
+                  ),
+                }
                 : {}),
               metadata: {
                 mingla_checkout_session_id: checkoutSessionId,

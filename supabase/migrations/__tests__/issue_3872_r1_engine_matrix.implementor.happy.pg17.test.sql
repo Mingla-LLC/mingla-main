@@ -170,7 +170,8 @@ begin
   q:=pg_temp.i3872_run(jsonb_build_array(pg_temp.i3872_line('block',3000,1,true,'ticket_type','experience','UTC',3,3)),
        jsonb_build_array(pg_temp.i3872_discount(16,'automatic','amount',100)));
   perform pg_temp.i3872_eq('37 block amount x blocks',q->>'netSubtotalMinor','2700');
-  perform pg_temp.i3872_eq('38 block counts blocks',q#>>'{applied,0,units}','3');
+  -- #4624 D-3a/D-3b: one unit per ticket issued; a 3-block booking is 1 ticket.
+  perform pg_temp.i3872_eq('38 block counts one booking',q#>>'{applied,0,units}','1');
   q:=pg_temp.i3872_run(jsonb_build_array(pg_temp.i3872_line('per-day',1000,3,true,'ticket_type','trip','UTC',1,1)),
        jsonb_build_array(pg_temp.i3872_discount(17,'automatic','amount',100)));
   perform pg_temp.i3872_eq('39 per-day amount per stored unit',q->>'netSubtotalMinor','2700');
@@ -178,7 +179,8 @@ begin
   q:=pg_temp.i3872_run(jsonb_build_array(pg_temp.i3872_line('all-days',1000,1,true,'ticket_type','trip','UTC',1,3)),
        jsonb_build_array(pg_temp.i3872_discount(18,'automatic','amount',100)));
   perform pg_temp.i3872_eq('41 all-days amount once',q->>'netSubtotalMinor','900');
-  perform pg_temp.i3872_eq('42 all-days counts days',q#>>'{applied,0,units}','3');
+  -- #4624 D-3a/D-3b: a 3-day all-days pass is 1 ticket.
+  perform pg_temp.i3872_eq('42 all-days counts one pass',q#>>'{applied,0,units}','1');
 
   -- EN-8 minimum uses eligible list, even after another automatic reduces net.
   a:=pg_temp.i3872_discount(19,'automatic','percent',5000);

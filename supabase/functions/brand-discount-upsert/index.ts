@@ -59,6 +59,9 @@ const CONSTRAINT_DETAILS: Readonly<Record<string, string>> = Object.freeze({
   bd_count_end: "schedule_invalid",
   bd_schedule_kind: "schedule_invalid",
   bd_schedule_shape: "schedule_invalid",
+  // #4624: the column CHECK (ends_after_count > 0) for a Total tickets of 0
+  // or less that reaches SQL.
+  brand_discounts_ends_after_count_check: "limit_invalid",
 });
 const SHAPE_DETAILS = new Set([
   "code_shape_invalid",
@@ -67,6 +70,7 @@ const SHAPE_DETAILS = new Set([
   "target_shape_invalid",
   "name_invalid",
   "schedule_invalid",
+  "limit_invalid",
   "invalid_input",
 ]);
 const CHECK_CONSTRAINT_RE = /violates check constraint "([a-z0-9_]+)"/;
@@ -122,6 +126,23 @@ const json = (body: Record<string, unknown>, status = 200) =>
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
+/**
+ * #4624: "Total tickets" (endsAfterCount) is absent, null/"" (no limit) or a
+ * whole number of 1 or more, for every kind including codes. Anything else
+ * is refused before SQL as limit_invalid, instead of a decimal surfacing as
+ * a bare invalid_input.
+ */
+export function endsAfterCountInvalid(payload: Record<string, unknown>): boolean {
+  if (!Object.hasOwn(payload, "endsAfterCount")) return false;
+  const value = payload.endsAfterCount;
+  if (value === null || value === "") return false;
+  const n = typeof value === "string" && /^\d+$/.test(value.trim())
+    ? Number(value.trim())
+    : value;
+  return !(typeof n === "number" && Number.isInteger(n) && n >= 1 &&
+    n <= 2147483647);
+}
+
 export function createDiscountUpsertHandler(deps: DiscountUpsertDeps) {
   return async (req: Request): Promise<Response> => {
     if (req.method === "OPTIONS") {
@@ -151,6 +172,12 @@ export function createDiscountUpsertHandler(deps: DiscountUpsertDeps) {
       !isObject(body.payload)
     ) {
       return json({ error: "invalid_request", detail: "invalid_request" }, 400);
+    }
+    if (endsAfterCountInvalid(body.payload)) {
+      return json(
+        { error: "discount_write_failed", detail: "limit_invalid" },
+        422,
+      );
     }
 
     const result = await deps.rpc("issue_3872_upsert_discount", {

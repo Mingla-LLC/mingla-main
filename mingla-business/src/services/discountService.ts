@@ -51,6 +51,10 @@ export interface BrandDiscount {
   version: number;
   consumedUnits: number;
   liveUses: number;
+  /** #4624: tickets given back by refunds or cancels (consumedUnits is net of them). */
+  returnedUnits: number;
+  /** #4624: tickets from payments that finished after their hold ran out. */
+  overLimitUnits: number;
   targets: DiscountTarget[];
 }
 
@@ -174,6 +178,8 @@ const snakeToCamel = (value: Record<string, unknown>): BrandDiscount => ({
   version: Number(value.version ?? 1),
   consumedUnits: Number(value.consumedUnits ?? 0),
   liveUses: Number(value.liveUses ?? 0),
+  returnedUnits: Number(value.returnedUnits ?? 0),
+  overLimitUnits: Number(value.overLimitUnits ?? 0),
   targets: Array.isArray(value.targets)
     ? value.targets.map((target) => {
         const row = target as Record<string, unknown>;

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-discount-upsert/__tests__/issue_4624_code_ticket_limit.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4624-02-code-ticket-limit",
+  "profile": "deno-1.46-stripe"
+}

@@ -140,6 +140,11 @@ BEGIN
     'r1-t7-expire',now()+interval '15 minutes',0,'full',NULL,NULL,NULL,NULL,
     'BUYER10',NULL);
   v_expired_session := (v_created->>'checkoutSessionId')::uuid;
+  -- #4624 (D-5a): an expired session releases a hold once the hold's own
+  -- expires_at has passed (a capped hold may outlive the 15-minute session).
+  -- The sweep expires a session at that same moment, so age the hold first.
+  UPDATE public.discount_uses SET expires_at=now()-interval '1 second'
+   WHERE checkout_ref_id=v_expired_session;
   UPDATE public.ticket_checkout_sessions SET status='expired' WHERE id=v_expired_session;
   IF (SELECT status FROM public.discount_uses WHERE checkout_ref_id=v_expired_session)<>'released' THEN
     RAISE EXCEPTION 'T7 expired session did not release use';

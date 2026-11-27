@@ -3467,7 +3467,7 @@ const listDiscounts = writeTool(
 
 const createDiscount = writeTool(
   "create_discount",
-  "Propose a Host discount. Marketing managers can create codes; automatic discounts and sale prices require finance manager or above. Codes are 4-16 letters or numbers. Percent uses value_bps only; amount or set_price uses value_minor only. Each target is EITHER a specific listing (target_kind such as event or ticket_type plus target_id, no listing_kind) OR every listing of one kind (target_kind listing_kind plus listing_kind, no target_id).",
+  "Propose a Host discount. Marketing managers can create codes; automatic discounts and sale prices require finance manager or above. Codes are 4-16 letters or numbers. Percent uses value_bps only; amount or set_price uses value_minor only. Each target is EITHER a specific listing (target_kind such as event or ticket_type plus target_id, no listing_kind) OR every listing of one kind (target_kind listing_kind plus listing_kind, no target_id). Limits: max_total_uses counts checkouts; ends_after_count counts tickets and works on codes too, so a request for 5 free tickets is ends_after_count 5 (not max_total_uses). When both are set, whichever runs out first ends the discount.",
   {
     brand_id: UUID,
     kind: { type: "string", enum: ["code", "automatic", "sale_price"] },

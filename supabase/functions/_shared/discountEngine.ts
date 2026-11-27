@@ -15,6 +15,8 @@ export interface AppliedLineDiscount {
   lineMinor: number;
   units: number;
   seq: number;
+  /** #4624: the discount has a ticket cap, a total-uses or a per-buyer limit. */
+  limited?: boolean;
 }
 export interface DiscountQuoteLine {
   lineRef: string;
@@ -35,6 +37,8 @@ export interface AppliedDiscount {
   code: string | null;
   amountMinor: number;
   units: number;
+  /** #4624: the discount has a ticket cap, a total-uses or a per-buyer limit. */
+  limited?: boolean;
 }
 
 export type CodeRejectionReason =
@@ -61,7 +65,14 @@ export interface SaleLimitedNotice {
   type: "sale_limited";
   discountId: string;
   lineRef: string;
+  /** #4624: tickets left on the cap (one unit per ticket issued, the line qty). */
   remaining: number;
+  /**
+   * #4624: "code" when a ticket-capped discount code (ends_after_count) has
+   * fewer tickets left than the line holds; absent on automatic and sale
+   * notices.
+   */
+  discountKind?: "code";
 }
 
 export type Notice = SaleLimitedNotice;

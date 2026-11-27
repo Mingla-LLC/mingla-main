@@ -279,7 +279,13 @@ describe("#3281 Explorer per-date cart", () => {
   });
 
   test("the sale shortcut stays away from a per-date cart", () => {
-    expect(SHEET).toMatch(/ticket !== undefined &&\s+!perDateActive/);
+    // #4624: the sale and code notices moved into CartDiscountNotices.tsx; the
+    // sheet passes perDateActive and the ticket lookup, and the Buy (sale) and
+    // Lower (code) shortcuts stay behind the same guard there.
+    const NOTICES = read("src/components/expandedCard/CartDiscountNotices.tsx");
+    expect(SHEET).toMatch(/<CartDiscountNotices[\s\S]*?perDateActive=\{perDateActive\}/);
+    expect(NOTICES).toMatch(/notice\.remaining > 0 &&\s+hasTicket\(notice\.lineRef\) &&\s+!perDateActive/);
+    expect(NOTICES).toMatch(/hasTicket\(notice\.lineRef\) &&\s+!perDateActive;/);
   });
 });
 

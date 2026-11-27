@@ -208,6 +208,10 @@ export function discountProposalFields(
   if (typeof args.max_total_uses === "number") {
     out.push({ label: "Total uses", value: String(args.max_total_uses) });
   }
+  // #4624: a ticket cap ("5 free tickets") is its own row after Total uses.
+  if (typeof args.ends_after_count === "number") {
+    out.push({ label: "Total tickets", value: String(args.ends_after_count) });
+  }
   if (typeof args.max_uses_per_buyer === "number") {
     out.push({ label: "Uses per buyer", value: String(args.max_uses_per_buyer) });
   }

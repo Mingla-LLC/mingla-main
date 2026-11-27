@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const source = readFileSync(join(__dirname, "..", "TicketCartSheet.tsx"), "utf8");
+// #4624: the sale and code notices moved into CartDiscountNotices.tsx, which
+// the sheet renders; the contract reads both files.
+const source =
+  readFileSync(join(__dirname, "..", "TicketCartSheet.tsx"), "utf8") +
+  readFileSync(join(__dirname, "..", "CartDiscountNotices.tsx"), "utf8");
 
 describe("#3872 Explorer cart discount contract", () => {
   test("renders totals and line money only from the server quote", () => {
