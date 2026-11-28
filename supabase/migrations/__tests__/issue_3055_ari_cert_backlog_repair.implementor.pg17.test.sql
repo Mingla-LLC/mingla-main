@@ -82,6 +82,8 @@ INSERT INTO issue_3055_input (name, body) VALUES
   -- ledger, not ari_cert requirements in the 164-row historical census, and
   -- projected out by id below. Without this the ledger held 167 ids against
   -- 164 requirement rows.
+  -- [TEST-MOD-APPROVED #4599] The event settings read is newer than this
+  -- historical 164-row lane and is projected out on the same footing.
   ('ledger', jsonb_set(
     :'issue_3055_ledger'::jsonb,
     '{capabilities}',
@@ -97,6 +99,7 @@ INSERT INTO issue_3055_input (name, body) VALUES
          'ari.ads.get_ad_budget_guidance',
          'ari.ads.apply_ad_suggestion',
          'ari.experience.get',
+         'ari.event.settings',
          'ari.discounts.end',
          'ari.discounts.resume',
          'ari.handoffs.payments_onboarding',
@@ -331,6 +334,7 @@ BEGIN
   DELETE FROM public.ari_cert_capability_requirements
   WHERE capability_id IN (
     'ari.rsvp.update',
+    'ari.event.settings',
     'ari.marketing.update_draft', 'ari.marketing.delete_draft', 'ari.growth.read_report',
     'ari.order.refund_preview', 'ari.installment.list',
     -- #1982/#1984/#3697/#3872 tip census only; absent in production

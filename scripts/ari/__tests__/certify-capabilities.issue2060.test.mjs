@@ -196,11 +196,12 @@ function passingEvidence(plan) {
 // #3355 Wave B: the search_mingla_guide row; #4389: two brand setup rows; 197→200.
 // #4453 milestones 7 and 11: five Website design-pass and add-a-page rows; 200→205; plus #4238 W5 (2) and #3281 get_experience (1) from main; 208.
 // #4453 Website workspace: three rows (snapshot read, change set, team request); 208→211.
-test("#2060 plan covers the current exact 211-row ledger with one cache/readback owner", () => {
+// #4599 answer truth adds the caller-authorized event settings read; 211→212.
+test("#2060 plan covers the current exact 212-row ledger with one cache/readback owner", () => {
   const { ledger, owners } = loadCertificationInputs();
   const plan = buildCertificationPlan(ledger, owners);
-  assert.equal(plan.capability_count, 211);
-  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 211);
+  assert.equal(plan.capability_count, 212);
+  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 212);
   assert.equal(
     plan.rows.every((row) =>
       row.cache_owner_id && row.canonical_readback_owner
@@ -252,7 +253,7 @@ test("#2060 rejects missing rows, SHA mismatch surfaces, dirty cleanup, and stra
       "requirements_digest",
       "release_artifact_sha:agent_chat_bundle",
       "native_artifact:business_android",
-      "evidence_capability_count:210",
+      "evidence_capability_count:211",
       "cleanup_zero_residue",
       "rollback_no_stranded_operations",
     ]
