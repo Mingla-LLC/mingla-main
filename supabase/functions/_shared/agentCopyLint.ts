@@ -83,5 +83,6 @@ export function softenAriHeadings(text: string): string {
           ? `${lead}**${title.trim().replace(/^\*+|\*+$/g, "")}**`
           : lead,
     )
-    .replace(/\*\*\*([^*\n]+)\*\*\*/g, "**$1**");
+    .replace(/\*\*\*([^*\n]+)\*\*\*/g, "**$1**")
+    .replace(/(^|\n)[ \t]{0,3}\*{3,}[ \t]*(?=\n|$)/g, "$1");
 }

@@ -393,7 +393,7 @@ Deno.test("#1983 implementor: update_ari_prefs patch keys", async () => {
 });
 
 Deno.test("#1983 implementor: PROMPT_VERSION v22 advertises prefs + business deletion", () => {
-  assertEquals(PROMPT_VERSION, "v41"); // #4572 header button and logo steps on top of v40
+  assertEquals(PROMPT_VERSION, "v42"); // #4599 confirm-before-claim rules on top of v41
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("push or in_app") || prompt.includes("push|in_app"));
   assert(prompt.includes("business.*"));

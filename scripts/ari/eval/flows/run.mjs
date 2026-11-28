@@ -109,10 +109,14 @@ function printEval(result) {
   }
 }
 
-export async function runFlowEvals({ ids = null, evals = FLOW_EVALS } = {}) {
+export async function runFlowEvals({
+  ids = null,
+  evals = FLOW_EVALS,
+  seeded = null,
+} = {}) {
   const config = localConfig();
   const rest = serviceRest(config);
-  const { brands, users } = await seedFlowBrands(config);
+  const { brands, users } = seeded ?? await seedFlowBrands(config);
   await resetTurnWindow(rest, Object.values(users));
   const tokens = new Map();
   const sessions = [];

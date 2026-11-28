@@ -262,6 +262,7 @@ export function selectAriTools(
     search_mingla_guide: 77,
     list_brands: 75,
     list_events: 70,
+    get_event_settings: 69,
     request_tools: 68,
     get_capability_inventory: 66,
     get_brand_site: 64,

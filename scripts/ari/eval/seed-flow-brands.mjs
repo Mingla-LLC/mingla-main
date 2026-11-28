@@ -34,6 +34,9 @@ export const FLOW_ACCOUNTS = Object.freeze({
   sell_owner: "flow-sell-owner@example.test",
   sell_event_manager: "flow-sell-events@example.test",
   ng_owner: "flow-ng-owner@example.test",
+  kunle_owner: "flow-kunle-owner@example.test",
+  kunle_scanner: "flow-kunle-scanner@example.test",
+  kunle_pending: "flow-kunle-pending@example.test",
 });
 
 export const FLOW_BRANDS = Object.freeze({
@@ -103,14 +106,74 @@ export const FLOW_BRANDS = Object.freeze({
       coordinate_precision: "exact",
     },
   },
+  kunle: {
+    name: "Kunle Test Co",
+    slug: "flow-eval-kunle-test-co",
+    owner: "kunle_owner",
+    owner_terms: true,
+    team: [{ account: "kunle_scanner", role: "scanner", terms: false }],
+    pending_team: [{ account: "kunle_pending", role: "scanner" }],
+    columns: {
+      country_code: "NG",
+      default_currency: "NGN",
+      default_timezone: "Africa/Lagos",
+      pricing_region: "NG",
+      pricing_currency: "NGN",
+      payment_provider: "paystack",
+      payment_country: "NG",
+      kind: "popup",
+    },
+    official_group: true,
+  },
+  kunle_other: {
+    name: "Kunle Other Brand",
+    slug: "flow-eval-kunle-other-brand",
+    owner: "kunle_owner",
+    owner_terms: true,
+    team: [],
+    columns: {
+      country_code: "NG",
+      default_currency: "NGN",
+      default_timezone: "Africa/Lagos",
+      kind: "popup",
+    },
+  },
 });
 
 const TERMS_VERSION = "1.0";
 
+const EVAL_FEATURE_FLAGS = Object.freeze([
+  "contact_import_v1",
+  "discounts_enabled",
+]);
+
+async function ensureEvalFeatureFlags(rest) {
+  for (const flagKey of EVAL_FEATURE_FLAGS) {
+    const rows = await rest.select(
+      "feature_flags",
+      `select=flag_key,is_enabled&flag_key=eq.${flagKey}`,
+    );
+    if (rows.length === 0) {
+      await rest.insert("feature_flags", {
+        flag_key: flagKey,
+        is_enabled: true,
+        description: "Local Ari live-eval fixture",
+      });
+    } else if (rows[0].is_enabled !== true) {
+      await rest.update("feature_flags", `flag_key=eq.${flagKey}`, {
+        is_enabled: true,
+      });
+    }
+  }
+}
+
 async function ensureUser(rest, email) {
   // The admin list is small locally; find by email, else create confirmed.
   for (let page = 1; page <= 20; page += 1) {
-    const data = await rest.auth("GET", `/admin/users?page=${page}&per_page=200`);
+    const data = await rest.auth(
+      "GET",
+      `/admin/users?page=${page}&per_page=200`,
+    );
     const users = data?.users ?? [];
     const found = users.find((user) => user.email === email);
     if (found) return found.id;
@@ -127,7 +190,10 @@ async function ensureUser(rest, email) {
 
 async function ensureCreatorAccount(rest, userId) {
   // The Host creates this row at first sign-in; brands.account_id needs it.
-  const rows = await rest.select("creator_accounts", `select=id&id=eq.${userId}`);
+  const rows = await rest.select(
+    "creator_accounts",
+    `select=id&id=eq.${userId}`,
+  );
   if (rows.length === 0) await rest.insert("creator_accounts", { id: userId });
 }
 
@@ -154,7 +220,10 @@ async function ensureMember(rest, brandId, userId, role, terms) {
   );
   const now = new Date().toISOString();
   const termsPatch = terms
-    ? { mingla_tos_accepted_at: now, mingla_tos_version_accepted: TERMS_VERSION }
+    ? {
+      mingla_tos_accepted_at: now,
+      mingla_tos_version_accepted: TERMS_VERSION,
+    }
     : { mingla_tos_accepted_at: null, mingla_tos_version_accepted: null };
   if (rows.length === 0) {
     await rest.insert("brand_team_members", {
@@ -173,6 +242,57 @@ async function ensureMember(rest, brandId, userId, role, terms) {
       `id=eq.${rows[0].id}`,
       { role, ...(accepted !== terms ? termsPatch : {}) },
     );
+  }
+}
+
+async function ensurePendingMember(
+  rest,
+  brandId,
+  ownerId,
+  userId,
+  email,
+  role,
+) {
+  const rows = await rest.select(
+    "brand_team_members",
+    `select=id&brand_id=eq.${brandId}&user_id=eq.${userId}&removed_at=is.null`,
+  );
+  if (role === "scanner") {
+    // A pending scanner belongs to scanner_invitations, not the active team
+    // table. Remove an older malformed local fixture before seeding the real
+    // pending invite so list_brand_team reports the same states as Host.
+    for (const row of rows) {
+      await rest.remove("brand_team_members", `id=eq.${row.id}`);
+    }
+    const pending = await rest.select(
+      "scanner_invitations",
+      `select=id&brand_id=eq.${brandId}&email=eq.${
+        encodeURIComponent(email)
+      }&status=eq.pending`,
+    );
+    if (pending.length === 0) {
+      await rest.insert("scanner_invitations", {
+        brand_id: brandId,
+        event_id: null,
+        scope: "brand",
+        email,
+        invitee_name: "Pending Scanner",
+        permissions: { canScan: true, canAcceptPayments: false },
+        invited_by: ownerId,
+        token_hash: `flow-eval-${brandId}-${userId}`,
+        expires_at: "2030-01-01T00:00:00Z",
+        status: "pending",
+      });
+    }
+    return;
+  }
+  if (rows.length === 0) {
+    await rest.insert("brand_team_members", {
+      brand_id: brandId,
+      user_id: userId,
+      role,
+      accepted_at: null,
+    });
   }
 }
 
@@ -195,6 +315,7 @@ export async function resetTurnWindow(rest, userIds) {
 
 export async function seedFlowBrands(config = localConfig()) {
   const rest = serviceRest(config);
+  await ensureEvalFeatureFlags(rest);
   const users = {};
   for (const [key, email] of Object.entries(FLOW_ACCOUNTS)) {
     users[key] = await ensureUser(rest, email);
@@ -203,7 +324,13 @@ export async function seedFlowBrands(config = localConfig()) {
   for (const [key, spec] of Object.entries(FLOW_BRANDS)) {
     const ownerId = users[spec.owner];
     const brandId = await ensureBrand(rest, spec, ownerId);
-    await ensureMember(rest, brandId, ownerId, "brand_owner", !!spec.owner_terms);
+    await ensureMember(
+      rest,
+      brandId,
+      ownerId,
+      "brand_owner",
+      !!spec.owner_terms,
+    );
     for (const member of spec.team) {
       await ensureMember(
         rest,
@@ -211,6 +338,16 @@ export async function seedFlowBrands(config = localConfig()) {
         users[member.account],
         member.role,
         member.terms,
+      );
+    }
+    for (const member of spec.pending_team ?? []) {
+      await ensurePendingMember(
+        rest,
+        brandId,
+        ownerId,
+        users[member.account],
+        FLOW_ACCOUNTS[member.account],
+        member.role,
       );
     }
     if (spec.stripe) {
@@ -236,6 +373,11 @@ export async function seedFlowBrands(config = localConfig()) {
           ...spec.stay_venue,
         });
       }
+    }
+    if (spec.official_group) {
+      await rest.rpc("issue_3720_ensure_official_brand_group", {
+        p_brand_id: brandId,
+      });
     }
     brands[key] = brandId;
   }

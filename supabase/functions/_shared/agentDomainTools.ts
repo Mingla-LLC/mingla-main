@@ -4,6 +4,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import type { AgentToolDefinition } from "./agentToolHelpers.ts";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { PARTY_TYPE_SLUGS } from "./eventTaxonomy.ts";
 import {
   assertCanCollect,
@@ -7039,6 +7040,174 @@ const getReservationMetrics = writeTool(
 // #1984 — event order reconciliation (Business getEventOrderRevenue parity,
 // without buyer PII). Aggregates from the same orders + line items the orders
 // screen reads under caller JWT / RLS.
+const EVENT_SETTINGS_TICKET_CAP = 5000;
+const EVENT_SETTINGS_NOT_IN_RECORDS = Object.freeze([
+  "crew",
+  "staff",
+  "performers",
+  "vendors",
+  "sponsor places not yet issued",
+]);
+
+function eventSettingsReadFailed(detail: string): ToolError {
+  return new ToolError("READ_FAILED", detail, {
+    user_reason: "I couldn't read all of this event's settings safely.",
+    next_step: null,
+  });
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+/** #4599: one fail-closed, PII-free source of truth for event capability claims. */
+export async function readEventSettings(
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const eventId = args.event_id;
+  if (!isUuid(eventId)) {
+    throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+  }
+  await assertAgentReadEvent(client, userId, eventId);
+  const eventRead = await client.from("events")
+    .select("id,brand_id,title,event_type,status,refund_policy")
+    .eq("id", eventId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (eventRead.error || !eventRead.data) {
+    throw eventSettingsReadFailed("The event record could not be read.");
+  }
+  const event = eventRead.data as Record<string, unknown>;
+  const dateRead = await client.from("event_dates")
+    .select("start_at,end_at,timezone")
+    .eq("event_id", eventId)
+    .eq("is_master", true)
+    .maybeSingle();
+  if (dateRead.error) {
+    throw eventSettingsReadFailed("The event dates could not be read.");
+  }
+  const tierRead = await client.from("ticket_types")
+    .select(
+      "id,name,price_cents,currency,is_free,quantity_total,is_unlimited,sale_start_at,sale_end_at,available_online,available_in_person,allow_transfers,requires_approval,is_hidden,is_disabled",
+    )
+    .eq("event_id", eventId)
+    .is("deleted_at", null)
+    .order("display_order", { ascending: true });
+  if (tierRead.error || !Array.isArray(tierRead.data)) {
+    throw eventSettingsReadFailed("The ticket settings could not be read.");
+  }
+  const paymentPlans = new Map<string, unknown>();
+  if (event.event_type === "trip") {
+    const planRead = await client.from("trip_pricing_tiers")
+      .select("ticket_type_id,tier_metadata")
+      .eq("event_id", eventId);
+    if (planRead.error || !Array.isArray(planRead.data)) {
+      throw eventSettingsReadFailed(
+        "The trip payment settings could not be read.",
+      );
+    }
+    for (const row of planRead.data as Array<Record<string, unknown>>) {
+      if (typeof row.ticket_type_id !== "string") continue;
+      const metadata = recordValue(row.tier_metadata);
+      paymentPlans.set(
+        row.ticket_type_id,
+        recordValue(metadata?.payment_plan) ?? null,
+      );
+    }
+  }
+  const ticketRead = await client.from("tickets")
+    .select("status,orders(source,door_payment_method,payment_status)")
+    .eq("event_id", eventId)
+    .not("status", "in", "(void,refunded)")
+    .range(0, EVENT_SETTINGS_TICKET_CAP - 1);
+  if (ticketRead.error || !Array.isArray(ticketRead.data)) {
+    throw eventSettingsReadFailed("The event headcount could not be read.");
+  }
+  const countKnown = ticketRead.data.length < EVENT_SETTINGS_TICKET_CAP;
+  const bySource = { online_paid: 0, door: 0, comp: 0 };
+  if (countKnown) {
+    for (const row of ticketRead.data as Array<Record<string, unknown>>) {
+      const order = Array.isArray(row.orders)
+        ? recordValue(row.orders[0])
+        : recordValue(row.orders);
+      const source = String(order?.source ?? "");
+      const method = String(order?.door_payment_method ?? "");
+      if (source === "comp") bySource.comp += 1;
+      else if (
+        source === "door_sale" || method === "pay_code" ||
+        method === "tap_to_pay"
+      ) bySource.door += 1;
+      else bySource.online_paid += 1;
+    }
+  }
+  const tiers = (tierRead.data as Array<Record<string, unknown>>).map((
+    tier,
+  ) => ({
+    id: tier.id,
+    name: tier.name,
+    price_cents: tier.price_cents,
+    currency: typeof tier.currency === "string" ? tier.currency.trim() : null,
+    is_free: tier.is_free,
+    quantity_total: tier.quantity_total,
+    is_unlimited: tier.is_unlimited,
+    sale_start_at: tier.sale_start_at,
+    sale_end_at: tier.sale_end_at,
+    sells_online: tier.available_online,
+    sells_at_door: tier.available_in_person,
+    allow_transfers: tier.allow_transfers,
+    requires_approval: tier.requires_approval,
+    hidden: tier.is_hidden,
+    disabled: tier.is_disabled,
+    payment_plan: event.event_type === "trip" && typeof tier.id === "string"
+      ? (paymentPlans.get(tier.id) ?? null)
+      : null,
+  }));
+  const finiteCapacity = tiers.every((tier) =>
+    tier.is_unlimited !== true && typeof tier.quantity_total === "number"
+  );
+  const date = recordValue(dateRead.data);
+  const refundPolicy = recordValue(event.refund_policy);
+  return {
+    event: {
+      id: event.id,
+      brand_id: event.brand_id,
+      title: event.title,
+      type: event.event_type,
+      status: event.status,
+      starts_at: date?.start_at ?? null,
+      ends_at: date?.end_at ?? null,
+      timezone: date?.timezone ?? null,
+    },
+    refund_policy: refundPolicy,
+    refund_policy_set: refundPolicy !== null,
+    tiers,
+    headcount: {
+      capacity_total: finiteCapacity
+        ? tiers.reduce((sum, tier) => sum + Number(tier.quantity_total), 0)
+        : null,
+      tickets_held: countKnown ? ticketRead.data.length : null,
+      tickets_held_known: countKnown,
+      by_source: countKnown
+        ? bySource
+        : { online_paid: null, door: null, comp: null },
+      by_source_known: countKnown,
+    },
+    not_in_records: EVENT_SETTINGS_NOT_IN_RECORDS,
+  };
+}
+
+const getEventSettings = writeTool(
+  "get_event_settings",
+  "Read one event's actual dates, refund policy, ticket settings, trip payment plans and PII-free headcount. Read this before claiming door sales, instalments, transfers or refunds are available for the event. Transfers are not available to hosts until the Feature Guide marks them live, even if a stored tier flag is true.",
+  { event_id: UUID },
+  ["event_id"],
+  readEventSettings,
+);
+
 const getEventOrderReconciliation = writeTool(
   "get_event_order_reconciliation",
   "Read sold count, gross, refunded, and net revenue for an event from orders. No buyer PII.",
@@ -10197,6 +10366,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   getBrandAnalytics,
   getListingConversion,
   getReservationMetrics,
+  getEventSettings,
   getEventOrderReconciliation,
   inviteBrandMember,
   inviteScanner,
@@ -10256,6 +10426,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   // #1980 — Growth Tool report read (growth-tools-report app lane).
   "get_growth_tool_report",
   "get_operator_snapshot",
+  "get_event_settings",
   "get_event_order_reconciliation",
   // issue #3281 bundle 3 — the editable experience graph (read before edits).
   "get_experience",

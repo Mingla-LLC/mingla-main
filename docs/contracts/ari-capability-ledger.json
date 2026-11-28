@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 199,
-    "capability_count": 211,
+    "registered_tool_count": 200,
+    "capability_count": 212,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 198,
+      "registered_unverified": 199,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -376,6 +376,53 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.settings",
+      "domain": "events",
+      "outcome": "Read one event's dates, refund policy, ticket settings, payment plans, and PII-free headcount",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4599"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/event/[id]/edit.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getEventSettings"
+          }
+        ]
+      },
+      "ari_tool": "get_event_settings",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "e185b95fa9aeff2a9e0e176679f0489003f4e2df",
+          "reference": "issue_4599_event_settings.implementor.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2000,
+        4599
+      ],
+      "blockers": [
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-27"
     },
     {
       "id": "ari.event.update",

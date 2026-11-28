@@ -205,7 +205,10 @@ BEGIN
   ALTER TABLE public.ari_cert_capability_requirements
     DISABLE TRIGGER ari_cert_capability_requirements_immutable_trigger;
   DELETE FROM public.ari_cert_capability_requirements
-  WHERE capability_id IN ('ari.rsvp.update', 'ari.marketing.update_draft', 'ari.marketing.delete_draft',
+  WHERE capability_id IN ('ari.rsvp.update',
+                          -- [TEST-MOD-APPROVED #4599] newer than this 164-row historical lane
+                          'ari.event.settings',
+                          'ari.marketing.update_draft', 'ari.marketing.delete_draft',
                           'ari.growth.read_report', 'ari.order.refund_preview', 'ari.installment.list',
                           'ari.team.revoke_invitation',
                           'ari.analytics.listing_conversion',

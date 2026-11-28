@@ -728,6 +728,8 @@ export function buildToolReadRendition(args: {
   toolName: string;
   result: unknown;
   capabilities: AriUiCapabilitiesV2 | null;
+  /** #4599: readiness is a card only when the host asked for that checklist. */
+  showBrandReadiness?: boolean;
   checkedAt?: string;
   envValue?: string;
 }): AriRenditionV2 | null {
@@ -735,6 +737,9 @@ export function buildToolReadRendition(args: {
   // Toolset negotiation and capability search are private reasoning steps. A
   // user should see Ari's answer, never its internal discovery payload.
   if (INTERNAL_REASONING_TOOLS.has(args.toolName)) return null;
+  if (args.toolName === "get_brand_readiness" && !args.showBrandReadiness) {
+    return null;
+  }
   const websiteState = websiteStatePresentation(args.toolName, args.result);
   if (websiteState) {
     return {

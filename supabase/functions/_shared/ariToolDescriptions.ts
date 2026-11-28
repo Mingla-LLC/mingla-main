@@ -44,6 +44,7 @@ export const TOOL_CAPABILITY_KEYS: Readonly<Record<string, string>> = Object
     invite_scanner: "events-scanner-team",
     revoke_scanner_invitation: "events-scanner-team",
     list_event_orders: "events-orders-refunds",
+    get_event_settings: "events-ticket-types",
     get_event_order_reconciliation: "events-reconciliation",
     list_guest_roster: "events-guest-list",
     refund_order: "events-orders-refunds",

@@ -42,6 +42,7 @@ ari.brand.update
 ari.brand.delete
 ari.event.create
 ari.event.list
+ari.event.settings
 ari.event.update
 ari.experience.create
 ari.event.publish

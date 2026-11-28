@@ -96,20 +96,32 @@ export function serviceRest(config) {
     "content-type": "application/json",
   };
   async function call(method, path, body, extra = {}) {
-    const response = await fetch(`${config.url}${path}`, {
-      method,
-      headers: { ...headers, ...extra },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const data = await json(response);
-    if (!response.ok) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetch(`${config.url}${path}`, {
+        method,
+        headers: { ...headers, ...extra },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const data = await json(response);
+      if (response.ok) return data;
+      const transientDatabaseError = response.status === 500 &&
+        ["57014", "53300", "57P01"].includes(String(data?.code ?? ""));
+      if (
+        attempt < 2 &&
+        ([502, 503, 504].includes(response.status) || transientDatabaseError)
+      ) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, attempt === 0 ? 250 : 750)
+        );
+        continue;
+      }
       throw new Error(
         `${method} ${path.split("?")[0]} failed (${response.status}): ${
           data?.message ?? data?.msg ?? data?.code ?? "error"
         }`,
       );
     }
-    return data;
+    throw new Error(`${method} ${path.split("?")[0]} exhausted retries`);
   }
   return {
     select: (table, query) => call("GET", `/rest/v1/${table}?${query}`),
@@ -218,7 +230,7 @@ export class AriSession {
 
   async send(extra) {
     const started = Date.now();
-    const data = await this.#post("agent-chat", {
+    const request = {
       conversation_id: this.conversationId,
       client_turn_id: randomUUID(),
       client_timezone: this.timezone,
@@ -226,7 +238,33 @@ export class AriSession {
       brand_id: this.brandId,
       ari_ui: ARI_UI,
       ...extra,
-    });
+    };
+    let data;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        data = await this.#post("agent-chat", request);
+      } catch (error) {
+        if (attempt === 0 && error instanceof TypeError) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          continue;
+        }
+        throw error;
+      }
+      if (
+        attempt === 0 && data?.kind === "error" &&
+        [
+          "MODEL_UNAVAILABLE",
+          "WORKER_LIMIT",
+          "HTTP_502",
+          "HTTP_503",
+          "HTTP_504",
+        ].includes(String(data?.code ?? ""))
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        continue;
+      }
+      break;
+    }
     if (data.conversation_id) this.conversationId = data.conversation_id;
     // #3355 Wave F: per-turn latency for the live eval report.
     this.transcript.push({

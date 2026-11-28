@@ -32,6 +32,9 @@ import { withTicketsSold } from "./ariEventSales.ts";
 /** Tools that exist only on the switch's on path. */
 export const ARI_UNDERSTAND_FIRST_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "search_mingla_guide",
+  // #4599 — this truth read belongs only to the governed on path; switch OFF
+  // remains byte-identical to origin/main.
+  "get_event_settings",
   // #4453 milestone 7 — Ari's design pass (Core also needs SITES_ARI_DESIGN_PASS for the brand).
   "get_site_design_brief",
   "propose_site_design_pass",

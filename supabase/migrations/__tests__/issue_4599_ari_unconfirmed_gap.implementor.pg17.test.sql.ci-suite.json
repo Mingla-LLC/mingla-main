@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4599_ari_unconfirmed_gap.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4599-ari-unconfirmed-gap",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

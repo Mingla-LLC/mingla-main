@@ -7062,6 +7062,12 @@
       ]
     },
     {
+      "capability_key": "ari-host-assistant",
+      "paths": [
+        "supabase/migrations/20281205064599_issue_4599_ari_unconfirmed_gap.sql"
+      ]
+    },
+    {
       "capability_key": "sites-brand-website",
       "paths": [
         "mingla-site-cms/src/app/(payload)/studio.css",

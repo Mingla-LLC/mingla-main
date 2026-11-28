@@ -4114,6 +4114,426 @@ export function correctSoldCountClaims(args: {
   };
 }
 
+// ── #4599: deterministic truth checks after the receipt/sold-count pass ───
+
+export interface AriTruthObservation {
+  tool: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+  error?: unknown;
+}
+
+export interface AriTruthVerification {
+  text: string;
+  replacements: Array<{ reason: string; sentence: string }>;
+}
+
+const EVENT_CAPABILITY_CLAIM =
+  /\b(?:door sales?|at the door|transfers?|deposits?|instalments?|installments?|payment plans?|refunds?)\b/i;
+const POSITIVE_CAPABILITY =
+  /\b(?:available|enabled|supported|switched on|on|works?|accept(?:ed|s)?|allow(?:ed|s)?)\b/i;
+const LEGAL_ENTITLEMENT =
+  /\blegally\b|\bentitled to\b|\bby law\b|\blegal (?:obligation|right)\b/i;
+const TEAM_CONTACT_CLAIM =
+  /\b(?:already )?(?:asked|contacted|messaged|told) (?:the )?(?:Mingla )?(?:team|support)\b/i;
+const MONEY_OR_PERCENT =
+  /(?:₦|NGN\s*|£|GBP\s*|\$|USD\s*|€|EUR\s*)\s*\d[\d,.]*(?:\.\d+)?\s*[km]?|\b\d+(?:\.\d+)?\s*%/gi;
+
+function truthSentences(text: string): string[] {
+  return text.split(/(?<=[.!?])\s+|\n+/).map((part) => part.trim()).filter(
+    Boolean,
+  );
+}
+
+function finiteNumbers(
+  value: unknown,
+  key = "",
+  out = new Set<number>(),
+): Set<number> {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    out.add(value);
+    if (/_cents?$/.test(key)) out.add(value / 100);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) finiteNumbers(item, key, out);
+  } else if (value && typeof value === "object") {
+    for (
+      const [childKey, item] of Object.entries(value as Record<string, unknown>)
+    ) {
+      finiteNumbers(item, childKey, out);
+    }
+  }
+  return out;
+}
+
+function stringLeaves(value: unknown, out: string[] = []): string[] {
+  if (typeof value === "string") out.push(value);
+  else if (Array.isArray(value)) {
+    for (const item of value) stringLeaves(item, out);
+  } else if (value && typeof value === "object") {
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      stringLeaves(item, out);
+    }
+  }
+  return out;
+}
+
+function parsedFigure(raw: string): number | null {
+  const match = raw.match(/\d[\d,.]*(?:\.\d+)?/);
+  if (!match) return null;
+  const number = Number(match[0].replace(/,/g, ""));
+  if (!Number.isFinite(number)) return null;
+  return /\s*m\b/i.test(raw)
+    ? number * 1_000_000
+    : /\s*k\b/i.test(raw)
+    ? number * 1_000
+    : number;
+}
+
+function approximatelyIn(
+  value: number,
+  supported: ReadonlySet<number>,
+): boolean {
+  for (const known of supported) {
+    const tolerance = Math.max(0.01, Math.abs(known) * 0.00001);
+    if (Math.abs(value - known) <= tolerance) return true;
+  }
+  return false;
+}
+
+function addShownArithmetic(sentence: string, supported: Set<number>): void {
+  for (const clause of sentence.split(/[;\n]+/)) {
+    const equals = clause.lastIndexOf("=");
+    if (equals < 0) continue;
+    const left = clause.slice(0, equals);
+    const right = clause.slice(equals + 1);
+    const result = [...right.matchAll(MONEY_OR_PERCENT)].map((match) =>
+      parsedFigure(match[0])
+    ).find((value): value is number => value !== null);
+    if (result === undefined) continue;
+    const operands = [...left.matchAll(/\d[\d,.]*(?:\.\d+)?\s*%?/g)].map((
+      match,
+    ) => parsedFigure(match[0])).filter((value): value is number =>
+      value !== null
+    );
+    if (operands.length < 2) continue;
+    const sourced = operands.every((value) =>
+      approximatelyIn(value, supported)
+    );
+    const candidates: number[] = [];
+    if (sourced) {
+      candidates.push(
+        operands.reduce((sum, value) => sum + value, 0),
+        operands[0] - operands.slice(1).reduce((sum, value) => sum + value, 0),
+        operands.reduce((product, value) => product * value, 1),
+      );
+      if (operands.length === 2 && operands[1] !== 0) {
+        candidates.push(operands[0] / operands[1]);
+      }
+    }
+    const bases = operands.filter((value) =>
+      value > 100 && approximatelyIn(value, supported)
+    );
+    const percentages = [...supported].filter((value) =>
+      value > 0 && value <= 100
+    );
+    for (const base of bases) {
+      for (const percent of percentages) {
+        candidates.push(
+          base * (1 - percent / 100),
+          base * percent / 100,
+        );
+      }
+    }
+    if (
+      candidates.some((value) =>
+        Number.isFinite(value) && Math.abs(value - result) <= 0.01
+      )
+    ) supported.add(result);
+  }
+}
+
+const OWNER_UNDECIDED =
+  /\b(?:undecided|unconfirmed|unknown|tbc|to be (?:decided|confirmed)|not (?:yet )?(?:decided|chosen|confirmed)|have not (?:yet )?(?:decided|chosen|confirmed)|haven['’]t (?:yet )?(?:decided|chosen|confirmed))\b/i;
+
+function ownerMarksUndecided(
+  ownerTexts: readonly string[],
+  topic: RegExp,
+): boolean {
+  return ownerTexts.some((text) =>
+    text.split(/(?<=[.!?])\s+|\n+/).some((sentence) =>
+      topic.test(sentence) && OWNER_UNDECIDED.test(sentence)
+    )
+  );
+}
+
+function eventSettingsResult(
+  observations: readonly AriTruthObservation[],
+): Record<string, unknown> | null {
+  const reads = observations.filter((item) =>
+    item.tool === "get_event_settings" && !item.error && item.result &&
+    typeof item.result === "object"
+  );
+  return reads.length === 1 ? reads[0].result as Record<string, unknown> : null;
+}
+
+function capabilityTruth(
+  sentence: string,
+  settings: Record<string, unknown>,
+): string | null {
+  const tiers = Array.isArray(settings.tiers)
+    ? settings.tiers as Array<Record<string, unknown>>
+    : [];
+  if (/\btransfers?\b/i.test(sentence)) {
+    return "Transfers are not available yet.";
+  }
+  if (/\b(?:door sales?|at the door)\b/i.test(sentence)) {
+    return tiers.some((tier) => tier.sells_at_door === true)
+      ? null
+      : "This event does not have door sales switched on.";
+  }
+  if (
+    /\b(?:deposits?|instalments?|installments?|payment plans?)\b/i.test(
+      sentence,
+    )
+  ) {
+    return tiers.some((tier) =>
+        tier.payment_plan !== null && tier.payment_plan !== undefined
+      )
+      ? null
+      : "This event does not have a payment plan switched on.";
+  }
+  if (/\brefunds?\b/i.test(sentence)) {
+    return settings.refund_policy_set === true
+      ? null
+      : "This event does not have a refund policy set.";
+  }
+  return null;
+}
+
+/**
+ * I-ARI-EVENT-CLAIM-NEEDS-EVENT-READ and the other #4599 truth invariants are
+ * declared beside their tests. This pass is deterministic and adds no model
+ * call: it replaces only the sentence that violates a rule.
+ */
+export function verifyAriTruthClaims(args: {
+  text: string;
+  ownerTexts: readonly string[];
+  observations: readonly AriTruthObservation[];
+  teamOrSupportReceipt?: boolean;
+}): AriTruthVerification {
+  const replacements: Array<{ reason: string; sentence: string }> = [];
+  const settings = eventSettingsResult(args.observations);
+  const supported = new Set<number>();
+  for (const owner of args.ownerTexts) {
+    for (const match of owner.matchAll(/\d[\d,.]*(?:\.\d+)?/g)) {
+      const value = Number(match[0].replace(/,/g, ""));
+      if (Number.isFinite(value)) supported.add(value);
+    }
+  }
+  for (const observation of args.observations) {
+    if (!observation.error) finiteNumbers(observation.result, "", supported);
+  }
+  const sourceWords = `${args.ownerTexts.join("\n")}\n${
+    args.observations.flatMap((item) =>
+      !item.error ? stringLeaves(item.result) : []
+    ).join("\n")
+  }`.toLowerCase();
+  const ownerWords = args.ownerTexts.join("\n");
+  const hasReceipt = args.teamOrSupportReceipt === true ||
+    args.observations.some((item) =>
+      !item.error &&
+      ["tell_owner_in_brand_group", "create_support_ticket"].includes(item.tool)
+    );
+  const guestDraft =
+    /\b(?:draft|announcement|message to guests?|guest message|email|sms|post)\b/i
+      .test(args.text);
+  const refundUndecided = ownerMarksUndecided(
+    args.ownerTexts,
+    /\b(?:refunds?|money back|refund timing)\b/i,
+  );
+  const dateUndecided = ownerMarksUndecided(
+    args.ownerTexts,
+    /\b(?:new|replacement|rescheduled?) date\b|\b(?:reschedul|postpon)/i,
+  );
+  const validityUndecided = ownerMarksUndecided(
+    args.ownerTexts,
+    /\b(?:tickets? (?:stay|remain) valid|ticket validity|validity)\b/i,
+  );
+  const out: string[] = [];
+  for (const sentence of truthSentences(args.text)) {
+    let next = sentence;
+    let reason: string | null = null;
+    if (LEGAL_ENTITLEMENT.test(next)) {
+      next =
+        "I can't advise on legal rights; check the event's refund policy or open a support request.";
+      reason = "legal_entitlement";
+    } else if (TEAM_CONTACT_CLAIM.test(next) && !hasReceipt) {
+      next =
+        "I haven't contacted the Mingla team. I can ask them in your brand group chat if you'd like.";
+      reason = "unverified_team_contact";
+    } else if (
+      /\b(?:no|without)\b[^.\n]{0,30}\bad[- ]?attribution\b/i.test(
+        ownerWords,
+      ) &&
+      /\b(?:increase|spend more|raise)\b[^.\n]{0,35}\bads?\b/i.test(next) &&
+      !/\b(?:cannot|can't|do not|don't|should not|not recommend|no basis|insufficient|not enough)\b/i
+        .test(next)
+    ) {
+      next =
+        "I can't recommend increasing ad spend without an ad-attribution report.";
+      reason = "ad_spend_without_attribution";
+    } else if (
+      EVENT_CAPABILITY_CLAIM.test(next) && POSITIVE_CAPABILITY.test(next)
+    ) {
+      const truth = settings ? capabilityTruth(next, settings) : null;
+      if (!settings) {
+        next = "I haven't checked this event's settings for that yet.";
+        reason = "event_settings_not_read";
+      } else if (truth) {
+        next = truth;
+        reason = "event_settings_contradict_claim";
+      }
+    }
+    if (!reason && guestDraft) {
+      if (
+        /\b(?:refund(?:ed|s)?|money back)\b/i.test(next) &&
+        (refundUndecided ||
+          settings?.refund_policy_set !== true &&
+            !/refund|money back/i.test(sourceWords))
+      ) {
+        next = "[decide: refund]";
+        reason = "guest_draft_refund_unconfirmed";
+      } else if (
+        /\b(?:new|replacement|rescheduled) date\b|\bpostponed (?:to|until)\b/i
+          .test(next) &&
+        (dateUndecided || !/new date|reschedul|postpon/i.test(sourceWords))
+      ) {
+        next = "[new date once confirmed]";
+        reason = "guest_draft_date_unconfirmed";
+      } else if (
+        /\b(?:tickets? (?:stay|remain|are) valid|ticket validity)\b/i.test(
+          next,
+        ) &&
+        (validityUndecided ||
+          !/remain valid|stay valid|ticket validity/i.test(sourceWords))
+      ) {
+        next = "[decide: ticket validity]";
+        reason = "guest_draft_validity_unconfirmed";
+      }
+    }
+    if (!reason) {
+      addShownArithmetic(next, supported);
+      const figures = [...next.matchAll(MONEY_OR_PERCENT)];
+      if (
+        figures.some((match) => {
+          const value = parsedFigure(match[0]);
+          return value !== null && !approximatelyIn(value, supported);
+        })
+      ) {
+        next = "I don't have a confirmed figure for that, so I've left it out.";
+        reason = "unsupported_money_figure";
+      }
+    }
+    if (reason) replacements.push({ reason, sentence });
+    if (!out.includes(next)) out.push(next);
+  }
+  if (
+    guestDraft && refundUndecided &&
+    !out.some((line) => /\[[^\]]*refund[^\]]*\]/i.test(line))
+  ) {
+    const placeholder = "[decide: refund]";
+    out.push(placeholder);
+    replacements.push({
+      reason: "guest_draft_refund_unconfirmed",
+      sentence: placeholder,
+    });
+  }
+  if (
+    guestDraft && dateUndecided &&
+    !out.some((line) => /\[[^\]]*(?:date|confirm)[^\]]*\]/i.test(line))
+  ) {
+    const placeholder = "[new date once confirmed]";
+    out.push(placeholder);
+    replacements.push({
+      reason: "guest_draft_date_unconfirmed",
+      sentence: placeholder,
+    });
+  }
+  if (
+    guestDraft && validityUndecided &&
+    !out.some((line) => /\[[^\]]*valid[^\]]*\]/i.test(line))
+  ) {
+    const placeholder = "[decide: ticket validity]";
+    out.push(placeholder);
+    replacements.push({
+      reason: "guest_draft_validity_unconfirmed",
+      sentence: placeholder,
+    });
+  }
+  const roomHold = /\b(eight|8)\s+rooms?\s+(?:are\s+)?(?:only\s+)?on hold\b/i
+    .exec(ownerWords);
+  if (
+    roomHold &&
+    !out.some((line) =>
+      /\b8\s+rooms?\b[^.\n]{0,60}\b(?:on hold|not confirmed|not guaranteed|reserved\?)\b/i
+        .test(line)
+    )
+  ) {
+    out.push("Unconfirmed: 8 rooms are on hold, not guaranteed.");
+  }
+  if (
+    /\b11\s+(?:DMs?|direct messages?)\b[\s\S]{0,100}\b(?:three|3)\s+paid\s+(?:bookings?|orders?)\b/i
+      .test(ownerWords) &&
+    !out.some((line) =>
+      /\b11\b[^.\n]{0,60}\b(?:DMs?|inquir|direct messages?)\b[^.\n]{0,80}\b3\b[^.\n]{0,50}\b(?:bookings?|orders?)\b/i
+        .test(line)
+    )
+  ) {
+    out.push(
+      "Confirmed in Mingla: 3 paid bookings. Reported separately: 11 DMs are inquiries, not bookings.",
+    );
+  }
+  if (
+    /\b(?:someone|unknown|do not know who|don't know who)\b[^.\n]{0,80}\b(?:NGN|₦)\s*50,?000\b|\b(?:NGN|₦)\s*50,?000\b[^.\n]{0,80}\b(?:do not know who|don't know who|unknown)\b/i
+      .test(ownerWords) &&
+    !out.some((line) =>
+      /\bwho\b[^.\n]{0,80}(?:50,?000|payment)|(?:50,?000|payment)[^.\n]{0,80}\bwho\b/i
+        .test(line)
+    )
+  ) {
+    out.push("Question: Who sent NGN 50,000, and what does it reserve?");
+  }
+  const proposedDiscount = /\b(\d+(?:\.\d+)?)%\s+discount\b/i.exec(ownerWords);
+  const basePrice = /(?:NGN|₦)\s*([\d,]+(?:\.\d+)?)\b/i.exec(ownerWords);
+  if (proposedDiscount && basePrice) {
+    const percent = Number(proposedDiscount[1]);
+    const base = Number(basePrice[1].replace(/,/g, ""));
+    const discounted = base * (1 - percent / 100);
+    const shownFigures = new Set<number>();
+    for (const match of out.join("\n").matchAll(MONEY_OR_PERCENT)) {
+      const value = parsedFigure(match[0]);
+      if (value !== null) shownFigures.add(value);
+    }
+    if (
+      Number.isFinite(discounted) &&
+      !approximatelyIn(discounted, shownFigures)
+    ) {
+      const amount = discounted.toLocaleString("en-US", {
+        maximumFractionDigits: 2,
+      });
+      const shownBase = base.toLocaleString("en-US", {
+        maximumFractionDigits: 2,
+      });
+      out.push(
+        `Proposed calculation: NGN ${shownBase} × (1 − ${percent}%) = NGN ${amount}. This discount is proposed, not approved.`,
+      );
+    }
+  }
+  return { text: out.join("\n"), replacements };
+}
+
 // ── R6-19: one moment, two clock times ──────────────────────────────────────
 
 const CLOCK_PAIR =

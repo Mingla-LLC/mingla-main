@@ -187,7 +187,11 @@ import {
   selectAriOnboardingSetupTools,
   selectAriTools,
 } from "../_shared/agentToolsets.ts";
-import { lintAriCopy, safeAriCopyFallback } from "../_shared/agentCopyLint.ts";
+import {
+  lintAriCopy,
+  safeAriCopyFallback,
+  softenAriHeadings,
+} from "../_shared/agentCopyLint.ts";
 import { recordAriTrainingTurn } from "../_shared/agentQuality.ts";
 import { buildAgentRunRendition } from "../_shared/agentRenditions.ts";
 import {
@@ -273,7 +277,6 @@ import {
 import {
   ARI_ASK_TEAM_TITLE,
   ARI_ASK_TEAM_TOPIC,
-  ASK_TEAM_ALREADY_SENT,
   ASK_TEAM_LEAD,
   classifyAriOwnerTurn,
   classifyAriReplyGaps,
@@ -318,6 +321,7 @@ import {
   previousTurnText,
   recentRecordEvidence,
   replyClaimsMemorySave,
+  verifyAriTruthClaims,
 } from "../_shared/ariClaimCheck.ts";
 import { objectStatusReadPlan } from "../_shared/ariStatusRead.ts";
 import { withHostStatedDiscountCode } from "../_shared/ariDiscountArgs.ts";
@@ -361,6 +365,70 @@ const ARI_TURN_DEADLINE_MS = Deno.env.get("ARI_LOCAL_MODEL_ENABLED") === "true"
   ? ARI_LOCAL_LOOP_BUDGET.deadlineMs ?? 115_000
   : ARI_PRODUCTION_LOOP_BUDGET.deadlineMs;
 const HISTORY_WINDOW = 10;
+
+type AriTruthReadLane =
+  | "event"
+  | "event_money"
+  | "event_orders"
+  | "event_performance"
+  | "safety"
+  | "team";
+
+/**
+ * #4599: compound truth questions get a small relevant read set. This keeps
+ * an event comparison out of public research and keeps tentative event work
+ * out of setup/market lanes until the host resolves its unknowns.
+ */
+function ariTruthReadLane(text: string): AriTruthReadLane | null {
+  if (
+    /\b(?:who can scan|scan(?:ner|ning)? (?:access|invite)|scan tickets?|pending (?:scanner )?invite)\b/i
+      .test(text)
+  ) return "team";
+  if (/\b(?:felt unsafe|safety concern|public review)\b/i.test(text)) {
+    return "safety";
+  }
+  if (
+    /\b(?:compare (?:three|recent) events?|which did best|profit|turnout|gross paid|ad[- ]?spend|ad attribution)\b/i
+      .test(text)
+  ) return "event_performance";
+  if (
+    /\b(?:separate paid,? pending and comp|paid,? pending and comp|read (?:the )?orders first|comp orders?)\b/i
+      .test(text)
+  ) return "event_orders";
+  if (
+    /\b(?:paid[- ]ticket value|refundable|orders?|paid,? pending|pending and comp)\b/i
+      .test(text)
+  ) return "event_money";
+  if (
+    /\b(?:tentative|probably|proposed|on hold|not sure|tbc|door sales?|transfers?|refunds?|capacity|places? (?:left|available)|tickets? held|instalments?|installments?|payment plan|bank transfer|comp tickets?|sponsor tickets?|reschedul)\b/i
+      .test(text)
+  ) return "event";
+  return null;
+}
+
+function ariTruthReadToolNames(lane: AriTruthReadLane): readonly string[] {
+  if (lane === "team") return ["list_brand_team"];
+  if (lane === "safety") return ["search_mingla_guide"];
+  if (lane === "event_performance") {
+    return ["list_events", "get_event_order_reconciliation"];
+  }
+  if (lane === "event_orders") {
+    return [
+      "list_events",
+      "list_event_orders",
+      "get_event_order_reconciliation",
+    ];
+  }
+  if (lane === "event_money") {
+    return [
+      "list_events",
+      "get_event_settings",
+      "list_event_orders",
+      "get_event_order_reconciliation",
+    ];
+  }
+  return ["list_events", "get_event_settings"];
+}
 
 function completeStandaloneResearchRead(
   observations: readonly AgentLoopObservation[],
@@ -2769,15 +2837,11 @@ async function handle(req: Request): Promise<Response> {
         return { response: await commitAskTeamCard(), note: null };
       } catch (err: unknown) {
         if (!(err instanceof ToolError)) throw err;
-        // Already asked this hour: say so. No group or no access: the
-        // guide answer stands on its own.
+        // Already asked this hour, no group, or no access: the model's
+        // truthful answer stands on its own. Server code never appends an
+        // "already asked" claim to an unrelated reply (#4599).
         console.warn("[agent-chat] ask-the-team not offered", err.code);
-        return {
-          response: null,
-          note: err.code === "ASK_TEAM_RECENTLY_SENT"
-            ? ASK_TEAM_ALREADY_SENT
-            : null,
-        };
+        return { response: null, note: null };
       }
     };
 
@@ -3739,6 +3803,9 @@ async function handle(req: Request): Promise<Response> {
           onboarding_plan: onboardingPlan ?? null,
         },
       ).slice(0, 16_000);
+      const truthReadLane = understandFirst && !websiteWorkspace
+        ? ariTruthReadLane(semanticMessage)
+        : null;
       const loopSystemPrompt = `${systemPrompt}
 
 ARI 10X OPERATING CONTRACT
@@ -3754,6 +3821,20 @@ ARI 10X OPERATING CONTRACT
 - Never accept legal terms, expose bank digits, log into arbitrary accounts, purchase, publish, transfer ownership or message people without the protected human step.
 - Never claim success until a canonical Mingla readback or public-page verification proves it.
 - Keep the plan honest: completed, failed, skipped, waiting for approval, and human-owned are distinct states.
+${
+        truthReadLane
+          ? `
+TRUTH TURN RESPONSE
+- Answer this host question directly in 350 words or fewer, using short headings only when they help.
+- Use plain text or bullets. Do not use code fences, tables, or horizontal rules.
+- Do not expose UUIDs, internal tool names, or implementation details.
+- Keep confirmed facts, unconfirmed reports, and proposals visibly distinct.
+- Never invent a booking, reservation, refund, transfer, or capacity rule that is absent from the host's text and tool results.
+- Do not add a brand-readiness checklist, setup plan, or unrelated advice.
+- Show every calculation the host requested. For comparisons, use the supplied figures and name missing inputs without reconstructing every event from scratch.
+- Finish any draft, reply, or decision question the host requested.`
+          : ""
+      }
 
 <caller_scoped_agent_context>
 ${boundedAgentContext}
@@ -3784,7 +3865,7 @@ ${boundedAgentContext}
       const campaignWorkflowRequest = !!activeBrand && !websiteWorkspace &&
         needsAriCampaignWorkflow(semanticMessage);
       const eventLaunchReadinessRequest = !!activeBrand && !websiteWorkspace &&
-        isAriEventLaunchReadinessRequest(semanticMessage);
+        !truthReadLane && isAriEventLaunchReadinessRequest(semanticMessage);
       const selectedToolsets = new Set<AriToolsetKey>(
         onboardingSetupRequest
           ? ["core", "brand", "onboarding"]
@@ -3841,6 +3922,19 @@ ${boundedAgentContext}
       ) {
         selectedTools = [...selectedTools, intentTargetTool];
       }
+      // #4599: whenever the model can find an event, it can read that
+      // event's actual capability switches before making a claim about it.
+      if (
+        selectedTools.some((tool) => tool.name === "list_events") &&
+        !selectedTools.some((tool) => tool.name === "get_event_settings")
+      ) {
+        const eventSettings = findTool("get_event_settings");
+        if (eventSettings) selectedTools = [...selectedTools, eventSettings];
+      }
+      if (truthReadLane) {
+        const names = new Set(ariTruthReadToolNames(truthReadLane));
+        selectedTools = turnTools.filter((tool) => names.has(tool.name));
+      }
       // #3355 Wave E (D3a, I-ARI-FLOWS-START-BY-TOOL): a guided setup starts
       // only when the model calls start_flow; it is offered while no setup is
       // live here (or the one here was just parked) and no safety reply,
@@ -3853,7 +3947,8 @@ ${boundedAgentContext}
           SITE_WORKSPACE_TURN_TOOLS.includes(tool.name)
         );
       }
-      const startFlowOffered = startFlowAllowed && !websiteSetupBoundary;
+      const startFlowOffered = startFlowAllowed && !websiteSetupBoundary &&
+        !truthReadLane;
       const startFlowDeclarations = startFlowOffered
         ? [ARI_START_FLOW_DECLARATION]
         : [];
@@ -3883,7 +3978,7 @@ ${boundedAgentContext}
           args: { brand_id: activeBrand.id, upcoming_only: false, limit: 50 },
         });
       }
-      const standaloneResearchRequest = !websiteWorkspace &&
+      const standaloneResearchRequest = !websiteWorkspace && !truthReadLane &&
         isStandalonePublicResearchRequest(semanticMessage);
       const completeFromSearchIndex = standaloneResearchRequest &&
         canCompleteResearchFromSearchIndex(semanticMessage);
@@ -3898,20 +3993,20 @@ ${boundedAgentContext}
       // #3355 Wave E (D3a): keyword read lanes pre-read only when the intent
       // route agrees the turn is a tool use or a question.
       const deterministicRead =
-        !turnRoute.allowDeterministicReads || websiteWorkspace
-        ? null
-        : ariDeterministicReadPlan(
-          semanticMessage,
-          activeBrand?.id ?? null,
-          typeof taskState.active_task?.slots.title.value === "string"
-            ? taskState.active_task.slots.title.value
-            : recentEventTitle,
-          currentAttachmentParts.length > 0,
-          needsAriCampaignDraftReview(semanticMessage)
-            ? findAriCampaignDraftId(history)
-            : null,
-          { legacy: !understandFirst },
-        );
+        !turnRoute.allowDeterministicReads || websiteWorkspace || truthReadLane
+          ? null
+          : ariDeterministicReadPlan(
+            semanticMessage,
+            activeBrand?.id ?? null,
+            typeof taskState.active_task?.slots.title.value === "string"
+              ? taskState.active_task.slots.title.value
+              : recentEventTitle,
+            currentAttachmentParts.length > 0,
+            needsAriCampaignDraftReview(semanticMessage)
+              ? findAriCampaignDraftId(history)
+              : null,
+            { legacy: !understandFirst },
+          );
       const deterministicSafetyReply = ariDeterministicSafetyReply(
         semanticMessage,
       );
@@ -3935,6 +4030,16 @@ ${boundedAgentContext}
         }]
         : websiteInitialCalls.length > 0
         ? websiteInitialCalls
+        : truthReadLane === "team" && activeBrand
+        ? [{ name: "list_brand_team", args: { brand_id: activeBrand.id } }]
+        : (truthReadLane === "event" || truthReadLane === "event_money" ||
+            truthReadLane === "event_orders" ||
+            truthReadLane === "event_performance") &&
+            activeBrand
+        ? [{
+          name: "list_events",
+          args: { brand_id: activeBrand.id, upcoming_only: false, limit: 50 },
+        }]
         : standaloneResearchRequest
         ? [{ name: "search_public_web", args: { query: semanticMessage } }]
         : launchInitialCalls.length > 0
@@ -4256,7 +4361,10 @@ ${boundedAgentContext}
           if (call.name === "update_experience") {
             const optionIssue = experiencePriceOptionsIssue(call.args);
             if (optionIssue) {
-              return { code: "EXPERIENCE_PRICE_OPTION_PARTIAL", message: optionIssue };
+              return {
+                code: "EXPERIENCE_PRICE_OPTION_PARTIAL",
+                message: optionIssue,
+              };
             }
           }
           if (call.name === "manage_experience_stops") {
@@ -4364,9 +4472,16 @@ ${boundedAgentContext}
           }
           try {
             const effectiveArgs = activeBrand?.id &&
-                ["get_operator_snapshot", "get_brand_site"].includes(
-                  call.name,
-                ) && !call.args.brand_id
+                [
+                  "get_operator_snapshot",
+                  "get_brand_site",
+                  "list_events",
+                  "list_event_orders",
+                ]
+                  .includes(
+                    call.name,
+                  ) &&
+                !call.args.brand_id
               ? { ...call.args, brand_id: activeBrand.id }
               : call.args;
             const result = await tool.executor(
@@ -4629,6 +4744,7 @@ ${boundedAgentContext}
               // #3355 Wave E (E1): what the intent read heard the host state,
               // grounded again in the host's own words.
               modelStated: turnRoute.statedValues,
+              modelHedgedKeys: turnRoute.hedgedKeys,
             });
           if (statedSlots.kind === "ask") {
             return await commitTextTurn({
@@ -4858,9 +4974,14 @@ ${boundedAgentContext}
         const result = observation.result as { sources?: unknown } | undefined;
         return Array.isArray(result?.sources) && result.sources.length > 0;
       });
-      const publicLoopText = sanitizeAriUserFacingDiagnostics(rawLoopText);
+      const publicLoopText = softenAriHeadings(
+        sanitizeAriUserFacingDiagnostics(rawLoopText),
+      );
+      const researchExpected = standaloneResearchRequest ||
+        launchPlanRequest && launchPlanNeedsPublicResearch(semanticMessage) ||
+        websiteSetupBoundary && usedResearch;
       const copyLint = lintAriCopy(publicLoopText, {
-        researchExpected: usedResearch,
+        researchExpected,
         hasSources,
       });
       const lintedLoopText = copyLint.ok
@@ -4897,13 +5018,18 @@ ${boundedAgentContext}
       const resumePrompt = (readInterruption || questionInterruption)
         ? liveChoices?.prompt ?? pendingQuestionPrompt(resumedState)
         : null;
-      // #3355 Wave D (D4, D7a, I-ARI-ASK-TEAM-ONLY-ON-TAP): after the
-      // guide answer, a stuck host is offered "Ask the Mingla team" as a
-      // confirmation card (the receipt-backed tell_owner send into the
-      // brand's group). Nothing is sent unless the host taps Confirm.
-      let escalationNote: string | null = null;
+      // #3355 Wave D (D4, D7a, I-ARI-ASK-TEAM-ONLY-ON-TAP): an unconfirmed
+      // gap is recorded, but only the separate repeated-failure/frustration
+      // decision makes the host "stuck" enough to offer the team card. A
+      // normal how-to answer must not be replaced by an escalation proposal.
+      const loopUnconfirmed = classifyAriReplyGaps({
+        replyText: safeLoopText,
+        ownerText: semanticMessage,
+        hasRendition: false,
+      }).some((signal) => signal.type === "unconfirmed");
       if (
-        escalation.escalate && activeBrand && !websiteSetupBoundary &&
+        escalation.escalate && activeBrand &&
+        !websiteSetupBoundary &&
         !websiteWorkspace &&
         !websiteSetupPresentation && !launchPlan && !resumePrompt &&
         loopResult.kind === "text"
@@ -4916,7 +5042,6 @@ ${boundedAgentContext}
           ),
         });
         if (offer.response) return offer.response;
-        escalationNote = offer.note;
       }
       return await commitTextTurn({
         understandFirst,
@@ -4930,8 +5055,6 @@ ${boundedAgentContext}
         previousSummary: conversationSummary,
         text: resumePrompt
           ? `${safeLoopText}\n\nBack to your event plan: ${resumePrompt}`
-          : escalationNote
-          ? `${safeLoopText}\n\n${escalationNote}`
           : safeLoopText,
         classification: flowParked ? "agent_loop_flow_parked" : "agent_loop",
         gapOwnerText: semanticMessage,
@@ -4967,6 +5090,7 @@ ${boundedAgentContext}
             })),
             usage: loopResult.usage,
             copy_lint: copyLint.violations,
+            unconfirmed_gap: loopUnconfirmed,
           },
           // #3355 Wave B (B1): the Feature Guide entries this answer used.
           ...(guideCitations.length > 0
@@ -5170,8 +5294,13 @@ ${boundedAgentContext}
             userId,
             attemptNumber,
           );
+          const effectiveArgs = activeBrand?.id &&
+              ["list_events", "list_event_orders"].includes(tool.name) &&
+              !gemini.toolCall.args.brand_id
+            ? { ...gemini.toolCall.args, brand_id: activeBrand.id }
+            : gemini.toolCall.args;
           const result = await tool.executor(
-            gemini.toolCall.args,
+            effectiveArgs,
             userClient,
             userId,
             {
@@ -5341,6 +5470,11 @@ ${boundedAgentContext}
             toolName: tool.name,
             result,
             capabilities: ariUiCapabilities,
+            showBrandReadiness: Boolean(
+              turnRoute.flow.readiness ||
+                /\b(?:set ?up|setup|readiness|ready|what(?:'s| is) missing|need before)\b/i
+                  .test(semanticMessage),
+            ),
             checkedAt: new Date().toISOString(),
           });
           return await commitTextTurn({
@@ -5608,6 +5742,7 @@ ${boundedAgentContext}
             current: semanticMessage,
             userClient,
             modelStated: turnRoute.statedValues,
+            modelHedgedKeys: turnRoute.hedgedKeys,
           });
         if (singleStatedSlots.kind === "ask") {
           return await commitTextTurn({
@@ -5764,11 +5899,17 @@ ${boundedAgentContext}
     const resumePrompt = (readInterruption || questionInterruption)
       ? liveChoices?.prompt ?? pendingQuestionPrompt(resumedState)
       : null;
-    // #3355 Wave F: the single-call path offers "Ask the Mingla team" to a
-    // stuck host too (the same card, the same server checks).
-    let singleCallEscalationNote: string | null = null;
+    // #3355 Wave F: the single-call path records an unconfirmed answer, but
+    // offers the team card only after the ordinary escalation decision says
+    // the host is stuck.
+    const singleCallUnconfirmed = classifyAriReplyGaps({
+      replyText: answer,
+      ownerText: semanticMessage,
+      hasRendition: false,
+    }).some((signal) => signal.type === "unconfirmed");
     if (
-      escalation.escalate && activeBrand && !websiteSetupBoundary &&
+      escalation.escalate && activeBrand &&
+      !websiteSetupBoundary &&
       !resumePrompt
     ) {
       const offer = await offerAskTheTeam({
@@ -5777,12 +5918,9 @@ ${boundedAgentContext}
         errorCodes: [],
       });
       if (offer.response) return offer.response;
-      singleCallEscalationNote = offer.note;
     }
     const text = resumePrompt
       ? `${answer}\n\nBack to your event plan: ${resumePrompt}`
-      : singleCallEscalationNote
-      ? `${answer}\n\n${singleCallEscalationNote}`
       : answer;
     return await commitTextTurn({
       understandFirst,
@@ -5799,6 +5937,8 @@ ${boundedAgentContext}
         ? "read_interruption"
         : questionInterruption
         ? "question_interruption"
+        : singleCallUnconfirmed
+        ? "general_unconfirmed"
         : "general",
       gapOwnerText: semanticMessage,
       startedAt: turnStartedAt,
@@ -5863,6 +6003,7 @@ async function statedSlotStage(args: {
   current: string;
   userClient: SupabaseClient;
   modelStated?: ModelStatedValues | null;
+  modelHedgedKeys?: readonly string[];
 }): Promise<StatedSlotCheck> {
   return await preserveStatedSlots({
     toolName: args.toolName,
@@ -5875,6 +6016,7 @@ async function statedSlotStage(args: {
     }),
     userClient: args.userClient,
     modelStated: args.modelStated,
+    modelHedgedKeys: args.modelHedgedKeys,
     // #3355 rework 8 (R8-12): each field is asked once; then the host wins.
     askedBefore: statedSlotsAskedBefore({
       history: args.history,
@@ -6083,6 +6225,28 @@ async function guardReplyClaims(args: {
       status_read: check.statusRead ?? "none",
     }),
   );
+  const truth = verifyAriTruthClaims({
+    text: check.text,
+    ownerTexts: ownerWords,
+    observations,
+    teamOrSupportReceipt: states.some((state) =>
+      state.status === "executed" &&
+      ["tell_owner_in_brand_group", "create_support_ticket"].includes(
+        state.toolName,
+      )
+    ),
+  });
+  if (truth.replacements.length > 0) {
+    console.info(
+      "[agent-chat] truth verifier",
+      JSON.stringify({
+        fn: "agent-chat",
+        issue: "4599",
+        reasons: truth.replacements.map((item) => item.reason),
+      }),
+    );
+  }
+  check.text = truth.text;
   // #3355 final fix (P3): to the host as "you", and no invented steps.
   // #3355 rework 9 (fix 7): no screen path the App Map does not know.
   return guardReplyNavigation(

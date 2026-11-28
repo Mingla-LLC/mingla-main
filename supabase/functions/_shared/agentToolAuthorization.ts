@@ -242,6 +242,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   request_account_deletion: role("self", "none"),
   get_operator_snapshot: role("scanner", "optional_brand"),
   // #1984 — same finance floor as brand analytics refunds; event-scoped.
+  get_event_settings: role("finance_manager", "event"),
   get_event_order_reconciliation: role("finance_manager", "event"),
   // #2829 W9b — Ari as the website designer. Reads and draft proposals:
   // marketing managers and up; the plan, the first draft, confirming a review
